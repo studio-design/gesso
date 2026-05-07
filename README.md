@@ -604,6 +604,97 @@ The MVP intentionally targets happy-path generation. Tracked separately:
 [schemathesis]: https://github.com/schemathesis/schemathesis
 [faker]: https://github.com/FakerPHP/Faker
 
+## Enum drift detection
+
+Runtime contract validation only sees enum values your tests actually return. Two failure modes slip through:
+
+1. **PHP-only values** — a case is added to a PHP enum but the spec is not updated. Existing contract tests catch this only if a test exercises a code path that returns the new value. Untested paths drift silently.
+2. **Spec-only values** — a value is added to the spec but no PHP case exists. Runtime validation can never observe this — the value cannot be produced by the implementation.
+
+`EnumDriftAsserter` closes both holes by comparing PHP enum case values against the spec's `enum:` array statically.
+
+### `#[BoundToOpenApiEnum]` — bind a PHP enum to its spec file
+
+```php
+use Studio\OpenApiContractTesting\Attribute\BoundToOpenApiEnum;
+
+#[BoundToOpenApiEnum('_shared/components/schemas/enums/NotificationCodeEnum.json')]
+enum NotificationCodeEnum: string
+{
+    case StudioPaymentOld = 'studioPaymentOld';
+    case StudioPaymentNew = 'studioPaymentNew';
+    // ...
+}
+```
+
+The path is resolved relative to the configured spec root (`OpenApiSpecLoader::getBasePath()` — the same root used by the bundler and PHPUnit extension). The bound JSON file must contain an `enum:` array, e.g.:
+
+```json
+{
+  "type": "string",
+  "enum": ["studioPaymentOld", "studioPaymentNew"]
+}
+```
+
+### `EnumDriftAsserter::assertNoDrift()`
+
+Call from any test (or from a dedicated drift-only test) to verify all bound enums match their spec files:
+
+```php
+use Studio\OpenApiContractTesting\Schema\EnumDriftAsserter;
+
+public function test_no_enum_drift(): void
+{
+    EnumDriftAsserter::assertNoDrift([
+        \App\Enums\NotificationCodeEnum::class,
+        \App\Enums\ValidationErrorCodeEnum::class,
+    ]);
+}
+```
+
+When drift is detected the asserter throws `EnumDriftException` with a structured diagnostic:
+
+```
+[OpenAPI Enum Drift] FATAL: 1 enum binding(s) drift from spec.
+
+  App\Enums\NotificationCodeEnum  ->  _shared/components/schemas/enums/NotificationCodeEnum.json
+    PHP-only (1): "betaFeature"
+    Spec-only (1): "deprecated"
+
+Action: align the PHP enum cases with the spec, or update the spec's enum array.
+```
+
+To downgrade drift to a non-fatal warning (matches the `failOnWarning` ergonomic), pass `failOnDrift: false`:
+
+```php
+EnumDriftAsserter::assertNoDrift([NotificationCodeEnum::class], failOnDrift: false);
+```
+
+The asserter then fires a single `E_USER_WARNING` per drifting binding instead of throwing — `failOnWarning="true"` in `phpunit.xml` will still fail the run, but explicit warning suppressors will not.
+
+### `detectAll()` — inspection without throwing
+
+For dashboards or custom CI summaries that need every report (clean and drifting):
+
+```php
+$reports = EnumDriftAsserter::detectAll([NotificationCodeEnum::class]);
+foreach ($reports as $report) {
+    echo $report->enumFqcn, ' has drift: ', $report->hasDrift() ? 'yes' : 'no', "\n";
+}
+```
+
+Each `EnumDriftReport` carries `enumFqcn`, `specPath`, `phpOnly`, and `specOnly` as readonly properties.
+
+### Misconfiguration vs drift
+
+`EnumBindingException` is thrown when the comparison cannot be performed at all (missing `#[BoundToOpenApiEnum]`, target is not an enum, spec file not found, malformed JSON, `enum` key missing or not an array). `$reason` carries an `EnumBindingReason` enum so you can branch programmatically. These errors fire regardless of `failOnDrift` — they are setup mistakes, not drift signals.
+
+### Known limitations
+
+- **`oneOf` enum unions** (e.g., `code: oneOf: [CommonCode, AdminCode]`) are not yet auto-resolved. Bind each PHP enum to the leaf JSON file directly. Tracked separately.
+- **`x-enum-varnames` / `x-enum-descriptions`** are not validated. Only the `enum` value array is compared.
+- The asserter loads the bound JSON file directly; it does not run `$ref` resolution or full OpenAPI spec validation on it.
+
 ## Coverage Report
 
 After running tests, the PHPUnit extension prints a coverage report. The output format is controlled by the `console_output` parameter (or `OPENAPI_CONSOLE_OUTPUT` environment variable).

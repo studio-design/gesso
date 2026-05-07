@@ -1,0 +1,5 @@
+{
+  "type": "string",
+  "enum": ["available", "pending", "sold"],
+  "description": "Pet listing status."
+}

@@ -1,0 +1,9 @@
+{
+  "type": "string",
+  "enum": [
+    "studioPaymentOld",
+    "studioPaymentNew",
+    "deprecated"
+  ],
+  "description": "Notification codes the API may emit."
+}
