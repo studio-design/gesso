@@ -10,6 +10,14 @@ the README for the full surface contract.
 
 ## Unreleased
 
+## [1.1.0](https://github.com/studio-design/openapi-contract-testing/compare/v1.0.0...v1.1.0) (2026-05-07)
+
+
+### Features
+
+* **extension:** opt-in auto-discovery of #[BoundToOpenApiEnum] enums ([#168](https://github.com/studio-design/openapi-contract-testing/issues/168)) ([95e34a9](https://github.com/studio-design/openapi-contract-testing/commit/95e34a939b032cc6f5e0ffa1ec3eec3c1c6cdee4))
+* **schema:** enum drift detection between OpenAPI spec and bound PHP enums ([#166](https://github.com/studio-design/openapi-contract-testing/issues/166)) ([7910f09](https://github.com/studio-design/openapi-contract-testing/commit/7910f09674d9ebbe20adc2b0a251e19373e075b5))
+
 ## v1.0.0 — 2026-05-01
 
 API stability commitment release.
