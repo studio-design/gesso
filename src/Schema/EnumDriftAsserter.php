@@ -17,6 +17,7 @@ use Studio\OpenApiContractTesting\Exception\EnumBindingReason;
 use Studio\OpenApiContractTesting\Exception\EnumDriftException;
 use Studio\OpenApiContractTesting\Exception\InvalidOpenApiSpecException;
 use Studio\OpenApiContractTesting\Exception\InvalidOpenApiSpecReason;
+use Studio\OpenApiContractTesting\PHPUnit\OpenApiCoverageExtension;
 use Studio\OpenApiContractTesting\Spec\OpenApiSpecLoader;
 
 use function array_filter;
@@ -127,6 +128,55 @@ final class EnumDriftAsserter
         }
 
         return $reports;
+    }
+
+    /**
+     * Render the diagnostic block describing every drifting binding.
+     *
+     * @param list<EnumDriftReport> $reports
+     *
+     * @internal Exposed only so {@see OpenApiCoverageExtension}
+     *           can produce the same block at bootstrap when auto-discovery
+     *           runs in lenient mode (where `assertNoDrift` is not called).
+     */
+    public static function renderMessage(array $reports, bool $failOnDrift): string
+    {
+        $severity = $failOnDrift ? 'FATAL' : 'WARNING';
+        $count = count($reports);
+        $header = sprintf(
+            "[OpenAPI Enum Drift] %s: %d enum binding(s) drift from spec.\n",
+            $severity,
+            $count,
+        );
+
+        $bodies = array_map(
+            static function (EnumDriftReport $report): string {
+                $lines = [
+                    sprintf('  %s  ->  %s', $report->enumFqcn, $report->specPath),
+                ];
+                if ($report->phpOnly !== []) {
+                    $lines[] = sprintf(
+                        '    PHP-only (%d): %s',
+                        count($report->phpOnly),
+                        self::formatValueList($report->phpOnly),
+                    );
+                }
+                if ($report->specOnly !== []) {
+                    $lines[] = sprintf(
+                        '    Spec-only (%d): %s',
+                        count($report->specOnly),
+                        self::formatValueList($report->specOnly),
+                    );
+                }
+
+                return implode("\n", $lines);
+            },
+            $reports,
+        );
+
+        $footer = "\nAction: align the PHP enum cases with the spec, or update the spec's enum array.";
+
+        return $header . "\n" . implode("\n\n", $bodies) . "\n" . $footer;
     }
 
     private static function detectOne(string $fqcn): EnumDriftReport
@@ -362,49 +412,6 @@ final class EnumDriftAsserter
         }
 
         return $values;
-    }
-
-    /**
-     * @param list<EnumDriftReport> $reports
-     */
-    private static function renderMessage(array $reports, bool $failOnDrift): string
-    {
-        $severity = $failOnDrift ? 'FATAL' : 'WARNING';
-        $count = count($reports);
-        $header = sprintf(
-            "[OpenAPI Enum Drift] %s: %d enum binding(s) drift from spec.\n",
-            $severity,
-            $count,
-        );
-
-        $bodies = array_map(
-            static function (EnumDriftReport $report): string {
-                $lines = [
-                    sprintf('  %s  ->  %s', $report->enumFqcn, $report->specPath),
-                ];
-                if ($report->phpOnly !== []) {
-                    $lines[] = sprintf(
-                        '    PHP-only (%d): %s',
-                        count($report->phpOnly),
-                        self::formatValueList($report->phpOnly),
-                    );
-                }
-                if ($report->specOnly !== []) {
-                    $lines[] = sprintf(
-                        '    Spec-only (%d): %s',
-                        count($report->specOnly),
-                        self::formatValueList($report->specOnly),
-                    );
-                }
-
-                return implode("\n", $lines);
-            },
-            $reports,
-        );
-
-        $footer = "\nAction: align the PHP enum cases with the spec, or update the spec's enum array.";
-
-        return $header . "\n" . implode("\n\n", $bodies) . "\n" . $footer;
     }
 
     /**
