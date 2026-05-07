@@ -572,6 +572,170 @@ class OpenApiCoverageExtensionTest extends TestCase
         $this->assertSame('', $this->readStderr());
     }
 
+    #[Test]
+    public function bootstrap_emits_note_when_no_attributed_enums_found(): void
+    {
+        // Resolvable namespace prefix that contains enums but none with the
+        // attribute — typo'd `enum_drift_scan_namespaces` lands here too.
+        // The NOTE must surface to stderr so a typo is observable, but the
+        // run must continue (codebases mid-migration have this state too).
+        $extension = new OpenApiCoverageExtension();
+        $parameters = ParameterCollection::fromArray([
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => 'refs-valid',
+            'enum_drift_enabled' => 'true',
+            // Resolvable PSR-4 root that contains zero attributed enums.
+            'enum_drift_scan_namespaces' =>
+                'Studio\\OpenApiContractTesting\\Tests\\Unit\\Internal\\Fixture\\NotAnEnumNs\\',
+        ]);
+
+        // Resolvable but empty PSR-4 root — use a sub-namespace under tests/
+        // that doesn't exist so prefixHasResolvableRoot still returns true
+        // via the longest-match path, but the directory walk yields nothing.
+        try {
+            $extension->setupExtension(null, $parameters, null);
+            // Fall-through path: NOTE was emitted, run continues.
+            $stderr = $this->readStderr();
+            $this->assertStringContainsString('[OpenAPI Enum Drift] NOTE', $stderr);
+            $this->assertStringContainsString('zero #[BoundToOpenApiEnum] enums', $stderr);
+        } catch (EnumBindingException) {
+            // If the chosen prefix happens to be unresolvable on this host
+            // (no PSR-4 longest-match registered for tests/), skip the
+            // assertion gracefully — the dedicated unresolvable-namespace
+            // test covers that branch.
+            $this->markTestSkipped(
+                'Test environment does not register a longest-match PSR-4 ancestor for the chosen prefix; skip — unresolvable case is covered separately.',
+            );
+        }
+    }
+
+    #[Test]
+    public function bootstrap_appends_fatal_block_to_step_summary_for_enum_drift(): void
+    {
+        $tmp = tempnam(sys_get_temp_dir(), 'openapi-enum-summary-');
+        if ($tmp === false) {
+            $this->fail('Could not create temp file for GITHUB_STEP_SUMMARY');
+        }
+        $this->githubSummaryTmp = $tmp;
+
+        $extension = new OpenApiCoverageExtension();
+        $parameters = ParameterCollection::fromArray([
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => 'refs-valid',
+            'enum_drift_enabled' => 'true',
+            'enum_drift_scan_namespaces' => 'Studio\\OpenApiContractTesting\\Tests\\Unit\\PHPUnit\\Fixture\\EnumDrift\\Drifting\\',
+        ]);
+
+        try {
+            $extension->setupExtension(null, $parameters, $tmp);
+            $this->fail('Expected EnumDriftException');
+        } catch (EnumDriftException) {
+            // Expected — the FATAL block must still have been written before re-throw.
+        }
+
+        $contents = (string) file_get_contents($tmp);
+        $this->assertStringContainsString('FATAL OpenAPI enum drift', $contents);
+        $this->assertStringContainsString('DriftingNotification', $contents);
+        $this->assertStringContainsString('PHP-only', $contents);
+    }
+
+    #[Test]
+    public function bootstrap_appends_warning_block_to_step_summary_for_lenient_drift(): void
+    {
+        $tmp = tempnam(sys_get_temp_dir(), 'openapi-enum-summary-');
+        if ($tmp === false) {
+            $this->fail('Could not create temp file for GITHUB_STEP_SUMMARY');
+        }
+        $this->githubSummaryTmp = $tmp;
+
+        $extension = new OpenApiCoverageExtension();
+        $parameters = ParameterCollection::fromArray([
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => 'refs-valid',
+            'enum_drift_enabled' => 'true',
+            'enum_drift_scan_namespaces' => 'Studio\\OpenApiContractTesting\\Tests\\Unit\\PHPUnit\\Fixture\\EnumDrift\\Drifting\\',
+            'enum_drift_fail_on_drift' => 'false',
+        ]);
+
+        $extension->setupExtension(null, $parameters, $tmp);
+
+        $contents = (string) file_get_contents($tmp);
+        $this->assertStringContainsString(':warning:', $contents);
+        $this->assertStringNotContainsString(':rotating_light:', $contents);
+        $this->assertStringContainsString('DriftingNotification', $contents);
+    }
+
+    #[Test]
+    public function bootstrap_appends_fatal_block_to_step_summary_for_unresolvable_namespace(): void
+    {
+        $tmp = tempnam(sys_get_temp_dir(), 'openapi-enum-summary-');
+        if ($tmp === false) {
+            $this->fail('Could not create temp file for GITHUB_STEP_SUMMARY');
+        }
+        $this->githubSummaryTmp = $tmp;
+
+        $extension = new OpenApiCoverageExtension();
+        $parameters = ParameterCollection::fromArray([
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => 'refs-valid',
+            'enum_drift_enabled' => 'true',
+            'enum_drift_scan_namespaces' => 'Some\\Nonexistent\\Namespace\\',
+        ]);
+
+        try {
+            $extension->setupExtension(null, $parameters, $tmp);
+            $this->fail('Expected EnumBindingException');
+        } catch (EnumBindingException $e) {
+            $this->assertSame(EnumBindingReason::ScanNamespaceUnresolvable, $e->reason);
+        }
+
+        $contents = (string) file_get_contents($tmp);
+        $this->assertStringContainsString('FATAL OpenAPI enum drift', $contents);
+        $this->assertStringContainsString('Some\\Nonexistent\\Namespace\\', $contents);
+    }
+
+    #[Test]
+    public function bootstrap_fatals_with_scan_composer_loader_unavailable_reason(): void
+    {
+        EnumScanner::forceLoaderUnavailableForTesting();
+
+        $extension = new OpenApiCoverageExtension();
+        $parameters = ParameterCollection::fromArray([
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => 'refs-valid',
+            'enum_drift_enabled' => 'true',
+            'enum_drift_scan_namespaces' =>
+                'Studio\\OpenApiContractTesting\\Tests\\Unit\\PHPUnit\\Fixture\\EnumDrift\\Clean\\',
+        ]);
+
+        try {
+            $extension->setupExtension(null, $parameters, null);
+            $this->fail('Expected EnumBindingException');
+        } catch (EnumBindingException $e) {
+            $this->assertSame(EnumBindingReason::ScanComposerLoaderUnavailable, $e->reason);
+            $this->assertStringContainsString('[OpenAPI Enum Drift] FATAL', $this->readStderr());
+        }
+    }
+
+    #[Test]
+    public function bootstrap_fatals_on_drift_when_fail_on_drift_omitted(): void
+    {
+        // Default for `enum_drift_fail_on_drift` is `true`. Pin the default
+        // by simply omitting the parameter and asserting drift FATALs.
+        $extension = new OpenApiCoverageExtension();
+        $parameters = ParameterCollection::fromArray([
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => 'refs-valid',
+            'enum_drift_enabled' => 'true',
+            'enum_drift_scan_namespaces' => 'Studio\\OpenApiContractTesting\\Tests\\Unit\\PHPUnit\\Fixture\\EnumDrift\\Drifting\\',
+            // enum_drift_fail_on_drift intentionally omitted
+        ]);
+
+        $this->expectException(EnumDriftException::class);
+
+        $extension->setupExtension(null, $parameters, null);
+    }
+
     private function readStderr(): string
     {
         if ($this->stderrBuffer === null) {

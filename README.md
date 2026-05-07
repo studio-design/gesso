@@ -711,10 +711,11 @@ Add the opt-in parameters to your `phpunit.xml`:
 | `enum_drift_enabled` | `false` | Master opt-in. Empty value (`<parameter name="enum_drift_enabled"/>`) is also treated as `true`, mirroring `min_coverage_strict`. |
 | `enum_drift_scan_namespaces` | _none_ | Comma-separated PSR-4 namespace prefixes (whitespace tolerated). Each prefix must match — directly or as a sub-namespace of — an entry in your `composer.json` `autoload.psr-4` map. |
 | `enum_drift_fail_on_drift` | `true` | `true` aborts the run with a `[OpenAPI Enum Drift] FATAL` block on stderr (and `GITHUB_STEP_SUMMARY` when set). `false` emits a `WARNING` block but lets PHPUnit continue. |
+| _misconfiguration_ | _n/a_ | No namespaces configured, an unresolvable namespace prefix, a missing Composer `ClassLoader`, or any `EnumBindingException` raised by a discovered enum **always** produces a FATAL exit regardless of `enum_drift_fail_on_drift`. These are setup errors and would otherwise hide a real drift signal. |
 
-Discovery walks Composer's classmap first (so `--optimize-autoloader` and `--classmap-authoritative` deployments are covered) and falls back to a recursive PSR-4 directory scan for default dev installs. Only backed enums carrying `#[BoundToOpenApiEnum]` are passed to `EnumDriftAsserter`; pure enums, traits, abstract classes, and unattributed classes in the same directory are silently skipped.
+Discovery merges results from Composer's classmap (`getClassMap()`) and a recursive scan of each PSR-4-registered directory, deduplicating across both sources. Production deployments using `--optimize-autoloader` or `--classmap-authoritative` are covered by the classmap pass; default dev installs are covered by the PSR-4 directory walk. Only backed enums carrying `#[BoundToOpenApiEnum]` are passed to `EnumDriftAsserter`; pure enums, traits, abstract classes, and unattributed classes in the same directory are silently skipped.
 
-A drift run produces the same diagnostic block documented above:
+A strict-mode (default) drift run produces the same diagnostic block documented above:
 
 ```
 [OpenAPI Enum Drift] FATAL: 1 enum binding(s) drift from spec.
@@ -726,9 +727,21 @@ A drift run produces the same diagnostic block documented above:
 Action: align the PHP enum cases with the spec, or update the spec's enum array.
 ```
 
-In `enum_drift_fail_on_drift="false"` mode the same body is written under a `[OpenAPI Enum Drift] WARNING` header and PHPUnit exits normally — wire `failOnPhpunitWarning` (or your team's preferred CI gate) if you want the warning to fail the build.
+In `enum_drift_fail_on_drift="false"` mode the body is identical except for the severity prefix:
 
-Misconfiguration (no namespaces configured, unresolvable namespace prefix, missing Composer ClassLoader, or any `EnumBindingException` raised by a discovered enum) **always** produces a FATAL exit regardless of `enum_drift_fail_on_drift` — these are setup errors that would otherwise hide a real drift signal.
+```
+[OpenAPI Enum Drift] WARNING: 1 enum binding(s) drift from spec.
+
+  App\Enums\NotificationCodeEnum  ->  _shared/components/schemas/enums/NotificationCodeEnum.json
+    PHP-only (1): "betaFeature"
+    Spec-only (1): "deprecated"
+
+Action: align the PHP enum cases with the spec, or update the spec's enum array.
+```
+
+PHPUnit exits normally in `WARNING` mode. **`failOnWarning="true"` and `failOnPhpunitWarning="true"` do _not_ catch this block** — both flags only fire for warnings raised during test execution, not bootstrap-time stderr writes from an extension. If you need lenient drift to fail the build, gate on the stderr text in CI directly (e.g. `phpunit ... 2>&1 | tee out && ! grep -q '\[OpenAPI Enum Drift\] WARNING' out`).
+
+If `enum_drift_scan_namespaces` resolves but no `#[BoundToOpenApiEnum]`-attributed enums are found, the extension emits one `[OpenAPI Enum Drift] NOTE:` line to stderr and continues. This surfaces typo'd namespaces ("`App\Enum`" vs "`App\Enums`") without failing codebases that are mid-migration.
 
 ### Known limitations
 

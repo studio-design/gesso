@@ -17,7 +17,6 @@ use Studio\OpenApiContractTesting\Exception\EnumBindingReason;
 use Studio\OpenApiContractTesting\Exception\EnumDriftException;
 use Studio\OpenApiContractTesting\Exception\InvalidOpenApiSpecException;
 use Studio\OpenApiContractTesting\Exception\InvalidOpenApiSpecReason;
-use Studio\OpenApiContractTesting\PHPUnit\OpenApiCoverageExtension;
 use Studio\OpenApiContractTesting\Spec\OpenApiSpecLoader;
 
 use function array_filter;
@@ -135,9 +134,9 @@ final class EnumDriftAsserter
      *
      * @param list<EnumDriftReport> $reports
      *
-     * @internal Exposed only so {@see OpenApiCoverageExtension}
-     *           can produce the same block at bootstrap when auto-discovery
-     *           runs in lenient mode (where `assertNoDrift` is not called).
+     * @internal Exposed only so the PHPUnit extension can produce the same
+     *           block at bootstrap when auto-discovery runs in lenient mode
+     *           (where `assertNoDrift` is not called).
      */
     public static function renderMessage(array $reports, bool $failOnDrift): string
     {
