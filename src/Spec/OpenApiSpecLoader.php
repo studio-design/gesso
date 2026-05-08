@@ -26,6 +26,7 @@ use function json_decode;
 use function realpath;
 use function rtrim;
 use function sprintf;
+use function trim;
 
 final class OpenApiSpecLoader
 {
@@ -37,6 +38,14 @@ final class OpenApiSpecLoader
      */
     private const SEARCH_EXTENSIONS = ['json', 'yaml', 'yml'];
     private static ?string $basePath = null;
+
+    /**
+     * Optional secondary base path used exclusively for resolving
+     * `#[BoundToOpenApiEnum]` paths (issue #170). When `null`, those paths
+     * fall back to {@see $basePath} so existing single-root projects
+     * keep their previous behavior unchanged.
+     */
+    private static ?string $enumBasePath = null;
 
     /** @var string[] */
     private static array $stripPrefixes = [];
@@ -63,6 +72,14 @@ final class OpenApiSpecLoader
      * @param bool $allowRemoteRefs Opt-in for HTTP(S) `$ref` resolution. Defaults to false:
      *                              every external HTTP(S) ref throws `RemoteRefDisallowed` so a
      *                              spec can never silently reach the network during tests.
+     * @param null|string $enumBasePath Optional secondary base path used only when resolving
+     *                                  `#[BoundToOpenApiEnum]` attribute paths (issue #170).
+     *                                  Lets projects keep `spec_base_path` pointed at a
+     *                                  bundled aggregate root (e.g. `openapi/bundled/`) while
+     *                                  individual enum JSONs live elsewhere (e.g.
+     *                                  `openapi/_shared/...`). When `null` the asserter falls
+     *                                  back to `$basePath`, keeping single-root setups
+     *                                  bit-for-bit identical to the pre-issue-#170 behavior.
      *
      * @throws InvalidArgumentException for any misconfigured pair: `$allowRemoteRefs` true
      *                                  without client/factory, OR client provided without
@@ -75,6 +92,7 @@ final class OpenApiSpecLoader
         ?ClientInterface $httpClient = null,
         ?RequestFactoryInterface $requestFactory = null,
         bool $allowRemoteRefs = false,
+        ?string $enumBasePath = null,
     ): void {
         if ($allowRemoteRefs && ($httpClient === null || $requestFactory === null)) {
             throw new InvalidArgumentException(
@@ -97,7 +115,22 @@ final class OpenApiSpecLoader
             );
         }
 
+        if ($enumBasePath !== null && trim($enumBasePath) === '') {
+            // Empty / whitespace-only `enumBasePath` would otherwise survive
+            // rtrim() as the empty string and surface later as
+            // `EnumBasePathNotFound: Configured enum_spec_base_path is not a
+            // directory: ` — an unhelpful diagnostic that hides the real
+            // misconfiguration. Reject at the API surface instead, matching
+            // the allowRemoteRefs pairing checks above. Pass `null` to
+            // intentionally disable the parameter.
+            throw new InvalidArgumentException(
+                'OpenApiSpecLoader::configure(): $enumBasePath is empty or whitespace-only. '
+                . 'Pass a valid directory path, or null to fall back to spec_base_path.',
+            );
+        }
+
         self::$basePath = rtrim($basePath, '/');
+        self::$enumBasePath = $enumBasePath !== null ? rtrim($enumBasePath, '/') : null;
         self::$stripPrefixes = $stripPrefixes;
         self::$httpClient = $httpClient;
         self::$requestFactory = $requestFactory;
@@ -119,6 +152,19 @@ final class OpenApiSpecLoader
         }
 
         return self::$basePath;
+    }
+
+    /**
+     * Secondary base path for `#[BoundToOpenApiEnum]` resolution (issue #170).
+     *
+     * Returns `null` when not configured — `EnumDriftAsserter` is expected
+     * to fall back to {@see getBasePath()} in that case. The deliberate
+     * non-throwing shape mirrors how `enum_spec_base_path` is opt-in at the
+     * extension layer: absence is the documented default, not an error.
+     */
+    public static function getEnumBasePath(): ?string
+    {
+        return self::$enumBasePath;
     }
 
     /** @return string[] */
@@ -211,6 +257,7 @@ final class OpenApiSpecLoader
     public static function reset(): void
     {
         self::$basePath = null;
+        self::$enumBasePath = null;
         self::$stripPrefixes = [];
         self::$cache = [];
         self::$httpClient = null;

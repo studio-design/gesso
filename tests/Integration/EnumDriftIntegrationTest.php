@@ -9,6 +9,7 @@ use PHPUnit\Framework\TestCase;
 use Studio\OpenApiContractTesting\Exception\EnumDriftException;
 use Studio\OpenApiContractTesting\Schema\EnumDriftAsserter;
 use Studio\OpenApiContractTesting\Spec\OpenApiSpecLoader;
+use Studio\OpenApiContractTesting\Tests\Integration\Schema\Fixture\IntegrationBundledExternalEnum;
 use Studio\OpenApiContractTesting\Tests\Integration\Schema\Fixture\IntegrationNotificationCodeEnum;
 use Studio\OpenApiContractTesting\Tests\Integration\Schema\Fixture\IntegrationPetStatusEnum;
 
@@ -86,5 +87,30 @@ class EnumDriftIntegrationTest extends TestCase
         $this->assertFalse($reports[0]->hasDrift());
         $this->assertSame(IntegrationNotificationCodeEnum::class, $reports[1]->enumFqcn);
         $this->assertTrue($reports[1]->hasDrift());
+    }
+
+    #[Test]
+    public function bundled_external_layout_resolves_via_enum_spec_base_path(): void
+    {
+        // Issue #170 dogfood: spec_base_path points at `issue-170/bundled/`
+        // (where front.json / store.json / admin.json would live), while
+        // enum_spec_base_path points one level higher so per-enum JSONs
+        // under `_shared/components/schemas/enums/` resolve from a clean
+        // attribute path — no `..` traversal required.
+        OpenApiSpecLoader::reset();
+        OpenApiSpecLoader::configure(
+            basePath: __DIR__ . '/../fixtures/specs/issue-170/bundled',
+            enumBasePath: __DIR__ . '/../fixtures/specs/issue-170',
+        );
+
+        EnumDriftAsserter::assertNoDrift([IntegrationBundledExternalEnum::class]);
+
+        $reports = EnumDriftAsserter::detectAll([IntegrationBundledExternalEnum::class]);
+        $this->assertCount(1, $reports);
+        $this->assertFalse($reports[0]->hasDrift());
+        $this->assertSame(
+            '_shared/components/schemas/enums/BundledExternalEnum.json',
+            $reports[0]->specPath,
+        );
     }
 }

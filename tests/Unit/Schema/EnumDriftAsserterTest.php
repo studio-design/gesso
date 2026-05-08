@@ -30,6 +30,8 @@ use Studio\OpenApiContractTesting\Tests\Unit\Schema\Fixture\UnattributedEnum;
 
 use function restore_error_handler;
 use function set_error_handler;
+use function sys_get_temp_dir;
+use function uniqid;
 
 class EnumDriftAsserterTest extends TestCase
 {
@@ -382,6 +384,129 @@ class EnumDriftAsserterTest extends TestCase
         } catch (EnumDriftException $e) {
             $this->assertSame(['a', 'b'], $e->reports[0]->phpOnly);
             $this->assertSame([], $e->reports[0]->specOnly);
+        }
+    }
+
+    #[Test]
+    public function enum_base_path_resolves_attribute_paths_independently_of_spec_base_path(): void
+    {
+        // Issue #170: bundled-external layout. spec_base_path can point at
+        // an unrelated bundle root while #[BoundToOpenApiEnum] paths still
+        // resolve correctly under enum_spec_base_path.
+        OpenApiSpecLoader::reset();
+        OpenApiSpecLoader::configure(
+            basePath: sys_get_temp_dir(),
+            enumBasePath: self::SPEC_BASE_PATH,
+        );
+
+        EnumDriftAsserter::assertNoDrift([MatchingEnum::class]);
+
+        $reports = EnumDriftAsserter::detectAll([MatchingEnum::class]);
+        $this->assertCount(1, $reports);
+        $this->assertFalse($reports[0]->hasDrift());
+    }
+
+    #[Test]
+    public function enum_base_path_unset_falls_back_to_spec_base_path(): void
+    {
+        // Default setUp() configures only spec_base_path. Existing tests
+        // already imply the fallback works; this test pins the contract
+        // explicitly so a future loader refactor can't drift it silently.
+        $this->assertNull(OpenApiSpecLoader::getEnumBasePath());
+
+        EnumDriftAsserter::assertNoDrift([MatchingEnum::class]);
+    }
+
+    #[Test]
+    public function enum_base_path_equal_to_spec_base_path_is_a_no_op(): void
+    {
+        // Compare report objects field-by-field between the fallback branch
+        // (no enumBasePath) and the opt-in branch (enumBasePath = basePath).
+        // A subtle bug where the opt-in branch produced a different
+        // specPath / phpOnly / specOnly would slip through a "did it throw?"
+        // shaped test — this one fails it.
+        OpenApiSpecLoader::reset();
+        OpenApiSpecLoader::configure(basePath: self::SPEC_BASE_PATH);
+        $baseline = EnumDriftAsserter::detectAll([MatchingEnum::class, PhpExtraEnum::class]);
+
+        OpenApiSpecLoader::reset();
+        OpenApiSpecLoader::configure(
+            basePath: self::SPEC_BASE_PATH,
+            enumBasePath: self::SPEC_BASE_PATH,
+        );
+        $optIn = EnumDriftAsserter::detectAll([MatchingEnum::class, PhpExtraEnum::class]);
+
+        $this->assertCount(2, $optIn);
+        foreach ($optIn as $i => $report) {
+            $this->assertSame($baseline[$i]->enumFqcn, $report->enumFqcn);
+            $this->assertSame($baseline[$i]->specPath, $report->specPath);
+            $this->assertSame($baseline[$i]->phpOnly, $report->phpOnly);
+            $this->assertSame($baseline[$i]->specOnly, $report->specOnly);
+            $this->assertSame($baseline[$i]->hasDrift(), $report->hasDrift());
+        }
+    }
+
+    #[Test]
+    public function enum_base_path_with_trailing_slash_resolves_identically(): void
+    {
+        // OpenApiSpecLoader::configure() trims trailing slashes (covered at
+        // the loader unit level). End-to-end through the asserter pins that
+        // the trim survives the full resolution path — a future refactor
+        // that stops trimming and instead concatenates blindly would still
+        // pass the loader-level test alone.
+        OpenApiSpecLoader::reset();
+        OpenApiSpecLoader::configure(
+            basePath: self::SPEC_BASE_PATH,
+            enumBasePath: self::SPEC_BASE_PATH . '/',
+        );
+
+        EnumDriftAsserter::assertNoDrift([MatchingEnum::class]);
+
+        $reports = EnumDriftAsserter::detectAll([MatchingEnum::class]);
+        $this->assertFalse($reports[0]->hasDrift());
+        $this->assertSame('enum-drift/matching.json', $reports[0]->specPath);
+    }
+
+    #[Test]
+    public function enum_base_path_set_but_spec_file_missing_throws_spec_file_not_found(): void
+    {
+        // enum_spec_base_path resolves to a real directory, but the
+        // attribute path doesn't land on a file under it. Should surface
+        // the existing SpecFileNotFound reason — not the new
+        // EnumBasePathNotFound, which is reserved for the dir-itself-missing
+        // case.
+        $emptyDir = sys_get_temp_dir();
+        OpenApiSpecLoader::reset();
+        OpenApiSpecLoader::configure(
+            basePath: self::SPEC_BASE_PATH,
+            enumBasePath: $emptyDir,
+        );
+
+        try {
+            EnumDriftAsserter::assertNoDrift([MatchingEnum::class]);
+            $this->fail('expected EnumBindingException');
+        } catch (EnumBindingException $e) {
+            $this->assertSame(EnumBindingReason::SpecFileNotFound, $e->reason);
+            $this->assertSame('enum-drift/matching.json', $e->specPath);
+        }
+    }
+
+    #[Test]
+    public function enum_base_path_pointing_at_nonexistent_dir_throws_enum_base_path_not_found(): void
+    {
+        $missing = sys_get_temp_dir() . '/openapi-contract-testing-missing-' . uniqid();
+        OpenApiSpecLoader::reset();
+        OpenApiSpecLoader::configure(
+            basePath: self::SPEC_BASE_PATH,
+            enumBasePath: $missing,
+        );
+
+        try {
+            EnumDriftAsserter::assertNoDrift([MatchingEnum::class]);
+            $this->fail('expected EnumBindingException');
+        } catch (EnumBindingException $e) {
+            $this->assertSame(EnumBindingReason::EnumBasePathNotFound, $e->reason);
+            $this->assertStringContainsString($missing, $e->getMessage());
         }
     }
 }

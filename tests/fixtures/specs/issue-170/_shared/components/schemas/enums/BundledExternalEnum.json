@@ -1,0 +1,5 @@
+{
+  "type": "string",
+  "enum": ["alpha", "beta", "gamma"],
+  "description": "Bundle-external enum source from issue #170 dogfood layout."
+}

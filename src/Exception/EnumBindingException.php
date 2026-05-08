@@ -59,4 +59,20 @@ final class EnumBindingException extends RuntimeException
     ): self {
         return new self($reason, $message, null, null, $previous);
     }
+
+    /**
+     * Build an exception for a configuration-level failure that is global
+     * to the test run rather than per-binding (`EnumBasePathNotFound`,
+     * `EnumSpecBasePathOrphaned`). Structurally identical to {@see forScan}
+     * — no `$enumFqcn` / `$specPath` — but documented separately so callers
+     * branching on the reason aren't misled by an arbitrary "first failing
+     * binding" enumFqcn surfacing on a global error.
+     */
+    public static function forConfig(
+        EnumBindingReason $reason,
+        string $message,
+        ?Throwable $previous = null,
+    ): self {
+        return new self($reason, $message, null, null, $previous);
+    }
 }

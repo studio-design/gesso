@@ -17,6 +17,8 @@ enum EnumBindingReason
     case ReflectionFailed;
     case AttributeMissing;
     case BasePathNotConfigured;
+    case EnumBasePathNotFound;
+    case EnumSpecBasePathOrphaned;
     case SpecFileNotFound;
     case MalformedJson;
     case NonMappingRoot;

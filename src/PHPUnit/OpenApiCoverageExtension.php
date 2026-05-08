@@ -119,6 +119,13 @@ final class OpenApiCoverageExtension implements Extension
      */
     public function setupExtension(?Facade $facade, ParameterCollection $parameters, ?string $githubSummaryPath): void
     {
+        // Issue #170: secondary base path used only for
+        // #[BoundToOpenApiEnum] resolution. Read independently of
+        // spec_base_path so that an orphaned `enum_spec_base_path`
+        // (e.g. a typo in the spec_base_path attribute) is detected as a
+        // misconfiguration instead of being silently dropped together.
+        $enumBasePath = self::resolveEnumSpecBasePathParameter($parameters, $githubSummaryPath);
+
         if ($parameters->has('spec_base_path')) {
             $basePath = $parameters->get('spec_base_path');
             if (!str_starts_with($basePath, '/')) {
@@ -130,7 +137,11 @@ final class OpenApiCoverageExtension implements Extension
                 $stripPrefixes = array_map('trim', explode(',', $parameters->get('strip_prefixes')));
             }
 
-            OpenApiSpecLoader::configure($basePath, $stripPrefixes);
+            OpenApiSpecLoader::configure(
+                $basePath,
+                $stripPrefixes,
+                enumBasePath: $enumBasePath,
+            );
         }
 
         $specs = ['front'];
@@ -207,6 +218,63 @@ final class OpenApiCoverageExtension implements Extension
             minResponseCoverage: $minResponseCoverage,
             minCoverageStrict: $minCoverageStrict,
         ));
+    }
+
+    /**
+     * Read and validate the optional `enum_spec_base_path` parameter (issue
+     * #170). Returns the absolutised path or `null` when the parameter is
+     * absent (or set to whitespace-only, which is treated as absent so XML
+     * editing artefacts like a leading newline don't silently coerce the
+     * value to `getcwd()`).
+     *
+     * Detected misconfigurations are FATAL — a silent drop would defeat the
+     * fail-loud-on-misconfiguration policy this extension enforces:
+     *  - empty / whitespace value: rejected with a hint to remove the
+     *    parameter.
+     *  - set without `spec_base_path`: rejected because the loader's
+     *    `configure()` requires `spec_base_path` to be passed too, so an
+     *    orphaned `enum_spec_base_path` would never reach the loader.
+     */
+    private static function resolveEnumSpecBasePathParameter(
+        ParameterCollection $parameters,
+        ?string $githubSummaryPath,
+    ): ?string {
+        if (!$parameters->has('enum_spec_base_path')) {
+            return null;
+        }
+
+        $raw = trim($parameters->get('enum_spec_base_path'));
+        if ($raw === '') {
+            $reason = 'enum_spec_base_path is set but empty. '
+                . 'Either provide a directory path or remove the parameter to fall back to spec_base_path.';
+            self::writeStderr("[OpenAPI Enum Drift] FATAL: {$reason}\n");
+            self::appendGithubStepSummaryEnumDriftBlock($githubSummaryPath, $reason, isFatal: true);
+
+            throw EnumBindingException::forConfig(
+                EnumBindingReason::EnumSpecBasePathOrphaned,
+                $reason,
+            );
+        }
+
+        if (!$parameters->has('spec_base_path')) {
+            $reason = 'enum_spec_base_path is set but spec_base_path is not. '
+                . 'enum_spec_base_path is a secondary root that complements spec_base_path; '
+                . 'the loader currently requires spec_base_path to be configured for any spec-name lookup. '
+                . "Set spec_base_path too, or remove enum_spec_base_path if you don't need it.";
+            self::writeStderr("[OpenAPI Enum Drift] FATAL: {$reason}\n");
+            self::appendGithubStepSummaryEnumDriftBlock($githubSummaryPath, $reason, isFatal: true);
+
+            throw EnumBindingException::forConfig(
+                EnumBindingReason::EnumSpecBasePathOrphaned,
+                $reason,
+            );
+        }
+
+        if (!str_starts_with($raw, '/')) {
+            $raw = getcwd() . '/' . $raw;
+        }
+
+        return $raw;
     }
 
     /**

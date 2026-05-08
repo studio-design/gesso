@@ -636,6 +636,46 @@ The path is resolved relative to the configured spec root (`OpenApiSpecLoader::g
 }
 ```
 
+#### Bundled-external enum sources (`enum_spec_base_path`)
+
+Some projects bundle their OpenAPI documents (`front.json` / `admin.json` / …) into one directory while keeping individual `enum:` schemas elsewhere — so orval / Stoplight can `$ref` them without baking the values into the bundle. Concretely:
+
+```
+openapi/
+├── _shared/
+│   └── components/schemas/enums/
+│       └── NotificationCodeEnum.json     ← per-enum source files
+├── admin/   front/   store/              ← per-app sources
+└── bundled/                              ← orval-readable aggregate
+    ├── admin.json
+    ├── front.json
+    └── store.json
+```
+
+`spec_base_path` has to point at `openapi/bundled/` (that's where `{spec}.json` lookup for runtime contract tests lives), but the per-enum JSONs are deliberately *outside* that root. To bind a PHP enum to one without leaking the bundle directory choice into the attribute (`'../_shared/...'`), set `enum_spec_base_path` to a higher root used only for `#[BoundToOpenApiEnum]` resolution:
+
+```xml
+<extensions>
+    <bootstrap class="Studio\OpenApiContractTesting\PHPUnit\OpenApiCoverageExtension">
+        <parameter name="spec_base_path" value="openapi/bundled"/>
+        <parameter name="enum_spec_base_path" value="openapi"/>
+        <parameter name="specs" value="front,store,admin"/>
+    </bootstrap>
+</extensions>
+```
+
+```php
+#[BoundToOpenApiEnum('_shared/components/schemas/enums/NotificationCodeEnum.json')]
+enum NotificationCodeEnum: string
+{
+    // ...
+}
+```
+
+When this parameter is omitted (the default), `#[BoundToOpenApiEnum]` paths resolve against `spec_base_path` exactly as before — single-root projects don't need to change anything. Setting it to the same value as `spec_base_path` is functionally equivalent (the opt-in branch additionally validates that the directory exists with `is_dir()` before resolving any binding, while the fallback branch defers that check to per-file `file_exists()` lookups).
+
+If `enum_spec_base_path` is configured but the directory does not exist, the asserter throws `EnumBindingException` with `EnumBindingReason::EnumBasePathNotFound` so a typo cannot silently fall through to a misleading `SpecFileNotFound` on every binding. From PHP, the manual `OpenApiSpecLoader::configure(basePath: …, enumBasePath: …)` call accepts the same parameter for non-PHPUnit setups (e.g. dedicated drift CI scripts).
+
 ### `EnumDriftAsserter::assertNoDrift()`
 
 Call from any test (or from a dedicated drift-only test) to verify all bound enums match their spec files:
@@ -711,7 +751,8 @@ Add the opt-in parameters to your `phpunit.xml`:
 | `enum_drift_enabled` | `false` | Master opt-in. Empty value (`<parameter name="enum_drift_enabled"/>`) is also treated as `true`, mirroring `min_coverage_strict`. |
 | `enum_drift_scan_namespaces` | _none_ | Comma-separated PSR-4 namespace prefixes (whitespace tolerated). Each prefix must match — directly or as a sub-namespace of — an entry in your `composer.json` `autoload.psr-4` map. |
 | `enum_drift_fail_on_drift` | `true` | `true` aborts the run with a `[OpenAPI Enum Drift] FATAL` block on stderr (and `GITHUB_STEP_SUMMARY` when set). `false` emits a `WARNING` block but lets PHPUnit continue. |
-| _misconfiguration_ | _n/a_ | No namespaces configured, an unresolvable namespace prefix, a missing Composer `ClassLoader`, or any `EnumBindingException` raised by a discovered enum **always** produces a FATAL exit regardless of `enum_drift_fail_on_drift`. These are setup errors and would otherwise hide a real drift signal. |
+| `enum_spec_base_path` | _none_ | Optional secondary root used only for `#[BoundToOpenApiEnum]` path resolution. Set this when per-enum JSONs live outside `spec_base_path` (e.g. `openapi/_shared/...` while bundles live in `openapi/bundled/`). Relative values resolve against `getcwd()`. See [Bundled-external enum sources](#bundled-external-enum-sources-enum_spec_base_path) for the full layout. |
+| _misconfiguration_ | _n/a_ | No namespaces configured, an unresolvable namespace prefix, a missing Composer `ClassLoader`, an `enum_spec_base_path` that does not point at a directory, or any `EnumBindingException` raised by a discovered enum **always** produces a FATAL exit regardless of `enum_drift_fail_on_drift`. These are setup errors and would otherwise hide a real drift signal. |
 
 Discovery merges results from Composer's classmap (`getClassMap()`) and a recursive scan of each PSR-4-registered directory, deduplicating across both sources. Production deployments using `--optimize-autoloader` or `--classmap-authoritative` are covered by the classmap pass; default dev installs are covered by the PSR-4 directory walk. Only backed enums carrying `#[BoundToOpenApiEnum]` are passed to `EnumDriftAsserter`; pure enums, traits, abstract classes, and unattributed classes in the same directory are silently skipped.
 
