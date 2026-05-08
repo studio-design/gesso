@@ -10,6 +10,18 @@ the README for the full surface contract.
 
 ## Unreleased
 
+## [1.2.0](https://github.com/studio-design/openapi-contract-testing/compare/v1.1.0...v1.2.0) (2026-05-08)
+
+
+### Features
+
+* **schema:** resolve #[BoundToOpenApiEnum] from optional enum_spec_base_path ([#171](https://github.com/studio-design/openapi-contract-testing/issues/171)) ([d0bc6fd](https://github.com/studio-design/openapi-contract-testing/commit/d0bc6fd6c2d79e05edb917deefd22b8dc1b84b0b))
+
+
+### Bug Fixes
+
+* **coverage:** blank line between endpoint heading and response table ([#176](https://github.com/studio-design/openapi-contract-testing/issues/176)) ([f2a9710](https://github.com/studio-design/openapi-contract-testing/commit/f2a97107ddda16006fcb835a49c2e059c593ff89)), closes [#174](https://github.com/studio-design/openapi-contract-testing/issues/174)
+
 ## [1.1.0](https://github.com/studio-design/openapi-contract-testing/compare/v1.0.0...v1.1.0) (2026-05-07)
 
 
