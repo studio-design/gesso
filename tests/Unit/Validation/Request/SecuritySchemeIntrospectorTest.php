@@ -305,4 +305,284 @@ class SecuritySchemeIntrospectorTest extends TestCase
 
         $this->assertFalse($this->introspector->endpointAcceptsBearer($spec, $operation));
     }
+
+    #[Test]
+    public function injectable_credentials_for_returns_bearer_only_for_bearer_endpoint(): void
+    {
+        $spec = [
+            'components' => [
+                'securitySchemes' => [
+                    'bearerAuth' => ['type' => 'http', 'scheme' => 'bearer'],
+                ],
+            ],
+        ];
+        $operation = ['security' => [['bearerAuth' => []]]];
+
+        $this->assertSame(
+            [['kind' => 'bearer']],
+            $this->introspector->injectableCredentialsFor($spec, $operation),
+        );
+    }
+
+    #[Test]
+    public function injectable_credentials_for_returns_apikey_header_entry(): void
+    {
+        $spec = [
+            'components' => [
+                'securitySchemes' => [
+                    'apiKeyHeader' => [
+                        'type' => 'apiKey',
+                        'in' => 'header',
+                        'name' => 'X-API-Key',
+                    ],
+                ],
+            ],
+        ];
+        $operation = ['security' => [['apiKeyHeader' => []]]];
+
+        $this->assertSame(
+            [['kind' => 'apiKey', 'in' => 'header', 'name' => 'X-API-Key']],
+            $this->introspector->injectableCredentialsFor($spec, $operation),
+        );
+    }
+
+    #[Test]
+    public function injectable_credentials_for_returns_apikey_cookie_entry(): void
+    {
+        $spec = [
+            'components' => [
+                'securitySchemes' => [
+                    'CookieAuth' => [
+                        'type' => 'apiKey',
+                        'in' => 'cookie',
+                        'name' => 'front_session',
+                    ],
+                ],
+            ],
+        ];
+        $operation = ['security' => [['CookieAuth' => []]]];
+
+        $this->assertSame(
+            [['kind' => 'apiKey', 'in' => 'cookie', 'name' => 'front_session']],
+            $this->introspector->injectableCredentialsFor($spec, $operation),
+        );
+    }
+
+    #[Test]
+    public function injectable_credentials_for_returns_apikey_query_entry(): void
+    {
+        $spec = [
+            'components' => [
+                'securitySchemes' => [
+                    'apiKeyQuery' => [
+                        'type' => 'apiKey',
+                        'in' => 'query',
+                        'name' => 'api_key',
+                    ],
+                ],
+            ],
+        ];
+        $operation = ['security' => [['apiKeyQuery' => []]]];
+
+        $this->assertSame(
+            [['kind' => 'apiKey', 'in' => 'query', 'name' => 'api_key']],
+            $this->introspector->injectableCredentialsFor($spec, $operation),
+        );
+    }
+
+    #[Test]
+    public function injectable_credentials_for_returns_bearer_and_apikey_for_and_entry(): void
+    {
+        // AND-entry: both schemes appear in a single requirement object. The
+        // trait must inject both so the validator sees a satisfied entry.
+        $spec = [
+            'components' => [
+                'securitySchemes' => [
+                    'bearerAuth' => ['type' => 'http', 'scheme' => 'bearer'],
+                    'apiKeyHeader' => ['type' => 'apiKey', 'in' => 'header', 'name' => 'X-API-Key'],
+                ],
+            ],
+        ];
+        $operation = ['security' => [['bearerAuth' => [], 'apiKeyHeader' => []]]];
+
+        $this->assertSame(
+            [
+                ['kind' => 'bearer'],
+                ['kind' => 'apiKey', 'in' => 'header', 'name' => 'X-API-Key'],
+            ],
+            $this->introspector->injectableCredentialsFor($spec, $operation),
+        );
+    }
+
+    #[Test]
+    public function injectable_credentials_for_returns_bearer_and_apikey_for_or_entries(): void
+    {
+        // OR-entries: separate requirement objects. Either branch satisfied is
+        // enough at validation time, but inject populates both — over-injection
+        // is harmless because the spec already accepts either.
+        $spec = [
+            'components' => [
+                'securitySchemes' => [
+                    'bearerAuth' => ['type' => 'http', 'scheme' => 'bearer'],
+                    'apiKeyHeader' => ['type' => 'apiKey', 'in' => 'header', 'name' => 'X-API-Key'],
+                ],
+            ],
+        ];
+        $operation = [
+            'security' => [
+                ['bearerAuth' => []],
+                ['apiKeyHeader' => []],
+            ],
+        ];
+
+        $this->assertSame(
+            [
+                ['kind' => 'bearer'],
+                ['kind' => 'apiKey', 'in' => 'header', 'name' => 'X-API-Key'],
+            ],
+            $this->introspector->injectableCredentialsFor($spec, $operation),
+        );
+    }
+
+    #[Test]
+    public function injectable_credentials_for_skips_oauth2_openidconnect_mutualtls_and_http_basic(): void
+    {
+        // SecurityValidator silent-passes these schemes (Unsupported), so
+        // injecting a dummy value would be a lie. Skip them entirely.
+        $spec = [
+            'components' => [
+                'securitySchemes' => [
+                    'oauth2Flow' => ['type' => 'oauth2', 'flows' => ['implicit' => []]],
+                    'oidc' => ['type' => 'openIdConnect', 'openIdConnectUrl' => 'https://example.com/.well-known'],
+                    'mtls' => ['type' => 'mutualTLS'],
+                    'basicAuth' => ['type' => 'http', 'scheme' => 'basic'],
+                ],
+            ],
+        ];
+        $operation = [
+            'security' => [
+                ['oauth2Flow' => ['read']],
+                ['oidc' => []],
+                ['mtls' => []],
+                ['basicAuth' => []],
+            ],
+        ];
+
+        $this->assertSame([], $this->introspector->injectableCredentialsFor($spec, $operation));
+    }
+
+    #[Test]
+    public function injectable_credentials_for_skips_undefined_scheme_reference(): void
+    {
+        // Dangling reference. Must not crash; SecurityValidator surfaces the
+        // hard error during validation.
+        $spec = ['components' => ['securitySchemes' => []]];
+        $operation = ['security' => [['ghostAuth' => []]]];
+
+        $this->assertSame([], $this->introspector->injectableCredentialsFor($spec, $operation));
+    }
+
+    #[Test]
+    public function injectable_credentials_for_dedups_duplicate_definitions_across_entries(): void
+    {
+        // Pathological spec where the same scheme appears in multiple OR
+        // entries. We must not double-inject the same Authorization or the
+        // same cookie name — once is enough.
+        $spec = [
+            'components' => [
+                'securitySchemes' => [
+                    'bearerAuth' => ['type' => 'http', 'scheme' => 'bearer'],
+                    'apiKeyHeader' => ['type' => 'apiKey', 'in' => 'header', 'name' => 'X-API-Key'],
+                ],
+            ],
+        ];
+        $operation = [
+            'security' => [
+                ['bearerAuth' => [], 'apiKeyHeader' => []],
+                ['bearerAuth' => []],
+                ['apiKeyHeader' => []],
+            ],
+        ];
+
+        $this->assertSame(
+            [
+                ['kind' => 'bearer'],
+                ['kind' => 'apiKey', 'in' => 'header', 'name' => 'X-API-Key'],
+            ],
+            $this->introspector->injectableCredentialsFor($spec, $operation),
+        );
+    }
+
+    #[Test]
+    public function injectable_credentials_for_inherits_root_security_when_operation_silent(): void
+    {
+        $spec = [
+            'security' => [['CookieAuth' => []]],
+            'components' => [
+                'securitySchemes' => [
+                    'CookieAuth' => [
+                        'type' => 'apiKey',
+                        'in' => 'cookie',
+                        'name' => 'front_session',
+                    ],
+                ],
+            ],
+        ];
+        $operation = [];
+
+        $this->assertSame(
+            [['kind' => 'apiKey', 'in' => 'cookie', 'name' => 'front_session']],
+            $this->introspector->injectableCredentialsFor($spec, $operation),
+        );
+    }
+
+    #[Test]
+    public function injectable_credentials_for_returns_empty_for_explicit_security_optout(): void
+    {
+        // `security: []` is the explicit "no auth required" override. Inject
+        // nothing; the validator will not complain either.
+        $spec = [
+            'security' => [['bearerAuth' => []]],
+            'components' => [
+                'securitySchemes' => [
+                    'bearerAuth' => ['type' => 'http', 'scheme' => 'bearer'],
+                ],
+            ],
+        ];
+        $operation = ['security' => []];
+
+        $this->assertSame([], $this->introspector->injectableCredentialsFor($spec, $operation));
+    }
+
+    #[Test]
+    public function injectable_credentials_for_handles_malformed_security_array(): void
+    {
+        $spec = [
+            'components' => [
+                'securitySchemes' => [
+                    'bearerAuth' => ['type' => 'http', 'scheme' => 'bearer'],
+                ],
+            ],
+        ];
+        $operation = ['security' => 'not-an-array'];
+
+        $this->assertSame([], $this->introspector->injectableCredentialsFor($spec, $operation));
+    }
+
+    #[Test]
+    public function injectable_credentials_for_skips_malformed_apikey_definition(): void
+    {
+        // apiKey scheme missing `in` field — Malformed. SecurityValidator
+        // surfaces a hard error; the introspector skips silently.
+        $spec = [
+            'components' => [
+                'securitySchemes' => [
+                    'brokenApiKey' => ['type' => 'apiKey', 'name' => 'X-API-Key'],
+                ],
+            ],
+        ];
+        $operation = ['security' => [['brokenApiKey' => []]]];
+
+        $this->assertSame([], $this->introspector->injectableCredentialsFor($spec, $operation));
+    }
 }
