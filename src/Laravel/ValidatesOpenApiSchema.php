@@ -74,6 +74,9 @@ trait ValidatesOpenApiSchema
     /** @var null|string[] */
     private static ?array $cachedSkipResponseCodes = null;
 
+    /** @var null|string[] */
+    private static ?array $cachedSkipRequestValidationResponseCodes = null;
+
     /** @var null|WeakMap<TestResponse, array<string, true>> */
     private static ?WeakMap $validatedResponses = null;
 
@@ -120,6 +123,7 @@ trait ValidatesOpenApiSchema
         self::$cachedSkipResponseCodes = null;
         self::$cachedRequestValidator = null;
         self::$cachedRequestMaxErrors = null;
+        self::$cachedSkipRequestValidationResponseCodes = null;
         self::$cachedSecuritySchemeIntrospector = null;
         self::$validatedResponses = null;
     }
@@ -252,8 +256,9 @@ trait ValidatesOpenApiSchema
 
         // Request-side runs first so that the skipNextRequestValidation flag is
         // consumed at the HTTP boundary before the response hook gets a chance
-        // to (defensively) clear it.
-        $this->maybeAutoValidateOpenApiRequest($request, $method, $path);
+        // to (defensively) clear it. The response status is forwarded so the
+        // request validator can apply the documented-4xx downgrade (issue #179).
+        $this->maybeAutoValidateOpenApiRequest($request, $method, $path, $response->getStatusCode());
         $this->maybeAutoAssertOpenApiSchema($testResponse, $method, $path);
 
         return $testResponse;
@@ -277,6 +282,7 @@ trait ValidatesOpenApiSchema
         ?Request $request,
         ?HttpMethod $method = null,
         ?string $path = null,
+        ?int $responseStatusCode = null,
     ): void {
         // Consume the per-request skip flag unconditionally at the HTTP call
         // boundary — see the analogous comment in maybeAutoAssertOpenApiSchema().
@@ -364,16 +370,22 @@ trait ValidatesOpenApiSchema
             $body,
             $contentType !== '' ? $contentType : null,
             $cookies,
+            $responseStatusCode,
         );
 
         // Record coverage when the request matched a spec path, same
         // tracking semantics as the response-side hook. The tracker is a set,
         // so this does not double-count when response auto-assert also fires.
+        // When the validator downgraded to Skipped (documented-4xx case from
+        // issue #179), forward the skip reason so the coverage report
+        // surfaces the downgrade rather than reporting a clean validated
+        // request.
         if ($result->matchedPath() !== null) {
             OpenApiCoverageTracker::recordRequest(
                 $specName,
                 $resolvedMethod,
                 $result->matchedPath(),
+                $result->isSkipped() ? $result->skipReason() : null,
             );
         }
 
@@ -595,13 +607,19 @@ trait ValidatesOpenApiSchema
     private function getOrCreateRequestValidator(): OpenApiRequestValidator
     {
         $resolvedMaxErrors = $this->resolveMaxErrors();
+        $resolvedSkipCodes = $this->resolveSkipRequestValidationResponseCodes();
 
         if (
             self::$cachedRequestValidator === null ||
-            self::$cachedRequestMaxErrors !== $resolvedMaxErrors
+            self::$cachedRequestMaxErrors !== $resolvedMaxErrors ||
+            self::$cachedSkipRequestValidationResponseCodes !== $resolvedSkipCodes
         ) {
-            self::$cachedRequestValidator = new OpenApiRequestValidator($resolvedMaxErrors);
+            self::$cachedRequestValidator = new OpenApiRequestValidator(
+                maxErrors: $resolvedMaxErrors,
+                skipRequestValidationResponseCodes: $resolvedSkipCodes,
+            );
             self::$cachedRequestMaxErrors = $resolvedMaxErrors;
+            self::$cachedSkipRequestValidationResponseCodes = $resolvedSkipCodes;
         }
 
         return self::$cachedRequestValidator;
@@ -831,6 +849,43 @@ trait ValidatesOpenApiSchema
             if ($pattern === '') {
                 $this->failOpenApi(sprintf(
                     'openapi-contract-testing.skip_response_codes[%s] must not be an empty string.',
+                    (string) $index,
+                ));
+            }
+            $patterns[] = $pattern;
+        }
+
+        return $patterns;
+    }
+
+    /** @return string[] */
+    private function resolveSkipRequestValidationResponseCodes(): array
+    {
+        $raw = config(
+            'openapi-contract-testing.skip_request_validation_response_codes',
+            OpenApiRequestValidator::DEFAULT_SKIP_REQUEST_VALIDATION_RESPONSE_CODES,
+        );
+
+        if (!is_array($raw)) {
+            $this->failOpenApi(sprintf(
+                'openapi-contract-testing.skip_request_validation_response_codes must be an array of regex patterns, got %s: %s.',
+                get_debug_type($raw),
+                var_export($raw, true),
+            ));
+        }
+
+        $patterns = [];
+        foreach ($raw as $index => $pattern) {
+            if (!is_string($pattern)) {
+                $this->failOpenApi(sprintf(
+                    'openapi-contract-testing.skip_request_validation_response_codes[%s] must be a string regex pattern, got %s.',
+                    (string) $index,
+                    get_debug_type($pattern),
+                ));
+            }
+            if ($pattern === '') {
+                $this->failOpenApi(sprintf(
+                    'openapi-contract-testing.skip_request_validation_response_codes[%s] must not be an empty string.',
                     (string) $index,
                 ));
             }

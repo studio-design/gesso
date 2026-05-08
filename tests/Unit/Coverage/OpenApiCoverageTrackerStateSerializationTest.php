@@ -61,6 +61,7 @@ class OpenApiCoverageTrackerStateSerializationTest extends TestCase
                 'petstore-3.0' => [
                     'GET /v1/pets' => [
                         'requestReached' => true,
+                        'requestSkipReason' => null,
                         'responses' => [],
                     ],
                 ],
@@ -88,6 +89,7 @@ class OpenApiCoverageTrackerStateSerializationTest extends TestCase
                 'petstore-3.0' => [
                     'GET /v1/pets' => [
                         'requestReached' => false,
+                        'requestSkipReason' => null,
                         'responses' => [
                             '200:application/json' => [
                                 'state' => 'validated',
@@ -122,6 +124,7 @@ class OpenApiCoverageTrackerStateSerializationTest extends TestCase
                 'petstore-3.0' => [
                     'GET /v1/pets' => [
                         'requestReached' => false,
+                        'requestSkipReason' => null,
                         'responses' => [
                             '503:*' => [
                                 'state' => 'skipped',
@@ -591,6 +594,61 @@ class OpenApiCoverageTrackerStateSerializationTest extends TestCase
         }
 
         $this->assertSame($beforeSnapshot, OpenApiCoverageTracker::exportState());
+    }
+
+    #[Test]
+    public function export_state_round_trip_preserves_request_skip_reason(): void
+    {
+        // Issue #179: a recordRequest call with a skip reason (downgraded
+        // failure on documented 4xx) must serialize round-trip cleanly so
+        // paratest worker sidecars carry the field across to the merge CLI.
+        OpenApiCoverageTracker::recordRequest(
+            'petstore-3.0',
+            'POST',
+            '/v1/pets',
+            'request validation skipped: response 422 is documented (spec key 422)',
+        );
+
+        $original = OpenApiCoverageTracker::exportState();
+        $json = json_encode($original, JSON_THROW_ON_ERROR);
+        $decoded = json_decode($json, true, flags: JSON_THROW_ON_ERROR);
+
+        OpenApiCoverageTracker::reset();
+        OpenApiCoverageTracker::importState($decoded);
+
+        $this->assertSame($original, OpenApiCoverageTracker::exportState());
+        $endpoint = $original['specs']['petstore-3.0']['POST /v1/pets'];
+        $this->assertTrue($endpoint['requestReached']);
+        $this->assertSame(
+            'request validation skipped: response 422 is documented (spec key 422)',
+            $endpoint['requestSkipReason'],
+        );
+    }
+
+    #[Test]
+    public function import_state_tolerates_payloads_without_request_skip_reason_field(): void
+    {
+        // Strictly additive: paratest sidecars written by an older library
+        // version (no `requestSkipReason` key) must still import cleanly. The
+        // missing field defaults to null. This keeps the wire format
+        // backward-compatible without a STATE_FORMAT_VERSION bump.
+        OpenApiCoverageTracker::importState([
+            'version' => 1,
+            'specs' => [
+                'petstore-3.0' => [
+                    'POST /v1/pets' => [
+                        'requestReached' => true,
+                        'responses' => [],
+                        // no 'requestSkipReason' key
+                    ],
+                ],
+            ],
+        ]);
+
+        $state = OpenApiCoverageTracker::exportState();
+        $endpoint = $state['specs']['petstore-3.0']['POST /v1/pets'];
+        $this->assertTrue($endpoint['requestReached']);
+        $this->assertNull($endpoint['requestSkipReason']);
     }
 
     #[Test]

@@ -399,6 +399,133 @@ class ValidatesOpenApiSchemaAutoValidateRequestTest extends TestCase
         $this->maybeAutoValidateOpenApiRequest($request, HttpMethod::POST, '/v1/pets');
     }
 
+    // ========================================
+    // Issue #179: skip_request_validation_response_codes
+    // ========================================
+
+    #[Test]
+    public function config_file_defaults_skip_request_validation_response_codes_to_422_and_400(): void
+    {
+        // Issue #179 default: opted-in users get 422/400 downgrades for free.
+        // Pinning the literal default here so the value cannot drift silently.
+        $config = require __DIR__ . '/../../src/Laravel/config.php';
+
+        $this->assertArrayHasKey('skip_request_validation_response_codes', $config);
+        $this->assertSame(['422', '400'], $config['skip_request_validation_response_codes']);
+    }
+
+    #[Test]
+    public function invalid_request_with_documented_4xx_response_is_skipped_not_failed(): void
+    {
+        // The end-to-end goal of #179: an invalid POST body that yields a
+        // documented 422 must not surface as a request-validation failure
+        // when auto_validate_request is on with the default 422/400 skip set.
+        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.auto_validate_request'] = true;
+        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.default_spec'] = 'request-validation-skip';
+
+        $request = $this->makeJsonRequest('POST', '/exact-422', []); // missing required `name`
+
+        // Must NOT throw — the documented 422 response downgrades the failure.
+        $this->maybeAutoValidateOpenApiRequest($request, HttpMethod::POST, '/exact-422', 422);
+
+        // Coverage still records the endpoint as touched on the request side.
+        $covered = OpenApiCoverageTracker::getCovered();
+        $this->assertArrayHasKey('request-validation-skip', $covered);
+        $this->assertArrayHasKey('POST /exact-422', $covered['request-validation-skip']);
+    }
+
+    #[Test]
+    public function invalid_request_with_undocumented_4xx_response_still_fails(): void
+    {
+        // /no-4xx documents only 200/500. A 422 there is a spec gap, and the
+        // downgrade must NOT swallow it — the test author needs to see that
+        // their impl is returning a status the spec never declared.
+        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.auto_validate_request'] = true;
+        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.default_spec'] = 'request-validation-skip';
+
+        $request = $this->makeJsonRequest('POST', '/no-4xx', []);
+
+        $this->expectException(AssertionFailedError::class);
+        $this->expectExceptionMessage('OpenAPI request validation failed');
+
+        $this->maybeAutoValidateOpenApiRequest($request, HttpMethod::POST, '/no-4xx', 422);
+    }
+
+    #[Test]
+    public function downgrade_off_when_skip_request_validation_response_codes_empty(): void
+    {
+        // Opt-out: empty array disables the feature so strict request-side
+        // validation is preserved.
+        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.auto_validate_request'] = true;
+        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.default_spec'] = 'request-validation-skip';
+        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.skip_request_validation_response_codes'] = [];
+
+        $request = $this->makeJsonRequest('POST', '/exact-422', []);
+
+        $this->expectException(AssertionFailedError::class);
+        $this->expectExceptionMessage('OpenAPI request validation failed');
+
+        $this->maybeAutoValidateOpenApiRequest($request, HttpMethod::POST, '/exact-422', 422);
+    }
+
+    #[Test]
+    public function two_hundred_response_does_not_trigger_downgrade(): void
+    {
+        // Common bug shape this guards against: a 200-expected test starts
+        // returning 200 for an invalid body (impl missed the validation).
+        // The downgrade must NOT fire on 200; the failure must still fail.
+        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.auto_validate_request'] = true;
+        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.default_spec'] = 'request-validation-skip';
+
+        $request = $this->makeJsonRequest('POST', '/exact-422', []);
+
+        $this->expectException(AssertionFailedError::class);
+        $this->expectExceptionMessage('OpenAPI request validation failed');
+
+        $this->maybeAutoValidateOpenApiRequest($request, HttpMethod::POST, '/exact-422', 200);
+    }
+
+    #[Test]
+    public function records_request_skip_reason_in_coverage_for_downgraded_failure(): void
+    {
+        // Issue #179 ゴール: coverage records "request validation skipped due
+        // to documented 4xx response" so the spec-coverage report still
+        // reflects that the endpoint was exercised, but with a skip reason
+        // attached rather than a clean validated state.
+        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.auto_validate_request'] = true;
+        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.default_spec'] = 'request-validation-skip';
+
+        $request = $this->makeJsonRequest('POST', '/exact-422', []);
+        $this->maybeAutoValidateOpenApiRequest($request, HttpMethod::POST, '/exact-422', 422);
+
+        $state = OpenApiCoverageTracker::exportState();
+        $endpoint = $state['specs']['request-validation-skip']['POST /exact-422'] ?? null;
+        $this->assertNotNull($endpoint);
+        $this->assertTrue($endpoint['requestReached']);
+        $this->assertArrayHasKey('requestSkipReason', $endpoint);
+        $this->assertNotNull($endpoint['requestSkipReason']);
+        $this->assertStringContainsString('422', (string) $endpoint['requestSkipReason']);
+    }
+
+    #[Test]
+    public function backward_compat_call_without_response_status_still_works(): void
+    {
+        // Direct callers (test harnesses, framework adapters not yet
+        // forwarding response status) keep working — the trait method's new
+        // 4th arg is optional and defaults to null, so the old 3-arg shape
+        // continues to validate without downgrade.
+        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.auto_validate_request'] = true;
+        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.default_spec'] = 'request-validation-skip';
+
+        $request = $this->makeJsonRequest('POST', '/exact-422', []);
+
+        $this->expectException(AssertionFailedError::class);
+        $this->expectExceptionMessage('OpenAPI request validation failed');
+
+        // 3-arg call (no responseStatusCode) — must behave exactly like before #179.
+        $this->maybeAutoValidateOpenApiRequest($request, HttpMethod::POST, '/exact-422');
+    }
+
     /**
      * @param array<string, mixed> $body
      */

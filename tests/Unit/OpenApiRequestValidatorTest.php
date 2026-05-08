@@ -3007,6 +3007,226 @@ class OpenApiRequestValidatorTest extends TestCase
         $this->assertStringContainsString('InvalidKeywordException', $joined, 'exception class name preserved for diagnostics');
     }
 
+    // ========================================
+    // Issue #179: downgrade failure → skipped when response is a documented 4xx
+    // ========================================
+
+    #[Test]
+    public function downgrades_failure_to_skipped_when_documented_4xx_matches_pattern(): void
+    {
+        // POST /exact-422 documents an exact `422` response; with the validator
+        // configured to treat 422 as the "documented client error" sentinel,
+        // an invalid request body that yields a 422 from the impl should be
+        // surfaced as Skipped — not Failure — so dataProvider tests that send
+        // intentionally-invalid input to verify 4xx behaviour stop false-failing.
+        $validator = new OpenApiRequestValidator(
+            skipRequestValidationResponseCodes: ['422'],
+        );
+
+        $result = $validator->validate(
+            'request-validation-skip',
+            'POST',
+            '/exact-422',
+            [],
+            [],
+            [], // missing required `name` → request validation MUST fail
+            'application/json',
+            responseStatusCode: 422,
+        );
+
+        $this->assertTrue($result->isValid(), 'skipped result must report isValid()=true');
+        $this->assertTrue($result->isSkipped(), 'documented-4xx downgrade must produce a Skipped outcome');
+        $this->assertSame('/exact-422', $result->matchedPath());
+        $this->assertSame('422', $result->matchedStatusCode(), 'matchedStatusCode must reflect the spec key the response resolved to');
+        $this->assertNotNull($result->skipReason());
+        $this->assertStringContainsString('422', (string) $result->skipReason());
+    }
+
+    #[Test]
+    public function preserves_failure_when_4xx_not_documented_in_spec(): void
+    {
+        // POST /no-4xx documents only 200/500. A 422 response is NOT documented
+        // for this operation, so the downgrade must NOT apply — the spec gap
+        // (impl returns a status the spec never mentions) should stay loud.
+        $validator = new OpenApiRequestValidator(
+            skipRequestValidationResponseCodes: ['422'],
+        );
+
+        $result = $validator->validate(
+            'request-validation-skip',
+            'POST',
+            '/no-4xx',
+            [],
+            [],
+            [],
+            'application/json',
+            responseStatusCode: 422,
+        );
+
+        $this->assertFalse($result->isValid(), 'undocumented 4xx must NOT trigger downgrade');
+        $this->assertNotEmpty($result->errors());
+    }
+
+    #[Test]
+    public function preserves_failure_when_status_does_not_match_pattern(): void
+    {
+        // 403 is documented? Not for /exact-422 — but even if it were, the
+        // pattern set is `['422']` which does not match 403. The downgrade
+        // should not fire for unrelated status codes.
+        $validator = new OpenApiRequestValidator(
+            skipRequestValidationResponseCodes: ['422'],
+        );
+
+        $result = $validator->validate(
+            'request-validation-skip',
+            'POST',
+            '/exact-422',
+            [],
+            [],
+            [],
+            'application/json',
+            responseStatusCode: 403,
+        );
+
+        $this->assertFalse($result->isValid(), 'pattern miss must keep failure intact');
+    }
+
+    #[Test]
+    public function range_key_4xx_in_spec_counts_as_documented(): void
+    {
+        // POST /4xx-range documents `4XX` (range key) — a literal 422 response
+        // resolves to that range key per OpenAPI's three-tier fallback, so
+        // the downgrade must apply.
+        $validator = new OpenApiRequestValidator(
+            skipRequestValidationResponseCodes: ['422'],
+        );
+
+        $result = $validator->validate(
+            'request-validation-skip',
+            'POST',
+            '/4xx-range',
+            [],
+            [],
+            [],
+            'application/json',
+            responseStatusCode: 422,
+        );
+
+        $this->assertTrue($result->isSkipped(), 'range-key match must be treated as documented');
+        $this->assertSame('4XX', $result->matchedStatusCode());
+    }
+
+    #[Test]
+    public function default_response_in_spec_counts_as_documented(): void
+    {
+        // POST /only-default declares only a `default` response. Per the
+        // resolver, default is the catch-all that matches anything — so a
+        // configured skip pattern should still apply.
+        $validator = new OpenApiRequestValidator(
+            skipRequestValidationResponseCodes: ['422'],
+        );
+
+        $result = $validator->validate(
+            'request-validation-skip',
+            'POST',
+            '/only-default',
+            [],
+            [],
+            [],
+            'application/json',
+            responseStatusCode: 422,
+        );
+
+        $this->assertTrue($result->isSkipped(), 'default response must count as documented');
+        $this->assertSame('default', $result->matchedStatusCode());
+    }
+
+    #[Test]
+    public function valid_request_is_unaffected_by_skip_config(): void
+    {
+        // Downgrade only fires when there is a failure to downgrade. A
+        // perfectly-shaped payload that legitimately returns a 422 (business
+        // logic 422 on a valid envelope) must stay Success — not get
+        // demoted to Skipped because of the response status.
+        $validator = new OpenApiRequestValidator(
+            skipRequestValidationResponseCodes: ['422'],
+        );
+
+        $result = $validator->validate(
+            'request-validation-skip',
+            'POST',
+            '/exact-422',
+            [],
+            [],
+            ['name' => 'Fido'],
+            'application/json',
+            responseStatusCode: 422,
+        );
+
+        $this->assertTrue($result->isValid());
+        $this->assertFalse($result->isSkipped(), 'valid request must remain Success, not be downgraded');
+    }
+
+    #[Test]
+    public function skip_does_not_apply_when_response_status_is_null(): void
+    {
+        // Backward-compat: existing callers that don't pass responseStatusCode
+        // (i.e. the validator is used outside the trait orchestrator) must
+        // see no behavior change. Failures stay Failures.
+        $validator = new OpenApiRequestValidator(
+            skipRequestValidationResponseCodes: ['422'],
+        );
+
+        $result = $validator->validate(
+            'request-validation-skip',
+            'POST',
+            '/exact-422',
+            [],
+            [],
+            [],
+            'application/json',
+        );
+
+        $this->assertFalse($result->isValid(), 'no responseStatusCode → no downgrade, BC preserved');
+    }
+
+    #[Test]
+    public function empty_skip_config_disables_downgrade(): void
+    {
+        // Opt-out path: setting the config to [] turns the feature off
+        // entirely so users can keep strict request-side validation.
+        $validator = new OpenApiRequestValidator(
+            skipRequestValidationResponseCodes: [],
+        );
+
+        $result = $validator->validate(
+            'request-validation-skip',
+            'POST',
+            '/exact-422',
+            [],
+            [],
+            [],
+            'application/json',
+            responseStatusCode: 422,
+        );
+
+        $this->assertFalse($result->isValid(), 'empty skip config must keep failures loud');
+    }
+
+    #[Test]
+    public function rejects_invalid_pattern_in_skip_config(): void
+    {
+        // Loud-fail on bad config — same shape as the response side's
+        // skipResponseCodes validation. Empty string and unparseable regex
+        // both throw with a labelled message.
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('skipRequestValidationResponseCodes');
+
+        new OpenApiRequestValidator(
+            skipRequestValidationResponseCodes: [''],
+        );
+    }
+
     /**
      * Run a callable while suppressing the silent-pass `[security]`
      * `E_USER_WARNING` emitted for oauth2 / openIdConnect / mutualTLS /

@@ -218,6 +218,53 @@ class OpenApiCoverageTrackerTest extends TestCase
     }
 
     #[Test]
+    public function record_request_with_skip_reason_stores_reason(): void
+    {
+        // Issue #179: when the trait downgrades a request validation failure
+        // (because the response is a documented 4xx), it forwards the skip
+        // reason so coverage can surface the downgrade rather than report a
+        // clean validated request.
+        OpenApiCoverageTracker::recordRequest(
+            'petstore-3.0',
+            'GET',
+            '/v1/pets',
+            'request validation skipped: response 422 is documented',
+        );
+
+        $state = OpenApiCoverageTracker::exportState();
+        $endpoint = $state['specs']['petstore-3.0']['GET /v1/pets'];
+        $this->assertTrue($endpoint['requestReached']);
+        $this->assertSame(
+            'request validation skipped: response 422 is documented',
+            $endpoint['requestSkipReason'],
+        );
+    }
+
+    #[Test]
+    public function record_request_promotes_skipped_to_validated_when_called_again_without_reason(): void
+    {
+        // Mirror of the response-side promotion: a later "clean" recording
+        // (no skipReason) wins over an earlier skipped one — same test
+        // method may run a downgraded path first, then a non-downgraded
+        // path, and the endpoint should end up as cleanly request-validated.
+        OpenApiCoverageTracker::recordRequest(
+            'petstore-3.0',
+            'GET',
+            '/v1/pets',
+            'first run: downgraded',
+        );
+        OpenApiCoverageTracker::recordRequest('petstore-3.0', 'GET', '/v1/pets');
+
+        $state = OpenApiCoverageTracker::exportState();
+        $endpoint = $state['specs']['petstore-3.0']['GET /v1/pets'];
+        $this->assertTrue($endpoint['requestReached']);
+        $this->assertNull(
+            $endpoint['requestSkipReason'],
+            'a later non-skipped recording must clear the prior skip reason',
+        );
+    }
+
+    #[Test]
     public function content_type_match_is_case_insensitive(): void
     {
         // The 422 response in petstore-3.0 declares `Application/Problem+JSON`
