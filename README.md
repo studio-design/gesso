@@ -513,6 +513,29 @@ Notes:
 - `auto_validate_request` accepts boolean-compatible values (`"true"`, `"1"`, etc.) like `auto_assert`. Unrecognized values fail the test loudly.
 - Coverage is recorded for every matched request path, so enabling auto-validate-request without auto-assert still lights up your coverage report.
 
+#### Skip request validation when the response is a documented 4xx
+
+Tests that intentionally send invalid input to verify the impl returns a documented 422 / 400 would otherwise double-fail under `auto_validate_request`: the request is genuinely spec-invalid (that's the point), but the test only cares about asserting the 4xx response. By default, the library downgrades the request validation result from Failure to Skipped when the response status matches `skip_request_validation_response_codes` AND the spec documents that status for the operation. Default `['422', '400']`:
+
+```php
+return [
+    // default — downgrade documented 422 / 400 responses, keep undocumented 4xx loud
+    'skip_request_validation_response_codes' => ['422', '400'],
+
+    // strict — every spec violation surfaces, even for documented 4xx
+    'skip_request_validation_response_codes' => [],
+
+    // wider net — downgrade every documented 4xx
+    'skip_request_validation_response_codes' => ['4\d\d'],
+];
+```
+
+Notes:
+
+- **Documented-only**: the downgrade only applies when the response status is in the matched operation's `responses` map (exact match, range key like `4XX`, or `default`). An undocumented 4xx still fails — that's a real spec gap.
+- **Failure-only**: a request that passes validation cleanly stays Success even if the response is a documented 4xx (legitimate business-logic 422 on a perfectly-shaped payload is not demoted).
+- **Coverage**: downgraded requests are recorded with the skip reason so the coverage report distinguishes "request was validated cleanly" from "request was downgraded because of a documented 4xx".
+
 #### Auto-inject dummy bearer
 
 When `auto_validate_request=true`, endpoints whose spec declares `bearerAuth` fail the security check unless the test supplies an `Authorization: Bearer …` header. For test suites that authenticate via `actingAs()` or middleware bypass — and therefore never set the header — set `auto_inject_dummy_bearer=true` to auto-inject `Authorization: Bearer test-token` into the validator's view of the request:

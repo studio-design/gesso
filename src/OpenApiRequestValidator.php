@@ -14,13 +14,29 @@ use Studio\OpenApiContractTesting\Validation\Request\RequestBodyValidator;
 use Studio\OpenApiContractTesting\Validation\Request\SecurityValidator;
 use Studio\OpenApiContractTesting\Validation\Support\PathDiagnosticsFormatter;
 use Studio\OpenApiContractTesting\Validation\Support\SchemaValidatorRunner;
+use Studio\OpenApiContractTesting\Validation\Support\SpecResponseKeyResolver;
+use Studio\OpenApiContractTesting\Validation\Support\StatusCodePatternSet;
 use Studio\OpenApiContractTesting\Validation\Support\ValidatorErrorBoundary;
 
 use function array_keys;
+use function is_array;
+use function sprintf;
 use function strtolower;
 
 final class OpenApiRequestValidator
 {
+    /**
+     * Default response-status patterns that downgrade a request validation
+     * failure to a Skipped result when the response status is documented in
+     * the spec for the matched operation. 422 / 400 are the canonical
+     * "documented client error" codes test suites use to verify server-side
+     * input validation; sending intentionally-invalid input to assert these
+     * codes is the workflow that the request validator must not double-fail.
+     *
+     * Empty array disables the downgrade (strict request validation).
+     */
+    public const DEFAULT_SKIP_REQUEST_VALIDATION_RESPONSE_CODES = ['422', '400'];
+
     /** @var array<string, OpenApiPathMatcher> */
     private array $pathMatchers = [];
     private readonly PathParameterValidator $pathValidator;
@@ -28,9 +44,26 @@ final class OpenApiRequestValidator
     private readonly HeaderParameterValidator $headerValidator;
     private readonly SecurityValidator $securityValidator;
     private readonly RequestBodyValidator $bodyValidator;
+    private readonly StatusCodePatternSet $skipPatterns;
 
-    public function __construct(int $maxErrors = 20)
-    {
+    /**
+     * @param string[] $skipRequestValidationResponseCodes Regex patterns
+     *                                                     (without delimiters or anchors) matched against the response status
+     *                                                     code as a string. When the response status matches one of these
+     *                                                     patterns AND the spec documents that status for the operation,
+     *                                                     a request validation failure is downgraded to Skipped instead
+     *                                                     of Failure — the test stops false-failing on intentional
+     *                                                     invalid-input cases. The downgrade does NOT apply when the
+     *                                                     status is undocumented (the spec gap stays loud) nor when
+     *                                                     the request was valid (Success stays Success).
+     *                                                     Defaults to `[]` here so direct callers stay strict; the
+     *                                                     Laravel trait reads the documented `['422', '400']` default
+     *                                                     from {@see self::DEFAULT_SKIP_REQUEST_VALIDATION_RESPONSE_CODES}.
+     */
+    public function __construct(
+        int $maxErrors = 20,
+        array $skipRequestValidationResponseCodes = [],
+    ) {
         $runner = new SchemaValidatorRunner($maxErrors);
 
         $this->pathValidator = new PathParameterValidator($runner);
@@ -38,6 +71,10 @@ final class OpenApiRequestValidator
         $this->headerValidator = new HeaderParameterValidator($runner);
         $this->securityValidator = new SecurityValidator();
         $this->bodyValidator = new RequestBodyValidator($runner);
+        $this->skipPatterns = new StatusCodePatternSet(
+            $skipRequestValidationResponseCodes,
+            'skipRequestValidationResponseCodes',
+        );
     }
 
     /**
@@ -49,9 +86,18 @@ final class OpenApiRequestValidator
      * all sources are accumulated so a single test run surfaces every
      * contract drift the request exhibits.
      *
+     * When `$responseStatusCode` is supplied AND validation produced errors
+     * AND that status matches a configured `skipRequestValidationResponseCodes`
+     * pattern AND the spec documents that status for the matched operation,
+     * the result is downgraded from Failure to Skipped. This is the
+     * documented-4xx escape hatch from issue #179 that lets dataProvider tests
+     * sending intentionally-invalid input keep verifying 4xx behaviour
+     * without per-call `withoutRequestValidation()` opt-outs.
+     *
      * @param array<string, mixed> $queryParams parsed query string (string|array<string> per key)
      * @param array<array-key, mixed> $headers request headers (string|array<string> per key, case-insensitive name match; non-string keys are silently dropped)
      * @param array<string, mixed> $cookies request cookies (string values per key). Used for apiKey security schemes with `in: cookie`. Caller is expected to pass framework-parsed cookies (e.g. Laravel's `$request->cookies->all()`) — this validator does not parse a `Cookie` header.
+     * @param null|int $responseStatusCode optional response status the request produced; enables the documented-4xx downgrade when set
      */
     public function validate(
         string $specName,
@@ -62,6 +108,7 @@ final class OpenApiRequestValidator
         mixed $requestBody,
         ?string $contentType = null,
         array $cookies = [],
+        ?int $responseStatusCode = null,
     ): OpenApiValidationResult {
         $spec = OpenApiSpecLoader::load($specName);
 
@@ -122,6 +169,48 @@ final class OpenApiRequestValidator
 
         if ($errors === []) {
             return OpenApiValidationResult::success($matchedPath);
+        }
+
+        // Issue #179: when the response is a documented 4xx and the test
+        // intentionally sent invalid input to verify that status, downgrade
+        // the request validation failure to Skipped so the test stops
+        // false-failing. Gates on:
+        //   1. the caller passed a response status (request hook does this;
+        //      direct callers default to null and stay strict);
+        //   2. the configured skip-pattern set is non-empty;
+        //   3. that status matches a configured pattern;
+        //   4. the spec documents that status for THIS operation (exact
+        //      / range / default fallback). Undocumented statuses keep the
+        //      failure loud — that's a real spec gap and must surface.
+        if ($responseStatusCode !== null && !$this->skipPatterns->isEmpty()) {
+            $statusCodeStr = (string) $responseStatusCode;
+            $matchingPattern = $this->skipPatterns->match($statusCodeStr);
+            if ($matchingPattern !== null) {
+                /** @var array<string, mixed> $responses */
+                $responses = is_array($operation['responses'] ?? null) ? $operation['responses'] : [];
+                $matchedResponseKey = SpecResponseKeyResolver::resolve($statusCodeStr, $responses);
+                if ($matchedResponseKey !== null) {
+                    // Emit the suspicious-keys diagnostic when we
+                    // consumed a `default` fallback. Mirrors the
+                    // response-side path so a test class with only
+                    // auto_validate_request enabled (no auto_assert)
+                    // still surfaces spec-key typos.
+                    if ($matchedResponseKey === 'default') {
+                        SpecResponseKeyResolver::warnSuspiciousKeys($specName, $method, $matchedPath, $responses);
+                    }
+
+                    return OpenApiValidationResult::skipped(
+                        $matchedPath,
+                        sprintf(
+                            'request validation skipped: response %s is documented (spec key %s) and matched pattern %s',
+                            $statusCodeStr,
+                            $matchedResponseKey,
+                            $matchingPattern,
+                        ),
+                        $matchedResponseKey,
+                    );
+                }
+            }
         }
 
         return OpenApiValidationResult::failure($errors, $matchedPath);

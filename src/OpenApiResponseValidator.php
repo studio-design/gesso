@@ -4,9 +4,6 @@ declare(strict_types=1);
 
 namespace Studio\OpenApiContractTesting;
 
-use const E_USER_WARNING;
-
-use InvalidArgumentException;
 use RuntimeException;
 use Studio\OpenApiContractTesting\Spec\OpenApiPathMatcher;
 use Studio\OpenApiContractTesting\Spec\OpenApiSpecLoader;
@@ -15,17 +12,16 @@ use Studio\OpenApiContractTesting\Validation\Response\ResponseBodyValidator;
 use Studio\OpenApiContractTesting\Validation\Response\ResponseHeaderValidator;
 use Studio\OpenApiContractTesting\Validation\Support\PathDiagnosticsFormatter;
 use Studio\OpenApiContractTesting\Validation\Support\SchemaValidatorRunner;
+use Studio\OpenApiContractTesting\Validation\Support\SpecResponseKeyResolver;
+use Studio\OpenApiContractTesting\Validation\Support\StatusCodePatternSet;
 use Studio\OpenApiContractTesting\Validation\Support\ValidatorErrorBoundary;
 
 use function array_keys;
 use function array_merge;
 use function get_debug_type;
 use function is_array;
-use function preg_last_error_msg;
-use function preg_match;
 use function sprintf;
 use function strtolower;
-use function trigger_error;
 
 final class OpenApiResponseValidator
 {
@@ -40,9 +36,7 @@ final class OpenApiResponseValidator
     private array $pathMatchers = [];
     private readonly ResponseBodyValidator $bodyValidator;
     private readonly ResponseHeaderValidator $headerValidator;
-
-    /** @var array<string, string> Raw pattern (as supplied) => anchored pattern ready for preg_match. */
-    private readonly array $skipPatterns;
+    private readonly StatusCodePatternSet $skipPatterns;
 
     /**
      * @param string[] $skipResponseCodes Regex patterns (without delimiters or
@@ -55,7 +49,7 @@ final class OpenApiResponseValidator
         int $maxErrors = 20,
         array $skipResponseCodes = self::DEFAULT_SKIP_RESPONSE_CODES,
     ) {
-        $this->skipPatterns = self::compileSkipPatterns($skipResponseCodes);
+        $this->skipPatterns = new StatusCodePatternSet($skipResponseCodes, 'skipResponseCodes');
         $runner = new SchemaValidatorRunner($maxErrors);
         $this->bodyValidator = new ResponseBodyValidator($runner);
         $this->headerValidator = new ResponseHeaderValidator($runner);
@@ -109,15 +103,17 @@ final class OpenApiResponseValidator
         // modes — "this code isn't in the spec's responses map" AND "this code
         // IS documented but the body doesn't match its schema". Earlier checks
         // (path / method not in spec) still fail loudly so typos stay visible.
-        $matchingPattern = $this->matchingSkipPattern($statusCodeStr);
+        $matchingPattern = $this->skipPatterns->match($statusCodeStr);
         if ($matchingPattern !== null) {
             // matchedStatusCode here is the literal HTTP status string, not a
-            // spec key. Skip happens BEFORE key resolution (resolveResponseKey
-            // runs further down), so we don't yet know which spec key would
-            // have matched — and even when the spec only declares `default`
-            // or a `5XX` range, callers that gate on isSkipped() expect the
-            // wire status, not the resolved spec key. The coverage tracker's
-            // statusKeyMatches() reconciles literal-vs-range at compute time.
+            // spec key. Skip happens BEFORE key resolution
+            // ({@see SpecResponseKeyResolver::resolve()} runs further
+            // down), so we don't yet know which spec key would have
+            // matched — and even when the spec only declares `default`
+            // or a `5XX` range, callers that gate on isSkipped() expect
+            // the wire status, not the resolved spec key. The coverage
+            // tracker's statusKeyMatches() reconciles literal-vs-range
+            // at compute time.
             return OpenApiValidationResult::skipped(
                 $matchedPath,
                 sprintf('status %s matched skip pattern %s', $statusCodeStr, $matchingPattern),
@@ -134,11 +130,24 @@ final class OpenApiResponseValidator
         // documents only `default` (or only `5XX`) would fail every real
         // status — both patterns are common (Problem Details responses
         // typically use `default` for the error envelope).
-        $matchedResponseKey = self::resolveResponseKey($specName, $method, $matchedPath, $responses, $statusCodeStr);
+        $matchedResponseKey = SpecResponseKeyResolver::resolve($statusCodeStr, $responses);
         if ($matchedResponseKey === null) {
             return OpenApiValidationResult::failure([
                 "Status code {$statusCode} not defined for {$method} {$matchedPath} in '{$specName}' spec.",
             ], $matchedPath);
+        }
+        // Before silently surfacing a `default` fallback, surface any keys
+        // that LOOK like attempted spec keys but don't satisfy the exact /
+        // range / default form. `$statusCodeStr` is always a wire status
+        // here (numeric string from `(string) $statusCode`), never the
+        // literal `default`, so falling-through to `default` always means
+        // a real fallback. Both the request-side downgrade
+        // ({@see OpenApiRequestValidator::validate()}) and this
+        // response-side path call the same helper so a test class with
+        // only one hook enabled still sees the diagnostic — duplicate
+        // warnings under both hooks are accepted noise.
+        if ($matchedResponseKey === 'default') {
+            SpecResponseKeyResolver::warnSuspiciousKeys($specName, $method, $matchedPath, $responses);
         }
 
         // Coverage tracking records under the spec key actually matched
@@ -207,131 +216,6 @@ final class OpenApiResponseValidator
             $statusCodeStr,
             $bodyResult->matchedContentType,
         );
-    }
-
-    /**
-     * Keys keyed by the user-provided pattern (raw, without delimiters/anchors)
-     * so skipReason can echo what the caller wrote rather than the internal
-     * anchored form.
-     *
-     * @param string[] $patterns
-     *
-     * @return array<string, string> raw pattern => anchored pattern
-     */
-    private static function compileSkipPatterns(array $patterns): array
-    {
-        $compiled = [];
-
-        foreach ($patterns as $index => $pattern) {
-            if ($pattern === '') {
-                throw new InvalidArgumentException(
-                    sprintf('skipResponseCodes[%s] must not be an empty string.', (string) $index),
-                );
-            }
-
-            $anchored = '/^(?:' . $pattern . ')$/';
-
-            $ok = @preg_match($anchored, '');
-            if ($ok === false) {
-                throw new InvalidArgumentException(
-                    sprintf(
-                        'skipResponseCodes[%s] is not a valid regex pattern "%s": %s',
-                        (string) $index,
-                        $pattern,
-                        preg_last_error_msg(),
-                    ),
-                );
-            }
-
-            $compiled[$pattern] = $anchored;
-        }
-
-        return $compiled;
-    }
-
-    /**
-     * Resolve a literal HTTP status to the spec's response key, applying
-     * the conventional three-tier fallback shared by major OpenAPI tools:
-     * exact match → range key → `default`. Returns the matched spec key
-     * or null when no rule matches.
-     *
-     * Range keys are accepted in two casings only: `1XX`/`2XX`/`3XX`/`4XX`/`5XX`
-     * (uppercase) or `1xx`/`2xx`/`3xx`/`4xx`/`5xx` (lowercase). Mixed-case
-     * forms (`5Xx`, `5xX`) are intentionally rejected — the OpenAPI spec
-     * uses uppercase consistently in examples and the lowercase variant is
-     * a tolerated convention; permitting arbitrary case would silently mask
-     * spec-author typos that look like range keys.
-     *
-     * Returns the spec author's literal key so coverage / error messages
-     * reflect what they wrote.
-     *
-     * @param array<string, mixed> $responses
-     */
-    private static function resolveResponseKey(string $specName, string $method, string $matchedPath, array $responses, string $statusCodeStr): ?string
-    {
-        if (isset($responses[$statusCodeStr])) {
-            return $statusCodeStr;
-        }
-
-        // Range key match — preserve the spec author's exact casing.
-        if (preg_match('/^[1-5][0-9]{2}$/', $statusCodeStr) === 1) {
-            $leadingDigit = $statusCodeStr[0];
-            foreach (array_keys($responses) as $key) {
-                // PHP auto-coerces numeric string keys (e.g. "200") to int
-                // when used as array keys, so cast back to string before
-                // the regex. Range keys like "5XX" are non-numeric and
-                // unaffected.
-                $keyStr = (string) $key;
-                if (preg_match('/^([1-5])(?:XX|xx)$/', $keyStr, $m) === 1 && $m[1] === $leadingDigit) {
-                    return $keyStr;
-                }
-            }
-        }
-
-        if (isset($responses['default'])) {
-            // Before silently falling back to `default`, surface any keys
-            // that LOOK like attempted spec keys but don't satisfy the
-            // exact / range / default form. Without this warning, a typo
-            // like `'40'` (truncated 404) or `'Default'` (wrong case)
-            // alongside a `default` entry would silently route every
-            // unmatched status to the default schema — masking the dogfood
-            // signal "your spec doesn't actually cover this status".
-            self::warnSuspiciousResponseKeys($specName, $method, $matchedPath, $responses);
-
-            return 'default';
-        }
-
-        return null;
-    }
-
-    /**
-     * @param array<string, mixed> $responses
-     */
-    private static function warnSuspiciousResponseKeys(string $specName, string $method, string $matchedPath, array $responses): void
-    {
-        foreach (array_keys($responses) as $key) {
-            $keyStr = (string) $key;
-            if ($keyStr === 'default') {
-                continue;
-            }
-            if (preg_match('/^[1-5][0-9]{2}$/', $keyStr) === 1) {
-                continue;
-            }
-            if (preg_match('/^[1-5](?:XX|xx)$/', $keyStr) === 1) {
-                continue;
-            }
-
-            trigger_error(
-                sprintf(
-                    "[OpenAPI] spec '%s' %s %s: response key '%s' is not a valid HTTP status, range key (1XX-5XX / 1xx-5xx), or 'default'; falling back to 'default' may be hiding a typo.",
-                    $specName,
-                    $method,
-                    $matchedPath,
-                    $keyStr,
-                ),
-                E_USER_WARNING,
-            );
-        }
     }
 
     /**
@@ -448,28 +332,6 @@ final class OpenApiResponseValidator
             $matchedPath,
             fn(): array => $this->headerValidator->validate($headersSpec, $responseHeaders, $version),
         );
-    }
-
-    /**
-     * Returns the raw pattern (as supplied by the caller) that matched, or
-     * null if no pattern matched. `preg_match` returning false (runtime
-     * failure) is impossible in practice because compileSkipPatterns already
-     * probed each pattern successfully against the empty string and the
-     * subject here is always a short status-code string.
-     */
-    private function matchingSkipPattern(string $statusCode): ?string
-    {
-        foreach ($this->skipPatterns as $raw => $anchored) {
-            if (preg_match($anchored, $statusCode) === 1) {
-                // PHP coerces numeric-string array keys to int (e.g. the
-                // pattern "500" lands under key 500). Cast back to string so
-                // the documented ?string return type is honoured even for
-                // status-code-shaped patterns.
-                return (string) $raw;
-            }
-        }
-
-        return null;
     }
 
     /**

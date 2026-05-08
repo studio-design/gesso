@@ -36,6 +36,7 @@ use function usort;
  * }
  * @phpstan-type EndpointCoverage array{
  *     requestReached: bool,
+ *     requestSkipReason: ?string,
  *     responses: array<string, RecordedResponseCoverage>,
  * }
  * @phpstan-type ResponseRow array{
@@ -74,6 +75,7 @@ use function usort;
  *     version: int,
  *     specs: array<string, array<string, array{
  *         requestReached: bool,
+ *         requestSkipReason: ?string,
  *         responses: array<string, array{state: string, hits: int, skipReason: ?string}>,
  *     }>>,
  * }
@@ -118,15 +120,53 @@ final class OpenApiCoverageTracker
     /**
      * Mark an endpoint as request-side reached. Used by request validators
      * which see a path/method but no response. Idempotent.
+     *
+     * `$skipReason`, when non-null, records that the request validator
+     * downgraded a failure to Skipped because the response was a documented
+     * 4xx (issue #179). Reconciliation mirrors response-side promotion:
+     * a later "clean" recording (no reason) clears any prior reason — once
+     * the same endpoint has been validated cleanly, subsequent skips do not
+     * demote it.
      */
     public static function recordRequest(
         string $specName,
         string $method,
         string $path,
+        ?string $skipReason = null,
     ): void {
         $key = self::endpointKey($method, $path);
-        self::$covered[$specName][$key] ??= ['requestReached' => false, 'responses' => []];
+        // Gate the reconciliation on `requestReached` rather than
+        // `isset($covered[...])`. An entry can pre-exist purely because
+        // `recordResponse()` initialised it (the trait orchestrator
+        // currently runs request-before-response, but framework adapters
+        // and the bulk-merge `importState()` path can reach the tracker
+        // in any order). Using $existed would treat such an entry as
+        // "already cleanly request-validated" and silently drop the
+        // skipReason on the first request-side recording — the very
+        // mode this feature was added to surface.
+        $wasRequestReached = self::$covered[$specName][$key]['requestReached'] ?? false;
+        self::$covered[$specName][$key] ??= ['requestReached' => false, 'requestSkipReason' => null, 'responses' => []];
         self::$covered[$specName][$key]['requestReached'] = true;
+
+        if (!$wasRequestReached) {
+            // First request-side recording for this endpoint — store as-is.
+            self::$covered[$specName][$key]['requestSkipReason'] = $skipReason;
+
+            return;
+        }
+
+        $existingReason = self::$covered[$specName][$key]['requestSkipReason'];
+        if ($skipReason === null) {
+            // Clean recording promotes prior skipped state to validated.
+            // Mirrors the response-side `Validated > Skipped` rule.
+            self::$covered[$specName][$key]['requestSkipReason'] = null;
+        } elseif ($existingReason !== null) {
+            // skipped + skipped: latest non-null reason wins.
+            self::$covered[$specName][$key]['requestSkipReason'] = $skipReason;
+        }
+        // else: existing is null (validated) and new has a reason — keep
+        // null. Once an endpoint has been cleanly request-validated, a
+        // later downgrade does not demote it.
     }
 
     /**
@@ -154,7 +194,7 @@ final class OpenApiCoverageTracker
         $contentKey = $contentTypeKey ?? self::ANY_CONTENT_TYPE;
         $responseKey = $statusKey . ':' . $contentKey;
 
-        self::$covered[$specName][$endpointKey] ??= ['requestReached' => false, 'responses' => []];
+        self::$covered[$specName][$endpointKey] ??= ['requestReached' => false, 'requestSkipReason' => null, 'responses' => []];
         self::$covered[$specName][$endpointKey]['responses'][$responseKey] = self::reconcileResponse(
             self::$covered[$specName][$endpointKey]['responses'][$responseKey] ?? null,
             $schemaValidated ? ResponseCoverageState::Validated : ResponseCoverageState::Skipped,
@@ -205,6 +245,7 @@ final class OpenApiCoverageTracker
                 }
                 $specOut[$endpointKey] = [
                     'requestReached' => $entry['requestReached'],
+                    'requestSkipReason' => $entry['requestSkipReason'],
                     'responses' => $responses,
                 ];
             }
@@ -245,9 +286,39 @@ final class OpenApiCoverageTracker
         $normalised = self::validateStatePayload($state);
         foreach ($normalised as $specName => $endpoints) {
             foreach ($endpoints as $endpointKey => $entry) {
-                self::$covered[$specName][$endpointKey] ??= ['requestReached' => false, 'responses' => []];
+                // Same `wasRequestReached` gate as `recordRequest()` —
+                // an entry that exists only because a prior `importState`
+                // or live `recordResponse` initialised it has no
+                // request-side history; treat the incoming entry as
+                // fresh from the request-side perspective so its
+                // `requestSkipReason` is not silently dropped.
+                $wasRequestReached = self::$covered[$specName][$endpointKey]['requestReached'] ?? false;
+                self::$covered[$specName][$endpointKey] ??= ['requestReached' => false, 'requestSkipReason' => null, 'responses' => []];
                 if ($entry['requestReached']) {
                     self::$covered[$specName][$endpointKey]['requestReached'] = true;
+                }
+                // Mirror the single-record recordRequest reconciliation so
+                // sequential-record and bulk-merge paths cannot drift:
+                //   - first request-side observation: store as-is
+                //   - existing.validated wins over incoming.skipped
+                //   - incoming.validated promotes existing.skipped to validated
+                //   - skipped + skipped: latest non-null reason wins
+                // Only entries whose incoming side actually carries a
+                // request-side observation (`requestReached === true`)
+                // participate in reconciliation — a response-only
+                // incoming entry leaves the request-side state alone.
+                $incomingReason = $entry['requestSkipReason'];
+                if ($entry['requestReached']) {
+                    if (!$wasRequestReached) {
+                        self::$covered[$specName][$endpointKey]['requestSkipReason'] = $incomingReason;
+                    } else {
+                        $existingReason = self::$covered[$specName][$endpointKey]['requestSkipReason'];
+                        if ($incomingReason === null) {
+                            self::$covered[$specName][$endpointKey]['requestSkipReason'] = null;
+                        } elseif ($existingReason !== null) {
+                            self::$covered[$specName][$endpointKey]['requestSkipReason'] = $incomingReason;
+                        }
+                    }
                 }
                 foreach ($entry['responses'] as $responseKey => $row) {
                     self::$covered[$specName][$endpointKey]['responses'][$responseKey] = self::reconcileResponse(
@@ -441,6 +512,7 @@ final class OpenApiCoverageTracker
      *
      * @return array<string, array<string, array{
      *     requestReached: bool,
+     *     requestSkipReason: ?string,
      *     responses: array<string, RecordedResponseCoverage>,
      * }>>
      */
@@ -481,13 +553,34 @@ final class OpenApiCoverageTracker
     /**
      * @param array<string, mixed> $entry
      *
-     * @return array{requestReached: bool, responses: array<string, RecordedResponseCoverage>}
+     * @return array{requestReached: bool, requestSkipReason: ?string, responses: array<string, RecordedResponseCoverage>}
      */
     private static function normaliseEndpointEntry(array $entry): array
     {
         $requestReached = isset($entry['requestReached']) && is_bool($entry['requestReached'])
             ? $entry['requestReached']
             : false;
+        // `requestSkipReason` is optional in the wire format: paratest
+        // sidecars written by older library versions (pre-#179) omit the
+        // field, and a missing key normalises to null. Importer stays
+        // backward-compatible with v1 payloads — no STATE_FORMAT_VERSION
+        // bump is needed for the additive field. PRESENT-but-non-string
+        // values (int, array, bool — i.e. real corruption) are rejected
+        // loudly to match the response-side `state` strictness; silently
+        // coercing them to null would mask a buggy serializer or
+        // hand-edited sidecar as a clean "validated" recording.
+        if (array_key_exists('requestSkipReason', $entry)) {
+            $rawSkipReason = $entry['requestSkipReason'];
+            if ($rawSkipReason !== null && !is_string($rawSkipReason)) {
+                throw new InvalidArgumentException(sprintf(
+                    'invalid requestSkipReason in coverage state payload: expected string|null, got %s',
+                    get_debug_type($rawSkipReason),
+                ));
+            }
+            $requestSkipReason = $rawSkipReason;
+        } else {
+            $requestSkipReason = null;
+        }
         $responses = isset($entry['responses']) && is_array($entry['responses']) ? $entry['responses'] : [];
 
         $normalisedResponses = [];
@@ -510,7 +603,11 @@ final class OpenApiCoverageTracker
             ];
         }
 
-        return ['requestReached' => $requestReached, 'responses' => $normalisedResponses];
+        return [
+            'requestReached' => $requestReached,
+            'requestSkipReason' => $requestSkipReason,
+            'responses' => $normalisedResponses,
+        ];
     }
 
     private static function endpointKey(string $method, string $path): string

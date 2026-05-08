@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Studio\OpenApiContractTesting\OpenApiRequestValidator;
 use Studio\OpenApiContractTesting\OpenApiResponseValidator;
 
 return [
@@ -49,4 +50,16 @@ return [
     // typically do not document production error responses.
     // Set to [] to disable and validate every status code against the spec.
     'skip_response_codes' => OpenApiResponseValidator::DEFAULT_SKIP_RESPONSE_CODES,
+
+    // Regex patterns matched against the response status code that the
+    // current HTTP test produced. When `auto_validate_request: true` is on
+    // and the response status matches one of these patterns AND the spec
+    // documents that status for the operation, a request-validation failure
+    // is downgraded to "skipped" instead of failing the test. This rescues
+    // the dataProvider-driven "send invalid input → assert 422" pattern from
+    // false-failing under request validation while keeping spec gaps loud
+    // (an undocumented 4xx still fails — it's a real contract drift).
+    // Default `['422', '400']` aligns with the common documented client-error
+    // codes; set to [] to disable and keep request validation strict.
+    'skip_request_validation_response_codes' => OpenApiRequestValidator::DEFAULT_SKIP_REQUEST_VALIDATION_RESPONSE_CODES,
 ];
