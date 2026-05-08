@@ -59,7 +59,7 @@ class ResponseValidationTest extends TestCase
         $this->recordResult('petstore-3.0', 'POST', $result2);
 
         $coverage = OpenApiCoverageTracker::computeCoverage('petstore-3.0');
-        $this->assertSame(23, $coverage['endpointTotal']);
+        $this->assertSame(24, $coverage['endpointTotal']);
         $this->assertGreaterThanOrEqual(2, $coverage['endpointFullyCovered'] + $coverage['endpointPartial']);
 
         $endpoints = $this->indexEndpoints($coverage['endpoints']);

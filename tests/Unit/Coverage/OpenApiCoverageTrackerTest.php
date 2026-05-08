@@ -309,16 +309,16 @@ class OpenApiCoverageTrackerTest extends TestCase
     #[Test]
     public function compute_coverage_aggregates_response_level_counts(): void
     {
-        // petstore-3.0 declares 30 (status, content-type) pairs across 23
+        // petstore-3.0 declares 31 (status, content-type) pairs across 24
         // endpoints. Pin the totals so future spec drift is caught.
         $result = OpenApiCoverageTracker::computeCoverage('petstore-3.0');
 
-        $this->assertSame(23, $result['endpointTotal']);
-        $this->assertSame(30, $result['responseTotal']);
+        $this->assertSame(24, $result['endpointTotal']);
+        $this->assertSame(31, $result['responseTotal']);
         $this->assertSame(0, $result['responseCovered']);
         $this->assertSame(0, $result['responseSkipped']);
-        $this->assertSame(30, $result['responseUncovered']);
-        $this->assertSame(23, $result['endpointUncovered']);
+        $this->assertSame(31, $result['responseUncovered']);
+        $this->assertSame(24, $result['endpointUncovered']);
     }
 
     #[Test]

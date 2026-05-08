@@ -32,6 +32,7 @@ use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use WeakMap;
 
+use function array_key_first;
 use function array_merge;
 use function filter_var;
 use function fwrite;
@@ -59,6 +60,11 @@ trait ValidatesOpenApiSchema
     // anything downstream — the inject only silences the spec's security
     // check. Making it configurable is a deliberate separate discussion.
     private const DUMMY_BEARER_TOKEN = 'test-token';
+
+    // Counterpart to DUMMY_BEARER_TOKEN for apiKey schemes injected via
+    // auto_inject_dummy_credentials. The value avoids `=` and `;` so it is
+    // safe in cookie / query / header contexts without escaping concerns.
+    private const DUMMY_API_KEY_VALUE = 'test-api-key';
     private static ?OpenApiResponseValidator $cachedValidator = null;
     private static ?int $cachedMaxErrors = null;
     private static ?OpenApiRequestValidator $cachedRequestValidator = null;
@@ -321,11 +327,31 @@ trait ValidatesOpenApiSchema
 
         $body = $this->extractRequestBody($request, $contentType);
 
-        if ($this->shouldAutoInjectDummyBearer($specName, $resolvedMethod, $resolvedPath, $headers)) {
-            // Inject under the canonical framework key (Symfony lowercases) so
-            // both any existing "Authorization" and the validator's
-            // case-insensitive lookup see the same value.
-            $headers['authorization'] = ['Bearer ' . self::DUMMY_BEARER_TOKEN];
+        foreach ($this->resolveAutoInjectCredentials($specName, $resolvedMethod, $resolvedPath, $headers, $cookies, $queryParams) as $credential) {
+            if ($credential['kind'] === 'bearer') {
+                // Lower-case the key so it round-trips through
+                // HeaderNormalizer::normalize() the same way Symfony's
+                // already-lowercased header bag does.
+                $headers['authorization'] = ['Bearer ' . self::DUMMY_BEARER_TOKEN];
+
+                continue;
+            }
+
+            $name = $credential['name'];
+            switch ($credential['in']) {
+                case 'header':
+                    $headers[strtolower($name)] = [self::DUMMY_API_KEY_VALUE];
+
+                    break;
+                case 'cookie':
+                    $cookies[$name] = self::DUMMY_API_KEY_VALUE;
+
+                    break;
+                case 'query':
+                    $queryParams[$name] = self::DUMMY_API_KEY_VALUE;
+
+                    break;
+            }
         }
 
         $validator = $this->getOrCreateRequestValidator();
@@ -536,6 +562,36 @@ trait ValidatesOpenApiSchema
         return is_int($code) ? (string) $code : $code;
     }
 
+    /**
+     * Treat a slot as populated only when it carries a non-empty string value,
+     * matching {@see Validation\Request\SecurityValidator::checkApiKeySatisfied()}'s
+     * "missing" definition.
+     *
+     * Symfony's HeaderBag exposes header values as `list<?string>` (array
+     * branch); CookieBag and ParameterBag (query) expose plain strings (scalar
+     * branch). The array branch peels the first element before applying the
+     * same string check so all three bag shapes converge on the same
+     * "absent vs populated" verdict.
+     */
+    private static function slotIsAlreadyPopulated(mixed $value): bool
+    {
+        if ($value === null) {
+            return false;
+        }
+
+        if (is_array($value)) {
+            if ($value === []) {
+                return false;
+            }
+
+            $first = $value[array_key_first($value)] ?? null;
+
+            return is_string($first) && $first !== '';
+        }
+
+        return is_string($value) && $value !== '';
+    }
+
     private function getOrCreateRequestValidator(): OpenApiRequestValidator
     {
         $resolvedMaxErrors = $this->resolveMaxErrors();
@@ -557,38 +613,57 @@ trait ValidatesOpenApiSchema
     }
 
     /**
-     * Decide whether to rewrite the validator's view of the request with a
-     * dummy Authorization header. True only when: (1) the inject feature is
-     * enabled, (2) no Authorization is already present (any case), and (3)
-     * the matched operation's spec security accepts a bearer credential (see
-     * {@see SecuritySchemeIntrospector}).
+     * Determine which dummy credentials to splice into the validator's view of
+     * the request. Returns the list of inject targets the caller should write —
+     * empty list means "leave everything as the test set it up".
      *
-     * Callers are expected to have already confirmed auto-validate-request
-     * is on — this method is reached only from {@see self::maybeAutoValidateOpenApiRequest()},
-     * which gates on that flag. Calling it from a new code path without the
-     * same gate would silently load the spec even when request validation is
-     * disabled.
+     * Two modes coexist for backward compatibility:
+     * - `auto_inject_dummy_credentials` (preferred) — injects bearer + every
+     *   apiKey scheme (header / cookie / query) the operation declares.
+     * - `auto_inject_dummy_bearer` (legacy) — injects bearer only.
+     *
+     * When both flags are true the credentials flag wins and the legacy flag
+     * is bypassed; setting only the legacy flag preserves its narrower
+     * bearer-only behavior exactly.
+     *
+     * Precondition: callers must already have gated on
+     * `auto_validate_request` being on. Without that gate this method would
+     * load the spec even when request validation is disabled, which is both
+     * wasteful and surfacing-time-dependent (the validator's error path is
+     * what makes the swallow below safe).
      *
      * Errors walking the spec (unreadable file, no matching path, missing
      * operation) fall through as "do not inject" — the validator will surface
      * the real error. We stay silent here so a broken spec produces exactly
      * one failure, not a confusing cascade.
      *
+     * Slots already populated by the test (Authorization header, named cookie,
+     * named query / header param) are filtered out — the test's intent always
+     * wins, even when the supplied value is malformed and would fail the
+     * security check on its own. Empty-string and empty-array values count as
+     * absent, mirroring {@see Validation\Request\SecurityValidator::checkApiKeySatisfied()}'s
+     * own missing-value definition so the inject path and the validation path
+     * agree on what "no credential" looks like.
+     *
      * @param array<string, mixed> $headers
+     * @param array<string, mixed> $cookies
+     * @param array<string, mixed> $queryParams
+     *
+     * @return list<array{kind: 'apiKey', in: 'cookie'|'header'|'query', name: string}|array{kind: 'bearer'}>
      */
-    private function shouldAutoInjectDummyBearer(
+    private function resolveAutoInjectCredentials(
         string $specName,
         string $method,
         string $path,
         array $headers,
-    ): bool {
-        if (!$this->isAutoInjectDummyBearerEnabled()) {
-            return false;
-        }
+        array $cookies,
+        array $queryParams,
+    ): array {
+        $credentialsEnabled = $this->isAutoInjectDummyCredentialsEnabled();
+        $legacyBearerEnabled = $this->isAutoInjectDummyBearerEnabled();
 
-        $normalized = HeaderNormalizer::normalize($headers);
-        if (isset($normalized['authorization']) && $normalized['authorization'] !== '' && $normalized['authorization'] !== []) {
-            return false;
+        if (!$credentialsEnabled && !$legacyBearerEnabled) {
+            return [];
         }
 
         try {
@@ -600,20 +675,54 @@ trait ValidatesOpenApiSchema
             // immediately after and will surface the real error. Broader
             // Throwable (TypeError, AssertionError, ...) keeps bubbling so
             // programmer bugs are not silently downgraded to "missing auth".
-            return false;
+            return [];
         }
 
         $paths = $spec['paths'] ?? null;
         if (!is_array($paths)) {
-            return false;
+            return [];
         }
 
         $matchedOperation = $this->findOperationForRequest($paths, $method, $path);
         if ($matchedOperation === null) {
-            return false;
+            return [];
         }
 
-        return $this->getSecuritySchemeIntrospector()->endpointAcceptsBearer($spec, $matchedOperation);
+        $introspector = $this->getSecuritySchemeIntrospector();
+
+        if ($credentialsEnabled) {
+            $candidates = $introspector->injectableCredentialsFor($spec, $matchedOperation);
+        } else {
+            $candidates = $introspector->endpointAcceptsBearer($spec, $matchedOperation)
+                ? [['kind' => 'bearer']]
+                : [];
+        }
+
+        if ($candidates === []) {
+            return [];
+        }
+
+        $normalizedHeaders = HeaderNormalizer::normalize($headers);
+
+        $filtered = [];
+        foreach ($candidates as $candidate) {
+            $existing = match ($candidate['kind']) {
+                'bearer' => $normalizedHeaders['authorization'] ?? null,
+                'apiKey' => match ($candidate['in']) {
+                    'header' => $normalizedHeaders[strtolower($candidate['name'])] ?? null,
+                    'cookie' => $cookies[$candidate['name']] ?? null,
+                    'query' => $queryParams[$candidate['name']] ?? null,
+                },
+            };
+
+            if (self::slotIsAlreadyPopulated($existing)) {
+                continue;
+            }
+
+            $filtered[] = $candidate;
+        }
+
+        return $filtered;
     }
 
     /**
@@ -810,6 +919,11 @@ trait ValidatesOpenApiSchema
     private function isAutoInjectDummyBearerEnabled(): bool
     {
         return $this->resolveBoolConfig('auto_inject_dummy_bearer');
+    }
+
+    private function isAutoInjectDummyCredentialsEnabled(): bool
+    {
+        return $this->resolveBoolConfig('auto_inject_dummy_credentials');
     }
 
     /**

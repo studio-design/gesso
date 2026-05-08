@@ -25,13 +25,21 @@ return [
     'auto_validate_request' => false,
 
     // When true (and `auto_validate_request` is on), endpoints whose spec
-    // security requires `bearerAuth` automatically receive a fixed dummy
-    // `Authorization: Bearer test-token` header in the validator's view when
-    // the test did not set one. The Symfony Request itself is not modified —
-    // this only prevents the security check from false-failing on tests that
-    // authenticate via actingAs() or auth middleware bypass. apiKey-only and
-    // oauth2-only endpoints are not affected. Defaults to false for backward
-    // compatibility.
+    // security declares any inject-eligible scheme (http+bearer, apiKey in
+    // header / cookie / query) automatically receive a fixed dummy value in
+    // the validator's view when the test did not set one. The Symfony Request
+    // itself is not modified — this only prevents the security check from
+    // false-failing on tests that authenticate via actingAs() or middleware
+    // bypass. oauth2 / openIdConnect / mutualTLS / http-basic are
+    // silent-passed by the validator and therefore not auto-injected.
+    // Defaults to false for backward compatibility.
+    'auto_inject_dummy_credentials' => false,
+
+    // Bearer-only predecessor of `auto_inject_dummy_credentials`, kept for
+    // existing consumers. Same gating (auto_validate_request must also be
+    // on) and same view-only injection, but limited to endpoints whose spec
+    // security requires `http` + `bearer`. Bypassed when the superset key
+    // above is true.
     'auto_inject_dummy_bearer' => false,
 
     // Regex patterns (without delimiters or anchors) matched against the

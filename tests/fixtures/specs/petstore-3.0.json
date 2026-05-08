@@ -679,6 +679,18 @@
                 }
             }
         },
+        "/v1/secure/and-multi-apikey": {
+            "get": {
+                "summary": "Bearer AND apiKey-header AND apiKey-cookie in single requirement",
+                "operationId": "secureAndMultiApiKey",
+                "security": [
+                    { "bearerAuth": [], "apiKeyHeader": [], "apiKeyCookie": [] }
+                ],
+                "responses": {
+                    "200": { "description": "OK" }
+                }
+            }
+        },
         "/v1/secure/opt-out": {
             "get": {
                 "summary": "Explicitly no auth required",
