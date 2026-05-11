@@ -10,7 +10,7 @@ use PHPUnit\Framework\AssertionFailedError;
 use RuntimeException;
 use Studio\OpenApiContractTesting\Fuzz\ExplorationCases;
 use Studio\OpenApiContractTesting\Fuzz\OpenApiEndpointExplorer;
-use Studio\OpenApiContractTesting\Laravel\Internal\StackTraceFilter;
+use Studio\OpenApiContractTesting\Internal\StackTraceFilter;
 use Studio\OpenApiContractTesting\Spec\OpenApiSpecResolver;
 
 use function is_string;

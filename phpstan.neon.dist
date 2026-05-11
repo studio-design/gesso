@@ -35,3 +35,14 @@ parameters:
         # SkipOpenApiResolver and OpenApiSpecResolver call it to resolve the
         # current test method name for attribute lookup.
         - '#Call to internal method PHPUnit\\Framework\\TestCase::name\(\)#'
+        # `TestCase::numberOfAssertionsPerformed()` is PHPUnit's public-but-
+        # @internal-tagged accessor for the in-test assertion counter. We use
+        # it in AssertsNoEnumDriftTest to pin the trait's "increment by 1 per
+        # call" contract — there is no public replacement.
+        - '#Call to internal method PHPUnit\\Framework\\TestCase::numberOfAssertionsPerformed\(\)#'
+        # `TestCase::addToAssertionCount()` is the documented hook for
+        # framework-level helpers (PHPUnit's own ValidatesOpenApiSchema-style
+        # traits, Pest's expectation API) to register assertions performed via
+        # custom paths. Marked @internal upstream but no replacement exists.
+        # AssertsNoEnumDrift uses it for exactly this purpose.
+        - '#Call to internal method PHPUnit\\Framework\\TestCase::addToAssertionCount\(\)#'

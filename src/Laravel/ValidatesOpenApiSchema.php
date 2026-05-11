@@ -19,7 +19,7 @@ use RuntimeException;
 use Studio\OpenApiContractTesting\Attribute\SkipOpenApi;
 use Studio\OpenApiContractTesting\Coverage\OpenApiCoverageTracker;
 use Studio\OpenApiContractTesting\HttpMethod;
-use Studio\OpenApiContractTesting\Laravel\Internal\StackTraceFilter;
+use Studio\OpenApiContractTesting\Internal\StackTraceFilter;
 use Studio\OpenApiContractTesting\OpenApiRequestValidator;
 use Studio\OpenApiContractTesting\OpenApiResponseValidator;
 use Studio\OpenApiContractTesting\SkipOpenApiResolver;

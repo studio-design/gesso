@@ -41,7 +41,8 @@ class ValidatesOpenApiSchemaStackTraceTest extends TestCase
         ];
 
         $traitFile = (new ReflectionClass(ValidatesOpenApiSchema::class))->getFileName();
-        // The trait + the StackTraceFilter helper both sit under src/Laravel/.
+        // The trait sits under src/Laravel/ — its directory is the only one
+        // we need to detect for "library frames" in this Laravel-specific test.
         // Deriving the directory at runtime keeps the assertions robust against
         // CI checkout paths that don't happen to contain the literal string
         // "/openapi-contract-testing/src/Laravel/".

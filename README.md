@@ -735,6 +735,44 @@ EnumDriftAsserter::assertNoDrift([NotificationCodeEnum::class], failOnDrift: fal
 
 The asserter then fires one `E_USER_WARNING` containing the full drift report (every drifting binding aggregated into a single message) instead of throwing — `failOnWarning="true"` in `phpunit.xml` will still fail the run, but explicit warning suppressors will not. For programmatic access without the global error channel, use `detectAll()` (see below) and inspect the returned `EnumDriftReport[]` directly.
 
+### `AssertsNoEnumDrift` — PHPUnit trait
+
+`EnumDriftAsserter::assertNoDrift()` works on a throw-on-failure / return-void-on-success contract, so PHPUnit never sees the call as a real assertion. Under PHPUnit 13's default `beStrictAboutTestsThatDoNotTestAnything=true`, drift tests that pass get flagged risky:
+
+```
+There was 1 risky test:
+1) Tests\Unit\EnumDriftTest::no_drift
+This test did not perform any assertions
+```
+
+The `AssertsNoEnumDrift` trait wraps the same comparison and bumps PHPUnit's assertion counter on success — drop it into any `TestCase`:
+
+```php
+use PHPUnit\Framework\Attributes\Test;
+use PHPUnit\Framework\TestCase;
+use Studio\OpenApiContractTesting\PHPUnit\AssertsNoEnumDrift;
+
+class EnumDriftTest extends TestCase
+{
+    use AssertsNoEnumDrift;
+
+    #[Test]
+    public function no_drift(): void
+    {
+        $this->assertNoEnumDrift([
+            \App\Enums\StatusEnum::class,
+            \App\Enums\RoleEnum::class,
+        ]);
+    }
+}
+```
+
+Failures throw `PHPUnit\Framework\AssertionFailedError` with the same `[OpenAPI Enum Drift] FATAL` block as the static asserter, routed through `Assert::fail()` so PHPUnit's diff-aware reporter picks it up. Stack frames inside this library are filtered out so the failure points at the consumer's test line.
+
+Misconfiguration (`EnumBindingException` — missing `#[BoundToOpenApiEnum]`, spec file not found, malformed JSON, etc.) is **not** wrapped — it bubbles unchanged so the structured `$reason`/`$enumFqcn`/`$specPath` properties stay accessible to downstream tooling.
+
+The static `EnumDriftAsserter::assertNoDrift()` is unchanged. Non-PHPUnit consumers (dedicated drift CI scripts that catch `EnumDriftException` directly) keep working as before.
+
 ### `detectAll()` — inspection without throwing
 
 For dashboards or custom CI summaries that need every report (clean and drifting):

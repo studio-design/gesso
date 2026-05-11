@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace Studio\OpenApiContractTesting\Tests\Unit\Laravel\Internal;
+namespace Studio\OpenApiContractTesting\Tests\Unit\Internal;
 
 use Exception;
 use PHPUnit\Framework\AssertionFailedError;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use ReflectionProperty;
-use Studio\OpenApiContractTesting\Laravel\Internal\StackTraceFilter;
+use Studio\OpenApiContractTesting\Internal\StackTraceFilter;
 
 use function array_column;
 use function array_keys;

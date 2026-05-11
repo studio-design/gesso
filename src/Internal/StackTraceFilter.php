@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Studio\OpenApiContractTesting\Laravel\Internal;
+namespace Studio\OpenApiContractTesting\Internal;
 
 use Error;
 use Exception;
@@ -10,7 +10,6 @@ use PHPUnit\Framework\AssertionFailedError;
 use ReflectionException;
 use ReflectionProperty;
 
-use function array_values;
 use function is_string;
 use function str_contains;
 use function str_replace;
@@ -120,7 +119,7 @@ final class StackTraceFilter
             }
         }
 
-        return array_values($kept);
+        return $kept;
     }
 
     private static function traceProperty(): ReflectionProperty
