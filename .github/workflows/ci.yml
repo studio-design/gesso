@@ -58,6 +58,34 @@ jobs:
       - name: Run tests
         run: vendor/bin/phpunit
 
+  pest:
+    name: Pest plugin smoke
+    runs-on: ubuntu-latest
+    # Pest 3 requires PHPUnit ^11; mainline matrix also runs PHPUnit 12/13
+    # for which Pest has no compatible major yet. Keeping this job on the
+    # PHPUnit 11 floor isolates the Pest plugin without forcing the rest of
+    # the matrix to drop newer PHPUnit versions. Pest is added on demand
+    # rather than to require-dev so the regular composer install used by
+    # the matrix above stays Pest-free.
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+
+      - name: Install dependencies (with Pest 3)
+        # Single resolve: any version conflict surfaces as one dependency
+        # tree in the CI log, not as a "no-update succeeded but update
+        # failed" two-step that obscures which constraint introduced the
+        # conflict.
+        run: composer require --dev "phpunit/phpunit:^11.0" "pestphp/pest:^3.0" --prefer-dist --no-interaction --no-progress
+
+      - name: Run Pest smoke tests
+        run: composer test:pest
+
   static-analysis:
     name: PHPStan
     runs-on: ubuntu-latest

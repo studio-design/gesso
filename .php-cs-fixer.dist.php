@@ -11,6 +11,16 @@ $finder = Finder::create()
         __DIR__ . '/src',
         __DIR__ . '/tests',
     ])
+    // Pest's `it(...)` / `test(...)` callbacks must NOT be static — Pest
+    // binds $this to the test case and rejects static closures with
+    // `TestClosureMustNotBeStatic`. That clashes with our `static_lambda`
+    // rule, which would auto-rewrite them. Excluding the Pest test
+    // directory and bootstrap is cheaper than maintaining a parallel rule
+    // set just for Pest files. PR2 will likely add more Pest-style
+    // expressions (`expect(...)`, `it(...)->skip(...)`) that follow the
+    // same convention.
+    ->exclude('Integration/Pest')
+    ->notPath('Pest.php')
     ->append([
         __FILE__,
     ])

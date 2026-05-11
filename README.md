@@ -37,7 +37,7 @@ This library fills a gap left by existing PHP OpenAPI testing tools: **endpoint 
 | **Schema-driven request fuzzing** | ✅ | ❌ | ❌ | ❌ | ❌ |
 | **Skip-by-status-code (default 5xx)** | ✅ | ❌ | ❌ | ❌ | ✅ |
 | PHPUnit integration | ✅ | ✅ | ❌ | ⚠️ | ✅ |
-| Pest plugin | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Pest plugin | 🚧 | ❌ | ❌ | ❌ | ❌ |
 | Laravel auto-assert | ✅ | ✅ | ❌ | ❌ | ✅ |
 | Symfony HttpFoundation | ❌ | ❌ | ⚠️ | ✅ | ❌ |
 | External `$ref` auto-resolution | ✅ | ✅ | ✅ | ✅ | ✅ |
@@ -45,7 +45,7 @@ This library fills a gap left by existing PHP OpenAPI testing tools: **endpoint 
 | **Auto-inject dummy bearer** | ✅ | ❌ | ❌ | ❌ | ❌ |
 | **GitHub Step Summary output** | ✅ | ❌ | ❌ | ❌ | ❌ |
 
-**Legend**: ✅ fully supported · ⚠️ partial, delegated to an underlying library, or not explicitly documented · ❌ not supported
+**Legend**: ✅ fully supported · ⚠️ partial, delegated to an underlying library, or not explicitly documented · 🚧 scaffolded, expectations land in a follow-up PR (tracking [#109](https://github.com/studio-design/openapi-contract-testing/issues/109)) · ❌ not supported
 
 **Methodology**: Cells reflect what each library's public documentation and source explicitly guarantee as of 2026-04-25. Competitor versions checked: Spectator v2.2.0, league/openapi-psr7-validator v0.22, osteel/openapi-httpfoundation-testing v0.14, kirschbaum-development/laravel-openapi-validator v2.0.
 
