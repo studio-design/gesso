@@ -29,6 +29,12 @@ use function trim;
 /**
  * @phpstan-import-type CoverageResult from OpenApiCoverageTracker
  *
+ * @phpstan-type CoverageReportEntry array{
+ *     label: string,
+ *     renderer: callable(array<string, CoverageResult>): string,
+ *     outputFile: ?string,
+ * }
+ *
  * @internal Not part of the package's public API. Do not use from user code.
  */
 final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscriber
@@ -92,9 +98,7 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
 
         echo ConsoleCoverageRenderer::render($results, $this->consoleOutput);
 
-        if ($this->outputFile !== null || $this->githubSummaryPath !== null) {
-            $this->writeMarkdownReport($results);
-        }
+        $this->writeReports($results);
 
         $this->evaluateThresholdGate($results);
     }
@@ -282,26 +286,67 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
     }
 
     /**
+     * Dispatch each configured renderer to its output target. Per-entry write
+     * failures emit a WARNING and continue — one format's broken path must not
+     * suppress the others or block the threshold gate that runs after this.
+     *
+     * GITHUB_STEP_SUMMARY is Markdown-only by design and handled separately.
+     *
      * @param array<string, CoverageResult> $results
      */
-    private function writeMarkdownReport(array $results): void
+    private function writeReports(array $results): void
     {
-        $markdown = MarkdownCoverageRenderer::render($results);
+        foreach ($this->buildReportEntries() as $entry) {
+            if ($entry['outputFile'] === null) {
+                continue;
+            }
 
-        if ($this->outputFile !== null) {
-            $written = file_put_contents($this->outputFile, $markdown);
+            $rendered = ($entry['renderer'])($results);
 
-            if ($written === false) {
-                $this->writeStderr("[OpenAPI Coverage] WARNING: Failed to write Markdown report to {$this->outputFile}\n");
+            if (file_put_contents($entry['outputFile'], $rendered) === false) {
+                $this->writeStderr(sprintf(
+                    "[OpenAPI Coverage] WARNING: Failed to write %s report to %s\n",
+                    $entry['label'],
+                    $entry['outputFile'],
+                ));
             }
         }
 
-        if ($this->githubSummaryPath !== null) {
-            $written = file_put_contents($this->githubSummaryPath, $markdown . "\n", FILE_APPEND);
+        $this->appendGithubStepSummary($results);
+    }
 
-            if ($written === false) {
-                $this->writeStderr("[OpenAPI Coverage] WARNING: Failed to append Markdown report to GITHUB_STEP_SUMMARY ({$this->githubSummaryPath})\n");
-            }
+    /**
+     * Renderer dispatch table. PR 2/3/4 (issue #116) append JUnit XML, JSON,
+     * and HTML entries here; the loop in writeReports() does not need to
+     * change.
+     *
+     * @return list<CoverageReportEntry>
+     */
+    private function buildReportEntries(): array
+    {
+        return [
+            [
+                'label' => 'Markdown',
+                'renderer' => static fn(array $r): string => MarkdownCoverageRenderer::render($r),
+                'outputFile' => $this->outputFile,
+            ],
+        ];
+    }
+
+    /**
+     * @param array<string, CoverageResult> $results
+     */
+    private function appendGithubStepSummary(array $results): void
+    {
+        if ($this->githubSummaryPath === null) {
+            return;
+        }
+
+        $markdown = MarkdownCoverageRenderer::render($results);
+        $written = file_put_contents($this->githubSummaryPath, $markdown . "\n", FILE_APPEND);
+
+        if ($written === false) {
+            $this->writeStderr("[OpenAPI Coverage] WARNING: Failed to append Markdown report to GITHUB_STEP_SUMMARY ({$this->githubSummaryPath})\n");
         }
     }
 }

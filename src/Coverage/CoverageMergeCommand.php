@@ -43,6 +43,13 @@ use function unlink;
  * lives here as a class so it can be unit-tested without spawning a
  * subprocess.
  *
+ * @phpstan-import-type CoverageResult from OpenApiCoverageTracker
+ *
+ * @phpstan-type CoverageReportEntry array{
+ *     label: string,
+ *     renderer: callable(array<string, CoverageResult>): string,
+ *     outputFile: ?string,
+ * }
  * @phpstan-type MergeOptions array{
  *     sidecar_dir?: string,
  *     spec_base_path?: string,
@@ -297,21 +304,8 @@ final class CoverageMergeCommand
 
         $this->writeStdout(ConsoleCoverageRenderer::render($results, $consoleOutput));
 
-        $writeFailures = 0;
-        if ($outputFile !== null || $githubSummaryPath !== null) {
-            $markdown = MarkdownCoverageRenderer::render($results);
-
-            // Suppress PHP warning on failure — we surface the error
-            // ourselves via stderr + exit code so the warning is redundant
-            // noise that breaks `beStrictAboutOutputDuringTests` test runs.
-            if ($outputFile !== null && @file_put_contents($outputFile, $markdown) === false) {
-                $this->writeStderr(sprintf("[OpenAPI Coverage] FATAL: Failed to write Markdown report to %s\n", $outputFile));
-                $writeFailures++;
-            }
-            if ($githubSummaryPath !== null && @file_put_contents($githubSummaryPath, $markdown . "\n", FILE_APPEND) === false) {
-                $this->writeStderr(sprintf("[OpenAPI Coverage] WARNING: Failed to append Markdown report to GITHUB_STEP_SUMMARY (%s)\n", $githubSummaryPath));
-            }
-        }
+        $writeFailures = $this->writeReports($results, $outputFile);
+        $this->appendGithubStepSummary($results, $githubSummaryPath);
 
         $thresholdFailure = $this->evaluateThresholdGate($results, $minEndpointPct, $minResponsePct, $minStrict);
 
@@ -320,6 +314,85 @@ final class CoverageMergeCommand
         }
 
         return $writeFailures > 0 || $thresholdFailure ? 1 : 0;
+    }
+
+    /**
+     * Dispatch each configured renderer to its output target. Per-entry write
+     * failures emit a FATAL line and bump the counter the caller turns into a
+     * non-zero exit — broken format paths must not silently disappear in CI.
+     *
+     * @param array<string, CoverageResult> $results
+     *
+     * @return int Number of format outputs that failed to write
+     */
+    private function writeReports(array $results, ?string $outputFile): int
+    {
+        $writeFailures = 0;
+
+        foreach ($this->buildReportEntries($outputFile) as $entry) {
+            if ($entry['outputFile'] === null) {
+                continue;
+            }
+
+            $rendered = ($entry['renderer'])($results);
+
+            // Suppress PHP warning on failure — we surface the error
+            // ourselves via stderr + exit code so the warning is redundant
+            // noise that breaks `beStrictAboutOutputDuringTests` test runs.
+            if (@file_put_contents($entry['outputFile'], $rendered) === false) {
+                $this->writeStderr(sprintf(
+                    "[OpenAPI Coverage] FATAL: Failed to write %s report to %s\n",
+                    $entry['label'],
+                    $entry['outputFile'],
+                ));
+                $writeFailures++;
+            }
+        }
+
+        return $writeFailures;
+    }
+
+    /**
+     * Renderer dispatch table. PR 2/3/4 (issue #116) append JUnit XML, JSON,
+     * and HTML entries here; the loop in writeReports() does not need to
+     * change. The merge CLI mirrors {@see CoverageReportSubscriber} so adding
+     * a format means touching both dispatchers identically.
+     *
+     * @return list<CoverageReportEntry>
+     */
+    private function buildReportEntries(?string $outputFile): array
+    {
+        return [
+            [
+                'label' => 'Markdown',
+                'renderer' => static fn(array $r): string => MarkdownCoverageRenderer::render($r),
+                'outputFile' => $outputFile,
+            ],
+        ];
+    }
+
+    /**
+     * GITHUB_STEP_SUMMARY is Markdown-only by design — the file is a single
+     * shared sink that GitHub consumes as Markdown, so JUnit/JSON/HTML do not
+     * get appended here. A failure here is non-fatal: the merge CLI's exit
+     * code stays driven by the primary output writes.
+     *
+     * @param array<string, CoverageResult> $results
+     */
+    private function appendGithubStepSummary(array $results, ?string $githubSummaryPath): void
+    {
+        if ($githubSummaryPath === null) {
+            return;
+        }
+
+        $markdown = MarkdownCoverageRenderer::render($results);
+
+        if (@file_put_contents($githubSummaryPath, $markdown . "\n", FILE_APPEND) === false) {
+            $this->writeStderr(sprintf(
+                "[OpenAPI Coverage] WARNING: Failed to append Markdown report to GITHUB_STEP_SUMMARY (%s)\n",
+                $githubSummaryPath,
+            ));
+        }
     }
 
     /**
