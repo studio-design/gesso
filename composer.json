@@ -60,7 +60,10 @@
     },
     "scripts": {
         "test": "phpunit",
-        "test:pest": "pest --colors=always tests/Integration/Pest",
+        "test:pest": [
+            "@php scripts/check-pest.php",
+            "pest --colors=always tests/Integration/Pest"
+        ],
         "stan": "phpstan analyse",
         "cs": "php-cs-fixer fix",
         "cs-check": "php-cs-fixer fix --dry-run --diff",
@@ -87,6 +90,7 @@
         "exclude": [
             "/tests",
             "/examples",
+            "/scripts",
             "/.github",
             "/.markdownlint.jsonc",
             "/.php-cs-fixer.dist.php",
