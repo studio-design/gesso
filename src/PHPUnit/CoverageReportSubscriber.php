@@ -11,6 +11,7 @@ use PHPUnit\Event\TestRunner\ExecutionFinished;
 use PHPUnit\Event\TestRunner\ExecutionFinishedSubscriber;
 use RuntimeException;
 use Studio\OpenApiContractTesting\Coverage\ConsoleCoverageRenderer;
+use Studio\OpenApiContractTesting\Coverage\CoverageMergeCommand;
 use Studio\OpenApiContractTesting\Coverage\CoverageSidecarWriter;
 use Studio\OpenApiContractTesting\Coverage\CoverageThresholdEvaluator;
 use Studio\OpenApiContractTesting\Coverage\MarkdownCoverageRenderer;
@@ -28,12 +29,7 @@ use function trim;
 
 /**
  * @phpstan-import-type CoverageResult from OpenApiCoverageTracker
- *
- * @phpstan-type CoverageReportEntry array{
- *     label: string,
- *     renderer: callable(array<string, CoverageResult>): string,
- *     outputFile: ?string,
- * }
+ * @phpstan-import-type CoverageReportEntry from OpenApiCoverageTracker
  *
  * @internal Not part of the package's public API. Do not use from user code.
  */
@@ -316,9 +312,12 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
     }
 
     /**
-     * Renderer dispatch table. PR 2/3/4 (issue #116) append JUnit XML, JSON,
-     * and HTML entries here; the loop in writeReports() does not need to
-     * change.
+     * Renderer dispatch table. Follow-up work tracked in #116 appends JUnit
+     * XML, JSON, and HTML entries here; the loop in {@see self::writeReports()}
+     * does not need to change. The merge CLI keeps a parallel table in
+     * {@see CoverageMergeCommand}, so
+     * any new format must be added to both in lockstep — note the severity
+     * asymmetry (subscriber warns; CLI counts failures toward exit code).
      *
      * @return list<CoverageReportEntry>
      */
@@ -334,6 +333,12 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
     }
 
     /**
+     * GITHUB_STEP_SUMMARY is Markdown-only by design — the file is a single
+     * shared sink that GitHub consumes as Markdown, so additional output
+     * formats do not get appended here. Failures emit a WARNING and do not
+     * affect any exit code (the subscriber has no exit gate of its own for
+     * this path).
+     *
      * @param array<string, CoverageResult> $results
      */
     private function appendGithubStepSummary(array $results): void

@@ -44,12 +44,8 @@ use function unlink;
  * subprocess.
  *
  * @phpstan-import-type CoverageResult from OpenApiCoverageTracker
+ * @phpstan-import-type CoverageReportEntry from OpenApiCoverageTracker
  *
- * @phpstan-type CoverageReportEntry array{
- *     label: string,
- *     renderer: callable(array<string, CoverageResult>): string,
- *     outputFile: ?string,
- * }
  * @phpstan-type MergeOptions array{
  *     sidecar_dir?: string,
  *     spec_base_path?: string,
@@ -318,8 +314,10 @@ final class CoverageMergeCommand
 
     /**
      * Dispatch each configured renderer to its output target. Per-entry write
-     * failures emit a FATAL line and bump the counter the caller turns into a
-     * non-zero exit — broken format paths must not silently disappear in CI.
+     * failures emit a FATAL line, bump the counter the caller turns into a
+     * non-zero exit, and continue to the next entry — one format's broken
+     * path must not suppress the others or block the threshold gate that
+     * runs after this.
      *
      * @param array<string, CoverageResult> $results
      *
@@ -353,10 +351,12 @@ final class CoverageMergeCommand
     }
 
     /**
-     * Renderer dispatch table. PR 2/3/4 (issue #116) append JUnit XML, JSON,
-     * and HTML entries here; the loop in writeReports() does not need to
-     * change. The merge CLI mirrors {@see CoverageReportSubscriber} so adding
-     * a format means touching both dispatchers identically.
+     * Renderer dispatch table. Follow-up work tracked in #116 appends JUnit
+     * XML, JSON, and HTML entries here; the loop in {@see self::writeReports()}
+     * does not need to change. The PHPUnit subscriber keeps a parallel table
+     * in {@see CoverageReportSubscriber},
+     * so any new format must be added to both in lockstep — note the severity
+     * asymmetry (subscriber warns; CLI counts failures toward exit code).
      *
      * @return list<CoverageReportEntry>
      */

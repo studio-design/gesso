@@ -79,6 +79,11 @@ use function usort;
  *         responses: array<string, array{state: string, hits: int, skipReason: ?string}>,
  *     }>>,
  * }
+ * @phpstan-type CoverageReportEntry array{
+ *     label: string,
+ *     renderer: callable(array<string, CoverageResult>): string,
+ *     outputFile: ?string,
+ * }
  */
 final class OpenApiCoverageTracker
 {
