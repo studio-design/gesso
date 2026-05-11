@@ -33,11 +33,11 @@ declare(strict_types=1);
 */
 
 it('registers the toMatchOpenApiResponseSchema expectation', function (): void {
-    expect(static fn () => expect(null)->toMatchOpenApiResponseSchema())
-        ->toThrow(\RuntimeException::class, 'requires a Illuminate\Testing\TestResponse');
+    expect(static fn() => expect(null)->toMatchOpenApiResponseSchema())
+        ->toThrow(RuntimeException::class, 'requires a Illuminate\Testing\TestResponse');
 });
 
 it('registers the toMatchOpenApiRequestSchema expectation', function (): void {
-    expect(static fn () => expect(null)->toMatchOpenApiRequestSchema())
-        ->toThrow(\RuntimeException::class, 'requires a Symfony\Component\HttpFoundation\Request');
+    expect(static fn() => expect(null)->toMatchOpenApiRequestSchema())
+        ->toThrow(RuntimeException::class, 'requires a Symfony\Component\HttpFoundation\Request');
 });

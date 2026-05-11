@@ -2,8 +2,10 @@
 
 declare(strict_types=1);
 
+use Illuminate\Testing\TestResponse;
 use PHPUnit\Framework\AssertionFailedError;
 use Studio\OpenApiContractTesting\Coverage\OpenApiCoverageTracker;
+use Symfony\Component\HttpFoundation\Request;
 
 /*
 |--------------------------------------------------------------------------
@@ -37,7 +39,7 @@ it('validates a matching response against the default spec', function (): void {
 it('fails when the response does not match the schema', function (): void {
     $response = $this->get('/v1/pets?bad=1');
 
-    expect(static fn () => expect($response)->toMatchOpenApiResponseSchema())
+    expect(static fn() => expect($response)->toMatchOpenApiResponseSchema())
         ->toThrow(AssertionFailedError::class, 'OpenAPI schema validation failed');
 });
 
@@ -84,7 +86,7 @@ it('honours the skipResponseCodes argument for per-call skip', function (): void
 it('validates a matching request via toMatchOpenApiRequestSchema', function (): void {
     $this->postJson('/v1/pets', ['name' => 'Buddy']);
 
-    /** @var \Symfony\Component\HttpFoundation\Request $request */
+    /** @var Request $request */
     $request = app('request');
 
     expect($request)->toMatchOpenApiRequestSchema();
@@ -129,7 +131,7 @@ it('chains expectations after the schema match', function (): void {
     // return the Expectation instance.
     expect($response)
         ->toMatchOpenApiResponseSchema()
-        ->toBeInstanceOf(\Illuminate\Testing\TestResponse::class);
+        ->toBeInstanceOf(TestResponse::class);
 });
 
 /*

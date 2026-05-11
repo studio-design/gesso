@@ -65,8 +65,14 @@
             "pest --colors=always tests/Integration/Pest"
         ],
         "stan": "phpstan analyse",
-        "cs": "php-cs-fixer fix",
-        "cs-check": "php-cs-fixer fix --dry-run --diff",
+        "cs": [
+            "php-cs-fixer fix",
+            "php-cs-fixer fix --config=.php-cs-fixer.pest.dist.php"
+        ],
+        "cs-check": [
+            "php-cs-fixer fix --dry-run --diff",
+            "php-cs-fixer fix --dry-run --diff --config=.php-cs-fixer.pest.dist.php"
+        ],
         "ci": [
             "@cs-check",
             "@stan",
@@ -94,7 +100,10 @@
             "/.github",
             "/.markdownlint.jsonc",
             "/.php-cs-fixer.dist.php",
+            "/.php-cs-fixer.pest.dist.php",
+            "/.php-cs-fixer.shared.php",
             "/.php-cs-fixer.cache",
+            "/.php-cs-fixer.pest.cache",
             "/.phpstan.cache",
             "/.phpunit.cache",
             "/phpstan.neon.dist",
