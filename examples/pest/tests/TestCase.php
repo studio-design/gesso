@@ -69,6 +69,12 @@ class TestCase extends TestbenchTestCase
 
     protected function defineRoutes($router): void
     {
+        // Closure routes keep the example focused. In your real Laravel
+        // project these would typically be controller actions:
+        //   Route::get('/v1/pets', [PetController::class, 'index']);
+        // The library validates the response after Laravel dispatches —
+        // independent of how the route resolved — so the contract tests
+        // look identical either way.
         Route::get('/v1/pets', static fn() => response()->json([
             'data' => [
                 ['id' => 1, 'name' => 'Fido', 'tag' => null],
