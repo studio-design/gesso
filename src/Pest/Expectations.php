@@ -32,7 +32,9 @@ use function strtoupper;
  * registering it via `uses(...)->in(...)` in `tests/Pest.php`). Without
  * the trait the bridge methods don't exist and these helpers raise a
  * RuntimeException pointing the user at the standard wiring. Standalone
- * (non-Laravel) Pest support is tracked by issue #109's follow-up.
+ * (non-Laravel) Pest support against PSR-7 messages is a follow-up to
+ * the Pest plugin epic — see the README's "Pest plugin (Laravel)" section
+ * for the documented v1 constraints.
  */
 final class Expectations
 {

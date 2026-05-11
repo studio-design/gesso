@@ -1,0 +1,37 @@
+{
+    "name": "studio-design/openapi-contract-testing-pest-example",
+    "description": "Runnable Pest plugin example for studio-design/openapi-contract-testing.",
+    "license": "MIT",
+    "type": "project",
+    "require": {
+        "php": "^8.3",
+        "studio-design/openapi-contract-testing": "@dev",
+        "orchestra/testbench": "^9.0 || ^10.0 || ^11.0",
+        "pestphp/pest": "^3.0"
+    },
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Examples\\Pest\\Tests\\": "tests/"
+        }
+    },
+    "repositories": [
+        {
+            "type": "path",
+            "url": "../..",
+            "options": {
+                "symlink": true
+            }
+        }
+    ],
+    "scripts": {
+        "test": "pest --colors=always"
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
+}

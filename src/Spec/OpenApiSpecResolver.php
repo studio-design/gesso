@@ -15,16 +15,14 @@ use Studio\OpenApiContractTesting\Attribute\OpenApiSpec;
  * match wins). When a framework adapter (e.g. the Laravel
  * `ValidatesOpenApiSchema` trait) overrides `openApiSpecFallback()` to
  * delegate to its own user-overridable hook, the last layer splits into two,
- * giving the chain a fifth slot. The README's "Spec resolution" section
- * documents layers 1–4; layer 0 is the Pest-plugin-only override added in
- * the same series as this hook (#109's PR2) — README integration lands in
- * the Pest documentation PR.
+ * giving the chain a fifth slot.
  *
  *   0. Per-call explicit override set via {@see self::withExplicitOpenApiSpec()}.
- *      Used by the Pest plugin (`expect(...)->toMatchOpenApiResponseSchema(spec: 'X')`)
- *      to pin a single assertion at a specific spec without touching attributes
- *      or config. Self-clears after the next `resolveOpenApiSpec()` call so it
- *      cannot leak into subsequent assertions.
+ *      Used by the Pest plugin (`expect(...)->toMatchOpenApiResponseSchema(spec: 'X')`,
+ *      see the README's "Pest plugin (Laravel)" section) to pin a single
+ *      assertion at a specific spec without touching attributes or config.
+ *      Self-clears after the next `resolveOpenApiSpec()` call so it cannot
+ *      leak into subsequent assertions.
  *   1. Method-level `#[OpenApiSpec]` attribute on the running test method.
  *   2. Class-level `#[OpenApiSpec]` attribute on the test class.
  *   3. Adapter's user-overridable hook. For the Laravel adapter this is

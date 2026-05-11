@@ -86,6 +86,31 @@ jobs:
       - name: Run Pest smoke tests
         run: composer test:pest
 
+  pest-example:
+    name: Pest plugin example
+    runs-on: ubuntu-latest
+    # The runnable example under examples/pest/ tracks the working tree via a
+    # path repository. Without this job the example silently rots whenever the
+    # library's public API surface, composer.json, or autoload.files entry
+    # changes. Single PHP cell is enough — the example exists to teach, not
+    # cover the matrix.
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+
+      - name: Install example dependencies
+        working-directory: examples/pest
+        run: composer install --prefer-dist --no-interaction --no-progress
+
+      - name: Run example Pest suite
+        working-directory: examples/pest
+        run: vendor/bin/pest --colors=always
+
   static-analysis:
     name: PHPStan
     runs-on: ubuntu-latest

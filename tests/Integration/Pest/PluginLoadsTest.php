@@ -15,8 +15,8 @@ declare(strict_types=1);
 |     AND `class_exists(\Pest\Expectation::class)`) does NOT short-circuit when
 |     Pest is present.
 |  3. expect()->extend() registered the two expectations under the names
-|     ExpectationsTest.php (and downstream user tests) dispatch on
-|     (toMatchOpenApiResponseSchema / toMatchOpenApiRequestSchema).
+|     downstream tests dispatch on (toMatchOpenApiResponseSchema /
+|     toMatchOpenApiRequestSchema).
 |
 | Asserting on the input-validation throws — "requires a TestResponse" /
 | "requires a Symfony Request" — pins the dispatch to the actual
