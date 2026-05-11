@@ -10,6 +10,18 @@ the README for the full surface contract.
 
 ## Unreleased
 
+## [1.4.0](https://github.com/studio-design/openapi-contract-testing/compare/v1.3.0...v1.4.0) (2026-05-11)
+
+
+### Features
+
+* **phpunit:** add AssertsNoEnumDrift trait for PHPUnit-aware enum drift assertions ([#186](https://github.com/studio-design/openapi-contract-testing/issues/186)) ([655ef1a](https://github.com/studio-design/openapi-contract-testing/commit/655ef1abe05574286cde602be1eb950998dfa790))
+
+
+### Reverts
+
+* ci(release-please): use GitHub App token to trigger required checks ([#183](https://github.com/studio-design/openapi-contract-testing/issues/183)) ([#184](https://github.com/studio-design/openapi-contract-testing/issues/184)) ([0bf8fe5](https://github.com/studio-design/openapi-contract-testing/commit/0bf8fe5d9603e8149ec02a5b692862e7cd12c6f4))
+
 ## [1.3.0](https://github.com/studio-design/openapi-contract-testing/compare/v1.2.0...v1.3.0) (2026-05-08)
 
 
