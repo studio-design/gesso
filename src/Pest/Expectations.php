@@ -124,7 +124,6 @@ final class Expectations
             ));
         }
 
-        /** @var object $testCase */
         $testCase = test();
         if ($testCase instanceof HigherOrderTapProxy) {
             /** @var object $testCase */

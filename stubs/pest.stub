@@ -1,0 +1,115 @@
+<?php
+
+declare(strict_types=1);
+
+/*
+ * PHPStan stub for the Pest plugin's runtime dependencies.
+ *
+ * The Pest plugin under src/Pest/ and the Pest tests under
+ * tests/Integration/Pest/ reference Pest classes and global functions
+ * (Pest\Expectation, expect(), test(), it(), uses(), HigherOrderTapProxy,
+ * PendingCalls\TestCall). Pest is intentionally absent from require-dev
+ * — Pest 3 conflicts with PHPUnit ^12 / ^13 from the mainline test
+ * matrix — so the static-analysis CI job has no real Pest classes
+ * available and would otherwise surface false "unknown class / function"
+ * errors on every Pest-flavoured file.
+ *
+ * This stub gives PHPStan just enough type information to analyse the
+ * dispatch closures, `$this->value` access inside expect()->extend()
+ * callbacks, and the `instanceof HigherOrderTapProxy` / `TestCall`
+ * unwrap branches. Method bodies are intentionally empty — runtime
+ * behaviour is provided by Pest itself when it's installed.
+ *
+ * Loaded via `parameters.scanFiles` in phpstan.neon.dist so PHPStan
+ * picks up the class / function declarations without analysing them.
+ *
+ * Closes #189.
+ */
+
+namespace Pest {
+    final class Expectation
+    {
+        public mixed $value;
+
+        public function extend(string $name, \Closure $expectation): void
+        {
+        }
+
+        public function toThrow(string|\Throwable $exception, ?string $exceptionMessage = null): self
+        {
+        }
+
+        public function toBeInstanceOf(string $class): self
+        {
+        }
+
+        public function toHaveKey(string $key): self
+        {
+        }
+
+        public function toBe(mixed $expected): self
+        {
+        }
+
+        public function toBeNull(): self
+        {
+        }
+
+        public function and(mixed $value = null): self
+        {
+        }
+
+        public function not(): self
+        {
+        }
+
+        public function __get(string $name): self
+        {
+        }
+    }
+}
+
+namespace Pest\Support {
+    /**
+     * Wraps the running TestCase so user code can write `test()->skip(...)`.
+     */
+    final class HigherOrderTapProxy
+    {
+        public mixed $target;
+    }
+}
+
+namespace Pest\PendingCalls {
+    /**
+     * Returned by `test()` when a description is supplied.
+     */
+    final class TestCall
+    {
+    }
+}
+
+namespace {
+    function expect(mixed $value = null): \Pest\Expectation
+    {
+    }
+
+    function test(?string $description = null, ?\Closure $closure = null): \Pest\Expectation|\Pest\PendingCalls\TestCall|\Pest\Support\HigherOrderTapProxy
+    {
+    }
+
+    function it(string $description, ?\Closure $closure = null): \Pest\PendingCalls\TestCall
+    {
+    }
+
+    function uses(string ...$classAndTraits): \Pest\PendingCalls\TestCall
+    {
+    }
+
+    function beforeEach(?\Closure $closure = null): \Pest\PendingCalls\TestCall
+    {
+    }
+
+    function afterEach(?\Closure $closure = null): \Pest\PendingCalls\TestCall
+    {
+    }
+}

@@ -15,25 +15,28 @@ parameters:
     paths:
         - src
         - tests
+    # Pest is intentionally not in require-dev (Pest 3 conflicts with the
+    # PHPUnit ^12 / ^13 cells of the matrix). Without this stub PHPStan
+    # would surface "unknown class" / "unknown function" errors on every
+    # Pest-flavoured file. The stub declares Pest\Expectation, the
+    # HigherOrderTapProxy / TestCall wrappers, and the global
+    # expect()/test()/it()/uses() functions with just enough type
+    # information for the type-sensitive static dispatch in
+    # src/Pest/Expectations.php to analyse cleanly (the file is no longer
+    # excluded from analysis).
+    scanFiles:
+        - stubs/pest.stub
     excludePaths:
         - src/Laravel
-        # Pest plugin code references Pest classes (`Pest\Expectation`,
-        # `Pest\Support\HigherOrderTapProxy`) and the global `expect()` /
-        # `test()` functions, none of which are available unless the
-        # downstream consumer installs `pestphp/pest`. The static-analysis
-        # job uses the default require-dev (Pest-free), so analysing these
-        # files would surface false positives. The runtime guards
-        # (function_exists + class_exists checks in Autoload.php; trait
-        # method_exists check in Expectations.php) make the symbols safe to
-        # reference at load time. The Pest bootstrap and integration tests
-        # are excluded for the same reason — they reference Pest globals
-        # PHPStan cannot resolve without Pest installed.
-        #
-        # Issue #189 tracks replacing these exclusions with a Pest stub
-        # file so PHPStan can analyse the closure signatures and the
-        # `$this->value` access inside expect()->extend() callbacks.
+        # Pest's `expect()->extend()` and `it(...)` rebind `$this` to the
+        # Expectation / TestCase instance at runtime — a pattern PHPStan
+        # cannot follow statically. Every $this access inside those
+        # closures would surface as "Undefined variable: $this". The
+        # Autoload file and the Pest test files are excluded for that
+        # reason; the type-sensitive dispatch logic lives in
+        # src/Pest/Expectations.php (not excluded) which the stub now
+        # makes analysable.
         - src/Pest/Autoload.php
-        - src/Pest/Expectations.php
         - tests/Pest.php
         - tests/Integration/Pest
         # EnumScanner fixture dir holds intentionally-unused trait/abstract
