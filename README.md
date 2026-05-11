@@ -37,7 +37,7 @@ This library fills a gap left by existing PHP OpenAPI testing tools: **endpoint 
 | **Schema-driven request fuzzing** | ✅ | ❌ | ❌ | ❌ | ❌ |
 | **Skip-by-status-code (default 5xx)** | ✅ | ❌ | ❌ | ❌ | ✅ |
 | PHPUnit integration | ✅ | ✅ | ❌ | ⚠️ | ✅ |
-| Pest plugin | 🚧 | ❌ | ❌ | ❌ | ❌ |
+| Pest plugin | ✅ | ❌ | ❌ | ❌ | ❌ |
 | Laravel auto-assert | ✅ | ✅ | ❌ | ❌ | ✅ |
 | Symfony HttpFoundation | ❌ | ❌ | ⚠️ | ✅ | ❌ |
 | External `$ref` auto-resolution | ✅ | ✅ | ✅ | ✅ | ✅ |
@@ -45,7 +45,7 @@ This library fills a gap left by existing PHP OpenAPI testing tools: **endpoint 
 | **Auto-inject dummy bearer** | ✅ | ❌ | ❌ | ❌ | ❌ |
 | **GitHub Step Summary output** | ✅ | ❌ | ❌ | ❌ | ❌ |
 
-**Legend**: ✅ fully supported · ⚠️ partial, delegated to an underlying library, or not explicitly documented · 🚧 scaffolded, expectations land in a follow-up PR (tracking [#109](https://github.com/studio-design/openapi-contract-testing/issues/109)) · ❌ not supported
+**Legend**: ✅ fully supported · ⚠️ partial, delegated to an underlying library, or not explicitly documented · ❌ not supported
 
 **Methodology**: Cells reflect what each library's public documentation and source explicitly guarantee as of 2026-04-25. Competitor versions checked: Spectator v2.2.0, league/openapi-psr7-validator v0.22, osteel/openapi-httpfoundation-testing v0.14, kirschbaum-development/laravel-openapi-validator v2.0.
 
@@ -562,6 +562,83 @@ Notes:
 - **Never overrides user values**: if the test already set an `Authorization` header (in any case), the user's value wins.
 - **Requires `auto_validate_request=true`** — the inject is a sub-feature of request validation. Setting the inject flag alone has no effect.
 
+## Pest plugin (Laravel)
+
+Pest tests can use the same validator pipeline as PHPUnit through a custom-expectation plugin that ships in this package. The library runtime stays Pest-free — install Pest as a dev dependency in your project to activate the expectations.
+
+### Installation
+
+```bash
+composer require --dev pestphp/pest:^3.0
+```
+
+The plugin is auto-loaded via Composer's `autoload.files`. No further wiring needed at install time. Pest 4 (PHPUnit ^12) support is tracked separately.
+
+### Wiring the trait into Pest tests
+
+Mix `ValidatesOpenApiSchema` into the Pest test suite via `uses(...)->in(...)` in `tests/Pest.php` (or whatever Pest configuration file your project uses). The trait must be on the test class — typically through a base `TestCase` that already extends Laravel's testing harness:
+
+```php
+// tests/Pest.php
+use Studio\OpenApiContractTesting\Laravel\ValidatesOpenApiSchema;
+use Tests\TestCase;
+
+uses(TestCase::class, ValidatesOpenApiSchema::class)->in('Feature');
+```
+
+Once wired, `auto_assert` and `auto_validate_request` work exactly as with PHPUnit — every Laravel HTTP helper call validates against the configured spec.
+
+### `expect(...)->toMatchOpenApiResponseSchema()`
+
+Explicit response-side validation reads naturally inside Pest's expectation grammar:
+
+```php
+it('lists pets with the documented shape', function () {
+    $response = $this->getJson('/api/v1/pets');
+
+    expect($response)->toMatchOpenApiResponseSchema();
+});
+```
+
+Optional named arguments cover the per-call overrides:
+
+```php
+// Pin this single assertion to a different spec (overrides default_spec
+// and any #[OpenApiSpec] on the test class for one call only).
+expect($response)->toMatchOpenApiResponseSchema(spec: 'admin');
+
+// Skip body validation for specific status codes (regex strings, anchored
+// automatically). The standard `skip_response_codes` config still applies;
+// these add to it for one call only.
+expect($response)->toMatchOpenApiResponseSchema(skipResponseCodes: ['503']);
+
+// Override method / path explicitly when the auto-resolved values from
+// app('request') aren't what you want to validate against.
+expect($response)->toMatchOpenApiResponseSchema(method: 'GET', path: '/api/v1/pets');
+```
+
+The `spec:` override is single-shot: the next assertion in the same test method falls back to attribute / config resolution. Coverage recording, WeakMap dedup, and the `#[SkipOpenApi]` advisory warning all behave the same as the PHPUnit `assertResponseMatchesOpenApiSchema()` flow.
+
+### `expect(...)->toMatchOpenApiRequestSchema()`
+
+Request-side validation accepts the Symfony `Request` Laravel hands out via `app('request')`:
+
+```php
+it('accepts a documented request body shape', function () {
+    $this->postJson('/api/v1/pets', ['name' => 'Buddy']);
+
+    expect(app('request'))->toMatchOpenApiRequestSchema();
+});
+```
+
+The same `spec: / method: / path:` keyword arguments are accepted. The request bridge always runs (it bypasses the `auto_validate_request` config gate and `#[SkipOpenApi]`) because the explicit expectation reads as the user's direct intent.
+
+### Constraints (v1)
+
+- **Laravel only**. The expectations require the running Pest test class to use `ValidatesOpenApiSchema`. Standalone (Symfony / framework-less) Pest support against PSR-7 messages is tracked as a follow-up to [#109](https://github.com/studio-design/openapi-contract-testing/issues/109).
+- **Pest 3**. Pest 4 (PHPUnit ^12) is not yet in the CI matrix.
+- **Pest discovery contract**. The plugin guards against a missing Pest install at autoload time, so it is safe to leave installed in projects that don't actually use Pest. If `pestphp/pest` is absent, the bootstrap is a true no-op.
+
 ## Schema-driven request fuzzing
 
 The `ExploresOpenApiEndpoint` trait generates N happy-path request inputs for one (method, path) operation directly from the OpenAPI spec — the PHP equivalent of [Schemathesis][schemathesis]. Pair it with the existing `ValidatesOpenApiSchema` trait and every fuzzed call automatically asserts response contract conformance and records coverage.
@@ -1058,6 +1135,11 @@ path if `sys_get_temp_dir()` is unavailable in your runner.
 - **Sequential runs are unchanged.** Without `TEST_TOKEN` the extension
   renders inline as before. There is no need to wire the merge CLI into
   non-parallel CI jobs.
+- **Pest plugin works under `--parallel`.** The expectations registered
+  by the [Pest plugin](#pest-plugin-laravel) record coverage through the
+  same `OpenApiCoverageTracker` static, so each Pest worker drops a
+  sidecar exactly like a paratest worker would. No additional wiring
+  needed beyond the merge step shown above.
 - **Worker counts are not exposed by paratest.** A child cannot reliably
   tell how many siblings it has, so the merge has to run as a separate
   step rather than auto-firing from "the last worker." This matches how

@@ -86,6 +86,7 @@
     "archive": {
         "exclude": [
             "/tests",
+            "/examples",
             "/.github",
             "/.markdownlint.jsonc",
             "/.php-cs-fixer.dist.php",
