@@ -77,10 +77,11 @@ jobs:
           coverage: none
 
       - name: Install dependencies (with Pest 3)
-        run: |
-          composer require --dev "phpunit/phpunit:^11.0" --no-interaction --no-update
-          composer require --dev "pestphp/pest:^3.0" --no-interaction --no-update
-          composer update --prefer-dist --no-interaction --no-progress
+        # Single resolve: any version conflict surfaces as one dependency
+        # tree in the CI log, not as a "no-update succeeded but update
+        # failed" two-step that obscures which constraint introduced the
+        # conflict.
+        run: composer require --dev "phpunit/phpunit:^11.0" "pestphp/pest:^3.0" --prefer-dist --no-interaction --no-progress
 
       - name: Run Pest smoke tests
         run: composer test:pest

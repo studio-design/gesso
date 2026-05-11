@@ -13,7 +13,7 @@ declare(strict_types=1);
 | in PR2, which will populate `uses(...)->in('Integration/Pest')` and
 | friends here.
 |
-| The Pest CLI is invoked with an explicit path
-| (`composer test:pest tests/Integration/Pest`), so this file does not
-| need to filter directories — the path argument already does.
+| `composer test:pest` runs `pest --colors=always tests/Integration/Pest`
+| (the path is baked into the script), so this file does not need to
+| filter directories — the script's path argument already does.
 */

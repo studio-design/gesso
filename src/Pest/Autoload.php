@@ -21,7 +21,14 @@ declare(strict_types=1);
 use Pest\Expectation;
 use Studio\OpenApiContractTesting\Pest\Expectations as PestExpectations;
 
-if (!\class_exists(Expectation::class)) {
+// Two-symbol guard. We need both the class (used in the closure return
+// type) and the global function (called on the next line). Checking only
+// the class would miss partial Pest installs where Expectation is on the
+// autoloader (e.g. via a transitive `use` reference) but Pest's own
+// `autoload.files` entry that defines `expect()` did not load yet — that
+// would surface as a fatal "Call to undefined function expect()" on
+// every composer-autoloaded request, including production.
+if (!\function_exists('expect') || !\class_exists(Expectation::class)) {
     return;
 }
 

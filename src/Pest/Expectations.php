@@ -6,6 +6,8 @@ namespace Studio\OpenApiContractTesting\Pest;
 
 use RuntimeException;
 
+use function sprintf;
+
 /**
  * Static dispatch target for the Pest custom expectations registered in
  * {@see Autoload.php}. Centralising the implementation here (rather than
@@ -23,9 +25,7 @@ use RuntimeException;
  */
 final class Expectations
 {
-    private const NOT_IMPLEMENTED_MESSAGE = 'The Pest plugin entrypoint loaded, '
-        . 'but the matchResponse/matchRequest implementation lands in PR2. '
-        . 'See https://github.com/studio-design/openapi-contract-testing/issues/109.';
+    public const NOT_IMPLEMENTED_URL = 'https://github.com/studio-design/openapi-contract-testing/issues/109';
 
     /**
      * @param string[] $skipResponseCodes
@@ -37,7 +37,7 @@ final class Expectations
         ?string $path,
         array $skipResponseCodes,
     ): void {
-        throw new RuntimeException(self::NOT_IMPLEMENTED_MESSAGE);
+        throw new RuntimeException(self::notImplementedMessage(__METHOD__));
     }
 
     public static function matchRequest(
@@ -46,6 +46,21 @@ final class Expectations
         ?string $method,
         ?string $path,
     ): void {
-        throw new RuntimeException(self::NOT_IMPLEMENTED_MESSAGE);
+        throw new RuntimeException(self::notImplementedMessage(__METHOD__));
+    }
+
+    /**
+     * Build the stub error message identifying which dispatch was hit.
+     * Carrying __METHOD__ lets a clipped CI log still pinpoint matchResponse
+     * vs matchRequest. The constant URL is the single source of truth for
+     * the tracking issue so PR2 only deletes call sites, not literals.
+     */
+    private static function notImplementedMessage(string $method): string
+    {
+        return sprintf(
+            'The Pest plugin entrypoint loaded, but %s lands in PR2. See %s.',
+            $method,
+            self::NOT_IMPLEMENTED_URL,
+        );
     }
 }
