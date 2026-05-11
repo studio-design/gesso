@@ -11,6 +11,13 @@ $finder = Finder::create()
         __DIR__ . '/src',
         __DIR__ . '/tests',
     ])
+    // Pest tests follow Pest's own conventions — `it(...)` callbacks must be
+    // non-static (Pest binds $this to the test case), and FQCN class
+    // references avoid Pest's "use statement with non-compound name has no
+    // effect" warning. Both clash with our `static_lambda` /
+    // `global_namespace_import` rules. Excluding the directory is cheaper
+    // than maintaining a parallel rule set just for Pest files.
+    ->exclude('Integration/Pest')
     ->append([
         __FILE__,
     ])

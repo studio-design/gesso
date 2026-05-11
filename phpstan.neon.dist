@@ -17,6 +17,16 @@ parameters:
         - tests
     excludePaths:
         - src/Laravel
+        # Pest plugin entrypoint references the Pest\Expectation class and the
+        # global `expect()` function, neither of which is available unless the
+        # downstream consumer installs `pestphp/pest`. The static-analysis job
+        # uses the default require-dev (Pest-free), so analysing this file
+        # would surface false positives. The runtime guard inside the file
+        # (class_exists check) makes the symbols safe to reference at load
+        # time. The accompanying smoke tests live under tests/Integration/Pest
+        # and are excluded for the same reason.
+        - src/Pest/Autoload.php
+        - tests/Integration/Pest
         # EnumScanner fixture dir holds intentionally-unused trait/abstract
         # files so the scanner can walk past them; PHPStan would otherwise
         # flag them as `trait.unused`.
