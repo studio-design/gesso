@@ -12,6 +12,7 @@ use PHPUnit\Runner\Extension\Extension;
 use PHPUnit\Runner\Extension\Facade;
 use PHPUnit\Runner\Extension\ParameterCollection;
 use PHPUnit\TextUI\Configuration\Configuration;
+use PHPUnit\TextUI\TestSuiteFilterProcessor;
 use Studio\OpenApiContractTesting\Coverage\InvalidCoverageOutputPathException;
 use Studio\OpenApiContractTesting\Coverage\InvalidThresholdConfigurationException;
 use Studio\OpenApiContractTesting\Exception\EnumBindingException;
@@ -20,6 +21,7 @@ use Studio\OpenApiContractTesting\Exception\EnumDriftException;
 use Studio\OpenApiContractTesting\Exception\InvalidOpenApiSpecException;
 use Studio\OpenApiContractTesting\Exception\SpecFileNotFoundException;
 use Studio\OpenApiContractTesting\Internal\EnumScanner;
+use Studio\OpenApiContractTesting\Internal\PartialRunDetector;
 use Studio\OpenApiContractTesting\Schema\EnumDriftAsserter;
 use Studio\OpenApiContractTesting\Schema\EnumDriftReport;
 use Studio\OpenApiContractTesting\Spec\OpenApiSpecLoader;
@@ -86,11 +88,15 @@ final class OpenApiCoverageExtension implements Extension
         fwrite(self::$stderrOverride ?? STDERR, $message);
     }
 
-    /** @phpcsSuppress SlevomatCodingStandard.Functions.UnusedParameter.UnusedParameter */
     public function bootstrap(Configuration $configuration, Facade $facade, ParameterCollection $parameters): void
     {
         try {
-            $this->setupExtension($facade, $parameters, getenv('GITHUB_STEP_SUMMARY') ?: null);
+            $this->setupExtension(
+                $facade,
+                $parameters,
+                getenv('GITHUB_STEP_SUMMARY') ?: null,
+                self::detectPartialRun($configuration),
+            );
         } catch (EnumBindingException|EnumDriftException|InvalidCoverageOutputPathException|InvalidOpenApiSpecException|InvalidThresholdConfigurationException|SpecFileNotFoundException) {
             // setupExtension() has already written a FATAL line to stderr and
             // (if GITHUB_STEP_SUMMARY is set) appended a fatal block to it.
@@ -121,8 +127,12 @@ final class OpenApiCoverageExtension implements Extension
      *
      * @internal
      */
-    public function setupExtension(?Facade $facade, ParameterCollection $parameters, ?string $githubSummaryPath): void
-    {
+    public function setupExtension(
+        ?Facade $facade,
+        ParameterCollection $parameters,
+        ?string $githubSummaryPath,
+        ?PartialRunDetector $partialRun = null,
+    ): void {
         // Issue #170: secondary base path used only for
         // #[BoundToOpenApiEnum] resolution. Read independently of
         // spec_base_path so that an orphaned `enum_spec_base_path`
@@ -228,7 +238,39 @@ final class OpenApiCoverageExtension implements Extension
             junitOutput: $junitOutput,
             jsonOutput: $jsonOutput,
             htmlOutput: $htmlOutput,
+            partialRun: $partialRun,
         ));
+    }
+
+    /**
+     * Issue #221: read PHPUnit's structured selection signals off
+     * {@see Configuration} so the subscriber can skip persistent writes
+     * on partial runs. The set mirrors {@see TestSuiteFilterProcessor::process()}'s
+     * own filter detection (`hasFilter` / `hasExcludeFilter` / `hasGroups` /
+     * `hasExcludeGroups` / `hasTestsCovering` / `hasTestsUsing` /
+     * `hasTestsRequiringPhpExtension`) plus the TestSuiteBuilder-stage
+     * selections that bypass the filter pipeline: `hasCliArguments()`
+     * (positional path args like `phpunit tests/Feature/Foo/`) and
+     * `includeTestSuites()` / `excludeTestSuites()` (`--testsuite` /
+     * `--exclude-testsuite`). The `TestSuite\Filtered` event was
+     * deliberately not used as the signal because it does not fire for
+     * those builder-stage selections — and issue #221's primary
+     * reproducer is the CLI path-arg case.
+     */
+    private static function detectPartialRun(Configuration $configuration): PartialRunDetector
+    {
+        return PartialRunDetector::fromSignals(
+            hasCliArguments: $configuration->hasCliArguments(),
+            hasFilter: $configuration->hasFilter(),
+            hasExcludeFilter: $configuration->hasExcludeFilter(),
+            hasGroups: $configuration->hasGroups(),
+            hasExcludeGroups: $configuration->hasExcludeGroups(),
+            includeTestSuites: $configuration->includeTestSuites(),
+            excludeTestSuites: $configuration->excludeTestSuites(),
+            hasTestsCovering: $configuration->hasTestsCovering(),
+            hasTestsUsing: $configuration->hasTestsUsing(),
+            hasTestsRequiringPhpExtension: $configuration->hasTestsRequiringPhpExtension(),
+        );
     }
 
     /**
