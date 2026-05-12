@@ -1742,9 +1742,10 @@ class OpenApiSchemaConverterTest extends TestCase
     #[Test]
     public function v30_nullable_inside_property_names_is_lowered(): void
     {
-        // propertyNames values are always string schemas; the practical use
-        // case here is a `format: emial` typo or `discriminator` slip that
-        // the warning helpers should still detect at depth.
+        // propertyNames values validate object keys, which are always
+        // strings — `nullable` is semantically nonsensical here. The test
+        // intentionally exercises a degenerate input to pin the structural
+        // descent: it confirms convertInPlace reaches propertyNames at all.
         $schema = [
             'type' => 'object',
             'propertyNames' => ['type' => 'string', 'nullable' => true],
@@ -1989,14 +1990,23 @@ class OpenApiSchemaConverterTest extends TestCase
     }
 
     #[Test]
-    public function const_inside_pattern_properties_actually_rejects_wrong_value(): void
+    public function prefix_items_inside_pattern_properties_actually_rejects_tuple_violation(): void
     {
+        // End-to-end guard for the map-loop body of the new recursion
+        // (`patternProperties` values). `prefixItems` is opis-Draft-07-unknown,
+        // so an un-lowered tuple silently passes — the regression we are
+        // pinning. Cannot reuse `const` here because opis Draft 06+ enforces
+        // `const` natively, masking the silent bypass and rendering the test
+        // useless as a pre-fix regression guard.
         $runner = new SchemaValidatorRunner(20);
         $schema = OpenApiSchemaConverter::convert(
             [
                 'type' => 'object',
                 'patternProperties' => [
-                    '^x-' => ['type' => 'string', 'const' => 'frozen'],
+                    '^x-' => [
+                        'type' => 'array',
+                        'prefixItems' => [['type' => 'string'], ['type' => 'integer']],
+                    ],
                 ],
             ],
             OpenApiVersion::V3_1,
@@ -2004,18 +2014,19 @@ class OpenApiSchemaConverterTest extends TestCase
 
         $errors = $runner->validate(
             ObjectConverter::convert($schema),
-            ObjectConverter::convert((object) ['x-locale' => 'not-frozen']),
+            ObjectConverter::convert((object) ['x-tuple' => [123, 'oops']]),
         );
 
-        $this->assertNotSame([], $errors, 'const constraint inside patternProperties must be enforced');
+        $this->assertNotSame([], $errors, 'tuple ordering must be enforced inside patternProperties');
     }
 
     #[Test]
     public function convert_does_not_mutate_input_schema_with_recursion_into_pattern_properties(): void
     {
-        // Mirror the #213 immutability pin (line 845) for the newly added
-        // recursion sites: writing through &$sub references must not leak
-        // back into the caller's input array.
+        // Mirror `convert_does_not_mutate_input_schema_v31_with_sibling_items`
+        // (the #213 immutability pin) for the newly added recursion sites:
+        // writing through &$sub references must not leak back into the
+        // caller's input array.
         $schema = [
             'type' => 'object',
             'patternProperties' => [
@@ -2058,6 +2069,106 @@ class OpenApiSchemaConverterTest extends TestCase
         OpenApiSchemaConverter::convert($schema, OpenApiVersion::V3_1);
 
         $this->assertSame($original, $schema);
+    }
+
+    #[Test]
+    public function convert_does_not_mutate_input_schema_with_multi_entry_pattern_properties(): void
+    {
+        // The classic `foreach (... as &$sub)` leak only manifests with
+        // multiple entries: the by-reference alias survives the loop bound
+        // to the last element, and any later write through that name would
+        // overwrite that entry. The single-entry pin above passes even if
+        // the trailing `unset($sub)` is dropped — this multi-entry version
+        // is what genuinely guards the hazard.
+        $schema = [
+            'type' => 'object',
+            'patternProperties' => [
+                '^x-' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'secret' => ['type' => 'string', 'writeOnly' => true],
+                    ],
+                ],
+                '^y-' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'another' => ['type' => 'string', 'writeOnly' => true],
+                    ],
+                ],
+            ],
+        ];
+        $original = $schema;
+
+        OpenApiSchemaConverter::convert($schema, OpenApiVersion::V3_0, SchemaContext::Response);
+
+        $this->assertSame($original, $schema);
+    }
+
+    #[Test]
+    public function convert_does_not_mutate_input_schema_with_multi_entry_dependent_schemas(): void
+    {
+        $schema = [
+            'type' => 'object',
+            'dependentSchemas' => [
+                'creditCard' => [
+                    'properties' => [
+                        'currency' => ['type' => 'string', 'const' => 'USD'],
+                    ],
+                ],
+                'wireTransfer' => [
+                    'properties' => [
+                        'routingNumber' => ['type' => 'string', 'const' => 'US'],
+                    ],
+                ],
+            ],
+        ];
+        $original = $schema;
+
+        OpenApiSchemaConverter::convert($schema, OpenApiVersion::V3_1);
+
+        $this->assertSame($original, $schema);
+    }
+
+    #[Test]
+    public function boolean_schemas_at_new_recursion_sites_are_preserved(): void
+    {
+        // Boolean schemas (`true`/`false`) are legal at every subschema
+        // position. The `is_array` guards in the recursion block skip them
+        // by design — converting a bool would crash. Pin the no-op so a
+        // future refactor that drops the guard surfaces here.
+        $schema = [
+            'if' => true,
+            'then' => false,
+            'else' => true,
+            'contains' => false,
+            'propertyNames' => true,
+            'patternProperties' => ['^x-' => false],
+            'dependentSchemas' => ['k' => true],
+        ];
+
+        $result = OpenApiSchemaConverter::convert($schema, OpenApiVersion::V3_1);
+
+        $this->assertSame($schema, $result);
+    }
+
+    #[Test]
+    public function dependent_schemas_list_shaped_value_is_skipped(): void
+    {
+        // `dependentSchemas: { k: ["a", "b"] }` is a spec defect — that
+        // list shape belongs under the sibling `dependentRequired`
+        // keyword. The converter must not descend into it (descending a
+        // list of property-name strings as if it were a schema is the
+        // exact silent-routing class the rest of convertInPlace exists to
+        // surface). Pin the no-op via shape equality.
+        $schema = [
+            'dependentSchemas' => [
+                'creditCard' => ['billingAddress', 'cvv'],
+            ],
+        ];
+
+        $result = OpenApiSchemaConverter::convert($schema, OpenApiVersion::V3_1);
+
+        $this->assertSame($schema, $result);
     }
 
     #[Test]

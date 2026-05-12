@@ -257,31 +257,42 @@ final class OpenApiSchemaConverter
             self::convertInPlace($schema['not'], $version, $context);
         }
 
-        // Single-schema subschema positions opis Draft 07 honours
-        // (`if`/`then`/`else`, `propertyNames`, `contains`) plus
-        // `dependentSchemas` values (2019-09 keyword; opis Draft 07 ignores
-        // the outer keyword but the inner schemas are recursed for hygiene
-        // and to stay symmetric with peer positions). Without this descent
-        // (#214), OAS-only keywords (nullable, readOnly/writeOnly) and
-        // 2020-12-only keywords (prefixItems, const) nested inside these
-        // positions survive untouched into the validator — opis Draft 07
-        // then silently ignores them, the same silent-bypass class fixed
-        // by #213 for `prefixItems` siblings.
+        // Descend into the remaining subschema positions opis Draft 07
+        // honours (#214). Without this, OAS-only and 2020-12-only keywords
+        // nested inside them survive untouched into the validator and opis
+        // silently ignores them — the same silent-bypass class fixed by
+        // #213 for `prefixItems` siblings. `dependentSchemas` is a 2019-09
+        // keyword whose outer form opis Draft 07 ignores entirely; we still
+        // recurse into its values for hygiene and to stay symmetric with
+        // the other map-of-schemas positions.
         foreach (['if', 'then', 'else', 'propertyNames', 'contains'] as $key) {
             if (isset($schema[$key]) && is_array($schema[$key])) {
                 self::convertInPlace($schema[$key], $version, $context);
             }
         }
 
-        foreach (['patternProperties', 'dependentSchemas'] as $mapKey) {
-            if (isset($schema[$mapKey]) && is_array($schema[$mapKey])) {
-                foreach ($schema[$mapKey] as &$sub) {
-                    if (is_array($sub)) {
-                        self::convertInPlace($sub, $version, $context);
-                    }
+        if (isset($schema['patternProperties']) && is_array($schema['patternProperties'])) {
+            foreach ($schema['patternProperties'] as &$sub) {
+                if (is_array($sub)) {
+                    self::convertInPlace($sub, $version, $context);
                 }
-                unset($sub);
             }
+            unset($sub);
+        }
+
+        if (isset($schema['dependentSchemas']) && is_array($schema['dependentSchemas'])) {
+            foreach ($schema['dependentSchemas'] as &$sub) {
+                // A list-shaped value here belongs under `dependentRequired`
+                // (an array of property names), not `dependentSchemas` (a
+                // map of schemas). Skip descent so a sibling-keyword misuse
+                // remains a no-op rather than being silently routed through
+                // schema lowering — the same silent-defect class the rest
+                // of this method exists to surface.
+                if (is_array($sub) && !array_is_list($sub)) {
+                    self::convertInPlace($sub, $version, $context);
+                }
+            }
+            unset($sub);
         }
     }
 
