@@ -153,7 +153,9 @@ final class ResponseBodyValidator
      * Composition keywords (`oneOf` / `anyOf` / `allOf`) are intentionally
      * NOT walked — coercion only fires for the unambiguous case so a real
      * type-mismatch error still surfaces for `type: array` schemas where the
-     * empty-array body is genuinely wrong.
+     * empty-array body is genuinely wrong. Intentional duplicate of the
+     * same-named helper on the request-side body validator; if you change
+     * the scope here, change it there too.
      *
      * @param array<string, mixed> $schema
      */
