@@ -7,16 +7,16 @@ namespace Studio\OpenApiContractTesting\Tests\Unit\Internal;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
-use Studio\OpenApiContractTesting\Internal\PartialRunDetector;
+use Studio\OpenApiContractTesting\Internal\PartialRunDecision;
 
-final class PartialRunDetectorTest extends TestCase
+final class PartialRunDecisionTest extends TestCase
 {
     /**
      * @return iterable<string, array{0: array<string, bool|list<non-empty-string>>, 1: string}>
      */
     public static function providePartial_when_any_single_signal_activeCases(): iterable
     {
-        yield 'cli path args' => [['hasCliArguments' => true], 'test path'];
+        yield 'cli path args' => [['hasCliArguments' => true], 'test paths'];
         yield '--filter' => [['hasFilter' => true], '--filter'];
         yield '--exclude-filter' => [['hasExcludeFilter' => true], '--exclude-filter'];
         yield '--group' => [['hasGroups' => true], '--group'];
@@ -29,9 +29,9 @@ final class PartialRunDetectorTest extends TestCase
     }
 
     #[Test]
-    public function full_run_when_no_signals_set(): void
+    public function returns_null_when_no_signals_set(): void
     {
-        $detector = PartialRunDetector::fromSignals(
+        $decision = PartialRunDecision::fromSignals(
             hasCliArguments: false,
             hasFilter: false,
             hasExcludeFilter: false,
@@ -44,8 +44,7 @@ final class PartialRunDetectorTest extends TestCase
             hasTestsRequiringPhpExtension: false,
         );
 
-        $this->assertFalse($detector->isPartial);
-        $this->assertNull($detector->reason);
+        $this->assertNull($decision);
     }
 
     /**
@@ -66,7 +65,7 @@ final class PartialRunDetectorTest extends TestCase
     #[DataProvider('providePartial_when_any_single_signal_activeCases')]
     public function partial_when_any_single_signal_active(array $signal, string $expectedReasonFragment): void
     {
-        $detector = PartialRunDetector::fromSignals(
+        $decision = PartialRunDecision::fromSignals(
             hasCliArguments: $signal['hasCliArguments'] ?? false,
             hasFilter: $signal['hasFilter'] ?? false,
             hasExcludeFilter: $signal['hasExcludeFilter'] ?? false,
@@ -79,17 +78,16 @@ final class PartialRunDetectorTest extends TestCase
             hasTestsRequiringPhpExtension: $signal['hasTestsRequiringPhpExtension'] ?? false,
         );
 
-        $this->assertTrue($detector->isPartial);
-        $this->assertNotNull($detector->reason);
-        $this->assertStringContainsString($expectedReasonFragment, $detector->reason);
+        $this->assertNotNull($decision);
+        $this->assertStringContainsString($expectedReasonFragment, $decision->reason);
     }
 
     #[Test]
     public function reason_lists_all_active_signals_in_stable_order(): void
     {
         // 複数の signal を立てたとき, reason に全部含まれることを確認。
-        // 順序は detector の出力が安定 (declaration order) であることをピンする。
-        $detector = PartialRunDetector::fromSignals(
+        // 順序は decision の出力が安定 (declaration order) であることをピンする。
+        $decision = PartialRunDecision::fromSignals(
             hasCliArguments: true,
             hasFilter: true,
             hasExcludeFilter: false,
@@ -102,19 +100,18 @@ final class PartialRunDetectorTest extends TestCase
             hasTestsRequiringPhpExtension: false,
         );
 
-        $this->assertTrue($detector->isPartial);
-        $this->assertNotNull($detector->reason);
-        $this->assertStringContainsString('test path', $detector->reason);
-        $this->assertStringContainsString('--filter', $detector->reason);
-        $this->assertStringContainsString('--group', $detector->reason);
-        $this->assertStringContainsString('--testsuite', $detector->reason);
+        $this->assertNotNull($decision);
+        $this->assertStringContainsString('test paths', $decision->reason);
+        $this->assertStringContainsString('--filter', $decision->reason);
+        $this->assertStringContainsString('--group', $decision->reason);
+        $this->assertStringContainsString('--testsuite', $decision->reason);
     }
 
     #[Test]
     public function empty_testsuite_arrays_are_treated_as_no_signal(): void
     {
         // includeTestSuites / excludeTestSuites は array なので, 空配列 = signal 無し。
-        $detector = PartialRunDetector::fromSignals(
+        $decision = PartialRunDecision::fromSignals(
             hasCliArguments: false,
             hasFilter: false,
             hasExcludeFilter: false,
@@ -127,6 +124,18 @@ final class PartialRunDetectorTest extends TestCase
             hasTestsRequiringPhpExtension: false,
         );
 
-        $this->assertFalse($detector->isPartial);
+        $this->assertNull($decision);
+    }
+
+    #[Test]
+    public function partial_factory_carries_reason_verbatim(): void
+    {
+        // The `partial()` factory is the direct path used by tests that
+        // want to pin a specific reason without enumerating every signal.
+        // It must round-trip the reason byte-for-byte so the subscriber's
+        // WARNING contains exactly what callers asked for.
+        $decision = PartialRunDecision::partial('--filter');
+
+        $this->assertSame('--filter', $decision->reason);
     }
 }

@@ -12,7 +12,6 @@ use PHPUnit\Runner\Extension\Extension;
 use PHPUnit\Runner\Extension\Facade;
 use PHPUnit\Runner\Extension\ParameterCollection;
 use PHPUnit\TextUI\Configuration\Configuration;
-use PHPUnit\TextUI\TestSuiteFilterProcessor;
 use Studio\OpenApiContractTesting\Coverage\InvalidCoverageOutputPathException;
 use Studio\OpenApiContractTesting\Coverage\InvalidThresholdConfigurationException;
 use Studio\OpenApiContractTesting\Exception\EnumBindingException;
@@ -21,7 +20,7 @@ use Studio\OpenApiContractTesting\Exception\EnumDriftException;
 use Studio\OpenApiContractTesting\Exception\InvalidOpenApiSpecException;
 use Studio\OpenApiContractTesting\Exception\SpecFileNotFoundException;
 use Studio\OpenApiContractTesting\Internal\EnumScanner;
-use Studio\OpenApiContractTesting\Internal\PartialRunDetector;
+use Studio\OpenApiContractTesting\Internal\PartialRunDecision;
 use Studio\OpenApiContractTesting\Schema\EnumDriftAsserter;
 use Studio\OpenApiContractTesting\Schema\EnumDriftReport;
 use Studio\OpenApiContractTesting\Spec\OpenApiSpecLoader;
@@ -38,9 +37,12 @@ use function getcwd;
 use function getenv;
 use function implode;
 use function in_array;
+use function is_array;
 use function is_dir;
 use function is_numeric;
+use function is_string;
 use function is_writable;
+use function method_exists;
 use function sprintf;
 use function str_starts_with;
 use function sys_get_temp_dir;
@@ -131,7 +133,7 @@ final class OpenApiCoverageExtension implements Extension
         ?Facade $facade,
         ParameterCollection $parameters,
         ?string $githubSummaryPath,
-        ?PartialRunDetector $partialRun = null,
+        ?PartialRunDecision $partialRun = null,
     ): void {
         // Issue #170: secondary base path used only for
         // #[BoundToOpenApiEnum] resolution. Read independently of
@@ -243,34 +245,84 @@ final class OpenApiCoverageExtension implements Extension
     }
 
     /**
-     * Issue #221: read PHPUnit's structured selection signals off
-     * {@see Configuration} so the subscriber can skip persistent writes
-     * on partial runs. The set mirrors {@see TestSuiteFilterProcessor::process()}'s
-     * own filter detection (`hasFilter` / `hasExcludeFilter` / `hasGroups` /
-     * `hasExcludeGroups` / `hasTestsCovering` / `hasTestsUsing` /
-     * `hasTestsRequiringPhpExtension`) plus the TestSuiteBuilder-stage
-     * selections that bypass the filter pipeline: `hasCliArguments()`
-     * (positional path args like `phpunit tests/Feature/Foo/`) and
-     * `includeTestSuites()` / `excludeTestSuites()` (`--testsuite` /
-     * `--exclude-testsuite`). The `TestSuite\Filtered` event was
-     * deliberately not used as the signal because it does not fire for
-     * those builder-stage selections — and issue #221's primary
-     * reproducer is the CLI path-arg case.
+     * Issue #221: read PHPUnit's selection signals off the
+     * {@see Configuration} object so the subscriber can skip persistent
+     * writes on partial runs. The signal set, rationale, and why the
+     * `TestSuite\Filtered` event is not used are documented on
+     * {@see PartialRunDecision} — keeping that explanation in one place.
      */
-    private static function detectPartialRun(Configuration $configuration): PartialRunDetector
+    private static function detectPartialRun(Configuration $configuration): ?PartialRunDecision
     {
-        return PartialRunDetector::fromSignals(
+        return PartialRunDecision::fromSignals(
             hasCliArguments: $configuration->hasCliArguments(),
             hasFilter: $configuration->hasFilter(),
             hasExcludeFilter: $configuration->hasExcludeFilter(),
             hasGroups: $configuration->hasGroups(),
             hasExcludeGroups: $configuration->hasExcludeGroups(),
-            includeTestSuites: $configuration->includeTestSuites(),
-            excludeTestSuites: $configuration->excludeTestSuites(),
+            includeTestSuites: self::readTestSuiteList($configuration, 'includeTestSuites', 'includeTestSuite'),
+            excludeTestSuites: self::readTestSuiteList($configuration, 'excludeTestSuites', 'excludeTestSuite'),
             hasTestsCovering: $configuration->hasTestsCovering(),
             hasTestsUsing: $configuration->hasTestsUsing(),
             hasTestsRequiringPhpExtension: $configuration->hasTestsRequiringPhpExtension(),
         );
+    }
+
+    /**
+     * Cross-version reader for the `--testsuite` / `--exclude-testsuite`
+     * selection. PHPUnit 13 exposes only the plural array form, PHPUnit
+     * 11 exposes only the singular comma-joined string form, and
+     * PHPUnit 12 happens to ship both — so picking one at compile time
+     * would break the matrix CI (PHP 8.2/8.3/8.4 × PHPUnit 11/12/13).
+     * The dynamic method call also avoids a static analysis error on
+     * whichever PHPUnit version PHPStan is resolving against locally.
+     *
+     * @return list<non-empty-string>
+     */
+    private static function readTestSuiteList(
+        Configuration $configuration,
+        string $pluralMethod,
+        string $singularMethod,
+    ): array {
+        // Dynamic method calls deliberately bypass PHPStan's static
+        // resolution against whichever PHPUnit version it happens to be
+        // analysing locally. We narrow the `mixed` result back to
+        // `list<non-empty-string>` via runtime checks rather than `@var`
+        // (the project's PHPStan policy forbids `@var` type overrides).
+        if (method_exists($configuration, $pluralMethod)) {
+            $plural = $configuration->{$pluralMethod}();
+
+            return self::coerceToNonEmptyStringList($plural);
+        }
+
+        $singular = $configuration->{$singularMethod}();
+        if (!is_string($singular) || $singular === '') {
+            return [];
+        }
+
+        return self::coerceToNonEmptyStringList(explode(',', $singular));
+    }
+
+    /**
+     * Filter an arbitrary value down to `list<non-empty-string>` for
+     * `readTestSuiteList()`. Defensive: PHPUnit's contracts already
+     * guarantee strings, but funneling the result through a single
+     * narrowing helper keeps PHPStan happy without resorting to `@var`.
+     *
+     * @return list<non-empty-string>
+     */
+    private static function coerceToNonEmptyStringList(mixed $value): array
+    {
+        if (!is_array($value)) {
+            return [];
+        }
+        $list = [];
+        foreach ($value as $entry) {
+            if (is_string($entry) && $entry !== '') {
+                $list[] = $entry;
+            }
+        }
+
+        return $list;
     }
 
     /**

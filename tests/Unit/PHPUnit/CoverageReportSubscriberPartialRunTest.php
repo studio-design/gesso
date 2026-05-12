@@ -9,7 +9,7 @@ use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use ReflectionClass;
 use Studio\OpenApiContractTesting\Coverage\OpenApiCoverageTracker;
-use Studio\OpenApiContractTesting\Internal\PartialRunDetector;
+use Studio\OpenApiContractTesting\Internal\PartialRunDecision;
 use Studio\OpenApiContractTesting\PHPUnit\ConsoleOutput;
 use Studio\OpenApiContractTesting\PHPUnit\CoverageReportSubscriber;
 use Studio\OpenApiContractTesting\Spec\OpenApiSpecLoader;
@@ -31,11 +31,11 @@ use function unlink;
 
 /**
  * Pins the issue #221 contract on {@see CoverageReportSubscriber}: when
- * a {@see PartialRunDetector} is supplied with `isPartial=true`, the
- * subscriber must skip every persistent file write (output_file,
- * junit_output, json_output, html_output, GITHUB_STEP_SUMMARY) and
- * emit a single stderr WARNING enumerating the skipped targets.
- * Console rendering and the threshold gate must remain unaffected.
+ * a non-null {@see PartialRunDecision} is supplied, the subscriber must
+ * skip every persistent file write (output_file, junit_output,
+ * json_output, html_output, GITHUB_STEP_SUMMARY) and emit a single
+ * stderr WARNING enumerating the skipped targets. Console rendering
+ * and the threshold gate must remain unaffected.
  */
 class CoverageReportSubscriberPartialRunTest extends TestCase
 {
@@ -265,38 +265,49 @@ class CoverageReportSubscriberPartialRunTest extends TestCase
     }
 
     #[Test]
-    public function full_run_behavior_unchanged_when_partial_run_null(): void
+    public function partial_run_under_paratest_worker_still_writes_sidecar(): void
     {
-        // Backwards-compat smoke: omitting the partialRun parameter means
-        // pre-#221 behavior — output_file is written, no WARNING.
+        // Worker-mode (`TEST_TOKEN`) short-circuits BEFORE the partial-run
+        // skip path, so sidecars must always be written even on `--filter`
+        // shards. Inverting this ordering would silently under-count
+        // coverage by N workers' worth of data and the merge CLI would
+        // have nothing to aggregate. Pin the ordering here so a future
+        // refactor that lifts the partial-run check into `notify()` cannot
+        // accidentally break paratest.
         $this->recordOneEndpoint();
-        $outputFile = $this->tmpDir . '/coverage.md';
+        putenv('TEST_TOKEN=3');
 
         $stderr = '';
         $subscriber = new CoverageReportSubscriber(
             specs: ['petstore-3.0'],
-            outputFile: $outputFile,
+            outputFile: $this->tmpDir . '/coverage.md',
             consoleOutput: ConsoleOutput::DEFAULT,
             githubSummaryPath: null,
             stderrWriter: static function (string $msg) use (&$stderr): void {
                 $stderr .= $msg;
             },
             sidecarDir: $this->tmpDir,
+            partialRun: $this->partial('--filter'),
         );
 
         ob_start();
         $subscriber->notify($this->fakeExecutionFinished());
-        ob_get_clean();
+        $stdout = (string) ob_get_clean();
 
-        $this->assertFileExists($outputFile);
-        $this->assertSame('', $stderr);
+        $sidecars = glob($this->tmpDir . '/part-3-*.json') ?: [];
+        $this->assertCount(1, $sidecars, 'worker mode must write its sidecar even under a partial run');
+        $this->assertSame('', $stdout, 'worker mode must not render to stdout');
+        $this->assertSame('', $stderr, 'partial-run WARNING must not fire in worker mode (the merge CLI is the gate)');
+        $this->assertFileDoesNotExist($this->tmpDir . '/coverage.md', 'worker mode never writes output_file');
     }
 
     #[Test]
-    public function full_run_detector_does_not_skip_writes(): void
+    public function full_run_behavior_unchanged_when_partial_run_null(): void
     {
-        // A non-null detector with isPartial=false (i.e. an explicit full
-        // run) must behave identically to the null case: write everything.
+        // Backwards-compat smoke: omitting the partialRun parameter (or
+        // passing null, which is the full-run signal under the new
+        // `?PartialRunDecision` API) means pre-#221 behavior — output_file
+        // is written, no WARNING.
         $this->recordOneEndpoint();
         $outputFile = $this->tmpDir . '/coverage.md';
 
@@ -310,18 +321,7 @@ class CoverageReportSubscriberPartialRunTest extends TestCase
                 $stderr .= $msg;
             },
             sidecarDir: $this->tmpDir,
-            partialRun: PartialRunDetector::fromSignals(
-                hasCliArguments: false,
-                hasFilter: false,
-                hasExcludeFilter: false,
-                hasGroups: false,
-                hasExcludeGroups: false,
-                includeTestSuites: [],
-                excludeTestSuites: [],
-                hasTestsCovering: false,
-                hasTestsUsing: false,
-                hasTestsRequiringPhpExtension: false,
-            ),
+            partialRun: null,
         );
 
         ob_start();
@@ -345,23 +345,13 @@ class CoverageReportSubscriberPartialRunTest extends TestCase
     }
 
     /**
-     * Build a {@see PartialRunDetector} that flags the given signal as
-     * active. Reused across tests to keep the partial-run payload short.
+     * Build a {@see PartialRunDecision} carrying the given reason
+     * fragment. Tests use this to keep the partial-run payload short and
+     * to pin the exact reason that the subscriber's WARNING surfaces.
      */
-    private function partial(string $signal): PartialRunDetector
+    private function partial(string $reason): PartialRunDecision
     {
-        return PartialRunDetector::fromSignals(
-            hasCliArguments: $signal === 'test paths',
-            hasFilter: $signal === '--filter',
-            hasExcludeFilter: false,
-            hasGroups: $signal === '--group',
-            hasExcludeGroups: false,
-            includeTestSuites: [],
-            excludeTestSuites: [],
-            hasTestsCovering: false,
-            hasTestsUsing: false,
-            hasTestsRequiringPhpExtension: false,
-        );
+        return PartialRunDecision::partial($reason);
     }
 
     /**

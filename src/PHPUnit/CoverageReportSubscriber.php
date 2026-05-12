@@ -21,7 +21,7 @@ use Studio\OpenApiContractTesting\Coverage\MarkdownCoverageRenderer;
 use Studio\OpenApiContractTesting\Coverage\OpenApiCoverageTracker;
 use Studio\OpenApiContractTesting\Exception\InvalidOpenApiSpecException;
 use Studio\OpenApiContractTesting\Exception\SpecFileNotFoundException;
-use Studio\OpenApiContractTesting\Internal\PartialRunDetector;
+use Studio\OpenApiContractTesting\Internal\PartialRunDecision;
 use Studio\OpenApiContractTesting\Spec\OpenApiSpecLoader;
 use Throwable;
 
@@ -58,13 +58,14 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
      * @param bool $minCoverageStrict Treat threshold misses as exit non-zero (default warn-only).
      * @param null|callable(int): void $exitHandler Test seam for the strict-miss exit. Defaults to native `exit()`
      *                                              so production behavior matches PHPUnit's own coverage gate.
-     * @param null|PartialRunDetector $partialRun Issue #221: when `isPartial=true`, the subscriber skips every
-     *                                            persistent file write (output_file, junit_output, json_output,
-     *                                            html_output, GITHUB_STEP_SUMMARY) and emits one stderr WARNING
-     *                                            listing the skipped targets. Console rendering and the threshold
-     *                                            gate are unaffected — they read from in-memory state and don't
-     *                                            risk overwriting a committed doc with subset data. `null` (the
-     *                                            backwards-compat default) means full-run behavior.
+     * @param null|PartialRunDecision $partialRun Issue #221: when non-null (the run is partial), the subscriber
+     *                                            skips every persistent file write (output_file, junit_output,
+     *                                            json_output, html_output, GITHUB_STEP_SUMMARY) and emits one
+     *                                            stderr WARNING listing the skipped targets. Console rendering
+     *                                            and the threshold gate are unaffected — they read in-memory
+     *                                            state and don't risk overwriting a committed doc with subset
+     *                                            data. `null` (the backwards-compat default) means full-run
+     *                                            behavior.
      */
     public function __construct(
         private array $specs,
@@ -80,7 +81,7 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
         private ?string $junitOutput = null,
         private ?string $jsonOutput = null,
         private ?string $htmlOutput = null,
-        private ?PartialRunDetector $partialRun = null,
+        private ?PartialRunDecision $partialRun = null,
     ) {}
 
     /** @phpcsSuppress SlevomatCodingStandard.Functions.UnusedParameter.UnusedParameter */
@@ -311,8 +312,8 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
      */
     private function writeReports(array $results): void
     {
-        if ($this->partialRun !== null && $this->partialRun->isPartial) {
-            $this->emitPartialRunSkipWarning();
+        if ($this->partialRun !== null) {
+            $this->emitPartialRunSkipWarning($this->partialRun);
 
             // Skip every persistent artifact — output_file, junit_output,
             // json_output, html_output, AND the GITHUB_STEP_SUMMARY append
@@ -414,7 +415,7 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
      * (a `--filter` run without `output_file` etc. has nothing to skip and
      * a WARNING would be noise).
      */
-    private function emitPartialRunSkipWarning(): void
+    private function emitPartialRunSkipWarning(PartialRunDecision $decision): void
     {
         $targets = [];
         if ($this->outputFile !== null) {
@@ -437,17 +438,10 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
             return;
         }
 
-        // `partialRun` is guaranteed non-null here — `writeReports()` only
-        // dispatches to this method inside an `isPartial === true` branch.
-        // The `?? '…'` keeps the message readable if the detector ever
-        // produces an `isPartial=true` result with a null `reason`
-        // (currently it doesn't by construction, but the field is typed
-        // `?string` so PHPStan can't prove the invariant).
-        $reason = $this->partialRun->reason ?? 'a partial test selection';
         $this->writeStderr(sprintf(
             "[OpenAPI Coverage] WARNING: Skipping %s write because PHPUnit is running a partial subset (%s). Coverage reports are not written on partial runs to avoid overwriting persistent docs with subset data. Re-run the full suite to refresh.\n",
             implode(', ', $targets),
-            $reason,
+            $decision->reason,
         ));
     }
 
