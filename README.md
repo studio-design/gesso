@@ -141,7 +141,7 @@ To validate every response automatically, set `'auto_assert' => true` and drop t
 | HTML coverage output | [`docs/coverage-html-output.md`](docs/coverage-html-output.md) |
 | JSON coverage output schema | [`docs/coverage-json-schema.md`](docs/coverage-json-schema.md) |
 | Parallel test runners (paratest / Pest `--parallel`) | [`docs/parallel.md`](docs/parallel.md) |
-| CI integration (GitHub Actions, PR comments, output formats, partial-run handling) | [`docs/ci.md`](docs/ci.md) |
+| CI integration (GitHub Actions, PR comments, output formats) | [`docs/ci.md`](docs/ci.md) |
 | API reference (`OpenApiResponseValidator`, `OpenApiSpecLoader`, `OpenApiCoverageTracker`) | [`docs/api-reference.md`](docs/api-reference.md) |
 | Supported features, known limitations, warning channel | [`docs/supported-features.md`](docs/supported-features.md) |
 | Versioning policy & support matrix | [`docs/versioning.md`](docs/versioning.md) |
