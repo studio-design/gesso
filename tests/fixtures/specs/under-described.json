@@ -162,6 +162,112 @@
           }
         }
       }
+    },
+    "/teams/{id}": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "ok; nested object whose `created_at` is always returned but optional in spec",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["id", "data"],
+                  "properties": {
+                    "id":   { "type": "string" },
+                    "data": {
+                      "type": "object",
+                      "required": ["name"],
+                      "properties": {
+                        "name":       { "type": "string" },
+                        "created_at": { "type": "string", "format": "date-time" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/catalog": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "ok; array of objects with per-item under-description",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["items"],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": ["id"],
+                        "properties": {
+                          "id":         { "type": "string" },
+                          "name":       { "type": "string" },
+                          "created_at": { "type": "string", "format": "date-time" }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/deep": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "ok; allOf-rooted with nested meta.* and rows[*]",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "type": "object",
+                      "required": ["meta"],
+                      "properties": {
+                        "meta": {
+                          "type": "object",
+                          "required": ["page"],
+                          "properties": {
+                            "page":  { "type": "integer" },
+                            "total": { "type": "integer" }
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "rows": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": ["id"],
+                            "properties": {
+                              "id":    { "type": "string" },
+                              "label": { "type": "string" }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
     }
   }
 }

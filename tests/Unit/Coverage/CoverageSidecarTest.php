@@ -157,7 +157,7 @@ class CoverageSidecarTest extends TestCase
             'application/json',
             schemaValidated: true,
         );
-        StrictRequiredTracker::record('petstore-3.0', 'GET', '/v1/pets', '200', 'application/json', ['id', 'name', 'tag']);
+        StrictRequiredTracker::record('petstore-3.0', 'GET', '/v1/pets', '200', 'application/json', ['/' => ['id', 'name', 'tag']]);
         $envelopeA = CoverageSidecarEnvelope::build(
             OpenApiCoverageTracker::exportState(),
             StrictRequiredTracker::exportState(),
@@ -174,7 +174,7 @@ class CoverageSidecarTest extends TestCase
             'application/json',
             schemaValidated: true,
         );
-        StrictRequiredTracker::record('petstore-3.0', 'GET', '/v1/pets', '200', 'application/json', ['id', 'name']);
+        StrictRequiredTracker::record('petstore-3.0', 'GET', '/v1/pets', '200', 'application/json', ['/' => ['id', 'name']]);
         $envelopeB = CoverageSidecarEnvelope::build(
             OpenApiCoverageTracker::exportState(),
             StrictRequiredTracker::exportState(),
@@ -200,7 +200,7 @@ class CoverageSidecarTest extends TestCase
         $row = $observed['GET /v1/pets']['200:application/json'];
         $this->assertSame(2, $row['hits']);
         // Intersection: A had [id, name, tag], B had [id, name] → [id, name].
-        $this->assertSame(['id', 'name'], $row['alwaysPresent']);
+        $this->assertSame(['/' => ['id', 'name']], $row['pointers']);
     }
 
     #[Test]

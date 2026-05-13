@@ -1223,7 +1223,7 @@ class CoverageMergeCommandTest extends TestCase
             '/signed-url',
             '200',
             'application/json',
-            ['expires'],
+            ['/' => ['expires']],
         );
         $envelope = CoverageSidecarEnvelope::build(
             OpenApiCoverageTracker::exportState(),
@@ -1518,7 +1518,8 @@ class CoverageMergeCommandTest extends TestCase
      * a response that always returned `expires`/`signed_url`/`url` even
      * though the spec declares them optional.
      *
-     * @param list<string> $alwaysPresent
+     * @param list<string> $alwaysPresent top-level keys present at the root
+     *                                    pointer for this worker's observation
      */
     private function writeStrictRequiredWorkerSidecar(string $token, array $alwaysPresent): void
     {
@@ -1538,7 +1539,7 @@ class CoverageMergeCommandTest extends TestCase
             '/signed-url',
             '200',
             'application/json',
-            $alwaysPresent,
+            ['/' => $alwaysPresent],
         );
         $envelope = CoverageSidecarEnvelope::build(
             OpenApiCoverageTracker::exportState(),

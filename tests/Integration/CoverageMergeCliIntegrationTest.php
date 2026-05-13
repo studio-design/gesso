@@ -268,7 +268,7 @@ class CoverageMergeCliIntegrationTest extends TestCase
             '/signed-url',
             '200',
             'application/json',
-            ['expires', 'signed_url', 'url'],
+            ['/' => ['expires', 'signed_url', 'url']],
         );
         CoverageSidecarWriter::write(
             $this->sidecarDir,

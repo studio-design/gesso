@@ -1074,7 +1074,7 @@ class OpenApiCoverageExtensionTest extends TestCase
     #[Test]
     public function strict_required_warn_resets_tracker_at_bootstrap(): void
     {
-        StrictRequiredTracker::record('refs-valid', 'GET', '/leftover', '200', 'application/json', ['stale']);
+        StrictRequiredTracker::record('refs-valid', 'GET', '/leftover', '200', 'application/json', ['/' => ['stale']]);
 
         $extension = new OpenApiCoverageExtension();
         $parameters = ParameterCollection::fromArray([

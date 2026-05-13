@@ -13,7 +13,7 @@ use Studio\OpenApiContractTesting\Validation\Strict\StrictRequiredAsserter;
 use Studio\OpenApiContractTesting\Validation\Strict\StrictRequiredMode;
 use Studio\OpenApiContractTesting\Validation\Strict\StrictRequiredTracker;
 
-class StrictRequiredValidatorIntegrationTest extends TestCase
+final class StrictRequiredValidatorIntegrationTest extends TestCase
 {
     private OpenApiResponseValidator $validator;
 
@@ -162,12 +162,12 @@ class StrictRequiredValidatorIntegrationTest extends TestCase
     }
 
     #[Test]
-    public function list_body_is_not_recorded(): void
+    public function list_body_records_star_pointer_observations(): void
     {
-        // /items returns `type: array, items: {...}`. Recording a list-shape
-        // body would collapse a sibling object observation's intersection to
-        // [], so the validator skips list-shape bodies even when conformance
-        // passes. `required` only makes sense on object schemas.
+        // /items returns `type: array, items: { required: ["id"], ... }`.
+        // Post-#227 the validator walks into the list and records `[*]`
+        // pointers for the element-shape. Clean case: every element has
+        // exactly `id`, so no drift is reported.
         $this->validator->validate(
             'under-described',
             'GET',
@@ -177,7 +177,131 @@ class StrictRequiredValidatorIntegrationTest extends TestCase
             'application/json',
         );
 
-        $this->assertSame([], StrictRequiredTracker::getObservations('under-described'));
+        $observations = StrictRequiredTracker::getObservations('under-described');
+        $this->assertSame(
+            ['hits' => 1, 'pointers' => ['[*]' => ['id']]],
+            $observations['GET /items']['200:application/json'],
+        );
+        $this->assertSame([], StrictRequiredAsserter::detectAll(StrictRequiredMode::Warn));
+    }
+
+    #[Test]
+    public function list_body_under_described_per_element_is_reported(): void
+    {
+        // Under-described case: each /items element returns `id`+`name`,
+        // but spec only requires `id`. Expect a drift report at `[*]`.
+        $this->validator->validate(
+            'under-described',
+            'GET',
+            '/items',
+            200,
+            [['id' => '1', 'name' => 'A'], ['id' => '2', 'name' => 'B']],
+            'application/json',
+        );
+        $this->validator->validate(
+            'under-described',
+            'GET',
+            '/items',
+            200,
+            [['id' => '3', 'name' => 'C']],
+            'application/json',
+        );
+
+        $reports = StrictRequiredAsserter::detectAll(StrictRequiredMode::Warn);
+        $this->assertCount(1, $reports);
+        $this->assertSame('[*]', $reports[0]->schemaPointer);
+        $this->assertSame(['name'], $reports[0]->missingFromRequired);
+    }
+
+    #[Test]
+    public function nested_object_property_drift_is_recorded(): void
+    {
+        // /teams/{id} → data.required=["name"], impl always returns
+        // created_at too. Walker records `/data` → ['created_at','name'],
+        // asserter diffs against ['name'] and reports `created_at`.
+        $this->validator->validate(
+            'under-described',
+            'GET',
+            '/teams/{id}',
+            200,
+            [
+                'id' => '1',
+                'data' => ['name' => 'A', 'created_at' => '2026-01-01T00:00:00Z'],
+            ],
+            'application/json',
+        );
+        $this->validator->validate(
+            'under-described',
+            'GET',
+            '/teams/{id}',
+            200,
+            [
+                'id' => '2',
+                'data' => ['name' => 'B', 'created_at' => '2026-02-01T00:00:00Z'],
+            ],
+            'application/json',
+        );
+
+        $reports = StrictRequiredAsserter::detectAll(StrictRequiredMode::Warn);
+        $this->assertCount(1, $reports);
+        $this->assertSame('/data', $reports[0]->schemaPointer);
+        $this->assertSame(['created_at'], $reports[0]->missingFromRequired);
+        $this->assertSame(2, $reports[0]->hits);
+    }
+
+    #[Test]
+    public function array_of_objects_under_envelope_is_recorded(): void
+    {
+        // /catalog has items.required=["id"]; impl always returns
+        // name+created_at per item. Walker records `/items[*]` with the
+        // intersection of element keys.
+        $this->validator->validate(
+            'under-described',
+            'GET',
+            '/catalog',
+            200,
+            [
+                'items' => [
+                    ['id' => '1', 'name' => 'A', 'created_at' => '2026-01-01T00:00:00Z'],
+                    ['id' => '2', 'name' => 'B', 'created_at' => '2026-02-01T00:00:00Z'],
+                ],
+            ],
+            'application/json',
+        );
+
+        $reports = StrictRequiredAsserter::detectAll(StrictRequiredMode::Warn);
+        $this->assertCount(1, $reports);
+        $this->assertSame('/items[*]', $reports[0]->schemaPointer);
+        $this->assertSame(['created_at', 'name'], $reports[0]->missingFromRequired);
+    }
+
+    #[Test]
+    public function empty_nested_array_drops_star_pointer_across_observations(): void
+    {
+        // obs#1 has items=[{id,name}], obs#2 has items=[]. The empty array
+        // does not contribute a `[*]` pointer to obs#2, so the tracker's
+        // "absence drops the pointer" rule kills the [*] row entirely.
+        $this->validator->validate(
+            'under-described',
+            'GET',
+            '/catalog',
+            200,
+            ['items' => [['id' => '1', 'name' => 'A']]],
+            'application/json',
+        );
+        $this->validator->validate(
+            'under-described',
+            'GET',
+            '/catalog',
+            200,
+            ['items' => []],
+            'application/json',
+        );
+
+        $observations = StrictRequiredTracker::getObservations('under-described');
+        $row = $observations['GET /catalog']['200:application/json'];
+        $this->assertSame(2, $row['hits']);
+        $this->assertSame(['/' => ['items']], $row['pointers']);
     }
 
     #[Test]
@@ -231,7 +355,7 @@ class StrictRequiredValidatorIntegrationTest extends TestCase
         $observations = StrictRequiredTracker::getObservations('under-described');
         $this->assertArrayHasKey('PUT /signed-url', $observations);
         $this->assertSame(
-            ['hits' => 1, 'alwaysPresent' => []],
+            ['hits' => 1, 'pointers' => ['/' => []]],
             $observations['PUT /signed-url']['200:application/json'],
         );
     }

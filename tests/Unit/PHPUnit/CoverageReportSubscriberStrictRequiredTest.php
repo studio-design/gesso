@@ -75,7 +75,7 @@ class CoverageReportSubscriberStrictRequiredTest extends TestCase
     #[Test]
     public function off_mode_does_not_invoke_asserter(): void
     {
-        StrictRequiredTracker::record(self::SPEC_NAME, 'PUT', '/signed-url', '200', 'application/json', ['expires', 'signed_url', 'url']);
+        StrictRequiredTracker::record(self::SPEC_NAME, 'PUT', '/signed-url', '200', 'application/json', ['/' => ['expires', 'signed_url', 'url']]);
 
         $stderr = '';
         $subscriber = $this->makeSubscriber(
@@ -95,7 +95,7 @@ class CoverageReportSubscriberStrictRequiredTest extends TestCase
     #[Test]
     public function warn_mode_writes_diagnostic_but_does_not_exit(): void
     {
-        StrictRequiredTracker::record(self::SPEC_NAME, 'PUT', '/signed-url', '200', 'application/json', ['expires', 'signed_url', 'url']);
+        StrictRequiredTracker::record(self::SPEC_NAME, 'PUT', '/signed-url', '200', 'application/json', ['/' => ['expires', 'signed_url', 'url']]);
 
         $stderr = '';
         $exitCode = null;
@@ -116,9 +116,39 @@ class CoverageReportSubscriberStrictRequiredTest extends TestCase
     }
 
     #[Test]
+    public function warn_mode_message_contains_nested_pointer_for_array_element_drift(): void
+    {
+        // Pin the renderer's nested-pointer surface: when the asserter
+        // generates a drift at `/items[*]`, the stderr block must include
+        // `application/json:/items[*]` and the missing keys, so reviewers
+        // can grep CI output for the specific under-described path.
+        StrictRequiredTracker::record(self::SPEC_NAME, 'GET', '/catalog', '200', 'application/json', [
+            '/' => ['items'],
+            '/items[*]' => ['created_at', 'id'],
+        ]);
+
+        $stderr = '';
+        $exitCode = null;
+        $subscriber = $this->makeSubscriber(
+            mode: StrictRequiredMode::Warn,
+            stderr: $stderr,
+            exitCode: $exitCode,
+        );
+
+        ob_start();
+        $subscriber->notify($this->fakeExecutionFinished());
+        ob_get_clean();
+
+        $this->assertNull($exitCode);
+        $this->assertStringContainsString('[OpenAPI Strict Required] WARNING', $stderr);
+        $this->assertStringContainsString('GET /catalog  200  application/json:/items[*]', $stderr);
+        $this->assertStringContainsString('created_at', $stderr);
+    }
+
+    #[Test]
     public function fail_mode_invokes_exit_handler_with_one(): void
     {
-        StrictRequiredTracker::record(self::SPEC_NAME, 'PUT', '/signed-url', '200', 'application/json', ['expires', 'signed_url', 'url']);
+        StrictRequiredTracker::record(self::SPEC_NAME, 'PUT', '/signed-url', '200', 'application/json', ['/' => ['expires', 'signed_url', 'url']]);
 
         $stderr = '';
         $exitCode = null;
@@ -139,7 +169,7 @@ class CoverageReportSubscriberStrictRequiredTest extends TestCase
     #[Test]
     public function no_drift_in_warn_mode_emits_nothing(): void
     {
-        StrictRequiredTracker::record(self::SPEC_NAME, 'GET', '/users/{id}', '200', 'application/json', ['id', 'name']);
+        StrictRequiredTracker::record(self::SPEC_NAME, 'GET', '/users/{id}', '200', 'application/json', ['/' => ['id', 'name']]);
 
         $stderr = '';
         $exitCode = null;
@@ -170,7 +200,7 @@ class CoverageReportSubscriberStrictRequiredTest extends TestCase
             '/signed-url',
             '200',
             'application/json',
-            ['expires', 'signed_url', 'url'],
+            ['/' => ['expires', 'signed_url', 'url']],
         );
 
         $stderr = '';
@@ -199,7 +229,10 @@ class CoverageReportSubscriberStrictRequiredTest extends TestCase
         $this->assertArrayHasKey(self::SPEC_NAME, $observations);
         $row = $observations[self::SPEC_NAME]['PUT /signed-url']['200:application/json'];
         $this->assertSame(1, $row['hits']);
-        $this->assertSame(['expires', 'signed_url', 'url'], $row['alwaysPresent']);
+        $this->assertSame(
+            ['/' => ['expires', 'signed_url', 'url']],
+            $row['pointers'],
+        );
     }
 
     #[Test]
@@ -215,7 +248,7 @@ class CoverageReportSubscriberStrictRequiredTest extends TestCase
             '/signed-url',
             '200',
             'application/json',
-            ['expires', 'signed_url', 'url'],
+            ['/' => ['expires', 'signed_url', 'url']],
         );
 
         $stderr = '';
@@ -241,7 +274,7 @@ class CoverageReportSubscriberStrictRequiredTest extends TestCase
     #[Test]
     public function partial_run_skips_gate_with_note(): void
     {
-        StrictRequiredTracker::record(self::SPEC_NAME, 'PUT', '/signed-url', '200', 'application/json', ['expires', 'signed_url', 'url']);
+        StrictRequiredTracker::record(self::SPEC_NAME, 'PUT', '/signed-url', '200', 'application/json', ['/' => ['expires', 'signed_url', 'url']]);
 
         $stderr = '';
         $exitCode = null;
@@ -287,7 +320,7 @@ class CoverageReportSubscriberStrictRequiredTest extends TestCase
     {
         // Record an observation that the asserter cannot resolve (GET on a
         // path that only declares PUT).
-        StrictRequiredTracker::record(self::SPEC_NAME, 'GET', '/signed-url', '200', 'application/json', ['expires']);
+        StrictRequiredTracker::record(self::SPEC_NAME, 'GET', '/signed-url', '200', 'application/json', ['/' => ['expires']]);
 
         $stderr = '';
         $subscriber = $this->makeSubscriber(

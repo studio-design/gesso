@@ -9,7 +9,7 @@ use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Studio\OpenApiContractTesting\Validation\Strict\StrictRequiredReport;
 
-class StrictRequiredReportTest extends TestCase
+final class StrictRequiredReportTest extends TestCase
 {
     #[Test]
     public function has_drift_returns_true_when_missing_list_non_empty(): void
@@ -44,6 +44,40 @@ class StrictRequiredReportTest extends TestCase
     }
 
     #[Test]
+    public function schema_pointer_defaults_to_root(): void
+    {
+        $report = new StrictRequiredReport(
+            specName: 'front',
+            method: 'GET',
+            path: '/x',
+            statusKey: '200',
+            contentTypeKey: 'application/json',
+            missingFromRequired: ['a'],
+            hits: 1,
+        );
+
+        $this->assertSame('/', $report->schemaPointer);
+    }
+
+    #[Test]
+    public function schema_pointer_round_trips_when_provided(): void
+    {
+        $report = new StrictRequiredReport(
+            specName: 'front',
+            method: 'GET',
+            path: '/x',
+            statusKey: '200',
+            contentTypeKey: 'application/json',
+            missingFromRequired: ['created_at'],
+            hits: 1,
+            schemaPointer: '/data/items[*]',
+        );
+
+        $this->assertSame('/data/items[*]', $report->schemaPointer);
+        $this->assertTrue($report->hasDrift());
+    }
+
+    #[Test]
     public function constructor_rejects_zero_hits(): void
     {
         $this->expectException(InvalidArgumentException::class);
@@ -73,6 +107,24 @@ class StrictRequiredReportTest extends TestCase
             contentTypeKey: 'application/json',
             missingFromRequired: [],
             hits: -1,
+        );
+    }
+
+    #[Test]
+    public function constructor_rejects_empty_schema_pointer(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('non-empty schemaPointer');
+
+        new StrictRequiredReport(
+            specName: 'front',
+            method: 'GET',
+            path: '/x',
+            statusKey: '200',
+            contentTypeKey: 'application/json',
+            missingFromRequired: ['a'],
+            hits: 1,
+            schemaPointer: '',
         );
     }
 }

@@ -14,9 +14,14 @@ The most common gap that slips past conformance checks is *under-description*: t
 
 ## How it works
 
-1. On every Success result, `OpenApiResponseValidator` records the **top-level keys** of the decoded response body, keyed by `(spec, METHOD path, status, content-type)`.
-2. Across the run, the tracker keeps the **intersection** of every observed key set — the keys that appeared in *every* recorded response for that group. `hits` counts the observations that contributed.
-3. At PHPUnit's `ExecutionFinished` event (or the merge step for paratest — see "Paratest" below), the asserter loads each spec and, for each group, computes `intersection - schema.required`. Any keys that survive are flagged: the impl always returns them but the spec does not declare them required.
+1. On every Success result, `OpenApiResponseValidator` walks the decoded response body and records the **set of keys at every object node** it observes, keyed by `(spec, METHOD path, status, content-type)`. Each node is identified by a JSON-Pointer-like path:
+   - `/` is the root object.
+   - `/data` is the `data` property of the root.
+   - `/items[*]` is the *element-shape* of the `items` array (the intersection of every element's keys within that one response).
+   - `[*]` is the element-shape when the response root is itself a JSON array.
+   - Property names containing `/`, `~`, or the literal `[*]` are escaped per RFC 6901 plus a `[*]` → `[~*]` extension.
+2. Across the run, the tracker keeps the **intersection** of every observed key set **per pointer** — the keys that appeared in *every* recorded response at that node. A pointer is also "always observed" only when every response contributed it: an `items` array that's empty in one response drops the `/items[*]` row entirely. `hits` counts the observations.
+3. At PHPUnit's `ExecutionFinished` event (or the merge step for paratest — see "Paratest" below), the asserter loads each spec and **descends the schema in parallel** with the recorded pointers: `type: object` into `properties`, `type: array` into `items`. For every pointer it diffs `intersection - schema.required` and emits one report per drifting node.
 4. The result is emitted to STDERR and GitHub Step Summary (`$GITHUB_STEP_SUMMARY`) following the same format as the existing enum-drift block, and — in `fail` mode — terminates the run with `exit(1)`.
 
 Only **conformance-passing** responses are recorded. A response that fails the existing JSON Schema check is excluded (its body shape is suspect); skipped statuses (e.g. matching `skipResponseCode`) are excluded too.
@@ -65,7 +70,7 @@ and an implementation that always returns all three fields, `strict_required = w
 ```
 [OpenAPI Strict Required] WARNING: 1 endpoint response(s) have always-present fields missing from `required`.
 
-  PUT /publish/signed-url/{projectId}/snapshot/{snapshotId}  200  application/json
+  PUT /publish/signed-url/{projectId}/snapshot/{snapshotId}  200  application/json:/
     Observed in 7 response(s); the following keys appeared every time but are not declared in `required`:
       - expires
       - signed_url
@@ -73,6 +78,38 @@ and an implementation that always returns all three fields, `strict_required = w
 
 Action: add these fields to the response schema's `required` array, or set `strict_required = off` if intentional.
 Configuration: phpunit.xml <parameter name="strict_required">warn|fail|off</parameter>
+```
+
+The `application/json:/` suffix is the JSON-Pointer-like `schemaPointer` — `/` here is the response root. Nested drifts are reported the same way with the corresponding pointer; given the schema:
+
+```jsonc
+{
+  "type": "object",
+  "required": ["items"],
+  "properties": {
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id"],
+        "properties": {
+          "id":         { "type": "string" },
+          "name":       { "type": "string" },
+          "created_at": { "type": "string", "format": "date-time" }
+        }
+      }
+    }
+  }
+}
+```
+
+and an implementation that always returns `name` and `created_at` per item, the diagnostic block points directly at the offending array-element shape:
+
+```
+  GET /catalog  200  application/json:/items[*]
+    Observed in 4 response(s); the following keys appeared every time but are not declared in `required`:
+      - created_at
+      - name
 ```
 
 The fix is to update the spec:
@@ -114,6 +151,7 @@ The diagnostic block is rendered after the coverage report (Markdown, JUnit, JSO
 ## Known limitations
 
 - **Mixed sidecar versions.** Workers running an older library version write a v1 (coverage-only) sidecar. The merge CLI still accepts those and merges their coverage, but their strict_required contribution is empty. Upgrade all workers to share the gate fully.
-- **Top-level keys only.** Nested object schemas' `required` arrays are not yet evaluated — only the outermost. A follow-up issue covers nested-object support.
-- **`allOf` is unioned; `anyOf` / `oneOf` are not walked.** `allOf` semantics are AND, so the union of `required` arrays across branches is sound. `anyOf` / `oneOf` are disjunctions and there is no safe AND-semantic for "required" across them; the asserter ignores those branches when collecting `required`. **Consequence:** for a schema whose top-level shape is purely `anyOf` / `oneOf`, the collected `required` is `[]` and *every* always-present key will be reported as drift. Prefer `allOf` for required-set composition, or open a follow-up issue with your use case.
+- **Mixed strict_required wire versions.** Starting with this release the strict_required tracker emits state format **v2** (per-pointer rows). The merge CLI rejects v1 strict_required payloads with a loud error rather than silently downgrading nested observations to root-only. Coverage merging is unaffected (the envelope still tolerates v1 coverage payloads); only the strict_required half requires version-aligned workers.
+- **`additionalProperties` schemas are not walked.** When a schema sets `additionalProperties: <schema>` (object form), the asserter does not descend into that schema to look for `required` on dynamically-keyed properties. Walk-depth follows declared `properties` and `items` only.
+- **`allOf` is unioned; `anyOf` / `oneOf` are not walked.** `allOf` semantics are AND, so the union of `required` arrays across branches is sound — applied at every level of descent. `anyOf` / `oneOf` are disjunctions and there is no safe AND-semantic for "required" across them; the asserter ignores those branches when collecting `required`. **Consequence:** for a schema whose shape at a node is purely `anyOf` / `oneOf`, the collected `required` is `[]` and *every* always-present key at that node will be reported as drift. Prefer `allOf` for required-set composition, or open a follow-up issue with your use case.
 - **Per-call mode is not implemented.** The Issue #224 design noted an alternative "warn on every optional field present in a single observation" mode — the run-level intersection is the MVP because per-call warns indiscriminately on every legitimately-optional field. If you need it, follow up.

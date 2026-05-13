@@ -9,6 +9,7 @@ use Studio\OpenApiContractTesting\Coverage\CoverageSidecarEnvelope;
 
 use function array_intersect;
 use function array_is_list;
+use function array_key_exists;
 use function array_keys;
 use function array_unique;
 use function array_values;
@@ -16,34 +17,35 @@ use function get_debug_type;
 use function is_array;
 use function is_int;
 use function is_string;
+use function ksort;
 use function sort;
 use function sprintf;
 use function strtoupper;
 
 /**
- * Static singleton that accumulates response body top-level key observations
+ * Static singleton that accumulates response body object-node observations
  * per `(spec, METHOD path, statusKey, contentTypeKey)` across a test run.
  *
- * For each group the tracker holds the **intersection** of observed key sets
- * — the set of keys that appeared in *every* recorded response. Combined
- * with `hits` (the number of contributing observations), the intersection is
- * what {@see StrictRequiredAsserter} diffs against the matching spec's
- * `required` array to detect schema under-description (Issue #224).
+ * Each observation feeds a JSON-Pointer-like map `pointer => list<string>`
+ * (see {@see StrictRequiredBodyWalker}) describing the keys present at every
+ * object node walked in the body. The tracker keeps the **per-pointer
+ * intersection** of observations: a key only stays in `pointers[$p]` if it
+ * appeared in every recorded response for that pointer, AND a pointer only
+ * stays at all if every recorded response contributed it (absence drops the
+ * pointer).
  *
- * Intersection semantics:
- *  - first observation: stored verbatim (sorted, deduped) so the lookup
- *    shape is stable from `hits == 1`
- *  - subsequent observations: `array_intersect` against the running set
- *  - once `alwaysPresent` shrinks to `[]` it stays empty for the rest of
- *    the run; reporting is then trivially a no-op for this group
+ * Combined with `hits` (the number of contributing observations), the
+ * intersection is what {@see StrictRequiredAsserter} diffs against the
+ * matching spec's `required` arrays — descended in parallel — to detect
+ * schema under-description at any nesting depth (Issue #224 + #227).
  *
- * {@see self::exportState()} / {@see self::importState()} are wired into
- * the v2 sidecar envelope ({@see CoverageSidecarEnvelope}):
- * paratest workers export observations to disk and the merge CLI re-imports
- * them to run the gate across all workers. See `docs/strict-required.md`
- * "Paratest" for the operator-facing flow.
+ * State format version 2 introduces the per-pointer row shape; v1 rows that
+ * carried a flat `alwaysPresent: list<string>` field are explicitly rejected
+ * on import so mixed-version paratest fleets fail loudly rather than silently
+ * downgrading nested observations to root-only. The envelope version
+ * ({@see CoverageSidecarEnvelope::ENVELOPE_VERSION}) is independent.
  *
- * @phpstan-type StrictRequiredRow array{hits: int, alwaysPresent: list<string>}
+ * @phpstan-type StrictRequiredRow array{hits: int, pointers: array<string, list<string>>}
  * @phpstan-type StrictRequiredEndpoint array<string, StrictRequiredRow>
  * @phpstan-type StrictRequiredStatePayload array{
  *     version: int,
@@ -64,9 +66,11 @@ final class StrictRequiredTracker
     /**
      * Format version stamped on every {@see self::exportState()} payload.
      * Importers reject unknown versions to prevent silent misinterpretation
-     * of future shape changes.
+     * of future shape changes. Bumped from 1 → 2 in the nested-walk release
+     * (issue #227) — v1 row shape (`alwaysPresent: list<string>`) is no
+     * longer accepted.
      */
-    public const STATE_FORMAT_VERSION = 1;
+    public const STATE_FORMAT_VERSION = 2;
 
     /**
      * Per-(spec, endpoint, response key) observations.
@@ -83,29 +87,36 @@ final class StrictRequiredTracker
     private function __construct() {}
 
     /**
-     * Record one observed response body. `$topLevelKeys` is the list of
-     * top-level keys present in the decoded body (`array_keys(...)` on the
-     * caller side); duplicate / unsorted lists are tolerated — the tracker
-     * normalises before storing.
+     * Record one observed response body's pointer→keys map. The map is
+     * typically produced by {@see StrictRequiredBodyWalker::collectPointers()};
+     * the tracker is map-agnostic so unit tests can construct it directly.
+     *
+     * Cross-observation semantics:
+     *  - first observation for a cell: stored verbatim (sorted, deduped) so
+     *    the lookup shape is stable from `hits == 1`
+     *  - subsequent observations: per pointer present on BOTH sides, keys
+     *    are intersected. Pointers present only on one side are dropped —
+     *    the asserter requires "always observed" for both the key and its
+     *    parent pointer
+     *  - `hits` always increments regardless of pointer-set churn
      *
      * Recording happens on every conformance-passing response regardless of
      * `strict_required` mode — the validator does not know the mode, and the
-     * asserter is the gated component. The cost is `O(top-level keys)` per
-     * call. Memory grows with `O(distinct endpoint × status × content-type
-     * groups)`, bounded by the spec.
+     * asserter is the gated component.
      *
-     * Runtime validation: `$topLevelKeys` MUST be a list of strings. This is
-     * checked at call time (parallel to {@see self::importState()}) so a
-     * future validator-side bug that leaks non-string entries does not
-     * silently corrupt the intersection. The PHPDoc deliberately types the
-     * parameter loosely (`array`) so the defensive check is not optimised
-     * away by static analysers that treat PHPDoc as ground truth.
+     * Runtime validation: keys must be non-empty strings and every value
+     * must be a `list<string>`. The PHPDoc is typed loosely (`array<mixed,
+     * mixed>`) deliberately so static analysers do not treat the defensive
+     * checks below as unreachable — a future walker-side bug that leaks
+     * non-string entries must still surface here as a hard error.
      *
-     * @param array<int, mixed> $topLevelKeys list of strings; runtime
-     *                                        rejected otherwise
+     * @param array<mixed, mixed> $pointers map of JSON-Pointer-like strings
+     *                                      to lists of object keys observed
+     *                                      at that node
      *
-     * @throws InvalidArgumentException when `$topLevelKeys` carries a
-     *                                  non-string entry
+     * @throws InvalidArgumentException when a pointer key is not a
+     *                                  non-empty string, or a value is not
+     *                                  a list of strings
      */
     public static function record(
         string $specName,
@@ -113,33 +124,18 @@ final class StrictRequiredTracker
         string $path,
         string $statusKey,
         string $contentTypeKey,
-        array $topLevelKeys,
+        array $pointers,
     ): void {
-        foreach ($topLevelKeys as $key) {
-            if (!is_string($key)) {
-                throw new InvalidArgumentException(sprintf(
-                    'StrictRequiredTracker::record() expects list<string> for $topLevelKeys; '
-                    . 'got %s at %s %s (status %s, content-type %s).',
-                    get_debug_type($key),
-                    strtoupper($method),
-                    $path,
-                    $statusKey,
-                    $contentTypeKey,
-                ));
-            }
-        }
-
         $endpointKey = strtoupper($method) . ' ' . $path;
         $responseKey = $statusKey . ':' . $contentTypeKey;
 
-        $normalised = array_values(array_unique($topLevelKeys));
-        sort($normalised);
+        $normalised = self::normalisePointers($specName, $endpointKey, $responseKey, $pointers);
 
         $existing = self::$observations[$specName][$endpointKey][$responseKey] ?? null;
         if ($existing === null) {
             self::$observations[$specName][$endpointKey][$responseKey] = [
                 'hits' => 1,
-                'alwaysPresent' => $normalised,
+                'pointers' => $normalised,
             ];
 
             return;
@@ -147,7 +143,7 @@ final class StrictRequiredTracker
 
         self::$observations[$specName][$endpointKey][$responseKey] = [
             'hits' => $existing['hits'] + 1,
-            'alwaysPresent' => self::intersect($existing['alwaysPresent'], $normalised),
+            'pointers' => self::mergePointers($existing['pointers'], $normalised),
         ];
     }
 
@@ -165,16 +161,16 @@ final class StrictRequiredTracker
     /**
      * Diagnostic accessor for the recorded observations of a single spec.
      * Returns the same nested shape used internally: `endpointKey =>
-     * responseKey => { hits, alwaysPresent }`.
+     * responseKey => { hits, pointers }`.
      *
      * Empty array when nothing was recorded for the spec — the asserter
      * uses this to short-circuit specs that the run never touched.
      *
      * @return array<string, array<string, StrictRequiredRow>>
      *
-     * @internal Consumed by {@see StrictRequiredAsserter} and by unit
-     *           tests; the returned array shape is not part of the public
-     *           API and may change between minor releases.
+     * @internal Consumed by {@see StrictRequiredAsserter} and by unit tests;
+     *           the returned array shape is not part of the public API and
+     *           may change between minor releases.
      */
     public static function getObservations(string $specName): array
     {
@@ -213,10 +209,10 @@ final class StrictRequiredTracker
     }
 
     /**
-     * Union-merge an exported state into the live tracker. The merge is
-     * intersection-based so worker semantics match single-process semantics:
-     * a key only stays in `alwaysPresent` if it was always present in both
-     * sides. `hits` accumulate.
+     * Union-merge an exported state into the live tracker. The merge applies
+     * the same per-pointer intersection rule as {@see self::record()}:
+     * a pointer survives only when both sides observed it, and a key under
+     * that pointer only when both sides recorded it. `hits` accumulate.
      *
      * Validation is two-pass: the entire payload is parsed and rejected up
      * front before any mutation, so a malformed entry deep in the payload
@@ -244,10 +240,7 @@ final class StrictRequiredTracker
                     }
                     self::$observations[$specName][$endpointKey][$responseKey] = [
                         'hits' => $existing['hits'] + $row['hits'],
-                        'alwaysPresent' => self::intersect(
-                            $existing['alwaysPresent'],
-                            $row['alwaysPresent'],
-                        ),
+                        'pointers' => self::mergePointers($existing['pointers'], $row['pointers']),
                     ];
                 }
             }
@@ -255,17 +248,88 @@ final class StrictRequiredTracker
     }
 
     /**
-     * @param list<string> $left
-     * @param list<string> $right
+     * @param array<string, list<string>> $left
+     * @param array<string, list<string>> $right
      *
-     * @return list<string>
+     * @return array<string, list<string>>
      */
-    private static function intersect(array $left, array $right): array
+    private static function mergePointers(array $left, array $right): array
     {
-        $intersected = array_values(array_intersect($left, $right));
-        sort($intersected);
+        $out = [];
+        foreach ($left as $pointer => $leftKeys) {
+            if (!array_key_exists($pointer, $right)) {
+                // Pointer absent on one side — drop. "Always observed"
+                // requires the pointer itself to be always observed.
+                continue;
+            }
+            $intersected = array_values(array_intersect($leftKeys, $right[$pointer]));
+            sort($intersected);
+            $out[$pointer] = $intersected;
+        }
+        ksort($out);
 
-        return $intersected;
+        return $out;
+    }
+
+    /**
+     * Normalise the caller-provided map: sort + dedup each pointer's key
+     * list, validate types, and key-sort the outer map for deterministic
+     * storage / diff output. Input is typed loosely so the runtime guards
+     * are preserved under static analysis (see {@see self::record()}).
+     *
+     * @param array<mixed, mixed> $pointers
+     *
+     * @return array<string, list<string>>
+     */
+    private static function normalisePointers(
+        string $specName,
+        string $endpointKey,
+        string $responseKey,
+        array $pointers,
+    ): array {
+        $out = [];
+        foreach ($pointers as $pointer => $keys) {
+            if (!is_string($pointer) || $pointer === '') {
+                throw new InvalidArgumentException(sprintf(
+                    'StrictRequiredTracker::record() expects non-empty string pointers; '
+                    . 'got %s at %s :: %s :: %s.',
+                    is_string($pointer) ? '""' : get_debug_type($pointer),
+                    $specName,
+                    $endpointKey,
+                    $responseKey,
+                ));
+            }
+            if (!is_array($keys) || !array_is_list($keys)) {
+                throw new InvalidArgumentException(sprintf(
+                    'StrictRequiredTracker::record() expects list<string> values per pointer; '
+                    . 'got %s at %s :: %s :: %s pointer %s.',
+                    get_debug_type($keys),
+                    $specName,
+                    $endpointKey,
+                    $responseKey,
+                    $pointer,
+                ));
+            }
+            foreach ($keys as $key) {
+                if (!is_string($key)) {
+                    throw new InvalidArgumentException(sprintf(
+                        'StrictRequiredTracker::record() expects list<string> values per pointer; '
+                        . 'got %s entry at %s :: %s :: %s pointer %s.',
+                        get_debug_type($key),
+                        $specName,
+                        $endpointKey,
+                        $responseKey,
+                        $pointer,
+                    ));
+                }
+            }
+            $unique = array_values(array_unique($keys));
+            sort($unique);
+            $out[$pointer] = $unique;
+        }
+        ksort($out);
+
+        return $out;
     }
 
     /**
@@ -341,30 +405,66 @@ final class StrictRequiredTracker
                 $responseKey,
             ));
         }
-        $keys = $row['alwaysPresent'] ?? null;
-        if (!is_array($keys) || !array_is_list($keys)) {
+        if (array_key_exists('alwaysPresent', $row)) {
+            // v1 row shape detected. The state version check above should
+            // already have rejected this payload; surface the hint here too
+            // for callers that hand-build rows without a `version` field.
             throw new InvalidArgumentException(sprintf(
-                'strict_required %s / %s / %s must carry alwaysPresent as a list.',
+                'strict_required %s / %s / %s carries v1 "alwaysPresent" field; '
+                . 'state format v2 expects "pointers" map. Upgrade all paratest workers to the same library version.',
                 $specName,
                 $endpointKey,
                 $responseKey,
             ));
         }
-        $strings = [];
-        foreach ($keys as $value) {
-            if (!is_string($value)) {
+        $pointers = $row['pointers'] ?? null;
+        if (!is_array($pointers)) {
+            throw new InvalidArgumentException(sprintf(
+                'strict_required %s / %s / %s must carry pointers as a map.',
+                $specName,
+                $endpointKey,
+                $responseKey,
+            ));
+        }
+
+        $normalised = [];
+        foreach ($pointers as $pointer => $keys) {
+            if (!is_string($pointer) || $pointer === '') {
                 throw new InvalidArgumentException(sprintf(
-                    'strict_required %s / %s / %s alwaysPresent entries must be strings; got %s.',
+                    'strict_required %s / %s / %s pointer keys must be non-empty strings.',
                     $specName,
                     $endpointKey,
                     $responseKey,
-                    get_debug_type($value),
                 ));
             }
-            $strings[] = $value;
+            if (!is_array($keys) || !array_is_list($keys)) {
+                throw new InvalidArgumentException(sprintf(
+                    'strict_required %s / %s / %s pointer %s must carry a list of keys.',
+                    $specName,
+                    $endpointKey,
+                    $responseKey,
+                    $pointer,
+                ));
+            }
+            $strings = [];
+            foreach ($keys as $value) {
+                if (!is_string($value)) {
+                    throw new InvalidArgumentException(sprintf(
+                        'strict_required %s / %s / %s pointer %s entries must be strings; got %s.',
+                        $specName,
+                        $endpointKey,
+                        $responseKey,
+                        $pointer,
+                        get_debug_type($value),
+                    ));
+                }
+                $strings[] = $value;
+            }
+            sort($strings);
+            $normalised[$pointer] = $strings;
         }
-        sort($strings);
+        ksort($normalised);
 
-        return ['hits' => $hits, 'alwaysPresent' => $strings];
+        return ['hits' => $hits, 'pointers' => $normalised];
     }
 }

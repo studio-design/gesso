@@ -22,8 +22,10 @@ use function count;
 use function implode;
 use function is_array;
 use function is_string;
+use function ksort;
 use function sort;
 use function sprintf;
+use function str_replace;
 use function strpos;
 use function strtolower;
 use function strtoupper;
@@ -32,30 +34,28 @@ use function trigger_error;
 
 /**
  * Compare {@see StrictRequiredTracker} observations against each spec's
- * declared `required` arrays. Surfaces endpoints whose response bodies
- * consistently include keys the spec marks as optional — a sign that the
- * spec *under-describes* the implementation.
+ * declared `required` arrays, at every walked nesting level. Surfaces
+ * endpoints whose response bodies consistently include keys the spec marks
+ * as optional — a sign that the spec *under-describes* the implementation.
  *
  * The companion of {@see EnumDriftAsserter}:
  *  - EnumDriftAsserter: PHP enum cases vs spec `enum:` arrays (static).
  *  - StrictRequiredAsserter: runtime response body keys vs spec `required`
- *    arrays (per-test-run aggregate).
+ *    arrays (per-test-run aggregate), walked through nested objects and
+ *    array elements.
  *
- * `allOf` is walked when collecting `required` so composed schemas (very
- * common in modular spec layouts) do not produce false-positive reports.
- * `anyOf` / `oneOf` are intentionally NOT walked — they are disjunctions
- * and there is no safe AND-semantic for "required" across them. The
- * collected `required` for such top-level schemas is therefore `[]`,
- * which makes *every* always-present key surface as drift. Consult
- * `docs/strict-required.md` "Known limitations" before relying on those
- * constructs.
+ * `allOf` is walked at every level when collecting `required`. `anyOf` /
+ * `oneOf` are intentionally NOT walked — they are disjunctions and there is
+ * no safe AND-semantic for "required" across them. The collected `required`
+ * at such a node is therefore `[]`, which makes *every* always-present key
+ * at that node surface as drift. Consult `docs/strict-required.md`
+ * "Known limitations" before relying on those constructs.
  *
- * Observations whose `(method, path, status, content-type)` does not
- * resolve to a response schema in the spec are silently skipped from
- * drift reporting — that is the coverage tracker's responsibility, not
- * this asserter's. A NOTE is emitted at run end if any such mismatches
- * were observed so users can tell "no drift" apart from "no schema to
- * compare against".
+ * Observations whose `(method, path, status, content-type)` does not resolve
+ * to a response schema in the spec are silently skipped from drift reporting
+ * — that is the coverage tracker's responsibility, not this asserter's. A
+ * NOTE is emitted at run end if any such mismatches were observed so users
+ * can tell "no drift" apart from "no schema to compare against".
  */
 final class StrictRequiredAsserter
 {
@@ -93,12 +93,12 @@ final class StrictRequiredAsserter
     }
 
     /**
-     * Compute reports for every recorded `(spec, endpoint, status, content-type)`
-     * group that **actually drifts** — i.e. whose intersection of observed
-     * keys contains at least one key not declared in the matching schema's
-     * `required` array. Clean groups are filtered out because their
-     * `missingFromRequired` is empty by definition; surfacing them would
-     * be pure noise.
+     * Compute reports for every recorded `(spec, endpoint, status, content-type,
+     * schemaPointer)` cell that **actually drifts** — i.e. whose intersection
+     * of observed keys contains at least one key not declared in the matching
+     * schema's `required` array at that pointer. Clean cells are filtered out
+     * because their `missingFromRequired` is empty by definition; surfacing
+     * them would be pure noise.
      *
      * `Off` mode returns `[]` rather than walking observations so the
      * extension can call this from coverage paths without paying the cost
@@ -161,11 +161,12 @@ final class StrictRequiredAsserter
                 ));
 
                 return sprintf(
-                    "  %s %s  %s  %s\n    Observed in %d response(s); the following keys appeared every time but are not declared in `required`:\n%s",
+                    "  %s %s  %s  %s:%s\n    Observed in %d response(s); the following keys appeared every time but are not declared in `required`:\n%s",
                     $r->method,
                     $r->path,
                     $r->statusKey,
                     $r->contentTypeKey,
+                    $r->schemaPointer,
                     $r->hits,
                     $missingList,
                 );
@@ -236,14 +237,14 @@ final class StrictRequiredAsserter
             [$method, $path] = self::splitEndpointKey($endpointKey);
             foreach ($responses as $responseKey => $row) {
                 [$statusKey, $contentTypeKey] = self::splitResponseKey($responseKey);
-                $required = self::collectRequiredForResponse(
+                $schemaNode = self::resolveResponseSchema(
                     $spec,
                     $method,
                     $path,
                     $statusKey,
                     $contentTypeKey,
                 );
-                if ($required === null) {
+                if ($schemaNode === null) {
                     // Schema does not exist for this observation. The
                     // validator only records on Success, so reaching this
                     // branch means either a $ref resolved to an unexpected
@@ -256,24 +257,34 @@ final class StrictRequiredAsserter
 
                     continue;
                 }
-                $missing = array_values(array_diff($row['alwaysPresent'], $required));
-                if ($missing === []) {
-                    // Skip allocating a report that detectAll() would
-                    // immediately filter out via hasDrift(). Cheap fast
-                    // path for the common (clean) case.
-                    continue;
-                }
-                sort($missing);
 
-                $reports[] = new StrictRequiredReport(
-                    specName: $specName,
-                    method: $method,
-                    path: $path,
-                    statusKey: $statusKey,
-                    contentTypeKey: $contentTypeKey,
-                    missingFromRequired: $missing,
-                    hits: $row['hits'],
-                );
+                $specByPointer = self::collectRequiredByPointer($schemaNode);
+
+                // Sort the observed pointers so generated reports are
+                // deterministic — useful for snapshot-style assertions and
+                // stable CI diffs.
+                $pointers = $row['pointers'];
+                ksort($pointers);
+
+                foreach ($pointers as $pointer => $alwaysPresent) {
+                    $specRequired = $specByPointer[$pointer] ?? [];
+                    $missing = array_values(array_diff($alwaysPresent, $specRequired));
+                    if ($missing === []) {
+                        continue;
+                    }
+                    sort($missing);
+
+                    $reports[] = new StrictRequiredReport(
+                        specName: $specName,
+                        method: $method,
+                        path: $path,
+                        statusKey: $statusKey,
+                        contentTypeKey: $contentTypeKey,
+                        missingFromRequired: $missing,
+                        hits: $row['hits'],
+                        schemaPointer: $pointer,
+                    );
+                }
             }
         }
 
@@ -313,15 +324,15 @@ final class StrictRequiredAsserter
     }
 
     /**
-     * Return the union of `required` arrays attached to the matched
-     * response schema (walking `allOf`), or `null` when the response or
-     * its schema cannot be located in the spec.
+     * Locate the response schema dict for `(method, path, statusKey,
+     * contentTypeKey)`. Returns `null` when any segment of the descent does
+     * not resolve.
      *
      * @param array<string, mixed> $spec
      *
-     * @return null|list<string>
+     * @return null|array<string, mixed>
      */
-    private static function collectRequiredForResponse(
+    private static function resolveResponseSchema(
         array $spec,
         string $method,
         string $path,
@@ -354,10 +365,104 @@ final class StrictRequiredAsserter
             return null;
         }
 
-        return self::collectRequiredFromSchema($schema);
+        return $schema;
     }
 
     /**
+     * Descend the response schema producing `pointer => required-keys`,
+     * mirroring {@see StrictRequiredBodyWalker::collectPointers()} so that
+     * observed pointers can be looked up directly. `allOf` branches are
+     * unioned at every level; `anyOf` / `oneOf` are NOT descended into
+     * (their `required` cannot be safely AND-merged).
+     *
+     * @param array<string, mixed> $schema
+     *
+     * @return array<string, list<string>>
+     */
+    private static function collectRequiredByPointer(array $schema): array
+    {
+        $out = [];
+        // Root-array schemas use bare `[*]` for their element pointer
+        // (matching the walker's root-list convention); object roots start
+        // at `/`. Other shapes do not record at the root.
+        $rootPointer = self::inferShape($schema) === 'array' ? '' : '/';
+        self::descendSchema($schema, $rootPointer, $out);
+
+        return $out;
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @param array<string, list<string>> $out
+     */
+    private static function descendSchema(array $schema, string $pointer, array &$out): void
+    {
+        $type = self::inferShape($schema);
+        if ($type === 'object') {
+            $out[$pointer] = self::collectRequiredFromSchema($schema);
+            foreach (self::collectPropertyBranches($schema) as $propName => $propSchema) {
+                $childPointer = self::appendProperty($pointer, $propName);
+                self::descendSchema($propSchema, $childPointer, $out);
+            }
+
+            return;
+        }
+        if ($type === 'array') {
+            $items = self::collectItemsSchema($schema);
+            if ($items !== null) {
+                self::descendSchema($items, $pointer . '[*]', $out);
+            }
+
+            return;
+        }
+        // type is null (scalar / unknown / anyOf-rooted node) — leave the
+        // pointer absent from $out. Observed-but-unresolved pointers fall
+        // back to `required = []` in the diff loop, which is the documented
+        // noisy-report behavior.
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     *
+     * @return null|'array'|'object'
+     */
+    private static function inferShape(array $schema): ?string
+    {
+        $type = $schema['type'] ?? null;
+        if ($type === 'object' || isset($schema['properties'])) {
+            return 'object';
+        }
+        if ($type === 'array' || isset($schema['items'])) {
+            return 'array';
+        }
+        // allOf-only schema with no explicit type: treat as object if any
+        // branch declares object-shape. Matches OpenAPI's "object inferred
+        // from properties / required" convention.
+        if (isset($schema['allOf']) && is_array($schema['allOf'])) {
+            foreach ($schema['allOf'] as $branch) {
+                if (is_array($branch) && (
+                    ($branch['type'] ?? null) === 'object' ||
+                    isset($branch['properties']) ||
+                    isset($branch['required'])
+                )) {
+                    return 'object';
+                }
+                if (is_array($branch) && (
+                    ($branch['type'] ?? null) === 'array' || isset($branch['items'])
+                )) {
+                    return 'array';
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Union of `required` arrays at this schema node, walking `allOf`. Same
+     * helper used by the root-level MVP (#225); preserved here so nested
+     * descent gets `allOf` for free.
+     *
      * @param array<string, mixed> $schema
      *
      * @return list<string>
@@ -383,5 +488,81 @@ final class StrictRequiredAsserter
         }
 
         return array_values(array_unique($collected));
+    }
+
+    /**
+     * Yield `propertyName => propertySchema` from this schema node plus any
+     * `allOf` branches' properties. Later branches override earlier ones —
+     * matches the OpenAPI composition convention.
+     *
+     * @param array<string, mixed> $schema
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    private static function collectPropertyBranches(array $schema): array
+    {
+        $out = [];
+        $properties = $schema['properties'] ?? null;
+        if (is_array($properties)) {
+            foreach ($properties as $name => $sub) {
+                if (is_string($name) && is_array($sub)) {
+                    $out[$name] = $sub;
+                }
+            }
+        }
+        if (isset($schema['allOf']) && is_array($schema['allOf'])) {
+            foreach ($schema['allOf'] as $branch) {
+                if (!is_array($branch)) {
+                    continue;
+                }
+                foreach (self::collectPropertyBranches($branch) as $name => $sub) {
+                    $out[$name] = $sub;
+                }
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Resolve the `items` schema for an array node, looking through `allOf`
+     * branches if the direct `items` field is absent.
+     *
+     * @param array<string, mixed> $schema
+     *
+     * @return null|array<string, mixed>
+     */
+    private static function collectItemsSchema(array $schema): ?array
+    {
+        $items = $schema['items'] ?? null;
+        if (is_array($items)) {
+            return $items;
+        }
+        if (isset($schema['allOf']) && is_array($schema['allOf'])) {
+            foreach ($schema['allOf'] as $branch) {
+                if (!is_array($branch)) {
+                    continue;
+                }
+                $branchItems = self::collectItemsSchema($branch);
+                if ($branchItems !== null) {
+                    return $branchItems;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private static function appendProperty(string $pointer, string $propertyName): string
+    {
+        $escaped = str_replace('~', '~0', $propertyName);
+        $escaped = str_replace('/', '~1', $escaped);
+        $escaped = str_replace('[*]', '[~*]', $escaped);
+
+        if ($pointer === '/') {
+            return '/' . $escaped;
+        }
+
+        return $pointer . '/' . $escaped;
     }
 }
