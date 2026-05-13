@@ -74,6 +74,82 @@ class OpenApiCoverageExtensionBootstrapTest extends TestCase
         $this->assertStringContainsString('Action:', $stderr);
     }
 
+    #[Test]
+    public function default_testsuite_as_full_warns_when_no_default_configured(): void
+    {
+        // Issue #236: opting in without declaring `defaultTestSuite` makes
+        // the flag silently inert otherwise — the partial detection still
+        // suppresses `strict_required` and coverage outputs, and the user
+        // can't tell why their gate isn't firing. Bootstrap must surface
+        // the misconfiguration. This also pins the configuration→bootstrap
+        // wiring: the WARN only fires if `default_testsuite_as_full=true`
+        // is read off the ParameterCollection AND `hasDefaultTestSuite()`
+        // is consulted on the Configuration in the same path.
+        $output = $this->runPhpunitWithDefaultTestSuite(
+            defaultTestSuite: null,
+            optInValue: 'true',
+            outputFile: null,
+        );
+
+        $this->assertStringContainsString('default_testsuite_as_full=true', $output);
+        $this->assertStringContainsString('does not declare', $output);
+    }
+
+    #[Test]
+    public function default_testsuite_as_full_warns_when_default_is_empty_string(): void
+    {
+        // `<phpunit defaultTestSuite="">` is valid XML but makes the
+        // opt-in inert (no possible match). Same WARN policy as above.
+        // Verifies the empty-string branch of `readDefaultTestSuite()`
+        // end-to-end (the unit branch is exercised through `fromSignals`'s
+        // `defaultTestSuite: null` parameterisation; this is the only place
+        // the extension's empty-string normalisation is observable).
+        $output = $this->runPhpunitWithDefaultTestSuite(
+            defaultTestSuite: '',
+            optInValue: 'true',
+            outputFile: null,
+        );
+
+        $this->assertStringContainsString('default_testsuite_as_full=true', $output);
+        $this->assertStringContainsString('empty', $output);
+    }
+
+    #[Test]
+    public function default_testsuite_as_full_does_not_warn_for_matching_default_testsuite(): void
+    {
+        // Positive case: opt-in + matching defaultTestSuite is a valid
+        // configuration and must not emit either of the inert-WARN lines.
+        // Pins that the WARN paths are gated on the misconfiguration, not
+        // on the opt-in itself. The subscriber's persistent-write WARN
+        // ("Skipping output_file ...") is exercised by
+        // `CoverageReportSubscriberPartialRunTest`; reaching it from
+        // bootstrap requires the test to actually record coverage, which
+        // is out of scope for this integration check.
+        $output = $this->runPhpunitWithDefaultTestSuite(
+            defaultTestSuite: 'Unit',
+            optInValue: 'true',
+            outputFile: null,
+        );
+
+        $this->assertStringNotContainsString('default_testsuite_as_full=true but', $output);
+    }
+
+    #[Test]
+    public function default_testsuite_as_full_warn_does_not_fire_when_opt_in_is_absent(): void
+    {
+        // Negative case: when the user hasn't opted in, the WARN paths
+        // must stay silent even if the rest of the configuration would
+        // otherwise trip them (here: matching defaultTestSuite, but no
+        // opt-in). Pins that the warn gate is bound to the opt-in.
+        $output = $this->runPhpunitWithDefaultTestSuite(
+            defaultTestSuite: 'Unit',
+            optInValue: null,
+            outputFile: null,
+        );
+
+        $this->assertStringNotContainsString('default_testsuite_as_full=true', $output);
+    }
+
     /**
      * @return array{0: int, 1: string} [exit code, combined stderr]
      */
@@ -128,5 +204,84 @@ class OpenApiCoverageExtensionBootstrapTest extends TestCase
         // Both streams may carry the FATAL/WARNING line depending on where
         // PHP flushes; the caller only cares about the combined text.
         return [$exit, $stdout . $stderr];
+    }
+
+    /**
+     * Run a subprocess phpunit with a custom `defaultTestSuite` attribute
+     * and (optionally) the `default_testsuite_as_full` opt-in. Targets
+     * `tests/Unit/Internal/PartialRunDecisionTest.php` only so the
+     * subscriber's `ExecutionFinished` hook fires (a `--filter` to no
+     * matches would early-exit before that) while keeping the run cheap.
+     * The testsuite name `Unit` matches the `defaultTestSuite` attribute
+     * we set on the synthetic `<phpunit>`, which is the contract we want
+     * to pin.
+     */
+    private function runPhpunitWithDefaultTestSuite(
+        ?string $defaultTestSuite,
+        ?string $optInValue,
+        ?string $outputFile,
+    ): string {
+        $defaultAttr = $defaultTestSuite === null
+            ? ''
+            : sprintf(' defaultTestSuite="%s"', $defaultTestSuite);
+
+        $optInParam = $optInValue === null
+            ? ''
+            : sprintf('<parameter name="default_testsuite_as_full" value="%s"/>', $optInValue);
+
+        $outputFileParam = $outputFile === null
+            ? ''
+            : sprintf('<parameter name="output_file" value="%s"/>', $outputFile);
+
+        $xml = sprintf(
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            . '<phpunit bootstrap="%s/vendor/autoload.php" cacheDirectory="%s/.phpunit.cache" '
+            . 'colors="false" failOnEmptyTestSuite="false"%s>'
+            . '<testsuites><testsuite name="Unit"><file>%s/tests/Unit/Internal/PartialRunDecisionTest.php</file></testsuite></testsuites>'
+            . '<extensions><bootstrap class="Studio\OpenApiContractTesting\PHPUnit\OpenApiCoverageExtension">'
+            . '<parameter name="spec_base_path" value="%s/tests/fixtures/specs"/>'
+            . '<parameter name="specs" value="composition"/>'
+            . '%s%s'
+            . '</bootstrap></extensions>'
+            . '</phpunit>',
+            $this->repoRoot,
+            $this->repoRoot,
+            $defaultAttr,
+            $this->repoRoot,
+            $this->repoRoot,
+            $optInParam,
+            $outputFileParam,
+        );
+
+        $tmp = tempnam(sys_get_temp_dir(), 'openapi-ext-integration-') ?: null;
+        if ($tmp === null) {
+            $this->fail('Could not create temp phpunit config');
+        }
+        $this->configPath = $tmp;
+        file_put_contents($tmp, $xml);
+
+        $cmd = sprintf(
+            '%s/vendor/bin/phpunit -c %s',
+            escapeshellarg($this->repoRoot),
+            escapeshellarg($tmp),
+        );
+
+        $descriptors = [
+            1 => ['pipe', 'w'],
+            2 => ['pipe', 'w'],
+        ];
+        $process = proc_open($cmd, $descriptors, $pipes, $this->repoRoot);
+        if (!is_resource($process)) {
+            $this->fail('Could not spawn phpunit subprocess');
+        }
+
+        $stdout = (string) stream_get_contents($pipes[1]);
+        $stderr = (string) stream_get_contents($pipes[2]);
+        foreach ($pipes as $pipe) {
+            fclose($pipe);
+        }
+        proc_close($process);
+
+        return $stdout . $stderr;
     }
 }

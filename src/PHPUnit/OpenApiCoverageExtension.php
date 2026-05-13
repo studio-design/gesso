@@ -145,7 +145,7 @@ final class OpenApiCoverageExtension implements Extension
                 $facade,
                 $parameters,
                 getenv('GITHUB_STEP_SUMMARY') ?: null,
-                self::detectPartialRun($configuration),
+                self::detectPartialRun($configuration, $parameters),
             );
         } catch (EnumBindingException|EnumDriftException|InvalidCoverageOutputPathException|InvalidOpenApiSpecException|InvalidStrictRequiredConfigurationException|InvalidThresholdConfigurationException|SpecFileNotFoundException) {
             // setupExtension() has already written a FATAL line to stderr and
@@ -337,9 +337,18 @@ final class OpenApiCoverageExtension implements Extension
      * writes on partial runs. The signal set, rationale, and why the
      * `TestSuite\Filtered` event is not used are documented on
      * {@see PartialRunDecision} — keeping that explanation in one place.
+     *
+     * Issue #236: the `default_testsuite_as_full` xml parameter is forwarded
+     * here together with `Configuration::defaultTestSuite()` so the
+     * `defaultTestSuite`-resolved `includeTestSuites` payload can be treated
+     * as a canonical full run when the user opts in.
      */
-    private static function detectPartialRun(Configuration $configuration): ?PartialRunDecision
-    {
+    private static function detectPartialRun(
+        Configuration $configuration,
+        ParameterCollection $parameters,
+    ): ?PartialRunDecision {
+        $treatDefaultAsFull = self::resolveBooleanFlag($parameters, 'default_testsuite_as_full', false);
+
         return PartialRunDecision::fromSignals(
             hasCliArguments: $configuration->hasCliArguments(),
             hasFilter: $configuration->hasFilter(),
@@ -351,7 +360,60 @@ final class OpenApiCoverageExtension implements Extension
             hasTestsCovering: $configuration->hasTestsCovering(),
             hasTestsUsing: $configuration->hasTestsUsing(),
             hasTestsRequiringPhpExtension: $configuration->hasTestsRequiringPhpExtension(),
+            defaultTestSuite: self::readDefaultTestSuite($configuration, warnOnInertOptIn: $treatDefaultAsFull),
+            treatDefaultTestSuiteAsFull: $treatDefaultAsFull,
         );
+    }
+
+    /**
+     * Read the `defaultTestSuite` xml attribute via PHPUnit's
+     * {@see Configuration} accessors. Both `hasDefaultTestSuite()` and
+     * `defaultTestSuite()` exist on PHPUnit 11/12/13, so a direct call is
+     * safe across the CI matrix (unlike {@see readTestSuiteList()}, which
+     * needs the dynamic dispatch because PHPUnit 13 dropped the singular
+     * `includeTestSuite()` accessor). The `hasDefaultTestSuite()` guard is
+     * mandatory: `defaultTestSuite()` throws `NoDefaultTestSuiteException`
+     * when the xml attribute is absent.
+     *
+     * `$warnOnInertOptIn` surfaces the two misconfigurations that make
+     * `default_testsuite_as_full=true` a silent no-op: (1) the user opted
+     * in but never set `<phpunit defaultTestSuite="...">`, and (2) the
+     * attribute is present but empty. The WARN is gated on the opt-in
+     * itself so it never fires for callers that did not request the
+     * neutralisation (the same path the rest of the extension uses).
+     */
+    private static function readDefaultTestSuite(
+        Configuration $configuration,
+        bool $warnOnInertOptIn,
+    ): ?string {
+        if (!$configuration->hasDefaultTestSuite()) {
+            if ($warnOnInertOptIn) {
+                self::writeStderr(
+                    '[OpenAPI Coverage] WARNING: default_testsuite_as_full=true but phpunit.xml does not declare '
+                    . 'a `defaultTestSuite` attribute on <phpunit>. The opt-in will be inert; partial-run '
+                    . 'detection remains active. Either set `defaultTestSuite="..."` on <phpunit> or remove '
+                    . "`default_testsuite_as_full`.\n",
+                );
+            }
+
+            return null;
+        }
+
+        $value = $configuration->defaultTestSuite();
+
+        if ($value === '') {
+            if ($warnOnInertOptIn) {
+                self::writeStderr(
+                    '[OpenAPI Coverage] WARNING: default_testsuite_as_full=true but phpunit.xml declares an '
+                    . 'empty `defaultTestSuite=""` attribute. The opt-in cannot match an empty default and '
+                    . "will be inert. Set a non-empty `defaultTestSuite` or remove `default_testsuite_as_full`.\n",
+                );
+            }
+
+            return null;
+        }
+
+        return $value;
     }
 
     /**

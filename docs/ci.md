@@ -131,3 +131,36 @@ subset data. Re-run the full suite to refresh.
 Paratest workers (`TEST_TOKEN` set) are unaffected — they always write
 their sidecar so the merge CLI can aggregate. The persistent-write skip
 only fires on the sequential (or merge) rendering path.
+
+### default_testsuite_as_full opt-in
+
+`phpunit.xml` で `defaultTestSuite` を宣言しているプロジェクトでは、引数なしの
+`phpunit` 実行でも PHPUnit が `Configuration::includeTestSuites()` にその名前を
+詰める。結果として、ユーザーから見れば "canonical full run" のはずの実行が
+`--testsuite` 由来の partial と判定され、`strict_required` ゲート等が
+スキップされる (issue #236)。
+
+これがユーザー側のワークフローに合致しているなら、`default_testsuite_as_full`
+を立てて partial 判定を解除できる:
+
+```xml
+<bootstrap class="Studio\OpenApiContractTesting\PHPUnit\OpenApiCoverageExtension">
+    <parameter name="default_testsuite_as_full" value="true"/>
+    <parameter name="strict_required" value="warn"/>
+</bootstrap>
+```
+
+挙動:
+
+- `includeTestSuites` が `[defaultTestSuite]` と完全一致するときだけ
+  `--testsuite` 由来の partial signal を打ち消す。`--testsuite=Other` のように
+  default を越える選択をした場合や、他の partial signal (`--filter`, path 引数, …)
+  が立っている場合は引き続き partial。
+- 副作用として `output_file` / `junit_output` 等の persistent 書き込みも実行される。
+  defaultTestSuite に含まれないテストスイート (例: 別 job で動かす Integration suite)
+  が抜けた状態のレポートが書かれる点を許容できる場合のみ有効化する。
+- 設定ミス検知: `default_testsuite_as_full=true` だが `defaultTestSuite` 属性が
+  未設定 (`<phpunit defaultTestSuite="...">` 不在) や空文字 (`defaultTestSuite=""`)
+  の場合、opt-in が黙って no-op になるのを避けるため bootstrap で stderr に
+  WARNING を出す (FATAL ではない — 設計上 opt-in を立てたまま XML を直さなくても
+  実行可能なため)。

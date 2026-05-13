@@ -62,6 +62,16 @@ final readonly class PartialRunDecision
      * `null` / non-null — there is no separate `isPartial` flag,
      * so by construction "partial" and "has reason" are the same fact.
      *
+     * Issue #236: `$defaultTestSuite` + `$treatDefaultTestSuiteAsFull` let
+     * callers opt the `--testsuite` signal out when `$includeTestSuites`
+     * was filled by PHPUnit's `defaultTestSuite` xml attribute rather
+     * than a CLI selection — e.g. `phpunit` with no args resolves to
+     * `[defaultTestSuite()]`, which the user considers the canonical
+     * full run. The override is scoped to the `--testsuite` reason only;
+     * every other signal (`--filter`, path args, `--group`, …) keeps
+     * its partial verdict so the escape hatch can't silently relax
+     * unrelated selections. Default `false` preserves pre-#236 behavior.
+     *
      * @param list<non-empty-string> $includeTestSuites
      * @param list<non-empty-string> $excludeTestSuites
      */
@@ -76,6 +86,8 @@ final readonly class PartialRunDecision
         bool $hasTestsCovering,
         bool $hasTestsUsing,
         bool $hasTestsRequiringPhpExtension,
+        ?string $defaultTestSuite = null,
+        bool $treatDefaultTestSuiteAsFull = false,
     ): ?self {
         // Reason fragments emitted in declaration order so output is
         // stable across runs and tests can rely on substring assertions
@@ -98,7 +110,12 @@ final readonly class PartialRunDecision
             $reasons[] = '--exclude-group';
         }
         if ($includeTestSuites !== []) {
-            $reasons[] = '--testsuite';
+            $matchesDefault = $treatDefaultTestSuiteAsFull &&
+                $defaultTestSuite !== null &&
+                $includeTestSuites === [$defaultTestSuite];
+            if (!$matchesDefault) {
+                $reasons[] = '--testsuite';
+            }
         }
         if ($excludeTestSuites !== []) {
             $reasons[] = '--exclude-testsuite';

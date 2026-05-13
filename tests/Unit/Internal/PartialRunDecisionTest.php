@@ -138,4 +138,121 @@ final class PartialRunDecisionTest extends TestCase
 
         $this->assertSame('--filter', $decision->reason);
     }
+
+    #[Test]
+    public function default_testsuite_match_neutralises_testsuite_signal_when_opted_in(): void
+    {
+        // Issue #236: `defaultTestSuite` 経由で includeTestSuites が埋まったケースは,
+        // ユーザーが opt-in したときだけ "canonical full run" として扱う。
+        $decision = PartialRunDecision::fromSignals(
+            hasCliArguments: false,
+            hasFilter: false,
+            hasExcludeFilter: false,
+            hasGroups: false,
+            hasExcludeGroups: false,
+            includeTestSuites: ['ApplicationTest'],
+            excludeTestSuites: [],
+            hasTestsCovering: false,
+            hasTestsUsing: false,
+            hasTestsRequiringPhpExtension: false,
+            defaultTestSuite: 'ApplicationTest',
+            treatDefaultTestSuiteAsFull: true,
+        );
+
+        $this->assertNull($decision);
+    }
+
+    #[Test]
+    public function default_testsuite_opt_in_does_not_match_when_extra_suites_selected(): void
+    {
+        // CLI で `--testsuite=ApplicationTest,Other` のように defaultTestSuite を越えた
+        // 選択を渡したケースは, opt-in 中でも partial のまま扱う (canonical run の範囲を逸脱)。
+        $decision = PartialRunDecision::fromSignals(
+            hasCliArguments: false,
+            hasFilter: false,
+            hasExcludeFilter: false,
+            hasGroups: false,
+            hasExcludeGroups: false,
+            includeTestSuites: ['ApplicationTest', 'StripeIntegration'],
+            excludeTestSuites: [],
+            hasTestsCovering: false,
+            hasTestsUsing: false,
+            hasTestsRequiringPhpExtension: false,
+            defaultTestSuite: 'ApplicationTest',
+            treatDefaultTestSuiteAsFull: true,
+        );
+
+        $this->assertNotNull($decision);
+        $this->assertStringContainsString('--testsuite', $decision->reason);
+    }
+
+    #[Test]
+    public function default_testsuite_opt_in_is_inert_without_configured_default(): void
+    {
+        // phpunit.xml で defaultTestSuite が未設定なら flag を立てても意味を持たない。
+        $decision = PartialRunDecision::fromSignals(
+            hasCliArguments: false,
+            hasFilter: false,
+            hasExcludeFilter: false,
+            hasGroups: false,
+            hasExcludeGroups: false,
+            includeTestSuites: ['ApplicationTest'],
+            excludeTestSuites: [],
+            hasTestsCovering: false,
+            hasTestsUsing: false,
+            hasTestsRequiringPhpExtension: false,
+            defaultTestSuite: null,
+            treatDefaultTestSuiteAsFull: true,
+        );
+
+        $this->assertNotNull($decision);
+        $this->assertStringContainsString('--testsuite', $decision->reason);
+    }
+
+    #[Test]
+    public function default_testsuite_match_does_not_neutralise_when_opt_out(): void
+    {
+        // 既定 (flag=false) では既存挙動を維持: defaultTestSuite 経由でも partial。
+        $decision = PartialRunDecision::fromSignals(
+            hasCliArguments: false,
+            hasFilter: false,
+            hasExcludeFilter: false,
+            hasGroups: false,
+            hasExcludeGroups: false,
+            includeTestSuites: ['ApplicationTest'],
+            excludeTestSuites: [],
+            hasTestsCovering: false,
+            hasTestsUsing: false,
+            hasTestsRequiringPhpExtension: false,
+            defaultTestSuite: 'ApplicationTest',
+            treatDefaultTestSuiteAsFull: false,
+        );
+
+        $this->assertNotNull($decision);
+        $this->assertStringContainsString('--testsuite', $decision->reason);
+    }
+
+    #[Test]
+    public function default_testsuite_opt_in_only_neutralises_testsuite_signal(): void
+    {
+        // flag が無効化するのは `--testsuite` reason だけ。他の partial signal は素通り。
+        $decision = PartialRunDecision::fromSignals(
+            hasCliArguments: false,
+            hasFilter: true,
+            hasExcludeFilter: false,
+            hasGroups: false,
+            hasExcludeGroups: false,
+            includeTestSuites: ['ApplicationTest'],
+            excludeTestSuites: [],
+            hasTestsCovering: false,
+            hasTestsUsing: false,
+            hasTestsRequiringPhpExtension: false,
+            defaultTestSuite: 'ApplicationTest',
+            treatDefaultTestSuiteAsFull: true,
+        );
+
+        $this->assertNotNull($decision);
+        $this->assertStringContainsString('--filter', $decision->reason);
+        $this->assertStringNotContainsString('--testsuite', $decision->reason);
+    }
 }
