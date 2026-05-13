@@ -49,6 +49,7 @@ vendor/bin/openapi-coverage-merge \
 | `--min-endpoint-coverage=<pct>` | — | Threshold gate (see [Coverage threshold gate](coverage.md#coverage-threshold-gate)) |
 | `--min-response-coverage=<pct>` | — | Threshold gate at `(method, path, status, content-type)` granularity |
 | `--min-coverage-strict` | `false` (warn-only) | Treat threshold misses as exit non-zero |
+| `--strict-required=<mode>` | `off` | `off` / `warn` / `fail`. Assert no schema under-description drift across worker observations. See [`strict-required.md`](strict-required.md#paratest) |
 | `--no-cleanup` | (cleanup is on by default) | Keep sidecar files after merge |
 
 Sidecar dir defaults are deliberately stable — workers and the merge CLI
@@ -67,6 +68,11 @@ path if `sys_get_temp_dir()` is unavailable in your runner.
   same `OpenApiCoverageTracker` static, so each Pest worker drops a
   sidecar exactly like a paratest worker would. No additional wiring
   needed beyond the merge step shown above.
+- **`strict_required` aggregates across workers.** Workers always export
+  observations via the sidecar envelope (v2). The merge CLI's
+  `--strict-required` flag decides whether to assert the gate; the
+  `strict_required` parameter on the PHPUnit extension does not propagate
+  to the merge step. See [`strict-required.md`](strict-required.md#paratest).
 - **Worker counts are not exposed by paratest.** A child cannot reliably
   tell how many siblings it has, so the merge has to run as a separate
   step rather than auto-firing from "the last worker." This matches how

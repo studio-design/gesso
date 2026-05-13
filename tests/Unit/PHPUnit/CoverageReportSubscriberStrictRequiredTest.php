@@ -8,6 +8,8 @@ use PHPUnit\Event\TestRunner\ExecutionFinished;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use ReflectionClass;
+use Studio\OpenApiContractTesting\Coverage\CoverageSidecarEnvelope;
+use Studio\OpenApiContractTesting\Coverage\CoverageSidecarReader;
 use Studio\OpenApiContractTesting\Coverage\OpenApiCoverageTracker;
 use Studio\OpenApiContractTesting\Internal\PartialRunDecision;
 use Studio\OpenApiContractTesting\PHPUnit\ConsoleOutput;
@@ -17,14 +19,22 @@ use Studio\OpenApiContractTesting\Validation\Strict\StrictRequiredMode;
 use Studio\OpenApiContractTesting\Validation\Strict\StrictRequiredTracker;
 
 use function getenv;
+use function glob;
+use function is_dir;
+use function mkdir;
 use function ob_get_clean;
 use function ob_start;
 use function putenv;
+use function rmdir;
+use function sys_get_temp_dir;
+use function uniqid;
+use function unlink;
 
 class CoverageReportSubscriberStrictRequiredTest extends TestCase
 {
     private const SPEC_NAME = 'under-described';
     private ?string $previousTestToken = null;
+    private string $tmpSidecarDir = '';
 
     protected function setUp(): void
     {
@@ -37,6 +47,9 @@ class CoverageReportSubscriberStrictRequiredTest extends TestCase
         $current = getenv('TEST_TOKEN');
         $this->previousTestToken = $current === false ? null : $current;
         putenv('TEST_TOKEN');
+
+        $this->tmpSidecarDir = sys_get_temp_dir() . '/openapi-strict-worker-' . uniqid('', true);
+        mkdir($this->tmpSidecarDir, 0o755, recursive: true);
     }
 
     protected function tearDown(): void
@@ -49,6 +62,13 @@ class CoverageReportSubscriberStrictRequiredTest extends TestCase
         StrictRequiredTracker::reset();
         OpenApiCoverageTracker::reset();
         OpenApiSpecLoader::reset();
+        if (is_dir($this->tmpSidecarDir)) {
+            $entries = glob($this->tmpSidecarDir . '/*') ?: [];
+            foreach ($entries as $entry) {
+                @unlink($entry);
+            }
+            @rmdir($this->tmpSidecarDir);
+        }
         parent::tearDown();
     }
 
@@ -138,24 +158,84 @@ class CoverageReportSubscriberStrictRequiredTest extends TestCase
     }
 
     #[Test]
-    public function worker_mode_emits_note_when_strict_required_is_enabled(): void
+    public function worker_mode_writes_strict_required_observations_to_sidecar(): void
     {
+        // Worker branch must export strict_required observations alongside
+        // coverage so the merge CLI can aggregate across paratest workers
+        // and assert the gate. Without this the gate is silent-pass in CI.
         putenv('TEST_TOKEN=2');
+        StrictRequiredTracker::record(
+            self::SPEC_NAME,
+            'PUT',
+            '/signed-url',
+            '200',
+            'application/json',
+            ['expires', 'signed_url', 'url'],
+        );
 
         $stderr = '';
-        $subscriber = $this->makeSubscriber(
+        $subscriber = $this->makeSubscriberWithSidecarDir(
             mode: StrictRequiredMode::Warn,
             stderr: $stderr,
             exitCode: $exitCode,
+            sidecarDir: $this->tmpSidecarDir,
         );
 
         ob_start();
         $subscriber->notify($this->fakeExecutionFinished());
         ob_get_clean();
 
-        $this->assertStringContainsString('[OpenAPI Strict Required] NOTE', $stderr);
-        $this->assertStringContainsString('sequential-only', $stderr);
-        $this->assertStringContainsString('issue #226', $stderr);
+        // Legacy NOTE must be gone — workers now contribute to the gate.
+        $this->assertStringNotContainsString('[OpenAPI Strict Required] NOTE', $stderr);
+        $this->assertStringNotContainsString('issue #226', $stderr);
+        $this->assertNull($exitCode);
+
+        $payloads = CoverageSidecarReader::readDir($this->tmpSidecarDir);
+        $this->assertCount(1, $payloads);
+        $parsed = CoverageSidecarEnvelope::parse($payloads[0]);
+        $this->assertNotNull($parsed['strictRequired']);
+        $observations = $parsed['strictRequired']['observations'] ?? null;
+        $this->assertIsArray($observations);
+        $this->assertArrayHasKey(self::SPEC_NAME, $observations);
+        $row = $observations[self::SPEC_NAME]['PUT /signed-url']['200:application/json'];
+        $this->assertSame(1, $row['hits']);
+        $this->assertSame(['expires', 'signed_url', 'url'], $row['alwaysPresent']);
+    }
+
+    #[Test]
+    public function worker_mode_writes_envelope_even_when_strict_required_is_off(): void
+    {
+        // Workers export observations unconditionally so the merge CLI can
+        // decide at aggregation time whether to assert. This keeps mode
+        // changes a single-knob operation without per-worker reruns.
+        putenv('TEST_TOKEN=3');
+        StrictRequiredTracker::record(
+            self::SPEC_NAME,
+            'PUT',
+            '/signed-url',
+            '200',
+            'application/json',
+            ['expires', 'signed_url', 'url'],
+        );
+
+        $stderr = '';
+        $subscriber = $this->makeSubscriberWithSidecarDir(
+            mode: StrictRequiredMode::Off,
+            stderr: $stderr,
+            exitCode: $exitCode,
+            sidecarDir: $this->tmpSidecarDir,
+        );
+
+        ob_start();
+        $subscriber->notify($this->fakeExecutionFinished());
+        ob_get_clean();
+
+        $this->assertSame('', $stderr);
+        $payloads = CoverageSidecarReader::readDir($this->tmpSidecarDir);
+        $this->assertCount(1, $payloads);
+        $parsed = CoverageSidecarEnvelope::parse($payloads[0]);
+        $this->assertNotNull($parsed['strictRequired']);
+        $this->assertArrayHasKey(self::SPEC_NAME, $parsed['strictRequired']['observations']);
     }
 
     #[Test]
@@ -245,6 +325,34 @@ class CoverageReportSubscriberStrictRequiredTest extends TestCase
                 $stderr .= $msg;
             },
             sidecarDir: null,
+            exitHandler: static function (int $code) use (&$exitCode): void {
+                $exitCode = $code;
+            },
+            strictRequiredMode: $mode,
+        );
+    }
+
+    /**
+     * @param-out null|int $exitCode
+     * @param-out string $stderr
+     */
+    private function makeSubscriberWithSidecarDir(
+        StrictRequiredMode $mode,
+        string &$stderr,
+        ?int &$exitCode,
+        string $sidecarDir,
+    ): CoverageReportSubscriber {
+        $exitCode = null;
+
+        return new CoverageReportSubscriber(
+            specs: [self::SPEC_NAME],
+            outputFile: null,
+            consoleOutput: ConsoleOutput::DEFAULT,
+            githubSummaryPath: null,
+            stderrWriter: static function (string $msg) use (&$stderr): void {
+                $stderr .= $msg;
+            },
+            sidecarDir: $sidecarDir,
             exitHandler: static function (int $code) use (&$exitCode): void {
                 $exitCode = $code;
             },

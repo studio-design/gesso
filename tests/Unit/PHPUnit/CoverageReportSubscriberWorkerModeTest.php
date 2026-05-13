@@ -124,8 +124,10 @@ class CoverageReportSubscriberWorkerModeTest extends TestCase
 
         $loaded = CoverageSidecarReader::readDir($this->tmpDir);
         $this->assertCount(1, $loaded);
-        $this->assertSame(1, $loaded[0]['version']);
-        $this->assertArrayHasKey('petstore-3.0', $loaded[0]['specs']);
+        // v2 envelope: coverage payload nested under "coverage" key.
+        $this->assertSame(2, $loaded[0]['envelopeVersion']);
+        $this->assertSame(1, $loaded[0]['coverage']['version']);
+        $this->assertArrayHasKey('petstore-3.0', $loaded[0]['coverage']['specs']);
     }
 
     #[Test]
@@ -150,7 +152,7 @@ class CoverageReportSubscriberWorkerModeTest extends TestCase
 
         $loaded = CoverageSidecarReader::readDir($this->tmpDir);
         $this->assertCount(1, $loaded);
-        $this->assertSame([], $loaded[0]['specs']);
+        $this->assertSame([], $loaded[0]['coverage']['specs']);
     }
 
     #[Test]

@@ -7,9 +7,11 @@ namespace Studio\OpenApiContractTesting\Tests\Unit\Coverage;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
+use Studio\OpenApiContractTesting\Coverage\CoverageSidecarEnvelope;
 use Studio\OpenApiContractTesting\Coverage\CoverageSidecarReader;
 use Studio\OpenApiContractTesting\Coverage\CoverageSidecarWriter;
 use Studio\OpenApiContractTesting\Coverage\OpenApiCoverageTracker;
+use Studio\OpenApiContractTesting\Validation\Strict\StrictRequiredTracker;
 
 use function array_map;
 use function file_put_contents;
@@ -36,6 +38,7 @@ class CoverageSidecarTest extends TestCase
     {
         parent::setUp();
         OpenApiCoverageTracker::reset();
+        StrictRequiredTracker::reset();
         $this->tmpDir = sys_get_temp_dir() . '/openapi-coverage-test-' . uniqid('', true);
         mkdir($this->tmpDir, 0o755, recursive: true);
     }
@@ -43,6 +46,7 @@ class CoverageSidecarTest extends TestCase
     protected function tearDown(): void
     {
         OpenApiCoverageTracker::reset();
+        StrictRequiredTracker::reset();
         if (is_dir($this->tmpDir)) {
             $entries = glob($this->tmpDir . '/*') ?: [];
             foreach ($entries as $entry) {
@@ -136,6 +140,94 @@ class CoverageSidecarTest extends TestCase
         $merged = OpenApiCoverageTracker::exportState();
         $this->assertArrayHasKey('GET /v1/pets', $merged['specs']['petstore-3.0']);
         $this->assertArrayHasKey('POST /v1/pets', $merged['specs']['petstore-3.0']);
+    }
+
+    #[Test]
+    public function reader_round_trips_envelope_with_strict_required_observations(): void
+    {
+        // Two workers observe the same endpoint with intersecting key sets.
+        // After merging via the envelope, the tracker must hold the
+        // intersection-of-intersections — pin that the sidecar carries the
+        // strict_required half end-to-end.
+        OpenApiCoverageTracker::recordResponse(
+            'petstore-3.0',
+            'GET',
+            '/v1/pets',
+            '200',
+            'application/json',
+            schemaValidated: true,
+        );
+        StrictRequiredTracker::record('petstore-3.0', 'GET', '/v1/pets', '200', 'application/json', ['id', 'name', 'tag']);
+        $envelopeA = CoverageSidecarEnvelope::build(
+            OpenApiCoverageTracker::exportState(),
+            StrictRequiredTracker::exportState(),
+        );
+
+        OpenApiCoverageTracker::reset();
+        StrictRequiredTracker::reset();
+
+        OpenApiCoverageTracker::recordResponse(
+            'petstore-3.0',
+            'GET',
+            '/v1/pets',
+            '200',
+            'application/json',
+            schemaValidated: true,
+        );
+        StrictRequiredTracker::record('petstore-3.0', 'GET', '/v1/pets', '200', 'application/json', ['id', 'name']);
+        $envelopeB = CoverageSidecarEnvelope::build(
+            OpenApiCoverageTracker::exportState(),
+            StrictRequiredTracker::exportState(),
+        );
+
+        CoverageSidecarWriter::write($this->tmpDir, '1', $envelopeA);
+        CoverageSidecarWriter::write($this->tmpDir, '2', $envelopeB);
+
+        $loaded = CoverageSidecarReader::readDir($this->tmpDir);
+        $this->assertCount(2, $loaded);
+
+        OpenApiCoverageTracker::reset();
+        StrictRequiredTracker::reset();
+        foreach ($loaded as $payload) {
+            $parsed = CoverageSidecarEnvelope::parse($payload);
+            OpenApiCoverageTracker::importState($parsed['coverage']);
+            $this->assertNotNull($parsed['strictRequired']);
+            StrictRequiredTracker::importState($parsed['strictRequired']);
+        }
+
+        $observed = StrictRequiredTracker::getObservations('petstore-3.0');
+        $this->assertArrayHasKey('GET /v1/pets', $observed);
+        $row = $observed['GET /v1/pets']['200:application/json'];
+        $this->assertSame(2, $row['hits']);
+        // Intersection: A had [id, name, tag], B had [id, name] → [id, name].
+        $this->assertSame(['id', 'name'], $row['alwaysPresent']);
+    }
+
+    #[Test]
+    public function reader_still_loads_legacy_v1_payloads(): void
+    {
+        // Worker on an older library version writes a bare v1 coverage
+        // payload (no envelopeVersion). The reader returns it verbatim;
+        // the envelope parser yields a null strictRequired half so the
+        // merge CLI can mix versioned sidecars during an upgrade window.
+        OpenApiCoverageTracker::recordResponse(
+            'petstore-3.0',
+            'GET',
+            '/v1/pets',
+            '200',
+            'application/json',
+            schemaValidated: true,
+        );
+        $legacyPayload = OpenApiCoverageTracker::exportState();
+
+        CoverageSidecarWriter::write($this->tmpDir, '1', $legacyPayload);
+
+        $loaded = CoverageSidecarReader::readDir($this->tmpDir);
+        $this->assertCount(1, $loaded);
+
+        $parsed = CoverageSidecarEnvelope::parse($loaded[0]);
+        $this->assertSame($legacyPayload, $parsed['coverage']);
+        $this->assertNull($parsed['strictRequired']);
     }
 
     #[Test]

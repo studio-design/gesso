@@ -12,6 +12,7 @@ use PHPUnit\Event\TestRunner\ExecutionFinishedSubscriber;
 use RuntimeException;
 use Studio\OpenApiContractTesting\Coverage\ConsoleCoverageRenderer;
 use Studio\OpenApiContractTesting\Coverage\CoverageMergeCommand;
+use Studio\OpenApiContractTesting\Coverage\CoverageSidecarEnvelope;
 use Studio\OpenApiContractTesting\Coverage\CoverageSidecarWriter;
 use Studio\OpenApiContractTesting\Coverage\CoverageThresholdEvaluator;
 use Studio\OpenApiContractTesting\Coverage\HtmlCoverageRenderer;
@@ -25,6 +26,7 @@ use Studio\OpenApiContractTesting\Internal\PartialRunDecision;
 use Studio\OpenApiContractTesting\Spec\OpenApiSpecLoader;
 use Studio\OpenApiContractTesting\Validation\Strict\StrictRequiredAsserter;
 use Studio\OpenApiContractTesting\Validation\Strict\StrictRequiredMode;
+use Studio\OpenApiContractTesting\Validation\Strict\StrictRequiredTracker;
 use Throwable;
 
 use function count;
@@ -94,7 +96,6 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
         $workerToken = self::resolveWorkerToken();
         if ($workerToken !== null) {
             $this->writeWorkerSidecar($workerToken);
-            $this->warnStrictRequiredNotSupportedInWorker();
 
             // Free cached spec data; the merge CLI re-loads on its own.
             OpenApiSpecLoader::clearCache();
@@ -228,29 +229,6 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
     }
 
     /**
-     * Issue #224 MVP scope limitation: paratest workers each maintain their
-     * own in-memory StrictRequiredTracker, but the current sidecar protocol
-     * carries only coverage state. The merge CLI therefore cannot run the
-     * asserter against the union of worker observations, so strict_required
-     * is effectively a no-op in worker mode.
-     *
-     * Surface this as a one-line NOTE so users who enabled `strict_required`
-     * in parallel CI immediately see why the asserter never fired, rather
-     * than silently shipping under-described specs.
-     */
-    private function warnStrictRequiredNotSupportedInWorker(): void
-    {
-        if ($this->strictRequiredMode === StrictRequiredMode::Off) {
-            return;
-        }
-        $this->writeStderr(
-            '[OpenAPI Strict Required] NOTE: strict_required is currently sequential-only '
-            . 'and does not aggregate across paratest workers. Run the suite sequentially to '
-            . "evaluate the gate, or follow up on issue #226 for parallel support.\n",
-        );
-    }
-
-    /**
      * Issue #135: in sequential PHPUnit, evaluate the optional coverage
      * threshold after the report renders. Worker mode never reaches here
      * (the worker-token branch returns earlier) — the merge CLI is the gate
@@ -340,8 +318,18 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
     {
         $dir = $this->sidecarDir ?? OpenApiCoverageExtension::defaultSidecarDir();
 
+        // Sidecar envelope (v2) carries both coverage and strict_required
+        // observations so the merge CLI can aggregate the gate across all
+        // paratest workers. The strict_required half is always exported,
+        // independent of the worker's `strict_required` mode — the merge
+        // CLI decides whether to assert (Issue #226).
+        $envelope = CoverageSidecarEnvelope::build(
+            OpenApiCoverageTracker::exportState(),
+            StrictRequiredTracker::exportState(),
+        );
+
         try {
-            CoverageSidecarWriter::write($dir, $token, OpenApiCoverageTracker::exportState());
+            CoverageSidecarWriter::write($dir, $token, $envelope);
         } catch (RuntimeException $e) {
             // The contract assertion that triggered notify() has already
             // passed; we don't fail the test run on sidecar I/O. But we

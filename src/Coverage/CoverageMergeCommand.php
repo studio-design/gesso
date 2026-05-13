@@ -14,6 +14,9 @@ use Studio\OpenApiContractTesting\PHPUnit\ConsoleOutput;
 use Studio\OpenApiContractTesting\PHPUnit\CoverageReportSubscriber;
 use Studio\OpenApiContractTesting\PHPUnit\OpenApiCoverageExtension;
 use Studio\OpenApiContractTesting\Spec\OpenApiSpecLoader;
+use Studio\OpenApiContractTesting\Validation\Strict\StrictRequiredAsserter;
+use Studio\OpenApiContractTesting\Validation\Strict\StrictRequiredMode;
+use Studio\OpenApiContractTesting\Validation\Strict\StrictRequiredTracker;
 use Throwable;
 
 use function array_filter;
@@ -24,6 +27,7 @@ use function explode;
 use function file_put_contents;
 use function getcwd;
 use function getenv;
+use function implode;
 use function in_array;
 use function is_callable;
 use function is_numeric;
@@ -63,6 +67,7 @@ use function unlink;
  *     min_endpoint_coverage?: float|string,
  *     min_response_coverage?: float|string,
  *     min_coverage_strict?: bool,
+ *     strict_required?: string,
  *     help?: bool,
  * }
  *
@@ -179,6 +184,9 @@ final class CoverageMergeCommand
               --min-response-coverage=<pct> Same, at (method, path, status, content-type) granularity.
               --min-coverage-strict[=BOOL]  Treat threshold misses as exit non-zero (default
                                             warn-only).
+              --strict-required=<mode>      off | warn | fail. Aggregate worker observations
+                                            and assert no schema under-description drift
+                                            (Issue #224 / #226). Defaults to off.
               --no-cleanup                  Keep sidecar files after merge (default: cleanup).
               --help                        Show this message.
 
@@ -240,6 +248,16 @@ final class CoverageMergeCommand
         $minEndpointPct = $endpointResolution['value'];
         $minResponsePct = $responseResolution['value'];
 
+        try {
+            $strictRequiredMode = StrictRequiredMode::fromConfigValue($options['strict_required'] ?? null);
+        } catch (InvalidArgumentException $e) {
+            // Same severity as a malformed threshold (exit 2). A typo here
+            // silently disables the gate the user opted into via CI flag.
+            $this->writeStderr(sprintf("[OpenAPI Strict Required] FATAL: %s\n", $e->getMessage()));
+
+            return 2;
+        }
+
         if ($specBasePath === null) {
             $this->writeStderr("[OpenAPI Coverage] FATAL: --spec-base-path is required\n");
 
@@ -290,9 +308,14 @@ final class CoverageMergeCommand
         OpenApiSpecLoader::configure($specBasePath, $stripPrefixes);
 
         OpenApiCoverageTracker::reset();
+        StrictRequiredTracker::reset();
         foreach ($payloads as $payload) {
             try {
-                OpenApiCoverageTracker::importState($payload);
+                $parsed = CoverageSidecarEnvelope::parse($payload);
+                OpenApiCoverageTracker::importState($parsed['coverage']);
+                if ($parsed['strictRequired'] !== null) {
+                    StrictRequiredTracker::importState($parsed['strictRequired']);
+                }
             } catch (InvalidArgumentException $e) {
                 $this->writeStderr(sprintf("[OpenAPI Coverage] FATAL: invalid sidecar payload: %s\n", $e->getMessage()));
 
@@ -325,11 +348,16 @@ final class CoverageMergeCommand
 
         $thresholdFailure = $this->evaluateThresholdGate($results, $minEndpointPct, $minResponsePct, $minStrict);
 
+        // Issue #226: aggregate strict_required across workers and run the
+        // gate after the report is rendered so a fatal drift doesn't suppress
+        // the coverage output users rely on for triage.
+        $strictFailure = $this->evaluateStrictRequiredGate($strictRequiredMode, $githubSummaryPath);
+
         if ($cleanup) {
             $this->cleanup($sidecarDir);
         }
 
-        return $writeFailures > 0 || $thresholdFailure ? 1 : 0;
+        return $writeFailures > 0 || $thresholdFailure || $strictFailure ? 1 : 0;
     }
 
     /**
@@ -486,6 +514,57 @@ final class CoverageMergeCommand
         $this->writeStderr($evaluation['message']);
 
         return $strict;
+    }
+
+    /**
+     * Aggregate strict_required observations imported from worker sidecars
+     * and surface any drift. Returns `true` when the run should exit
+     * non-zero (Fail mode + drift); Warn mode reports drift but returns
+     * `false` so the merge CLI's exit stays driven by the user's intent.
+     *
+     * Mirrors {@see CoverageReportSubscriber::evaluateStrictRequiredGate()}
+     * but translates fatality into a return value instead of `exit()`ing —
+     * the CLI surface joins it with `writeFailures`/`thresholdFailure` into
+     * one exit code.
+     *
+     * Off mode short-circuits before touching the asserter so unrelated
+     * runs pay nothing for the import-time tracker reset.
+     */
+    private function evaluateStrictRequiredGate(StrictRequiredMode $mode, ?string $githubSummaryPath): bool
+    {
+        if ($mode === StrictRequiredMode::Off) {
+            return false;
+        }
+
+        $reports = StrictRequiredAsserter::detectAll($mode);
+        $unresolved = StrictRequiredAsserter::detectUnresolvedGroups($mode);
+
+        if ($unresolved !== []) {
+            // Observed an endpoint with no matching response schema. The user
+            // cannot distinguish "no drift" from "no schema to compare" by
+            // reading the no-drift report alone — surface every offender so
+            // they can spot the spec lookup miss.
+            $this->writeStderr(sprintf(
+                "[OpenAPI Strict Required] NOTE: %d observation group(s) had no matching response schema; skipped from drift detection:\n  - %s\n",
+                count($unresolved),
+                implode("\n  - ", $unresolved),
+            ));
+        }
+
+        if ($reports === []) {
+            return false;
+        }
+
+        $isFatal = $mode === StrictRequiredMode::Fail;
+        $message = StrictRequiredAsserter::renderMessage($reports, $isFatal);
+        $this->writeStderr($message . "\n");
+        OpenApiCoverageExtension::appendGithubStepSummaryStrictRequiredBlock(
+            $githubSummaryPath,
+            $message,
+            $isFatal,
+        );
+
+        return $isFatal;
     }
 
     /**

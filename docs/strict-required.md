@@ -16,7 +16,7 @@ The most common gap that slips past conformance checks is *under-description*: t
 
 1. On every Success result, `OpenApiResponseValidator` records the **top-level keys** of the decoded response body, keyed by `(spec, METHOD path, status, content-type)`.
 2. Across the run, the tracker keeps the **intersection** of every observed key set — the keys that appeared in *every* recorded response for that group. `hits` counts the observations that contributed.
-3. At PHPUnit's `ExecutionFinished` event (or the merge step for paratest — currently unsupported, see Known limitations), the asserter loads each spec and, for each group, computes `intersection - schema.required`. Any keys that survive are flagged: the impl always returns them but the spec does not declare them required.
+3. At PHPUnit's `ExecutionFinished` event (or the merge step for paratest — see "Paratest" below), the asserter loads each spec and, for each group, computes `intersection - schema.required`. Any keys that survive are flagged: the impl always returns them but the spec does not declare them required.
 4. The result is emitted to STDERR and GitHub Step Summary (`$GITHUB_STEP_SUMMARY`) following the same format as the existing enum-drift block, and — in `fail` mode — terminates the run with `exit(1)`.
 
 Only **conformance-passing** responses are recorded. A response that fails the existing JSON Schema check is excluded (its body shape is suspect); skipped statuses (e.g. matching `skipResponseCode`) are excluded too.
@@ -95,9 +95,25 @@ After re-running the suite the diagnostic disappears and downstream SDK consumer
 - It does **not** flag fields the impl returns that are not declared in `properties`. Use `additionalProperties: false` for that — also already supported by the existing validator.
 - It does **not** read the spec for endpoints your tests never touched. Strict required is a runtime-observation gate; coverage-tracking gaps are reported separately by `OpenApiCoverageExtension`'s coverage report.
 
+## Paratest
+
+Paratest / Pest `--parallel` is supported. Each worker exports its observations via the coverage sidecar envelope (v2). Pass `--strict-required=<mode>` to the merge CLI to evaluate the gate after the workers complete:
+
+```bash
+vendor/bin/openapi-coverage-merge \
+  --spec-base-path=tests/fixtures/specs \
+  --specs=front \
+  --sidecar-dir=$RUNNER_TEMP/openapi-sidecars \
+  --strict-required=fail
+```
+
+`--strict-required` accepts `off` (default), `warn` (emit diagnostic, exit 0), and `fail` (emit diagnostic, exit 1). The `strict_required` parameter on the PHPUnit extension does **not** propagate to the merge CLI — workers always export observations, and the merge step decides whether to assert. This keeps mode flips a single-knob CI operation without per-worker reruns.
+
+The diagnostic block is rendered after the coverage report (Markdown, JUnit, JSON, HTML, GITHUB_STEP_SUMMARY) so a fatal drift does not suppress the coverage output that helps triage the failure.
+
 ## Known limitations
 
-- **Paratest is currently sequential-only.** Each worker maintains its own in-memory observations, but the sidecar protocol used by the merge CLI carries only coverage state. When `strict_required` is enabled in worker mode the subscriber emits a one-line `NOTE` and skips the asserter; run the suite sequentially to evaluate the gate, or follow the parallel-runner support follow-up issue.
+- **Mixed sidecar versions.** Workers running an older library version write a v1 (coverage-only) sidecar. The merge CLI still accepts those and merges their coverage, but their strict_required contribution is empty. Upgrade all workers to share the gate fully.
 - **Top-level keys only.** Nested object schemas' `required` arrays are not yet evaluated — only the outermost. A follow-up issue covers nested-object support.
 - **`allOf` is unioned; `anyOf` / `oneOf` are not walked.** `allOf` semantics are AND, so the union of `required` arrays across branches is sound. `anyOf` / `oneOf` are disjunctions and there is no safe AND-semantic for "required" across them; the asserter ignores those branches when collecting `required`. **Consequence:** for a schema whose top-level shape is purely `anyOf` / `oneOf`, the collected `required` is `[]` and *every* always-present key will be reported as drift. Prefer `allOf` for required-set composition, or open a follow-up issue with your use case.
 - **Per-call mode is not implemented.** The Issue #224 design noted an alternative "warn on every optional field present in a single observation" mode — the run-level intersection is the MVP because per-call warns indiscriminately on every legitimately-optional field. If you need it, follow up.

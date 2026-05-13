@@ -6,9 +6,11 @@ namespace Studio\OpenApiContractTesting\Tests\Integration;
 
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+use Studio\OpenApiContractTesting\Coverage\CoverageSidecarEnvelope;
 use Studio\OpenApiContractTesting\Coverage\CoverageSidecarWriter;
 use Studio\OpenApiContractTesting\Coverage\OpenApiCoverageTracker;
 use Studio\OpenApiContractTesting\Spec\OpenApiSpecLoader;
+use Studio\OpenApiContractTesting\Validation\Strict\StrictRequiredTracker;
 
 use function dirname;
 use function escapeshellarg;
@@ -46,6 +48,7 @@ class CoverageMergeCliIntegrationTest extends TestCase
     {
         parent::setUp();
         OpenApiCoverageTracker::reset();
+        StrictRequiredTracker::reset();
         OpenApiSpecLoader::reset();
 
         $this->repoRoot = realpath(__DIR__ . '/../..') ?: __DIR__ . '/../..';
@@ -67,6 +70,7 @@ class CoverageMergeCliIntegrationTest extends TestCase
         @rmdir(dirname($this->sidecarDir));
 
         OpenApiCoverageTracker::reset();
+        StrictRequiredTracker::reset();
         OpenApiSpecLoader::reset();
         parent::tearDown();
     }
@@ -218,6 +222,62 @@ class CoverageMergeCliIntegrationTest extends TestCase
 
         $this->assertSame(1, $exit);
         $this->assertStringContainsString('failed to write a sidecar', $stderr);
+    }
+
+    #[Test]
+    public function bin_aggregates_strict_required_and_fails_in_fail_mode(): void
+    {
+        // Two workers each observe that PUT /signed-url 200 always returns
+        // expires/signed_url/url — but the under-described spec marks them
+        // optional. With --strict-required=fail this must exit 1.
+        OpenApiSpecLoader::configure($this->repoRoot . '/tests/fixtures/specs');
+        $this->writeStrictRequiredSidecar('1');
+        $this->writeStrictRequiredSidecar('2');
+        OpenApiCoverageTracker::reset();
+        StrictRequiredTracker::reset();
+        OpenApiSpecLoader::reset();
+
+        [$exit, $stdout, $stderr] = $this->runCli([
+            '--spec-base-path=' . $this->repoRoot . '/tests/fixtures/specs',
+            '--specs=under-described',
+            '--sidecar-dir=' . $this->sidecarDir,
+            '--output-file=' . $this->outputFile,
+            '--strict-required=fail',
+        ]);
+
+        $this->assertSame(1, $exit, "stdout: {$stdout}\nstderr: {$stderr}");
+        $this->assertStringContainsString('[OpenAPI Strict Required] FATAL', $stderr);
+        $this->assertStringContainsString('PUT /signed-url', $stderr);
+    }
+
+    private function writeStrictRequiredSidecar(string $token): void
+    {
+        OpenApiCoverageTracker::reset();
+        StrictRequiredTracker::reset();
+        OpenApiCoverageTracker::recordResponse(
+            'under-described',
+            'PUT',
+            '/signed-url',
+            '200',
+            'application/json',
+            schemaValidated: true,
+        );
+        StrictRequiredTracker::record(
+            'under-described',
+            'PUT',
+            '/signed-url',
+            '200',
+            'application/json',
+            ['expires', 'signed_url', 'url'],
+        );
+        CoverageSidecarWriter::write(
+            $this->sidecarDir,
+            $token,
+            CoverageSidecarEnvelope::build(
+                OpenApiCoverageTracker::exportState(),
+                StrictRequiredTracker::exportState(),
+            ),
+        );
     }
 
     /**
