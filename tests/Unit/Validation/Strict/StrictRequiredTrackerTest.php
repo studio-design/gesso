@@ -203,4 +203,81 @@ class StrictRequiredTrackerTest extends TestCase
             'observations' => [],
         ]);
     }
+
+    #[Test]
+    public function record_rejects_non_string_keys_in_top_level_keys(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('expects list<string>');
+
+        StrictRequiredTracker::record('front', 'GET', '/x', '200', 'application/json', ['a', 42, 'c']);
+    }
+
+    #[Test]
+    public function import_rejects_missing_observations_key(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('"observations" object');
+
+        StrictRequiredTracker::importState(['version' => 1]);
+    }
+
+    #[Test]
+    public function import_rejects_zero_hits(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('integer hits >= 1');
+
+        StrictRequiredTracker::importState([
+            'version' => 1,
+            'observations' => [
+                'front' => ['GET /x' => ['200:application/json' => ['hits' => 0, 'alwaysPresent' => []]]],
+            ],
+        ]);
+    }
+
+    #[Test]
+    public function import_rejects_non_string_always_present_entry(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('alwaysPresent entries must be strings');
+
+        StrictRequiredTracker::importState([
+            'version' => 1,
+            'observations' => [
+                'front' => ['GET /x' => ['200:application/json' => ['hits' => 1, 'alwaysPresent' => ['ok', 42]]]],
+            ],
+        ]);
+    }
+
+    #[Test]
+    public function import_does_not_partially_mutate_on_late_payload_failure(): void
+    {
+        // Two-pass validation invariant: a malformed entry deep in the
+        // payload must not leave the tracker in a partially-merged state.
+        StrictRequiredTracker::record('front', 'GET', '/x', '200', 'application/json', ['a', 'b']);
+
+        $payload = [
+            'version' => 1,
+            'observations' => [
+                // First spec entry is valid; second carries a bad hits value.
+                'front' => ['GET /x' => ['200:application/json' => ['hits' => 1, 'alwaysPresent' => ['a']]]],
+                'admin' => ['GET /y' => ['200:application/json' => ['hits' => 0, 'alwaysPresent' => []]]],
+            ],
+        ];
+
+        try {
+            StrictRequiredTracker::importState($payload);
+            $this->fail('expected InvalidArgumentException');
+        } catch (InvalidArgumentException) {
+            // expected
+        }
+
+        // The pre-import state must be byte-for-byte unchanged.
+        $this->assertSame(
+            ['GET /x' => ['200:application/json' => ['hits' => 1, 'alwaysPresent' => ['a', 'b']]]],
+            StrictRequiredTracker::getObservations('front'),
+        );
+        $this->assertSame([], StrictRequiredTracker::getObservations('admin'));
+    }
 }

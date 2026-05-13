@@ -36,10 +36,13 @@ use function strtoupper;
  *  - once `alwaysPresent` shrinks to `[]` it stays empty for the rest of
  *    the run; reporting is then trivially a no-op for this group
  *
- * The tracker is paratest-safe via the {@see self::exportState()} /
- * {@see self::importState()} round-trip used by the sidecar writer and the
- * merge CLI — see {@see \Studio\OpenApiContractTesting\Coverage\OpenApiCoverageTracker}
- * for the parallel pattern this mirrors.
+ * {@see self::exportState()} / {@see self::importState()} mirror the shape
+ * used by {@see \Studio\OpenApiContractTesting\Coverage\OpenApiCoverageTracker}'s
+ * sidecar protocol, but they are NOT yet wired into the worker sidecar
+ * writer or the merge CLI — strict_required is sequential-only in this
+ * release; see `docs/strict-required.md` "Known limitations". The methods
+ * exist so the paratest follow-up (issue #226) can plug in without
+ * changing the wire format.
  *
  * @phpstan-type StrictRequiredRow array{hits: int, alwaysPresent: list<string>}
  * @phpstan-type StrictRequiredEndpoint array<string, StrictRequiredRow>
@@ -86,11 +89,24 @@ final class StrictRequiredTracker
      * caller side); duplicate / unsorted lists are tolerated — the tracker
      * normalises before storing.
      *
-     * Calls are cheap and idempotent in the no-strict-mode path: the
-     * extension wires `record()` only when `strict_required != off`, so
-     * users on the default configuration pay zero overhead.
+     * Recording happens on every conformance-passing response regardless of
+     * `strict_required` mode — the validator does not know the mode, and the
+     * asserter is the gated component. The cost is `O(top-level keys)` per
+     * call. Memory grows with `O(distinct endpoint × status × content-type
+     * groups)`, bounded by the spec.
      *
-     * @param list<string> $topLevelKeys
+     * Runtime validation: `$topLevelKeys` MUST be a list of strings. This is
+     * checked at call time (parallel to {@see self::importState()}) so a
+     * future validator-side bug that leaks non-string entries does not
+     * silently corrupt the intersection. The PHPDoc deliberately types the
+     * parameter loosely (`array`) so the defensive check is not optimised
+     * away by static analysers that treat PHPDoc as ground truth.
+     *
+     * @param array<int, mixed> $topLevelKeys list of strings; runtime
+     *                                        rejected otherwise
+     *
+     * @throws InvalidArgumentException when `$topLevelKeys` carries a
+     *                                  non-string entry
      */
     public static function record(
         string $specName,
@@ -100,6 +116,20 @@ final class StrictRequiredTracker
         string $contentTypeKey,
         array $topLevelKeys,
     ): void {
+        foreach ($topLevelKeys as $key) {
+            if (!is_string($key)) {
+                throw new InvalidArgumentException(sprintf(
+                    'StrictRequiredTracker::record() expects list<string> for $topLevelKeys; '
+                    . 'got %s at %s %s (status %s, content-type %s).',
+                    get_debug_type($key),
+                    strtoupper($method),
+                    $path,
+                    $statusKey,
+                    $contentTypeKey,
+                ));
+            }
+        }
+
         $endpointKey = strtoupper($method) . ' ' . $path;
         $responseKey = $statusKey . ':' . $contentTypeKey;
 
@@ -142,6 +172,10 @@ final class StrictRequiredTracker
      * uses this to short-circuit specs that the run never touched.
      *
      * @return array<string, array<string, StrictRequiredRow>>
+     *
+     * @internal Consumed by {@see StrictRequiredAsserter} and by unit
+     *           tests; the returned array shape is not part of the public
+     *           API and may change between minor releases.
      */
     public static function getObservations(string $specName): array
     {
@@ -152,6 +186,9 @@ final class StrictRequiredTracker
      * List the spec names that have at least one recorded observation.
      *
      * @return list<string>
+     *
+     * @internal Consumed by {@see StrictRequiredAsserter} so it can walk
+     *           only the specs actually touched by the test run.
      */
     public static function recordedSpecs(): array
     {

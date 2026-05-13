@@ -27,6 +27,7 @@ use Studio\OpenApiContractTesting\Validation\Strict\StrictRequiredAsserter;
 use Studio\OpenApiContractTesting\Validation\Strict\StrictRequiredMode;
 use Throwable;
 
+use function count;
 use function fflush;
 use function file_put_contents;
 use function getenv;
@@ -154,8 +155,9 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
      * the process so paratest CI surfaces the non-zero exit; `Warn` mode
      * leaves the run successful but prints the diagnostic block.
      *
-     * Off mode and "no drift" short-circuit cleanly so this method is safe
-     * to invoke unconditionally from the sequential branch.
+     * Off mode, "no drift", partial-run, and unresolved-only short-circuit
+     * cleanly so this method is safe to invoke unconditionally from the
+     * sequential branch.
      */
     private function evaluateStrictRequiredGate(): void
     {
@@ -163,7 +165,35 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
             return;
         }
 
+        // Issue #221 alignment: strict_required's intersection is reliable
+        // only when the full suite ran. A `--filter` subset can show a key
+        // as "always present" simply because the broader suite's omissions
+        // were excluded from the run. Skip the gate and emit a one-line
+        // NOTE so the user understands why no drift block appeared.
+        if ($this->partialRun !== null) {
+            $this->writeStderr(
+                '[OpenAPI Strict Required] NOTE: strict_required is skipped on partial runs (--filter / --testsuite / etc.) '
+                . "because the intersection requires the full suite to be reliable. Run without filters to evaluate the gate.\n",
+            );
+
+            return;
+        }
+
         $reports = StrictRequiredAsserter::detectAll($this->strictRequiredMode);
+        $unresolved = StrictRequiredAsserter::detectUnresolvedGroups($this->strictRequiredMode);
+
+        if ($unresolved !== []) {
+            // Validator only records on Success, so reaching this branch
+            // means a spec lookup miss the user cannot diagnose by reading
+            // the no-drift output. Surface every offender so they can
+            // distinguish "no drift" from "no schema to compare against".
+            $this->writeStderr(sprintf(
+                "[OpenAPI Strict Required] NOTE: %d observation group(s) had no matching response schema; skipped from drift detection:\n  - %s\n",
+                count($unresolved),
+                implode("\n  - ", $unresolved),
+            ));
+        }
+
         if ($reports === []) {
             return;
         }
@@ -216,7 +246,7 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
         $this->writeStderr(
             '[OpenAPI Strict Required] NOTE: strict_required is currently sequential-only '
             . 'and does not aggregate across paratest workers. Run the suite sequentially to '
-            . "evaluate the gate, or follow up on the strict_required paratest support issue.\n",
+            . "evaluate the gate, or follow up on issue #226 for parallel support.\n",
         );
     }
 

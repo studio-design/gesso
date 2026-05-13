@@ -6,11 +6,15 @@ namespace Studio\OpenApiContractTesting\Validation\Strict;
 
 use const E_USER_WARNING;
 
+use Studio\OpenApiContractTesting\Exception\InvalidOpenApiSpecException;
+use Studio\OpenApiContractTesting\Exception\SpecFileNotFoundException;
 use Studio\OpenApiContractTesting\Exception\StrictRequiredDriftException;
+use Studio\OpenApiContractTesting\PHPUnit\CoverageReportSubscriber;
 use Studio\OpenApiContractTesting\Schema\EnumDriftAsserter;
 use Studio\OpenApiContractTesting\Spec\OpenApiSpecLoader;
 
 use function array_diff;
+use function array_keys;
 use function array_map;
 use function array_unique;
 use function array_values;
@@ -40,9 +44,18 @@ use function trigger_error;
  * `allOf` is walked when collecting `required` so composed schemas (very
  * common in modular spec layouts) do not produce false-positive reports.
  * `anyOf` / `oneOf` are intentionally NOT walked — they are disjunctions
- * and there is no safe AND-semantic for "required" across them; consult
- * the README's "Strict required limitations" section before relying on
- * those constructs.
+ * and there is no safe AND-semantic for "required" across them. The
+ * collected `required` for such top-level schemas is therefore `[]`,
+ * which makes *every* always-present key surface as drift. Consult
+ * `docs/strict-required.md` "Known limitations" before relying on those
+ * constructs.
+ *
+ * Observations whose `(method, path, status, content-type)` does not
+ * resolve to a response schema in the spec are silently skipped from
+ * drift reporting — that is the coverage tracker's responsibility, not
+ * this asserter's. A NOTE is emitted at run end if any such mismatches
+ * were observed so users can tell "no drift" apart from "no schema to
+ * compare against".
  */
 final class StrictRequiredAsserter
 {
@@ -95,26 +108,40 @@ final class StrictRequiredAsserter
      */
     public static function detectAll(StrictRequiredMode $mode): array
     {
-        if ($mode === StrictRequiredMode::Off) {
-            return [];
-        }
+        return self::analyse($mode)['reports'];
+    }
 
-        $reports = [];
-        foreach (StrictRequiredTracker::recordedSpecs() as $specName) {
-            foreach (self::reportsForSpec($specName) as $report) {
-                if ($report->hasDrift()) {
-                    $reports[] = $report;
-                }
-            }
-        }
-
-        return $reports;
+    /**
+     * Diagnostic accessor: groups whose observation was recorded but whose
+     * spec response schema could not be resolved at run end. Empty under
+     * the normal happy path (validator records only on Success, so every
+     * group should round-trip back to a schema).
+     *
+     * A non-empty result is bug-level: it means the validator's match key
+     * disagrees with the asserter's lookup, or a `$ref` resolved to an
+     * unexpected shape, or a spec file was unlinked mid-run. The subscriber
+     * surfaces these as a NOTE so users can tell "no drift" apart from
+     * "no schema to compare against".
+     *
+     * @return list<string> human-readable identifiers in the form
+     *                      `"specName :: METHOD path :: statusKey:contentTypeKey"`
+     *
+     * @internal Consumed by {@see CoverageReportSubscriber}.
+     */
+    public static function detectUnresolvedGroups(StrictRequiredMode $mode): array
+    {
+        return self::analyse($mode)['unresolved'];
     }
 
     /**
      * Render the diagnostic block describing every drifting endpoint.
      *
      * @param list<StrictRequiredReport> $reports
+     *
+     * @internal Exposed only so the PHPUnit subscriber can reuse the same
+     *           block format when invoking the asserter at ExecutionFinished
+     *           without re-firing the `trigger_error` / throw path that
+     *           {@see self::assertNoDrift()} would use.
      */
     public static function renderMessage(array $reports, bool $isFatal): string
     {
@@ -152,18 +179,59 @@ final class StrictRequiredAsserter
     }
 
     /**
-     * @return list<StrictRequiredReport>
+     * @return array{reports: list<StrictRequiredReport>, unresolved: list<string>}
+     */
+    private static function analyse(StrictRequiredMode $mode): array
+    {
+        if ($mode === StrictRequiredMode::Off) {
+            return ['reports' => [], 'unresolved' => []];
+        }
+
+        $reports = [];
+        $unresolved = [];
+        foreach (StrictRequiredTracker::recordedSpecs() as $specName) {
+            $spec = self::reportsForSpec($specName);
+            foreach ($spec['reports'] as $report) {
+                $reports[] = $report;
+            }
+            foreach ($spec['unresolved'] as $u) {
+                $unresolved[] = $u;
+            }
+        }
+
+        return ['reports' => $reports, 'unresolved' => $unresolved];
+    }
+
+    /**
+     * @return array{reports: list<StrictRequiredReport>, unresolved: list<string>}
      */
     private static function reportsForSpec(string $specName): array
     {
         $observations = StrictRequiredTracker::getObservations($specName);
         if ($observations === []) {
-            return [];
+            return ['reports' => [], 'unresolved' => []];
         }
 
-        $spec = OpenApiSpecLoader::load($specName);
+        try {
+            $spec = OpenApiSpecLoader::load($specName);
+        } catch (InvalidOpenApiSpecException|SpecFileNotFoundException) {
+            // Mirror CoverageReportSubscriber::computeAllResults() —
+            // a spec file unlinked between bootstrap and ExecutionFinished
+            // is not the asserter's problem to escalate; coverage reporting
+            // handles that channel. Treat all observations for this spec as
+            // unresolved so the diagnostic at least surfaces.
+            $unresolvedAll = [];
+            foreach ($observations as $endpointKey => $responses) {
+                foreach (array_keys($responses) as $responseKey) {
+                    $unresolvedAll[] = sprintf('%s :: %s :: %s', $specName, $endpointKey, $responseKey);
+                }
+            }
+
+            return ['reports' => [], 'unresolved' => $unresolvedAll];
+        }
 
         $reports = [];
+        $unresolved = [];
         foreach ($observations as $endpointKey => $responses) {
             [$method, $path] = self::splitEndpointKey($endpointKey);
             foreach ($responses as $responseKey => $row) {
@@ -176,13 +244,25 @@ final class StrictRequiredAsserter
                     $contentTypeKey,
                 );
                 if ($required === null) {
-                    // Schema does not exist for this observation — nothing
-                    // to compare against. Coverage-side reporting flags
-                    // spec gaps separately; the strict-required asserter
-                    // intentionally stays silent here.
+                    // Schema does not exist for this observation. The
+                    // validator only records on Success, so reaching this
+                    // branch means either a $ref resolved to an unexpected
+                    // shape or the path matcher and the asserter disagree
+                    // on the canonical key — both are bug-level. Record
+                    // the group so the subscriber can surface a NOTE; do
+                    // not produce a drift report (`required = []` would
+                    // falsely flag every always-present key).
+                    $unresolved[] = sprintf('%s :: %s :: %s', $specName, $endpointKey, $responseKey);
+
                     continue;
                 }
                 $missing = array_values(array_diff($row['alwaysPresent'], $required));
+                if ($missing === []) {
+                    // Skip allocating a report that detectAll() would
+                    // immediately filter out via hasDrift(). Cheap fast
+                    // path for the common (clean) case.
+                    continue;
+                }
                 sort($missing);
 
                 $reports[] = new StrictRequiredReport(
@@ -197,7 +277,7 @@ final class StrictRequiredAsserter
             }
         }
 
-        return $reports;
+        return ['reports' => $reports, 'unresolved' => $unresolved];
     }
 
     /**

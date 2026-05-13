@@ -178,4 +178,71 @@ class StrictRequiredAsserterTest extends TestCase
 
         StrictRequiredAsserter::assertNoDrift(StrictRequiredMode::Fail);
     }
+
+    #[Test]
+    public function detect_unresolved_groups_returns_empty_when_all_match(): void
+    {
+        StrictRequiredTracker::record(self::SPEC_NAME, 'GET', '/users/{id}', '200', 'application/json', ['id', 'name']);
+
+        $this->assertSame([], StrictRequiredAsserter::detectUnresolvedGroups(StrictRequiredMode::Warn));
+    }
+
+    #[Test]
+    public function detect_unresolved_groups_lists_method_mismatch(): void
+    {
+        // Spec only declares PUT /signed-url; recording GET for the same path
+        // hits the operation-lookup null branch.
+        StrictRequiredTracker::record(self::SPEC_NAME, 'GET', '/signed-url', '200', 'application/json', ['expires']);
+
+        $unresolved = StrictRequiredAsserter::detectUnresolvedGroups(StrictRequiredMode::Warn);
+        $this->assertCount(1, $unresolved);
+        $this->assertStringContainsString('GET /signed-url', $unresolved[0]);
+    }
+
+    #[Test]
+    public function detect_unresolved_groups_lists_content_type_mismatch(): void
+    {
+        StrictRequiredTracker::record(self::SPEC_NAME, 'PUT', '/signed-url', '200', 'text/plain', ['expires']);
+
+        $unresolved = StrictRequiredAsserter::detectUnresolvedGroups(StrictRequiredMode::Warn);
+        $this->assertCount(1, $unresolved);
+        $this->assertStringContainsString('text/plain', $unresolved[0]);
+    }
+
+    #[Test]
+    public function unresolved_group_does_not_produce_drift_report(): void
+    {
+        // A lookup-miss must not be reported as drift (would falsely flag
+        // every observed key as missing-from-required).
+        StrictRequiredTracker::record(self::SPEC_NAME, 'GET', '/signed-url', '200', 'application/json', ['expires']);
+
+        $this->assertSame([], StrictRequiredAsserter::detectAll(StrictRequiredMode::Warn));
+    }
+
+    #[Test]
+    public function any_of_top_level_schema_yields_noisy_drift_report(): void
+    {
+        // Documented limitation: anyOf/oneOf are not walked, so the
+        // collected `required` is [] and every always-present key surfaces
+        // as drift. This pins the documented behavior so a future
+        // "let's walk anyOf for symmetry" refactor cannot silently flip it.
+        StrictRequiredTracker::record(self::SPEC_NAME, 'GET', '/either-shape', '200', 'application/json', ['a', 'b']);
+
+        $reports = StrictRequiredAsserter::detectAll(StrictRequiredMode::Warn);
+        $this->assertCount(1, $reports);
+        $this->assertSame(['a', 'b'], $reports[0]->missingFromRequired);
+    }
+
+    #[Test]
+    public function malformed_non_string_entries_in_required_are_ignored(): void
+    {
+        // /malformed-required has `required: ["id", 42, null]`. The asserter
+        // filters non-strings rather than crashing, so a spec author's typo
+        // produces a usable diff against `["id"]`.
+        StrictRequiredTracker::record(self::SPEC_NAME, 'GET', '/malformed-required', '200', 'application/json', ['id', 'name']);
+
+        $reports = StrictRequiredAsserter::detectAll(StrictRequiredMode::Warn);
+        $this->assertCount(1, $reports);
+        $this->assertSame(['name'], $reports[0]->missingFromRequired);
+    }
 }

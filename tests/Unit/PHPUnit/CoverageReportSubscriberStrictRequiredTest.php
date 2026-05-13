@@ -9,6 +9,7 @@ use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use ReflectionClass;
 use Studio\OpenApiContractTesting\Coverage\OpenApiCoverageTracker;
+use Studio\OpenApiContractTesting\Internal\PartialRunDecision;
 use Studio\OpenApiContractTesting\PHPUnit\ConsoleOutput;
 use Studio\OpenApiContractTesting\PHPUnit\CoverageReportSubscriber;
 use Studio\OpenApiContractTesting\Spec\OpenApiSpecLoader;
@@ -154,6 +155,74 @@ class CoverageReportSubscriberStrictRequiredTest extends TestCase
 
         $this->assertStringContainsString('[OpenAPI Strict Required] NOTE', $stderr);
         $this->assertStringContainsString('sequential-only', $stderr);
+        $this->assertStringContainsString('issue #226', $stderr);
+    }
+
+    #[Test]
+    public function partial_run_skips_gate_with_note(): void
+    {
+        StrictRequiredTracker::record(self::SPEC_NAME, 'PUT', '/signed-url', '200', 'application/json', ['expires', 'signed_url', 'url']);
+
+        $stderr = '';
+        $exitCode = null;
+        $subscriber = new CoverageReportSubscriber(
+            specs: [self::SPEC_NAME],
+            outputFile: null,
+            consoleOutput: ConsoleOutput::DEFAULT,
+            githubSummaryPath: null,
+            stderrWriter: static function (string $msg) use (&$stderr): void {
+                $stderr .= $msg;
+            },
+            sidecarDir: null,
+            exitHandler: static function (int $code) use (&$exitCode): void {
+                $exitCode = $code;
+            },
+            partialRun: PartialRunDecision::fromSignals(
+                hasCliArguments: true,
+                hasFilter: true,
+                hasExcludeFilter: false,
+                hasGroups: false,
+                hasExcludeGroups: false,
+                includeTestSuites: [],
+                excludeTestSuites: [],
+                hasTestsCovering: false,
+                hasTestsUsing: false,
+                hasTestsRequiringPhpExtension: false,
+            ),
+            strictRequiredMode: StrictRequiredMode::Fail,
+        );
+
+        ob_start();
+        $subscriber->notify($this->fakeExecutionFinished());
+        ob_get_clean();
+
+        $this->assertNull($exitCode, 'partial run must not fail-fast the gate');
+        $this->assertStringContainsString('[OpenAPI Strict Required] NOTE', $stderr);
+        $this->assertStringContainsString('skipped on partial runs', $stderr);
+        $this->assertStringNotContainsString('FATAL', $stderr);
+    }
+
+    #[Test]
+    public function unresolved_groups_emit_diagnostic_note(): void
+    {
+        // Record an observation that the asserter cannot resolve (GET on a
+        // path that only declares PUT).
+        StrictRequiredTracker::record(self::SPEC_NAME, 'GET', '/signed-url', '200', 'application/json', ['expires']);
+
+        $stderr = '';
+        $subscriber = $this->makeSubscriber(
+            mode: StrictRequiredMode::Warn,
+            stderr: $stderr,
+            exitCode: $exitCode,
+        );
+
+        ob_start();
+        $subscriber->notify($this->fakeExecutionFinished());
+        ob_get_clean();
+
+        $this->assertStringContainsString('NOTE: 1 observation group(s) had no matching response schema', $stderr);
+        $this->assertStringContainsString('GET /signed-url', $stderr);
+        $this->assertStringNotContainsString('WARNING', $stderr);
     }
 
     /**

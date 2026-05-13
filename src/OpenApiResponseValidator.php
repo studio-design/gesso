@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Studio\OpenApiContractTesting;
 
 use RuntimeException;
+use stdClass;
 use Studio\OpenApiContractTesting\Spec\OpenApiPathMatcher;
 use Studio\OpenApiContractTesting\Spec\OpenApiSpecLoader;
 use Studio\OpenApiContractTesting\Validation\Response\ResponseBodyValidationResult;
@@ -17,6 +18,7 @@ use Studio\OpenApiContractTesting\Validation\Support\SpecResponseKeyResolver;
 use Studio\OpenApiContractTesting\Validation\Support\StatusCodePatternSet;
 use Studio\OpenApiContractTesting\Validation\Support\ValidatorErrorBoundary;
 
+use function array_is_list;
 use function array_keys;
 use function array_merge;
 use function get_debug_type;
@@ -246,11 +248,23 @@ final class OpenApiResponseValidator
      * skipped responses are explicitly excluded from coverage too — both
      * cases would poison the intersection.
      *
-     * Non-array bodies (scalars, objects whose JSON form is not an object,
-     * `null`) carry no top-level keys to compare against `required`, so we
-     * skip recording rather than store an empty observation that would
-     * spuriously collapse the intersection of a sibling array observation
-     * to `[]`.
+     * Body-shape handling:
+     *   - scalar / `null` bodies: skipped (no top-level keys to diff against
+     *     `required`)
+     *   - `stdClass` (returned by callers who decoded with `json_decode(_, false)`):
+     *     coerced to an associative array so framework-agnostic users are
+     *     not silently dropped from observation
+     *   - PHP associative arrays (JSON objects via `json_decode(_, true)`):
+     *     recorded as-is — this is the Laravel adapter's path
+     *   - JSON arrays (list-shape, only numeric keys): skipped to avoid
+     *     collapsing a sibling object observation's intersection to `[]`;
+     *     `required` semantics only apply to object-shaped responses
+     *   - empty object `{}` (lands here as `[]` after decode): recorded as
+     *     an empty observation so a single empty response correctly drops
+     *     the intersection. The body validator already disambiguated `[]`
+     *     vs `{}` via stdClass coercion before validating, so by the time
+     *     we are on the Success path with `$responseBody === []`, the
+     *     schema accepted an empty object.
      */
     private function maybeRecordStrictRequired(
         string $specName,
@@ -260,25 +274,25 @@ final class OpenApiResponseValidator
         ?string $matchedContentType,
         mixed $responseBody,
     ): void {
+        if ($responseBody instanceof stdClass) {
+            $responseBody = (array) $responseBody;
+        }
         if (!is_array($responseBody)) {
+            return;
+        }
+        // Distinguish empty object {} (record empty observation) from
+        // non-empty list [...] (skip): empty array is ambiguous so we err
+        // on the "object" side, consistent with the body validator's
+        // empty-object coercion upstream.
+        if ($responseBody !== [] && array_is_list($responseBody)) {
             return;
         }
         $topLevelKeys = [];
         foreach (array_keys($responseBody) as $key) {
-            // Coerce to strings so list-style bodies (numeric keys) are
-            // dropped from the observation: top-level required only makes
-            // sense for object-shaped responses.
             if (is_string($key)) {
                 $topLevelKeys[] = $key;
             }
         }
-        // `[]` is ambiguous: empty object {} or empty array []. The body
-        // validator already disambiguates {} via stdClass coercion against
-        // schemas of type:object — by the time we land here on the Success
-        // path with $responseBody === [], the schema accepted an empty
-        // object, so an empty observation is a legitimate signal that no
-        // keys are always-present. Record it so a single empty response
-        // correctly drops the intersection.
         StrictRequiredTracker::record(
             $specName,
             $method,
