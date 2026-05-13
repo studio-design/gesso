@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Studio\OpenApiContractTesting\Validation\Strict;
 
+use const E_USER_WARNING;
+
 use InvalidArgumentException;
 use Studio\OpenApiContractTesting\Coverage\CoverageSidecarEnvelope;
 use Studio\OpenApiContractTesting\OpenApiResponseValidator;
@@ -22,10 +24,17 @@ use function ksort;
 use function sort;
 use function sprintf;
 use function strtoupper;
+use function trigger_error;
 
 /**
- * Static singleton that accumulates response body object-node observations
- * per `(spec, METHOD path, statusKey, contentTypeKey)` across a test run.
+ * Tracker that accumulates response body object-node observations per
+ * `(spec, METHOD path, statusKey, contentTypeKey)` across a test run.
+ * Exposed through a static facade (see {@see self::current()} /
+ * {@see self::setCurrent()}) so the Laravel `ValidatesOpenApiSchema` trait
+ * can still reach it without DI — the trait has no constructor and cannot
+ * receive an instance through injection. Production callers (the PHPUnit
+ * extension, the merge CLI, the validator) construct and use instances
+ * directly.
  *
  * Each observation feeds a JSON-Pointer-like map `pointer => list<string>`
  * (see {@see StrictRequiredBodyWalker}) describing the keys present at every
@@ -111,14 +120,43 @@ final class StrictRequiredTracker
     }
 
     /**
-     * Install the "current" tracker instance. Pass `null` to drop the slot
-     * (the next {@see self::current()} call will mint a fresh default).
+     * Install the "current" tracker instance. Called from the PHPUnit
+     * extension's bootstrap so the suite-wide tracker is the one wired into
+     * the subscriber. Drop the slot with {@see self::resetCurrent()} when
+     * you want the next {@see self::current()} call to mint a fresh default.
+     *
+     * Triggers `E_USER_WARNING` when overwriting an installed instance that
+     * already has recorded observations — that pattern almost always means
+     * a test forgot to call {@see self::resetCurrent()} before re-installing
+     * and is about to silently drop observations. Mirrors the same guard on
+     * {@see \Studio\OpenApiContractTesting\Coverage\OpenApiCoverageTracker::setCurrent()}.
      *
      * @internal
      */
-    public static function setCurrent(?self $instance): void
+    public static function setCurrent(self $instance): void
     {
+        if (self::$current !== null && self::$current->recordedSpecsOn() !== []) {
+            trigger_error(
+                '[OpenAPI Strict Required] setCurrent() called while the '
+                . 'previous instance still holds recorded observations; '
+                . 'those observations will not contribute to drift '
+                . 'detection. Call resetCurrent() first if this is intentional.',
+                E_USER_WARNING,
+            );
+        }
         self::$current = $instance;
+    }
+
+    /**
+     * Drop the installed instance so the next {@see self::current()} call
+     * mints a fresh default. Symmetric with {@see self::setCurrent()};
+     * splitting the two intents keeps the type signatures honest.
+     *
+     * @internal
+     */
+    public static function resetCurrent(): void
+    {
+        self::$current = null;
     }
 
     /**

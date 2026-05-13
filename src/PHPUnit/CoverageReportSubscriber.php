@@ -47,8 +47,17 @@ use function trim;
  */
 final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscriber
 {
+    private OpenApiCoverageTracker $coverageTracker;
+    private StrictRequiredTracker $strictRequiredTracker;
+
     /**
      * @param string[] $specs
+     * @param null|OpenApiCoverageTracker $coverageTracker Production callers (the PHPUnit extension) pass the
+     *                                                     run-level instance they own. Passing `null` resolves
+     *                                                     once at construction via {@see OpenApiCoverageTracker::current()},
+     *                                                     so the field remains non-null after the ctor and the
+     *                                                     `readonly` invariant holds end-to-end.
+     * @param null|StrictRequiredTracker $strictRequiredTracker Same shape as $coverageTracker.
      * @param null|callable(string): void $stderrWriter Optional sink for warnings (stale/invalid specs,
      *                                                  failed file_put_contents). Falls back to {@see OpenApiCoverageExtension::writeStderr()} when
      *                                                  null. Injected for testability — the extension stays the default backstop in production.
@@ -77,8 +86,8 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
         private ?string $outputFile,
         private ConsoleOutput $consoleOutput,
         private ?string $githubSummaryPath,
-        private ?OpenApiCoverageTracker $coverageTracker = null,
-        private ?StrictRequiredTracker $strictRequiredTracker = null,
+        ?OpenApiCoverageTracker $coverageTracker = null,
+        ?StrictRequiredTracker $strictRequiredTracker = null,
         private mixed $stderrWriter = null,
         private ?string $sidecarDir = null,
         private ?float $minEndpointCoverage = null,
@@ -90,7 +99,17 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
         private ?string $htmlOutput = null,
         private ?PartialRunDecision $partialRun = null,
         private StrictRequiredMode $strictRequiredMode = StrictRequiredMode::Off,
-    ) {}
+    ) {
+        // Eager resolution at construction time keeps the readonly invariant
+        // honest: by the time any other method runs, $coverageTracker and
+        // $strictRequiredTracker are guaranteed non-null and pinned. Tests
+        // can still pass `null` (or omit the args) and inherit whatever the
+        // process-global locator was wired with at the call site, but the
+        // subscriber's runtime view does not flip-flop between an injected
+        // ref and a live `current()` lookup.
+        $this->coverageTracker = $coverageTracker ?? OpenApiCoverageTracker::current();
+        $this->strictRequiredTracker = $strictRequiredTracker ?? StrictRequiredTracker::current();
+    }
 
     /** @phpcsSuppress SlevomatCodingStandard.Functions.UnusedParameter.UnusedParameter */
     public function notify(ExecutionFinished $event): void
@@ -150,23 +169,6 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
         }
 
         return $token;
-    }
-
-    /**
-     * Resolve the {@see OpenApiCoverageTracker} this subscriber reports on.
-     * Falls back to {@see OpenApiCoverageTracker::current()} when constructed
-     * without an injected instance — keeps existing test fixtures that pre-date
-     * the DI wiring working unchanged while production code (the extension)
-     * always passes one in.
-     */
-    private function coverageTracker(): OpenApiCoverageTracker
-    {
-        return $this->coverageTracker ?? OpenApiCoverageTracker::current();
-    }
-
-    private function strictRequiredTracker(): StrictRequiredTracker
-    {
-        return $this->strictRequiredTracker ?? StrictRequiredTracker::current();
     }
 
     /**
@@ -356,8 +358,8 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
         // independent of the worker's `strict_required` mode — the merge
         // CLI decides whether to assert (Issue #226).
         $envelope = CoverageSidecarEnvelope::build(
-            $this->coverageTracker()->exportStateOn(),
-            $this->strictRequiredTracker()->exportStateOn(),
+            $this->coverageTracker->exportStateOn(),
+            $this->strictRequiredTracker->exportStateOn(),
         );
 
         try {
@@ -391,7 +393,7 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
      */
     private function computeAllResults(): array
     {
-        $tracker = $this->coverageTracker();
+        $tracker = $this->coverageTracker;
 
         $hasCoverage = false;
         foreach ($this->specs as $spec) {

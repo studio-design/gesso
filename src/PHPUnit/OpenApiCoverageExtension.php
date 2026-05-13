@@ -275,14 +275,18 @@ final class OpenApiCoverageExtension implements Extension
         // Issue #229: install fresh tracker instances for this run and route
         // the static facades (used by the Laravel trait that can't take DI)
         // through them. Replacing the locator instance gives us a clean
-        // start without depending on a process-global ::reset() — this
-        // mirrors what each unit-test fixture now does, just at suite scope.
-        // Worker observations are aggregated across paratest workers via the
-        // sidecar envelope (Issue #226); the run-level instances here are
-        // exactly what the merge CLI's tracker reconstructs from those
-        // sidecars.
+        // start without depending on a process-global ::reset(); the previous
+        // bootstrap-reset pattern is preserved by the fresh instances. Test
+        // seams that invoke setupExtension() multiple times in one PHP
+        // process re-install fresh instances each call, dropping any state
+        // accumulated since the previous bootstrap. Worker observations are
+        // aggregated across paratest workers via the sidecar envelope
+        // (Issue #226); the run-level instances installed here are exactly
+        // what the merge CLI's tracker reconstructs from those sidecars.
         $coverageTracker = new OpenApiCoverageTracker();
         $strictRequiredTracker = new StrictRequiredTracker();
+        OpenApiCoverageTracker::resetCurrent();
+        StrictRequiredTracker::resetCurrent();
         OpenApiCoverageTracker::setCurrent($coverageTracker);
         StrictRequiredTracker::setCurrent($strictRequiredTracker);
 

@@ -7,8 +7,8 @@ namespace Studio\OpenApiContractTesting\Coverage;
 use const E_USER_WARNING;
 
 use InvalidArgumentException;
-use Studio\OpenApiContractTesting\PHPUnit\OpenApiCoverageExtension;
 use Studio\OpenApiContractTesting\Spec\OpenApiSpecLoader;
+use Studio\OpenApiContractTesting\Validation\Strict\StrictRequiredTracker;
 
 use function array_key_exists;
 use function array_keys;
@@ -152,16 +152,47 @@ final class OpenApiCoverageTracker
     }
 
     /**
-     * Install the "current" tracker instance. Pass `null` to drop the slot
-     * (the next {@see self::current()} call will mint a fresh default).
-     * Called from {@see OpenApiCoverageExtension::setupExtension()}
-     * so the suite-wide tracker is the one wired into the subscriber.
+     * Install the "current" tracker instance. Called from the PHPUnit
+     * extension's bootstrap so the suite-wide tracker is the one wired into
+     * the subscriber. Drop the slot with {@see self::resetCurrent()} when
+     * you want the next {@see self::current()} call to mint a fresh default.
+     *
+     * Triggers `E_USER_WARNING` when overwriting an installed instance that
+     * already has recorded state — that pattern almost always means a test
+     * forgot to call {@see self::resetCurrent()} before re-installing and
+     * is about to silently drop observations. Matches the project's
+     * existing "loud on suspicious state" style (see also
+     * {@see self::warnMalformed()} and the v1-row rejection in
+     * {@see StrictRequiredTracker::validateRow()}).
      *
      * @internal
      */
-    public static function setCurrent(?self $instance): void
+    public static function setCurrent(self $instance): void
     {
+        if (self::$current !== null && self::$current->getCoveredOn() !== []) {
+            trigger_error(
+                '[OpenAPI Coverage] setCurrent() called while the previous '
+                . 'instance still holds recorded coverage; observations on '
+                . 'the outgoing instance will not contribute to reports. '
+                . 'Call resetCurrent() first if this is intentional.',
+                E_USER_WARNING,
+            );
+        }
         self::$current = $instance;
+    }
+
+    /**
+     * Drop the installed instance so the next {@see self::current()} call
+     * mints a fresh default. Symmetric with {@see self::setCurrent()};
+     * splitting the two intents (install vs clear) keeps the type
+     * signatures honest — `setCurrent(self)` is required-non-null, so
+     * accidental `null` arguments are caught at compile time.
+     *
+     * @internal
+     */
+    public static function resetCurrent(): void
+    {
+        self::$current = null;
     }
 
     /**

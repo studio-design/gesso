@@ -13,6 +13,7 @@ use Studio\OpenApiContractTesting\Coverage\OpenApiCoverageTracker;
 use Studio\OpenApiContractTesting\PHPUnit\ConsoleOutput;
 use Studio\OpenApiContractTesting\PHPUnit\CoverageReportSubscriber;
 use Studio\OpenApiContractTesting\Spec\OpenApiSpecLoader;
+use Studio\OpenApiContractTesting\Validation\Strict\StrictRequiredTracker;
 use Throwable;
 
 use function file_get_contents;
@@ -128,6 +129,74 @@ class CoverageReportSubscriberWorkerModeTest extends TestCase
         $this->assertSame(2, $loaded[0]['envelopeVersion']);
         $this->assertSame(1, $loaded[0]['coverage']['version']);
         $this->assertArrayHasKey('petstore-3.0', $loaded[0]['coverage']['specs']);
+    }
+
+    #[Test]
+    public function injected_trackers_drive_worker_sidecar_payload(): void
+    {
+        // Issue #229: when production code (the extension) injects tracker
+        // instances into the subscriber, the worker-mode sidecar must
+        // serialize THOSE instances — not whatever the process-global
+        // ::current() locator happens to point at. A regression that drops
+        // the field assignment would silently serialize the wrong state and
+        // the merge CLI would aggregate empty payloads.
+        $coverageTracker = new OpenApiCoverageTracker();
+        $coverageTracker->recordResponseOn(
+            'petstore-3.0',
+            'POST',
+            '/v1/pets',
+            '201',
+            'application/json',
+            schemaValidated: true,
+        );
+        $strictRequiredTracker = new StrictRequiredTracker();
+        $strictRequiredTracker->recordOn(
+            'petstore-3.0',
+            'POST',
+            '/v1/pets',
+            '201',
+            'application/json',
+            ['/' => ['id', 'name']],
+        );
+
+        // Process-global locator points at fresh, EMPTY trackers — if the
+        // subscriber ever read from current() instead of the injected refs,
+        // the sidecar would serialize this empty state.
+        OpenApiCoverageTracker::resetCurrent();
+        StrictRequiredTracker::resetCurrent();
+        OpenApiCoverageTracker::setCurrent(new OpenApiCoverageTracker());
+        StrictRequiredTracker::setCurrent(new StrictRequiredTracker());
+
+        putenv('TEST_TOKEN=9');
+
+        $subscriber = new CoverageReportSubscriber(
+            specs: ['petstore-3.0'],
+            outputFile: null,
+            consoleOutput: ConsoleOutput::DEFAULT,
+            githubSummaryPath: null,
+            coverageTracker: $coverageTracker,
+            strictRequiredTracker: $strictRequiredTracker,
+            sidecarDir: $this->tmpDir,
+        );
+
+        ob_start();
+        $subscriber->notify($this->fakeExecutionFinished());
+        ob_get_clean();
+
+        $loaded = CoverageSidecarReader::readDir($this->tmpDir);
+        $this->assertCount(1, $loaded);
+        // Sidecar must contain the INJECTED coverage tracker's POST recording.
+        $this->assertArrayHasKey(
+            'POST /v1/pets',
+            $loaded[0]['coverage']['specs']['petstore-3.0'],
+            'sidecar must serialize the injected coverage tracker, not ::current()',
+        );
+        // And the injected strict_required tracker's observation.
+        $this->assertArrayHasKey(
+            'POST /v1/pets',
+            $loaded[0]['strictRequired']['observations']['petstore-3.0'],
+            'sidecar must serialize the injected strict_required tracker, not ::current()',
+        );
     }
 
     #[Test]

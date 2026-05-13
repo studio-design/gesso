@@ -62,8 +62,11 @@ class CoverageMergeCommandTest extends TestCase
             @rmdir(dirname($this->sidecarDir));
         }
 
-        OpenApiCoverageTracker::reset();
-        StrictRequiredTracker::reset();
+        // Issue #229 / S6: actively drop the process-global locator slot so
+        // the orphan instance run() installed does not leak into other
+        // tests that introspect ::current() between cases.
+        OpenApiCoverageTracker::resetCurrent();
+        StrictRequiredTracker::resetCurrent();
         OpenApiSpecLoader::reset();
         parent::tearDown();
     }
@@ -1511,6 +1514,82 @@ class CoverageMergeCommandTest extends TestCase
     {
         $opts = CoverageMergeCommand::parseArgv(['--strict-required=warn']);
         $this->assertSame('warn', $opts['strict_required'] ?? null);
+    }
+
+    #[Test]
+    public function run_isolates_from_a_pre_installed_locator_instance(): void
+    {
+        // Issue #229: the merge command constructs its own tracker
+        // instances in run() and installs them via setCurrent(). The
+        // computed report and the strict_required gate MUST read from
+        // those local instances, not from whatever was installed in the
+        // process-global locator before run() started. A regression that
+        // accidentally reuses ::current() (or skips the local install)
+        // would silently leak the orphan's state into the report.
+        //
+        // We pre-install a sentinel coverage tracker with a recording for
+        // a route that doesn't exist in the sidecars below, then assert
+        // the rendered report doesn't surface the sentinel route.
+        $sentinel = new OpenApiCoverageTracker();
+        $sentinel->recordResponseOn(
+            'petstore-3.0',
+            'DELETE',
+            '/v1/pets/{petId}',
+            '204',
+            null,
+            schemaValidated: true,
+        );
+        OpenApiCoverageTracker::resetCurrent();
+        OpenApiCoverageTracker::setCurrent($sentinel);
+
+        // Sidecar covers a completely different route.
+        $workerTracker = new OpenApiCoverageTracker();
+        $workerTracker->recordResponseOn(
+            'petstore-3.0',
+            'GET',
+            '/v1/pets',
+            '200',
+            'application/json',
+            schemaValidated: true,
+        );
+        $envelope = CoverageSidecarEnvelope::build(
+            $workerTracker->exportStateOn(),
+            (new StrictRequiredTracker())->exportStateOn(),
+        );
+        CoverageSidecarWriter::write($this->sidecarDir, 'iso', $envelope);
+
+        $stdout = '';
+        $command = new CoverageMergeCommand(
+            stdoutWriter: static function (string $msg) use (&$stdout): void {
+                $stdout .= $msg;
+            },
+        );
+        $exit = $command->run([
+            'sidecar_dir' => $this->sidecarDir,
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => ['petstore-3.0'],
+            'output_file' => $this->outputFile,
+            'cleanup' => true,
+        ]);
+
+        $this->assertSame(0, $exit);
+        $contents = (string) file_get_contents($this->outputFile);
+        $this->assertStringContainsString('GET /v1/pets', $contents);
+        // The sentinel's DELETE route must not appear as a covered row in
+        // the report (it would only appear if its state leaked through the
+        // merge command's tracker). Spec declares DELETE /v1/pets/{petId};
+        // when uncovered it has no row marked Validated. Assert: the row
+        // exists in the spec-declared rendering but no "covered" marker
+        // for it.
+        $this->assertStringNotContainsString(
+            'DELETE /v1/pets/{petId} | ✅',
+            $contents,
+            'sentinel observation must not be merged into the rendered report',
+        );
+
+        // Locator slot must point at the local instance the command
+        // installed, not the sentinel that pre-existed.
+        $this->assertNotSame($sentinel, OpenApiCoverageTracker::current());
     }
 
     /**

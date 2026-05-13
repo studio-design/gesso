@@ -311,8 +311,15 @@ final class CoverageMergeCommand
         // them via setCurrent() routes the static facade (used by the
         // StrictRequiredAsserter helpers) into these same instances, so the
         // gate evaluates against exactly the state this run aggregated.
+        // resetCurrent() first drops any prior process-global state so the
+        // setCurrent() overwrite-guard does not trip on a leftover instance
+        // from an earlier merge invocation in the same process (the
+        // PHPUnit-extension-driven test harness can call run() multiple
+        // times per process).
         $coverageTracker = new OpenApiCoverageTracker();
         $strictRequiredTracker = new StrictRequiredTracker();
+        OpenApiCoverageTracker::resetCurrent();
+        StrictRequiredTracker::resetCurrent();
         OpenApiCoverageTracker::setCurrent($coverageTracker);
         StrictRequiredTracker::setCurrent($strictRequiredTracker);
         foreach ($payloads as $payload) {

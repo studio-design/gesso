@@ -102,8 +102,11 @@ final class OpenApiCoverageTrackerInstanceIsolationTest extends TestCase
     #[Test]
     public function static_facade_routes_to_the_current_instance(): void
     {
+        // resetCurrent() first so the setCurrent() overwrite-guard does not
+        // trip on a stateful slot left over from an earlier test in the same
+        // process.
+        OpenApiCoverageTracker::resetCurrent();
         $injected = new OpenApiCoverageTracker();
-        $previous = OpenApiCoverageTracker::current();
         OpenApiCoverageTracker::setCurrent($injected);
 
         try {
@@ -111,9 +114,48 @@ final class OpenApiCoverageTrackerInstanceIsolationTest extends TestCase
 
             $this->assertTrue($injected->hasAnyCoverageOn('petstore-3.0'));
         } finally {
-            // Restore so we don't leak the injected instance into other tests
-            // that share the process-global facade.
-            OpenApiCoverageTracker::setCurrent($previous);
+            // Drop the slot so the injected instance does not leak into
+            // other tests that share the process-global facade.
+            OpenApiCoverageTracker::resetCurrent();
         }
+    }
+
+    #[Test]
+    public function cold_slot_lazily_mints_default_for_static_facade(): void
+    {
+        // Production scenario: nothing has called setCurrent() and current()
+        // has never been touched. The first static-facade call must lazily
+        // mint a default rather than fail. Pinned because pre-Issue #229 the
+        // tracker was always populated; post-refactor we depend on the
+        // ??=  in current() for the host-less call path (CLI tools, unit
+        // tests that hit the facade before any setup).
+        OpenApiCoverageTracker::resetCurrent();
+
+        try {
+            OpenApiCoverageTracker::recordRequest('petstore-3.0', 'GET', '/v1/pets');
+
+            $minted = OpenApiCoverageTracker::current();
+            $this->assertTrue($minted->hasAnyCoverageOn('petstore-3.0'));
+        } finally {
+            OpenApiCoverageTracker::resetCurrent();
+        }
+    }
+
+    #[Test]
+    public function reset_current_drops_the_installed_instance(): void
+    {
+        // resetCurrent() must return the locator to the "cold" state so the
+        // next current() call mints a fresh default — pinning the documented
+        // contract on the two-method split.
+        OpenApiCoverageTracker::resetCurrent();
+        $first = new OpenApiCoverageTracker();
+        OpenApiCoverageTracker::setCurrent($first);
+        $this->assertSame($first, OpenApiCoverageTracker::current());
+
+        OpenApiCoverageTracker::resetCurrent();
+        $afterReset = OpenApiCoverageTracker::current();
+        $this->assertNotSame($first, $afterReset, 'resetCurrent must drop the previously installed slot');
+
+        OpenApiCoverageTracker::resetCurrent();
     }
 }

@@ -17,6 +17,7 @@ use Studio\OpenApiContractTesting\Validation\Strict\StrictRequiredPerCallChecker
 use Studio\OpenApiContractTesting\Validation\Strict\StrictRequiredPerCallMode;
 use Studio\OpenApiContractTesting\Validation\Strict\StrictRequiredTracker;
 
+use function array_keys;
 use function restore_error_handler;
 use function set_error_handler;
 
@@ -40,6 +41,34 @@ final class StrictRequiredValidatorIntegrationTest extends TestCase
         StrictRequiredPerCallChecker::reset();
         OpenApiSpecLoader::reset();
         parent::tearDown();
+    }
+
+    #[Test]
+    public function injected_tracker_receives_observations_instead_of_current_locator(): void
+    {
+        // Issue #229: the validator accepts an optional StrictRequiredTracker
+        // via ctor. When one is injected, observations must go to the
+        // injected instance, NOT the process-global current() locator. A
+        // regression that drops the field would silently route to current()
+        // and the suite-level intersection would absorb the test traffic.
+        $injected = new StrictRequiredTracker();
+        $validator = new OpenApiResponseValidator(strictRequiredTracker: $injected);
+
+        $result = $validator->validate(
+            'under-described',
+            'PUT',
+            '/signed-url',
+            200,
+            ['expires' => 3600, 'signed_url' => 's3://...', 'url' => 'https://...'],
+            'application/json',
+        );
+
+        $this->assertTrue($result->isValid());
+        $this->assertSame(['PUT /signed-url'], array_keys($injected->getObservationsOn('under-described')));
+        // The process-global locator (which setUp reset()s) must NOT have
+        // absorbed the observation — the injection contract is "I asked
+        // for this tracker, only this tracker should record."
+        $this->assertSame([], StrictRequiredTracker::current()->getObservationsOn('under-described'));
     }
 
     #[Test]
