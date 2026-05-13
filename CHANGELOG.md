@@ -10,6 +10,13 @@ the README for the full surface contract.
 
 ## Unreleased
 
+## [1.6.0](https://github.com/studio-design/openapi-contract-testing/compare/v1.5.0...v1.6.0) (2026-05-13)
+
+
+### Features
+
+* **extension:** add default_testsuite_as_full to neutralize partial-run for defaultTestSuite-resolved selection ([#237](https://github.com/studio-design/openapi-contract-testing/issues/237)) ([ce72f9e](https://github.com/studio-design/openapi-contract-testing/commit/ce72f9eb7fba9af229f364ef0299b3946e91dd0f))
+
 ## [1.5.0](https://github.com/studio-design/openapi-contract-testing/compare/v1.4.0...v1.5.0) (2026-05-13)
 
 
