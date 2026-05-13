@@ -15,6 +15,7 @@ Validate your API responses against your OpenAPI specification during testing, a
 - **Endpoint coverage tracking** — Unique PHPUnit extension that reports which spec endpoints are covered by tests, at `(method, path, status, content-type)` granularity
 - **Schema-driven request fuzzing** — `ExploresOpenApiEndpoint` trait generates N happy-path inputs straight from the spec (Schemathesis-style)
 - **Enum drift detection** — Static comparison between PHP backed enums and their `enum:` spec arrays, with PHPUnit-extension auto-discovery
+- **Schema under-description detection** — Optional strict mode that flags response fields the implementation always returns but the spec marks as optional, catching the spec gaps that conformance checks alone can't (sequential PHPUnit only for now)
 - **Skip-by-status-code** — Configurable regex list of status codes whose bodies are not validated (default: every `5xx`); per-request via `skipResponseCode()`
 - **Laravel & Pest adapters** — Auto-assert / auto-validate-request integration, with explicit `expect(...)->toMatchOpenApiResponseSchema()` for Pest
 - **Parallel-runner safe** — Coordinated sidecar+merge workflow for paratest / `pest --parallel`
@@ -137,6 +138,7 @@ To validate every response automatically, set `'auto_assert' => true` and drop t
 | Pest plugin: `expect()->toMatchOpenApiResponseSchema()` and friends | [`docs/pest-plugin.md`](docs/pest-plugin.md) |
 | Schema-driven request fuzzing | [`docs/fuzzing.md`](docs/fuzzing.md) |
 | Enum drift detection | [`docs/enum-drift.md`](docs/enum-drift.md) |
+| Schema under-description detection (`strict_required`) | [`docs/strict-required.md`](docs/strict-required.md) |
 | Coverage report modes & threshold gate | [`docs/coverage.md`](docs/coverage.md) |
 | HTML coverage output | [`docs/coverage-html-output.md`](docs/coverage-html-output.md) |
 | JSON coverage output schema | [`docs/coverage-json-schema.md`](docs/coverage-json-schema.md) |

@@ -149,8 +149,8 @@ it('chains expectations after the schema match', function (): void {
 it('rejects unsupported HTTP methods on toMatchOpenApiResponseSchema', function (): void {
     $response = $this->get('/v1/pets');
 
-    expect(static fn () => expect($response)->toMatchOpenApiResponseSchema(method: 'CONNECT'))
-        ->toThrow(\RuntimeException::class, 'received unsupported method: CONNECT');
+    expect(static fn() => expect($response)->toMatchOpenApiResponseSchema(method: 'CONNECT'))
+        ->toThrow(RuntimeException::class, 'received unsupported method: CONNECT');
 });
 
 it('round-trips lowercase HTTP method strings via strtoupper', function (): void {
@@ -171,6 +171,6 @@ it('fails loudly when spec: is an empty string', function (): void {
     // shift the surface.
     $response = $this->get('/v1/pets');
 
-    expect(static fn () => expect($response)->toMatchOpenApiResponseSchema(spec: ''))
+    expect(static fn() => expect($response)->toMatchOpenApiResponseSchema(spec: ''))
         ->toThrow(AssertionFailedError::class, 'openApiSpec() must return a non-empty spec name');
 });

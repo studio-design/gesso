@@ -31,9 +31,9 @@ it('errors with guidance when test class lacks ValidatesOpenApiSchema', function
     // resolveTestCase()'s method_exists check, which is what we're pinning.
     $response = new TestResponse(new Response('{"data":[]}', 200, ['Content-Type' => 'application/json']));
 
-    expect(static fn () => expect($response)->toMatchOpenApiResponseSchema())
+    expect(static fn() => expect($response)->toMatchOpenApiResponseSchema())
         ->toThrow(
-            \RuntimeException::class,
+            RuntimeException::class,
             'requires the test class',
         );
 });

@@ -10,6 +10,7 @@ use Studio\OpenApiContractTesting\Spec\OpenApiSpecLoader;
 use Studio\OpenApiContractTesting\Validation\Response\ResponseBodyValidationResult;
 use Studio\OpenApiContractTesting\Validation\Response\ResponseBodyValidator;
 use Studio\OpenApiContractTesting\Validation\Response\ResponseHeaderValidator;
+use Studio\OpenApiContractTesting\Validation\Strict\StrictRequiredTracker;
 use Studio\OpenApiContractTesting\Validation\Support\PathDiagnosticsFormatter;
 use Studio\OpenApiContractTesting\Validation\Support\SchemaValidatorRunner;
 use Studio\OpenApiContractTesting\Validation\Support\SpecResponseKeyResolver;
@@ -20,6 +21,7 @@ use function array_keys;
 use function array_merge;
 use function get_debug_type;
 use function is_array;
+use function is_string;
 use function sprintf;
 use function strtolower;
 
@@ -203,6 +205,21 @@ final class OpenApiResponseValidator
         $errors = array_merge($bodyResult->errors, $headerErrors);
 
         if ($errors === []) {
+            // Strict-required recording happens on the validated success path
+            // so that conformance-failing or skipped responses do not
+            // contribute to the "field appeared in every response" intersection.
+            // The tracker is a no-op when the extension parameter
+            // `strict_required` is off (record is still called but consumes
+            // negligible memory until the asserter runs).
+            $this->maybeRecordStrictRequired(
+                $specName,
+                $method,
+                $matchedPath,
+                $statusCodeStr,
+                $bodyResult->matchedContentType,
+                $responseBody,
+            );
+
             return OpenApiValidationResult::success(
                 $matchedPath,
                 $statusCodeStr,
@@ -215,6 +232,60 @@ final class OpenApiResponseValidator
             $matchedPath,
             $statusCodeStr,
             $bodyResult->matchedContentType,
+        );
+    }
+
+    /**
+     * Feed the strict-required tracker one observation. Top-level keys of the
+     * decoded body drive the "field always returned" intersection that
+     * {@see StrictRequiredAsserter} diffs against the spec's `required` array
+     * at run end.
+     *
+     * Only recorded on the Success path (caller guarantees `$errors === []`):
+     * a conformance failure means the body shape itself is suspect, and
+     * skipped responses are explicitly excluded from coverage too — both
+     * cases would poison the intersection.
+     *
+     * Non-array bodies (scalars, objects whose JSON form is not an object,
+     * `null`) carry no top-level keys to compare against `required`, so we
+     * skip recording rather than store an empty observation that would
+     * spuriously collapse the intersection of a sibling array observation
+     * to `[]`.
+     */
+    private function maybeRecordStrictRequired(
+        string $specName,
+        string $method,
+        string $matchedPath,
+        string $statusKey,
+        ?string $matchedContentType,
+        mixed $responseBody,
+    ): void {
+        if (!is_array($responseBody)) {
+            return;
+        }
+        $topLevelKeys = [];
+        foreach (array_keys($responseBody) as $key) {
+            // Coerce to strings so list-style bodies (numeric keys) are
+            // dropped from the observation: top-level required only makes
+            // sense for object-shaped responses.
+            if (is_string($key)) {
+                $topLevelKeys[] = $key;
+            }
+        }
+        // `[]` is ambiguous: empty object {} or empty array []. The body
+        // validator already disambiguates {} via stdClass coercion against
+        // schemas of type:object — by the time we land here on the Success
+        // path with $responseBody === [], the schema accepted an empty
+        // object, so an empty observation is a legitimate signal that no
+        // keys are always-present. Record it so a single empty response
+        // correctly drops the intersection.
+        StrictRequiredTracker::record(
+            $specName,
+            $method,
+            $matchedPath,
+            $statusKey,
+            $matchedContentType ?? StrictRequiredTracker::ANY_CONTENT_TYPE,
+            $topLevelKeys,
         );
     }
 

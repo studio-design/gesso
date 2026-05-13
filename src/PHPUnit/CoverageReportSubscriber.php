@@ -23,6 +23,8 @@ use Studio\OpenApiContractTesting\Exception\InvalidOpenApiSpecException;
 use Studio\OpenApiContractTesting\Exception\SpecFileNotFoundException;
 use Studio\OpenApiContractTesting\Internal\PartialRunDecision;
 use Studio\OpenApiContractTesting\Spec\OpenApiSpecLoader;
+use Studio\OpenApiContractTesting\Validation\Strict\StrictRequiredAsserter;
+use Studio\OpenApiContractTesting\Validation\Strict\StrictRequiredMode;
 use Throwable;
 
 use function fflush;
@@ -82,6 +84,7 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
         private ?string $jsonOutput = null,
         private ?string $htmlOutput = null,
         private ?PartialRunDecision $partialRun = null,
+        private StrictRequiredMode $strictRequiredMode = StrictRequiredMode::Off,
     ) {}
 
     /** @phpcsSuppress SlevomatCodingStandard.Functions.UnusedParameter.UnusedParameter */
@@ -90,6 +93,7 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
         $workerToken = self::resolveWorkerToken();
         if ($workerToken !== null) {
             $this->writeWorkerSidecar($workerToken);
+            $this->warnStrictRequiredNotSupportedInWorker();
 
             // Free cached spec data; the merge CLI re-loads on its own.
             OpenApiSpecLoader::clearCache();
@@ -107,6 +111,7 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
             // assertions ran. Pre-fix, this branch quietly returned 0 even
             // though the user had opted into fail-fast via min_*_coverage.
             $this->failOnEmptyResultsIfGated();
+            $this->evaluateStrictRequiredGate();
 
             return;
         }
@@ -116,6 +121,11 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
         $this->writeReports($results);
 
         $this->evaluateThresholdGate($results);
+
+        // Issue #224: schema under-description detection runs after coverage
+        // rendering so a strict-mode fail does not suppress the coverage
+        // report users rely on for triaging the failure.
+        $this->evaluateStrictRequiredGate();
     }
 
     /**
@@ -136,6 +146,78 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
         }
 
         return $token;
+    }
+
+    /**
+     * Run the strict_required asserter against the tracker state and route
+     * the message to stderr + GitHub Step Summary. `Fail` mode terminates
+     * the process so paratest CI surfaces the non-zero exit; `Warn` mode
+     * leaves the run successful but prints the diagnostic block.
+     *
+     * Off mode and "no drift" short-circuit cleanly so this method is safe
+     * to invoke unconditionally from the sequential branch.
+     */
+    private function evaluateStrictRequiredGate(): void
+    {
+        if ($this->strictRequiredMode === StrictRequiredMode::Off) {
+            return;
+        }
+
+        $reports = StrictRequiredAsserter::detectAll($this->strictRequiredMode);
+        if ($reports === []) {
+            return;
+        }
+
+        $isFatal = $this->strictRequiredMode === StrictRequiredMode::Fail;
+        $message = StrictRequiredAsserter::renderMessage($reports, $isFatal);
+        $this->writeStderr($message . "\n");
+        OpenApiCoverageExtension::appendGithubStepSummaryStrictRequiredBlock(
+            $this->githubSummaryPath,
+            $message,
+            $isFatal,
+        );
+
+        if (!$isFatal) {
+            return;
+        }
+
+        // Mirror evaluateThresholdGate() fail-fast pattern: PHPUnit does not
+        // propagate subscriber failures to the exit code, so the asserter
+        // has to terminate the process itself to be visible to CI.
+        if ($this->stderrWriter === null) {
+            fflush(STDERR);
+        }
+        $exit = $this->exitHandler;
+        if (is_callable($exit)) {
+            $exit(1);
+
+            return;
+        }
+
+        exit(1);
+    }
+
+    /**
+     * Issue #224 MVP scope limitation: paratest workers each maintain their
+     * own in-memory StrictRequiredTracker, but the current sidecar protocol
+     * carries only coverage state. The merge CLI therefore cannot run the
+     * asserter against the union of worker observations, so strict_required
+     * is effectively a no-op in worker mode.
+     *
+     * Surface this as a one-line NOTE so users who enabled `strict_required`
+     * in parallel CI immediately see why the asserter never fired, rather
+     * than silently shipping under-described specs.
+     */
+    private function warnStrictRequiredNotSupportedInWorker(): void
+    {
+        if ($this->strictRequiredMode === StrictRequiredMode::Off) {
+            return;
+        }
+        $this->writeStderr(
+            '[OpenAPI Strict Required] NOTE: strict_required is currently sequential-only '
+            . 'and does not aggregate across paratest workers. Run the suite sequentially to '
+            . "evaluate the gate, or follow up on the strict_required paratest support issue.\n",
+        );
     }
 
     /**

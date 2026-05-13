@@ -18,8 +18,10 @@ use Studio\OpenApiContractTesting\Exception\InvalidOpenApiSpecException;
 use Studio\OpenApiContractTesting\Exception\InvalidOpenApiSpecReason;
 use Studio\OpenApiContractTesting\Exception\SpecFileNotFoundException;
 use Studio\OpenApiContractTesting\Internal\EnumScanner;
+use Studio\OpenApiContractTesting\PHPUnit\InvalidStrictRequiredConfigurationException;
 use Studio\OpenApiContractTesting\PHPUnit\OpenApiCoverageExtension;
 use Studio\OpenApiContractTesting\Spec\OpenApiSpecLoader;
+use Studio\OpenApiContractTesting\Validation\Strict\StrictRequiredTracker;
 
 use function fclose;
 use function file_get_contents;
@@ -1030,6 +1032,60 @@ class OpenApiCoverageExtensionTest extends TestCase
         }
 
         $this->assertStringContainsString('FATAL', $this->readStderr());
+    }
+
+    #[Test]
+    public function strict_required_unknown_value_throws_invalid_config(): void
+    {
+        $extension = new OpenApiCoverageExtension();
+        $parameters = ParameterCollection::fromArray([
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => 'refs-valid',
+            'strict_required' => 'enforce',
+        ]);
+
+        try {
+            $extension->setupExtension(null, $parameters, null);
+            $this->fail('expected InvalidStrictRequiredConfigurationException');
+        } catch (InvalidStrictRequiredConfigurationException $e) {
+            $this->assertStringContainsString('strict_required=enforce', $e->getMessage());
+        }
+
+        $this->assertStringContainsString('[OpenAPI Strict Required] FATAL', $this->readStderr());
+    }
+
+    #[Test]
+    public function strict_required_off_does_not_throw(): void
+    {
+        StrictRequiredTracker::reset();
+
+        $extension = new OpenApiCoverageExtension();
+        $parameters = ParameterCollection::fromArray([
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => 'refs-valid',
+            'strict_required' => 'off',
+        ]);
+
+        $extension->setupExtension(null, $parameters, null);
+
+        $this->assertStringNotContainsString('strict_required', $this->readStderr());
+    }
+
+    #[Test]
+    public function strict_required_warn_resets_tracker_at_bootstrap(): void
+    {
+        StrictRequiredTracker::record('refs-valid', 'GET', '/leftover', '200', 'application/json', ['stale']);
+
+        $extension = new OpenApiCoverageExtension();
+        $parameters = ParameterCollection::fromArray([
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => 'refs-valid',
+            'strict_required' => 'warn',
+        ]);
+
+        $extension->setupExtension(null, $parameters, null);
+
+        $this->assertSame([], StrictRequiredTracker::getObservations('refs-valid'));
     }
 
     private function readStderr(): string

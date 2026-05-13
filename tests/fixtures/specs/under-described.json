@@ -1,0 +1,90 @@
+{
+  "openapi": "3.0.3",
+  "info": { "title": "Strict required fixture", "version": "1.0.0" },
+  "paths": {
+    "/signed-url": {
+      "put": {
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "expires":    { "type": "integer" },
+                    "signed_url": { "type": "string" },
+                    "url":        { "type": "string" }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/projects/{id}": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id":         { "type": "string" },
+                    "name":       { "type": "string" },
+                    "created_at": { "type": "string", "format": "date-time" }
+                  },
+                  "required": ["id", "name"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/orders/{id}": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "type": "object", "required": ["id"], "properties": { "id": { "type": "string" } } },
+                    { "type": "object", "properties": { "total": { "type": "integer" }, "currency": { "type": "string" } } }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/users/{id}": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id":   { "type": "string" },
+                    "name": { "type": "string" }
+                  },
+                  "required": ["id", "name"]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

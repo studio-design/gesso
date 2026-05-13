@@ -8,6 +8,7 @@ use const FILE_APPEND;
 use const PHP_EOL;
 use const STDERR;
 
+use InvalidArgumentException;
 use PHPUnit\Runner\Extension\Extension;
 use PHPUnit\Runner\Extension\Facade;
 use PHPUnit\Runner\Extension\ParameterCollection;
@@ -24,6 +25,8 @@ use Studio\OpenApiContractTesting\Internal\PartialRunDecision;
 use Studio\OpenApiContractTesting\Schema\EnumDriftAsserter;
 use Studio\OpenApiContractTesting\Schema\EnumDriftReport;
 use Studio\OpenApiContractTesting\Spec\OpenApiSpecLoader;
+use Studio\OpenApiContractTesting\Validation\Strict\StrictRequiredMode;
+use Studio\OpenApiContractTesting\Validation\Strict\StrictRequiredTracker;
 
 use function array_filter;
 use function array_map;
@@ -90,6 +93,44 @@ final class OpenApiCoverageExtension implements Extension
         fwrite(self::$stderrOverride ?? STDERR, $message);
     }
 
+    /**
+     * Append a Markdown block describing a strict_required outcome to the
+     * GitHub Actions Step Summary file. Mirrors
+     * {@see appendGithubStepSummaryEnumDriftBlock()}.
+     *
+     * @internal Exposed so {@see CoverageReportSubscriber} can reuse the same
+     *           rendering path when invoking the asserter at ExecutionFinished.
+     */
+    public static function appendGithubStepSummaryStrictRequiredBlock(
+        ?string $path,
+        string $body,
+        bool $isFatal,
+    ): void {
+        if ($path === null) {
+            return;
+        }
+
+        $title = $isFatal
+            ? '## :rotating_light: FATAL OpenAPI strict_required drift'
+            : '## :warning: OpenAPI strict_required drift';
+
+        $block = $title . PHP_EOL
+            . PHP_EOL
+            . ($isFatal
+                ? 'strict_required detected schema under-description and the test run was aborted.'
+                : 'strict_required detected schema under-description (warn-only).') . PHP_EOL
+            . PHP_EOL
+            . '```' . PHP_EOL
+            . $body . PHP_EOL
+            . '```' . PHP_EOL
+            . PHP_EOL;
+
+        $written = file_put_contents($path, $block, FILE_APPEND);
+        if ($written === false) {
+            self::writeStderr("[OpenAPI Strict Required] WARNING: Failed to append block to GITHUB_STEP_SUMMARY ({$path})\n");
+        }
+    }
+
     public function bootstrap(Configuration $configuration, Facade $facade, ParameterCollection $parameters): void
     {
         try {
@@ -99,7 +140,7 @@ final class OpenApiCoverageExtension implements Extension
                 getenv('GITHUB_STEP_SUMMARY') ?: null,
                 self::detectPartialRun($configuration),
             );
-        } catch (EnumBindingException|EnumDriftException|InvalidCoverageOutputPathException|InvalidOpenApiSpecException|InvalidThresholdConfigurationException|SpecFileNotFoundException) {
+        } catch (EnumBindingException|EnumDriftException|InvalidCoverageOutputPathException|InvalidOpenApiSpecException|InvalidStrictRequiredConfigurationException|InvalidThresholdConfigurationException|SpecFileNotFoundException) {
             // setupExtension() has already written a FATAL line to stderr and
             // (if GITHUB_STEP_SUMMARY is set) appended a fatal block to it.
             // PHPUnit's ExtensionBootstrapper::bootstrap() wraps this call in
@@ -224,6 +265,15 @@ final class OpenApiCoverageExtension implements Extension
         $minEndpointCoverage = self::resolveThresholdParameter($parameters, 'min_endpoint_coverage', $minCoverageStrict);
         $minResponseCoverage = self::resolveThresholdParameter($parameters, 'min_response_coverage', $minCoverageStrict);
 
+        // Issue #224: schema under-description detection. Reset the tracker
+        // at bootstrap so observations from a previous PHPUnit process (or
+        // a leaked test-class static) do not contaminate this run's
+        // intersection — same lifecycle pattern as
+        // `OpenApiCoverageTracker::reset()` would have if we wanted strict
+        // mode to be parallel-safe; for now (MVP) sequential-only.
+        $strictRequiredMode = self::resolveStrictRequiredMode($parameters, $githubSummaryPath);
+        StrictRequiredTracker::reset();
+
         if ($facade === null) {
             return;
         }
@@ -241,6 +291,7 @@ final class OpenApiCoverageExtension implements Extension
             jsonOutput: $jsonOutput,
             htmlOutput: $htmlOutput,
             partialRun: $partialRun,
+            strictRequiredMode: $strictRequiredMode,
         ));
     }
 
@@ -528,6 +579,36 @@ final class OpenApiCoverageExtension implements Extension
         $raw = trim($parameters->get($name));
 
         return !in_array($raw, ['0', 'false', 'no'], true);
+    }
+
+    /**
+     * Issue #224: read the `strict_required` parameter. Missing and empty
+     * values resolve to {@see StrictRequiredMode::Off}; unrecognised values
+     * are FATAL — silently dropping a misspelled `strict_required` would
+     * defeat the opt-in fail-loud policy this extension enforces.
+     */
+    private static function resolveStrictRequiredMode(
+        ParameterCollection $parameters,
+        ?string $githubSummaryPath,
+    ): StrictRequiredMode {
+        if (!$parameters->has('strict_required')) {
+            return StrictRequiredMode::Off;
+        }
+
+        $raw = $parameters->get('strict_required');
+
+        try {
+            return StrictRequiredMode::fromConfigValue($raw);
+        } catch (InvalidArgumentException $e) {
+            $reason = sprintf(
+                'strict_required=%s is not recognised. Accepted: off, warn, fail.',
+                trim($raw) === '' ? '<empty>' : $raw,
+            );
+            self::writeStderr("[OpenAPI Strict Required] FATAL: {$reason}\n");
+            self::appendGithubStepSummaryStrictRequiredBlock($githubSummaryPath, $reason, isFatal: true);
+
+            throw new InvalidStrictRequiredConfigurationException($reason, $e);
+        }
     }
 
     /**
