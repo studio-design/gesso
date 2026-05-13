@@ -40,6 +40,14 @@ final class StrictRequiredSchemaWalker
     /**
      * Split a tracker endpoint key (`"METHOD path"`) back into its parts.
      *
+     * Tolerates hand-built keys without a space by treating the whole
+     * string as the method and defaulting the path to `/`. Production
+     * tracker output always contains a space (see
+     * {@see StrictRequiredTracker::record()}) so this fallback is reached
+     * only from direct test inputs — surfacing a sensible default keeps
+     * unit tests terse without obscuring real malformed keys via a hidden
+     * throw.
+     *
      * @return array{0: string, 1: string}
      */
     public static function splitEndpointKey(string $endpointKey): array
@@ -58,6 +66,10 @@ final class StrictRequiredSchemaWalker
     /**
      * Split a tracker response key (`"statusKey:contentTypeKey"`) back into
      * its parts.
+     *
+     * As with {@see self::splitEndpointKey()}, a hand-built key without a
+     * colon falls back to `[$key, ANY_CONTENT_TYPE]` — the production
+     * tracker always emits the colon form, so this branch is test-only.
      *
      * @return array{0: string, 1: string}
      */
@@ -120,6 +132,23 @@ final class StrictRequiredSchemaWalker
     }
 
     /**
+     * Descend the response schema and return a {@see StrictRequiredSchemaAnalysis}
+     * value object that pairs the walked-required map with the disjunction
+     * list. Preferred over {@see self::collectRequiredByPointer()} when
+     * downstream code wants the structural "check disjunction first, then
+     * look up required" guarantee — call `$analysis->lookup($pointer)` and
+     * branch on the union return type.
+     *
+     * @param array<string, mixed> $schema
+     */
+    public static function analyse(array $schema): StrictRequiredSchemaAnalysis
+    {
+        $raw = self::collectRequiredByPointer($schema);
+
+        return new StrictRequiredSchemaAnalysis($raw['walked'], $raw['disjunctions']);
+    }
+
+    /**
      * Descend the response schema producing two parallel maps:
      *  - `walked`: `pointer => required-keys` for each object node reached.
      *    `allOf` branches are unioned at every level.
@@ -130,6 +159,12 @@ final class StrictRequiredSchemaWalker
      *
      * If the root schema itself is unwalkable, the disjunction list carries
      * an empty-pointer entry meaning "every observation is unwalkable."
+     *
+     * Production callers should prefer {@see self::analyse()}, which wraps
+     * the same data in a {@see StrictRequiredSchemaAnalysis} value object
+     * that prevents callers forgetting to consult the disjunction list. This
+     * raw-array entry is retained for unit tests that need to inspect the
+     * descent output directly without the wrapping abstraction.
      *
      * @param array<string, mixed> $schema
      *
@@ -146,11 +181,14 @@ final class StrictRequiredSchemaWalker
             // matches; the body could be either object- or array-shaped.
             // For scalar / empty roots `disjunctionReason()` returns null —
             // surface as the literal "unwalkable" so the unwalkable NOTE
-            // line stays grep-friendly. The validator's "skip empty pointer
-            // map" branch makes this branch unreachable for scalar bodies
-            // in practice; the fallback exists to preserve the strict
-            // `reason: string` contract for any future caller that loads a
-            // pre-walked schema directly.
+            // line stays grep-friendly. In practice this fallback is
+            // unreachable from production paths: a scalar / empty *schema*
+            // combined with any body that produces pointers is a conformance
+            // failure, so the validator's Success-only branch never reaches
+            // the per-call checker / tracker for such observations. The
+            // fallback exists to preserve the strict `reason: string`
+            // contract for any future caller that loads a pre-walked
+            // schema directly.
             $disjunctions[] = [
                 'pointer' => '',
                 'reason' => self::disjunctionReason($schema) ?? 'unwalkable',
@@ -268,8 +306,13 @@ final class StrictRequiredSchemaWalker
             return 'array';
         }
         // allOf-only schema with no explicit type: treat as object if any
-        // branch declares object-shape. Matches OpenAPI's "object inferred
-        // from properties / required" convention.
+        // branch declares object-shape. Pragmatic inference matching how
+        // most OpenAPI / JSON-Schema validators interpret untyped allOf
+        // branches that declare `properties` / `required` / `items`. The
+        // spec is technically ambiguous here, but treating dominant intent
+        // as the descent rule avoids dropping coverage on otherwise-
+        // walkable allOf compositions (e.g. `/orders/{id}` and `/deep` in
+        // the test fixture).
         if (isset($schema['allOf']) && is_array($schema['allOf'])) {
             foreach ($schema['allOf'] as $branch) {
                 if (is_array($branch) && (
@@ -385,6 +428,18 @@ final class StrictRequiredSchemaWalker
         return null;
     }
 
+    /**
+     * Append a property name to a JSON-Pointer-like path with RFC 6901
+     * escaping (`~` → `~0`, `/` → `~1`) plus the `[*]` → `[~*]` extension
+     * shared with {@see StrictRequiredBodyWalker::appendProperty()}.
+     *
+     * Inlined rather than shared because the two walkers stay drop-in
+     * independent — the body walker walks observed JSON, this walker walks
+     * the spec, and the escape rules are intentionally pinned to the body
+     * walker's pointer notation. If a new escape is ever needed (e.g.
+     * for a future container syntax), both implementations must move
+     * together — add a regression test in both walkers' test files.
+     */
     private static function appendProperty(string $pointer, string $propertyName): string
     {
         $escaped = str_replace('~', '~0', $propertyName);

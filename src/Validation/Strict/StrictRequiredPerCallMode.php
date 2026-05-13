@@ -73,6 +73,22 @@ enum StrictRequiredPerCallMode: string
             return self::Off;
         }
 
+        if ($normalized === 'fail') {
+            // `fail` is the value most likely to be tried by mistake — it
+            // works for the run-level `strict_required` parameter but is
+            // intentionally rejected here. A generic "unknown value" error
+            // would leave the user wondering whether they typoed it; the
+            // directive message explains the design and points at the two
+            // legitimate alternatives so the fix is self-evident.
+            throw new InvalidArgumentException(
+                "strict_required_per_call does not support 'fail' — per-call mode is "
+                . 'warn-only by design (see docs/strict-required.md "Per-call mode" → '
+                . '"Why no `fail` mode?"). For hard failures on per-call drift use '
+                . "phpunit.xml's failOnWarning=\"true\". For an aggregate fail-gate "
+                . 'use the run-level `strict_required=fail`.',
+            );
+        }
+
         $match = self::tryFrom($normalized);
         if ($match !== null) {
             return $match;

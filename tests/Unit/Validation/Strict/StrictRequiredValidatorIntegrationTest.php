@@ -408,6 +408,164 @@ final class StrictRequiredValidatorIntegrationTest extends TestCase
     }
 
     #[Test]
+    public function per_call_does_not_fire_when_status_matches_skip_pattern(): void
+    {
+        // 5xx is the default skipResponseCodes pattern; the validator
+        // short-circuits at OpenApiResponseValidator::validate() long
+        // before maybeRecordStrictRequired() runs, so neither gate sees
+        // these responses. A future refactor that hoists per-call earlier
+        // would silently fire warnings on skipped statuses — pin the
+        // current short-circuit so the regression is loud.
+        StrictRequiredPerCallChecker::configure(StrictRequiredPerCallMode::Warn);
+
+        $captured = $this->captureFirstWarning(function (): void {
+            $this->validator->validate(
+                'under-described',
+                'PUT',
+                '/signed-url',
+                503,
+                ['expires' => 3600, 'signed_url' => 's3://...', 'url' => 'https://...'],
+                'application/json',
+            );
+        });
+
+        $this->assertNull($captured);
+    }
+
+    #[Test]
+    public function per_call_fires_on_array_element_pointer_drift(): void
+    {
+        // /items returns `type: array, items: { required: ["id"], ... }`.
+        // The walker records `[*]` for the element-shape; per-call must
+        // diff against the per-element required set and surface drift at
+        // the `[*]` pointer. Without this pin, a refactor that broke the
+        // `[` separator boundary in findCoveringDisjunction() would silently
+        // disable per-call drift on every list-shaped endpoint.
+        StrictRequiredPerCallChecker::configure(StrictRequiredPerCallMode::Warn);
+
+        $captured = $this->captureFirstWarning(function (): void {
+            $this->validator->validate(
+                'under-described',
+                'GET',
+                '/items',
+                200,
+                [['id' => '1', 'name' => 'A'], ['id' => '2', 'name' => 'B']],
+                'application/json',
+            );
+        });
+
+        $this->assertNotNull($captured);
+        $this->assertStringContainsString('[OpenAPI Strict Required per-call] WARN:', $captured);
+        $this->assertStringContainsString('GET /items', $captured);
+        $this->assertStringContainsString('[*] : name', $captured);
+    }
+
+    #[Test]
+    public function per_call_fires_on_nested_object_pointer_drift(): void
+    {
+        // End-to-end version of the unit test, exercising the walker →
+        // checker pipeline against the /teams/{id} fixture. A walker bug
+        // producing `data.created_at` (or any other malformed pointer)
+        // instead of `/data` would slip past the unit test (which builds
+        // the pointer map directly) but is caught here.
+        StrictRequiredPerCallChecker::configure(StrictRequiredPerCallMode::Warn);
+
+        $captured = $this->captureFirstWarning(function (): void {
+            $this->validator->validate(
+                'under-described',
+                'GET',
+                '/teams/{id}',
+                200,
+                [
+                    'id' => '1',
+                    'data' => ['name' => 'A', 'created_at' => '2026-01-01T00:00:00Z'],
+                ],
+                'application/json',
+            );
+        });
+
+        $this->assertNotNull($captured);
+        $this->assertStringContainsString('/data : created_at', $captured);
+    }
+
+    #[Test]
+    public function per_call_fires_on_allof_unioned_required_drift(): void
+    {
+        // /orders/{id} uses an allOf-rooted schema where `id` is the only
+        // required key (carried by one branch). The checker must diff
+        // observed keys against the unioned required set across allOf
+        // branches; without this pin a regression in
+        // collectRequiredFromSchema()'s allOf recursion would surface only
+        // on the run-level path.
+        StrictRequiredPerCallChecker::configure(StrictRequiredPerCallMode::Warn);
+
+        $captured = $this->captureFirstWarning(function (): void {
+            $this->validator->validate(
+                'under-described',
+                'GET',
+                '/orders/{id}',
+                200,
+                ['id' => '1', 'total' => 4200, 'currency' => 'JPY'],
+                'application/json',
+            );
+        });
+
+        $this->assertNotNull($captured);
+        $this->assertStringContainsString('/ : currency, total', $captured);
+    }
+
+    #[Test]
+    public function per_call_fires_on_stdclass_body(): void
+    {
+        // stdClass bodies are common from framework-agnostic adapters
+        // (Pest plugin, raw json_decode($_, false)). The walker coerces
+        // to associative arrays; the per-call gate must observe the same
+        // drift as if the body had been an assoc array.
+        StrictRequiredPerCallChecker::configure(StrictRequiredPerCallMode::Warn);
+
+        $body = new stdClass();
+        $body->expires = 3600;
+        $body->signed_url = 's3://...';
+        $body->url = 'https://...';
+
+        $captured = $this->captureFirstWarning(function () use ($body): void {
+            $this->validator->validate(
+                'under-described',
+                'PUT',
+                '/signed-url',
+                200,
+                $body,
+                'application/json',
+            );
+        });
+
+        $this->assertNotNull($captured);
+        $this->assertStringContainsString('/ : expires, signed_url, url', $captured);
+    }
+
+    #[Test]
+    public function per_call_does_not_fire_on_scalar_body(): void
+    {
+        // /scalar declares `type: string`. The walker yields an empty
+        // pointer map, so the validator short-circuits before either gate
+        // runs — neither the tracker nor per-call should observe anything.
+        StrictRequiredPerCallChecker::configure(StrictRequiredPerCallMode::Warn);
+
+        $captured = $this->captureFirstWarning(function (): void {
+            $this->validator->validate(
+                'under-described',
+                'GET',
+                '/scalar',
+                200,
+                'hello-world',
+                'application/json',
+            );
+        });
+
+        $this->assertNull($captured);
+    }
+
+    #[Test]
     public function per_call_warn_and_run_level_warn_are_independent(): void
     {
         // CIs may run per-call=warn for early visibility AND run-level=warn

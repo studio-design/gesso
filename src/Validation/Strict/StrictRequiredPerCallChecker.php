@@ -53,6 +53,19 @@ final class StrictRequiredPerCallChecker
 {
     private static StrictRequiredPerCallMode $mode = StrictRequiredPerCallMode::Off;
 
+    /**
+     * Dedupe set keyed by `"<kind>:<spec>:<endpoint>:<response>:<extra>"`.
+     * Each NOTE channel (spec-load failure, unresolved schema, disjunction-
+     * covered observation) writes at most once per key per process so a
+     * long test suite cannot flood STDERR with the same diagnostic.
+     *
+     * Cleared by {@see self::reset()} so paratest workers and repeated
+     * extension bootstraps see a fresh budget.
+     *
+     * @var array<string, true>
+     */
+    private static array $emittedNotes = [];
+
     /** Static-only utility — no instances. */
     private function __construct() {}
 
@@ -69,7 +82,8 @@ final class StrictRequiredPerCallChecker
     }
 
     /**
-     * Reset the mode back to {@see StrictRequiredPerCallMode::Off}. Mirrors
+     * Reset the mode back to {@see StrictRequiredPerCallMode::Off} and
+     * clear the emitted-NOTE dedupe set. Mirrors
      * {@see StrictRequiredTracker::reset()} so test isolation only needs
      * one teardown call per checker.
      *
@@ -78,10 +92,22 @@ final class StrictRequiredPerCallChecker
     public static function reset(): void
     {
         self::$mode = StrictRequiredPerCallMode::Off;
+        self::$emittedNotes = [];
     }
 
     /**
      * @internal Used by tests / extension to verify the wired mode.
+     */
+    public static function isEnabled(): bool
+    {
+        return self::$mode->isEnabled();
+    }
+
+    /**
+     * @internal Used by tests / extension to verify the wired mode. Most
+     *           callers should prefer {@see self::isEnabled()} which
+     *           returns the on/off discriminator without exposing the
+     *           full enum.
      */
     public static function mode(): StrictRequiredPerCallMode
     {
@@ -98,15 +124,22 @@ final class StrictRequiredPerCallChecker
      * computes it once and hands it to both the tracker and this checker
      * to avoid double-walking the body.
      *
-     * Spec load failures and unresolvable schemas are silently dropped:
-     * per-call warnings convert to per-test failures under
-     * `failOnWarning=true`, so escalating an infrastructure problem (a spec
-     * file unlinked mid-run) into a user-test failure would attribute the
-     * fault to the wrong layer. The run-level asserter still surfaces these
-     * as a NOTE at `ExecutionFinished`.
+     * Infrastructure-level no-ops (spec load failures, unresolvable
+     * schemas, unwalkable / disjunction-covered roots) emit a one-shot
+     * stderr NOTE rather than escalating to a per-test warning. Escalating
+     * these to `E_USER_WARNING` would convert an infrastructure problem
+     * (a spec file unlinked mid-run, a `$ref` resolved to an unexpected
+     * shape, an `anyOf` root that has no AND-semantic for `required`)
+     * into a `failOnWarning=true` per-test failure attributed to whichever
+     * test happened to run next — the wrong fingerprint. The dedupe key
+     * keeps NOTE volume bounded across long test suites.
      *
      * @param array<string, list<string>> $pointers map of JSON-Pointer-like
      *                                              strings to lists of object keys observed at that node
+     *
+     * @internal Routed through {@see OpenApiResponseValidator}'s Success-only
+     *           branch; the parameter shape is not part of the SemVer-frozen
+     *           public API.
      */
     public static function maybeWarn(
         string $specName,
@@ -123,13 +156,27 @@ final class StrictRequiredPerCallChecker
             return;
         }
 
+        $upperMethod = strtoupper($method);
+        $endpointId = sprintf('%s %s', $upperMethod, $path);
+        $responseId = sprintf('%s/%s', $statusKey, $contentTypeKey);
+
         try {
             $spec = OpenApiSpecLoader::load($specName);
-        } catch (InvalidOpenApiSpecException|SpecFileNotFoundException) {
+        } catch (InvalidOpenApiSpecException|SpecFileNotFoundException $e) {
+            self::noteOnce(
+                'spec-load:' . $specName,
+                sprintf(
+                    "[OpenAPI Strict Required per-call] NOTE: spec '%s' failed to load at runtime; "
+                    . 'per-call drift detection skipped for subsequent calls against this spec. '
+                    . "Cause: %s. (This usually means the spec file was modified between bootstrap and now.)\n",
+                    $specName,
+                    $e->getMessage(),
+                ),
+            );
+
             return;
         }
 
-        $upperMethod = strtoupper($method);
         $schemaNode = StrictRequiredSchemaWalker::resolveResponseSchema(
             $spec,
             $upperMethod,
@@ -138,27 +185,61 @@ final class StrictRequiredPerCallChecker
             $contentTypeKey,
         );
         if ($schemaNode === null) {
+            self::noteOnce(
+                'unresolved:' . $specName . ':' . $endpointId . ':' . $responseId,
+                sprintf(
+                    '[OpenAPI Strict Required per-call] NOTE: response schema could not be resolved for %s '
+                    . "(%s in spec '%s'); per-call drift detection skipped. (Path matcher / asserter "
+                    . 'key disagreement, or $ref resolved to an unexpected shape — bug-level; the run-level '
+                    . "asserter surfaces the same condition as an unresolved-groups NOTE at run end.)\n",
+                    $endpointId,
+                    $responseId,
+                    $specName,
+                ),
+            );
+
             return;
         }
 
-        $analysis = StrictRequiredSchemaWalker::collectRequiredByPointer($schemaNode);
-        $walked = $analysis['walked'];
-        $disjunctions = $analysis['disjunctions'];
+        $analysis = StrictRequiredSchemaWalker::analyse($schemaNode);
 
         ksort($pointers);
 
         $missingByPointer = [];
         foreach ($pointers as $pointer => $observedKeys) {
-            if (StrictRequiredSchemaWalker::findCoveringDisjunction($pointer, $disjunctions) !== null) {
+            $lookup = $analysis->lookup($pointer);
+            if ($lookup instanceof StrictRequiredDisjunctionMatch) {
                 // Same rule as the asserter: `required` has no AND-semantic
                 // across `anyOf` / `oneOf`, so "add to required" advice
-                // would mislead. Silently skip — the run-level asserter
-                // emits the unwalkable NOTE.
+                // would mislead. Drop the observation, but emit a one-shot
+                // NOTE so per-call-only configurations can still see that
+                // the endpoint is invisible to per-call drift detection.
+                self::noteOnce(
+                    sprintf(
+                        'disjunction:%s:%s:%s:%s',
+                        $specName,
+                        $endpointId,
+                        $responseId,
+                        $lookup->coveringPointer,
+                    ),
+                    sprintf(
+                        "[OpenAPI Strict Required per-call] NOTE: %s (%s in spec '%s') observation at "
+                        . "pointer '%s' is covered by %s at '%s'; per-call drift detection skipped because "
+                        . '`required` has no AND-semantic across disjunctions. Pin the shape with `allOf` '
+                        . "if you need per-call coverage here.\n",
+                        $endpointId,
+                        $responseId,
+                        $specName,
+                        $pointer,
+                        $lookup->reason,
+                        $lookup->coveringPointer === '' ? '<root>' : $lookup->coveringPointer,
+                    ),
+                );
+
                 continue;
             }
 
-            $specRequired = $walked[$pointer] ?? [];
-            $missing = array_values(array_diff($observedKeys, $specRequired));
+            $missing = array_values(array_diff($observedKeys, $lookup->required));
             if ($missing === []) {
                 continue;
             }
@@ -222,5 +303,23 @@ final class StrictRequiredPerCallChecker
         }
 
         return $total;
+    }
+
+    /**
+     * Emit `$message` to stderr (via the extension's overridable writer so
+     * tests can capture, and so paratest worker NOTEs route through the
+     * same path as every other extension diagnostic) at most once per
+     * `$key` per process. Keys are cleared by {@see self::reset()}.
+     *
+     * The message must include its own trailing newline — `writeStderr`
+     * does no formatting.
+     */
+    private static function noteOnce(string $key, string $message): void
+    {
+        if (isset(self::$emittedNotes[$key])) {
+            return;
+        }
+        self::$emittedNotes[$key] = true;
+        OpenApiCoverageExtension::writeStderr($message);
     }
 }

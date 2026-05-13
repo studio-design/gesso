@@ -98,7 +98,11 @@ final class OpenApiCoverageExtension implements Extension
     /**
      * Append a Markdown block describing a strict_required outcome to the
      * GitHub Actions Step Summary file. Mirrors
-     * {@see appendGithubStepSummaryEnumDriftBlock()}.
+     * {@see appendGithubStepSummaryEnumDriftBlock()} structurally, but the
+     * body text is intentionally distinct ("schema under-description" vs
+     * "checks failed") so log scrapers can route the two channels by
+     * grepping the title — keep the wording divergent if you ever touch
+     * either method.
      *
      * @internal Exposed so {@see CoverageReportSubscriber} can reuse the same
      *           rendering path when invoking the asserter at ExecutionFinished.
@@ -278,9 +282,13 @@ final class OpenApiCoverageExtension implements Extension
 
         // Issue #228: per-call strict_required mode. Independent of the
         // run-level parameter above — both gates can be wired in the same
-        // run. Reset the checker so a leaked `configure()` from a previous
-        // process does not persist; configure with the parsed mode (Off
-        // when the parameter is absent).
+        // run. Resolve first so an invalid value FATAL-throws BEFORE we
+        // touch the checker state; reset then runs only on the happy path
+        // and on test seams where setupExtension() is invoked multiple
+        // times in one PHP process. The follow-up `configure()` overwrites
+        // unconditionally, so the reset matters specifically for the
+        // failed-resolve early-return path (where configure never runs)
+        // and for repeated bootstrap calls.
         $strictRequiredPerCallMode = self::resolveStrictRequiredPerCallMode($parameters, $githubSummaryPath);
         StrictRequiredPerCallChecker::reset();
         StrictRequiredPerCallChecker::configure($strictRequiredPerCallMode);

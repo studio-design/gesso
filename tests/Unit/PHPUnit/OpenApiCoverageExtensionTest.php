@@ -1184,6 +1184,78 @@ class OpenApiCoverageExtensionTest extends TestCase
     }
 
     #[Test]
+    public function strict_required_per_call_invalid_value_appends_fatal_block_to_step_summary(): void
+    {
+        // Issue #228 review: a typoed strict_required_per_call must emit
+        // its FATAL block to GITHUB_STEP_SUMMARY just like every other
+        // bootstrap-level FATAL. Without this pin, a future refactor that
+        // drops the appendGithubStepSummaryStrictRequiredBlock() call would
+        // remove the most-visible CI signal for per-call misconfiguration —
+        // the failure would only surface in scrolling stderr logs.
+        StrictRequiredPerCallChecker::reset();
+        $tmp = tempnam(sys_get_temp_dir(), 'openapi-summary-');
+        if ($tmp === false) {
+            $this->fail('Could not create temp file for GITHUB_STEP_SUMMARY');
+        }
+        $this->githubSummaryTmp = $tmp;
+
+        $extension = new OpenApiCoverageExtension();
+        $parameters = ParameterCollection::fromArray([
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => 'refs-valid',
+            'strict_required_per_call' => 'enforce',
+        ]);
+
+        try {
+            $extension->setupExtension(null, $parameters, $tmp);
+            $this->fail('expected InvalidStrictRequiredConfigurationException');
+        } catch (InvalidStrictRequiredConfigurationException) {
+            // expected
+        } finally {
+            StrictRequiredPerCallChecker::reset();
+        }
+
+        $contents = (string) file_get_contents($tmp);
+        $this->assertStringContainsString('FATAL OpenAPI strict_required drift', $contents);
+        $this->assertStringContainsString('strict_required_per_call=enforce', $contents);
+    }
+
+    #[Test]
+    public function strict_required_per_call_fail_value_appends_fatal_block_to_step_summary(): void
+    {
+        // Parallel pin to the unknown-value case above — `fail` is the
+        // single most likely typo (users coming from the run-level docs
+        // assume it works) and the FATAL block must surface the design
+        // rationale on the GitHub side too.
+        StrictRequiredPerCallChecker::reset();
+        $tmp = tempnam(sys_get_temp_dir(), 'openapi-summary-');
+        if ($tmp === false) {
+            $this->fail('Could not create temp file for GITHUB_STEP_SUMMARY');
+        }
+        $this->githubSummaryTmp = $tmp;
+
+        $extension = new OpenApiCoverageExtension();
+        $parameters = ParameterCollection::fromArray([
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => 'refs-valid',
+            'strict_required_per_call' => 'fail',
+        ]);
+
+        try {
+            $extension->setupExtension(null, $parameters, $tmp);
+            $this->fail('expected InvalidStrictRequiredConfigurationException');
+        } catch (InvalidStrictRequiredConfigurationException) {
+            // expected
+        } finally {
+            StrictRequiredPerCallChecker::reset();
+        }
+
+        $contents = (string) file_get_contents($tmp);
+        $this->assertStringContainsString('FATAL OpenAPI strict_required drift', $contents);
+        $this->assertStringContainsString('strict_required_per_call=fail', $contents);
+    }
+
+    #[Test]
     public function strict_required_per_call_and_run_level_can_coexist(): void
     {
         StrictRequiredPerCallChecker::reset();

@@ -286,9 +286,7 @@ final class StrictRequiredAsserter
                     continue;
                 }
 
-                $analysis = StrictRequiredSchemaWalker::collectRequiredByPointer($schemaNode);
-                $walked = $analysis['walked'];
-                $disjunctions = $analysis['disjunctions'];
+                $analysis = StrictRequiredSchemaWalker::analyse($schemaNode);
 
                 // Sort the observed pointers so generated reports are
                 // deterministic — useful for snapshot-style assertions and
@@ -297,8 +295,8 @@ final class StrictRequiredAsserter
                 ksort($pointers);
 
                 foreach ($pointers as $pointer => $alwaysPresent) {
-                    $disjunction = StrictRequiredSchemaWalker::findCoveringDisjunction($pointer, $disjunctions);
-                    if ($disjunction !== null) {
+                    $lookup = $analysis->lookup($pointer);
+                    if ($lookup instanceof StrictRequiredDisjunctionMatch) {
                         // The spec node at (or above) this pointer is a
                         // disjunction (`anyOf` / `oneOf`); the "add to
                         // required" advice does not apply. Surface as a
@@ -309,15 +307,14 @@ final class StrictRequiredAsserter
                             $endpointKey,
                             $responseKey,
                             $pointer,
-                            $disjunction['reason'],
-                            $disjunction['pointer'] === '' ? '<root>' : $disjunction['pointer'],
+                            $lookup->reason,
+                            $lookup->coveringPointer === '' ? '<root>' : $lookup->coveringPointer,
                         );
 
                         continue;
                     }
 
-                    $specRequired = $walked[$pointer] ?? [];
-                    $missing = array_values(array_diff($alwaysPresent, $specRequired));
+                    $missing = array_values(array_diff($alwaysPresent, $lookup->required));
                     if ($missing === []) {
                         continue;
                     }

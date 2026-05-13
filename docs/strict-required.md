@@ -10,7 +10,9 @@ The most common gap that slips past conformance checks is *under-description*: t
 - [Configuration](#configuration)
 - [Example](#example)
 - [Per-call mode](#per-call-mode)
+  - [Per-call silent paths and NOTE channel](#per-call-silent-paths-and-note-channel)
 - [What it does NOT do](#what-it-does-not-do)
+- [Paratest](#paratest)
 - [Known limitations](#known-limitations)
 
 ## How it works
@@ -177,6 +179,18 @@ Per-call by definition fires on every legitimately-optional field that happens t
 
 Both gates can be enabled together; they read the same per-response observation but make different calls about when to act on it.
 
+### Per-call silent paths and NOTE channel
+
+Per-call mode has no equivalent to the run-level asserter's `ExecutionFinished` summary, so several "infrastructure-level" no-ops cannot be surfaced as drift. To keep these visible without escalating them to per-test failures, the checker emits a **one-shot stderr NOTE** the first time each condition is hit per process:
+
+- **Spec load failure mid-run** (the spec file was unlinked or rewritten after bootstrap eager-load).
+- **Unresolvable response schema** for an observation (path-matcher / asserter disagreement, or a `$ref` resolved to an unexpected shape — both bug-level).
+- **Disjunction-covered observation** (the pointer falls under an `anyOf` / `oneOf` node, or the response root is itself unwalkable). Per-call cannot emit "add to `required`" advice safely here.
+
+NOTE volume is deduped (one per spec for load failures, one per `(spec, endpoint, response)` for unresolved schemas, one per `(spec, endpoint, response, covering-pointer)` for disjunctions). All NOTEs use the `[OpenAPI Strict Required per-call] NOTE:` prefix and write through the same channel as the WARN messages, so a single log scrape covers both severities.
+
+Under paratest, each worker maintains its own NOTE dedupe set, so the same condition can produce N NOTEs across N workers — by design, so the parent run can see which workers tripped the condition.
+
 ### Suppressing per-call drift
 
 There is currently no per-test or per-field suppression mechanism for per-call mode — if a field is genuinely optional and you do not want the warning, the recommended workflows are:
@@ -209,6 +223,8 @@ vendor/bin/openapi-coverage-merge \
 `--strict-required` accepts `off` (default), `warn` (emit diagnostic, exit 0), and `fail` (emit diagnostic, exit 1). The `strict_required` parameter on the PHPUnit extension does **not** propagate to the merge CLI — workers always export observations, and the merge step decides whether to assert. This keeps mode flips a single-knob CI operation without per-worker reruns.
 
 The diagnostic block is rendered after the coverage report (Markdown, JUnit, JSON, HTML, GITHUB_STEP_SUMMARY) so a fatal drift does not suppress the coverage output that helps triage the failure.
+
+**Per-call mode is worker-local.** `strict_required_per_call=warn` fires `E_USER_WARNING` inside the worker process. PHPUnit's `failOnWarning="true"` converts those warnings into per-worker test failures, which paratest aggregates into its own non-zero exit code — the gate works correctly under paratest. The `strict_required_per_call` parameter is **not** consumed by the merge CLI; there is no `--strict-required-per-call` flag because the per-call decision is made entirely inside the worker. NOTEs (see [Per-call silent paths](#per-call-silent-paths-and-note-channel)) are also per-worker, so the same condition may produce multiple NOTEs across a paratest run.
 
 ## Known limitations
 
