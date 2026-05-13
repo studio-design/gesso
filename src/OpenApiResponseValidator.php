@@ -14,6 +14,7 @@ use Studio\OpenApiContractTesting\Validation\Response\ResponseBodyValidationResu
 use Studio\OpenApiContractTesting\Validation\Response\ResponseBodyValidator;
 use Studio\OpenApiContractTesting\Validation\Response\ResponseHeaderValidator;
 use Studio\OpenApiContractTesting\Validation\Strict\StrictRequiredBodyWalker;
+use Studio\OpenApiContractTesting\Validation\Strict\StrictRequiredPerCallChecker;
 use Studio\OpenApiContractTesting\Validation\Strict\StrictRequiredTracker;
 use Studio\OpenApiContractTesting\Validation\Support\PathDiagnosticsFormatter;
 use Studio\OpenApiContractTesting\Validation\Support\SchemaValidatorRunner;
@@ -241,14 +242,18 @@ final class OpenApiResponseValidator
     }
 
     /**
-     * Feed the strict-required tracker one observation. The body is walked
-     * recursively via {@see StrictRequiredBodyWalker::collectPointers()}
-     * which produces a `pointer => list<string>` map describing every
-     * object node observed; {@see StrictRequiredAsserter} diffs each
-     * pointer's keys against the spec's `required` array at the matching
-     * schema node.
+     * Feed the strict-required tracker one observation, and (when per-call
+     * mode is enabled) emit an immediate `E_USER_WARNING` for any
+     * already-drifting pointer.
      *
-     * Only recorded on the Success path (caller guarantees `$errors === []`):
+     * The body is walked once via {@see StrictRequiredBodyWalker::collectPointers()}
+     * and the resulting `pointer => list<string>` map is shared with both
+     * the run-level tracker (intersection mode, asserts at
+     * `ExecutionFinished`) and the per-call checker (Issue #228, fires
+     * immediately). Walking once keeps the cost flat regardless of how many
+     * gates the user enabled.
+     *
+     * Only invoked on the Success path (caller guarantees `$errors === []`):
      * a conformance failure means the body shape itself is suspect, and
      * skipped responses are explicitly excluded from coverage too — both
      * cases would poison the intersection.
@@ -270,6 +275,7 @@ final class OpenApiResponseValidator
         if ($pointers === []) {
             return;
         }
+        $contentTypeKey = $matchedContentType ?? StrictRequiredTracker::ANY_CONTENT_TYPE;
 
         try {
             StrictRequiredTracker::record(
@@ -277,7 +283,7 @@ final class OpenApiResponseValidator
                 $method,
                 $matchedPath,
                 $statusKey,
-                $matchedContentType ?? StrictRequiredTracker::ANY_CONTENT_TYPE,
+                $contentTypeKey,
                 $pointers,
             );
         } catch (InvalidArgumentException $e) {
@@ -304,6 +310,21 @@ final class OpenApiResponseValidator
             // installed by the test framework.
             fwrite(STDERR, $message);
         }
+
+        // Per-call mode (Issue #228) is independent of the run-level
+        // tracker: even when the tracker rejected the row above, the
+        // per-call checker reads the same pointer map, so a malformed map
+        // affects both gates symmetrically. The checker short-circuits
+        // when its mode is Off, which is the default for users who only
+        // opted into the run-level gate.
+        StrictRequiredPerCallChecker::maybeWarn(
+            $specName,
+            $method,
+            $matchedPath,
+            $statusKey,
+            $contentTypeKey,
+            $pointers,
+        );
     }
 
     /**

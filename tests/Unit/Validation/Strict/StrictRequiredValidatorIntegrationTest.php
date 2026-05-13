@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Studio\OpenApiContractTesting\Tests\Unit\Validation\Strict;
 
+use const E_USER_WARNING;
+
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use stdClass;
@@ -11,7 +13,12 @@ use Studio\OpenApiContractTesting\OpenApiResponseValidator;
 use Studio\OpenApiContractTesting\Spec\OpenApiSpecLoader;
 use Studio\OpenApiContractTesting\Validation\Strict\StrictRequiredAsserter;
 use Studio\OpenApiContractTesting\Validation\Strict\StrictRequiredMode;
+use Studio\OpenApiContractTesting\Validation\Strict\StrictRequiredPerCallChecker;
+use Studio\OpenApiContractTesting\Validation\Strict\StrictRequiredPerCallMode;
 use Studio\OpenApiContractTesting\Validation\Strict\StrictRequiredTracker;
+
+use function restore_error_handler;
+use function set_error_handler;
 
 final class StrictRequiredValidatorIntegrationTest extends TestCase
 {
@@ -23,12 +30,14 @@ final class StrictRequiredValidatorIntegrationTest extends TestCase
         OpenApiSpecLoader::reset();
         OpenApiSpecLoader::configure(__DIR__ . '/../../../fixtures/specs');
         StrictRequiredTracker::reset();
+        StrictRequiredPerCallChecker::reset();
         $this->validator = new OpenApiResponseValidator();
     }
 
     protected function tearDown(): void
     {
         StrictRequiredTracker::reset();
+        StrictRequiredPerCallChecker::reset();
         OpenApiSpecLoader::reset();
         parent::tearDown();
     }
@@ -331,6 +340,107 @@ final class StrictRequiredValidatorIntegrationTest extends TestCase
     }
 
     #[Test]
+    public function per_call_warn_emits_warning_on_first_observation(): void
+    {
+        // Per-call mode (Issue #228) is the lightweight gate: a single
+        // observation with optional fields present must surface as a
+        // warning immediately, without waiting for the run-level
+        // intersection at ExecutionFinished. /signed-url has no `required`
+        // declared, so all three keys drift on the first call.
+        StrictRequiredPerCallChecker::configure(StrictRequiredPerCallMode::Warn);
+
+        $captured = $this->captureFirstWarning(function (): void {
+            $this->validator->validate(
+                'under-described',
+                'PUT',
+                '/signed-url',
+                200,
+                ['expires' => 3600, 'signed_url' => 's3://...', 'url' => 'https://...'],
+                'application/json',
+            );
+        });
+
+        $this->assertNotNull($captured);
+        $this->assertStringContainsString('[OpenAPI Strict Required per-call] WARN:', $captured);
+        $this->assertStringContainsString('PUT /signed-url', $captured);
+    }
+
+    #[Test]
+    public function per_call_off_emits_no_warning_even_with_drift(): void
+    {
+        // Default mode is Off. The same body that fires above must stay
+        // silent here so existing users see zero behaviour change after
+        // upgrading to a release that ships per-call mode.
+        $captured = $this->captureFirstWarning(function (): void {
+            $this->validator->validate(
+                'under-described',
+                'PUT',
+                '/signed-url',
+                200,
+                ['expires' => 3600, 'signed_url' => 's3://...', 'url' => 'https://...'],
+                'application/json',
+            );
+        });
+
+        $this->assertNull($captured);
+    }
+
+    #[Test]
+    public function per_call_does_not_fire_when_response_fails_conformance(): void
+    {
+        // Per-call hangs off the same Success-only branch as the tracker:
+        // a conformance-failing response must not trigger a per-call
+        // warning. /users/{id} requires `id`+`name`; omitting `id` fails.
+        StrictRequiredPerCallChecker::configure(StrictRequiredPerCallMode::Warn);
+
+        $captured = $this->captureFirstWarning(function (): void {
+            $this->validator->validate(
+                'under-described',
+                'GET',
+                '/users/{id}',
+                200,
+                ['name' => 'alice'],
+                'application/json',
+            );
+        });
+
+        $this->assertNull($captured);
+    }
+
+    #[Test]
+    public function per_call_warn_and_run_level_warn_are_independent(): void
+    {
+        // CIs may run per-call=warn for early visibility AND run-level=warn
+        // for the safer aggregate. A single observation must trigger the
+        // per-call warning AND record into the tracker so the run-level
+        // asserter still has data to diff at ExecutionFinished.
+        StrictRequiredPerCallChecker::configure(StrictRequiredPerCallMode::Warn);
+
+        $captured = $this->captureFirstWarning(function (): void {
+            $this->validator->validate(
+                'under-described',
+                'PUT',
+                '/signed-url',
+                200,
+                ['expires' => 3600, 'signed_url' => 's3://...', 'url' => 'https://...'],
+                'application/json',
+            );
+        });
+
+        $this->assertNotNull($captured);
+
+        $observations = StrictRequiredTracker::getObservations('under-described');
+        $this->assertSame(
+            ['hits' => 1, 'pointers' => ['/' => ['expires', 'signed_url', 'url']]],
+            $observations['PUT /signed-url']['200:application/json'],
+        );
+
+        $reports = StrictRequiredAsserter::detectAll(StrictRequiredMode::Warn);
+        $this->assertCount(1, $reports);
+        $this->assertSame(['expires', 'signed_url', 'url'], $reports[0]->missingFromRequired);
+    }
+
+    #[Test]
     public function empty_object_body_is_recorded_as_empty_observation(): void
     {
         // Empty object {} lands here as PHP [] after json_decode($_, true).
@@ -358,5 +468,29 @@ final class StrictRequiredValidatorIntegrationTest extends TestCase
             ['hits' => 1, 'pointers' => ['/' => []]],
             $observations['PUT /signed-url']['200:application/json'],
         );
+    }
+
+    /**
+     * Capture the first `E_USER_WARNING` triggered by `$callable` and
+     * return its message. Returns `null` if no warning was triggered.
+     */
+    private function captureFirstWarning(callable $callable): ?string
+    {
+        $captured = null;
+        set_error_handler(static function (int $errno, string $errstr) use (&$captured): bool {
+            if ($captured === null && $errno === E_USER_WARNING) {
+                $captured = $errstr;
+            }
+
+            return true;
+        }, E_USER_WARNING);
+
+        try {
+            $callable();
+        } finally {
+            restore_error_handler();
+        }
+
+        return $captured;
     }
 }

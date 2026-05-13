@@ -26,6 +26,8 @@ use Studio\OpenApiContractTesting\Schema\EnumDriftAsserter;
 use Studio\OpenApiContractTesting\Schema\EnumDriftReport;
 use Studio\OpenApiContractTesting\Spec\OpenApiSpecLoader;
 use Studio\OpenApiContractTesting\Validation\Strict\StrictRequiredMode;
+use Studio\OpenApiContractTesting\Validation\Strict\StrictRequiredPerCallChecker;
+use Studio\OpenApiContractTesting\Validation\Strict\StrictRequiredPerCallMode;
 use Studio\OpenApiContractTesting\Validation\Strict\StrictRequiredTracker;
 
 use function array_filter;
@@ -273,6 +275,15 @@ final class OpenApiCoverageExtension implements Extension
         // paratest workers via the sidecar envelope (Issue #226).
         $strictRequiredMode = self::resolveStrictRequiredMode($parameters, $githubSummaryPath);
         StrictRequiredTracker::reset();
+
+        // Issue #228: per-call strict_required mode. Independent of the
+        // run-level parameter above — both gates can be wired in the same
+        // run. Reset the checker so a leaked `configure()` from a previous
+        // process does not persist; configure with the parsed mode (Off
+        // when the parameter is absent).
+        $strictRequiredPerCallMode = self::resolveStrictRequiredPerCallMode($parameters, $githubSummaryPath);
+        StrictRequiredPerCallChecker::reset();
+        StrictRequiredPerCallChecker::configure($strictRequiredPerCallMode);
 
         if ($facade === null) {
             return;
@@ -605,6 +616,37 @@ final class OpenApiCoverageExtension implements Extension
                 trim($raw) === '' ? '<empty>' : $raw,
             );
             self::writeStderr("[OpenAPI Strict Required] FATAL: {$reason}\n");
+            self::appendGithubStepSummaryStrictRequiredBlock($githubSummaryPath, $reason, isFatal: true);
+
+            throw new InvalidStrictRequiredConfigurationException($reason, $e);
+        }
+    }
+
+    /**
+     * Issue #228: read the `strict_required_per_call` parameter. Mirrors
+     * {@see resolveStrictRequiredMode()} with one deliberate difference —
+     * the per-call enum rejects `fail` outright (per-call is warn-only;
+     * the run-level mode is the safe fail-gate). Unrecognised values stay
+     * FATAL for the same opt-in fail-loud rationale.
+     */
+    private static function resolveStrictRequiredPerCallMode(
+        ParameterCollection $parameters,
+        ?string $githubSummaryPath,
+    ): StrictRequiredPerCallMode {
+        if (!$parameters->has('strict_required_per_call')) {
+            return StrictRequiredPerCallMode::Off;
+        }
+
+        $raw = $parameters->get('strict_required_per_call');
+
+        try {
+            return StrictRequiredPerCallMode::fromConfigValue($raw);
+        } catch (InvalidArgumentException $e) {
+            $reason = sprintf(
+                'strict_required_per_call=%s is not recognised. Accepted: off, warn.',
+                trim($raw) === '' ? '<empty>' : $raw,
+            );
+            self::writeStderr("[OpenAPI Strict Required per-call] FATAL: {$reason}\n");
             self::appendGithubStepSummaryStrictRequiredBlock($githubSummaryPath, $reason, isFatal: true);
 
             throw new InvalidStrictRequiredConfigurationException($reason, $e);

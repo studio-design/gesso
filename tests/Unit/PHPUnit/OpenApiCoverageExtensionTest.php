@@ -21,6 +21,8 @@ use Studio\OpenApiContractTesting\Internal\EnumScanner;
 use Studio\OpenApiContractTesting\PHPUnit\InvalidStrictRequiredConfigurationException;
 use Studio\OpenApiContractTesting\PHPUnit\OpenApiCoverageExtension;
 use Studio\OpenApiContractTesting\Spec\OpenApiSpecLoader;
+use Studio\OpenApiContractTesting\Validation\Strict\StrictRequiredPerCallChecker;
+use Studio\OpenApiContractTesting\Validation\Strict\StrictRequiredPerCallMode;
 use Studio\OpenApiContractTesting\Validation\Strict\StrictRequiredTracker;
 
 use function fclose;
@@ -1086,6 +1088,120 @@ class OpenApiCoverageExtensionTest extends TestCase
         $extension->setupExtension(null, $parameters, null);
 
         $this->assertSame([], StrictRequiredTracker::getObservations('refs-valid'));
+    }
+
+    #[Test]
+    public function strict_required_per_call_warn_configures_checker_at_bootstrap(): void
+    {
+        StrictRequiredPerCallChecker::reset();
+
+        $extension = new OpenApiCoverageExtension();
+        $parameters = ParameterCollection::fromArray([
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => 'refs-valid',
+            'strict_required_per_call' => 'warn',
+        ]);
+
+        try {
+            $extension->setupExtension(null, $parameters, null);
+            $this->assertSame(StrictRequiredPerCallMode::Warn, StrictRequiredPerCallChecker::mode());
+        } finally {
+            StrictRequiredPerCallChecker::reset();
+        }
+    }
+
+    #[Test]
+    public function strict_required_per_call_absent_keeps_checker_off(): void
+    {
+        StrictRequiredPerCallChecker::reset();
+
+        $extension = new OpenApiCoverageExtension();
+        $parameters = ParameterCollection::fromArray([
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => 'refs-valid',
+        ]);
+
+        try {
+            $extension->setupExtension(null, $parameters, null);
+            $this->assertSame(StrictRequiredPerCallMode::Off, StrictRequiredPerCallChecker::mode());
+        } finally {
+            StrictRequiredPerCallChecker::reset();
+        }
+    }
+
+    #[Test]
+    public function strict_required_per_call_unknown_value_throws_invalid_config(): void
+    {
+        StrictRequiredPerCallChecker::reset();
+
+        $extension = new OpenApiCoverageExtension();
+        $parameters = ParameterCollection::fromArray([
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => 'refs-valid',
+            'strict_required_per_call' => 'enforce',
+        ]);
+
+        try {
+            $extension->setupExtension(null, $parameters, null);
+            $this->fail('expected InvalidStrictRequiredConfigurationException');
+        } catch (InvalidStrictRequiredConfigurationException $e) {
+            $this->assertStringContainsString('strict_required_per_call=enforce', $e->getMessage());
+        } finally {
+            StrictRequiredPerCallChecker::reset();
+        }
+
+        $this->assertStringContainsString('[OpenAPI Strict Required per-call] FATAL', $this->readStderr());
+    }
+
+    #[Test]
+    public function strict_required_per_call_rejects_fail_value(): void
+    {
+        // Per-call is intentionally warn-only — the FATAL message must use
+        // the per-call prefix so users grepping for `[OpenAPI Strict
+        // Required per-call]` find it, and the accepted-list must NOT
+        // include `fail`.
+        StrictRequiredPerCallChecker::reset();
+
+        $extension = new OpenApiCoverageExtension();
+        $parameters = ParameterCollection::fromArray([
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => 'refs-valid',
+            'strict_required_per_call' => 'fail',
+        ]);
+
+        try {
+            $extension->setupExtension(null, $parameters, null);
+            $this->fail('expected InvalidStrictRequiredConfigurationException');
+        } catch (InvalidStrictRequiredConfigurationException $e) {
+            $this->assertStringContainsString('strict_required_per_call=fail', $e->getMessage());
+        } finally {
+            StrictRequiredPerCallChecker::reset();
+        }
+
+        $stderr = $this->readStderr();
+        $this->assertStringContainsString('[OpenAPI Strict Required per-call] FATAL', $stderr);
+        $this->assertStringContainsString('Accepted: off, warn', $stderr);
+    }
+
+    #[Test]
+    public function strict_required_per_call_and_run_level_can_coexist(): void
+    {
+        StrictRequiredPerCallChecker::reset();
+
+        $extension = new OpenApiCoverageExtension();
+        $parameters = ParameterCollection::fromArray([
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => 'refs-valid',
+            'strict_required' => 'warn',
+            'strict_required_per_call' => 'warn',
+        ]);
+
+        try {
+            $extension->setupExtension(null, $parameters, null);
+            $this->assertSame(StrictRequiredPerCallMode::Warn, StrictRequiredPerCallChecker::mode());
+        } finally {
+            StrictRequiredPerCallChecker::reset();
+        }
     }
 
     private function readStderr(): string

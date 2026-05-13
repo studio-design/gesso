@@ -9,6 +9,7 @@ The most common gap that slips past conformance checks is *under-description*: t
 - [How it works](#how-it-works)
 - [Configuration](#configuration)
 - [Example](#example)
+- [Per-call mode](#per-call-mode)
 - [What it does NOT do](#what-it-does-not-do)
 - [Known limitations](#known-limitations)
 
@@ -125,6 +126,67 @@ The fix is to update the spec:
 
 After re-running the suite the diagnostic disappears and downstream SDK consumers receive concrete (non-optional) types for the three fields.
 
+## Per-call mode
+
+The default `strict_required` mode aggregates observations and reports drift only after the run finishes. Endpoints with a single test case never reach the `hits >= 2` threshold needed to confirm "this key appears in *every* call" — they silently pass even when the spec is under-described.
+
+`strict_required_per_call` is a separate, lightweight gate that fires immediately on every conformance-passing response: any optional field present in this single observation is reported as `E_USER_WARNING`. Pair it with PHPUnit's `failOnWarning="true"` to convert per-call drift into per-test failures.
+
+```xml
+<extensions>
+    <bootstrap class="Studio\OpenApiContractTesting\PHPUnit\OpenApiCoverageExtension">
+        <parameter name="spec_base_path" value="openapi/bundled"/>
+        <parameter name="specs" value="front,admin"/>
+        <parameter name="strict_required"          value="fail"/>  <!-- run-level safe gate  -->
+        <parameter name="strict_required_per_call" value="warn"/>  <!-- per-call early signal -->
+    </bootstrap>
+</extensions>
+```
+
+| Value | Behaviour |
+|---|---|
+| `off` (default) | The checker short-circuits; no per-call comparison runs. |
+| `warn` | Each Success response is diffed against the matching schema's `required`. Drift triggers `E_USER_WARNING` with the prefix `[OpenAPI Strict Required per-call]`. |
+
+`fail` is **not** an accepted value — silently demoting it to `warn` would mislead a CI that opted in by mistake. Per-call must stay warn-only by design (see trade-off below). Use `failOnWarning="true"` if you want hard test failures.
+
+Sample output (one warning per drifting observation):
+
+```
+[OpenAPI Strict Required per-call] WARN: PUT /signed-url  200  application/json: response carries 3 optional field(s) not declared in `required` at the matching schema pointer(s):
+  / : expires, signed_url, url
+Action: add these fields to the schema's `required` array, or set strict_required_per_call=off if intentional.
+Note: per-call mode warns on every legitimately-optional field present in this single observation. See docs/strict-required.md "Per-call mode" for the trade-off.
+```
+
+The `[OpenAPI Strict Required per-call]` prefix is intentionally distinct from the run-level `[OpenAPI Strict Required]` block so log scrapers can route the two channels independently.
+
+### Why no `fail` mode?
+
+Per-call by definition fires on every legitimately-optional field that happens to be present in any one observation — nullable fields, conditional payloads, fields gated by feature flags. Forcing the run to exit non-zero on the first such hit would push false positives onto every test suite. Run-level intersection mode (`strict_required=fail`) is the stable fail-gate; per-call is the early-visibility companion.
+
+### Run-level vs per-call: which gate when?
+
+| | Run-level (`strict_required`) | Per-call (`strict_required_per_call`) |
+|---|---|---|
+| When does it fire? | Once at `ExecutionFinished` | Immediately on each Success response |
+| Aggregation | Intersection across every observation per pointer | None — uses the single observation's keys |
+| False positives | Low (a field must appear in *every* call) | Higher (any optional-but-present field) |
+| Single-observation endpoint | Silently skipped | Surfaces drift |
+| Recommended escalation path | `off` → `warn` → `fail` | `off` → `warn` (no `fail`) |
+
+Both gates can be enabled together; they read the same per-response observation but make different calls about when to act on it.
+
+### Suppressing per-call drift
+
+There is currently no per-test or per-field suppression mechanism for per-call mode — if a field is genuinely optional and you do not want the warning, the recommended workflows are:
+
+1. **Add the field to the schema's `required` array** if the implementation actually always returns it.
+2. **Disable per-call** (`strict_required_per_call=off`) for the suite and rely on the run-level intersection gate, which already handles the "sometimes-present" case correctly.
+3. **Avoid `failOnWarning="true"`** at the global level if you only want per-call warnings as advisory output.
+
+A future release may add an opt-out attribute (e.g. `#[StrictRequiredPerCallIgnore]`) for endpoints with known noisy optional fields — see Issue #228 follow-up tracking. The MVP ships without it so the noise floor of the gate is observed in real CI before deciding the suppression API.
+
 ## What it does NOT do
 
 - It does **not** flag fields the impl returns *sometimes* but not always. By design — those fields are legitimately optional, and `required` only describes invariant fields.
@@ -153,6 +215,5 @@ The diagnostic block is rendered after the coverage report (Markdown, JUnit, JSO
 - **Mixed sidecar versions.** Workers running an older library version write a v1 (coverage-only) sidecar. The merge CLI still accepts those and merges their coverage, but their strict_required contribution is empty. Upgrade all workers to share the gate fully.
 - **Mixed strict_required wire versions.** Starting with this release the strict_required tracker emits state format **v2** (per-pointer rows). The merge CLI rejects v1 strict_required payloads with a loud error rather than silently downgrading nested observations to root-only. Coverage merging is unaffected (the envelope still tolerates v1 coverage payloads); only the strict_required half requires version-aligned workers.
 - **`additionalProperties` schemas are not walked.** When a schema sets `additionalProperties: <schema>` (object form), the asserter does not descend into that schema to look for `required` on dynamically-keyed properties. Walk-depth follows declared `properties` and `items` only. **Consequence:** dynamically-keyed response objects (`{"user-42": {...}, "user-43": {...}}`-style maps) silently miss strict-required coverage on their values. If you need strict-required coverage on map-shaped responses, pin the shape with declared `properties` instead.
-- **`allOf` is unioned; `anyOf` / `oneOf` are not walked.** `allOf` semantics are AND, so the union of `required` arrays across branches is sound — applied at every level of descent. `anyOf` / `oneOf` are disjunctions and there is no safe AND-semantic for "required" across them; the asserter stops descending at such a node. **Consequence:** observations under an `anyOf` / `oneOf` node surface as a separate `NOTE` block (not drift), pointing to the disjunction site so reviewers can pin the shape with `allOf` if strict-required coverage matters there. Drift advice ("add to `required`") is suppressed for these pointers because it would be actively wrong.
-- **Per-call mode is not implemented.** An alternative "warn on every optional field present in a single observation" mode was considered but rejected: per-call would warn indiscriminately on every legitimately-optional field that happens to be present. The run-level intersection ("the field appears in *every* call") is the deliberate trade-off.
+- **`allOf` is unioned; `anyOf` / `oneOf` are not walked.** `allOf` semantics are AND, so the union of `required` arrays across branches is sound — applied at every level of descent. `anyOf` / `oneOf` are disjunctions and there is no safe AND-semantic for "required" across them; the asserter stops descending at such a node. **Consequence:** observations under an `anyOf` / `oneOf` node surface as a separate `NOTE` block (not drift), pointing to the disjunction site so reviewers can pin the shape with `allOf` if strict-required coverage matters there. Drift advice ("add to `required`") is suppressed for these pointers because it would be actively wrong. Per-call mode applies the same rule: pointers under a disjunction are silently skipped (per-call has no NOTE channel).
 - **Empty `{}` and `[]` at child positions are skipped.** PHP cannot distinguish empty object from empty list once `json_decode` lands them both as `[]`. To avoid polluting observations with ambiguous shapes, the walker records empty `{}` only at the response root (preserving "empty response collapses the intersection"). Empty arrays at nested positions contribute no pointer to that observation — combined with the tracker's "absence drops the pointer" rule, a sometimes-empty nested array silently drops its `[*]` row from cross-response analysis. If you need strict-required coverage on a nullable array property, pin the shape with a more specific spec (e.g. `oneOf` with concrete element types — though see disjunction limitation above).
