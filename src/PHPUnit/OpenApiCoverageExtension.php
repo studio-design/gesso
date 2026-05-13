@@ -145,7 +145,7 @@ final class OpenApiCoverageExtension implements Extension
                 $facade,
                 $parameters,
                 getenv('GITHUB_STEP_SUMMARY') ?: null,
-                self::detectPartialRun($configuration),
+                self::detectPartialRun($configuration, $parameters),
             );
         } catch (EnumBindingException|EnumDriftException|InvalidCoverageOutputPathException|InvalidOpenApiSpecException|InvalidStrictRequiredConfigurationException|InvalidThresholdConfigurationException|SpecFileNotFoundException) {
             // setupExtension() has already written a FATAL line to stderr and
@@ -337,9 +337,18 @@ final class OpenApiCoverageExtension implements Extension
      * writes on partial runs. The signal set, rationale, and why the
      * `TestSuite\Filtered` event is not used are documented on
      * {@see PartialRunDecision} — keeping that explanation in one place.
+     *
+     * Issue #236: the `default_testsuite_as_full` xml parameter is forwarded
+     * here together with `Configuration::defaultTestSuite()` so the
+     * `defaultTestSuite`-resolved `includeTestSuites` payload can be treated
+     * as a canonical full run when the user opts in.
      */
-    private static function detectPartialRun(Configuration $configuration): ?PartialRunDecision
-    {
+    private static function detectPartialRun(
+        Configuration $configuration,
+        ParameterCollection $parameters,
+    ): ?PartialRunDecision {
+        $treatDefaultAsFull = self::resolveBooleanFlag($parameters, 'default_testsuite_as_full', false);
+
         return PartialRunDecision::fromSignals(
             hasCliArguments: $configuration->hasCliArguments(),
             hasFilter: $configuration->hasFilter(),
@@ -351,7 +360,30 @@ final class OpenApiCoverageExtension implements Extension
             hasTestsCovering: $configuration->hasTestsCovering(),
             hasTestsUsing: $configuration->hasTestsUsing(),
             hasTestsRequiringPhpExtension: $configuration->hasTestsRequiringPhpExtension(),
+            defaultTestSuite: self::readDefaultTestSuite($configuration),
+            treatDefaultTestSuiteAsFull: $treatDefaultAsFull,
         );
+    }
+
+    /**
+     * Read the `defaultTestSuite` xml attribute via PHPUnit's
+     * {@see Configuration} accessors. Both `hasDefaultTestSuite()` and
+     * `defaultTestSuite()` exist on PHPUnit 11/12/13, so a direct call is
+     * safe across the CI matrix (unlike {@see readTestSuiteList()}, which
+     * needs the dynamic dispatch because PHPUnit 13 dropped the singular
+     * `includeTestSuite()` accessor). The `hasDefaultTestSuite()` guard is
+     * mandatory: `defaultTestSuite()` throws `NoDefaultTestSuiteException`
+     * when the xml attribute is absent.
+     */
+    private static function readDefaultTestSuite(Configuration $configuration): ?string
+    {
+        if (!$configuration->hasDefaultTestSuite()) {
+            return null;
+        }
+
+        $value = $configuration->defaultTestSuite();
+
+        return $value !== '' ? $value : null;
     }
 
     /**

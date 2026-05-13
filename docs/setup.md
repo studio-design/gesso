@@ -57,6 +57,7 @@ Add the coverage extension to your `phpunit.xml`:
 | `html_output` | No | — | File path to write self-contained HTML coverage report (PR comments, CI artifact preview, offline review). See [`coverage-html-output.md`](coverage-html-output.md) |
 | `console_output` | No | `default` | Console output mode: `default`, `all`, `uncovered_only`, or `active_only` (overridden by `OPENAPI_CONSOLE_OUTPUT` env var) |
 | `sidecar_dir` | No | `sys_get_temp_dir()/openapi-coverage-sidecars` | Directory paratest workers drop per-worker JSON sidecars into. Used only under parallel test runners — see [Parallel test runners](parallel.md) |
+| `default_testsuite_as_full` | No | `false` | Opt-in. When `true` and PHPUnit's `includeTestSuites` resolves exactly to the configured `defaultTestSuite`, treat the run as full instead of partial (so `strict_required` and coverage outputs aren't suppressed). See [Partial test runs](ci.md#partial-test-runs-filter-testsuite-path-args-) for trade-offs |
 
 *Not required if you call `OpenApiSpecLoader::configure()` manually.
 

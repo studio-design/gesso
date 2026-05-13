@@ -226,6 +226,16 @@ The diagnostic block is rendered after the coverage report (Markdown, JUnit, JSO
 
 **Per-call mode is worker-local.** `strict_required_per_call=warn` fires `E_USER_WARNING` inside the worker process. PHPUnit's `failOnWarning="true"` converts those warnings into per-worker test failures, which paratest aggregates into its own non-zero exit code — the gate works correctly under paratest. The `strict_required_per_call` parameter is **not** consumed by the merge CLI; there is no `--strict-required-per-call` flag because the per-call decision is made entirely inside the worker. NOTEs (see [Per-call silent paths](#per-call-silent-paths-and-note-channel)) are also per-worker, so the same condition may produce multiple NOTEs across a paratest run.
 
+## Partial-run skipping
+
+`strict_required` の intersection は "全 suite が走った結果" を前提とする。`--filter` / `--testsuite` / 位置引数等で部分実行されたときは、誤検知 (broader suite では時々欠ける key を "always present" と扱う) を避けるためゲートをスキップし、stderr に NOTE を 1 行出すだけにしている (issue #221 / #225)。
+
+```text
+[OpenAPI Strict Required] NOTE: strict_required is skipped on partial runs (--filter / --testsuite / etc.) ...
+```
+
+`phpunit.xml` で `defaultTestSuite` を宣言しているプロジェクトでは引数なしの `phpunit` 実行でも partial 判定が立つため、このゲートが常にスキップされて到達不能になる場合がある。`default_testsuite_as_full` opt-in でこの挙動を解除できる — トレードオフを含めて [`ci.md` の Partial test runs 節](ci.md#defaulttestsuite-と-partial-判定の-opt-in-解除) を参照。
+
 ## Known limitations
 
 - **Mixed sidecar versions.** Workers running an older library version write a v1 (coverage-only) sidecar. The merge CLI still accepts those and merges their coverage, but their strict_required contribution is empty. Upgrade all workers to share the gate fully.
