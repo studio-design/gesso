@@ -1,8 +1,5 @@
 blank_issues_enabled: false
 contact_links:
-  - name: Question
-    url: https://github.com/studio-design/openapi-contract-testing/discussions/new?category=q-a
-    about: Use Discussions for usage questions and design conversations.
   - name: Security report
     url: https://github.com/studio-design/openapi-contract-testing/security/advisories/new
     about: Report a security vulnerability privately. See SECURITY.md.
