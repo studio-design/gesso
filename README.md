@@ -1,5 +1,8 @@
 <p align="center">
-  <img src="images/logo.png" alt="openapi-contract-testing" width="480">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="images/logo-dark.png">
+    <img alt="openapi-contract-testing" src="images/logo-light.png" width="480">
+  </picture>
 </p>
 
 # OpenAPI Contract Testing for PHPUnit
