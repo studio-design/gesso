@@ -177,6 +177,15 @@
                 }
             }
         },
+        "/response-default-status-scalar": {
+            "get": {
+                "summary": "responses[default] entry is a scalar — declares only `default`, so a wire status resolves to the `default` spec key",
+                "operationId": "responseDefaultStatusScalar",
+                "responses": {
+                    "default": "this should have been an object"
+                }
+            }
+        },
         "/path-scalar-parameter/{id}": {
             "parameters": [
                 "this should have been an object"

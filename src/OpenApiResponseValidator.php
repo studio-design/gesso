@@ -190,12 +190,13 @@ final class OpenApiResponseValidator
         $responseSpec = $responses[$matchedResponseKey];
 
         // A present-but-non-array response entry is a malformed spec (stray
-        // scalar, e.g. an unresolved $ref). Surface it before it reaches the
-        // `array $responseSpec` parameters of validateBody() / validateHeaders(),
-        // where it would raise an uncaught TypeError (TypeError extends Error,
-        // not RuntimeException, so validateBody()'s catch would not see it).
-        // Mirrors the content-level guards in validateBody() and
-        // RequestBodyValidator's `requestBody` guard (issue #258).
+        // scalar, e.g. an unresolved $ref); surface it as a loud spec error
+        // (issue #258). Without this guard the scalar reaches the
+        // `array $responseSpec` parameters of validateBody() / validateHeaders()
+        // and raises an uncaught TypeError (TypeError extends Error, not
+        // RuntimeException, so validateBody()'s catch would not see it). This
+        // mirrors the content-level guards in validateBody() and
+        // RequestBodyValidator's `requestBody` guard.
         if (!is_array($responseSpec)) {
             return OpenApiValidationResult::failure([
                 "Malformed 'responses[{$matchedResponseKey}]' for {$method} {$matchedPath} in '{$specName}' spec: expected object, got scalar.",

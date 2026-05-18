@@ -2160,9 +2160,9 @@ class OpenApiResponseValidatorTest extends TestCase
         // `responses["200"]` is a scalar instead of a response object. Without
         // the guard the scalar reaches validateBody()/validateHeaders()' `array
         // $responseSpec` parameter and raises an uncaught TypeError (TypeError
-        // extends Error, not RuntimeException). The guard surfaces a loud spec
-        // error, mirroring the content-level guards and RequestBodyValidator's
-        // `requestBody` guard (issue #258).
+        // extends Error, not RuntimeException). The guard added for issue #258
+        // surfaces a loud spec error, mirroring the content-level guards and
+        // RequestBodyValidator's `requestBody` guard.
         $result = $this->validator->validate(
             'malformed-response',
             'GET',
@@ -2175,6 +2175,31 @@ class OpenApiResponseValidatorTest extends TestCase
         $this->assertFalse($result->isValid());
         $this->assertStringContainsString(
             "Malformed 'responses[200]'",
+            $result->errors()[0],
+        );
+        $this->assertStringContainsString('expected object, got scalar', $result->errors()[0]);
+    }
+
+    #[Test]
+    public function malformed_response_status_entry_keys_message_off_matched_spec_key(): void
+    {
+        // The spec declares only `default`; a wire status of 200 resolves to
+        // the `default` key (SpecResponseKeyResolver runs before the guard).
+        // The guard's error message must name the matched spec key
+        // (`responses[default]`), not the wire status — `responses[200]` would
+        // point at a map entry the spec author never wrote (issue #258).
+        $result = $this->validator->validate(
+            'malformed',
+            'GET',
+            '/response-default-status-scalar',
+            200,
+            ['id' => 1],
+            'application/json',
+        );
+
+        $this->assertFalse($result->isValid());
+        $this->assertStringContainsString(
+            "Malformed 'responses[default]'",
             $result->errors()[0],
         );
         $this->assertStringContainsString('expected object, got scalar', $result->errors()[0]);
