@@ -627,4 +627,63 @@ class ResponseBodyValidatorTest extends TestCase
         );
         $this->assertNull($result->skipReason);
     }
+
+    #[Test]
+    public function validate_flags_malformed_media_type_schema_for_non_json_content_type(): void
+    {
+        // A non-null scalar `schema` (the natural shape of an unresolved $ref
+        // that decoded to a string) on a non-JSON media type. Like the
+        // `schema: null` case, the guard runs before content negotiation, so
+        // it is flagged regardless of the actual response Content-Type.
+        $content = ['text/plain' => ['schema' => 'oops']];
+
+        $result = $this->validator->validate(
+            'spec',
+            'GET',
+            '/pets',
+            200,
+            $content,
+            DecodedBody::present('blob'),
+            'text/plain',
+            OpenApiVersion::V3_0,
+        );
+
+        $this->assertCount(1, $result->errors);
+        $this->assertStringContainsString(
+            'Malformed \'responses[200].content["text/plain"].schema\'',
+            $result->errors[0],
+        );
+        $this->assertNull($result->skipReason);
+    }
+
+    #[Test]
+    public function validate_flags_malformed_entry_even_when_not_the_negotiated_content_type(): void
+    {
+        // The guard loop pre-scans every media-type entry before content
+        // negotiation runs. A malformed `text/plain` entry must be flagged
+        // even though the JSON response Content-Type would negotiate the
+        // well-formed `application/json` entry — a malformed spec is surfaced
+        // regardless of which entry the request would have matched.
+        $content = [
+            'application/json' => ['schema' => ['type' => 'object']],
+            'text/plain' => 'oops',
+        ];
+
+        $result = $this->validator->validate(
+            'spec',
+            'GET',
+            '/pets',
+            200,
+            $content,
+            DecodedBody::present(['id' => 1]),
+            'application/json',
+            OpenApiVersion::V3_0,
+        );
+
+        $this->assertCount(1, $result->errors);
+        $this->assertStringContainsString(
+            'Malformed \'responses[200].content["text/plain"]\'',
+            $result->errors[0],
+        );
+    }
 }

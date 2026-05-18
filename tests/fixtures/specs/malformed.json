@@ -131,6 +131,52 @@
                 }
             }
         },
+        "/response-scalar-content-media-type": {
+            "get": {
+                "summary": "responses[200].content[mediaType] is a scalar (not an object)",
+                "operationId": "responseScalarContentMediaType",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "application/json": "this should have been an object"
+                        }
+                    }
+                }
+            }
+        },
+        "/response-scalar-content-schema": {
+            "get": {
+                "summary": "responses[200].content[mediaType].schema is a scalar (not an object)",
+                "operationId": "responseScalarContentSchema",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "application/json": {
+                                "schema": "this should have been an object"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/response-null-content-schema": {
+            "get": {
+                "summary": "responses[200].content[mediaType].schema is null (explicitly absent value)",
+                "operationId": "responseNullContentSchema",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "application/json": {
+                                "schema": null
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/path-scalar-parameter/{id}": {
             "parameters": [
                 "this should have been an object"

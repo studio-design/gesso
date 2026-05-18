@@ -2085,4 +2085,72 @@ class OpenApiResponseValidatorTest extends TestCase
         );
         $this->assertStringContainsString('expected object, got scalar', $result->errors()[0]);
     }
+
+    #[Test]
+    public function malformed_response_content_media_type_entry_returns_failure(): void
+    {
+        // `responses.200.content["application/json"]` is a scalar. The
+        // per-media-type guard in ResponseBodyValidator surfaces it as a spec
+        // error, which the orchestrator turns into a Failure (issue #256).
+        $result = $this->validator->validate(
+            'malformed',
+            'GET',
+            '/response-scalar-content-media-type',
+            200,
+            ['id' => 1],
+            'application/json',
+        );
+
+        $this->assertFalse($result->isValid());
+        $this->assertStringContainsString(
+            'Malformed \'responses[200].content["application/json"]\'',
+            $result->errors()[0],
+        );
+        $this->assertStringContainsString('expected object, got scalar', $result->errors()[0]);
+    }
+
+    #[Test]
+    public function malformed_response_content_schema_returns_failure(): void
+    {
+        // `responses.200.content["application/json"].schema` is a scalar.
+        // Without the guard the scalar would reach OpenApiSchemaConverter and
+        // raise a TypeError; the orchestrator now reports a clean spec error.
+        $result = $this->validator->validate(
+            'malformed',
+            'GET',
+            '/response-scalar-content-schema',
+            200,
+            ['id' => 1],
+            'application/json',
+        );
+
+        $this->assertFalse($result->isValid());
+        $this->assertStringContainsString(
+            'Malformed \'responses[200].content["application/json"].schema\'',
+            $result->errors()[0],
+        );
+        $this->assertStringContainsString('expected object, got scalar', $result->errors()[0]);
+    }
+
+    #[Test]
+    public function null_response_content_schema_returns_failure(): void
+    {
+        // Locks `array_key_exists` over `isset` at the orchestrator level: an
+        // explicit `schema: null` must surface a Failure, not slip through the
+        // downstream presence check as a silent pass.
+        $result = $this->validator->validate(
+            'malformed',
+            'GET',
+            '/response-null-content-schema',
+            200,
+            ['id' => 1],
+            'application/json',
+        );
+
+        $this->assertFalse($result->isValid());
+        $this->assertStringContainsString(
+            'Malformed \'responses[200].content["application/json"].schema\'',
+            $result->errors()[0],
+        );
+    }
 }
