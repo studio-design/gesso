@@ -1126,8 +1126,9 @@ trait ValidatesOpenApiSchema
     /**
      * Extract the request body in the shape OpenApiRequestValidator expects.
      * Mirrors {@see self::extractJsonBody()} for the request side: parse JSON
-     * only when the Content-Type claims it, stay `null` on empty or non-JSON
-     * bodies so the validator decides whether the spec required one.
+     * only when the Content-Type claims it (or is absent), stay `null` on
+     * empty or non-JSON bodies so the validator decides whether the spec
+     * required one.
      *
      * Issue #246: a non-empty body that decodes to the literal JSON `null`
      * yields a {@see PresentJsonNull} marker so the validator type-checks the
@@ -1144,17 +1145,20 @@ trait ValidatesOpenApiSchema
             return null;
         }
 
+        // The return lives inside the try so its dependence on a successful
+        // decode is local and explicit: failOpenApi() is `: never`, so the
+        // catch cannot fall through to a use of an undefined $decoded.
         try {
             /** @var mixed $decoded */
             $decoded = json_decode($content, true, flags: JSON_THROW_ON_ERROR);
+
+            return $decoded ?? PresentJsonNull::Body;
         } catch (JsonException $e) {
             $this->failOpenApi(
                 'Request body could not be parsed as JSON: ' . $e->getMessage()
                 . ($contentType === '' ? ' (no Content-Type header was present on the request)' : ''),
             );
         }
-
-        return $decoded ?? PresentJsonNull::Body;
     }
 
     /**
@@ -1183,16 +1187,18 @@ trait ValidatesOpenApiSchema
             return null;
         }
 
+        // See extractRequestBody(): the return is inside the try so its
+        // dependence on a successful decode is local and explicit.
         try {
             /** @var mixed $decoded */
             $decoded = json_decode($content, true, flags: JSON_THROW_ON_ERROR);
+
+            return $decoded ?? PresentJsonNull::Body;
         } catch (JsonException $e) {
             $this->failOpenApi(
                 'Response body could not be parsed as JSON: ' . $e->getMessage()
                 . ($contentType === '' ? ' (no Content-Type header was present on the response)' : ''),
             );
         }
-
-        return $decoded ?? PresentJsonNull::Body;
     }
 }

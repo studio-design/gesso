@@ -166,6 +166,25 @@ class ValidatesOpenApiSchemaTest extends TestCase
     }
 
     #[Test]
+    public function literal_null_response_body_with_json_content_type_is_type_checked(): void
+    {
+        // Issue #246: the literal-null fix applies on the explicit-Content-Type
+        // path too, not only when the header is absent. A response with
+        // `Content-Type: application/json` and a `null` body is type-checked
+        // against GET /v1/pets' `type: object` 200 schema and fails.
+        $response = $this->makeTestResponse('null', 200, ['Content-Type' => 'application/json']);
+
+        $this->expectException(AssertionFailedError::class);
+        $this->expectExceptionMessage('must match the type');
+
+        $this->assertResponseMatchesOpenApiSchema(
+            $response,
+            HttpMethod::GET,
+            '/v1/pets',
+        );
+    }
+
+    #[Test]
     public function scalar_response_body_is_type_checked(): void
     {
         // Issue #246: a scalar JSON body (the integer `123`) reaches the

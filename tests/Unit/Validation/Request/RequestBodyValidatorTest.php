@@ -152,6 +152,36 @@ class RequestBodyValidatorTest extends TestCase
     }
 
     #[Test]
+    public function validate_accepts_present_literal_null_body_against_oas_30_nullable_schema(): void
+    {
+        // OAS 3.0 expresses a nullable body with `nullable: true`;
+        // OpenApiSchemaConverter lowers it to a `["object", "null"]` type
+        // array for Draft 07. A present literal `null` validates cleanly
+        // against it — distinct conversion branch from the OAS 3.1 type-array
+        // form covered above.
+        $operation = [
+            'requestBody' => [
+                'required' => true,
+                'content' => [
+                    'application/json' => ['schema' => ['type' => 'object', 'nullable' => true]],
+                ],
+            ],
+        ];
+
+        $errors = $this->validator->validate(
+            'spec',
+            'POST',
+            '/pets',
+            $operation,
+            PresentJsonNull::Body,
+            'application/json',
+            OpenApiVersion::V3_0,
+        );
+
+        $this->assertSame([], $errors);
+    }
+
+    #[Test]
     public function validate_still_treats_plain_null_as_absent_body(): void
     {
         // Regression guard for issue #246: a plain PHP `null` (absent body,

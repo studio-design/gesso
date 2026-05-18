@@ -330,8 +330,8 @@ trait OpenApiAssertions
     /**
      * Decode a JSON request / response body in the shape the validators
      * expect. Mirrors the Laravel adapter: parse only when the Content-Type
-     * claims JSON, stay `null` on empty or non-JSON bodies so the validator
-     * decides whether the spec required one.
+     * claims JSON (or is absent), stay `null` on empty or non-JSON bodies so
+     * the validator decides whether the spec required one.
      *
      * Issue #246: when the raw content is non-empty but decodes to the literal
      * JSON `null`, a {@see PresentJsonNull} marker is returned instead of a
@@ -352,9 +352,14 @@ trait OpenApiAssertions
             return null;
         }
 
+        // The return is inside the try so its dependence on a successful
+        // decode is local and explicit: failOpenApi() is `: never`, so the
+        // catch cannot fall through to a use of an undefined $decoded.
         try {
             /** @var mixed $decoded */
             $decoded = json_decode($content, true, flags: JSON_THROW_ON_ERROR);
+
+            return $decoded ?? PresentJsonNull::Body;
         } catch (JsonException $e) {
             $this->failOpenApi(sprintf(
                 '%s body could not be parsed as JSON: %s%s',
@@ -365,8 +370,6 @@ trait OpenApiAssertions
                     : '',
             ));
         }
-
-        return $decoded ?? PresentJsonNull::Body;
     }
 
     /** Like Assert::fail() but with vendor frames stripped from the trace. */

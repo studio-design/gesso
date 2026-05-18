@@ -17,8 +17,12 @@ namespace Studio\OpenApiContractTesting\Internal;
  * in this marker so the request / response body validators type-check it
  * against the schema instead of short-circuiting as "no body".
  *
- * A single-case enum is used as a value-less singleton: callers compare with
- * `$body instanceof PresentJsonNull` (or `=== PresentJsonNull::Body`).
+ * A single-case enum is used as a value-less singleton: callers detect it
+ * with `$body instanceof PresentJsonNull` (an explicit `=== PresentJsonNull::Body`
+ * is equivalent). Every code path that reads a decoded body value MUST unwrap
+ * this marker — treat it as the value `null` — before passing the value on to
+ * schema conversion or the strict-required walker; the marker itself must
+ * never reach `opis/json-schema` or user code.
  *
  * @internal Not part of the package's public API. Do not use from user code.
  */
