@@ -76,6 +76,13 @@ final class OpenApiResponseValidator
     }
 
     /**
+     * @param mixed $responseBody the decoded response body. Accepts either a
+     *                            {@see DecodedBody} envelope (what the framework
+     *                            adapters pass) or a bare decoded value for
+     *                            backward compatibility. A bare `null` is read
+     *                            as an absent body; a caller that needs to
+     *                            assert a literal JSON `null` body must pass
+     *                            `DecodedBody::present(null)` explicitly.
      * @param null|array<array-key, mixed> $responseHeaders the response's actual headers
      *                                                      (as returned by HeaderBag::all() — a map of name to list-of-values
      *                                                      or to a single string). When null, header validation is skipped

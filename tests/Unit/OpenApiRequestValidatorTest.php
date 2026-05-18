@@ -10,6 +10,7 @@ use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use stdClass;
+use Studio\OpenApiContractTesting\DecodedBody;
 use Studio\OpenApiContractTesting\OpenApiRequestValidator;
 use Studio\OpenApiContractTesting\Spec\OpenApiSpecLoader;
 use Studio\OpenApiContractTesting\Validation\Request\SecurityValidator;
@@ -3328,6 +3329,75 @@ class OpenApiRequestValidatorTest extends TestCase
         // No typos in the fixture → no warnings; verifies the wiring fires
         // only for non-conforming sibling keys, not for every default fallback.
         $this->assertSame([], $captured);
+    }
+
+    // ========================================
+    // DecodedBody envelope passed directly to validate() (issue #248)
+    // ========================================
+
+    #[Test]
+    public function validate_accepts_decoded_body_envelope_passed_directly(): void
+    {
+        // The `mixed` body parameter accepts a DecodedBody envelope directly,
+        // not just a bare value — the framework adapters rely on this. The
+        // outcome must match the equivalent bare-value call
+        // (v30_valid_request_body_passes). A regression that double-wrapped
+        // the envelope in fromLegacy() would fail validation here.
+        $result = $this->validator->validate(
+            'petstore-3.0',
+            'POST',
+            '/v1/pets',
+            [],
+            [],
+            DecodedBody::present(['name' => 'Fido', 'tag' => 'dog']),
+            'application/json',
+        );
+
+        $this->assertTrue($result->isValid());
+        $this->assertSame('/v1/pets', $result->matchedPath());
+    }
+
+    #[Test]
+    public function validate_type_checks_present_literal_null_body_envelope(): void
+    {
+        // A DecodedBody carrying a literal `null` is a PRESENT body — it is
+        // type-checked against the schema, not short-circuited as absent.
+        // Against the required `type: object` body it fails with a schema
+        // type error, NOT the "Request body is empty" message a bare `null`
+        // (absent) would yield — contrast v30_empty_body_when_required_fails.
+        $result = $this->validator->validate(
+            'petstore-3.0',
+            'POST',
+            '/v1/pets',
+            [],
+            [],
+            DecodedBody::present(null),
+            'application/json',
+        );
+
+        $this->assertFalse($result->isValid());
+        $this->assertStringContainsString('must match the type', $result->errorMessage());
+        $this->assertStringNotContainsString('Request body is empty', $result->errorMessage());
+    }
+
+    #[Test]
+    public function validate_treats_absent_body_envelope_like_a_bare_null(): void
+    {
+        // DecodedBody::absent() is equivalent to the legacy bare `null` — both
+        // mean "no body on the wire" and yield the "Request body is empty"
+        // failure against an operation with a required JSON request body.
+        $result = $this->validator->validate(
+            'petstore-3.0',
+            'POST',
+            '/v1/pets',
+            [],
+            [],
+            DecodedBody::absent(),
+            'application/json',
+        );
+
+        $this->assertFalse($result->isValid());
+        $this->assertStringContainsString('Request body is empty', $result->errorMessage());
     }
 
     /**

@@ -9,6 +9,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use stdClass;
+use Studio\OpenApiContractTesting\DecodedBody;
 use Studio\OpenApiContractTesting\OpenApiResponseValidator;
 use Studio\OpenApiContractTesting\Spec\OpenApiSpecLoader;
 
@@ -1906,5 +1907,71 @@ class OpenApiResponseValidatorTest extends TestCase
         );
 
         $this->assertTrue($result->isValid());
+    }
+
+    // ========================================
+    // DecodedBody envelope passed directly to validate() (issue #248)
+    // ========================================
+
+    #[Test]
+    public function validate_accepts_decoded_body_envelope_passed_directly(): void
+    {
+        // The `mixed` body parameter accepts a DecodedBody envelope directly,
+        // not just a bare value — the framework adapters rely on this. The
+        // outcome must match the equivalent bare-value call
+        // (v30_valid_response_passes). A regression that double-wrapped the
+        // envelope in fromLegacy() would fail validation here.
+        $result = $this->validator->validate(
+            'petstore-3.0',
+            'GET',
+            '/v1/pets',
+            200,
+            DecodedBody::present([
+                'data' => [
+                    ['id' => 1, 'name' => 'Fido', 'tag' => 'dog'],
+                ],
+            ]),
+        );
+
+        $this->assertTrue($result->isValid());
+        $this->assertSame('/v1/pets', $result->matchedPath());
+    }
+
+    #[Test]
+    public function validate_type_checks_present_literal_null_body_envelope(): void
+    {
+        // A DecodedBody carrying a literal `null` is a PRESENT body — it must
+        // be type-checked against the schema, not short-circuited as absent.
+        // Against `type: object` it fails with a schema type error, NOT the
+        // "Response body is empty" message a bare `null` (absent) would yield.
+        $result = $this->validator->validate(
+            'petstore-3.0',
+            'GET',
+            '/v1/pets',
+            200,
+            DecodedBody::present(null),
+        );
+
+        $this->assertFalse($result->isValid());
+        $this->assertStringContainsString('must match the type', $result->errorMessage());
+        $this->assertStringNotContainsString('Response body is empty', $result->errorMessage());
+    }
+
+    #[Test]
+    public function validate_treats_absent_body_envelope_like_a_bare_null(): void
+    {
+        // DecodedBody::absent() is equivalent to the legacy bare `null` — both
+        // mean "no body on the wire" and yield the "Response body is empty"
+        // failure against a response that declares a JSON schema.
+        $result = $this->validator->validate(
+            'petstore-3.0',
+            'GET',
+            '/v1/pets',
+            200,
+            DecodedBody::absent(),
+        );
+
+        $this->assertFalse($result->isValid());
+        $this->assertStringContainsString('Response body is empty', $result->errorMessage());
     }
 }

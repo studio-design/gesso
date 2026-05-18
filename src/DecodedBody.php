@@ -27,6 +27,13 @@ namespace Studio\OpenApiContractTesting;
  */
 final readonly class DecodedBody
 {
+    /**
+     * @param mixed $value the decoded JSON body value — an `array`, `string`,
+     *                     `int`, `float`, `bool`, or `null`. Always `null`
+     *                     when `$present` is false. Typed `mixed` rather than
+     *                     a union because the public validators accept a bare
+     *                     legacy body of any shape via {@see self::fromLegacy()}.
+     */
     private function __construct(
         public bool $present,
         public mixed $value,
