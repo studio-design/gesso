@@ -2083,7 +2083,7 @@ class OpenApiResponseValidatorTest extends TestCase
             "Malformed 'responses[200].content'",
             $result->errors()[0],
         );
-        $this->assertStringContainsString('expected object, got scalar', $result->errors()[0]);
+        $this->assertStringContainsString('expected object, got string', $result->errors()[0]);
     }
 
     #[Test]
@@ -2106,7 +2106,7 @@ class OpenApiResponseValidatorTest extends TestCase
             'Malformed \'responses[200].content["application/json"]\'',
             $result->errors()[0],
         );
-        $this->assertStringContainsString('expected object, got scalar', $result->errors()[0]);
+        $this->assertStringContainsString('expected object, got string', $result->errors()[0]);
     }
 
     #[Test]
@@ -2129,7 +2129,7 @@ class OpenApiResponseValidatorTest extends TestCase
             'Malformed \'responses[200].content["application/json"].schema\'',
             $result->errors()[0],
         );
-        $this->assertStringContainsString('expected object, got scalar', $result->errors()[0]);
+        $this->assertStringContainsString('expected object, got string', $result->errors()[0]);
     }
 
     #[Test]
@@ -2177,7 +2177,7 @@ class OpenApiResponseValidatorTest extends TestCase
             "Malformed 'responses[200]'",
             $result->errors()[0],
         );
-        $this->assertStringContainsString('expected object, got scalar', $result->errors()[0]);
+        $this->assertStringContainsString('expected object, got string', $result->errors()[0]);
     }
 
     #[Test]
@@ -2202,6 +2202,357 @@ class OpenApiResponseValidatorTest extends TestCase
             "Malformed 'responses[default]'",
             $result->errors()[0],
         );
-        $this->assertStringContainsString('expected object, got scalar', $result->errors()[0]);
+        $this->assertStringContainsString('expected object, got string', $result->errors()[0]);
+    }
+
+    #[Test]
+    public function malformed_paths_node_returns_failure(): void
+    {
+        // The spec's root `paths` is a scalar. The traversal guard surfaces a
+        // loud spec error before it reaches `array_keys()` (which would raise
+        // an uncaught TypeError), extending the #256/#258 per-response guards
+        // to the spec walk itself (issue #259).
+        $result = $this->validator->validate(
+            'malformed-paths',
+            'GET',
+            '/things',
+            200,
+            ['id' => 1],
+            'application/json',
+        );
+
+        $this->assertFalse($result->isValid());
+        $this->assertStringContainsString("Malformed 'paths'", $result->errors()[0]);
+        $this->assertStringContainsString('expected object, got string', $result->errors()[0]);
+    }
+
+    #[Test]
+    public function null_paths_node_returns_failure(): void
+    {
+        // The spec's root `paths` is an explicit `null` (a YAML `paths:` left
+        // empty). `isset()` would be false for `null`, so the guard uses
+        // `array_key_exists`: a present-but-`null` `paths` must surface as a
+        // malformed spec, not be silently coalesced to an empty paths map
+        // (issue #259). `get_debug_type` reports the concrete `null` type.
+        $result = $this->validator->validate(
+            'malformed-paths-null',
+            'GET',
+            '/things',
+            200,
+            ['id' => 1],
+            'application/json',
+        );
+
+        $this->assertFalse($result->isValid());
+        $this->assertStringContainsString("Malformed 'paths'", $result->errors()[0]);
+        $this->assertStringContainsString('expected object, got null', $result->errors()[0]);
+    }
+
+    #[Test]
+    public function malformed_path_item_returns_failure(): void
+    {
+        // `paths["/scalar-path-item"]` is a scalar. Without the guard the
+        // scalar reaches the `array_key_exists()` method lookup and raises an
+        // uncaught TypeError. The guard surfaces a loud spec error instead
+        // (issue #259).
+        $result = $this->validator->validate(
+            'malformed',
+            'GET',
+            '/scalar-path-item',
+            200,
+            ['id' => 1],
+            'application/json',
+        );
+
+        $this->assertFalse($result->isValid());
+        $this->assertStringContainsString(
+            "Malformed 'paths[\"/scalar-path-item\"]'",
+            $result->errors()[0],
+        );
+        $this->assertStringContainsString('expected object, got string', $result->errors()[0]);
+    }
+
+    #[Test]
+    public function null_path_item_returns_failure(): void
+    {
+        // `paths["/null-path-item"]` is an explicit `null`. The `?? null`
+        // fallback on the path-item lookup keeps the `null` value flowing
+        // into the `!is_array()` guard rather than coalescing it to an empty
+        // path item — so a null path item surfaces as malformed (issue #259).
+        $result = $this->validator->validate(
+            'malformed',
+            'GET',
+            '/null-path-item',
+            200,
+            ['id' => 1],
+            'application/json',
+        );
+
+        $this->assertFalse($result->isValid());
+        $this->assertStringContainsString(
+            "Malformed 'paths[\"/null-path-item\"]'",
+            $result->errors()[0],
+        );
+        $this->assertStringContainsString('expected object, got null', $result->errors()[0]);
+    }
+
+    #[Test]
+    public function malformed_operation_returns_failure(): void
+    {
+        // `paths["/scalar-operation"].get` is a scalar. Without the guard the
+        // scalar reaches the `array_key_exists()` `responses` lookup and
+        // raises an uncaught TypeError (issue #259).
+        $result = $this->validator->validate(
+            'malformed',
+            'GET',
+            '/scalar-operation',
+            200,
+            ['id' => 1],
+            'application/json',
+        );
+
+        $this->assertFalse($result->isValid());
+        $this->assertStringContainsString(
+            "Malformed 'paths[\"/scalar-operation\"].get'",
+            $result->errors()[0],
+        );
+        $this->assertStringContainsString('expected object, got string', $result->errors()[0]);
+    }
+
+    #[Test]
+    public function null_operation_returns_failure(): void
+    {
+        // `paths["/null-operation"].get` is an explicit `null`. The method
+        // lookup uses `array_key_exists` (not `isset`), so a `get: null`
+        // entry reaches the operation guard as malformed rather than being
+        // misreported as an undefined method (issue #259).
+        $result = $this->validator->validate(
+            'malformed',
+            'GET',
+            '/null-operation',
+            200,
+            ['id' => 1],
+            'application/json',
+        );
+
+        $this->assertFalse($result->isValid());
+        $this->assertStringContainsString(
+            "Malformed 'paths[\"/null-operation\"].get'",
+            $result->errors()[0],
+        );
+        $this->assertStringContainsString('expected object, got null', $result->errors()[0]);
+    }
+
+    #[Test]
+    public function malformed_operation_message_keys_off_matched_spec_path(): void
+    {
+        // The malformed operation lives under a templated path
+        // (`/scalar-operation-template/{id}`); the request hits a concrete
+        // `/scalar-operation-template/42`. The guard message must name the
+        // matched spec key (the `{id}` template), not the wire request path
+        // — mirroring `malformed_response_status_entry_keys_message_off_matched_spec_key`.
+        $result = $this->validator->validate(
+            'malformed',
+            'GET',
+            '/scalar-operation-template/42',
+            200,
+            ['id' => 1],
+            'application/json',
+        );
+
+        $this->assertFalse($result->isValid());
+        $this->assertStringContainsString(
+            "Malformed 'paths[\"/scalar-operation-template/{id}\"].get'",
+            $result->errors()[0],
+        );
+        $this->assertStringNotContainsString('/scalar-operation-template/42', $result->errors()[0]);
+    }
+
+    #[Test]
+    public function malformed_responses_map_returns_failure(): void
+    {
+        // `paths["/scalar-responses-map"].get.responses` is a scalar. Without
+        // the guard the scalar reaches `SpecResponseKeyResolver::resolve()`'s
+        // `array $responses` parameter and raises an uncaught TypeError. The
+        // guard surfaces a loud spec error — the traversal-level sibling of
+        // the #258 `responses[$status]` per-entry guard (issue #259).
+        $result = $this->validator->validate(
+            'malformed',
+            'GET',
+            '/scalar-responses-map',
+            200,
+            ['id' => 1],
+            'application/json',
+        );
+
+        $this->assertFalse($result->isValid());
+        $this->assertStringContainsString(
+            "Malformed 'paths[\"/scalar-responses-map\"].get.responses'",
+            $result->errors()[0],
+        );
+        $this->assertStringContainsString('expected object, got string', $result->errors()[0]);
+    }
+
+    #[Test]
+    public function null_responses_map_returns_failure(): void
+    {
+        // `paths["/null-responses-map"].get.responses` is an explicit `null`.
+        // The `responses` lookup uses `array_key_exists` (not `?? []`), so a
+        // present-but-`null` `responses` reaches the guard as malformed while
+        // a genuinely absent `responses` key still falls back to an empty map
+        // (issue #259).
+        $result = $this->validator->validate(
+            'malformed',
+            'GET',
+            '/null-responses-map',
+            200,
+            ['id' => 1],
+            'application/json',
+        );
+
+        $this->assertFalse($result->isValid());
+        $this->assertStringContainsString(
+            "Malformed 'paths[\"/null-responses-map\"].get.responses'",
+            $result->errors()[0],
+        );
+        $this->assertStringContainsString('expected object, got null', $result->errors()[0]);
+    }
+
+    #[Test]
+    public function malformed_responses_map_surfaces_even_for_skip_status(): void
+    {
+        // A malformed `responses` map is a structural spec error, not a
+        // status-code-level failure mode — so the guard fires BEFORE the
+        // skip-by-status-code check. A 503 (which matches the default
+        // `5\d\d` skip pattern) must still surface the malformed map loudly
+        // rather than be silently skipped (issue #259).
+        $result = $this->validator->validate(
+            'malformed',
+            'GET',
+            '/scalar-responses-map',
+            503,
+            ['id' => 1],
+            'application/json',
+        );
+
+        $this->assertFalse($result->isValid());
+        $this->assertFalse($result->isSkipped());
+        $this->assertStringContainsString(
+            "Malformed 'paths[\"/scalar-responses-map\"].get.responses'",
+            $result->errors()[0],
+        );
+    }
+
+    #[Test]
+    public function list_paths_node_returns_failure(): void
+    {
+        // The spec's root `paths` is a JSON list (`[...]`). A list passes
+        // `is_array()` but is not an object: `array_keys()` would yield
+        // integer keys that mis-resolve silently against every request path.
+        // The guard surfaces it as a loud malformed-spec error (issue #259).
+        $result = $this->validator->validate(
+            'malformed-paths-list',
+            'GET',
+            '/things',
+            200,
+            ['id' => 1],
+            'application/json',
+        );
+
+        $this->assertFalse($result->isValid());
+        $this->assertStringContainsString("Malformed 'paths'", $result->errors()[0]);
+        $this->assertStringContainsString('expected object, got list', $result->errors()[0]);
+    }
+
+    #[Test]
+    public function list_path_item_returns_failure(): void
+    {
+        // `paths["/list-path-item"]` is a JSON list. A list path item passes
+        // `is_array()` but has no method keys, so it would mis-resolve to a
+        // misleading "method not defined" — the guard surfaces it as
+        // malformed instead (issue #259).
+        $result = $this->validator->validate(
+            'malformed',
+            'GET',
+            '/list-path-item',
+            200,
+            ['id' => 1],
+            'application/json',
+        );
+
+        $this->assertFalse($result->isValid());
+        $this->assertStringContainsString(
+            "Malformed 'paths[\"/list-path-item\"]'",
+            $result->errors()[0],
+        );
+        $this->assertStringContainsString('expected object, got list', $result->errors()[0]);
+    }
+
+    #[Test]
+    public function list_operation_returns_failure(): void
+    {
+        // `paths["/list-operation"].get` is a JSON list (issue #259).
+        $result = $this->validator->validate(
+            'malformed',
+            'GET',
+            '/list-operation',
+            200,
+            ['id' => 1],
+            'application/json',
+        );
+
+        $this->assertFalse($result->isValid());
+        $this->assertStringContainsString(
+            "Malformed 'paths[\"/list-operation\"].get'",
+            $result->errors()[0],
+        );
+        $this->assertStringContainsString('expected object, got list', $result->errors()[0]);
+    }
+
+    #[Test]
+    public function list_responses_map_returns_failure(): void
+    {
+        // `paths["/list-responses-map"].get.responses` is a JSON list. A list
+        // passes `is_array()` and would reach `SpecResponseKeyResolver` with
+        // integer keys that never match a status — the guard surfaces it as
+        // malformed instead (issue #259).
+        $result = $this->validator->validate(
+            'malformed',
+            'GET',
+            '/list-responses-map',
+            200,
+            ['id' => 1],
+            'application/json',
+        );
+
+        $this->assertFalse($result->isValid());
+        $this->assertStringContainsString(
+            "Malformed 'paths[\"/list-responses-map\"].get.responses'",
+            $result->errors()[0],
+        );
+        $this->assertStringContainsString('expected object, got list', $result->errors()[0]);
+    }
+
+    #[Test]
+    public function list_response_status_entry_returns_failure(): void
+    {
+        // `responses["200"]` is a JSON list. The per-entry guard (issue #258)
+        // now routes through MalformedSpecNode, so a list response entry is
+        // surfaced with the same loud diagnostic as a scalar one.
+        $result = $this->validator->validate(
+            'malformed',
+            'GET',
+            '/list-response-status',
+            200,
+            ['id' => 1],
+            'application/json',
+        );
+
+        $this->assertFalse($result->isValid());
+        $this->assertStringContainsString(
+            "Malformed 'responses[200]'",
+            $result->errors()[0],
+        );
+        $this->assertStringContainsString('expected object, got list', $result->errors()[0]);
     }
 }

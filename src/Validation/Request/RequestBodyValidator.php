@@ -10,6 +10,7 @@ use Studio\OpenApiContractTesting\OpenApiVersion;
 use Studio\OpenApiContractTesting\SchemaContext;
 use Studio\OpenApiContractTesting\Spec\OpenApiSchemaConverter;
 use Studio\OpenApiContractTesting\Validation\Support\ContentTypeMatcher;
+use Studio\OpenApiContractTesting\Validation\Support\MalformedSpecNode;
 use Studio\OpenApiContractTesting\Validation\Support\ObjectConverter;
 use Studio\OpenApiContractTesting\Validation\Support\SchemaValidatorRunner;
 
@@ -58,11 +59,18 @@ final class RequestBodyValidator
             return new RequestBodyValidationResult([]);
         }
 
-        // A present-but-non-array requestBody signals a malformed spec (stray scalar).
+        // A `requestBody` must decode to a JSON object; a scalar or a JSON
+        // list signals a malformed spec ({@see MalformedSpecNode}).
         // Contract-testing tools should surface this, not mask it as "no body".
-        if (!is_array($operation['requestBody'])) {
+        if (MalformedSpecNode::isMalformed($operation['requestBody'])) {
             return new RequestBodyValidationResult([
-                "Malformed 'requestBody' for {$method} {$matchedPath} in '{$specName}' spec: expected object, got scalar.",
+                sprintf(
+                    "Malformed 'requestBody' for %s %s in '%s' spec: expected object, got %s.",
+                    $method,
+                    $matchedPath,
+                    $specName,
+                    MalformedSpecNode::describe($operation['requestBody']),
+                ),
             ]);
         }
 
@@ -75,9 +83,15 @@ final class RequestBodyValidator
             return new RequestBodyValidationResult([]);
         }
 
-        if (!is_array($requestBodySpec['content'])) {
+        if (MalformedSpecNode::isMalformed($requestBodySpec['content'])) {
             return new RequestBodyValidationResult([
-                "Malformed 'requestBody.content' for {$method} {$matchedPath} in '{$specName}' spec: expected object, got scalar.",
+                sprintf(
+                    "Malformed 'requestBody.content' for %s %s in '%s' spec: expected object, got %s.",
+                    $method,
+                    $matchedPath,
+                    $specName,
+                    MalformedSpecNode::describe($requestBodySpec['content']),
+                ),
             ]);
         }
 
@@ -89,9 +103,18 @@ final class RequestBodyValidator
             // runtime — a malformed spec like `content: {"application/json": "oops"}`
             // would TypeError on downstream array accesses. Surface it as a loud spec
             // error instead, matching the sibling guard on `requestBody.content` above.
-            if (!is_array($mediaTypeSpec)) {
+            // A JSON list written for the entry is rejected the same way
+            // ({@see MalformedSpecNode}).
+            if (MalformedSpecNode::isMalformed($mediaTypeSpec)) {
                 return new RequestBodyValidationResult([
-                    "Malformed 'requestBody.content[\"{$mediaType}\"]' for {$method} {$matchedPath} in '{$specName}' spec: expected object, got scalar.",
+                    sprintf(
+                        "Malformed 'requestBody.content[\"%s\"]' for %s %s in '%s' spec: expected object, got %s.",
+                        $mediaType,
+                        $method,
+                        $matchedPath,
+                        $specName,
+                        MalformedSpecNode::describe($mediaTypeSpec),
+                    ),
                 ]);
             }
 
@@ -100,9 +123,16 @@ final class RequestBodyValidator
             // OpenApiSchemaConverter::convert() as a scalar, producing a confusing
             // TypeError instead of a spec-level error. array_key_exists rather than
             // isset so an explicit `schema: null` is also flagged.
-            if (array_key_exists('schema', $mediaTypeSpec) && !is_array($mediaTypeSpec['schema'])) {
+            if (array_key_exists('schema', $mediaTypeSpec) && MalformedSpecNode::isMalformed($mediaTypeSpec['schema'])) {
                 return new RequestBodyValidationResult([
-                    "Malformed 'requestBody.content[\"{$mediaType}\"].schema' for {$method} {$matchedPath} in '{$specName}' spec: expected object, got scalar.",
+                    sprintf(
+                        "Malformed 'requestBody.content[\"%s\"].schema' for %s %s in '%s' spec: expected object, got %s.",
+                        $mediaType,
+                        $method,
+                        $matchedPath,
+                        $specName,
+                        MalformedSpecNode::describe($mediaTypeSpec['schema']),
+                    ),
                 ]);
             }
         }

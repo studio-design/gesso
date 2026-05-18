@@ -1,0 +1,8 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Malformed Paths Fixture (explicit null)",
+    "version": "0.1.0"
+  },
+  "paths": null
+}

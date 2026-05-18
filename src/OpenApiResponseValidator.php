@@ -15,12 +15,14 @@ use Studio\OpenApiContractTesting\Validation\Response\ResponseHeaderValidator;
 use Studio\OpenApiContractTesting\Validation\Strict\StrictRequiredBodyWalker;
 use Studio\OpenApiContractTesting\Validation\Strict\StrictRequiredPerCallChecker;
 use Studio\OpenApiContractTesting\Validation\Strict\StrictRequiredTracker;
+use Studio\OpenApiContractTesting\Validation\Support\MalformedSpecNode;
 use Studio\OpenApiContractTesting\Validation\Support\PathDiagnosticsFormatter;
 use Studio\OpenApiContractTesting\Validation\Support\SchemaValidatorRunner;
 use Studio\OpenApiContractTesting\Validation\Support\SpecResponseKeyResolver;
 use Studio\OpenApiContractTesting\Validation\Support\StatusCodePatternSet;
 use Studio\OpenApiContractTesting\Validation\Support\ValidatorErrorBoundary;
 
+use function array_key_exists;
 use function array_keys;
 use function array_merge;
 use function get_debug_type;
@@ -108,6 +110,27 @@ final class OpenApiResponseValidator
 
         $version = OpenApiVersion::fromSpec($spec);
 
+        // The root `paths` must decode to a JSON object; a scalar, `null`, or
+        // a JSON list is a malformed spec ({@see MalformedSpecNode}).
+        // Unguarded, a non-array reaches the `array_keys()` call below
+        // (uncaught TypeError) and a list mis-resolves silently. The presence
+        // test uses `array_key_exists` (not `isset`) so a present-but-`null`
+        // `paths` is caught here rather than coalesced to an empty map by
+        // `?? []`. Surface it as a loud spec error instead — the
+        // traversal-level sibling of the per-response content/schema guards
+        // (issue #259).
+        if (array_key_exists('paths', $spec) && MalformedSpecNode::isMalformed($spec['paths'])) {
+            return OpenApiValidationResult::failure([
+                sprintf(
+                    "Malformed 'paths' for %s %s in '%s' spec: expected object, got %s.",
+                    $method,
+                    $requestPath,
+                    $specName,
+                    MalformedSpecNode::describe($spec['paths']),
+                ),
+            ]);
+        }
+
         /** @var string[] $specPaths */
         $specPaths = array_keys($spec['paths'] ?? []);
         $matcher = $this->getPathMatcher($specName, $specPaths);
@@ -120,16 +143,89 @@ final class OpenApiResponseValidator
         }
 
         $lowerMethod = strtolower($method);
-        $pathSpec = $spec['paths'][$matchedPath] ?? [];
+        // `$matchedPath` is always a key of `$spec['paths']` (the matcher was
+        // built from its `array_keys()`), so `?? null` here only fires for an
+        // explicit `null` *value* — which the guard below then treats as
+        // malformed, exactly like a scalar path item.
+        $pathSpec = $spec['paths'][$matchedPath] ?? null;
 
-        if (!isset($pathSpec[$lowerMethod])) {
+        // A path item must decode to a JSON object; a scalar, `null`, or a
+        // JSON list is malformed ({@see MalformedSpecNode}). Unguarded, a
+        // non-array reaches the `array_key_exists()` method lookup below
+        // (uncaught TypeError) and a list mis-resolves silently. Surface it
+        // loudly instead (issue #259).
+        if (MalformedSpecNode::isMalformed($pathSpec)) {
+            return OpenApiValidationResult::failure([
+                sprintf(
+                    "Malformed 'paths[\"%s\"]' for %s %s in '%s' spec: expected object, got %s.",
+                    $matchedPath,
+                    $method,
+                    $matchedPath,
+                    $specName,
+                    MalformedSpecNode::describe($pathSpec),
+                ),
+            ], $matchedPath);
+        }
+
+        // `array_key_exists` (not `isset`) so an explicit `{method}: null`
+        // reaches the operation guard below as malformed rather than being
+        // misreported as an undefined method.
+        if (!array_key_exists($lowerMethod, $pathSpec)) {
             return OpenApiValidationResult::failure([
                 PathDiagnosticsFormatter::methodNotDefined($specName, $method, $matchedPath, $spec),
             ], $matchedPath);
         }
 
+        $operation = $pathSpec[$lowerMethod];
+
+        // An operation must decode to a JSON object; a scalar, `null`, or a
+        // JSON list is malformed ({@see MalformedSpecNode}). Unguarded, a
+        // non-array reaches the `array_key_exists()` `responses` lookup below
+        // (uncaught TypeError) and a list mis-resolves silently (issue #259).
+        if (MalformedSpecNode::isMalformed($operation)) {
+            return OpenApiValidationResult::failure([
+                sprintf(
+                    "Malformed 'paths[\"%s\"].%s' for %s %s in '%s' spec: expected object, got %s.",
+                    $matchedPath,
+                    $lowerMethod,
+                    $method,
+                    $matchedPath,
+                    $specName,
+                    MalformedSpecNode::describe($operation),
+                ),
+            ], $matchedPath);
+        }
+
+        /** @var array<string, mixed> $operation */
         $statusCodeStr = (string) $statusCode;
-        $responses = $pathSpec[$lowerMethod]['responses'] ?? [];
+        // `array_key_exists` (not `?? []`) so a present-but-`null` `responses`
+        // is caught by the guard below as malformed, while a genuinely absent
+        // `responses` key still falls back to an empty map (resolved later as
+        // "status code not defined").
+        $responses = array_key_exists('responses', $operation) ? $operation['responses'] : [];
+
+        // The `responses` map must decode to a JSON object; a scalar, `null`,
+        // or a JSON list is malformed ({@see MalformedSpecNode}). Unguarded,
+        // a non-array reaches `SpecResponseKeyResolver::resolve()`'s `array
+        // $responses` parameter (uncaught TypeError) and a list mis-resolves
+        // silently. The guard runs BEFORE the skip-by-status-code check
+        // below: a malformed `responses` map is a structural spec error, not
+        // a status-code-level failure mode, so a configured skip pattern must
+        // not hide it. This is the traversal-level sibling of the #258
+        // `responses[$status]` per-entry guard (issue #259).
+        if (MalformedSpecNode::isMalformed($responses)) {
+            return OpenApiValidationResult::failure([
+                sprintf(
+                    "Malformed 'paths[\"%s\"].%s.responses' for %s %s in '%s' spec: expected object, got %s.",
+                    $matchedPath,
+                    $lowerMethod,
+                    $method,
+                    $matchedPath,
+                    $specName,
+                    MalformedSpecNode::describe($responses),
+                ),
+            ], $matchedPath);
+        }
 
         // Skip-by-status-code: applied before the "Status code not defined"
         // branch so a configured skip suppresses both status-code-level failure
@@ -189,17 +285,25 @@ final class OpenApiResponseValidator
         $statusCodeStr = $matchedResponseKey;
         $responseSpec = $responses[$matchedResponseKey];
 
-        // A present-but-non-array response entry is a malformed spec (stray
-        // scalar, e.g. an unresolved $ref); surface it as a loud spec error
-        // (issue #258). Without this guard the scalar reaches the
-        // `array $responseSpec` parameters of validateBody() / validateHeaders()
-        // and raises an uncaught TypeError (TypeError extends Error, not
-        // RuntimeException, so validateBody()'s catch would not see it). This
-        // mirrors the content-level guards in validateBody() and
-        // RequestBodyValidator's `requestBody` guard.
-        if (!is_array($responseSpec)) {
+        // A response entry must decode to a JSON object; a scalar, `null`, or
+        // a JSON list is a malformed spec ({@see MalformedSpecNode}) — e.g.
+        // an unresolved $ref. Surface it as a loud spec error (issue #258).
+        // Without this guard the bad value reaches the `array $responseSpec`
+        // parameters of validateBody() / validateHeaders() and raises an
+        // uncaught TypeError (TypeError extends Error, not RuntimeException,
+        // so validateBody()'s catch would not see it). This mirrors the
+        // content-level guards in validateBody() and RequestBodyValidator's
+        // `requestBody` guard.
+        if (MalformedSpecNode::isMalformed($responseSpec)) {
             return OpenApiValidationResult::failure([
-                "Malformed 'responses[{$matchedResponseKey}]' for {$method} {$matchedPath} in '{$specName}' spec: expected object, got scalar.",
+                sprintf(
+                    "Malformed 'responses[%s]' for %s %s in '%s' spec: expected object, got %s.",
+                    $matchedResponseKey,
+                    $method,
+                    $matchedPath,
+                    $specName,
+                    MalformedSpecNode::describe($responseSpec),
+                ),
             ], $matchedPath, $statusCodeStr);
         }
 
@@ -427,15 +531,24 @@ final class OpenApiResponseValidator
             return new ResponseBodyValidationResult([], null);
         }
 
-        // A present-but-non-array `content` is a malformed spec (stray scalar,
-        // e.g. an unresolved $ref). Surface it before it reaches
-        // ResponseBodyValidator::validate()'s `array $content` parameter, where
-        // it would raise an uncaught TypeError (TypeError extends Error, not
-        // RuntimeException, so the catch below would not see it). Mirrors
-        // RequestBodyValidator's `requestBody.content` guard (issue #256).
-        if (!is_array($responseSpec['content'])) {
+        // A `content` block must decode to a JSON object; a scalar or a JSON
+        // list is a malformed spec ({@see MalformedSpecNode}) — e.g. an
+        // unresolved $ref. Surface it before it reaches
+        // ResponseBodyValidator::validate()'s `array $content` parameter,
+        // where a non-array would raise an uncaught TypeError (TypeError
+        // extends Error, not RuntimeException, so the catch below would not
+        // see it). Mirrors RequestBodyValidator's `requestBody.content` guard
+        // (issue #256).
+        if (MalformedSpecNode::isMalformed($responseSpec['content'])) {
             return new ResponseBodyValidationResult([
-                "Malformed 'responses[{$statusCode}].content' for {$method} {$matchedPath} in '{$specName}' spec: expected object, got scalar.",
+                sprintf(
+                    "Malformed 'responses[%s].content' for %s %s in '%s' spec: expected object, got %s.",
+                    $statusCode,
+                    $method,
+                    $matchedPath,
+                    $specName,
+                    MalformedSpecNode::describe($responseSpec['content']),
+                ),
             ], null);
         }
 

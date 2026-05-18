@@ -279,7 +279,58 @@ class RequestBodyValidatorTest extends TestCase
 
         $this->assertCount(1, $result->errors);
         $this->assertStringContainsString('.schema\'', $result->errors[0]);
-        $this->assertStringContainsString('expected object, got scalar', $result->errors[0]);
+        $this->assertStringContainsString('expected object, got string', $result->errors[0]);
+    }
+
+    #[Test]
+    public function validate_flags_list_request_body(): void
+    {
+        // A `requestBody` written as a JSON list passes `is_array()` but is
+        // not an object. The shared MalformedSpecNode guard surfaces it with
+        // the same loud diagnostic as a scalar `requestBody` (issue #256).
+        $operation = ['requestBody' => ['this should have been an object']];
+
+        $result = $this->validator->validate(
+            'spec',
+            'POST',
+            '/pets',
+            $operation,
+            DecodedBody::absent(),
+            null,
+            OpenApiVersion::V3_0,
+        );
+
+        $this->assertCount(1, $result->errors);
+        $this->assertStringContainsString("Malformed 'requestBody'", $result->errors[0]);
+        $this->assertStringContainsString('expected object, got list', $result->errors[0]);
+    }
+
+    #[Test]
+    public function validate_flags_list_media_type_schema(): void
+    {
+        // A `schema` written as a JSON list is malformed the same way — a
+        // list is not a JSON Schema object (issue #256).
+        $operation = [
+            'requestBody' => [
+                'content' => [
+                    'application/json' => ['schema' => ['this should have been an object']],
+                ],
+            ],
+        ];
+
+        $result = $this->validator->validate(
+            'spec',
+            'POST',
+            '/pets',
+            $operation,
+            DecodedBody::absent(),
+            null,
+            OpenApiVersion::V3_0,
+        );
+
+        $this->assertCount(1, $result->errors);
+        $this->assertStringContainsString('.schema\'', $result->errors[0]);
+        $this->assertStringContainsString('expected object, got list', $result->errors[0]);
     }
 
     #[Test]

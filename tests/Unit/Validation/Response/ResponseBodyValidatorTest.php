@@ -541,7 +541,7 @@ class ResponseBodyValidatorTest extends TestCase
             'Malformed \'responses[200].content["application/json"]\'',
             $result->errors[0],
         );
-        $this->assertStringContainsString('expected object, got scalar', $result->errors[0]);
+        $this->assertStringContainsString('expected object, got string', $result->errors[0]);
         $this->assertNull($result->matchedContentType);
     }
 
@@ -569,8 +569,61 @@ class ResponseBodyValidatorTest extends TestCase
             'Malformed \'responses[200].content["application/json"].schema\'',
             $result->errors[0],
         );
-        $this->assertStringContainsString('expected object, got scalar', $result->errors[0]);
+        $this->assertStringContainsString('expected object, got string', $result->errors[0]);
         $this->assertNull($result->matchedContentType);
+    }
+
+    #[Test]
+    public function validate_flags_list_media_type_entry(): void
+    {
+        // A media-type entry written as a JSON list passes `is_array()` but is
+        // not an object. The shared MalformedSpecNode guard surfaces it with
+        // the same loud diagnostic as a scalar entry (issue #256).
+        $content = ['application/json' => ['this should have been an object']];
+
+        $result = $this->validator->validate(
+            'spec',
+            'GET',
+            '/pets',
+            200,
+            $content,
+            DecodedBody::present(['id' => 1]),
+            'application/json',
+            OpenApiVersion::V3_0,
+        );
+
+        $this->assertCount(1, $result->errors);
+        $this->assertStringContainsString(
+            'Malformed \'responses[200].content["application/json"]\'',
+            $result->errors[0],
+        );
+        $this->assertStringContainsString('expected object, got list', $result->errors[0]);
+    }
+
+    #[Test]
+    public function validate_flags_list_media_type_schema(): void
+    {
+        // A `schema` written as a JSON list is malformed the same way
+        // (issue #256).
+        $content = ['application/json' => ['schema' => ['this should have been an object']]];
+
+        $result = $this->validator->validate(
+            'spec',
+            'GET',
+            '/pets',
+            200,
+            $content,
+            DecodedBody::present(['id' => 1]),
+            'application/json',
+            OpenApiVersion::V3_0,
+        );
+
+        $this->assertCount(1, $result->errors);
+        $this->assertStringContainsString(
+            'Malformed \'responses[200].content["application/json"].schema\'',
+            $result->errors[0],
+        );
+        $this->assertStringContainsString('expected object, got list', $result->errors[0]);
     }
 
     #[Test]

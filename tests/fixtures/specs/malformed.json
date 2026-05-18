@@ -186,6 +186,51 @@
                 }
             }
         },
+        "/scalar-path-item": "this should have been an object",
+        "/scalar-operation": {
+            "get": "this should have been an object"
+        },
+        "/scalar-responses-map": {
+            "get": {
+                "summary": "responses map is a scalar (not an object)",
+                "operationId": "scalarResponsesMap",
+                "responses": "this should have been an object"
+            }
+        },
+        "/null-path-item": null,
+        "/null-operation": {
+            "get": null
+        },
+        "/null-responses-map": {
+            "get": {
+                "summary": "responses map is an explicit null (not an object)",
+                "operationId": "nullResponsesMap",
+                "responses": null
+            }
+        },
+        "/list-path-item": ["this should have been an object, not a list"],
+        "/list-operation": {
+            "get": ["this should have been an object, not a list"]
+        },
+        "/list-responses-map": {
+            "get": {
+                "summary": "responses map is a JSON list (not an object)",
+                "operationId": "listResponsesMap",
+                "responses": ["this should have been an object, not a list"]
+            }
+        },
+        "/list-response-status": {
+            "get": {
+                "summary": "responses[200] entry is a JSON list (not an object)",
+                "operationId": "listResponseStatus",
+                "responses": {
+                    "200": ["this should have been an object, not a list"]
+                }
+            }
+        },
+        "/scalar-operation-template/{id}": {
+            "get": "this should have been an object"
+        },
         "/path-scalar-parameter/{id}": {
             "parameters": [
                 "this should have been an object"

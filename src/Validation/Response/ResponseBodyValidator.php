@@ -12,6 +12,7 @@ use Studio\OpenApiContractTesting\OpenApiVersion;
 use Studio\OpenApiContractTesting\SchemaContext;
 use Studio\OpenApiContractTesting\Spec\OpenApiSchemaConverter;
 use Studio\OpenApiContractTesting\Validation\Support\ContentTypeMatcher;
+use Studio\OpenApiContractTesting\Validation\Support\MalformedSpecNode;
 use Studio\OpenApiContractTesting\Validation\Support\ObjectConverter;
 use Studio\OpenApiContractTesting\Validation\Support\SchemaValidatorRunner;
 
@@ -67,25 +68,43 @@ final class ResponseBodyValidator
     ): ResponseBodyValidationResult {
         // Pre-scan the content map for malformed media-type entries before any
         // content negotiation runs. This mirrors RequestBodyValidator's
-        // per-media-type guards: a scalar entry would slip past the downstream
-        // `isset(...['schema'])` checks as a silent pass, and a non-array
-        // `schema` on a JSON media type would reach OpenApiSchemaConverter as a
-        // scalar and raise a confusing TypeError. Surface both as loud
-        // spec-level errors (issue #256). `matchedContentType` is null: no
-        // content-type lookup succeeded.
+        // per-media-type guards: a media-type entry and its `schema` must each
+        // decode to a JSON object — a scalar entry would slip past the
+        // downstream `isset(...['schema'])` checks as a silent pass, a non-array
+        // `schema` on a JSON media type would reach OpenApiSchemaConverter and
+        // raise a confusing TypeError, and a JSON list mis-resolves silently.
+        // Surface all of them as loud spec-level errors via
+        // {@see MalformedSpecNode} (issue #256). `matchedContentType` is null:
+        // no content-type lookup succeeded.
         foreach ($content as $mediaType => $mediaTypeSpec) {
-            if (!is_array($mediaTypeSpec)) {
+            if (MalformedSpecNode::isMalformed($mediaTypeSpec)) {
                 return new ResponseBodyValidationResult([
-                    "Malformed 'responses[{$statusCode}].content[\"{$mediaType}\"]' for {$method} {$matchedPath} in '{$specName}' spec: expected object, got scalar.",
+                    sprintf(
+                        "Malformed 'responses[%s].content[\"%s\"]' for %s %s in '%s' spec: expected object, got %s.",
+                        $statusCode,
+                        $mediaType,
+                        $method,
+                        $matchedPath,
+                        $specName,
+                        MalformedSpecNode::describe($mediaTypeSpec),
+                    ),
                 ], null);
             }
 
             // array_key_exists rather than isset so an explicit `schema: null`
             // is also flagged — otherwise it falls through the downstream
             // presence check as a silent "no schema" pass.
-            if (array_key_exists('schema', $mediaTypeSpec) && !is_array($mediaTypeSpec['schema'])) {
+            if (array_key_exists('schema', $mediaTypeSpec) && MalformedSpecNode::isMalformed($mediaTypeSpec['schema'])) {
                 return new ResponseBodyValidationResult([
-                    "Malformed 'responses[{$statusCode}].content[\"{$mediaType}\"].schema' for {$method} {$matchedPath} in '{$specName}' spec: expected object, got scalar.",
+                    sprintf(
+                        "Malformed 'responses[%s].content[\"%s\"].schema' for %s %s in '%s' spec: expected object, got %s.",
+                        $statusCode,
+                        $mediaType,
+                        $method,
+                        $matchedPath,
+                        $specName,
+                        MalformedSpecNode::describe($mediaTypeSpec['schema']),
+                    ),
                 ], null);
             }
         }
