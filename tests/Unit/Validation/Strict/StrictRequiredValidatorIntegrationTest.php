@@ -9,6 +9,7 @@ use const E_USER_WARNING;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use stdClass;
+use Studio\OpenApiContractTesting\DecodedBody;
 use Studio\OpenApiContractTesting\OpenApiResponseValidator;
 use Studio\OpenApiContractTesting\Spec\OpenApiSpecLoader;
 use Studio\OpenApiContractTesting\Validation\Strict\StrictRequiredAsserter;
@@ -197,6 +198,63 @@ final class StrictRequiredValidatorIntegrationTest extends TestCase
         );
 
         $this->assertSame([], StrictRequiredTracker::getObservations('under-described'));
+    }
+
+    #[Test]
+    public function present_literal_null_body_records_no_strict_required_pointer(): void
+    {
+        // Issues #246 / #248 / #249: a literal JSON `null` body reaches the
+        // validator as DecodedBody::present(null) — distinct from an absent
+        // body. /nullable-object declares a `nullable: true` object schema,
+        // so the null body passes conformance and the validator hits the
+        // Success path where maybeRecordStrictRequired() runs. The strict-
+        // required walker must observe the unwrapped real `null`
+        // (OpenApiResponseValidator passes `$body->value`, not the envelope),
+        // which collectPointers() maps to an empty pointer map — so nothing
+        // is recorded. A regression that fed the walker a non-null marker /
+        // envelope would still record `[]` here, but the present-object
+        // sibling test below pins the unwrap with teeth.
+        $result = $this->validator->validate(
+            'under-described',
+            'GET',
+            '/nullable-object',
+            200,
+            DecodedBody::present(null),
+            'application/json',
+        );
+
+        $this->assertTrue($result->isValid());
+        $this->assertSame([], StrictRequiredTracker::getObservations('under-described'));
+    }
+
+    #[Test]
+    public function decoded_body_envelope_is_unwrapped_before_strict_required_walk(): void
+    {
+        // Issue #249: the framework adapters pass a DecodedBody envelope to
+        // validate(); maybeRecordStrictRequired() must hand the strict-
+        // required walker the *unwrapped* decoded value (`$body->value`),
+        // not the DecodedBody object itself. If the unwrap were dropped, the
+        // walker would receive a DecodedBody instance — neither stdClass nor
+        // array — and collectPointers() would return `[]`, silently recording
+        // no observation. Asserting the `/` pointer carries the inner array's
+        // keys pins the unwrap: this test fails the moment `$body->value`
+        // becomes `$body`.
+        $result = $this->validator->validate(
+            'under-described',
+            'PUT',
+            '/signed-url',
+            200,
+            DecodedBody::present(['expires' => 3600, 'signed_url' => 's3://...', 'url' => 'https://...']),
+            'application/json',
+        );
+
+        $this->assertTrue($result->isValid());
+
+        $observations = StrictRequiredTracker::getObservations('under-described');
+        $this->assertSame(
+            ['hits' => 1, 'pointers' => ['/' => ['expires', 'signed_url', 'url']]],
+            $observations['PUT /signed-url']['200:application/json'],
+        );
     }
 
     #[Test]

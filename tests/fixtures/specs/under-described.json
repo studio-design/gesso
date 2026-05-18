@@ -317,6 +317,27 @@
           }
         }
       }
+    },
+    "/nullable-object": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "ok; nullable object — a literal JSON null body validates",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "nullable": true,
+                  "required": ["id"],
+                  "properties": {
+                    "id": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   }
 }
