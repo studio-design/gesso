@@ -2204,4 +2204,123 @@ class OpenApiResponseValidatorTest extends TestCase
         );
         $this->assertStringContainsString('expected object, got scalar', $result->errors()[0]);
     }
+
+    #[Test]
+    public function malformed_paths_node_returns_failure(): void
+    {
+        // The spec's root `paths` is a scalar. `?? []` guards key absence
+        // only — a scalar slips through to `array_keys()` and raises an
+        // uncaught TypeError. The traversal guard surfaces a loud spec error
+        // instead, extending the #256/#258 per-response guards to the spec
+        // walk itself (issue #259).
+        $result = $this->validator->validate(
+            'malformed-paths',
+            'GET',
+            '/things',
+            200,
+            ['id' => 1],
+            'application/json',
+        );
+
+        $this->assertFalse($result->isValid());
+        $this->assertStringContainsString("Malformed 'paths'", $result->errors()[0]);
+        $this->assertStringContainsString('expected object, got scalar', $result->errors()[0]);
+    }
+
+    #[Test]
+    public function malformed_path_item_returns_failure(): void
+    {
+        // `paths["/scalar-path-item"]` is a scalar. Without the guard the
+        // scalar yields a misleading "method not defined" diagnostic (the
+        // `isset()` lookup is false for a scalar) or a TypeError further
+        // down. The guard surfaces a loud spec error instead (issue #259).
+        $result = $this->validator->validate(
+            'malformed',
+            'GET',
+            '/scalar-path-item',
+            200,
+            ['id' => 1],
+            'application/json',
+        );
+
+        $this->assertFalse($result->isValid());
+        $this->assertStringContainsString(
+            "Malformed 'paths[\"/scalar-path-item\"]'",
+            $result->errors()[0],
+        );
+        $this->assertStringContainsString('expected object, got scalar', $result->errors()[0]);
+    }
+
+    #[Test]
+    public function malformed_operation_returns_failure(): void
+    {
+        // `paths["/scalar-operation"].get` is a scalar. Without the guard the
+        // scalar reaches the `['responses']` offset access and raises an
+        // uncaught TypeError (issue #259).
+        $result = $this->validator->validate(
+            'malformed',
+            'GET',
+            '/scalar-operation',
+            200,
+            ['id' => 1],
+            'application/json',
+        );
+
+        $this->assertFalse($result->isValid());
+        $this->assertStringContainsString(
+            "Malformed 'paths[\"/scalar-operation\"].get'",
+            $result->errors()[0],
+        );
+        $this->assertStringContainsString('expected object, got scalar', $result->errors()[0]);
+    }
+
+    #[Test]
+    public function malformed_responses_map_returns_failure(): void
+    {
+        // `paths["/scalar-responses-map"].get.responses` is a scalar. Without
+        // the guard the scalar reaches `SpecResponseKeyResolver::resolve()`'s
+        // `array $responses` parameter and raises an uncaught TypeError. The
+        // guard surfaces a loud spec error — the traversal-level sibling of
+        // the #258 `responses[$status]` per-entry guard (issue #259).
+        $result = $this->validator->validate(
+            'malformed',
+            'GET',
+            '/scalar-responses-map',
+            200,
+            ['id' => 1],
+            'application/json',
+        );
+
+        $this->assertFalse($result->isValid());
+        $this->assertStringContainsString(
+            "Malformed 'paths[\"/scalar-responses-map\"].get.responses'",
+            $result->errors()[0],
+        );
+        $this->assertStringContainsString('expected object, got scalar', $result->errors()[0]);
+    }
+
+    #[Test]
+    public function malformed_responses_map_surfaces_even_for_skip_status(): void
+    {
+        // A malformed `responses` map is a structural spec error, not a
+        // status-code-level failure mode — so the guard fires BEFORE the
+        // skip-by-status-code check. A 503 (which matches the default
+        // `5\d\d` skip pattern) must still surface the malformed map loudly
+        // rather than be silently skipped (issue #259).
+        $result = $this->validator->validate(
+            'malformed',
+            'GET',
+            '/scalar-responses-map',
+            503,
+            ['id' => 1],
+            'application/json',
+        );
+
+        $this->assertFalse($result->isValid());
+        $this->assertFalse($result->isSkipped());
+        $this->assertStringContainsString(
+            "Malformed 'paths[\"/scalar-responses-map\"].get.responses'",
+            $result->errors()[0],
+        );
+    }
 }

@@ -586,6 +586,76 @@ class OpenApiRequestValidatorTest extends TestCase
         );
     }
 
+    #[Test]
+    public function malformed_paths_node_returns_failure(): void
+    {
+        // The spec's root `paths` is a scalar. `?? []` guards key absence
+        // only — a scalar slips through to `array_keys()` and raises an
+        // uncaught TypeError. The traversal guard surfaces a loud spec error
+        // instead, mirroring the response-side traversal guards (issue #259).
+        $result = $this->validator->validate(
+            'malformed-paths',
+            'POST',
+            '/things',
+            [],
+            [],
+            ['foo' => 'bar'],
+            'application/json',
+        );
+
+        $this->assertFalse($result->isValid());
+        $this->assertStringContainsString("Malformed 'paths'", $result->errors()[0]);
+        $this->assertStringContainsString('expected object, got scalar', $result->errors()[0]);
+    }
+
+    #[Test]
+    public function malformed_path_item_returns_failure(): void
+    {
+        // `paths["/scalar-path-item"]` is a scalar. Without the guard the
+        // scalar reaches `ParameterCollector::collect()`'s `array $pathSpec`
+        // parameter (after a misleading "method not defined" diagnostic).
+        // The guard surfaces a loud spec error instead (issue #259).
+        $result = $this->validator->validate(
+            'malformed',
+            'GET',
+            '/scalar-path-item',
+            [],
+            [],
+            null,
+        );
+
+        $this->assertFalse($result->isValid());
+        $this->assertStringContainsString(
+            "Malformed 'paths[\"/scalar-path-item\"]'",
+            $result->errors()[0],
+        );
+        $this->assertStringContainsString('expected object, got scalar', $result->errors()[0]);
+    }
+
+    #[Test]
+    public function malformed_operation_returns_failure(): void
+    {
+        // `paths["/scalar-operation"].get` is a scalar. Without the guard the
+        // scalar reaches the `array $operation` parameters of
+        // `ParameterCollector::collect()` / `RequestBodyValidator::validate()`
+        // and raises an uncaught TypeError (issue #259).
+        $result = $this->validator->validate(
+            'malformed',
+            'GET',
+            '/scalar-operation',
+            [],
+            [],
+            null,
+        );
+
+        $this->assertFalse($result->isValid());
+        $this->assertStringContainsString(
+            "Malformed 'paths[\"/scalar-operation\"].get'",
+            $result->errors()[0],
+        );
+        $this->assertStringContainsString('expected object, got scalar', $result->errors()[0]);
+    }
+
     // ========================================
     // Constructor validation (mirrors response validator)
     // ========================================

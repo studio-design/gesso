@@ -186,6 +186,17 @@
                 }
             }
         },
+        "/scalar-path-item": "this should have been an object",
+        "/scalar-operation": {
+            "get": "this should have been an object"
+        },
+        "/scalar-responses-map": {
+            "get": {
+                "summary": "responses map is a scalar (not an object)",
+                "operationId": "scalarResponsesMap",
+                "responses": "this should have been an object"
+            }
+        },
         "/path-scalar-parameter/{id}": {
             "parameters": [
                 "this should have been an object"

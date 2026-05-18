@@ -108,6 +108,18 @@ final class OpenApiResponseValidator
 
         $version = OpenApiVersion::fromSpec($spec);
 
+        // A present-but-non-array `paths` is a malformed spec (stray scalar,
+        // e.g. a YAML/JSON node that decoded to the wrong type). `?? []`
+        // guards key *absence* only; a scalar value slips through to the
+        // `array_keys()` call below and raises an uncaught TypeError. Surface
+        // it as a loud spec error instead — the traversal-level sibling of
+        // the per-response content/schema guards (issue #259).
+        if (isset($spec['paths']) && !is_array($spec['paths'])) {
+            return OpenApiValidationResult::failure([
+                "Malformed 'paths' for {$method} {$requestPath} in '{$specName}' spec: expected object, got scalar.",
+            ]);
+        }
+
         /** @var string[] $specPaths */
         $specPaths = array_keys($spec['paths'] ?? []);
         $matcher = $this->getPathMatcher($specName, $specPaths);
@@ -122,14 +134,51 @@ final class OpenApiResponseValidator
         $lowerMethod = strtolower($method);
         $pathSpec = $spec['paths'][$matchedPath] ?? [];
 
+        // A present-but-non-array path item is a malformed spec; without this
+        // guard a scalar `$pathSpec` produces a misleading "method not
+        // defined" diagnostic (the `isset()` below is false for a scalar) and
+        // hides the real fault. Surface it loudly instead (issue #259).
+        if (!is_array($pathSpec)) {
+            return OpenApiValidationResult::failure([
+                "Malformed 'paths[\"{$matchedPath}\"]' for {$method} {$matchedPath} in '{$specName}' spec: expected object, got scalar.",
+            ], $matchedPath);
+        }
+
         if (!isset($pathSpec[$lowerMethod])) {
             return OpenApiValidationResult::failure([
                 PathDiagnosticsFormatter::methodNotDefined($specName, $method, $matchedPath, $spec),
             ], $matchedPath);
         }
 
+        $operation = $pathSpec[$lowerMethod];
+
+        // A present-but-non-array operation is a malformed spec; without this
+        // guard a scalar operation produces a misleading "status code not
+        // defined" diagnostic (the `responses` lookup `?? []`-falls-back to an
+        // empty map for a scalar) and hides the real fault (issue #259).
+        if (!is_array($operation)) {
+            return OpenApiValidationResult::failure([
+                "Malformed 'paths[\"{$matchedPath}\"].{$lowerMethod}' for {$method} {$matchedPath} in '{$specName}' spec: expected object, got scalar.",
+            ], $matchedPath);
+        }
+
+        /** @var array<string, mixed> $operation */
         $statusCodeStr = (string) $statusCode;
-        $responses = $pathSpec[$lowerMethod]['responses'] ?? [];
+        $responses = $operation['responses'] ?? [];
+
+        // A present-but-non-array `responses` map is a malformed spec; a
+        // scalar here would reach `SpecResponseKeyResolver::resolve()`'s
+        // `array $responses` parameter and raise an uncaught TypeError. The
+        // guard runs BEFORE the skip-by-status-code check below: a malformed
+        // `responses` map is a structural spec error, not a status-code-level
+        // failure mode, so a configured skip pattern must not hide it. This
+        // is the traversal-level sibling of the #258 `responses[$status]`
+        // per-entry guard (issue #259).
+        if (!is_array($responses)) {
+            return OpenApiValidationResult::failure([
+                "Malformed 'paths[\"{$matchedPath}\"].{$lowerMethod}.responses' for {$method} {$matchedPath} in '{$specName}' spec: expected object, got scalar.",
+            ], $matchedPath);
+        }
 
         // Skip-by-status-code: applied before the "Status code not defined"
         // branch so a configured skip suppresses both status-code-level failure
