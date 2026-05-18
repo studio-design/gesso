@@ -1130,9 +1130,11 @@ trait ValidatesOpenApiSchema
      * an empty body, or a non-JSON Content-Type, yields an absent envelope.
      *
      * A non-JSON body is left undecoded rather than guessed at: the Content-Type
-     * is forwarded to the validator separately, and its content negotiation
-     * delivers the contract verdict — a loud "Content-Type is not defined" when
-     * the spec does not declare that media type, acceptance when it does. The
+     * is forwarded to the validator separately, which resolves non-JSON media
+     * types through content negotiation. When the operation declares a
+     * `requestBody` content map, a media type missing from it is reported as
+     * "Content-Type is not defined" and one it declares is accepted without
+     * body-schema validation (the validator's schema engine is JSON-only). The
      * JSON-ness test uses {@see ContentTypeMatcher::isJsonContentType()} so this
      * adapter and the validator agree on exactly which media types count as
      * JSON (issue #251).

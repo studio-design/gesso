@@ -31,6 +31,19 @@ class ContentTypeMatcherTest extends TestCase
     }
 
     #[Test]
+    public function is_json_content_type_rejects_media_types_that_merely_contain_json(): void
+    {
+        // Issue #251: only an exact `application/json` or a `+json` structured
+        // syntax suffix counts as JSON. Media types that merely contain the
+        // substring "json" are NOT JSON — pinning this is what lets the
+        // framework adapters safely delegate their JSON-decode decision here
+        // instead of a loose `str_contains($ct, 'json')` check.
+        $this->assertFalse(ContentTypeMatcher::isJsonContentType('text/json'));
+        $this->assertFalse(ContentTypeMatcher::isJsonContentType('application/jsonp'));
+        $this->assertFalse(ContentTypeMatcher::isJsonContentType('application/jsonsomethingweird'));
+    }
+
+    #[Test]
     public function find_json_content_type_returns_first_json_key(): void
     {
         $content = [
