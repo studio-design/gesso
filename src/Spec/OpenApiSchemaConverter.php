@@ -188,6 +188,7 @@ final class OpenApiSchemaConverter
         // emit. `format` is not in OPENAPI_COMMON_KEYS so its order is
         // independent.
         self::warnIfDiscriminatorMappingPresent($schema);
+        self::warnIfDependentKeywordsPresent($schema);
         self::warnIfUnknownFormat($schema);
 
         self::removeKeys($schema, self::OPENAPI_COMMON_KEYS);
@@ -494,6 +495,50 @@ final class OpenApiSchemaConverter
             "[OpenAPI Schema] 'discriminator.mapping' is silently stripped — the underlying oneOf/anyOf is still validated as a plain union, but the mapping does not steer validation toward a single branch. A body with the wrong discriminator value passes as long as it satisfies any branch, masking serialiser bugs. See README \"Schema features\" for the full limitation note.",
             E_USER_WARNING,
         );
+    }
+
+    /**
+     * Issue a one-shot E_USER_WARNING when a schema declares the 2019-09
+     * keywords `dependentSchemas` or `dependentRequired`. opis Draft 07 does
+     * not register either keyword (they are introduced in Draft 2019-09 —
+     * see vendor/opis/json-schema/src/Parsers/Drafts/Draft201909.php), so
+     * the property-dependency constraint is dropped wholesale: a payload
+     * carrying the trigger property without its dependents passes silently.
+     *
+     * The converter still recurses into `dependentSchemas` map-shaped value
+     * subschemas for keyword hygiene (#214), but that does not restore the
+     * outer keyword's intended validation — hence this separate observability
+     * warning. The Draft 07 equivalent (`if` / `then` / `else`) differs from
+     * the `additionalProperties` / `required` advice in
+     * {@see warnIfUsesUnsupportedKeywords()}, so the copy lives here rather
+     * than folding these keywords into `DRAFT_2020_12_UNSUPPORTED_KEYS`.
+     *
+     * Called from `convertInPlace()`, so the warning fires for every schema
+     * node the converter recurses into. A keyword buried inside a position
+     * `convertInPlace()` deliberately does not visit — notably a list-shaped
+     * `dependentSchemas` value, itself a spec defect skipped at the recursion
+     * site — is not surfaced; that residual gap is defect-on-defect only.
+     *
+     * Warns once per keyword per process; dedup shares `$warnedKeywords`.
+     *
+     * @param array<string, mixed> $schema
+     */
+    private static function warnIfDependentKeywordsPresent(array $schema): void
+    {
+        foreach (['dependentSchemas', 'dependentRequired'] as $keyword) {
+            if (!array_key_exists($keyword, $schema) || isset(self::$warnedKeywords[$keyword])) {
+                continue;
+            }
+
+            self::$warnedKeywords[$keyword] = true;
+            trigger_error(
+                sprintf(
+                    "[OpenAPI Schema] '%s' is a Draft 2019-09 keyword that the JSON Schema Draft 07 validator opis uses internally does not register. The keyword will be ignored — your spec's property-dependency constraint is NOT being enforced. Rewrite it as a Draft 07 conditional using if/then/else (the `if` clause tests for the trigger property, the `then` clause carries the dependent requirement).",
+                    $keyword,
+                ),
+                E_USER_WARNING,
+            );
+        }
     }
 
     /**

@@ -65,6 +65,7 @@ Detection looks at each property schema's own top-level `readOnly` / `writeOnly`
 - **Stripped**: `discriminator` (including `mapping`), `xml`, `externalDocs`, `example` / `examples`, `deprecated`, OAS-only `nullable`/`readOnly`/`writeOnly` after enforcement (3.0), and Draft 2020-12 keys `$dynamicRef` / `$dynamicAnchor` / `contentSchema` (3.1).
 - **Validated via opis (Draft 06+)**: `patternProperties`, `contentMediaType`, `contentEncoding`. These are JSON Schema keywords that opis implements natively, so your constraints are enforced.
 - **Not supported (loud E_USER_WARNING when first encountered)**: `unevaluatedProperties`, `unevaluatedItems`. These are 2019-09 keywords with no Draft 07 equivalent — opis silently ignores them, so the warning surfaces specs that depend on them. Rewrite using `additionalProperties: false` plus explicit `properties` to enforce object closure.
+- **Advisory-only (loud E_USER_WARNING when first encountered)**: `dependentSchemas`, `dependentRequired`. These 2019-09 property-dependency keywords are not registered by opis Draft 07, so the constraint is dropped wholesale — a payload carrying the trigger property without its dependents passes silently. Rewrite as a Draft 07 conditional with `if` / `then` / `else` (the `if` clause tests for the trigger property, the `then` clause carries the dependent requirement).
 - **`discriminator`**: the keyword is dropped; the underlying `oneOf` / `anyOf` is still validated as a union, but `discriminator.mapping` does not steer validation toward a single branch. When `mapping` is non-empty the converter emits a one-shot `E_USER_WARNING` so polymorphic specs with serialiser bugs surface as a loud signal rather than silently passing through any valid branch.
 - **`readOnly` / `writeOnly`**: enforced at the property's own top level only (see [readOnly / writeOnly enforcement](#readonly--writeonly-enforcement)).
 
@@ -81,7 +82,7 @@ The library uses PHP's native `trigger_error(..., E_USER_WARNING)` as the loud-s
 | Category prefix | Source | Dedup key |
 |---|---|---|
 | `[security]` | `SecurityValidator` (`oauth2`, `openIdConnect`, `mutualTLS`, `http-basic`, `http-digest`) | scheme name |
-| `[OpenAPI Schema]` | `OpenApiSchemaConverter` (`unevaluatedProperties` / `unevaluatedItems`, `discriminator.mapping`, unknown / malformed `format`) | per-keyword / per-format-value |
+| `[OpenAPI Schema]` | `OpenApiSchemaConverter` (`unevaluatedProperties` / `unevaluatedItems`, `dependentSchemas` / `dependentRequired`, `discriminator.mapping`, unknown / malformed `format`) | per-keyword / per-format-value |
 
 **How to consume:**
 

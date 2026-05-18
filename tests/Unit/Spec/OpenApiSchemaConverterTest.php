@@ -1216,6 +1216,169 @@ class OpenApiSchemaConverterTest extends TestCase
     }
 
     // ========================================
+    // dependentSchemas / dependentRequired silent-ignore warning (#216)
+    // opis Draft 07 does not register either 2019-09 keyword, so the
+    // property-dependency constraint is dropped wholesale and no error
+    // surfaces. The warning makes that silent bypass loud.
+    // ========================================
+
+    #[Test]
+    public function dependent_schemas_emits_warning(): void
+    {
+        $schema = [
+            'type' => 'object',
+            'properties' => ['creditCard' => ['type' => 'string']],
+            'dependentSchemas' => [
+                'creditCard' => [
+                    'type' => 'object',
+                    'required' => ['cvv'],
+                ],
+            ],
+        ];
+
+        $warnings = $this->captureWarnings(static function () use ($schema): void {
+            OpenApiSchemaConverter::convert($schema, OpenApiVersion::V3_1);
+        });
+
+        $this->assertCount(1, $warnings);
+        $this->assertStringContainsString('dependentSchemas', $warnings[0]);
+    }
+
+    #[Test]
+    public function dependent_required_emits_warning(): void
+    {
+        $schema = [
+            'type' => 'object',
+            'properties' => [
+                'creditCard' => ['type' => 'string'],
+                'cvv' => ['type' => 'string'],
+            ],
+            'dependentRequired' => ['creditCard' => ['cvv']],
+        ];
+
+        $warnings = $this->captureWarnings(static function () use ($schema): void {
+            OpenApiSchemaConverter::convert($schema, OpenApiVersion::V3_1);
+        });
+
+        $this->assertCount(1, $warnings);
+        $this->assertStringContainsString('dependentRequired', $warnings[0]);
+    }
+
+    #[Test]
+    public function dependent_keywords_emit_warning_for_oas_3_0_too(): void
+    {
+        // Both keywords are 2019-09 but can appear in hand-rolled or
+        // generated 3.0 specs that mix dialects. The warning must run for
+        // both versions, mirroring the unevaluated* handling.
+        $schema = [
+            'type' => 'object',
+            'dependentRequired' => ['creditCard' => ['cvv']],
+        ];
+
+        $warnings = $this->captureWarnings(static function () use ($schema): void {
+            OpenApiSchemaConverter::convert($schema, OpenApiVersion::V3_0);
+        });
+
+        $this->assertCount(1, $warnings);
+        $this->assertStringContainsString('dependentRequired', $warnings[0]);
+    }
+
+    #[Test]
+    public function dependent_keywords_warn_independently_and_point_to_if_then_else(): void
+    {
+        // Per-keyword dedup: a schema declaring both keywords at once must
+        // surface two distinct warnings, each pointing the user at the
+        // Draft 07 equivalent (if/then/else).
+        $schema = [
+            'type' => 'object',
+            'dependentSchemas' => [
+                'creditCard' => ['type' => 'object', 'required' => ['cvv']],
+            ],
+            'dependentRequired' => ['billingAddress' => ['country']],
+        ];
+
+        $warnings = $this->captureWarnings(static function () use ($schema): void {
+            OpenApiSchemaConverter::convert($schema, OpenApiVersion::V3_1);
+        });
+
+        $this->assertCount(2, $warnings);
+        $joined = implode("\n", $warnings);
+        $this->assertStringContainsString('dependentSchemas', $joined);
+        $this->assertStringContainsString('dependentRequired', $joined);
+        $this->assertStringContainsString('if/then/else', $joined);
+    }
+
+    #[Test]
+    public function dependent_keyword_warns_only_once_across_repeated_calls(): void
+    {
+        // Core "one-shot per keyword per process" contract: three convert()
+        // calls must still surface only one warning. A single-call test
+        // cannot tell correct dedup apart from no dedup at all.
+        // (setUp() already reset the seen-set.)
+        $schema = [
+            'type' => 'object',
+            'dependentRequired' => ['creditCard' => ['cvv']],
+        ];
+
+        $warnings = $this->captureWarnings(static function () use ($schema): void {
+            OpenApiSchemaConverter::convert($schema, OpenApiVersion::V3_1);
+            OpenApiSchemaConverter::convert($schema, OpenApiVersion::V3_1);
+            OpenApiSchemaConverter::convert($schema, OpenApiVersion::V3_1);
+        });
+
+        $this->assertCount(1, $warnings);
+        $this->assertStringContainsString('dependentRequired', $warnings[0]);
+    }
+
+    #[Test]
+    public function dependent_keyword_nested_below_root_emits_warning(): void
+    {
+        // The warning fires from convertInPlace(), which recurses into every
+        // subschema position. Real specs almost always carry these keywords
+        // on nested model definitions, not the root — pin that the warning
+        // reaches a keyword buried inside `properties`.
+        $schema = [
+            'type' => 'object',
+            'properties' => [
+                'payment' => [
+                    'type' => 'object',
+                    'dependentSchemas' => [
+                        'creditCard' => ['type' => 'object', 'required' => ['cvv']],
+                    ],
+                ],
+            ],
+        ];
+
+        $warnings = $this->captureWarnings(static function () use ($schema): void {
+            OpenApiSchemaConverter::convert($schema, OpenApiVersion::V3_1);
+        });
+
+        $this->assertCount(1, $warnings);
+        $this->assertStringContainsString('dependentSchemas', $warnings[0]);
+    }
+
+    #[Test]
+    public function schema_without_dependent_keywords_emits_no_warning(): void
+    {
+        // Guard against a false positive: a schema declaring neither keyword
+        // must stay silent, so the warning keeps signalling something real.
+        $schema = [
+            'type' => 'object',
+            'properties' => [
+                'creditCard' => ['type' => 'string'],
+                'cvv' => ['type' => 'string'],
+            ],
+            'required' => ['creditCard'],
+        ];
+
+        $warnings = $this->captureWarnings(static function () use ($schema): void {
+            OpenApiSchemaConverter::convert($schema, OpenApiVersion::V3_1);
+        });
+
+        $this->assertSame([], $warnings);
+    }
+
+    // ========================================
     // discriminator.mapping silent-strip warning (#147)
     // ========================================
 
@@ -1857,8 +2020,16 @@ class OpenApiSchemaConverterTest extends TestCase
             ],
         ];
 
-        $result = OpenApiSchemaConverter::convert($schema, OpenApiVersion::V3_1);
+        // The outer `dependentSchemas` keyword triggers the #216 silent-ignore
+        // warning; this test is about inner-subschema lowering. Capture the
+        // warning and assert its exact count so an unexpected extra warning
+        // fails the test instead of being silently absorbed.
+        $result = null;
+        $warnings = $this->captureWarnings(static function () use ($schema, &$result): void {
+            $result = OpenApiSchemaConverter::convert($schema, OpenApiVersion::V3_1);
+        });
 
+        $this->assertCount(1, $warnings, 'only the #216 dependentSchemas warning is expected');
         $this->assertArrayNotHasKey(
             'const',
             $result['dependentSchemas']['creditCard']['properties']['currency'],
@@ -2124,8 +2295,14 @@ class OpenApiSchemaConverterTest extends TestCase
         ];
         $original = $schema;
 
-        OpenApiSchemaConverter::convert($schema, OpenApiVersion::V3_1);
+        // `dependentSchemas` triggers the #216 warning; this test asserts the
+        // input array is not mutated. Assert the exact warning count so an
+        // unexpected extra warning fails instead of being silently absorbed.
+        $warnings = $this->captureWarnings(static function () use ($schema): void {
+            OpenApiSchemaConverter::convert($schema, OpenApiVersion::V3_1);
+        });
 
+        $this->assertCount(1, $warnings, 'only the #216 dependentSchemas warning is expected');
         $this->assertSame($original, $schema);
     }
 
@@ -2146,8 +2323,16 @@ class OpenApiSchemaConverterTest extends TestCase
             'dependentSchemas' => ['k' => true],
         ];
 
-        $result = OpenApiSchemaConverter::convert($schema, OpenApiVersion::V3_1);
+        // The `dependentSchemas` key triggers the #216 warning; this test is
+        // about boolean-subschema preservation. Assert the exact warning
+        // count so an unexpected extra warning fails instead of being
+        // silently absorbed.
+        $result = null;
+        $warnings = $this->captureWarnings(static function () use ($schema, &$result): void {
+            $result = OpenApiSchemaConverter::convert($schema, OpenApiVersion::V3_1);
+        });
 
+        $this->assertCount(1, $warnings, 'only the #216 dependentSchemas warning is expected');
         $this->assertSame($schema, $result);
     }
 
@@ -2166,8 +2351,16 @@ class OpenApiSchemaConverterTest extends TestCase
             ],
         ];
 
-        $result = OpenApiSchemaConverter::convert($schema, OpenApiVersion::V3_1);
+        // The `dependentSchemas` key triggers the #216 warning; this test is
+        // about list-shaped-value skipping. Assert the exact warning count so
+        // an unexpected extra warning fails instead of being silently
+        // absorbed.
+        $result = null;
+        $warnings = $this->captureWarnings(static function () use ($schema, &$result): void {
+            $result = OpenApiSchemaConverter::convert($schema, OpenApiVersion::V3_1);
+        });
 
+        $this->assertCount(1, $warnings, 'only the #216 dependentSchemas warning is expected');
         $this->assertSame($schema, $result);
     }
 
