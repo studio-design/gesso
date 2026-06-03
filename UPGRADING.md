@@ -10,9 +10,44 @@ read each intermediate section in order — behavioural changes compose.
 ## Within v1.x
 
 The v1.x line is covered end-to-end by SemVer (see "v0.x → v1.0.0"
-below for the surface contract). Minor releases are additive by default;
-the only behavioural change so far is in v1.3.0 and is gated on an
-already-opt-in flag.
+below for the surface contract). Minor releases are additive by default.
+Two behavioural changes exist so far: v1.3.0 (gated on an already-opt-in
+flag) and v1.8.0 (`discriminator.mapping` enforcement, default-on with an
+opt-out flag — see directly below).
+
+### From v1.7.0 → v1.8.0
+
+- **`discriminator.mapping` is now enforced** (#262). Previously the
+  converter stripped `discriminator` and emitted a one-shot
+  `E_USER_WARNING`; the underlying `oneOf` / `anyOf` was validated only as
+  a plain union, so a polymorphic body that lied about its type passed as
+  long as it matched any branch. The converter now lowers `discriminator` +
+  `mapping` into Draft-07 `if`/`then` conditionals so the discriminator
+  value steers validation toward a single branch.
+  - **Behaviour change**: a body whose discriminator value routes to a
+    branch it does not satisfy (e.g. `kty: RSA` carrying EC-only fields, or
+    an unknown discriminator value) now **fails** where it previously
+    passed. This is the contract bug the warning only narrated.
+  - **The `discriminator.mapping` `E_USER_WARNING` is removed.** This also
+    fixes Laravel consumers, whose `HandleExceptions` turned that advisory
+    warning into a fatal `ErrorException` on the first polymorphic contract
+    test. No per-consumer `set_error_handler` boilerplate is needed any
+    more.
+  - **Opt out**: set `enforce_discriminator: false` (Laravel
+    `config/openapi-contract-testing.php`) or
+    `<parameter name="enforce_discriminator" value="off"/>` (the PHPUnit
+    `OpenApiCoverageExtension`) to keep the old strip-without-enforce
+    behaviour (now also warning-free).
+  - **Malformed `discriminator`** blocks (missing/non-string
+    `propertyName`, non-array `mapping`, non-string mapping value,
+    unresolvable mapping pointer, non-object target) now surface as a loud
+    validation failure under enforcement, instead of being silently
+    dropped.
+  - **Known limitation**: self-referential discriminator chains (a subtype
+    that re-contains the base discriminator via `allOf` + `$ref`) are
+    enforced to the first recursion level; the inner re-entry degrades to
+    the unknown-value guard only. See `docs/supported-features.md` →
+    "Schema features" → `discriminator`.
 
 ### From v1.3.0 → v1.4.0
 

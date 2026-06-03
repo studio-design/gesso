@@ -58,6 +58,7 @@ Add the coverage extension to your `phpunit.xml`:
 | `console_output` | No | `default` | Console output mode: `default`, `all`, `uncovered_only`, or `active_only` (overridden by `OPENAPI_CONSOLE_OUTPUT` env var) |
 | `sidecar_dir` | No | `sys_get_temp_dir()/openapi-coverage-sidecars` | Directory paratest workers drop per-worker JSON sidecars into. Used only under parallel test runners — see [Parallel test runners](parallel.md) |
 | `default_testsuite_as_full` | No | `false` | Opt-in. When `true` and PHPUnit's `includeTestSuites` resolves exactly to the configured `defaultTestSuite`, treat the run as full instead of partial (so `strict_required` and coverage outputs aren't suppressed). See [default_testsuite_as_full opt-in](ci.md#default_testsuite_as_full-opt-in) for trade-offs |
+| `enforce_discriminator` | No | `on` | When `on` (default), `discriminator` + `mapping` is enforced via `if`/`then` lowering so a body that lies about its type fails. Set to `off` to strip `discriminator` without enforcing (no warning either). See [Schema features → discriminator](supported-features.md#schema-features) |
 
 *Not required if you call `OpenApiSpecLoader::configure()` manually.
 
@@ -80,6 +81,11 @@ return [
     // Maximum number of validation errors to report per response.
     // 0 = unlimited (reports all errors).
     'max_errors' => 20,
+
+    // Enforce `discriminator` + `mapping` by lowering it into if/then
+    // conditionals so a body that lies about its type fails (default true).
+    // Set false to strip discriminator without enforcing (no warning either).
+    'enforce_discriminator' => true,
 
     // Automatically validate every TestResponse produced by Laravel HTTP
     // helpers (get(), post(), etc.) against the OpenAPI spec. Defaults to
