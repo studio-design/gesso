@@ -10,6 +10,13 @@ the README for the full surface contract.
 
 ## Unreleased
 
+## [1.8.0](https://github.com/studio-design/openapi-contract-testing/compare/v1.7.0...v1.8.0) (2026-06-03)
+
+
+### Features
+
+* **schema:** enforce discriminator.mapping via if/then lowering ([#263](https://github.com/studio-design/openapi-contract-testing/issues/263)) ([0e41606](https://github.com/studio-design/openapi-contract-testing/commit/0e416068b1035ba25226bd59b91de0a76976166a))
+
 ## [1.7.0](https://github.com/studio-design/openapi-contract-testing/compare/v1.6.0...v1.7.0) (2026-05-18)
 
 
