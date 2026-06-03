@@ -35,19 +35,19 @@ opt-out flag — see directly below).
     more.
   - **Opt out**: set `enforce_discriminator: false` (Laravel
     `config/openapi-contract-testing.php`) or
-    `<parameter name="enforce_discriminator" value="off"/>` (the PHPUnit
-    `OpenApiCoverageExtension`) to keep the old strip-without-enforce
-    behaviour (now also warning-free).
+    `<parameter name="enforce_discriminator" value="false"/>` (the PHPUnit
+    `OpenApiCoverageExtension`; `0` / `no` also work) to keep the old
+    strip-without-enforce behaviour (now also warning-free).
   - **Malformed `discriminator`** blocks (missing/non-string
     `propertyName`, non-array `mapping`, non-string mapping value,
     unresolvable mapping pointer, non-object target) now surface as a loud
     validation failure under enforcement, instead of being silently
     dropped.
   - **Known limitation**: self-referential discriminator chains (a subtype
-    that re-contains the base discriminator via `allOf` + `$ref`) are
-    enforced to the first recursion level; the inner re-entry degrades to
-    the unknown-value guard only. See `docs/supported-features.md` →
-    "Schema features" → `discriminator`.
+    that re-contains the same base discriminator via `allOf` + `$ref`) are
+    enforced at the first recursion level; the inner re-appearance is
+    stripped without re-lowering (the outer branch already enforces it).
+    See `docs/supported-features.md` → "Schema features" → `discriminator`.
 
 ### From v1.3.0 → v1.4.0
 

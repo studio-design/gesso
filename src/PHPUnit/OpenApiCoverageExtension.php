@@ -310,11 +310,12 @@ final class OpenApiCoverageExtension implements Extension
         StrictRequiredPerCallChecker::configure($strictRequiredPerCallMode);
 
         // Issue #262: discriminator.mapping enforcement gate. Default ON —
-        // enforcement is the correct contract-testing behaviour and `off` is
-        // the escape hatch for specs that rely on the loose union semantics.
-        // resolveBooleanFlag reads the `enforce_discriminator` parameter
-        // (absent → the default), and configure() overwrites unconditionally so
-        // a process reused across bootstraps always reflects the current run.
+        // enforcement is the correct contract-testing behaviour; `value="false"`
+        // (or `0` / `no`) is the escape hatch for specs that rely on the loose
+        // union semantics. resolveBooleanFlag reads the `enforce_discriminator`
+        // parameter (absent → the default), and configure() overwrites
+        // unconditionally so a process reused across bootstraps reflects the
+        // current run.
         DiscriminatorEnforcement::configure(
             self::resolveBooleanFlag($parameters, 'enforce_discriminator', true),
         );
