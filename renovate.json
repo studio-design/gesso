@@ -1,15 +1,22 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:recommended"
+    "config:best-practices"
   ],
   "labels": ["dependencies"],
-  "schedule": ["before 9am on Monday"],
   "timezone": "Asia/Tokyo",
+  "schedule": ["before 9am on Monday"],
+  "minimumReleaseAge": "7 days",
   "packageRules": [
     {
-      "description": "Group GitHub Actions updates",
+      "description": "Skip the example's path-linked self reference (resolved from the working tree, not Packagist)",
+      "matchPackageNames": ["studio-design/openapi-contract-testing"],
+      "enabled": false
+    },
+    {
+      "description": "Automerge GitHub Actions digest + minor/patch bumps; majors stay manual review",
       "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["minor", "patch", "digest", "pin", "pinDigest"],
       "groupName": "GitHub Actions",
       "automerge": true
     },
