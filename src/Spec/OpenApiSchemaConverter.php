@@ -14,7 +14,6 @@ use Studio\OpenApiContractTesting\Validation\Support\MalformedSpecNode;
 
 use function array_is_list;
 use function array_key_exists;
-use function array_keys;
 use function get_debug_type;
 use function implode;
 use function in_array;
@@ -142,6 +141,12 @@ final class OpenApiSchemaConverter
      * subschemas (boolean `false`) and stripped from `required`; in `Response`
      * context the same happens for `writeOnly`. See `SchemaContext` for the
      * motivating OpenAPI semantics.
+     *
+     * `$discriminator` carries the resolved root + enforce gate for
+     * `discriminator.mapping` lowering (Issue #262). `null` (the default for
+     * callers that cannot enforce — parameter / header validators, the fuzz
+     * explorer) is normalised to {@see DiscriminatorContext::disabled()}, under
+     * which `discriminator` is stripped rather than enforced.
      *
      * @param array<string, mixed> $schema
      *
@@ -661,24 +666,30 @@ final class OpenApiSchemaConverter
 
     /**
      * Stable identity for a discriminator: its property name plus the sorted
-     * set of mapping keys. The recursion guard uses it to detect the same
-     * discriminator re-appearing through eager `$ref` inlining (the
-     * base↔subtype cycle), independent of declaration order. Two genuinely
-     * distinct discriminators that share both are treated as one — harmless,
-     * because a signature is only ever checked inside a `then` branch already
-     * enforcing it.
+     * set of `key => target` mapping pairs. The recursion guard uses it to
+     * detect the SAME discriminator re-appearing through eager `$ref` inlining
+     * (the base↔subtype cycle), independent of declaration order. Folding the
+     * resolved target into each pair means two genuinely distinct
+     * discriminators that merely share a property name and key set do NOT
+     * collide — only an identical mapping (the self-reference case) matches, so
+     * a nested *distinct* discriminator is still lowered rather than silently
+     * stripped (which would be a silent under-enforcement).
+     *
+     * A non-string mapping value is folded in by its type token; such a value
+     * is rejected with a loud throw later in the lowering, so the rendering
+     * here only needs to be stable, not meaningful.
      *
      * @param array<array-key, mixed> $mapping
      */
     private static function discriminatorSignature(string $propertyName, array $mapping): string
     {
-        $keys = [];
-        foreach (array_keys($mapping) as $key) {
-            $keys[] = (string) $key;
+        $pairs = [];
+        foreach ($mapping as $key => $value) {
+            $pairs[] = (string) $key . "\0" . (is_string($value) ? $value : get_debug_type($value));
         }
-        sort($keys);
+        sort($pairs);
 
-        return $propertyName . "\0" . implode("\0", $keys);
+        return $propertyName . "\0" . implode("\0", $pairs);
     }
 
     /**

@@ -1563,6 +1563,95 @@ class OpenApiSchemaConverterTest extends TestCase
     }
 
     #[Test]
+    public function discriminator_nested_distinct_discriminators_both_lower(): void
+    {
+        // Regression for the recursion-guard signature: a nested discriminator
+        // that shares the outer's propertyName AND key set but maps to DIFFERENT
+        // targets must still be lowered (not stripped as a false self-reference).
+        // The signature folds in the resolved targets so the two do not collide.
+        $root = ['components' => ['schemas' => [
+            'OuterA' => [
+                'type' => 'object',
+                'discriminator' => [
+                    'propertyName' => 'type',
+                    'mapping' => ['a' => '#/components/schemas/Inner1', 'b' => '#/components/schemas/Inner2'],
+                ],
+            ],
+            'OuterB' => ['type' => 'object'],
+            'Inner1' => ['type' => 'object', 'required' => ['i1']],
+            'Inner2' => ['type' => 'object', 'required' => ['i2']],
+        ]]];
+        $schema = [
+            'type' => 'object',
+            'discriminator' => [
+                'propertyName' => 'type',
+                'mapping' => ['a' => '#/components/schemas/OuterA', 'b' => '#/components/schemas/OuterB'],
+            ],
+        ];
+
+        $result = OpenApiSchemaConverter::convert($schema, OpenApiVersion::V3_0, SchemaContext::Response, $this->enforcing($root));
+
+        // The "a" branch routes to OuterA, whose OWN (distinct) discriminator
+        // must be lowered — not stripped — because its signature differs.
+        $outerAThen = $result['allOf'][1]['then'];
+        $this->assertArrayNotHasKey('discriminator', $outerAThen);
+        $this->assertArrayHasKey('allOf', $outerAThen, 'nested distinct discriminator must be lowered, not stripped');
+        $this->assertSame(['i1'], $outerAThen['allOf'][1]['then']['required']);
+        $this->assertSame(['i2'], $outerAThen['allOf'][2]['then']['required']);
+    }
+
+    #[Test]
+    public function discriminator_with_mapping_not_enforced_with_root_strips(): void
+    {
+        // The off path with a POPULATED root (the production "user set the flag
+        // off" shape, distinct from the empty-root disabled() sentinel):
+        // discriminator is stripped, nothing is lowered.
+        $root = ['components' => ['schemas' => [
+            'Cat' => ['type' => 'object', 'required' => ['meow']],
+        ]]];
+        $schema = [
+            'type' => 'object',
+            'discriminator' => ['propertyName' => 'kind', 'mapping' => ['cat' => '#/components/schemas/Cat']],
+        ];
+
+        $result = OpenApiSchemaConverter::convert($schema, OpenApiVersion::V3_0, SchemaContext::Response, new DiscriminatorContext($root, false));
+
+        $this->assertArrayNotHasKey('discriminator', $result);
+        $this->assertArrayNotHasKey('allOf', $result);
+    }
+
+    #[Test]
+    public function discriminator_nullable_base_rejects_null_body_via_opis(): void
+    {
+        // Documented contract: a 3.0 `nullable` base carrying a discriminator
+        // enforces the discriminated-object branch — a `null` body fails the
+        // lowered guard (which requires the discriminator property).
+        $root = ['components' => ['schemas' => [
+            'Cat' => ['type' => 'object', 'required' => ['meow'], 'properties' => ['meow' => ['type' => 'boolean']]],
+        ]]];
+        $schema = [
+            'type' => 'object',
+            'nullable' => true,
+            'discriminator' => ['propertyName' => 'kind', 'mapping' => ['cat' => '#/components/schemas/Cat']],
+        ];
+        $lowered = OpenApiSchemaConverter::convert($schema, OpenApiVersion::V3_0, SchemaContext::Response, $this->enforcing($root));
+
+        $runner = new SchemaValidatorRunner(20);
+        $schemaObject = ObjectConverter::convert($lowered);
+
+        $this->assertNotSame(
+            [],
+            $runner->validate($schemaObject, ObjectConverter::convert(null)),
+            'a null body must fail the discriminated-object branch',
+        );
+        $this->assertSame(
+            [],
+            $runner->validate($schemaObject, ObjectConverter::convert((object) ['kind' => 'cat', 'meow' => true])),
+            'a valid cat body still validates',
+        );
+    }
+
+    #[Test]
     public function discriminator_with_mapping_not_enforced_strips_without_warning(): void
     {
         // Default (no DiscriminatorContext) / disabled gate: discriminator is
