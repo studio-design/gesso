@@ -2,6 +2,7 @@
 
 - [`OpenApiResponseValidator`](#openapiresponsevalidator)
 - [`OpenApiPsr7Validator`](#openapipsr7validator)
+- [`OpenApiSpecExplorer`](#openapispecexplorer)
 - [`OpenApiSpecLoader`](#openapispecloader)
 - [`OpenApiCoverageTracker`](#openapicoveragetracker)
 
@@ -65,6 +66,29 @@ Use `validateRequest()`, `validateResponse()`, or
 `validateResponseForOperation()` when only one side is available. See the
 [PSR-7 guide](psr7.md) for PHPUnit assertions, stream handling, and a PSR-15
 test integration recipe.
+
+## `OpenApiSpecExplorer`
+
+Builds a deterministic whole-spec exploration plan around the existing
+single-operation generator:
+
+```php
+use Studio\OpenApiContractTesting\Fuzz\OpenApiSpecExplorer;
+
+$summary = OpenApiSpecExplorer::explore('front', casesPerOperation: 20, seed: 1)
+    ->includeTags(['public'])
+    ->excludeOperations(['admin.users.destroy'])
+    ->dispatchUsing(fn ($case, $operation) => dispatch_request($case))
+    ->assertResponseUsing(fn ($response) => assert_contract($response))
+    ->assertResponses();
+```
+
+Filters are available for tags, methods, paths, operation IDs, and deprecated
+operations. `authenticateUsing()`, `setUpUsing()`, `tearDownUsing()`, and
+`mutateCasesUsing()` provide framework/auth/stateful-ID hooks. The returned
+`SpecExplorationSummary` exposes executed operation/case counts, the executed
+`ExploredOperation` rows (including their coverage keys), and a list of
+`ExplorationSkip` entries. See [schema-driven request fuzzing](fuzzing.md).
 
 ## `OpenApiSpecLoader`
 

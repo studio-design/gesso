@@ -10,6 +10,7 @@ use PHPUnit\Framework\TestCase;
 use Studio\OpenApiContractTesting\Attribute\OpenApiSpec;
 use Studio\OpenApiContractTesting\Fuzz\ExplorationCases;
 use Studio\OpenApiContractTesting\Fuzz\ExploredCase;
+use Studio\OpenApiContractTesting\Fuzz\OpenApiSpecExploration;
 use Studio\OpenApiContractTesting\HttpMethod;
 use Studio\OpenApiContractTesting\Laravel\ExploresOpenApiEndpoint;
 use Studio\OpenApiContractTesting\Spec\OpenApiSpecLoader;
@@ -52,6 +53,21 @@ class ExploresOpenApiEndpointTest extends TestCase
         $cases = $this->exploreEndpoint('POST', '/v1/pets', cases: 5, seed: 1);
 
         $this->assertCount(5, $cases);
+    }
+
+    #[Test]
+    public function creates_and_runs_whole_spec_exploration_plan(): void
+    {
+        $plan = $this->exploreSpec(casesPerOperation: 2, seed: 11);
+
+        $this->assertInstanceOf(OpenApiSpecExploration::class, $plan);
+        $summary = $plan
+            ->includeOperations(['healthCheck'])
+            ->dispatchUsing(static fn(ExploredCase $case): ExploredCase => $case)
+            ->assertResponses();
+
+        $this->assertSame(1, $summary->executedOperations);
+        $this->assertSame(2, $summary->executedCases);
     }
 
     #[Test]

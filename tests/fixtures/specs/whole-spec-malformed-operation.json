@@ -1,0 +1,12 @@
+{
+    "openapi": "3.1.0",
+    "info": {
+        "title": "Malformed Operation Object",
+        "version": "1.0.0"
+    },
+    "paths": {
+        "/scalar-operation": {
+            "get": "invalid"
+        }
+    }
+}

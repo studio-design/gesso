@@ -23,7 +23,7 @@ Validate your API responses against your OpenAPI specification during testing, a
 - **Response & request validation** — dialect-aware JSON Schema via opis/json-schema: Draft 07 compatibility for OpenAPI 3.0 and native 2020-12 semantics for OpenAPI 3.1/3.2; `application/json` and any `+json` content type
 - **Endpoint coverage tracking** — Unique PHPUnit extension that reports which spec endpoints are covered by tests, at `(method, path, status, content-type)` granularity
 - **Laravel route/spec parity** — `openapi:routes` finds documented operations without routes and registered routes without OpenAPI operations, with filters, stable JSON, and independent CI gates
-- **Schema-driven request fuzzing** — `ExploresOpenApiEndpoint` trait generates N happy-path inputs straight from the spec (Schemathesis-style)
+- **Schema-driven request fuzzing** — Explore one endpoint or every supported operation with deterministic replay, filters, lifecycle/auth hooks, and explicit skip reasons
 - **Enum drift detection** — Static comparison between PHP backed enums and their `enum:` spec arrays, with PHPUnit-extension auto-discovery
 - **Schema under-description detection** — Optional strict mode that flags response fields the implementation always returns but the spec marks as optional, catching the spec gaps that conformance checks alone can't. See [`docs/strict-required.md`](docs/strict-required.md) for current scope and limitations.
 - **Skip-by-status-code** — Configurable regex list of status codes whose bodies are not validated (default: every `5xx`); per-request via `skipResponseCode()`
@@ -53,7 +53,7 @@ Choose based on the workflow you need rather than on a single yes/no feature cou
 | Route/spec parity | [`openapi:routes`](docs/laravel-route-parity.md) with text/JSON and CI gates | [`spectator:routes`][spectator-cli] | — | — | — |
 | CLI diagnostics / scaffolding | [`doctor`](docs/doctor.md), [`openapi:routes`](docs/laravel-route-parity.md), coverage merge; no scaffolding | [`validate`, `coverage`, `routes`, `stubs`][spectator-cli] | — | — | — |
 | Structured validation failures | Text messages; JSON planned ([#282](https://github.com/studio-design/openapi-contract-testing/issues/282)) | [JSON `{errors: [...]}`][spectator-errors] | [PHP exception hierarchy][league-errors] | [Wrapper exception][osteel-readme] | [PHPUnit failure text][kirschbaum-failure-source] |
-| Schema-driven exploration | [Deterministic happy-path generation](docs/fuzzing.md) | — | — | — | — |
+| Schema-driven exploration | [Deterministic endpoint + whole-spec generation](docs/fuzzing.md) | — | — | — | — |
 | Drift / under-description checks | [Enum drift](docs/enum-drift.md), [strict required](docs/strict-required.md) | — | — | — | — |
 | First-class integration | [PSR-7](docs/psr7.md), [Laravel, Symfony, Pest](docs/setup.md) | [Laravel][spectator] | [PSR-7, PSR-15 middleware][league-middleware] | [HttpFoundation, PSR-7][osteel-readme] | [Laravel auto-validation][kirschbaum-readme] |
 | Declared runtime floor | PHP 8.2 core; [Testbench 9–11](composer.json) ([Laravel 11–12][testbench-compat]; [Laravel 13 / PHP 8.3][testbench-11-composer]) | [PHP 8.3, Laravel 12][spectator-composer] | [PHP 7.2][league-composer] | [PHP 8.0, HttpFoundation 5–8][osteel-composer] | [PHP 8.0, Illuminate 10–13][kirschbaum-composer] |

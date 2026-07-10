@@ -27,7 +27,6 @@ use Studio\OpenApiContractTesting\SkipOpenApiResolver;
 use Studio\OpenApiContractTesting\Spec\OpenApiOperationResolver;
 use Studio\OpenApiContractTesting\Spec\OpenApiPathMatcher;
 use Studio\OpenApiContractTesting\Spec\OpenApiSpecLoader;
-use Studio\OpenApiContractTesting\Spec\OpenApiSpecResolver;
 use Studio\OpenApiContractTesting\Validation\Request\SecuritySchemeIntrospector;
 use Studio\OpenApiContractTesting\Validation\Support\ContentTypeMatcher;
 use Studio\OpenApiContractTesting\Validation\Support\DiscriminatorEnforcement;
@@ -54,7 +53,7 @@ use function var_export;
 
 trait ValidatesOpenApiSchema
 {
-    use OpenApiSpecResolver;
+    use ResolvesOpenApiSpec;
     use SkipOpenApiResolver;
 
     // Fixed dummy token injected when auto_inject_dummy_bearer is enabled and
@@ -438,22 +437,6 @@ trait ValidatesOpenApiSchema
         }
 
         $this->assertResponseMatchesOpenApiSchema($response, $method, $path, $extraSkipCodes);
-    }
-
-    protected function openApiSpec(): string
-    {
-        $spec = config('openapi-contract-testing.default_spec');
-
-        if (!is_string($spec) || $spec === '') {
-            return '';
-        }
-
-        return $spec;
-    }
-
-    protected function openApiSpecFallback(): string
-    {
-        return $this->openApiSpec();
     }
 
     /**

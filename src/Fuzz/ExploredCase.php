@@ -45,4 +45,27 @@ final readonly class ExploredCase
             );
         }
     }
+
+    public function withBody(mixed $body): self
+    {
+        return new self($body, $this->query, $this->headers, $this->pathParams, $this->method, $this->matchedPath);
+    }
+
+    /** @param array<string, mixed> $query */
+    public function withQuery(array $query): self
+    {
+        return new self($this->body, $query, $this->headers, $this->pathParams, $this->method, $this->matchedPath);
+    }
+
+    /** @param array<string, mixed> $headers */
+    public function withHeaders(array $headers): self
+    {
+        return new self($this->body, $this->query, $headers, $this->pathParams, $this->method, $this->matchedPath);
+    }
+
+    /** @param array<string, mixed> $pathParams */
+    public function withPathParams(array $pathParams): self
+    {
+        return new self($this->body, $this->query, $this->headers, $pathParams, $this->method, $this->matchedPath);
+    }
 }

@@ -10,8 +10,9 @@ use PHPUnit\Framework\AssertionFailedError;
 use RuntimeException;
 use Studio\OpenApiContractTesting\Fuzz\ExplorationCases;
 use Studio\OpenApiContractTesting\Fuzz\OpenApiEndpointExplorer;
+use Studio\OpenApiContractTesting\Fuzz\OpenApiSpecExploration;
+use Studio\OpenApiContractTesting\Fuzz\OpenApiSpecExplorer;
 use Studio\OpenApiContractTesting\Internal\StackTraceFilter;
-use Studio\OpenApiContractTesting\Spec\OpenApiSpecResolver;
 
 use function is_string;
 
@@ -34,7 +35,7 @@ use function is_string;
  */
 trait ExploresOpenApiEndpoint
 {
-    use OpenApiSpecResolver;
+    use ResolvesOpenApiSpec;
 
     /**
      * Generate $cases happy-path request inputs for the given operation.
@@ -76,20 +77,26 @@ trait ExploresOpenApiEndpoint
         }
     }
 
-    protected function openApiSpecFallback(): string
+    /**
+     * Build a deterministic whole-spec exploration plan.
+     */
+    public function exploreSpec(int $casesPerOperation = 30, int $seed = 1): OpenApiSpecExploration
     {
-        return $this->openApiSpec();
-    }
-
-    protected function openApiSpec(): string
-    {
-        $spec = config('openapi-contract-testing.default_spec');
-
-        if (!is_string($spec) || $spec === '') {
-            return '';
+        $specName = $this->resolveOpenApiSpec();
+        if (!is_string($specName) || $specName === '') {
+            $this->failExplore(
+                'openApiSpec() must return a non-empty spec name, but an empty string was returned. '
+                . 'Either add #[OpenApiSpec(\'your-spec\')] to your test class or method, '
+                . 'override openApiSpec() in your test class, or set the "default_spec" key '
+                . 'in config/openapi-contract-testing.php.',
+            );
         }
 
-        return $spec;
+        try {
+            return OpenApiSpecExplorer::explore($specName, $casesPerOperation, $seed);
+        } catch (InvalidArgumentException|RuntimeException $e) {
+            $this->failExplore($e->getMessage());
+        }
     }
 
     /**
