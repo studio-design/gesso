@@ -5,6 +5,7 @@ This library follows [Semantic Versioning 2.0](https://semver.org/). v1.0.0 is t
 - [What's covered by SemVer in v1.x](#whats-covered-by-semver-in-v1x)
 - [What's NOT covered by SemVer](#whats-not-covered-by-semver)
 - [Support policy](#support-policy)
+- [Release checklist](#release-checklist)
 
 ## What's covered by SemVer in v1.x
 
@@ -39,3 +40,11 @@ See [UPGRADING.md](../UPGRADING.md) for migration notes between versions.
 | Laravel (optional adapter) | Whatever `orchestra/testbench` `^9 || ^10 || ^11` supports. |
 
 Bug fixes and security updates land on the latest minor of v1.x. There is no LTS branch for older minors — upgrade to the latest minor to receive fixes.
+
+## Release checklist
+
+Before publishing a release:
+
+- [ ] Run the supported PHP / PHPUnit / framework matrix in CI.
+- [ ] Review `UPGRADING.md` and the generated release notes for SemVer accuracy.
+- [ ] If the README feature comparison was last checked three or more months ago, verify every competitor version and linked capability against its tagged official README and `composer.json`, update the checked date, and keep competitor strengths as well as gaps.

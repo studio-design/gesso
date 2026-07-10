@@ -33,37 +33,54 @@ Validate your API responses against your OpenAPI specification during testing, a
 
 ## Why this library?
 
-This library fills a gap left by existing PHP OpenAPI testing tools: **endpoint coverage tracking** and explicit **OpenAPI 3.2 support**, combined with Laravel auto-assert DX. If you already use Spectator and don't need coverage reports, this library won't offer much. If you want to see which endpoints your test suite actually exercises, or you are adopting OpenAPI 3.1/3.2, this is likely the best choice today.
+Choose based on the workflow you need rather than on a single yes/no feature count:
 
-### Feature comparison (as of 2026-04)
+- Choose **this library** when you need response-level coverage at `(method, path, status, content-type)` granularity, several CI report formats, OpenAPI 3.1/3.2 JSON Schema semantics, schema-driven exploration, or drift detection across a framework-agnostic core and Laravel, Symfony, and Pest adapters.
+- Choose **[Spectator][spectator]** for a Laravel 12 application when route/spec parity, Artisan diagnostics, generated test stubs, JSON assertion failures, or remote/private-GitHub spec sources matter more than response-level coverage granularity.
+- Choose **[league/openapi-psr7-validator][league]** when you want a low-level PSR-7 validator or PSR-15 middleware and will build the test/reporting integration yourself.
+- Choose **[osteel/openapi-httpfoundation-testing][osteel]** when you want a small HttpFoundation-to-PSR-7 validation bridge, or **[laravel-openapi-validator][kirschbaum]** when automatic validation around Laravel HTTP tests is the main requirement.
 
-|  | **This library** | [Spectator][spectator] | [league/psr7][league] | [osteel][osteel] | [kirschbaum][kirschbaum] |
-| --- | :---: | :---: | :---: | :---: | :---: |
-| OpenAPI 3.0 | ✅ | ✅ | ✅ | ✅ | ✅ |
-| OpenAPI 3.1 | ✅ | ⚠️ | ❌ | ⚠️ | ⚠️ |
-| Response body validation | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Request validation (body + params) | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Response header validation | ✅ | ⚠️ | ✅ | ✅ | ✅ |
-| **Endpoint coverage tracking** | ✅ | ❌ | ❌ | ❌ | ❌ |
-| **Schema-driven request fuzzing** | ✅ | ❌ | ❌ | ❌ | ❌ |
-| **Skip-by-status-code (default 5xx)** | ✅ | ❌ | ❌ | ❌ | ✅ |
-| PHPUnit integration | ✅ | ✅ | ❌ | ⚠️ | ✅ |
-| Pest plugin | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Laravel auto-assert | ✅ | ✅ | ❌ | ❌ | ✅ |
-| Symfony HttpFoundation | ✅ | ❌ | ⚠️ | ✅ | ❌ |
-| External `$ref` auto-resolution | ✅ | ✅ | ✅ | ✅ | ✅ |
-| YAML spec loading | ✅ | ⚠️ | ✅ | ✅ | ✅ |
-| **Auto-inject dummy bearer** | ✅ | ❌ | ❌ | ❌ | ❌ |
-| **GitHub Step Summary output** | ✅ | ❌ | ❌ | ❌ | ❌ |
+### Feature comparison (checked 2026-07-10)
 
-**Legend**: ✅ fully supported · ⚠️ partial, delegated to an underlying library, or not explicitly documented · ❌ not supported
+| Capability | **This library** | [Spectator v3.0.2][spectator] | [league/psr7 v0.24][league] | [osteel v0.14][osteel] | [kirschbaum v2.0.2][kirschbaum] |
+| --- | --- | --- | --- | --- | --- |
+| OpenAPI versions explicitly supported | [3.0, 3.1, 3.2](docs/supported-features.md) | Version scope not stated | [3.0.x][league-readme] | [3+; delegates to League v0.22][osteel-composer] | [Delegates to League v0.14–0.24][kirschbaum-composer] |
+| Request + response validation | ✅ | [✅ Laravel][spectator] | [✅ PSR-7][league-readme] | [✅ HttpFoundation / PSR-7][osteel-readme] | [✅ Laravel HTTP tests][kirschbaum-readme] |
+| Coverage granularity | [`method, path, status, content-type`](docs/coverage.md) | [`method, path` operation][spectator-coverage-source] | — | — | — |
+| Coverage outputs | [Markdown, JUnit XML, JSON, HTML, GitHub Step Summary](docs/coverage.md) | [Text, JSON][spectator-coverage] | — | — | — |
+| Parallel coverage merge | [Sidecar + merge CLI](docs/parallel.md) | Not documented | — | — | — |
+| Route/spec parity | Not yet ([#277](https://github.com/studio-design/openapi-contract-testing/issues/277)) | [`spectator:routes`][spectator-cli] | — | — | — |
+| CLI diagnostics / scaffolding | Coverage merge only | [`validate`, `coverage`, `routes`, `stubs`][spectator-cli] | — | — | — |
+| Structured validation failures | Text messages; JSON planned ([#282](https://github.com/studio-design/openapi-contract-testing/issues/282)) | [JSON `{errors: [...]}`][spectator-errors] | [PHP exception hierarchy][league-errors] | [Wrapper exception][osteel-readme] | [PHPUnit failure text][kirschbaum-failure-source] |
+| Schema-driven exploration | [Deterministic happy-path generation](docs/fuzzing.md) | — | — | — | — |
+| Drift / under-description checks | [Enum drift](docs/enum-drift.md), [strict required](docs/strict-required.md) | — | — | — | — |
+| First-class integration | [Framework-agnostic, Laravel, Symfony, Pest](docs/setup.md) | [Laravel][spectator] | [PSR-7, PSR-15 middleware][league-middleware] | [HttpFoundation, PSR-7][osteel-readme] | [Laravel auto-validation][kirschbaum-readme] |
+| Declared runtime floor | PHP 8.2 core; [Testbench 9–11](composer.json) ([Laravel 11–12][testbench-compat]; [Laravel 13 / PHP 8.3][testbench-11-composer]) | [PHP 8.3, Laravel 12][spectator-composer] | [PHP 7.2][league-composer] | [PHP 8.0, HttpFoundation 5–8][osteel-composer] | [PHP 8.0, Illuminate 10–13][kirschbaum-composer] |
 
-**Methodology**: Cells reflect what each library's public documentation and source explicitly guarantee as of 2026-04-25. Competitor versions checked: Spectator v2.2.0, league/openapi-psr7-validator v0.22, osteel/openapi-httpfoundation-testing v0.14, kirschbaum-development/laravel-openapi-validator v2.0.
+**Legend**: ✅ supported · — no equivalent feature documented. “Not documented” is intentionally different from “unsupported”.
 
-[spectator]: https://github.com/hotmeteor/spectator
-[league]: https://github.com/thephpleague/openapi-psr7-validator
-[osteel]: https://github.com/osteel/openapi-httpfoundation-testing
-[kirschbaum]: https://github.com/kirschbaum-development/laravel-openapi-validator
+**Methodology**: This is a documentation/source audit, not a benchmark. Claims are limited to the linked, tag-pinned public documentation and Composer constraints checked on 2026-07-10. This-library claims describe [`main` at `8c6416d`](https://github.com/studio-design/openapi-contract-testing/commit/8c6416dcd7edf179010f5f1cdc71a1e146a5c403); competitor versions are shown in the table header. Re-check this matrix using the [release checklist](docs/versioning.md#release-checklist) at least quarterly or before a release when three months have elapsed.
+
+[spectator]: https://github.com/hotmeteor/spectator/tree/v3.0.2
+[spectator-cli]: https://github.com/hotmeteor/spectator/tree/v3.0.2#artisan-commands
+[spectator-coverage]: https://github.com/hotmeteor/spectator/tree/v3.0.2#contract-coverage-tracking
+[spectator-coverage-source]: https://github.com/hotmeteor/spectator/blob/v3.0.2/src/Coverage/CoverageTracker.php
+[spectator-errors]: https://github.com/hotmeteor/spectator/tree/v3.0.2#machine-readable-error-output
+[spectator-composer]: https://github.com/hotmeteor/spectator/blob/v3.0.2/composer.json
+[league]: https://github.com/thephpleague/openapi-psr7-validator/tree/0.24
+[league-readme]: https://github.com/thephpleague/openapi-psr7-validator/tree/0.24#openapi-psr-7-message-httprequestresponse-validator
+[league-errors]: https://github.com/thephpleague/openapi-psr7-validator/tree/0.24#exceptions
+[league-middleware]: https://github.com/thephpleague/openapi-psr7-validator/tree/0.24#psr-15-middleware
+[league-composer]: https://github.com/thephpleague/openapi-psr7-validator/blob/0.24/composer.json
+[osteel]: https://github.com/osteel/openapi-httpfoundation-testing/tree/v0.14
+[osteel-readme]: https://github.com/osteel/openapi-httpfoundation-testing/tree/v0.14#usage
+[osteel-composer]: https://github.com/osteel/openapi-httpfoundation-testing/blob/v0.14/composer.json
+[kirschbaum]: https://github.com/kirschbaum-development/laravel-openapi-validator/tree/2.0.2
+[kirschbaum-readme]: https://github.com/kirschbaum-development/laravel-openapi-validator/tree/2.0.2#usage
+[kirschbaum-composer]: https://github.com/kirschbaum-development/laravel-openapi-validator/blob/2.0.2/composer.json
+[kirschbaum-failure-source]: https://github.com/kirschbaum-development/laravel-openapi-validator/blob/2.0.2/src/ValidatesOpenApiSpec.php#L271-L289
+[testbench-compat]: https://packages.tools/testbench#version-compatibility
+[testbench-11-composer]: https://github.com/orchestral/testbench/blob/v11.1.0/composer.json
 
 ## Requirements
 
