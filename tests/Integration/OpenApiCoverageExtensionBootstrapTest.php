@@ -99,11 +99,9 @@ class OpenApiCoverageExtensionBootstrapTest extends TestCase
     public function default_testsuite_as_full_warns_when_default_is_empty_string(): void
     {
         // `<phpunit defaultTestSuite="">` is valid XML but makes the
-        // opt-in inert (no possible match). Same WARN policy as above.
-        // Verifies the empty-string branch of `readDefaultTestSuite()`
-        // end-to-end (the unit branch is exercised through `fromSignals`'s
-        // `defaultTestSuite: null` parameterisation; this is the only place
-        // the extension's empty-string normalisation is observable).
+        // opt-in inert (no possible match). PHPUnit 13.2 normalises the empty
+        // attribute to "not declared", while older supported versions expose
+        // the empty string. Both paths must surface the same inert-opt-in WARN.
         $output = $this->runPhpunitWithDefaultTestSuite(
             defaultTestSuite: '',
             optInValue: 'true',
@@ -111,7 +109,7 @@ class OpenApiCoverageExtensionBootstrapTest extends TestCase
         );
 
         $this->assertStringContainsString('default_testsuite_as_full=true', $output);
-        $this->assertStringContainsString('empty', $output);
+        $this->assertStringContainsString('will be inert', $output);
     }
 
     #[Test]
