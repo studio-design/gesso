@@ -1,0 +1,33 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+use Studio\OpenApiContractTesting\Cli\DoctorCommand;
+
+$autoloadCandidates = [
+    __DIR__ . '/../vendor/autoload.php',
+    __DIR__ . '/../../../autoload.php',
+];
+
+$autoload = null;
+foreach ($autoloadCandidates as $candidate) {
+    if (file_exists($candidate)) {
+        $autoload = $candidate;
+
+        break;
+    }
+}
+
+if ($autoload === null) {
+    fwrite(STDERR, "[OpenAPI Doctor] FATAL: could not locate Composer autoload.\n");
+    exit(1);
+}
+
+require $autoload;
+
+$argv = $_SERVER['argv'] ?? [];
+array_shift($argv);
+
+$command = new DoctorCommand();
+exit($command->run(DoctorCommand::parseArgv($argv)));

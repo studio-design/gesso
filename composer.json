@@ -42,6 +42,7 @@
         ]
     },
     "bin": [
+        "bin/openapi-contract",
         "bin/openapi-coverage-merge"
     ],
     "autoload-dev": {

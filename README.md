@@ -110,7 +110,7 @@ Three steps to your first contract-tested endpoint with the Laravel adapter. For
 
 Point the loader at your spec's entry file. Internal and local-filesystem `$ref` are resolved automatically — no pre-bundling required:
 
-```
+```text
 openapi/
 ├── root.yaml          # paths reference ./schemas/*.yaml
 └── schemas/
@@ -119,6 +119,19 @@ openapi/
 ```
 
 ### 2. Register the PHPUnit extension
+
+Before running your first test, verify that the package can load and enforce the contract:
+
+```bash
+vendor/bin/openapi-contract doctor \
+  --spec=openapi/root.yaml \
+  --strip-prefix=/api \
+  --phpunit-snippet
+```
+
+The command resolves local references, checks the OpenAPI/JSON Schema dialect, reports unsupported enforcement features, counts discovered operations and responses, and exits non-zero for incompatible specs. Use `--format=json` in CI. See the [doctor command reference](docs/doctor.md) for multiple specs, HTTP references, output categories, and exit codes.
+
+Then register the emitted configuration:
 
 ```xml
 <extensions>
@@ -161,6 +174,7 @@ To validate every response automatically, set `'auto_assert' => true` and drop t
 | Topic | Reference |
 |---|---|
 | Full setup, Laravel / Symfony / framework-agnostic adapters, auto-assert, opt-out attributes, request validation, HTTP `$ref` | [`docs/setup.md`](docs/setup.md) |
+| Pre-test compatibility diagnostics (`openapi-contract doctor`) | [`docs/doctor.md`](docs/doctor.md) |
 | Pest plugin: `expect()->toMatchOpenApiResponseSchema()` and friends | [`docs/pest-plugin.md`](docs/pest-plugin.md) |
 | Schema-driven request fuzzing | [`docs/fuzzing.md`](docs/fuzzing.md) |
 | Enum drift detection | [`docs/enum-drift.md`](docs/enum-drift.md) |
