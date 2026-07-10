@@ -1,6 +1,7 @@
 # API Reference
 
 - [`OpenApiResponseValidator`](#openapiresponsevalidator)
+- [`OpenApiPsr7Validator`](#openapipsr7validator)
 - [`OpenApiSpecLoader`](#openapispecloader)
 - [`OpenApiCoverageTracker`](#openapicoveragetracker)
 
@@ -44,6 +45,26 @@ match ($result->outcome()) {
     OpenApiValidationOutcome::Skipped => logger()->info('skipped', ['reason' => $result->skipReason()]),
 };
 ```
+
+## `OpenApiPsr7Validator`
+
+Adapts PSR-7 messages to the request and response validators and records the
+same coverage as framework integrations:
+
+```php
+use Studio\OpenApiContractTesting\Psr7\OpenApiPsr7Validator;
+
+$validator = new OpenApiPsr7Validator('front');
+
+$exchange = $validator->validateExchange($request, $response);
+$requestResult = $exchange->requestResult();
+$responseResult = $exchange->responseResult();
+```
+
+Use `validateRequest()`, `validateResponse()`, or
+`validateResponseForOperation()` when only one side is available. See the
+[PSR-7 guide](psr7.md) for PHPUnit assertions, stream handling, and a PSR-15
+test integration recipe.
 
 ## `OpenApiSpecLoader`
 

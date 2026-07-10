@@ -1,0 +1,30 @@
+{
+    "name": "studio-design/openapi-contract-testing-psr7-example",
+    "description": "Runnable PSR-7 example for studio-design/openapi-contract-testing.",
+    "license": "MIT",
+    "type": "project",
+    "require": {
+        "php": "^8.2",
+        "guzzlehttp/psr7": "^2.7",
+        "studio-design/openapi-contract-testing": "@dev"
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Examples\\Psr7\\Tests\\": "tests/"
+        }
+    },
+    "repositories": [
+        {
+            "type": "path",
+            "url": "../..",
+            "options": {
+                "symlink": true
+            }
+        }
+    ],
+    "scripts": {
+        "test": "phpunit"
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
+}
