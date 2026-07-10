@@ -232,6 +232,48 @@ class DoctorCommandTest extends TestCase
         }
     }
 
+    #[Test]
+    public function rejects_malformed_discriminator_in_response_schema_with_default_enforcement(): void
+    {
+        $spec = $this->writeSpec('response-discriminator.json', (string) json_encode([
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'Test', 'version' => '1'],
+            'paths' => ['/pets' => ['get' => ['responses' => ['200' => [
+                'description' => 'ok',
+                'content' => ['application/json' => ['schema' => [
+                    'type' => 'object',
+                    'discriminator' => ['propertyName' => 'type', 'mapping' => 'not-an-object'],
+                ]]],
+            ]]]]],
+        ], JSON_THROW_ON_ERROR));
+        $report = $this->runJsonDoctor($spec, $exit);
+
+        $this->assertSame(DoctorCommand::EXIT_DIAGNOSTIC_FAILURE, $exit);
+        $this->assertSame('error', $report['status']);
+        $this->assertSame('structure', $report['issues'][0]['category']);
+        $this->assertStringContainsString('discriminator.mapping', $report['issues'][0]['message']);
+    }
+
+    #[Test]
+    public function rejects_malformed_discriminator_in_component_schema_with_default_enforcement(): void
+    {
+        $spec = $this->writeSpec('component-discriminator.json', (string) json_encode([
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'Test', 'version' => '1'],
+            'paths' => [],
+            'components' => ['schemas' => ['Pet' => [
+                'type' => 'object',
+                'discriminator' => ['propertyName' => 'type', 'mapping' => 'not-an-object'],
+            ]]],
+        ], JSON_THROW_ON_ERROR));
+        $report = $this->runJsonDoctor($spec, $exit);
+
+        $this->assertSame(DoctorCommand::EXIT_DIAGNOSTIC_FAILURE, $exit);
+        $this->assertSame('error', $report['status']);
+        $this->assertSame('structure', $report['issues'][0]['category']);
+        $this->assertStringContainsString('discriminator.mapping', $report['issues'][0]['message']);
+    }
+
     private function writeSpec(string $name, string $contents): string
     {
         $path = $this->workDir . '/' . $name;

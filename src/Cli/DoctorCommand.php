@@ -21,12 +21,14 @@ use InvalidArgumentException;
 use Psr\Http\Client\ClientInterface;
 use Psr\Http\Message\RequestFactoryInterface;
 use Studio\OpenApiContractTesting\Exception\InvalidOpenApiSpecException;
+use Studio\OpenApiContractTesting\Exception\MalformedDiscriminatorException;
 use Studio\OpenApiContractTesting\Exception\SpecFileNotFoundException;
 use Studio\OpenApiContractTesting\OpenApiVersion;
 use Studio\OpenApiContractTesting\Spec\OpenApiOperationResolver;
 use Studio\OpenApiContractTesting\Spec\OpenApiSchemaConverter;
 use Studio\OpenApiContractTesting\Spec\OpenApiSchemaDialect;
 use Studio\OpenApiContractTesting\Spec\OpenApiSpecLoader;
+use Studio\OpenApiContractTesting\Validation\Support\DiscriminatorContext;
 use Studio\OpenApiContractTesting\Validation\Support\MalformedSpecNode;
 use Symfony\Component\HttpClient\Psr18Client;
 use Throwable;
@@ -302,7 +304,7 @@ final class DoctorCommand
             $version = OpenApiVersion::fromSpec($spec);
             $dialect = OpenApiSchemaDialect::fromSpec($spec, $version);
             [$operations, $responses] = $this->inspectStructure($spec, $label, $issues);
-            $this->inspectSchemas($spec, $version, $dialect);
+            $this->inspectSchemas($spec, $version, $dialect, new DiscriminatorContext($spec, true));
             $this->inspectSkippedFeatures($spec, $label, $issues);
 
             $specResults[] = [
@@ -315,6 +317,8 @@ final class DoctorCommand
             ];
         } catch (InvalidOpenApiSpecException $e) {
             $issues[] = $this->issue('error', $this->categoryForException($e), $label, $e->getMessage(), $this->suggestionForException($e));
+        } catch (MalformedDiscriminatorException $e) {
+            $issues[] = $this->issue('error', 'structure', $label, $e->getMessage(), 'Fix the discriminator definition or explicitly disable enforcement in PHPUnit.');
         } catch (InvalidArgumentException|SpecFileNotFoundException $e) {
             $issues[] = $this->issue('error', 'configuration', $label, $e->getMessage(), null);
         } catch (Throwable $e) {
@@ -463,17 +467,26 @@ final class DoctorCommand
     }
 
     /** @param array<string, mixed> $spec */
-    private function inspectSchemas(array $spec, OpenApiVersion $version, string $dialect): void
-    {
-        $this->walkForSchemas($spec, $version, $dialect, null);
+    private function inspectSchemas(
+        array $spec,
+        OpenApiVersion $version,
+        string $dialect,
+        DiscriminatorContext $discriminator,
+    ): void {
+        $this->walkForSchemas($spec, $version, $dialect, $discriminator, null);
     }
 
     /** @param array<mixed> $node */
-    private function walkForSchemas(array $node, OpenApiVersion $version, string $dialect, ?string $parentKey): void
-    {
+    private function walkForSchemas(
+        array $node,
+        OpenApiVersion $version,
+        string $dialect,
+        DiscriminatorContext $discriminator,
+        ?string $parentKey,
+    ): void {
         if ($parentKey === 'schema') {
             /** @var array<string, mixed> $node */
-            OpenApiSchemaConverter::convert($node, $version, jsonSchemaDialect: $dialect);
+            OpenApiSchemaConverter::convert($node, $version, discriminator: $discriminator, jsonSchemaDialect: $dialect);
 
             return;
         }
@@ -486,13 +499,13 @@ final class DoctorCommand
                 foreach ($value as $schema) {
                     if (is_array($schema)) {
                         /** @var array<string, mixed> $schema */
-                        OpenApiSchemaConverter::convert($schema, $version, jsonSchemaDialect: $dialect);
+                        OpenApiSchemaConverter::convert($schema, $version, discriminator: $discriminator, jsonSchemaDialect: $dialect);
                     }
                 }
 
                 continue;
             }
-            $this->walkForSchemas($value, $version, $dialect, is_string($key) ? $key : null);
+            $this->walkForSchemas($value, $version, $dialect, $discriminator, is_string($key) ? $key : null);
         }
     }
 
