@@ -939,6 +939,30 @@ class OpenApiRefResolverTest extends TestCase
     }
 
     #[Test]
+    public function resolves_ref_inside_defs_entry_named_like_a_named_map_keyword(): void
+    {
+        $resolved = OpenApiRefResolver::resolve([
+            'components' => [
+                'schemas' => [
+                    'Target' => ['type' => 'string'],
+                ],
+            ],
+            'schema' => [
+                '$defs' => [
+                    '$defs' => [
+                        '$ref' => '#/components/schemas/Target',
+                    ],
+                ],
+            ],
+        ]);
+
+        $this->assertSame(
+            ['type' => 'string'],
+            $resolved['schema']['$defs']['$defs'],
+        );
+    }
+
+    #[Test]
     public function resolves_ref_as_additional_properties_schema(): void
     {
         // `additionalProperties` holds a single schema, not a dict of schemas,
