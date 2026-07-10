@@ -114,6 +114,7 @@
             "/.phpunit.cache",
             "/phpstan.neon.dist",
             "/phpunit.xml.dist",
+            "/AGENTS.md",
             "/CLAUDE.md",
             "/CONTRIBUTING.md",
             "/UPGRADING.md",
