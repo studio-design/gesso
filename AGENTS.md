@@ -28,8 +28,8 @@ maintenance cost.
   shared validation boundaries.
 - `src/Coverage/`, `src/PHPUnit/`: coverage state/renderers/merge protocol and the
   PHPUnit extension.
-- `src/Laravel/`, `src/Symfony/`, `src/Pest/`: integration layers. Keep policy in
-  the core when it is not framework-specific.
+- `src/Psr7/`, `src/Laravel/`, `src/Symfony/`, `src/Pest/`: integration layers.
+  Keep policy in the core when it is not framework-specific.
 - `src/Fuzz/`, `src/Schema/`: generated exploration cases and enum-drift checks.
 - `src/Internal/`: implementation details; do not expose these as public API.
 - `bin/openapi-contract`, `bin/openapi-coverage-merge`: Composer-installed CLIs.

@@ -27,7 +27,7 @@ Validate your API responses against your OpenAPI specification during testing, a
 - **Enum drift detection** — Static comparison between PHP backed enums and their `enum:` spec arrays, with PHPUnit-extension auto-discovery
 - **Schema under-description detection** — Optional strict mode that flags response fields the implementation always returns but the spec marks as optional, catching the spec gaps that conformance checks alone can't. See [`docs/strict-required.md`](docs/strict-required.md) for current scope and limitations.
 - **Skip-by-status-code** — Configurable regex list of status codes whose bodies are not validated (default: every `5xx`); per-request via `skipResponseCode()`
-- **Laravel, Symfony & Pest adapters** — Auto-assert / auto-validate-request integration for Laravel, an `OpenApiAssertions` trait for Symfony HttpFoundation, and explicit `expect(...)->toMatchOpenApiResponseSchema()` for Pest
+- **PSR-7, Laravel, Symfony & Pest adapters** — First-class PSR-7 request/response/exchange validation, auto-assert / auto-validate-request integration for Laravel, HttpFoundation assertions for Symfony, and Pest expectations
 - **Parallel-runner safe** — Coordinated sidecar+merge workflow for paratest / `pest --parallel`
 - **Multi-format reports** — Markdown / JUnit XML / JSON / HTML output with one-click GitHub Step Summary
 - **Zero runtime overhead** — Only used in test suites
@@ -55,7 +55,7 @@ Choose based on the workflow you need rather than on a single yes/no feature cou
 | Structured validation failures | Text messages; JSON planned ([#282](https://github.com/studio-design/openapi-contract-testing/issues/282)) | [JSON `{errors: [...]}`][spectator-errors] | [PHP exception hierarchy][league-errors] | [Wrapper exception][osteel-readme] | [PHPUnit failure text][kirschbaum-failure-source] |
 | Schema-driven exploration | [Deterministic happy-path generation](docs/fuzzing.md) | — | — | — | — |
 | Drift / under-description checks | [Enum drift](docs/enum-drift.md), [strict required](docs/strict-required.md) | — | — | — | — |
-| First-class integration | [Framework-agnostic, Laravel, Symfony, Pest](docs/setup.md) | [Laravel][spectator] | [PSR-7, PSR-15 middleware][league-middleware] | [HttpFoundation, PSR-7][osteel-readme] | [Laravel auto-validation][kirschbaum-readme] |
+| First-class integration | [PSR-7](docs/psr7.md), [Laravel, Symfony, Pest](docs/setup.md) | [Laravel][spectator] | [PSR-7, PSR-15 middleware][league-middleware] | [HttpFoundation, PSR-7][osteel-readme] | [Laravel auto-validation][kirschbaum-readme] |
 | Declared runtime floor | PHP 8.2 core; [Testbench 9–11](composer.json) ([Laravel 11–12][testbench-compat]; [Laravel 13 / PHP 8.3][testbench-11-composer]) | [PHP 8.3, Laravel 12][spectator-composer] | [PHP 7.2][league-composer] | [PHP 8.0, HttpFoundation 5–8][osteel-composer] | [PHP 8.0, Illuminate 10–13][kirschbaum-composer] |
 
 **Legend**: ✅ supported · — no equivalent feature documented. “Not documented” is intentionally different from “unsupported”.
@@ -105,7 +105,9 @@ composer require --dev studio-design/openapi-contract-testing
 
 ## Quick start
 
-Three steps to your first contract-tested endpoint with the Laravel adapter. For the Symfony adapter, framework-agnostic usage, configuration knobs, opt-out attributes, and request-side validation, see [`docs/setup.md`](docs/setup.md).
+Three steps to your first contract-tested endpoint. The example below uses a
+PSR-7 request and response; Laravel and Symfony integrations are documented in
+[`docs/setup.md`](docs/setup.md).
 
 ### 1. Provide your OpenAPI spec
 
@@ -144,7 +146,26 @@ Then register the emitted configuration:
 </extensions>
 ```
 
-### 3. Assert in tests (Laravel)
+### 3. Validate a PSR-7 exchange
+
+When your application or HTTP client already returns PSR-7 messages, validate
+both sides and record coverage with one framework-independent call:
+
+```php
+use Studio\OpenApiContractTesting\Psr7\OpenApiPsr7Validator;
+
+$validator = new OpenApiPsr7Validator('front');
+$result = $validator->validateExchange($request, $response);
+
+$this->assertTrue($result->isValid(), $result->errorMessage());
+```
+
+The adapter accepts any `psr/http-message` implementation; no concrete PSR-7
+package is added to production dependencies. A PHPUnit assertion trait,
+response-only operation addressing, PSR-15 test recipe, and stream guarantees
+are covered in the [PSR-7 guide](docs/psr7.md).
+
+### Laravel adapter
 
 ```bash
 php artisan vendor:publish --tag=openapi-contract-testing
@@ -180,6 +201,7 @@ To validate every response automatically, set `'auto_assert' => true` and drop t
 
 | Topic | Reference |
 |---|---|
+| PSR-7 request / response / exchange validation and PSR-15 test recipe | [`docs/psr7.md`](docs/psr7.md) |
 | Full setup, Laravel / Symfony / framework-agnostic adapters, auto-assert, opt-out attributes, request validation, HTTP `$ref` | [`docs/setup.md`](docs/setup.md) |
 | Pre-test compatibility diagnostics (`openapi-contract doctor`) | [`docs/doctor.md`](docs/doctor.md) |
 | Laravel route/spec parity (`openapi:routes`) | [`docs/laravel-route-parity.md`](docs/laravel-route-parity.md) |

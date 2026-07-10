@@ -121,6 +121,26 @@ jobs:
         working-directory: examples/pest
         run: vendor/bin/pest --colors=always
 
+  psr7-example:
+    name: PSR-7 example
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
+        with:
+          php-version: '8.2'
+          coverage: none
+
+      - name: Install example dependencies
+        working-directory: examples/psr7
+        run: composer install --prefer-dist --no-interaction --no-progress
+
+      - name: Run PSR-7 example
+        working-directory: examples/psr7
+        run: composer test
+
   static-analysis:
     name: PHPStan
     runs-on: ubuntu-latest

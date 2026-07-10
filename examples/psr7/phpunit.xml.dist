@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="vendor/autoload.php"
+         colors="true"
+         cacheDirectory=".phpunit.cache">
+    <testsuites>
+        <testsuite name="PSR-7 example">
+            <directory>tests</directory>
+        </testsuite>
+    </testsuites>
+
+    <extensions>
+        <bootstrap class="Studio\OpenApiContractTesting\PHPUnit\OpenApiCoverageExtension">
+            <parameter name="spec_base_path" value="openapi"/>
+            <parameter name="specs" value="petstore"/>
+        </bootstrap>
+    </extensions>
+</phpunit>
