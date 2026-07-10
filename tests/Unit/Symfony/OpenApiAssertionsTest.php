@@ -47,6 +47,19 @@ final class OpenApiAssertionsTest extends TestCase
     }
 
     #[Test]
+    #[OpenApiSpec('openapi-3.2')]
+    public function openapi_32_plain_operation_works_through_symfony_adapter(): void
+    {
+        $request = Request::create('/v1/pets', 'GET');
+        $response = new JsonResponse(['data' => [['id' => 1, 'name' => 'Fido']]]);
+
+        $this->assertResponseMatchesOpenApiSchema($request, $response);
+
+        $covered = OpenApiCoverageTracker::getCovered();
+        $this->assertArrayHasKey('GET /v1/pets', $covered['openapi-3.2'] ?? []);
+    }
+
+    #[Test]
     #[OpenApiSpec('unsupported-version')]
     public function unsupported_openapi_version_fails_before_response_assertion(): void
     {
@@ -54,7 +67,7 @@ final class OpenApiAssertionsTest extends TestCase
         $response = new Response('', 200);
 
         $this->expectException(InvalidOpenApiSpecException::class);
-        $this->expectExceptionMessage("Unsupported OpenAPI version: '3.2.0' (string)");
+        $this->expectExceptionMessage("Unsupported OpenAPI version: '3.3.0' (string)");
 
         $this->assertResponseMatchesOpenApiSchema($request, $response);
     }

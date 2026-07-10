@@ -9,6 +9,7 @@ use InvalidArgumentException;
 use Studio\OpenApiContractTesting\HttpMethod;
 use Studio\OpenApiContractTesting\OpenApiVersion;
 use Studio\OpenApiContractTesting\SchemaContext;
+use Studio\OpenApiContractTesting\Spec\OpenApiOperationResolver;
 use Studio\OpenApiContractTesting\Spec\OpenApiPathMatcher;
 use Studio\OpenApiContractTesting\Spec\OpenApiSchemaConverter;
 use Studio\OpenApiContractTesting\Spec\OpenApiSpecLoader;
@@ -64,7 +65,6 @@ final class OpenApiEndpointExplorer
         }
 
         $methodUpper = strtoupper($method);
-        $methodLower = strtolower($method);
 
         try {
             $methodEnum = HttpMethod::from($methodUpper);
@@ -91,8 +91,9 @@ final class OpenApiEndpointExplorer
 
         /** @var array<string, mixed> $pathSpec */
         $pathSpec = is_array($paths[$matchedPath] ?? null) ? $paths[$matchedPath] : [];
-        $operation = $pathSpec[$methodLower] ?? null;
-        if (!is_array($operation)) {
+        $resolvedOperation = OpenApiOperationResolver::resolve($pathSpec, $methodUpper);
+        $operation = $resolvedOperation['operation'];
+        if (!$resolvedOperation['found'] || !is_array($operation)) {
             throw new InvalidArgumentException(sprintf(
                 "Operation %s '%s' is not declared in OpenAPI spec '%s'.",
                 $methodUpper,

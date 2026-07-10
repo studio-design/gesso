@@ -1,0 +1,218 @@
+{
+  "openapi": "3.2.0",
+  "info": {
+    "title": "OpenAPI 3.2 contract fixture",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/v1/pets": {
+      "get": {
+        "operationId": "listPets32",
+        "responses": {
+          "200": {
+            "description": "Pet list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["data"],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Pet"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/search": {
+      "query": {
+        "operationId": "searchPets32",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["term"],
+                "properties": {
+                  "term": {"type": "string"}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Search result",
+            "content": {
+              "application/json": {
+                "schema": {"type": "array", "items": {"$ref": "#/components/schemas/Pet"}}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/pets/{petId}": {
+      "parameters": [
+        {
+          "name": "petId",
+          "in": "path",
+          "required": true,
+          "schema": {"type": "integer"}
+        }
+      ],
+      "get": {
+        "operationId": "getPet32",
+        "responses": {
+          "200": {
+            "description": "A polymorphic pet",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {"$ref": "#/components/schemas/Cat"},
+                    {"$ref": "#/components/schemas/Dog"},
+                    {"$ref": "#/components/schemas/OtherPet"}
+                  ],
+                  "discriminator": {
+                    "propertyName": "kind",
+                    "mapping": {
+                      "cat": "#/components/schemas/Cat",
+                      "dog": "#/components/schemas/Dog"
+                    },
+                    "defaultMapping": "#/components/schemas/OtherPet"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "additionalOperations": {
+        "COPY": {
+          "operationId": "copyPet32",
+          "responses": {
+            "200": {
+              "description": "Copied pet",
+              "content": {
+                "application/json": {
+                  "schema": {"$ref": "#/components/schemas/Pet"}
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/filter": {
+      "get": {
+        "operationId": "filterPets32",
+        "parameters": [
+          {
+            "name": "filter",
+            "in": "querystring",
+            "required": true,
+            "content": {
+              "application/x-www-form-urlencoded": {
+                "schema": {
+                  "type": "object",
+                  "required": ["limit"],
+                  "properties": {
+                    "limit": {"type": "integer", "minimum": 1},
+                    "tag": {"type": "string"}
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        ],
+        "responses": {
+          "200": {"description": "Filtered pets"}
+        }
+      }
+    },
+    "/v1/events": {
+      "get": {
+        "operationId": "streamEvents32",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "text/event-stream": {
+              "itemSchema": {
+                "type": "object",
+                "required": ["event"],
+                "properties": {
+                  "event": {"type": "string"}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Pet events",
+            "content": {
+              "text/event-stream": {
+                "itemSchema": {
+                  "type": "object",
+                  "required": ["event"],
+                  "properties": {
+                    "event": {"type": "string"}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Pet": {
+        "type": "object",
+        "required": ["id", "name"],
+        "properties": {
+          "id": {"type": "integer"},
+          "name": {"type": "string"}
+        }
+      },
+      "Cat": {
+        "type": "object",
+        "required": ["kind", "lives"],
+        "properties": {
+          "kind": {"const": "cat"},
+          "lives": {"type": "integer"}
+        },
+        "additionalProperties": false
+      },
+      "Dog": {
+        "type": "object",
+        "required": ["kind", "barks"],
+        "properties": {
+          "kind": {"const": "dog"},
+          "barks": {"type": "boolean"}
+        },
+        "additionalProperties": false
+      },
+      "OtherPet": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "kind": {"not": {"enum": ["cat", "dog"]}},
+          "name": {"type": "string"}
+        },
+        "additionalProperties": false
+      }
+    }
+  }
+}

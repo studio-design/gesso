@@ -24,6 +24,7 @@ use Studio\OpenApiContractTesting\Internal\StackTraceFilter;
 use Studio\OpenApiContractTesting\OpenApiRequestValidator;
 use Studio\OpenApiContractTesting\OpenApiResponseValidator;
 use Studio\OpenApiContractTesting\SkipOpenApiResolver;
+use Studio\OpenApiContractTesting\Spec\OpenApiOperationResolver;
 use Studio\OpenApiContractTesting\Spec\OpenApiPathMatcher;
 use Studio\OpenApiContractTesting\Spec\OpenApiSpecLoader;
 use Studio\OpenApiContractTesting\Spec\OpenApiSpecResolver;
@@ -889,9 +890,10 @@ trait ValidatesOpenApiSchema
             return null;
         }
 
-        $operation = $pathSpec[strtolower($method)] ?? null;
+        $resolved = OpenApiOperationResolver::resolve($pathSpec, $method);
+        $operation = $resolved['operation'];
 
-        return is_array($operation) ? $operation : null;
+        return $resolved['found'] && is_array($operation) ? $operation : null;
     }
 
     private function getOrCreateValidator(): OpenApiResponseValidator

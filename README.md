@@ -13,13 +13,13 @@
 [![PHP Version Require](https://poser.pugx.org/studio-design/openapi-contract-testing/require/php)](https://packagist.org/packages/studio-design/openapi-contract-testing)
 [![License](https://poser.pugx.org/studio-design/openapi-contract-testing/license)](https://packagist.org/packages/studio-design/openapi-contract-testing)
 
-Framework-agnostic OpenAPI 3.0/3.1 contract testing for PHPUnit **with endpoint coverage tracking**.
+Framework-agnostic OpenAPI 3.0/3.1/3.2 contract testing for PHPUnit **with endpoint coverage tracking**.
 
 Validate your API responses against your OpenAPI specification during testing, and get a coverage report showing which endpoints have been tested.
 
 ## Features
 
-- **OpenAPI 3.0 & 3.1 support** — Automatic version detection from the `openapi` field
+- **OpenAPI 3.0, 3.1 & 3.2 support** — Explicit version detection, including 3.2 `QUERY`, custom `additionalOperations`, form `querystring`, `discriminator.defaultMapping`, and observable streaming limitations
 - **Response & request validation** — JSON Schema (Draft 07 via opis/json-schema) for body, parameters, and security schemes; `application/json` and any `+json` content type
 - **Endpoint coverage tracking** — Unique PHPUnit extension that reports which spec endpoints are covered by tests, at `(method, path, status, content-type)` granularity
 - **Schema-driven request fuzzing** — `ExploresOpenApiEndpoint` trait generates N happy-path inputs straight from the spec (Schemathesis-style)
@@ -33,7 +33,7 @@ Validate your API responses against your OpenAPI specification during testing, a
 
 ## Why this library?
 
-This library fills a gap left by existing PHP OpenAPI testing tools: **endpoint coverage tracking** and **first-class OpenAPI 3.1 support**, combined with Laravel auto-assert DX. If you already use Spectator and don't need coverage reports, this library won't offer much. If you want to see which endpoints your test suite actually exercises, or you're writing OpenAPI 3.1 specs, this is likely the best choice today.
+This library fills a gap left by existing PHP OpenAPI testing tools: **endpoint coverage tracking** and explicit **OpenAPI 3.2 support**, combined with Laravel auto-assert DX. If you already use Spectator and don't need coverage reports, this library won't offer much. If you want to see which endpoints your test suite actually exercises, or you are adopting OpenAPI 3.1/3.2, this is likely the best choice today.
 
 ### Feature comparison (as of 2026-04)
 

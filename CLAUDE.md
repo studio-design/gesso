@@ -32,7 +32,7 @@ vendor/bin/php-cs-fixer fix --dry-run --diff
 
 ## Architecture
 
-This is a PHP library (`studio-design/openapi-contract-testing`) that validates API responses against OpenAPI 3.0/3.1 specs during PHPUnit tests and tracks endpoint coverage.
+This is a PHP library (`studio-design/openapi-contract-testing`) that validates API responses against OpenAPI 3.0/3.1/3.2 specs during PHPUnit tests and tracks endpoint coverage.
 
 ### Validation Flow
 

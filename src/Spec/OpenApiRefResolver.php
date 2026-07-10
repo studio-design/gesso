@@ -23,8 +23,10 @@ use function is_string;
 use function parse_url;
 use function rawurldecode;
 use function sprintf;
+use function str_contains;
 use function str_replace;
 use function str_starts_with;
+use function strlen;
 use function strpos;
 use function strrpos;
 use function substr;
@@ -34,6 +36,13 @@ use function substr;
  */
 final class OpenApiRefResolver
 {
+    /**
+     * Internal provenance attached to direct component-schema references in
+     * `oneOf` / `anyOf`. Eager reference resolution otherwise erases the
+     * component name needed for OpenAPI discriminator implicit mappings.
+     */
+    public const IMPLICIT_SCHEMA_NAME_EXTENSION = 'x-studio-openapi-contract-testing-implicit-schema-name';
+
     /**
      * Keys whose value is opaque user data per OpenAPI 3.x and JSON Schema —
      * a `$ref` literal nested under one of these keys is a data field, not a
@@ -218,10 +227,22 @@ final class OpenApiRefResolver
         bool $insideUserNamedMap,
         RefResolutionContext $context,
         array &$documentCache,
+        bool $captureImplicitSchemaName = false,
     ): void {
+        // Reserve the provenance key for resolver-generated data. Removing a
+        // user-authored value before descent prevents an inline schema from
+        // spoofing an implicit discriminator mapping.
+        unset($node[self::IMPLICIT_SCHEMA_NAME_EXTENSION]);
+
         if (!$insideUserNamedMap && array_key_exists('$ref', $node)) {
             $ref = self::assertStringRef($node['$ref']);
+            $implicitSchemaName = $captureImplicitSchemaName
+                ? self::implicitSchemaNameFromRef($ref)
+                : null;
             self::resolveRef($node, $ref, $root, $chain, $context, $documentCache);
+            if ($implicitSchemaName !== null) {
+                $node[self::IMPLICIT_SCHEMA_NAME_EXTENSION] = $implicitSchemaName;
+            }
 
             return;
         }
@@ -273,6 +294,17 @@ final class OpenApiRefResolver
 
                     continue;
                 }
+
+                if (in_array($key, ['oneOf', 'anyOf'], true) && array_is_list($child)) {
+                    foreach ($child as &$alternative) {
+                        if (is_array($alternative)) {
+                            self::walk($alternative, $root, $chain, false, $context, $documentCache, true);
+                        }
+                    }
+                    unset($alternative);
+
+                    continue;
+                }
             }
 
             // additionalProperties is intentionally excluded: its value is a single
@@ -282,6 +314,21 @@ final class OpenApiRefResolver
             self::walk($child, $root, $chain, $childInsideUserNamedMap, $context, $documentCache);
         }
         unset($child);
+    }
+
+    private static function implicitSchemaNameFromRef(string $ref): ?string
+    {
+        $prefix = '#/components/schemas/';
+        if (!str_starts_with($ref, $prefix)) {
+            return null;
+        }
+
+        $segment = substr($ref, strlen($prefix));
+        if ($segment === '' || str_contains($segment, '/')) {
+            return null;
+        }
+
+        return self::unescapePointerSegment($segment);
     }
 
     /**

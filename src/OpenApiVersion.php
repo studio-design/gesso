@@ -18,6 +18,7 @@ enum OpenApiVersion: string
 {
     case V3_0 = '3.0';
     case V3_1 = '3.1';
+    case V3_2 = '3.2';
 
     /**
      * Detect OAS version from a parsed spec array.
@@ -42,6 +43,10 @@ enum OpenApiVersion: string
             if ($family === self::V3_1->value) {
                 return self::V3_1;
             }
+
+            if ($family === self::V3_2->value) {
+                return self::V3_2;
+            }
         }
 
         $received = array_key_exists('openapi', $spec)
@@ -51,7 +56,7 @@ enum OpenApiVersion: string
         throw new InvalidOpenApiSpecException(
             InvalidOpenApiSpecReason::UnsupportedVersion,
             "Unsupported OpenAPI version: {$received}. The required `openapi` field must be a "
-            . 'major.minor.patch string in a supported version family: 3.0.x or 3.1.x.',
+            . 'major.minor.patch string in a supported version family: 3.0.x, 3.1.x, or 3.2.x.',
         );
     }
 }

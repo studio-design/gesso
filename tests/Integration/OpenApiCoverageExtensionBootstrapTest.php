@@ -65,8 +65,8 @@ class OpenApiCoverageExtensionBootstrapTest extends TestCase
 
         $this->assertNotSame(0, $exit, "Expected non-zero exit; stderr was:\n" . $stderr);
         $this->assertStringContainsString('FATAL', $stderr);
-        $this->assertStringContainsString("Unsupported OpenAPI version: '3.2.0' (string)", $stderr);
-        $this->assertStringContainsString('3.0.x or 3.1.x', $stderr);
+        $this->assertStringContainsString("Unsupported OpenAPI version: '3.3.0' (string)", $stderr);
+        $this->assertStringContainsString('3.0.x, 3.1.x, or 3.2.x', $stderr);
     }
 
     #[Test]

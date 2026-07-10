@@ -45,7 +45,7 @@ class OpenApiEndpointExplorerTest extends TestCase
     public function rejects_unsupported_openapi_version(): void
     {
         $this->expectException(InvalidOpenApiSpecException::class);
-        $this->expectExceptionMessage("Unsupported OpenAPI version: '3.2.0' (string)");
+        $this->expectExceptionMessage("Unsupported OpenAPI version: '3.3.0' (string)");
 
         OpenApiEndpointExplorer::explore('unsupported-version', 'GET', '/v1/pets', cases: 1);
     }
@@ -80,6 +80,19 @@ class OpenApiEndpointExplorerTest extends TestCase
             $this->assertInstanceOf(ExploredCase::class, $case);
             $this->assertSame(HttpMethod::POST, $case->method);
             $this->assertSame('/v1/pets', $case->matchedPath);
+        }
+    }
+
+    #[Test]
+    public function explores_openapi_32_query_operation(): void
+    {
+        $cases = OpenApiEndpointExplorer::explore('openapi-3.2', 'QUERY', '/v1/search', cases: 2, seed: 1);
+
+        foreach ($cases as $case) {
+            $this->assertSame(HttpMethod::QUERY, $case->method);
+            $this->assertSame('/v1/search', $case->matchedPath);
+            $this->assertIsArray($case->body);
+            $this->assertArrayHasKey('term', $case->body);
         }
     }
 

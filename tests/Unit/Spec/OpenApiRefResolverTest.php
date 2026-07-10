@@ -45,6 +45,26 @@ class OpenApiRefResolverTest extends TestCase
     }
 
     #[Test]
+    public function records_implicit_schema_name_only_for_direct_composition_refs(): void
+    {
+        $marker = OpenApiRefResolver::IMPLICIT_SCHEMA_NAME_EXTENSION;
+        $resolved = OpenApiRefResolver::resolve([
+            'components' => ['schemas' => [
+                'Cat' => ['type' => 'object', 'required' => ['meow']],
+            ]],
+            'schema' => [
+                'oneOf' => [
+                    ['$ref' => '#/components/schemas/Cat'],
+                    ['type' => 'object', $marker => 'Spoofed'],
+                ],
+            ],
+        ]);
+
+        $this->assertSame('Cat', $resolved['schema']['oneOf'][0][$marker]);
+        $this->assertArrayNotHasKey($marker, $resolved['schema']['oneOf'][1]);
+    }
+
+    #[Test]
     public function resolves_nested_refs(): void
     {
         $spec = [

@@ -16,7 +16,7 @@ This library follows [Semantic Versioning 2.0](https://semver.org/). v1.0.0 is t
 - The CLI surface of `bin/openapi-coverage-merge` (flags, exit codes, sidecar JSON wire format via `STATE_FORMAT_VERSION`)
 - The `OpenApiCoverageExtension` PHPUnit configuration parameters (`spec_base_path`, `strip_prefixes`, `specs`, `output_file`, `console_output`, …)
 - The Laravel `ValidatesOpenApiSchema` trait's public methods
-- The category prefixes used in `E_USER_WARNING` messages (`[security]`, `[OpenAPI Schema]`)
+- The category prefixes used in `E_USER_WARNING` messages (`[security]`, `[OpenAPI Schema]`, and the `[OpenAPI 3.2 ...]` categories)
 
 ## What's NOT covered by SemVer
 

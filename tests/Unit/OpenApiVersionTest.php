@@ -23,6 +23,8 @@ class OpenApiVersionTest extends TestCase
             '3.1.0' => [['openapi' => '3.1.0'], OpenApiVersion::V3_1],
             '3.1.1' => [['openapi' => '3.1.1'], OpenApiVersion::V3_1],
             '3.1 future patch' => [['openapi' => '3.1.999'], OpenApiVersion::V3_1],
+            '3.2.0' => [['openapi' => '3.2.0'], OpenApiVersion::V3_2],
+            '3.2 future patch' => [['openapi' => '3.2.999'], OpenApiVersion::V3_2],
         ];
     }
 
@@ -34,7 +36,7 @@ class OpenApiVersionTest extends TestCase
             'empty string' => [['openapi' => ''], "'' (string)"],
             'non-string value' => [['openapi' => 3], '3 (int)'],
             'Swagger 2.0' => [['openapi' => '2.0.0'], "'2.0.0' (string)"],
-            'unsupported 3.2' => [['openapi' => '3.2.0'], "'3.2.0' (string)"],
+            'unsupported 3.3' => [['openapi' => '3.3.0'], "'3.3.0' (string)"],
             'unsupported 3.10' => [['openapi' => '3.10.0'], "'3.10.0' (string)"],
             'unknown future version' => [['openapi' => '4.0.0'], "'4.0.0' (string)"],
             'missing patch' => [['openapi' => '3.1'], "'3.1' (string)"],
@@ -61,7 +63,7 @@ class OpenApiVersionTest extends TestCase
         } catch (InvalidOpenApiSpecException $e) {
             $this->assertSame(InvalidOpenApiSpecReason::UnsupportedVersion, $e->reason);
             $this->assertStringContainsString($received, $e->getMessage());
-            $this->assertStringContainsString('3.0.x or 3.1.x', $e->getMessage());
+            $this->assertStringContainsString('3.0.x, 3.1.x, or 3.2.x', $e->getMessage());
         }
     }
 }

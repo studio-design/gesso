@@ -67,7 +67,7 @@ class AutoAssertIntegrationTest extends TestCase
         config()->set('openapi-contract-testing.auto_assert', true);
 
         $this->expectException(InvalidOpenApiSpecException::class);
-        $this->expectExceptionMessage("Unsupported OpenAPI version: '3.2.0' (string)");
+        $this->expectExceptionMessage("Unsupported OpenAPI version: '3.3.0' (string)");
 
         $this->get('/v1/pets');
     }
@@ -175,6 +175,20 @@ class AutoAssertIntegrationTest extends TestCase
         $covered = OpenApiCoverageTracker::getCovered();
         $this->assertArrayHasKey('petstore-3.1', $covered);
         $this->assertArrayNotHasKey('petstore-3.0', $covered);
+    }
+
+    #[Test]
+    #[OpenApiSpec('openapi-3.2')]
+    public function openapi_32_plain_operation_works_through_laravel_auto_assert(): void
+    {
+        config()->set('openapi-contract-testing.auto_assert', true);
+
+        $response = $this->get('/v1/pets');
+        $response->assertOk();
+
+        $covered = OpenApiCoverageTracker::getCovered();
+        $this->assertArrayHasKey('openapi-3.2', $covered);
+        $this->assertArrayHasKey('GET /v1/pets', $covered['openapi-3.2']);
     }
 
     #[Test]

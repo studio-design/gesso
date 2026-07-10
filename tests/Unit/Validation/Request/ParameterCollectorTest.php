@@ -96,4 +96,32 @@ class ParameterCollectorTest extends TestCase
         $this->assertSame([], $result->specErrors);
         $this->assertCount(1, $result->parameters);
     }
+
+    #[Test]
+    public function collect_rejects_query_and_querystring_mix(): void
+    {
+        $result = ParameterCollector::collect('GET', '/pets', [], [
+            'parameters' => [
+                ['name' => 'q', 'in' => 'query', 'schema' => ['type' => 'string']],
+                ['name' => 'all', 'in' => 'querystring', 'content' => []],
+            ],
+        ]);
+
+        $this->assertCount(1, $result->specErrors);
+        $this->assertStringContainsString('forbids mixing', $result->specErrors[0]);
+    }
+
+    #[Test]
+    public function collect_rejects_multiple_querystring_parameters(): void
+    {
+        $result = ParameterCollector::collect('GET', '/pets', [], [
+            'parameters' => [
+                ['name' => 'one', 'in' => 'querystring', 'content' => []],
+                ['name' => 'two', 'in' => 'querystring', 'content' => []],
+            ],
+        ]);
+
+        $this->assertCount(1, $result->specErrors);
+        $this->assertStringContainsString('at most one', $result->specErrors[0]);
+    }
 }

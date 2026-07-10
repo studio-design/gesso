@@ -10,13 +10,10 @@ use function array_slice;
 use function count;
 use function explode;
 use function implode;
-use function in_array;
 use function is_array;
 use function levenshtein;
 use function min;
 use function sort;
-use function strtolower;
-use function strtoupper;
 use function trim;
 use function usort;
 
@@ -33,19 +30,6 @@ use function usort;
  */
 final class OpenApiPathSuggester
 {
-    /**
-     * The full set of operation keys that OpenAPI 3.x recognises at the
-     * path-item level. Kept local to the suggester rather than reusing the
-     * library's request-method enum — that enum models *request* methods the
-     * library validates (a smaller set), whereas the suggester needs the
-     * broader spec-vocabulary including HEAD / OPTIONS / TRACE. If the
-     * request-method enum ever expands to cover the same ground, this
-     * constant can be revisited.
-     */
-    private const OPENAPI_PATH_ITEM_METHODS = [
-        'get', 'put', 'post', 'delete', 'options', 'head', 'patch', 'trace',
-    ];
-
     /**
      * @param array<string, mixed> $spec the decoded OpenAPI document
      * @param string $normalizedPath the request path *after* prefix stripping
@@ -95,17 +79,13 @@ final class OpenApiPathSuggester
             $commonPrefix = self::commonPrefixSegmentCount($requestSegments, $specSegments);
             $tailDistance = self::levenshteinTail($requestSegments, $specSegments, $commonPrefix);
 
-            foreach ($pathItem as $key => $value) {
-                $lower = strtolower((string) $key);
-                if (!in_array($lower, self::OPENAPI_PATH_ITEM_METHODS, true)) {
-                    continue;
-                }
-                if (!is_array($value)) {
+            foreach (OpenApiOperationResolver::declaredOperations($pathItem) as $declared) {
+                if (!is_array($declared['operation'])) {
                     continue;
                 }
 
                 $entries[] = [
-                    'method' => strtoupper($lower),
+                    'method' => $declared['method'],
                     'path' => (string) $specPath,
                     'segmentDiff' => $segmentDiff,
                     'commonPrefix' => $commonPrefix,
@@ -140,10 +120,11 @@ final class OpenApiPathSuggester
 
     /**
      * Enumerate the operation methods declared under a given path item.
-     * Uppercase, alphabetically sorted, with non-method keys
-     * (`parameters`, `summary`, `$ref`, …) filtered out. Returns `[]` for an
-     * unknown path or a path-item that only declares shared parameters — the
-     * caller distinguishes the two via prior matching.
+     * Fixed fields are uppercased while additional operation methods retain
+     * the exact capitalization declared by the spec. Results are sorted, with
+     * non-method keys (`parameters`, `summary`, `$ref`, …) filtered out.
+     * Returns `[]` for an unknown path or a path-item that only declares shared
+     * parameters — the caller distinguishes the two via prior matching.
      *
      * @param array<string, mixed> $spec
      *
@@ -162,15 +143,11 @@ final class OpenApiPathSuggester
         }
 
         $methods = [];
-        foreach ($pathItem as $key => $value) {
-            $lower = strtolower((string) $key);
-            if (!in_array($lower, self::OPENAPI_PATH_ITEM_METHODS, true)) {
+        foreach (OpenApiOperationResolver::declaredOperations($pathItem) as $declared) {
+            if (!is_array($declared['operation'])) {
                 continue;
             }
-            if (!is_array($value)) {
-                continue;
-            }
-            $methods[] = strtoupper($lower);
+            $methods[] = $declared['method'];
         }
 
         sort($methods);

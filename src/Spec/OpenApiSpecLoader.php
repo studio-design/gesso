@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Studio\OpenApiContractTesting\Spec;
 
+use const E_USER_WARNING;
 use const JSON_THROW_ON_ERROR;
 
 use InvalidArgumentException;
@@ -18,6 +19,7 @@ use Studio\OpenApiContractTesting\OpenApiVersion;
 use Symfony\Component\Yaml\Exception\ParseException;
 use Symfony\Component\Yaml\Yaml;
 
+use function array_key_exists;
 use function file_exists;
 use function file_get_contents;
 use function get_debug_type;
@@ -27,6 +29,7 @@ use function json_decode;
 use function realpath;
 use function rtrim;
 use function sprintf;
+use function trigger_error;
 use function trim;
 
 final class OpenApiSpecLoader
@@ -198,9 +201,21 @@ final class OpenApiSpecLoader
         // running any endpoint assertions. This also makes PHPUnit extension
         // bootstrap fail while eagerly loading its configured specs.
         try {
-            OpenApiVersion::fromSpec($decoded);
+            $version = OpenApiVersion::fromSpec($decoded);
         } catch (InvalidOpenApiSpecException $e) {
             throw $e->withSpecName($specName);
+        }
+
+        if ($version === OpenApiVersion::V3_2 && array_key_exists('$self', $decoded)) {
+            trigger_error(
+                sprintf(
+                    "[OpenAPI 3.2 \$self] spec '%s' declares a \$self base URI, but this loader still resolves "
+                    . 'relative references from the retrieved file path. Remove $self or pre-bundle the document '
+                    . 'until $self-aware resolution is implemented.',
+                    $specName,
+                ),
+                E_USER_WARNING,
+            );
         }
 
         // Canonicalize the source path so the resolver's cycle detection

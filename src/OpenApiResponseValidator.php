@@ -7,6 +7,7 @@ namespace Studio\OpenApiContractTesting;
 use InvalidArgumentException;
 use RuntimeException;
 use Studio\OpenApiContractTesting\PHPUnit\OpenApiCoverageExtension;
+use Studio\OpenApiContractTesting\Spec\OpenApiOperationResolver;
 use Studio\OpenApiContractTesting\Spec\OpenApiPathMatcher;
 use Studio\OpenApiContractTesting\Spec\OpenApiSpecLoader;
 use Studio\OpenApiContractTesting\Validation\Response\ResponseBodyValidationResult;
@@ -30,7 +31,6 @@ use function array_merge;
 use function get_debug_type;
 use function is_array;
 use function sprintf;
-use function strtolower;
 use function strtoupper;
 
 final class OpenApiResponseValidator
@@ -144,7 +144,6 @@ final class OpenApiResponseValidator
             ]);
         }
 
-        $lowerMethod = strtolower($method);
         // `$matchedPath` is always a key of `$spec['paths']` (the matcher was
         // built from its `array_keys()`), so `?? null` here only fires for an
         // explicit `null` *value* — which the guard below then treats as
@@ -169,16 +168,15 @@ final class OpenApiResponseValidator
             ], $matchedPath);
         }
 
-        // `array_key_exists` (not `isset`) so an explicit `{method}: null`
-        // reaches the operation guard below as malformed rather than being
-        // misreported as an undefined method.
-        if (!array_key_exists($lowerMethod, $pathSpec)) {
+        $resolvedOperation = OpenApiOperationResolver::resolve($pathSpec, $method);
+        if (!$resolvedOperation['found']) {
             return OpenApiValidationResult::failure([
                 PathDiagnosticsFormatter::methodNotDefined($specName, $method, $matchedPath, $spec),
             ], $matchedPath);
         }
 
-        $operation = $pathSpec[$lowerMethod];
+        $operation = $resolvedOperation['operation'];
+        $operationLocation = $resolvedOperation['location'];
 
         // An operation must decode to a JSON object; a scalar, `null`, or a
         // JSON list is malformed ({@see MalformedSpecNode}). Unguarded, a
@@ -189,7 +187,7 @@ final class OpenApiResponseValidator
                 sprintf(
                     "Malformed 'paths[\"%s\"].%s' for %s %s in '%s' spec: expected object, got %s.",
                     $matchedPath,
-                    $lowerMethod,
+                    $operationLocation,
                     $method,
                     $matchedPath,
                     $specName,
@@ -220,7 +218,7 @@ final class OpenApiResponseValidator
                 sprintf(
                     "Malformed 'paths[\"%s\"].%s.responses' for %s %s in '%s' spec: expected object, got %s.",
                     $matchedPath,
-                    $lowerMethod,
+                    $operationLocation,
                     $method,
                     $matchedPath,
                     $specName,

@@ -14,10 +14,11 @@ enum HttpMethod: string
     case PUT = 'PUT';
     case PATCH = 'PATCH';
     case DELETE = 'DELETE';
+    case QUERY = 'QUERY';
 
     /**
      * Comma-separated list of supported method values for use in error
-     * messages (e.g. "Allowed: GET, POST, PUT, PATCH, DELETE").
+     * messages (e.g. "Allowed: GET, POST, PUT, PATCH, DELETE, QUERY").
      *
      * Centralised so the Pest dispatcher and the Laravel trait error
      * surfaces stay in sync when a new case is added to the enum.

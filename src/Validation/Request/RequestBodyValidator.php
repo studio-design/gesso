@@ -141,6 +141,19 @@ final class RequestBodyValidator
                     ),
                 ]);
             }
+
+            if (array_key_exists('itemSchema', $mediaTypeSpec) && MalformedSpecNode::isMalformed($mediaTypeSpec['itemSchema'])) {
+                return new RequestBodyValidationResult([
+                    sprintf(
+                        "Malformed 'requestBody.content[\"%s\"].itemSchema' for %s %s in '%s' spec: expected object, got %s.",
+                        $mediaType,
+                        $method,
+                        $matchedPath,
+                        $specName,
+                        MalformedSpecNode::describe($mediaTypeSpec['itemSchema']),
+                    ),
+                ]);
+            }
         }
 
         // When the actual request Content-Type is provided, handle content negotiation:
@@ -152,6 +165,10 @@ final class RequestBodyValidator
             if (!ContentTypeMatcher::isJsonContentType($normalizedType)) {
                 $matchedKey = ContentTypeMatcher::findContentTypeKey($normalizedType, $content);
                 if ($matchedKey !== null) {
+                    if (isset($content[$matchedKey]['itemSchema'])) {
+                        return self::unsupportedItemSchemaResult($normalizedType);
+                    }
+
                     // A matched non-JSON media type that declares a `schema`
                     // is an unvalidatable contract: OpenAPI permits a schema
                     // on any media type, but this engine only evaluates JSON
@@ -199,10 +216,20 @@ final class RequestBodyValidator
         // This validator only handles JSON schemas; non-JSON types (e.g. application/xml,
         // application/octet-stream) are outside its scope.
         if ($jsonContentType === null) {
+            foreach ($content as $mediaType => $mediaTypeSpec) {
+                if (isset($mediaTypeSpec['itemSchema'])) {
+                    return self::unsupportedItemSchemaResult((string) $mediaType);
+                }
+            }
+
             return new RequestBodyValidationResult([]);
         }
 
         if (!isset($content[$jsonContentType]['schema'])) {
+            if (isset($content[$jsonContentType]['itemSchema'])) {
+                return self::unsupportedItemSchemaResult($jsonContentType);
+            }
+
             return new RequestBodyValidationResult([]);
         }
 
@@ -254,9 +281,21 @@ final class RequestBodyValidator
         return new RequestBodyValidationResult($errors);
     }
 
+    private static function unsupportedItemSchemaResult(string $mediaType): RequestBodyValidationResult
+    {
+        return new RequestBodyValidationResult(
+            [],
+            sprintf(
+                "request Content-Type '%s' uses OpenAPI 3.2 itemSchema streaming semantics; "
+                . 'stream items cannot be validated from the buffered request body and were explicitly skipped',
+                $mediaType,
+            ),
+        );
+    }
+
     /**
      * Whether the schema's top-level type explicitly accepts a JSON object.
-     * Handles OAS 3.0 (`type: object`) and OAS 3.1 (`type: ["object", "null"]`).
+     * Handles OAS 3.0 (`type: object`) and OAS 3.1/3.2 (`type: ["object", "null"]`).
      * Composition keywords (`oneOf` / `anyOf` / `allOf`) are intentionally
      * NOT walked — coercion only fires for the unambiguous case so a real
      * type-mismatch error still surfaces for `type: array` schemas where the

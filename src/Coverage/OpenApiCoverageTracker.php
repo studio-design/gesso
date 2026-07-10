@@ -7,8 +7,10 @@ namespace Studio\OpenApiContractTesting\Coverage;
 use const E_USER_WARNING;
 
 use InvalidArgumentException;
+use Studio\OpenApiContractTesting\Spec\OpenApiOperationResolver;
 use Studio\OpenApiContractTesting\Spec\OpenApiSpecLoader;
 use Studio\OpenApiContractTesting\Validation\Strict\StrictRequiredTracker;
+use Studio\OpenApiContractTesting\Validation\Support\MalformedSpecNode;
 
 use function array_key_exists;
 use function array_keys;
@@ -21,10 +23,10 @@ use function is_int;
 use function is_string;
 use function preg_match;
 use function sprintf;
+use function str_starts_with;
 use function strcasecmp;
 use function strcmp;
 use function strpos;
-use function strtoupper;
 use function substr;
 use function trigger_error;
 use function usort;
@@ -785,7 +787,7 @@ final class OpenApiCoverageTracker
 
     private static function endpointKey(string $method, string $path): string
     {
-        return strtoupper($method) . ' ' . $path;
+        return OpenApiOperationResolver::normalizeMethodForKey($method) . ' ' . $path;
     }
 
     /**
@@ -840,13 +842,20 @@ final class OpenApiCoverageTracker
                 continue;
             }
 
-            foreach ($methods as $method => $operation) {
-                $upper = strtoupper((string) $method);
-                if (!in_array($upper, ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'], true)) {
+            if (array_key_exists('additionalOperations', $methods) && MalformedSpecNode::isMalformed($methods['additionalOperations'])) {
+                self::warnMalformed($specName, sprintf('path %s additionalOperations is not an object (got %s); omitted from coverage', (string) $path, MalformedSpecNode::describe($methods['additionalOperations'])));
+            }
+
+            foreach (OpenApiOperationResolver::declaredOperations($methods) as $declaredOperation) {
+                $upper = $declaredOperation['method'];
+                $operation = $declaredOperation['operation'];
+                $isBaselineMethod = in_array($upper, ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'QUERY'], true);
+                $isAdditionalOperation = str_starts_with($declaredOperation['location'], 'additionalOperations[');
+                if (!$isBaselineMethod && !$isAdditionalOperation) {
                     continue;
                 }
-                if (!is_array($operation)) {
-                    self::warnMalformed($specName, sprintf('operation %s %s is not an object (got %s); omitted from coverage', $upper, (string) $path, get_debug_type($operation)));
+                if (MalformedSpecNode::isMalformed($operation)) {
+                    self::warnMalformed($specName, sprintf('operation %s %s (%s) is not an object (got %s); omitted from coverage', $upper, (string) $path, $declaredOperation['location'], MalformedSpecNode::describe($operation)));
 
                     continue;
                 }

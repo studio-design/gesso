@@ -60,9 +60,75 @@ class OpenApiRequestValidatorTest extends TestCase
     public function rejects_unsupported_openapi_version(): void
     {
         $this->expectException(InvalidOpenApiSpecException::class);
-        $this->expectExceptionMessage("Unsupported OpenAPI version: '3.2.0' (string)");
+        $this->expectExceptionMessage("Unsupported OpenAPI version: '3.3.0' (string)");
 
         $this->validator->validate('unsupported-version', 'GET', '/v1/pets', [], [], null);
+    }
+
+    #[Test]
+    public function openapi_32_query_operation_and_request_body_are_validated(): void
+    {
+        $valid = $this->validator->validate(
+            'openapi-3.2',
+            'QUERY',
+            '/v1/search',
+            [],
+            [],
+            ['term' => 'cat'],
+            'application/json',
+        );
+        $invalid = $this->validator->validate(
+            'openapi-3.2',
+            'QUERY',
+            '/v1/search',
+            [],
+            [],
+            [],
+            'application/json',
+        );
+
+        $this->assertTrue($valid->isValid(), $valid->errorMessage());
+        $this->assertFalse($invalid->isValid());
+    }
+
+    #[Test]
+    public function openapi_32_custom_operation_is_resolved(): void
+    {
+        $result = $this->validator->validate('openapi-3.2', 'COPY', '/v1/pets/7', [], [], null);
+
+        $this->assertTrue($result->isValid(), $result->errorMessage());
+        $this->assertSame('/v1/pets/{petId}', $result->matchedPath());
+    }
+
+    #[Test]
+    public function openapi_32_querystring_validates_the_whole_form_query(): void
+    {
+        $valid = $this->validator->validate('openapi-3.2', 'GET', '/v1/filter', ['limit' => '2'], [], null);
+        $invalid = $this->validator->validate('openapi-3.2', 'GET', '/v1/filter', ['limit' => '0'], [], null);
+        $missing = $this->validator->validate('openapi-3.2', 'GET', '/v1/filter', [], [], null);
+
+        $this->assertTrue($valid->isValid(), $valid->errorMessage());
+        $this->assertFalse($invalid->isValid());
+        $this->assertFalse($missing->isValid());
+        $this->assertStringContainsString('querystring', $missing->errorMessage());
+    }
+
+    #[Test]
+    public function openapi_32_item_schema_request_is_explicitly_skipped(): void
+    {
+        $result = $this->validator->validate(
+            'openapi-3.2',
+            'GET',
+            '/v1/events',
+            [],
+            [],
+            "event: updated\n\ndata: {}\n\n",
+            'text/event-stream',
+        );
+
+        $this->assertTrue($result->isValid(), $result->errorMessage());
+        $this->assertTrue($result->isSkipped());
+        $this->assertStringContainsString('itemSchema', $result->skipReason() ?? '');
     }
 
     #[Test]

@@ -20,7 +20,9 @@ use function class_exists;
 use function file_put_contents;
 use function json_encode;
 use function mkdir;
+use function restore_error_handler;
 use function rmdir;
+use function set_error_handler;
 use function sys_get_temp_dir;
 use function uniqid;
 use function unlink;
@@ -165,9 +167,31 @@ class OpenApiSpecLoaderTest extends TestCase
         } catch (InvalidOpenApiSpecException $e) {
             $this->assertSame(InvalidOpenApiSpecReason::UnsupportedVersion, $e->reason);
             $this->assertSame('unsupported-version', $e->specName);
-            $this->assertStringContainsString("'3.2.0' (string)", $e->getMessage());
-            $this->assertStringContainsString('3.0.x or 3.1.x', $e->getMessage());
+            $this->assertStringContainsString("'3.3.0' (string)", $e->getMessage());
+            $this->assertStringContainsString('3.0.x, 3.1.x, or 3.2.x', $e->getMessage());
         }
+    }
+
+    #[Test]
+    public function openapi_32_self_base_uri_is_never_silently_ignored(): void
+    {
+        OpenApiSpecLoader::configure(__DIR__ . '/../../fixtures/specs');
+        $warning = null;
+        set_error_handler(static function (int $errno, string $message) use (&$warning): bool {
+            $warning = $message;
+
+            return true;
+        });
+
+        try {
+            $spec = OpenApiSpecLoader::load('openapi-3.2-self');
+        } finally {
+            restore_error_handler();
+        }
+
+        $this->assertSame('3.2.0', $spec['openapi']);
+        $this->assertStringContainsString('[OpenAPI 3.2 $self]', $warning ?? '');
+        $this->assertStringContainsString('pre-bundle', $warning ?? '');
     }
 
     #[Test]

@@ -54,6 +54,19 @@ it('honours the spec: argument as a per-call override', function (): void {
         ->and($covered)->not->toHaveKey('petstore-3.0');
 });
 
+it('validates a plain OpenAPI 3.2 response through the Pest adapter', function (): void {
+    $response = $this->get('/v1/pets');
+    $response->assertOk();
+
+    expect($response)->toMatchOpenApiResponseSchema(spec: 'openapi-3.2');
+
+    $covered = OpenApiCoverageTracker::getCovered();
+    expect($covered)
+        ->toHaveKey('openapi-3.2')
+        ->and($covered['openapi-3.2'])
+        ->toHaveKey('GET /v1/pets');
+});
+
 it('clears the per-call spec override after a single assertion', function (): void {
     // Pin the documented "self-clears after the next resolveOpenApiSpec()
     // call" invariant: one explicit `spec:` followed by an implicit call must

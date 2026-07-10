@@ -1,6 +1,6 @@
 {
     "name": "studio-design/openapi-contract-testing",
-    "description": "Framework-agnostic OpenAPI 3.0/3.1 contract testing for PHPUnit with endpoint coverage tracking",
+    "description": "Framework-agnostic OpenAPI 3.0/3.1/3.2 contract testing for PHPUnit with endpoint coverage tracking",
     "keywords": ["openapi", "contract-testing", "phpunit", "api-testing", "coverage"],
     "license": "MIT",
     "type": "library",

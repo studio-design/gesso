@@ -72,12 +72,12 @@ class OpenApiPathSuggesterTest extends TestCase
     }
 
     #[Test]
-    public function suggest_recognises_all_eight_openapi_path_item_methods(): void
+    public function suggest_recognises_all_openapi_path_item_methods(): void
     {
-        // OpenAPI 3.x defines exactly these eight operation keys for a path item.
+        // OpenAPI 3.2 adds QUERY to the eight operation keys from 3.0/3.1.
         // Any future broadening of HttpMethod for request validation must not
         // silently drop one of these from suggestions.
-        $methods = ['get', 'put', 'post', 'delete', 'options', 'head', 'patch', 'trace'];
+        $methods = ['get', 'put', 'post', 'delete', 'options', 'head', 'patch', 'trace', 'query'];
         $pathItem = [];
         foreach ($methods as $m) {
             $pathItem[$m] = ['responses' => []];
@@ -89,9 +89,29 @@ class OpenApiPathSuggesterTest extends TestCase
         sort($resultMethods);
 
         $this->assertSame(
-            ['DELETE', 'GET', 'HEAD', 'OPTIONS', 'PATCH', 'POST', 'PUT', 'TRACE'],
+            ['DELETE', 'GET', 'HEAD', 'OPTIONS', 'PATCH', 'POST', 'PUT', 'QUERY', 'TRACE'],
             $resultMethods,
         );
+    }
+
+    #[Test]
+    public function suggest_and_methods_include_additional_operations(): void
+    {
+        $spec = [
+            'paths' => [
+                '/v1/pets' => [
+                    'get' => ['responses' => []],
+                    'additionalOperations' => [
+                        'COPY' => ['responses' => []],
+                    ],
+                ],
+            ],
+        ];
+
+        $suggestions = OpenApiPathSuggester::suggest($spec, '/v1/pets', 10);
+
+        $this->assertContains(['method' => 'COPY', 'path' => '/v1/pets'], $suggestions);
+        $this->assertSame(['COPY', 'GET'], OpenApiPathSuggester::methodsForPath($spec, '/v1/pets'));
     }
 
     #[Test]

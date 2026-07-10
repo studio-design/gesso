@@ -87,6 +87,23 @@ final class ParameterCollector
             }
         }
 
+        $queryParameters = 0;
+        $queryStringParameters = 0;
+        foreach ($merged as $param) {
+            if ($param['in'] === 'query') {
+                $queryParameters++;
+            } elseif ($param['in'] === 'querystring') {
+                $queryStringParameters++;
+            }
+        }
+
+        if ($queryStringParameters > 1) {
+            $errors[] = "OpenAPI 3.2 permits at most one 'in: querystring' parameter for {$method} {$matchedPath}.";
+        }
+        if ($queryStringParameters > 0 && $queryParameters > 0) {
+            $errors[] = "OpenAPI 3.2 forbids mixing 'in: querystring' with 'in: query' parameters for {$method} {$matchedPath}.";
+        }
+
         return new CollectionResult(array_values($merged), $errors);
     }
 }

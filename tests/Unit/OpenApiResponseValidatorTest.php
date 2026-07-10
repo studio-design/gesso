@@ -72,9 +72,86 @@ class OpenApiResponseValidatorTest extends TestCase
     public function rejects_unsupported_openapi_version(): void
     {
         $this->expectException(InvalidOpenApiSpecException::class);
-        $this->expectExceptionMessage("Unsupported OpenAPI version: '3.2.0' (string)");
+        $this->expectExceptionMessage("Unsupported OpenAPI version: '3.3.0' (string)");
 
         $this->validator->validate('unsupported-version', 'GET', '/v1/pets', 200, null);
+    }
+
+    #[Test]
+    public function openapi_32_plain_and_new_operation_forms_are_validated(): void
+    {
+        $plain = $this->validator->validate(
+            'openapi-3.2',
+            'GET',
+            '/v1/pets',
+            200,
+            ['data' => [['id' => 1, 'name' => 'Fido']]],
+            'application/json',
+        );
+        $query = $this->validator->validate('openapi-3.2', 'QUERY', '/v1/search', 200, [], 'application/json');
+        $custom = $this->validator->validate(
+            'openapi-3.2',
+            'COPY',
+            '/v1/pets/1',
+            200,
+            ['id' => 2, 'name' => 'Copy'],
+            'application/json',
+        );
+
+        $this->assertTrue($plain->isValid(), $plain->errorMessage());
+        $this->assertTrue($query->isValid(), $query->errorMessage());
+        $this->assertTrue($custom->isValid(), $custom->errorMessage());
+    }
+
+    #[Test]
+    public function openapi_32_discriminator_default_mapping_handles_missing_and_unknown_values(): void
+    {
+        $missing = $this->validator->validate(
+            'openapi-3.2',
+            'GET',
+            '/v1/pets/1',
+            200,
+            ['name' => 'Mystery'],
+            'application/json',
+        );
+        $unknown = $this->validator->validate(
+            'openapi-3.2',
+            'GET',
+            '/v1/pets/1',
+            200,
+            ['kind' => 'bird', 'name' => 'Tweety'],
+            'application/json',
+        );
+        $invalidFallback = $this->validator->validate(
+            'openapi-3.2',
+            'GET',
+            '/v1/pets/1',
+            200,
+            ['kind' => 'bird'],
+            'application/json',
+        );
+
+        $this->assertTrue($missing->isValid(), $missing->errorMessage());
+        $this->assertTrue($unknown->isValid(), $unknown->errorMessage());
+        $this->assertFalse($invalidFallback->isValid());
+    }
+
+    #[Test]
+    public function openapi_32_item_schema_response_is_explicitly_skipped(): void
+    {
+        $result = $this->validator->validate(
+            'openapi-3.2',
+            'GET',
+            '/v1/events',
+            200,
+            "event: updated\n\ndata: {}\n\n",
+            'text/event-stream',
+        );
+
+        $this->assertTrue($result->isValid(), $result->errorMessage());
+        $this->assertTrue($result->isSkipped());
+        $this->assertStringContainsString('itemSchema', $result->skipReason() ?? '');
+        $this->assertSame('text/event-stream', $result->matchedContentType());
     }
 
     #[Test]
