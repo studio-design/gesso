@@ -911,6 +911,34 @@ class OpenApiRefResolverTest extends TestCase
     }
 
     #[Test]
+    public function resolves_schema_with_ref_as_defs_name(): void
+    {
+        $spec = [
+            'schema' => [
+                '$defs' => [
+                    '$ref' => ['type' => 'string'],
+                ],
+            ],
+        ];
+
+        $this->assertSame($spec, OpenApiRefResolver::resolve($spec));
+    }
+
+    #[Test]
+    public function resolves_schema_with_ref_as_dependent_schema_property_name(): void
+    {
+        $spec = [
+            'schema' => [
+                'dependentSchemas' => [
+                    '$ref' => ['type' => 'string'],
+                ],
+            ],
+        ];
+
+        $this->assertSame($spec, OpenApiRefResolver::resolve($spec));
+    }
+
+    #[Test]
     public function resolves_ref_as_additional_properties_schema(): void
     {
         // `additionalProperties` holds a single schema, not a dict of schemas,

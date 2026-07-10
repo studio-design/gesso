@@ -87,6 +87,8 @@ final class OpenApiRefResolver
     private const USER_NAMED_MAP_KEYS = [
         'properties',
         'patternProperties',
+        '$defs',
+        'dependentSchemas',
         'schemas',
         'responses',
         'parameters',
