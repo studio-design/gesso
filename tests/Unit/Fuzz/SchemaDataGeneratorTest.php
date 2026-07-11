@@ -11,6 +11,7 @@ use Opis\JsonSchema\Validator;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
+use stdClass;
 use Studio\OpenApiContractTesting\Fuzz\SchemaDataGenerator;
 use Studio\OpenApiContractTesting\Fuzz\SchemaMutationGenerator;
 use Studio\OpenApiContractTesting\Fuzz\SchemaValueValidator;
@@ -691,6 +692,50 @@ class SchemaDataGeneratorTest extends TestCase
         $this->assertContains('required', $keywords);
         $this->assertContains('additionalProperties', $keywords);
         $this->assertContains('enum', $keywords);
+    }
+
+    #[Test]
+    public function mutations_are_omitted_when_they_also_violate_a_sibling_constraint(): void
+    {
+        $schema = [
+            'type' => 'object',
+            'properties' => ['a' => ['type' => 'string']],
+            'required' => ['a'],
+            'minProperties' => 1,
+            'additionalProperties' => false,
+        ];
+
+        $mutations = SchemaMutationGenerator::generate($schema, 100, SchemaDataGenerator::createFaker(1));
+        $keywords = array_map(static fn($mutation): string => $mutation->keyword, $mutations);
+
+        $this->assertNotContains('required', $keywords);
+        $this->assertNotContains('minProperties', $keywords);
+        $this->assertContains('additionalProperties', $keywords);
+        $this->assertContains('type', $keywords);
+    }
+
+    #[Test]
+    public function required_only_mutation_uses_a_json_object_and_is_single_constraint(): void
+    {
+        $schema = [
+            'type' => 'object',
+            'properties' => ['a' => ['type' => 'string']],
+            'required' => ['a'],
+            'additionalProperties' => false,
+        ];
+        $relaxed = $schema;
+        unset($relaxed['required']);
+
+        $mutations = SchemaMutationGenerator::generate($schema, 100, SchemaDataGenerator::createFaker(1));
+        $required = array_values(array_filter(
+            $mutations,
+            static fn($mutation): bool => $mutation->keyword === 'required',
+        ));
+
+        $this->assertCount(1, $required);
+        $this->assertInstanceOf(stdClass::class, $required[0]->value);
+        $this->assertFalse(SchemaValueValidator::isValid($required[0]->value, $schema));
+        $this->assertTrue(SchemaValueValidator::isValid($required[0]->value, $relaxed));
     }
 
     #[Test]

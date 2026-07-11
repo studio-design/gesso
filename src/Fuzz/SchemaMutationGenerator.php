@@ -6,17 +6,25 @@ namespace Studio\OpenApiContractTesting\Fuzz;
 
 use Faker\Generator;
 use InvalidArgumentException;
+use stdClass;
 
+use function array_filter;
 use function array_is_list;
 use function array_key_exists;
+use function array_map;
 use function array_slice;
+use function array_values;
 use function count;
+use function explode;
+use function in_array;
 use function is_array;
 use function is_float;
 use function is_int;
 use function is_string;
+use function ltrim;
 use function sprintf;
 use function str_repeat;
+use function str_replace;
 
 /**
  * Produces deterministic, single-constraint mutations from a known-valid value.
@@ -43,6 +51,10 @@ final class SchemaMutationGenerator
         $invalid = [];
         foreach ($candidates as $candidate) {
             if (SchemaValueValidator::isValid($candidate->value, $schema)) {
+                continue;
+            }
+            $relaxedSchema = self::schemaWithoutTargetConstraint($schema, $candidate);
+            if ($relaxedSchema === null || !SchemaValueValidator::isValid($candidate->value, $relaxedSchema)) {
                 continue;
             }
             $invalid[] = $candidate;
@@ -100,10 +112,16 @@ final class SchemaMutationGenerator
         }
 
         if (isset($schema['enum']) && is_array($schema['enum'])) {
-            $result[] = new SchemaMutation('__invalid_enum_value__', 'enum', $pointer);
+            $candidate = self::valueOutsideExactConstraint($schema, 'enum', $schema['enum']);
+            if ($candidate !== null) {
+                $result[] = new SchemaMutation($candidate['value'], 'enum', $pointer);
+            }
         }
         if (array_key_exists('const', $schema)) {
-            $result[] = new SchemaMutation('__invalid_const_value__', 'const', $pointer);
+            $candidate = self::valueOutsideExactConstraint($schema, 'const', [$schema['const']]);
+            if ($candidate !== null) {
+                $result[] = new SchemaMutation($candidate['value'], 'const', $pointer);
+            }
         }
 
         if (is_string($valid) && !$hasExactValueConstraint) {
@@ -168,7 +186,11 @@ final class SchemaMutationGenerator
                 }
                 $mutated = $valid;
                 unset($mutated[$name]);
-                $result[] = new SchemaMutation($mutated, 'required', $pointer . '/' . $name);
+                $result[] = new SchemaMutation(
+                    $mutated === [] ? new stdClass() : $mutated,
+                    'required',
+                    $pointer . '/' . $name,
+                );
             }
             if (($schema['additionalProperties'] ?? null) === false) {
                 $mutated = $valid;
@@ -176,7 +198,7 @@ final class SchemaMutationGenerator
                 $result[] = new SchemaMutation($mutated, 'additionalProperties', $pointer . '/__unexpected__');
             }
             if (isset($schema['minProperties']) && is_int($schema['minProperties']) && $schema['minProperties'] > 0) {
-                $result[] = new SchemaMutation([], 'minProperties', $pointer);
+                $result[] = new SchemaMutation(new stdClass(), 'minProperties', $pointer);
             }
             if (isset($schema['maxProperties']) && is_int($schema['maxProperties'])) {
                 $mutated = $valid;
@@ -200,6 +222,83 @@ final class SchemaMutationGenerator
         }
 
         return $result;
+    }
+
+    /**
+     * Remove only the mutation's target assertion at its instance pointer.
+     * A candidate is accepted only when it validates against this relaxed
+     * schema, proving that no sibling constraint is also required to explain
+     * the failure.
+     *
+     * @param array<string, mixed> $schema
+     *
+     * @return null|array<string, mixed>
+     */
+    private static function schemaWithoutTargetConstraint(array $schema, SchemaMutation $mutation): ?array
+    {
+        $segments = $mutation->pointer === ''
+            ? []
+            : array_map(
+                static fn(string $segment): string => str_replace(['~1', '~0'], ['/', '~'], $segment),
+                explode('/', ltrim($mutation->pointer, '/')),
+            );
+        $propertySegments = in_array($mutation->keyword, ['required', 'additionalProperties'], true)
+            ? array_slice($segments, 0, -1)
+            : $segments;
+
+        $relaxed = $schema;
+        $cursor = &$relaxed;
+        foreach ($propertySegments as $segment) {
+            if (!isset($cursor['properties'][$segment]) || !is_array($cursor['properties'][$segment])) {
+                return null;
+            }
+            $cursor = &$cursor['properties'][$segment];
+        }
+
+        if ($mutation->keyword === 'required') {
+            $propertyName = $segments[count($segments) - 1] ?? null;
+            if (!is_string($propertyName) || !is_array($cursor['required'] ?? null)) {
+                return null;
+            }
+            $cursor['required'] = array_values(array_filter(
+                $cursor['required'],
+                static fn(mixed $name): bool => $name !== $propertyName,
+            ));
+
+            return $relaxed;
+        }
+
+        if (!array_key_exists($mutation->keyword, $cursor)) {
+            return null;
+        }
+        unset($cursor[$mutation->keyword]);
+        if ($cursor === []) {
+            $cursor['title'] = 'relaxed mutation target';
+        }
+
+        return $relaxed;
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @param list<mixed> $excluded
+     *
+     * @return null|array{value: mixed}
+     */
+    private static function valueOutsideExactConstraint(array $schema, string $keyword, array $excluded): ?array
+    {
+        unset($schema[$keyword]);
+        if ($schema === []) {
+            $schema['title'] = 'relaxed exact-value target';
+        }
+        for ($iteration = 0; $iteration < 20; $iteration++) {
+            $candidate = SchemaDataGenerator::generateOne($schema, null, $iteration);
+            if (!in_array($candidate, $excluded, true) && SchemaValueValidator::isValid($candidate, $schema)) {
+                return ['value' => $candidate];
+            }
+        }
+
+        return null;
     }
 
     /**
