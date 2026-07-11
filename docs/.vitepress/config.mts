@@ -45,6 +45,15 @@ export default defineConfig({
         ]
       },
       {
+        text: 'Guides',
+        items: [
+          { text: 'Doctor command', link: '/doctor' },
+          { text: 'PSR-7 validation', link: '/psr7' },
+          { text: 'Laravel route parity', link: '/laravel-route-parity' },
+          { text: 'Schema-driven fuzzing', link: '/fuzzing' }
+        ]
+      },
+      {
         text: 'Recipes',
         items: [
           { text: 'GitHub Actions', link: '/recipes/github-actions' },
