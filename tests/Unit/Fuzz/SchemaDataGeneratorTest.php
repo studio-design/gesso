@@ -577,6 +577,50 @@ class SchemaDataGeneratorTest extends TestCase
     }
 
     #[Test]
+    public function allof_recursively_merges_constraints_on_the_same_property(): void
+    {
+        $schema = [
+            'allOf' => [
+                [
+                    'type' => 'object',
+                    'required' => ['name', 'profile'],
+                    'properties' => [
+                        'name' => ['type' => 'string', 'minLength' => 2],
+                        'profile' => [
+                            'type' => 'object',
+                            'required' => ['nickname'],
+                            'properties' => [
+                                'nickname' => ['type' => 'string', 'minLength' => 3],
+                            ],
+                        ],
+                    ],
+                ],
+                [
+                    'type' => 'object',
+                    'properties' => [
+                        'name' => ['type' => 'string', 'maxLength' => 5],
+                        'profile' => [
+                            'type' => 'object',
+                            'properties' => [
+                                'nickname' => ['type' => 'string', 'maxLength' => 6],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $values = SchemaDataGenerator::generate($schema, 3, seed: 1);
+
+        foreach ($values as $value) {
+            $this->assertGreaterThanOrEqual(2, strlen($value['name']));
+            $this->assertLessThanOrEqual(5, strlen($value['name']));
+            $this->assertGreaterThanOrEqual(3, strlen($value['profile']['nickname']));
+            $this->assertLessThanOrEqual(6, strlen($value['profile']['nickname']));
+        }
+    }
+
+    #[Test]
     public function invalid_mutations_each_name_and_violate_the_target_constraint(): void
     {
         $schema = [

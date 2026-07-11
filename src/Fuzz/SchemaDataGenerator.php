@@ -754,7 +754,7 @@ final class SchemaDataGenerator
     {
         $merged = array_merge($left, $right);
         if (is_array($left['properties'] ?? null) || is_array($right['properties'] ?? null)) {
-            $merged['properties'] = array_merge(
+            $merged['properties'] = self::mergePropertySchemas(
                 is_array($left['properties'] ?? null) ? $left['properties'] : [],
                 is_array($right['properties'] ?? null) ? $right['properties'] : [],
             );
@@ -776,6 +776,25 @@ final class SchemaDataGenerator
         }
         if (isset($left['maxLength'], $right['maxLength'])) {
             $merged['maxLength'] = min($left['maxLength'], $right['maxLength']);
+        }
+
+        return $merged;
+    }
+
+    /**
+     * @param array<string, mixed> $left
+     * @param array<string, mixed> $right
+     *
+     * @return array<string, mixed>
+     */
+    private static function mergePropertySchemas(array $left, array $right): array
+    {
+        $merged = $left;
+        foreach ($right as $name => $rightSchema) {
+            $leftSchema = $merged[$name] ?? null;
+            $merged[$name] = is_array($leftSchema) && is_array($rightSchema)
+                ? self::mergeSchemas($leftSchema, $rightSchema)
+                : $rightSchema;
         }
 
         return $merged;
