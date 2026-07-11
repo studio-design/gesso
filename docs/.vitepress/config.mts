@@ -1,18 +1,32 @@
 import { defineConfig } from 'vitepress'
 
 const version = process.env.DOCS_VERSION ?? 'next'
+const repository = process.env.GITHUB_REPOSITORY ?? 'studio-design/openapi-contract-testing'
+const repositoryName = repository.split('/').at(-1) ?? 'openapi-contract-testing'
+const base = process.env.DOCS_BASE ?? `/${repositoryName}/`
+const repositoryUrl = `https://github.com/${repository}`
+const siteUrl = new URL(base, 'https://studio-design.github.io').toString()
+const socialPreviewUrl = new URL('gesso-social-preview.png', siteUrl).toString()
 
 export default defineConfig({
-  title: 'OpenAPI Contract Testing',
-  description: 'Framework-agnostic OpenAPI contract testing for PHPUnit',
-  base: '/openapi-contract-testing/',
+  title: 'Gesso',
+  description: 'OpenAPI contract testing for PHP',
+  base,
+  head: [
+    ['link', { rel: 'icon', type: 'image/svg+xml', href: `${base}favicon.svg` }],
+    ['link', { rel: 'apple-touch-icon', sizes: '180x180', href: `${base}apple-touch-icon.png` }],
+    ['meta', { property: 'og:image', content: socialPreviewUrl }],
+    ['meta', { property: 'og:image:width', content: '1280' }],
+    ['meta', { property: 'og:image:height', content: '640' }],
+    ['meta', { name: 'twitter:card', content: 'summary_large_image' }]
+  ],
   cleanUrls: true,
   lastUpdated: true,
-  sitemap: { hostname: 'https://studio-design.github.io/openapi-contract-testing/' },
+  sitemap: { hostname: siteUrl },
   vite: { define: { __DOCS_VERSION__: JSON.stringify(version) } },
   markdown: { lineNumbers: true },
   themeConfig: {
-    logo: '/logo-light.png',
+    logo: '/favicon.svg',
     search: { provider: 'local' },
     nav: [
       { text: 'Quickstarts', link: '/quickstarts/core' },
@@ -52,9 +66,9 @@ export default defineConfig({
         ]
       }
     ],
-    socialLinks: [{ icon: 'github', link: 'https://github.com/studio-design/openapi-contract-testing' }],
+    socialLinks: [{ icon: 'github', link: repositoryUrl }],
     editLink: {
-      pattern: 'https://github.com/studio-design/openapi-contract-testing/edit/main/docs/:path',
+      pattern: `${repositoryUrl}/edit/main/docs/:path`,
       text: 'Edit this page on GitHub'
     },
     footer: { message: 'Released under the MIT License.' }

@@ -199,6 +199,9 @@ jobs:
           DOCS_VERSION: next
         run: npm run docs:verify-version
 
+      - name: Verify documentation base path
+        run: npm run docs:verify-base
+
       - name: Check documentation links
         run: npm run docs:links
 

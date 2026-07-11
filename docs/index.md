@@ -2,9 +2,12 @@
 layout: home
 
 hero:
-  name: OpenAPI Contract Testing
-  text: Verify PHP APIs against their OpenAPI contract
+  name: Gesso
+  text: OpenAPI contract testing for PHP
   tagline: PHPUnit coverage, request and response validation, fuzzing, and drift detection for Laravel, Symfony, Pest, PSR-7, or plain PHP.
+  image:
+    src: /gesso-logo.png
+    alt: Gesso logo
   actions:
     - theme: brand
       text: Choose a quickstart

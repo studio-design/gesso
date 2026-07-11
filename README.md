@@ -1,11 +1,12 @@
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="images/logo-dark.png">
-    <img alt="openapi-contract-testing" src="images/logo-light.png" width="480">
-  </picture>
+  <img alt="Gesso logo" src="images/gesso-logo.png" width="220">
 </p>
 
-# OpenAPI Contract Testing for PHPUnit
+# Gesso
+
+**/ˈdʒɛs.so/** — pronounced “JESS-so”
+
+OpenAPI contract testing for PHP.
 
 [![CI](https://github.com/studio-design/openapi-contract-testing/actions/workflows/ci.yml/badge.svg)](https://github.com/studio-design/openapi-contract-testing/actions/workflows/ci.yml)
 [![Latest Stable Version](https://poser.pugx.org/studio-design/openapi-contract-testing/v)](https://packagist.org/packages/studio-design/openapi-contract-testing)
@@ -13,9 +14,11 @@
 [![PHP Version Require](https://poser.pugx.org/studio-design/openapi-contract-testing/require/php)](https://packagist.org/packages/studio-design/openapi-contract-testing)
 [![License](https://poser.pugx.org/studio-design/openapi-contract-testing/license)](https://packagist.org/packages/studio-design/openapi-contract-testing)
 
-Framework-agnostic OpenAPI 3.0/3.1/3.2 contract testing for PHPUnit **with endpoint coverage tracking**.
+Gesso provides framework-agnostic OpenAPI 3.0/3.1/3.2 contract testing for PHPUnit **with endpoint coverage tracking**.
 
 Validate your API responses against your OpenAPI specification during testing, and get a coverage report showing which endpoints have been tested.
+
+Gesso remains distributed as `studio-design/openapi-contract-testing`; existing Composer requirements, PHP namespaces, and configuration keys do not change.
 
 **[Search the documentation](https://studio-design.github.io/openapi-contract-testing/)** · [Core quickstart](https://studio-design.github.io/openapi-contract-testing/quickstarts/core) · [Laravel](https://studio-design.github.io/openapi-contract-testing/quickstarts/laravel) · [Symfony](https://studio-design.github.io/openapi-contract-testing/quickstarts/symfony) · [Pest](https://studio-design.github.io/openapi-contract-testing/quickstarts/pest)
 
