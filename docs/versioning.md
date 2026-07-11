@@ -29,7 +29,7 @@ This library follows [Semantic Versioning 2.0](https://semver.org/). v1.0.0 is t
 
 `@internal` is enforced statically. Our CI runs PHPStan (pinned to `^2.1.13`) with the `bleedingEdge` ruleset enabled so that `new.internalClass` / `method.internalClass` / `staticMethod.internalClass` / `return.internalClass` / `parameter.internalClass` / `classConstant.internalClass` / `catch.internalClass` violations fail the build. The boundary is the **root namespace** — any code outside `Studio\` that instantiates, calls, type-hints against, or accesses constants on an `@internal` symbol will surface as a PHPStan error. Downstream consumers who enable bleedingEdge in their own PHPStan setup get the same enforcement automatically. Inheritance (`extends`/`implements`) of `@internal` classes is **not** enforced by these rules — that ships under a separate bleedingEdge rule we have not opted into yet. The `bin/openapi-coverage-merge` CLI script is the only place inside this repository that crosses the boundary by design (it lives in the global namespace and instantiates `Coverage\CoverageMergeCommand`); it is excluded from PHPStan's `paths` so it does not pollute the analysis.
 
-See [UPGRADING.md](https://github.com/studio-design/openapi-contract-testing/blob/main/UPGRADING.md) for migration notes between versions.
+See [UPGRADING.md](https://github.com/studio-design/gesso/blob/main/UPGRADING.md) for migration notes between versions.
 
 ## Support policy
 

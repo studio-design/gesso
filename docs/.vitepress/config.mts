@@ -1,8 +1,8 @@
 import { defineConfig } from 'vitepress'
 
 const version = process.env.DOCS_VERSION ?? 'next'
-const repository = process.env.GITHUB_REPOSITORY ?? 'studio-design/openapi-contract-testing'
-const repositoryName = repository.split('/').at(-1) ?? 'openapi-contract-testing'
+const repository = process.env.GITHUB_REPOSITORY ?? 'studio-design/gesso'
+const repositoryName = repository.split('/').at(-1) ?? 'gesso'
 const base = process.env.DOCS_BASE ?? `/${repositoryName}/`
 const repositoryUrl = `https://github.com/${repository}`
 const siteUrl = new URL(base, 'https://studio-design.github.io').toString()

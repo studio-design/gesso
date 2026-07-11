@@ -10,4 +10,4 @@ Use the automatically registered expectation with a Laravel response:
 expect($this->getJson('/pets'))->toMatchOpenApiResponseSchema();
 ```
 
-The runnable [`examples/pest`](https://github.com/studio-design/openapi-contract-testing/tree/main/examples/pest) project includes response and request expectations and is executed in CI. See the [Pest guide](../pest-plugin.md) for setup and supported expectation arguments.
+The runnable [`examples/pest`](https://github.com/studio-design/gesso/tree/main/examples/pest) project includes response and request expectations and is executed in CI. See the [Pest guide](../pest-plugin.md) for setup and supported expectation arguments.

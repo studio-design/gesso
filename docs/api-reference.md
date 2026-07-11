@@ -143,4 +143,4 @@ $coverage = OpenApiCoverageTracker::computeCoverage('front');
 // ]
 ```
 
-`hasAnyCoverage(spec): bool` is a fast presence check. `getCovered()` is retained as a diagnostic shim returning `array<spec, array<"METHOD path", true>>`. See [CHANGELOG.md](https://github.com/studio-design/openapi-contract-testing/blob/main/CHANGELOG.md) for the migration from the pre-#111 endpoint-level shape.
+`hasAnyCoverage(spec): bool` is a fast presence check. `getCovered()` is retained as a diagnostic shim returning `array<spec, array<"METHOD path", true>>`. See [CHANGELOG.md](https://github.com/studio-design/gesso/blob/main/CHANGELOG.md) for the migration from the pre-#111 endpoint-level shape.

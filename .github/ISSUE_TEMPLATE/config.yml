@@ -1,5 +1,5 @@
 blank_issues_enabled: false
 contact_links:
   - name: Security report
-    url: https://github.com/studio-design/openapi-contract-testing/security/advisories/new
+    url: https://github.com/studio-design/gesso/security/advisories/new
     about: Report a security vulnerability privately. See SECURITY.md.

@@ -490,7 +490,7 @@ final class OpenApiResponseValidator
             $message = sprintf(
                 '[OpenAPI Strict Required] LIBRARY BUG: walker produced malformed pointer map for %s %s %s; '
                 . 'strict_required and strict_required_per_call recording skipped for this observation. '
-                . 'Please report at https://github.com/studio-design/openapi-contract-testing/issues '
+                . 'Please report at https://github.com/studio-design/gesso/issues '
                 . "with the cause: %s\n",
                 strtoupper($method),
                 $matchedPath,

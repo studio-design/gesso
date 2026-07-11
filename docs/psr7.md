@@ -127,5 +127,5 @@ uses a one-pass stream. Non-JSON bodies are not consumed; the core validator
 still checks their declared content type and reports schema enforcement as
 skipped where appropriate.
 
-See the [runnable Guzzle example](https://github.com/studio-design/openapi-contract-testing/tree/main/examples/psr7) for a complete
+See the [runnable Guzzle example](https://github.com/studio-design/gesso/tree/main/examples/psr7) for a complete
 project.

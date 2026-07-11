@@ -13,7 +13,7 @@ $response->assertOk();
 $this->assertResponseMatchesOpenApiSchema($response);
 ```
 
-The complete [`examples/laravel`](https://github.com/studio-design/openapi-contract-testing/tree/main/examples/laravel) fixture installs and runs in CI:
+The complete [`examples/laravel`](https://github.com/studio-design/gesso/tree/main/examples/laravel) fixture installs and runs in CI:
 
 ```bash
 composer test

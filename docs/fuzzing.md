@@ -82,7 +82,7 @@ class ApiContractTest extends TestCase
 Framework-agnostic code starts with
 `OpenApiSpecExplorer::explore('front', casesPerOperation: 20, seed: 1)` and
 adds `assertResponseUsing()` to validate whatever the dispatcher returns. The
-runnable [`examples/psr7`](https://github.com/studio-design/openapi-contract-testing/tree/main/examples/psr7) suite demonstrates this with
+runnable [`examples/psr7`](https://github.com/studio-design/gesso/tree/main/examples/psr7) suite demonstrates this with
 `OpenApiPsr7Validator` assertions.
 
 ### Filters and hooks

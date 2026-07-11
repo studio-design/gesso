@@ -14,7 +14,7 @@ hero:
       link: /quickstarts/core
     - theme: alt
       text: View on GitHub
-      link: https://github.com/studio-design/openapi-contract-testing
+      link: https://github.com/studio-design/gesso
 
 features:
   - title: Contract enforcement

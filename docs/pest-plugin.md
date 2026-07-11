@@ -77,6 +77,6 @@ The same `spec: / method: / path:` keyword arguments are accepted. The request b
 
 ## Constraints (v1)
 
-- **Laravel only**. The expectations require the running Pest test class to use `ValidatesOpenApiSchema`. Standalone (Symfony / framework-less) Pest support against PSR-7 messages is tracked as a follow-up to [#109](https://github.com/studio-design/openapi-contract-testing/issues/109).
+- **Laravel only**. The expectations require the running Pest test class to use `ValidatesOpenApiSchema`. Standalone (Symfony / framework-less) Pest support against PSR-7 messages is tracked as a follow-up to [#109](https://github.com/studio-design/gesso/issues/109).
 - **Pest 3**. Pest 4 (PHPUnit ^12) is not yet in the CI matrix.
 - **Pest discovery contract**. The plugin guards against a missing Pest install at autoload time, so it is safe to leave installed in projects that don't actually use Pest. If `pestphp/pest` is absent, the bootstrap is a true no-op.

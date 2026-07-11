@@ -19,7 +19,7 @@ fixes. v0.x is no longer supported now that v1.0 has shipped.
 Use GitHub's [Private Vulnerability Reporting][pvr] to file the report
 privately:
 
-[pvr]: https://github.com/studio-design/openapi-contract-testing/security/advisories/new
+[pvr]: https://github.com/studio-design/gesso/security/advisories/new
 
 What to include:
 - Affected version(s)

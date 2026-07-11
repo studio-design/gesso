@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises'
 
-const repository = process.env.GITHUB_REPOSITORY ?? 'studio-design/openapi-contract-testing'
-const repositoryName = repository.split('/').at(-1) ?? 'openapi-contract-testing'
+const repository = process.env.GITHUB_REPOSITORY ?? 'studio-design/gesso'
+const repositoryName = repository.split('/').at(-1) ?? 'gesso'
 const expectedBase = process.env.DOCS_BASE ?? `/${repositoryName}/`
 const expectedSiteUrl = new URL(expectedBase, 'https://studio-design.github.io').toString()
 const html = await readFile('docs/.vitepress/dist/index.html', 'utf8')

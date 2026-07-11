@@ -5,7 +5,7 @@ report via the `html_output` PHPUnit Extension parameter or the `--html-output`
 flag on `openapi-coverage-merge`. The file is intended for human review (PR
 comments, CI artifact preview, offline inspection).
 
-A sample document is committed in the repository at [`docs/samples/coverage.html`](https://github.com/studio-design/openapi-contract-testing/blob/main/docs/samples/coverage.html).
+A sample document is committed in the repository at [`docs/samples/coverage.html`](https://github.com/studio-design/gesso/blob/main/docs/samples/coverage.html).
 
 ## Design choices
 

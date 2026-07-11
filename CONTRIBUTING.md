@@ -6,8 +6,8 @@ single maintainer; the workflow below is optimised for quick iteration.
 ## Quick start
 
 ```bash
-git clone https://github.com/studio-design/openapi-contract-testing
-cd openapi-contract-testing
+git clone https://github.com/studio-design/gesso
+cd gesso
 composer install
 composer ci   # runs cs-check + stan + test
 ```

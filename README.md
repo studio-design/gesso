@@ -8,7 +8,7 @@
 
 OpenAPI contract testing for PHP.
 
-[![CI](https://github.com/studio-design/openapi-contract-testing/actions/workflows/ci.yml/badge.svg)](https://github.com/studio-design/openapi-contract-testing/actions/workflows/ci.yml)
+[![CI](https://github.com/studio-design/gesso/actions/workflows/ci.yml/badge.svg)](https://github.com/studio-design/gesso/actions/workflows/ci.yml)
 [![Latest Stable Version](https://poser.pugx.org/studio-design/openapi-contract-testing/v)](https://packagist.org/packages/studio-design/openapi-contract-testing)
 [![Total Downloads](https://poser.pugx.org/studio-design/openapi-contract-testing/downloads)](https://packagist.org/packages/studio-design/openapi-contract-testing)
 [![PHP Version Require](https://poser.pugx.org/studio-design/openapi-contract-testing/require/php)](https://packagist.org/packages/studio-design/openapi-contract-testing)
@@ -20,7 +20,7 @@ Validate your API responses against your OpenAPI specification during testing, a
 
 Gesso remains distributed as `studio-design/openapi-contract-testing`; existing Composer requirements, PHP namespaces, and configuration keys do not change.
 
-**[Search the documentation](https://studio-design.github.io/openapi-contract-testing/)** · [Core quickstart](https://studio-design.github.io/openapi-contract-testing/quickstarts/core) · [Laravel](https://studio-design.github.io/openapi-contract-testing/quickstarts/laravel) · [Symfony](https://studio-design.github.io/openapi-contract-testing/quickstarts/symfony) · [Pest](https://studio-design.github.io/openapi-contract-testing/quickstarts/pest)
+**[Search the documentation](https://studio-design.github.io/gesso/)** · [Core quickstart](https://studio-design.github.io/gesso/quickstarts/core) · [Laravel](https://studio-design.github.io/gesso/quickstarts/laravel) · [Symfony](https://studio-design.github.io/gesso/quickstarts/symfony) · [Pest](https://studio-design.github.io/gesso/quickstarts/pest)
 
 ## Features
 
@@ -57,7 +57,7 @@ Choose based on the workflow you need rather than on a single yes/no feature cou
 | Parallel coverage merge | [Sidecar + merge CLI](docs/parallel.md) | Not documented | — | — | — |
 | Route/spec parity | [`openapi:routes`](docs/laravel-route-parity.md) with text/JSON and CI gates | [`spectator:routes`][spectator-cli] | — | — | — |
 | CLI diagnostics / scaffolding | [`doctor`](docs/doctor.md), [`openapi:routes`](docs/laravel-route-parity.md), coverage merge; no scaffolding | [`validate`, `coverage`, `routes`, `stubs`][spectator-cli] | — | — | — |
-| Structured validation failures | Text messages; JSON planned ([#282](https://github.com/studio-design/openapi-contract-testing/issues/282)) | [JSON `{errors: [...]}`][spectator-errors] | [PHP exception hierarchy][league-errors] | [Wrapper exception][osteel-readme] | [PHPUnit failure text][kirschbaum-failure-source] |
+| Structured validation failures | Text messages; JSON planned ([#282](https://github.com/studio-design/gesso/issues/282)) | [JSON `{errors: [...]}`][spectator-errors] | [PHP exception hierarchy][league-errors] | [Wrapper exception][osteel-readme] | [PHPUnit failure text][kirschbaum-failure-source] |
 | Schema-driven exploration | [Deterministic endpoint + whole-spec generation](docs/fuzzing.md) | — | — | — | — |
 | Drift / under-description checks | [Enum drift](docs/enum-drift.md), [strict required](docs/strict-required.md) | — | — | — | — |
 | First-class integration | [PSR-7](docs/psr7.md), [Laravel, Symfony, Pest](docs/setup.md) | [Laravel][spectator] | [PSR-7, PSR-15 middleware][league-middleware] | [HttpFoundation, PSR-7][osteel-readme] | [Laravel auto-validation][kirschbaum-readme] |
@@ -65,7 +65,7 @@ Choose based on the workflow you need rather than on a single yes/no feature cou
 
 **Legend**: ✅ supported · — no equivalent feature documented. “Not documented” is intentionally different from “unsupported”.
 
-**Methodology**: This is a documentation/source audit, not a benchmark. Claims are limited to the linked, tag-pinned public documentation and Composer constraints checked on 2026-07-10. This-library claims describe [`main` at `8c6416d`](https://github.com/studio-design/openapi-contract-testing/commit/8c6416dcd7edf179010f5f1cdc71a1e146a5c403); competitor versions are shown in the table header. Re-check this matrix using the [release checklist](docs/versioning.md#release-checklist) at least quarterly or before a release when three months have elapsed.
+**Methodology**: This is a documentation/source audit, not a benchmark. Claims are limited to the linked, tag-pinned public documentation and Composer constraints checked on 2026-07-10. This-library claims describe [`main` at `8c6416d`](https://github.com/studio-design/gesso/commit/8c6416dcd7edf179010f5f1cdc71a1e146a5c403); competitor versions are shown in the table header. Re-check this matrix using the [release checklist](docs/versioning.md#release-checklist) at least quarterly or before a release when three months have elapsed.
 
 [spectator]: https://github.com/hotmeteor/spectator/tree/v3.0.2
 [spectator-cli]: https://github.com/hotmeteor/spectator/tree/v3.0.2#artisan-commands
@@ -126,7 +126,7 @@ All paths start with the same development dependency:
 composer require --dev studio-design/openapi-contract-testing
 ```
 
-The example below uses a PSR-7 request and response. The searchable documentation contains the complete [core](https://studio-design.github.io/openapi-contract-testing/quickstarts/core), [Laravel](https://studio-design.github.io/openapi-contract-testing/quickstarts/laravel), [Symfony](https://studio-design.github.io/openapi-contract-testing/quickstarts/symfony), and [Pest](https://studio-design.github.io/openapi-contract-testing/quickstarts/pest) quickstarts.
+The example below uses a PSR-7 request and response. The searchable documentation contains the complete [core](https://studio-design.github.io/gesso/quickstarts/core), [Laravel](https://studio-design.github.io/gesso/quickstarts/laravel), [Symfony](https://studio-design.github.io/gesso/quickstarts/symfony), and [Pest](https://studio-design.github.io/gesso/quickstarts/pest) quickstarts.
 
 ### 1. Provide your OpenAPI spec
 

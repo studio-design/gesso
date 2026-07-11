@@ -15,7 +15,7 @@ $response = new Response('[{"id":1,"name":"Fido"}]', 200, [
 $this->assertResponseMatchesOpenApiSchema($request, $response);
 ```
 
-Run the CI-tested [`examples/symfony`](https://github.com/studio-design/openapi-contract-testing/tree/main/examples/symfony) fixture:
+Run the CI-tested [`examples/symfony`](https://github.com/studio-design/gesso/tree/main/examples/symfony) fixture:
 
 ```bash
 composer test

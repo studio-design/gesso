@@ -18,4 +18,4 @@ Keep the Symfony `Request` and `Response` values and switch to `Symfony\OpenApiA
 
 Add `ValidatesOpenApiSchema` to the Laravel base test case and migrate explicit assertions first. If automatic validation is required, enable `auto_assert` and `auto_validate_request`, then use per-request opt-outs for intentionally out-of-contract tests.
 
-See the [feature comparison](https://github.com/studio-design/openapi-contract-testing#why-this-library) for deliberately scoped, version-pinned differences. Do not remove the previous validator until the migrated suite reports the expected endpoint coverage.
+See the [feature comparison](https://github.com/studio-design/gesso#why-this-library) for deliberately scoped, version-pinned differences. Do not remove the previous validator until the migrated suite reports the expected endpoint coverage.

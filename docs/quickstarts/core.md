@@ -4,7 +4,7 @@
 composer require --dev studio-design/openapi-contract-testing
 ```
 
-Copy the minimal [`examples/core`](https://github.com/studio-design/openapi-contract-testing/tree/main/examples/core) project. Its test validates a JSON response without a framework adapter:
+Copy the minimal [`examples/core`](https://github.com/studio-design/gesso/tree/main/examples/core) project. Its test validates a JSON response without a framework adapter:
 
 ```php
 $result = (new OpenApiResponseValidator())->validate(
