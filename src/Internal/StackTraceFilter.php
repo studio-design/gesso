@@ -10,9 +10,11 @@ use PHPUnit\Framework\AssertionFailedError;
 use ReflectionException;
 use ReflectionProperty;
 
+use function dirname;
 use function is_string;
 use function str_contains;
 use function str_replace;
+use function str_starts_with;
 
 /**
  * Trims this library's own frames (and known framework testing-concern
@@ -29,9 +31,10 @@ final class StackTraceFilter
     /**
      * Frame `file` substrings (forward-slash form) that mark frames as
      * library/framework noise and should be dropped from the trace. Each
-     * `/openapi-contract-testing/src/<Subdir>/` entry covers path-repo /
-     * monorepo dev installs where the vendor prefix is absent; the list
-     * mirrors the actual source subdirectories below.
+     * The library's own source root is derived from `__DIR__` separately so
+     * filtering does not depend on the Composer package or checkout directory
+     * name. The legacy substrings retain support for synthetic traces and
+     * traces captured before the repository was renamed.
      *
      * The two `Illuminate/` entries cover the Laravel testing concerns
      * that sit between a Laravel trait's hook and the user test method;
@@ -112,7 +115,7 @@ final class StackTraceFilter
             }
 
             $normalized = str_replace('\\', '/', $file);
-            $drop = false;
+            $drop = str_starts_with($normalized, self::sourceRoot());
             foreach (self::DROP_PATTERNS as $pattern) {
                 if (str_contains($normalized, $pattern)) {
                     $drop = true;
@@ -126,6 +129,11 @@ final class StackTraceFilter
         }
 
         return $kept;
+    }
+
+    private static function sourceRoot(): string
+    {
+        return str_replace('\\', '/', dirname(__DIR__)) . '/';
     }
 
     private static function traceProperty(): ReflectionProperty

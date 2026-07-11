@@ -13,9 +13,23 @@ use Studio\OpenApiContractTesting\Internal\StackTraceFilter;
 
 use function array_column;
 use function array_keys;
+use function dirname;
 
 class StackTraceFilterTest extends TestCase
 {
+    #[Test]
+    public function drops_frames_from_the_actual_source_root_regardless_of_checkout_name(): void
+    {
+        $trace = [
+            ['file' => dirname(__DIR__, 3) . '/src/Laravel/ValidatesOpenApiSchema.php', 'line' => 500],
+            ['file' => '/app/tests/Feature/PetTest.php', 'line' => 47],
+        ];
+
+        $filtered = StackTraceFilter::filterFrames($trace);
+
+        $this->assertSame(['/app/tests/Feature/PetTest.php'], array_column($filtered, 'file'));
+    }
+
     #[Test]
     public function drops_frames_inside_studio_design_library_path(): void
     {
