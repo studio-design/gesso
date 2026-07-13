@@ -524,6 +524,40 @@ class SchemaDataGeneratorTest extends TestCase
     }
 
     #[Test]
+    public function generates_common_phone_number_patterns_deterministically(): void
+    {
+        $schema = [
+            'type' => 'string',
+            'pattern' => '^(\\d{10,11}|(?=[\\d-]{12,13}$)\\d{2,4}-\\d{2,4}-\\d{3,4})$',
+        ];
+
+        $first = SchemaDataGenerator::generate($schema, 3, seed: 1);
+        $second = SchemaDataGenerator::generate($schema, 3, seed: 999);
+
+        $this->assertSame([str_repeat('0', 10), str_repeat('0', 10), str_repeat('0', 10)], $first);
+        $this->assertSame($first, $second);
+        foreach ($first as $value) {
+            $this->assertTrue(SchemaValueValidator::isValid($value, $schema));
+        }
+    }
+
+    #[Test]
+    public function phone_number_pattern_generation_honors_length_constraints(): void
+    {
+        $schema = [
+            'type' => 'string',
+            'minLength' => 12,
+            'maxLength' => 12,
+            'pattern' => '^(\\d{10,11}|(?=[\\d-]{12,13}$)\\d{2,4}-\\d{2,4}-\\d{3,4})$',
+        ];
+
+        $value = SchemaDataGenerator::generate($schema, 1, seed: 1)[0];
+
+        $this->assertSame('000-000-0000', $value);
+        $this->assertTrue(SchemaValueValidator::isValid($value, $schema));
+    }
+
+    #[Test]
     public function emits_numeric_boundaries_that_honor_exclusive_and_multiple_of(): void
     {
         $schema = [

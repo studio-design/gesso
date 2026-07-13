@@ -143,7 +143,7 @@ fuzz generator defect` diagnostic instead of sending invalid data to the API.
 | Strategy | Valid generation | Targeted invalid mutation |
 |---|---|---|
 | Scalars | `type`, `const`, `enum`, nullable branches | wrong type, const/enum miss |
-| Strings | min/max length, common regex patterns (including anchored character classes with fixed quantifiers and FQDN labels with a fixed domain suffix), Unicode code points, Faker-backed email/UUID/date/time/URI/host/IP formats | below/above length, pattern miss, invalid recognized format |
+| Strings | min/max length, common regex patterns (including anchored character classes with fixed quantifiers, FQDN labels with a fixed domain suffix, and phone-number alternations), Unicode code points, Faker-backed email/UUID/date/time/URI/host/IP formats | below/above length, pattern miss, invalid recognized format |
 | Numbers | inclusive/exclusive bounds and `multipleOf`, including OAS 3.0 boolean-exclusive lowering | outside/equal-exclusive bound, non-multiple |
 | Arrays | `items`, `prefixItems`, min/max items, `uniqueItems` | too few/many or duplicate items |
 | Objects | properties, required, min/max properties, schema-valued/default additional properties | missing required, extra forbidden, too few/many properties, nested property constraint |

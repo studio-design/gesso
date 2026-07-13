@@ -839,6 +839,11 @@ final class SchemaDataGenerator
             return $fixedQuantifierValue;
         }
 
+        $phoneNumberValue = self::generatePhoneNumberPattern($pattern, $schema);
+        if ($phoneNumberValue !== null) {
+            return $phoneNumberValue;
+        }
+
         $hostnameValue = self::generateHostnamePattern($pattern, $schema);
         if ($hostnameValue !== null) {
             return $hostnameValue;
@@ -864,6 +869,55 @@ final class SchemaDataGenerator
                     @preg_match($delimiter . $escaped . $delimiter . 'u', $value) === 1) {
                     return $value;
                 }
+            }
+        }
+
+        return null;
+    }
+
+    /** @param array<string, mixed> $schema */
+    private static function generatePhoneNumberPattern(string $pattern, array $schema): ?string
+    {
+        $prefix = '^(\\d{';
+        $suffix = '}|(?=[\\d-]{12,13}$)\\d{2,4}-\\d{2,4}-\\d{3,4})$';
+        if (!str_starts_with($pattern, $prefix) || !str_ends_with($pattern, $suffix)) {
+            return null;
+        }
+
+        $quantifier = substr($pattern, strlen($prefix), -strlen($suffix));
+        if (preg_match('/^([0-9]+),([0-9]+)$/D', $quantifier, $matches) !== 1) {
+            return null;
+        }
+
+        $digitMinimum = (int) $matches[1];
+        $digitMaximum = (int) $matches[2];
+        if ($digitMinimum < 1 || $digitMaximum < $digitMinimum ||
+            $digitMinimum > self::MAX_SYNTHESIZED_PATTERN_LENGTH) {
+            return null;
+        }
+
+        $minimum = isset($schema['minLength']) && is_int($schema['minLength']) ? max(0, $schema['minLength']) : null;
+        $maximum = isset($schema['maxLength']) && is_int($schema['maxLength']) ? max(0, $schema['maxLength']) : null;
+        $candidates = [];
+        $digitLength = max($digitMinimum, $minimum ?? 0);
+        if ($digitLength <= $digitMaximum &&
+            $digitLength <= self::MAX_SYNTHESIZED_PATTERN_LENGTH &&
+            ($maximum === null || $digitLength <= $maximum)) {
+            $candidates[] = str_repeat('0', $digitLength);
+        }
+        $candidates[] = '000-000-0000';
+        $candidates[] = '0000-000-0000';
+
+        $delimiter = '~';
+        $escaped = str_replace($delimiter, '\\' . $delimiter, $pattern);
+        foreach ($candidates as $candidate) {
+            $length = self::unicodeLength($candidate);
+            if (($minimum !== null && $length < $minimum) ||
+                ($maximum !== null && $length > $maximum)) {
+                continue;
+            }
+            if (@preg_match($delimiter . $escaped . $delimiter . 'u', $candidate) === 1) {
+                return $candidate;
             }
         }
 
