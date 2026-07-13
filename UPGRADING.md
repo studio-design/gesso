@@ -11,11 +11,11 @@ read each intermediate section in order — behavioural changes compose.
 
 The v1.x line is covered end-to-end by SemVer (see "v0.x → v1.0.0"
 below for the surface contract). Minor releases are additive by default.
-Two behavioural changes exist so far: v1.3.0 (gated on an already-opt-in
-flag) and v1.8.0 (`discriminator.mapping` enforcement, default-on with an
-opt-out flag — see directly below).
+Three behavioural changes exist so far: v1.3.0 (gated on an already-opt-in
+flag), v1.8.0 (`discriminator.mapping` enforcement, default-on with an opt-out
+flag), and v1.9.0 (native JSON Schema dialect enforcement for OpenAPI 3.1/3.2).
 
-### Next minor release — native JSON Schema dialects for OpenAPI 3.1/3.2
+### From v1.8.0 → v1.9.0
 
 - OpenAPI 3.0 continues to use the existing Draft 07 compatibility conversion.
 - OpenAPI 3.1/3.2 now preserve and enforce native JSON Schema keywords,
