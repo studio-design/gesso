@@ -886,15 +886,24 @@ final class SchemaDataGenerator
 
         $minimum = isset($schema['minLength']) && is_int($schema['minLength']) ? max(0, $schema['minLength']) : null;
         $maximum = isset($schema['maxLength']) && is_int($schema['maxLength']) ? max(0, $schema['maxLength']) : null;
-        $value = 'a.' . $suffix;
-        while ($minimum !== null && self::unicodeLength($value) < $minimum) {
-            if (self::unicodeLength($value) >= self::MAX_SYNTHESIZED_PATTERN_LENGTH ||
-                ($maximum !== null && self::unicodeLength($value) >= $maximum)) {
-                return null;
-            }
-            $value = 'a.' . $value;
+        $suffixLength = self::unicodeLength($suffix);
+        $prefixLength = max(2, ($minimum ?? 0) - $suffixLength);
+        if ($prefixLength + $suffixLength > self::MAX_SYNTHESIZED_PATTERN_LENGTH ||
+            ($maximum !== null && $prefixLength + $suffixLength > $maximum)) {
+            return null;
         }
 
+        $labelCount = (int) ceil($prefixLength / 64);
+        $remainingCharacters = $prefixLength - $labelCount;
+        $labels = [];
+        for ($index = 0; $index < $labelCount; $index++) {
+            $remainingLabels = $labelCount - $index - 1;
+            $labelLength = min(63, $remainingCharacters - $remainingLabels);
+            $labels[] = str_repeat('a', $labelLength);
+            $remainingCharacters -= $labelLength;
+        }
+
+        $value = implode('.', $labels) . '.' . $suffix;
         $length = self::unicodeLength($value);
         if ($length > self::MAX_SYNTHESIZED_PATTERN_LENGTH || ($maximum !== null && $length > $maximum)) {
             return null;
