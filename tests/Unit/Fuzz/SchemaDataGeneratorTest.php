@@ -489,6 +489,41 @@ class SchemaDataGeneratorTest extends TestCase
     }
 
     #[Test]
+    public function generates_common_hostname_patterns_with_a_fixed_domain_suffix(): void
+    {
+        $schema = [
+            'type' => 'string',
+            'maxLength' => 253,
+            'pattern' => '^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)+studio\\.design$',
+        ];
+
+        $first = SchemaDataGenerator::generate($schema, 3, seed: 1);
+        $second = SchemaDataGenerator::generate($schema, 3, seed: 999);
+
+        $this->assertSame(['a.studio.design', 'a.studio.design', 'a.studio.design'], $first);
+        $this->assertSame($first, $second);
+        foreach ($first as $value) {
+            $this->assertTrue(SchemaValueValidator::isValid($value, $schema));
+        }
+    }
+
+    #[Test]
+    public function hostname_pattern_generation_adjusts_length_one_character_at_a_time(): void
+    {
+        $schema = [
+            'type' => 'string',
+            'minLength' => 16,
+            'maxLength' => 16,
+            'pattern' => '^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)+studio\\.design$',
+        ];
+
+        $value = SchemaDataGenerator::generate($schema, 1, seed: 1)[0];
+
+        $this->assertSame('aa.studio.design', $value);
+        $this->assertTrue(SchemaValueValidator::isValid($value, $schema));
+    }
+
+    #[Test]
     public function emits_numeric_boundaries_that_honor_exclusive_and_multiple_of(): void
     {
         $schema = [

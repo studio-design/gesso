@@ -37,8 +37,12 @@ use function preg_match;
 use function preg_match_all;
 use function round;
 use function sprintf;
+use function str_ends_with;
 use function str_repeat;
 use function str_replace;
+use function str_starts_with;
+use function strlen;
+use function substr;
 use function trigger_error;
 
 /**
@@ -835,6 +839,11 @@ final class SchemaDataGenerator
             return $fixedQuantifierValue;
         }
 
+        $hostnameValue = self::generateHostnamePattern($pattern, $schema);
+        if ($hostnameValue !== null) {
+            return $hostnameValue;
+        }
+
         $candidates = ['a', 'A', '0', 'abc', 'ABC', '123', 'test-' . $iteration, 'é', '日本語'];
         $minimum = isset($schema['minLength']) && is_int($schema['minLength']) ? max(0, $schema['minLength']) : null;
         $maximum = isset($schema['maxLength']) && is_int($schema['maxLength']) ? max(0, $schema['maxLength']) : null;
@@ -859,6 +868,51 @@ final class SchemaDataGenerator
         }
 
         return null;
+    }
+
+    /** @param array<string, mixed> $schema */
+    private static function generateHostnamePattern(string $pattern, array $schema): ?string
+    {
+        $labelPrefix = '^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)+';
+        if (!str_starts_with($pattern, $labelPrefix) || !str_ends_with($pattern, '$')) {
+            return null;
+        }
+
+        $escapedSuffix = substr($pattern, strlen($labelPrefix), -1);
+        $suffix = str_replace('\\.', '.', $escapedSuffix);
+        if (preg_match('/^[a-z0-9-]+(?:\.[a-z0-9-]+)*$/Di', $suffix) !== 1) {
+            return null;
+        }
+
+        $minimum = isset($schema['minLength']) && is_int($schema['minLength']) ? max(0, $schema['minLength']) : null;
+        $maximum = isset($schema['maxLength']) && is_int($schema['maxLength']) ? max(0, $schema['maxLength']) : null;
+        $suffixLength = self::unicodeLength($suffix);
+        $prefixLength = max(2, ($minimum ?? 0) - $suffixLength);
+        if ($prefixLength + $suffixLength > self::MAX_SYNTHESIZED_PATTERN_LENGTH ||
+            ($maximum !== null && $prefixLength + $suffixLength > $maximum)) {
+            return null;
+        }
+
+        $labelCount = (int) ceil($prefixLength / 64);
+        $remainingCharacters = $prefixLength - $labelCount;
+        $labels = [];
+        for ($index = 0; $index < $labelCount; $index++) {
+            $remainingLabels = $labelCount - $index - 1;
+            $labelLength = min(63, $remainingCharacters - $remainingLabels);
+            $labels[] = str_repeat('a', $labelLength);
+            $remainingCharacters -= $labelLength;
+        }
+
+        $value = implode('.', $labels) . '.' . $suffix;
+        $length = self::unicodeLength($value);
+        if ($length > self::MAX_SYNTHESIZED_PATTERN_LENGTH || ($maximum !== null && $length > $maximum)) {
+            return null;
+        }
+
+        $delimiter = '~';
+        $escaped = str_replace($delimiter, '\\' . $delimiter, $pattern);
+
+        return @preg_match($delimiter . $escaped . $delimiter . 'u', $value) === 1 ? $value : null;
     }
 
     /** @param array<string, mixed> $schema */
