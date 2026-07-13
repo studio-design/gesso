@@ -10,7 +10,6 @@ use InvalidArgumentException;
 use Opis\JsonSchema\Validator;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
-use RuntimeException;
 use stdClass;
 use Studio\OpenApiContractTesting\Fuzz\SchemaDataGenerator;
 use Studio\OpenApiContractTesting\Fuzz\SchemaMutationGenerator;
@@ -30,6 +29,7 @@ use function json_encode;
 use function preg_match;
 use function restore_error_handler;
 use function set_error_handler;
+use function str_repeat;
 use function strlen;
 
 class SchemaDataGeneratorTest extends TestCase
@@ -475,6 +475,20 @@ class SchemaDataGeneratorTest extends TestCase
     }
 
     #[Test]
+    public function generates_simple_anchored_patterns_with_fixed_quantifiers(): void
+    {
+        $schemas = [
+            ['type' => 'string', 'pattern' => '^[a-f0-9]{64}$'],
+            ['type' => 'string', 'pattern' => '^[A-Z]{2}$'],
+            ['type' => 'string', 'pattern' => '^\\d{6}$'],
+        ];
+
+        $this->assertSame(str_repeat('a', 64), SchemaDataGenerator::generate($schemas[0], 1, seed: 1)[0]);
+        $this->assertSame('AA', SchemaDataGenerator::generate($schemas[1], 1, seed: 1)[0]);
+        $this->assertSame('000000', SchemaDataGenerator::generate($schemas[2], 1, seed: 1)[0]);
+    }
+
+    #[Test]
     public function emits_numeric_boundaries_that_honor_exclusive_and_multiple_of(): void
     {
         $schema = [
@@ -886,10 +900,10 @@ class SchemaDataGeneratorTest extends TestCase
     }
 
     #[Test]
-    public function self_validation_reports_an_internal_generator_defect_before_dispatch(): void
+    public function unsupported_pattern_reports_an_explicit_generation_limitation(): void
     {
-        $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('Internal fuzz generator defect');
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('supported synthesis subset');
 
         SchemaDataGenerator::generate(['type' => 'string', 'pattern' => '^impossible-literal$'], 1, seed: 1);
     }

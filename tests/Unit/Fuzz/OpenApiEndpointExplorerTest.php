@@ -18,6 +18,7 @@ use Studio\OpenApiContractTesting\Spec\OpenApiSpecLoader;
 
 use function json_decode;
 use function json_encode;
+use function str_repeat;
 
 class OpenApiEndpointExplorerTest extends TestCase
 {
@@ -135,6 +136,22 @@ class OpenApiEndpointExplorerTest extends TestCase
             }
         }
         $this->assertTrue($sawValue, 'at least one case should generate the dryRun query param');
+    }
+
+    #[Test]
+    public function generates_fixed_quantifier_pattern_for_query_parameter(): void
+    {
+        $cases = OpenApiEndpointExplorer::explore(
+            'fuzz-fixed-quantifier-query',
+            'GET',
+            '/oauth/callback',
+            cases: 1,
+            seed: 1,
+        );
+
+        foreach ($cases as $case) {
+            $this->assertSame(str_repeat('a', 64), $case->query['state']);
+        }
     }
 
     #[Test]

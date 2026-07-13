@@ -143,7 +143,7 @@ fuzz generator defect` diagnostic instead of sending invalid data to the API.
 | Strategy | Valid generation | Targeted invalid mutation |
 |---|---|---|
 | Scalars | `type`, `const`, `enum`, nullable branches | wrong type, const/enum miss |
-| Strings | min/max length, common regex patterns, Unicode code points, Faker-backed email/UUID/date/time/URI/host/IP formats | below/above length, pattern miss, invalid recognized format |
+| Strings | min/max length, common regex patterns (including anchored character classes and `\d` with fixed quantifiers, such as `^[a-f0-9]{64}$`), Unicode code points, Faker-backed email/UUID/date/time/URI/host/IP formats | below/above length, pattern miss, invalid recognized format |
 | Numbers | inclusive/exclusive bounds and `multipleOf`, including OAS 3.0 boolean-exclusive lowering | outside/equal-exclusive bound, non-multiple |
 | Arrays | `items`, `prefixItems`, min/max items, `uniqueItems` | too few/many or duplicate items |
 | Objects | properties, required, min/max properties, schema-valued/default additional properties | missing required, extra forbidden, too few/many properties, nested property constraint |
@@ -152,8 +152,8 @@ fuzz generator defect` diagnostic instead of sending invalid data to the API.
 Arbitrary regex synthesis, recursive schemas, `contains`,
 `patternProperties`, `dependentSchemas`, and `unevaluated*` generation are not
 currently strategies. Those keywords remain validator features; an operation
-whose valid value cannot be synthesized fails locally or is an explicit
-whole-spec skip.
+whose valid value cannot be synthesized fails locally with a supported-subset
+diagnostic or is an explicit whole-spec skip carrying that reason.
 
 - Optional object properties alternate between included and omitted across cases, so each batch exercises both required-only and required+optional shapes.
 - Required keys are always emitted.

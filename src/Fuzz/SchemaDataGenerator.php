@@ -65,6 +65,8 @@ use function trigger_error;
  */
 final class SchemaDataGenerator
 {
+    private const MAX_SYNTHESIZED_PATTERN_LENGTH = 10_000;
+
     /**
      * Per-process record of formats already announced as "faker missing".
      * Keyed by format name; we only warn once per format to avoid spamming
@@ -408,6 +410,11 @@ final class SchemaDataGenerator
             if ($patternValue !== null) {
                 return $patternValue;
             }
+
+            throw new InvalidArgumentException(sprintf(
+                "String pattern '%s' is outside the fuzz generator's supported synthesis subset.",
+                $schema['pattern'],
+            ));
         }
 
         if ($faker !== null) {
@@ -823,6 +830,11 @@ final class SchemaDataGenerator
     /** @param array<string, mixed> $schema */
     private static function generateCommonPattern(string $pattern, array $schema, int $iteration): ?string
     {
+        $fixedQuantifierValue = self::generateFixedQuantifierPattern($pattern, $schema);
+        if ($fixedQuantifierValue !== null) {
+            return $fixedQuantifierValue;
+        }
+
         $candidates = ['a', 'A', '0', 'abc', 'ABC', '123', 'test-' . $iteration, 'é', '日本語'];
         $minimum = isset($schema['minLength']) && is_int($schema['minLength']) ? max(0, $schema['minLength']) : null;
         $maximum = isset($schema['maxLength']) && is_int($schema['maxLength']) ? max(0, $schema['maxLength']) : null;
@@ -843,6 +855,53 @@ final class SchemaDataGenerator
                     @preg_match($delimiter . $escaped . $delimiter . 'u', $value) === 1) {
                     return $value;
                 }
+            }
+        }
+
+        return null;
+    }
+
+    /** @param array<string, mixed> $schema */
+    private static function generateFixedQuantifierPattern(string $pattern, array $schema): ?string
+    {
+        if (preg_match('/^\^(\[[^]]+]|\\\\d)\{([0-9]+)\}\$$/D', $pattern, $matches) !== 1) {
+            return null;
+        }
+
+        $length = (int) $matches[2];
+        $minimum = isset($schema['minLength']) && is_int($schema['minLength']) ? max(0, $schema['minLength']) : null;
+        $maximum = isset($schema['maxLength']) && is_int($schema['maxLength']) ? max(0, $schema['maxLength']) : null;
+        if ($length > self::MAX_SYNTHESIZED_PATTERN_LENGTH ||
+            ($minimum !== null && $length < $minimum) ||
+            ($maximum !== null && $length > $maximum)) {
+            return null;
+        }
+
+        $atom = $matches[1];
+        $character = $atom === '\\d' ? '0' : self::characterMatchingClass($atom);
+        if ($character === null) {
+            return null;
+        }
+
+        $value = str_repeat($character, $length);
+        $delimiter = '~';
+        $escaped = str_replace($delimiter, '\\' . $delimiter, $pattern);
+
+        return @preg_match($delimiter . $escaped . $delimiter . 'u', $value) === 1 ? $value : null;
+    }
+
+    private static function characterMatchingClass(string $characterClass): ?string
+    {
+        $delimiter = '~';
+        $escaped = str_replace($delimiter, '\\' . $delimiter, $characterClass);
+        $expression = $delimiter . '^' . $escaped . '$' . $delimiter . 'u';
+        $candidates = self::unicodeCharacters(
+            'aA0abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_- ',
+        );
+
+        foreach ($candidates as $candidate) {
+            if (@preg_match($expression, $candidate) === 1) {
+                return $candidate;
             }
         }
 

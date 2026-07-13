@@ -1,0 +1,51 @@
+{
+    "openapi": "3.1.0",
+    "info": {
+        "title": "Fixed-quantifier query fuzz fixture",
+        "version": "1.0.0"
+    },
+    "paths": {
+        "/oauth/callback": {
+            "get": {
+                "operationId": "oauthCallback",
+                "parameters": [
+                    {
+                        "name": "state",
+                        "in": "query",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[a-f0-9]{64}$"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    }
+                }
+            }
+        },
+        "/unsupported": {
+            "get": {
+                "operationId": "unsupportedPattern",
+                "parameters": [
+                    {
+                        "name": "value",
+                        "in": "query",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^(foo|bar)$"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    }
+                }
+            }
+        }
+    }
+}

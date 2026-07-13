@@ -104,6 +104,20 @@ class OpenApiSpecExplorerTest extends TestCase
     }
 
     #[Test]
+    public function skips_unsupported_query_pattern_without_aborting_supported_operations(): void
+    {
+        $summary = OpenApiSpecExplorer::explore('fuzz-fixed-quantifier-query', casesPerOperation: 1, seed: 1)
+            ->dispatchUsing(static fn(): null => null)
+            ->assertResponses();
+
+        $this->assertSame(1, $summary->executedOperations);
+        $this->assertSame(1, $summary->executedCases);
+        $this->assertCount(1, $summary->skips);
+        $this->assertSame('unsupportedPattern', $summary->skips[0]->operation->operationId);
+        $this->assertStringContainsString('supported synthesis subset', $summary->skips[0]->reason);
+    }
+
+    #[Test]
     public function custom_method_filters_are_case_sensitive(): void
     {
         $this->expectException(InvalidArgumentException::class);
