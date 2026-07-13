@@ -120,7 +120,7 @@ returning. Empty, scalar, object/array, and literal JSON `null` bodies remain
 distinct.
 
 A non-seekable JSON stream cannot be read and then restored through the
-[PSR-7 `StreamInterface`](https://www.php-fig.org/psr/psr-7/#34-psrhttpmessagestreaminterface).
+[PSR-7 `StreamInterface`](https://github.com/php-fig/http-message/blob/2.0/src/StreamInterface.php).
 The adapter therefore returns a failure without reading it. Buffer or decorate
 the body with a seekable/caching stream before validation when the application
 uses a one-pass stream. Non-JSON bodies are not consumed; the core validator
