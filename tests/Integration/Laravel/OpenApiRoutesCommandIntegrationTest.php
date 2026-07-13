@@ -13,8 +13,13 @@ use PHPUnit\Framework\Attributes\Test;
 use Studio\OpenApiContractTesting\Laravel\OpenApiContractTestingServiceProvider;
 use Studio\OpenApiContractTesting\Spec\OpenApiSpecLoader;
 
+use function array_map;
+use function count;
 use function dirname;
+use function explode;
 use function json_decode;
+use function max;
+use function strlen;
 use function trim;
 
 final class OpenApiRoutesCommandIntegrationTest extends TestCase
@@ -73,6 +78,28 @@ final class OpenApiRoutesCommandIntegrationTest extends TestCase
         $this->assertSame(1, $decoded['summary']['documented_but_not_registered']);
         $this->assertSame(1, $decoded['summary']['registered_but_undocumented']);
         $this->assertSame(0, $decoded['summary']['ambiguous']);
+    }
+
+    #[Test]
+    public function large_json_output_is_split_across_observable_lines(): void
+    {
+        for ($index = 0; $index < 250; $index++) {
+            Route::get("/api/v1/undocumented-{$index}", static fn() => null)
+                ->name("undocumented.{$index}");
+        }
+
+        $exitCode = Artisan::call('openapi:routes', [
+            '--format' => 'json',
+        ]);
+
+        $this->assertSame(0, $exitCode);
+        $output = trim(Artisan::output());
+        $decoded = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+        $lines = explode("\n", $output);
+
+        $this->assertSame(1, $decoded['schema_version']);
+        $this->assertGreaterThan(1_000, count($lines));
+        $this->assertLessThan(1_000, max(array_map(strlen(...), $lines)));
     }
 
     #[Test]

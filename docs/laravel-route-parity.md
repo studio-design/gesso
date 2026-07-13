@@ -97,6 +97,20 @@ Use stable machine-readable output in CI:
 php artisan openapi:routes --format=json
 ```
 
+For large applications, capture the formatted JSON as a CI artifact instead
+of relying only on the job log:
+
+```yaml
+- name: Compare Laravel routes with OpenAPI
+  run: php artisan openapi:routes --format=json > route-parity.json
+
+- name: Upload route parity report
+  uses: actions/upload-artifact@v4
+  with:
+    name: openapi-route-parity
+    path: route-parity.json
+```
+
 The top-level `schema_version` is currently `1`. The payload contains the
 selected `specs`, a `summary`, and these result arrays:
 

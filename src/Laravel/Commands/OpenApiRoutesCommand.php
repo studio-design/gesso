@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Studio\OpenApiContractTesting\Laravel\Commands;
 
+use const JSON_PRETTY_PRINT;
 use const JSON_THROW_ON_ERROR;
 use const JSON_UNESCAPED_SLASHES;
 
@@ -84,7 +85,10 @@ final class OpenApiRoutesCommand extends Command
 
         if ($format === 'json') {
             try {
-                $this->line((string) json_encode($result, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES));
+                $this->line((string) json_encode(
+                    $result,
+                    JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES,
+                ));
             } catch (JsonException $e) {
                 $this->components->error($e->getMessage());
 
