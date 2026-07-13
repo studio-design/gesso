@@ -8,6 +8,8 @@ use const JSON_THROW_ON_ERROR;
 
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+use Studio\OpenApiContractTesting\Coverage\ConsoleCoverageRenderer;
+use Studio\OpenApiContractTesting\Coverage\HtmlCoverageRenderer;
 use Studio\OpenApiContractTesting\Tests\Helpers\PublicApiInventory;
 
 use function dirname;
@@ -16,6 +18,28 @@ use function json_decode;
 
 final class PublicApiBaselineTest extends TestCase
 {
+    #[Test]
+    public function inventory_records_constructor_availability_and_visibility(): void
+    {
+        $root = dirname(__DIR__, 3);
+        $inventory = PublicApiInventory::capture(
+            $root . '/src',
+            'Studio\\OpenApiContractTesting\\',
+        );
+
+        $implicitConstructor = $inventory[ConsoleCoverageRenderer::class];
+        $this->assertTrue($implicitConstructor['instantiable']);
+        $this->assertSame(
+            ['kind' => 'implicit', 'visibility' => 'public'],
+            $implicitConstructor['constructor'],
+        );
+
+        $privateConstructor = $inventory[HtmlCoverageRenderer::class];
+        $this->assertFalse($privateConstructor['instantiable']);
+        $this->assertSame('declared', $privateConstructor['constructor']['kind']);
+        $this->assertSame('private', $privateConstructor['constructor']['visibility']);
+    }
+
     #[Test]
     public function public_php_api_matches_the_v1_9_baseline(): void
     {

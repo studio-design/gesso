@@ -161,6 +161,8 @@ final class PublicApiInventory
             'final' => $reflection->isFinal(),
             'abstract' => $reflection->isAbstract(),
             'readonly' => $reflection->isReadOnly(),
+            'instantiable' => $reflection->isInstantiable(),
+            'constructor' => self::describeConstructor($reflection),
             'parent' => $parent === false ? null : $parent->getName(),
             'interfaces' => $interfaces,
             'traits' => $traits,
@@ -170,6 +172,31 @@ final class PublicApiInventory
             'constants' => $constants,
             'properties' => $properties,
             'methods' => $methods,
+        ];
+    }
+
+    /**
+     * @param ReflectionClass<object> $reflection
+     *
+     * @return null|array<string, mixed>
+     */
+    private static function describeConstructor(ReflectionClass $reflection): ?array
+    {
+        $constructor = $reflection->getConstructor();
+        if ($constructor === null) {
+            if ($reflection->isInterface() || $reflection->isTrait() || $reflection->isEnum()) {
+                return null;
+            }
+
+            return [
+                'kind' => 'implicit',
+                'visibility' => 'public',
+            ];
+        }
+
+        return [
+            'kind' => $constructor->getDeclaringClass()->getName() === $reflection->getName() ? 'declared' : 'inherited',
+            'visibility' => $constructor->isPublic() ? 'public' : ($constructor->isProtected() ? 'protected' : 'private'),
         ];
     }
 

@@ -4,6 +4,11 @@
         "final": true,
         "abstract": false,
         "readonly": false,
+        "instantiable": true,
+        "constructor": {
+            "kind": "declared",
+            "visibility": "public"
+        },
         "parent": null,
         "interfaces": [],
         "traits": [],
@@ -57,6 +62,11 @@
         "final": true,
         "abstract": false,
         "readonly": false,
+        "instantiable": true,
+        "constructor": {
+            "kind": "declared",
+            "visibility": "public"
+        },
         "parent": null,
         "interfaces": [],
         "traits": [],
@@ -110,6 +120,11 @@
         "final": true,
         "abstract": false,
         "readonly": false,
+        "instantiable": true,
+        "constructor": {
+            "kind": "declared",
+            "visibility": "public"
+        },
         "parent": null,
         "interfaces": [],
         "traits": [],
@@ -161,6 +176,11 @@
         "final": true,
         "abstract": false,
         "readonly": false,
+        "instantiable": true,
+        "constructor": {
+            "kind": "implicit",
+            "visibility": "public"
+        },
         "parent": null,
         "interfaces": [],
         "traits": [],
@@ -213,6 +233,11 @@
         "final": true,
         "abstract": false,
         "readonly": false,
+        "instantiable": false,
+        "constructor": {
+            "kind": "declared",
+            "visibility": "private"
+        },
         "parent": null,
         "interfaces": [],
         "traits": [],
@@ -284,6 +309,11 @@
         "final": true,
         "abstract": false,
         "readonly": false,
+        "instantiable": false,
+        "constructor": {
+            "kind": "declared",
+            "visibility": "private"
+        },
         "parent": null,
         "interfaces": [],
         "traits": [],
@@ -363,6 +393,11 @@
         "final": true,
         "abstract": false,
         "readonly": false,
+        "instantiable": false,
+        "constructor": {
+            "kind": "declared",
+            "visibility": "private"
+        },
         "parent": null,
         "interfaces": [],
         "traits": [],
@@ -469,6 +504,11 @@
         "final": true,
         "abstract": false,
         "readonly": false,
+        "instantiable": false,
+        "constructor": {
+            "kind": "declared",
+            "visibility": "private"
+        },
         "parent": null,
         "interfaces": [],
         "traits": [],
@@ -539,6 +579,8 @@
         "final": true,
         "abstract": false,
         "readonly": false,
+        "instantiable": false,
+        "constructor": null,
         "parent": null,
         "interfaces": [
             "BackedEnum",
@@ -631,6 +673,11 @@
         "final": true,
         "abstract": false,
         "readonly": false,
+        "instantiable": false,
+        "constructor": {
+            "kind": "declared",
+            "visibility": "private"
+        },
         "parent": null,
         "interfaces": [],
         "traits": [],
@@ -668,6 +715,11 @@
         "final": true,
         "abstract": false,
         "readonly": false,
+        "instantiable": true,
+        "constructor": {
+            "kind": "declared",
+            "visibility": "public"
+        },
         "parent": "RuntimeException",
         "interfaces": [],
         "traits": [],
@@ -734,6 +786,11 @@
         "final": true,
         "abstract": false,
         "readonly": false,
+        "instantiable": true,
+        "constructor": {
+            "kind": "declared",
+            "visibility": "public"
+        },
         "parent": "RuntimeException",
         "interfaces": [],
         "traits": [],
@@ -800,6 +857,11 @@
         "final": true,
         "abstract": false,
         "readonly": false,
+        "instantiable": true,
+        "constructor": {
+            "kind": "implicit",
+            "visibility": "public"
+        },
         "parent": null,
         "interfaces": [],
         "traits": [],
@@ -837,6 +899,11 @@
         "final": true,
         "abstract": false,
         "readonly": false,
+        "instantiable": true,
+        "constructor": {
+            "kind": "implicit",
+            "visibility": "public"
+        },
         "parent": null,
         "interfaces": [],
         "traits": [],
@@ -885,6 +952,11 @@
         "final": true,
         "abstract": false,
         "readonly": false,
+        "instantiable": true,
+        "constructor": {
+            "kind": "implicit",
+            "visibility": "public"
+        },
         "parent": null,
         "interfaces": [],
         "traits": [],
@@ -922,6 +994,11 @@
         "final": true,
         "abstract": false,
         "readonly": false,
+        "instantiable": true,
+        "constructor": {
+            "kind": "declared",
+            "visibility": "public"
+        },
         "parent": null,
         "interfaces": [],
         "traits": [],
@@ -1365,6 +1442,8 @@
         "final": true,
         "abstract": false,
         "readonly": false,
+        "instantiable": false,
+        "constructor": null,
         "parent": null,
         "interfaces": [
             "BackedEnum",
@@ -1456,6 +1535,11 @@
         "final": true,
         "abstract": false,
         "readonly": true,
+        "instantiable": false,
+        "constructor": {
+            "kind": "declared",
+            "visibility": "private"
+        },
         "parent": null,
         "interfaces": [],
         "traits": [],
@@ -1540,6 +1624,11 @@
         "final": true,
         "abstract": false,
         "readonly": false,
+        "instantiable": true,
+        "constructor": {
+            "kind": "declared",
+            "visibility": "public"
+        },
         "parent": "RuntimeException",
         "interfaces": [],
         "traits": [],
@@ -1783,6 +1872,8 @@
         "final": true,
         "abstract": false,
         "readonly": false,
+        "instantiable": false,
+        "constructor": null,
         "parent": null,
         "interfaces": [
             "UnitEnum"
@@ -1836,6 +1927,11 @@
         "final": true,
         "abstract": false,
         "readonly": false,
+        "instantiable": true,
+        "constructor": {
+            "kind": "declared",
+            "visibility": "public"
+        },
         "parent": "RuntimeException",
         "interfaces": [],
         "traits": [],
@@ -1893,6 +1989,11 @@
         "final": true,
         "abstract": false,
         "readonly": false,
+        "instantiable": true,
+        "constructor": {
+            "kind": "declared",
+            "visibility": "public"
+        },
         "parent": "RuntimeException",
         "interfaces": [],
         "traits": [],
@@ -2014,6 +2115,8 @@
         "final": true,
         "abstract": false,
         "readonly": false,
+        "instantiable": false,
+        "constructor": null,
         "parent": null,
         "interfaces": [
             "UnitEnum"
@@ -2075,6 +2178,11 @@
         "final": true,
         "abstract": false,
         "readonly": false,
+        "instantiable": true,
+        "constructor": {
+            "kind": "declared",
+            "visibility": "public"
+        },
         "parent": "RuntimeException",
         "interfaces": [],
         "traits": [],
@@ -2160,6 +2268,11 @@
         "final": true,
         "abstract": false,
         "readonly": false,
+        "instantiable": true,
+        "constructor": {
+            "kind": "declared",
+            "visibility": "public"
+        },
         "parent": "RuntimeException",
         "interfaces": [],
         "traits": [],
@@ -2217,6 +2330,8 @@
         "final": true,
         "abstract": false,
         "readonly": false,
+        "instantiable": false,
+        "constructor": null,
         "parent": null,
         "interfaces": [
             "BackedEnum",
@@ -2307,6 +2422,11 @@
         "final": true,
         "abstract": false,
         "readonly": true,
+        "instantiable": true,
+        "constructor": {
+            "kind": "declared",
+            "visibility": "public"
+        },
         "parent": null,
         "interfaces": [
             "Countable",
@@ -2396,6 +2516,11 @@
         "final": true,
         "abstract": false,
         "readonly": true,
+        "instantiable": true,
+        "constructor": {
+            "kind": "declared",
+            "visibility": "public"
+        },
         "parent": null,
         "interfaces": [],
         "traits": [],
@@ -2461,6 +2586,11 @@
         "final": true,
         "abstract": false,
         "readonly": true,
+        "instantiable": true,
+        "constructor": {
+            "kind": "declared",
+            "visibility": "public"
+        },
         "parent": null,
         "interfaces": [],
         "traits": [],
@@ -2843,6 +2973,11 @@
         "final": true,
         "abstract": false,
         "readonly": true,
+        "instantiable": true,
+        "constructor": {
+            "kind": "declared",
+            "visibility": "public"
+        },
         "parent": null,
         "interfaces": [],
         "traits": [],
@@ -3065,6 +3200,11 @@
         "final": true,
         "abstract": false,
         "readonly": false,
+        "instantiable": true,
+        "constructor": {
+            "kind": "implicit",
+            "visibility": "public"
+        },
         "parent": null,
         "interfaces": [],
         "traits": [],
@@ -3113,6 +3253,11 @@
         "final": true,
         "abstract": false,
         "readonly": false,
+        "instantiable": true,
+        "constructor": {
+            "kind": "implicit",
+            "visibility": "public"
+        },
         "parent": null,
         "interfaces": [],
         "traits": [],
@@ -3262,6 +3407,11 @@
         "final": true,
         "abstract": false,
         "readonly": false,
+        "instantiable": true,
+        "constructor": {
+            "kind": "declared",
+            "visibility": "public"
+        },
         "parent": null,
         "interfaces": [],
         "traits": [],
@@ -3664,6 +3814,11 @@
         "final": true,
         "abstract": false,
         "readonly": false,
+        "instantiable": true,
+        "constructor": {
+            "kind": "implicit",
+            "visibility": "public"
+        },
         "parent": null,
         "interfaces": [],
         "traits": [],
@@ -3719,6 +3874,11 @@
         "final": true,
         "abstract": false,
         "readonly": true,
+        "instantiable": true,
+        "constructor": {
+            "kind": "declared",
+            "visibility": "public"
+        },
         "parent": null,
         "interfaces": [],
         "traits": [],
@@ -3831,6 +3991,8 @@
         "final": true,
         "abstract": false,
         "readonly": false,
+        "instantiable": false,
+        "constructor": null,
         "parent": null,
         "interfaces": [
             "BackedEnum",
@@ -3925,6 +4087,11 @@
         "final": true,
         "abstract": false,
         "readonly": false,
+        "instantiable": true,
+        "constructor": {
+            "kind": "inherited",
+            "visibility": "public"
+        },
         "parent": "Illuminate\\Console\\Command",
         "interfaces": [],
         "traits": [],
@@ -3984,6 +4151,8 @@
         "final": false,
         "abstract": false,
         "readonly": false,
+        "instantiable": false,
+        "constructor": null,
         "parent": null,
         "interfaces": [],
         "traits": [
@@ -4141,6 +4310,11 @@
         "final": false,
         "abstract": false,
         "readonly": false,
+        "instantiable": true,
+        "constructor": {
+            "kind": "inherited",
+            "visibility": "public"
+        },
         "parent": "Illuminate\\Support\\ServiceProvider",
         "interfaces": [],
         "traits": [],
@@ -4175,6 +4349,8 @@
         "final": false,
         "abstract": false,
         "readonly": false,
+        "instantiable": false,
+        "constructor": null,
         "parent": null,
         "interfaces": [],
         "traits": [
@@ -4242,6 +4418,11 @@
         "final": true,
         "abstract": false,
         "readonly": false,
+        "instantiable": true,
+        "constructor": {
+            "kind": "declared",
+            "visibility": "public"
+        },
         "parent": null,
         "interfaces": [],
         "traits": [],
@@ -4394,6 +4575,11 @@
         "final": true,
         "abstract": false,
         "readonly": false,
+        "instantiable": true,
+        "constructor": {
+            "kind": "declared",
+            "visibility": "public"
+        },
         "parent": null,
         "interfaces": [],
         "traits": [],
@@ -4539,6 +4725,8 @@
         "final": true,
         "abstract": false,
         "readonly": false,
+        "instantiable": false,
+        "constructor": null,
         "parent": null,
         "interfaces": [
             "BackedEnum",
@@ -4630,6 +4818,11 @@
         "final": true,
         "abstract": false,
         "readonly": true,
+        "instantiable": false,
+        "constructor": {
+            "kind": "declared",
+            "visibility": "private"
+        },
         "parent": null,
         "interfaces": [],
         "traits": [],
@@ -4858,6 +5051,8 @@
         "final": true,
         "abstract": false,
         "readonly": false,
+        "instantiable": false,
+        "constructor": null,
         "parent": null,
         "interfaces": [
             "BackedEnum",
@@ -4970,6 +5165,8 @@
         "final": false,
         "abstract": false,
         "readonly": false,
+        "instantiable": false,
+        "constructor": null,
         "parent": null,
         "interfaces": [],
         "traits": [],
@@ -5007,6 +5204,8 @@
         "final": true,
         "abstract": false,
         "readonly": false,
+        "instantiable": false,
+        "constructor": null,
         "parent": null,
         "interfaces": [
             "BackedEnum",
@@ -5120,6 +5319,11 @@
         "final": true,
         "abstract": false,
         "readonly": false,
+        "instantiable": true,
+        "constructor": {
+            "kind": "declared",
+            "visibility": "public"
+        },
         "parent": "RuntimeException",
         "interfaces": [],
         "traits": [],
@@ -5166,6 +5370,11 @@
         "final": true,
         "abstract": false,
         "readonly": false,
+        "instantiable": true,
+        "constructor": {
+            "kind": "implicit",
+            "visibility": "public"
+        },
         "parent": null,
         "interfaces": [
             "PHPUnit\\Runner\\Extension\\Extension"
@@ -5238,6 +5447,11 @@
         "final": true,
         "abstract": false,
         "readonly": false,
+        "instantiable": true,
+        "constructor": {
+            "kind": "implicit",
+            "visibility": "public"
+        },
         "parent": null,
         "interfaces": [],
         "traits": [],
@@ -5373,6 +5587,8 @@
         "final": false,
         "abstract": false,
         "readonly": false,
+        "instantiable": false,
+        "constructor": null,
         "parent": null,
         "interfaces": [],
         "traits": [
@@ -5528,6 +5744,11 @@
         "final": true,
         "abstract": false,
         "readonly": true,
+        "instantiable": true,
+        "constructor": {
+            "kind": "declared",
+            "visibility": "public"
+        },
         "parent": null,
         "interfaces": [],
         "traits": [],
@@ -5621,6 +5842,11 @@
         "final": true,
         "abstract": false,
         "readonly": false,
+        "instantiable": true,
+        "constructor": {
+            "kind": "declared",
+            "visibility": "public"
+        },
         "parent": null,
         "interfaces": [],
         "traits": [],
@@ -5833,6 +6059,8 @@
         "final": true,
         "abstract": false,
         "readonly": false,
+        "instantiable": false,
+        "constructor": null,
         "parent": null,
         "interfaces": [
             "UnitEnum"
@@ -5881,6 +6109,11 @@
         "final": true,
         "abstract": false,
         "readonly": false,
+        "instantiable": true,
+        "constructor": {
+            "kind": "implicit",
+            "visibility": "public"
+        },
         "parent": null,
         "interfaces": [],
         "traits": [],
@@ -5948,6 +6181,11 @@
         "final": true,
         "abstract": false,
         "readonly": false,
+        "instantiable": true,
+        "constructor": {
+            "kind": "declared",
+            "visibility": "public"
+        },
         "parent": null,
         "interfaces": [],
         "traits": [],
@@ -6060,6 +6298,8 @@
         "final": false,
         "abstract": false,
         "readonly": false,
+        "instantiable": false,
+        "constructor": null,
         "parent": null,
         "interfaces": [],
         "traits": [],
@@ -6075,6 +6315,11 @@
         "final": true,
         "abstract": false,
         "readonly": false,
+        "instantiable": true,
+        "constructor": {
+            "kind": "implicit",
+            "visibility": "public"
+        },
         "parent": null,
         "interfaces": [],
         "traits": [],
@@ -6205,6 +6450,8 @@
         "final": false,
         "abstract": false,
         "readonly": false,
+        "instantiable": false,
+        "constructor": null,
         "parent": null,
         "interfaces": [],
         "traits": [],
@@ -6220,6 +6467,8 @@
         "final": false,
         "abstract": false,
         "readonly": false,
+        "instantiable": false,
+        "constructor": null,
         "parent": null,
         "interfaces": [],
         "traits": [
@@ -6339,6 +6588,11 @@
         "final": true,
         "abstract": false,
         "readonly": false,
+        "instantiable": false,
+        "constructor": {
+            "kind": "declared",
+            "visibility": "private"
+        },
         "parent": null,
         "interfaces": [],
         "traits": [],
@@ -6397,6 +6651,8 @@
         "final": true,
         "abstract": false,
         "readonly": false,
+        "instantiable": false,
+        "constructor": null,
         "parent": null,
         "interfaces": [
             "BackedEnum",
@@ -6518,6 +6774,8 @@
         "final": true,
         "abstract": false,
         "readonly": false,
+        "instantiable": false,
+        "constructor": null,
         "parent": null,
         "interfaces": [
             "BackedEnum",
@@ -6638,6 +6896,11 @@
         "final": true,
         "abstract": false,
         "readonly": false,
+        "instantiable": true,
+        "constructor": {
+            "kind": "declared",
+            "visibility": "public"
+        },
         "parent": null,
         "interfaces": [],
         "traits": [],
@@ -6824,6 +7087,11 @@
         "final": true,
         "abstract": false,
         "readonly": false,
+        "instantiable": true,
+        "constructor": {
+            "kind": "declared",
+            "visibility": "public"
+        },
         "parent": null,
         "interfaces": [],
         "traits": [],
