@@ -51,6 +51,19 @@ final class RuntimeSupportPolicyTest extends TestCase
         $this->assertSame('^4.0', $composer['require']['pestphp/pest'] ?? null);
     }
 
+    #[Test]
+    public function ci_selects_phpunit_without_rewriting_the_root_constraint(): void
+    {
+        $workflow = file_get_contents(__DIR__ . '/../../../.github/workflows/ci.yml');
+
+        $this->assertNotFalse($workflow);
+        $this->assertStringContainsString(
+            'composer update --with "phpunit/phpunit:^${{ matrix.phpunit }}.0"',
+            $workflow,
+        );
+        $this->assertStringNotContainsString('composer require --dev "phpunit/phpunit:', $workflow);
+    }
+
     /**
      * @return array<string, mixed>
      *

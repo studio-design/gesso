@@ -45,11 +45,10 @@ jobs:
 
       - name: Install dependencies
         run: |
-          composer require --dev "phpunit/phpunit:^${{ matrix.phpunit }}.0" --no-interaction --no-update
           if [ "${{ matrix.deps }}" = "lowest" ]; then
-            composer update --prefer-lowest --prefer-dist --no-interaction --no-progress
+            composer update --with "phpunit/phpunit:^${{ matrix.phpunit }}.0" --prefer-lowest --prefer-dist --no-interaction --no-progress
           else
-            composer update --prefer-dist --no-interaction --no-progress
+            composer update --with "phpunit/phpunit:^${{ matrix.phpunit }}.0" --prefer-dist --no-interaction --no-progress
           fi
 
       - name: Run tests
