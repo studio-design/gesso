@@ -238,6 +238,36 @@ names are removed, only a real direct component `$ref` can create the new
 marker, and implicit discriminator behavior remains equivalent to the v1
 baseline.
 
+### Diagnostic prefix transition policy
+
+Diagnostic prefixes that describe an OpenAPI feature remain unchanged in v2:
+
+- `[OpenAPI Coverage]`
+- `[OpenAPI Doctor]`
+- `[OpenAPI Enum Drift]`
+- `[OpenAPI Strict Required]`
+- `[OpenAPI Strict Required per-call]`
+
+These are routing categories rather than the legacy product identity. Renaming
+them would create log-parser churn without making Gesso's technical identity
+clearer. The existing `[security]`, `[OpenAPI Schema]`, and `[OpenAPI 3.2 ...]`
+warning categories also remain unchanged.
+
+The branded `[openapi-contract-testing]` prefix changes to `[Gesso]` in v2.
+V1.9 uses it in two channels: the missing-optional-Faker `E_USER_WARNING` and
+the Laravel contradictory-intent deprecation written to stderr. V1.10 retains
+the legacy spelling; v2 changes both occurrences together and does not emit
+duplicate legacy-prefixed messages. Consumers that route either channel by its
+prefix must update that rule during the package switch.
+
+The v1.9 prefix inventory pins every protected category and its emitted-string
+occurrence count per source file. A compatibility test tokenizes PHP string
+literals so comments cannot substitute for a removed runtime diagnostic, and a
+new branded occurrence cannot be added without an explicit migration decision.
+V2 tests must prove that no `[openapi-contract-testing]` diagnostic remains in
+`src/`, that both branded channels use `[Gesso]`, and that the identity-neutral
+categories retain parity.
+
 ### Runtime and test-runner support policy
 
 Gesso v2 requires PHP `^8.3` and supports PHPUnit `^12.0 || ^13.0`. The v2 CI

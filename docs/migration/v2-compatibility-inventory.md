@@ -413,7 +413,22 @@ Other stable operational prefixes that require rename or parity tests include:
 - `[OpenAPI Enum Drift]`
 - `[OpenAPI Strict Required]`
 - `[OpenAPI Strict Required per-call]`
-- `[openapi-contract-testing]` for the Laravel deprecation channel
+- `[openapi-contract-testing]` for the missing-optional-Faker warning and the
+  Laravel deprecation stderr channel
+
+Migration status: every protected category and its emitted-string occurrence
+count per source file are captured in
+`tests/fixtures/compatibility/v1.9-diagnostic-prefixes.json`. The test tokenizes
+PHP string literals rather than counting comments, so a removed runtime
+category cannot be replaced by documentary text.
+
+V2 decision: feature-oriented prefixes remain unchanged because they are
+identity-neutral log-routing categories. Both `[openapi-contract-testing]`
+occurrences change to `[Gesso]` together. V2 does not dual-emit warnings; log
+consumers update the branded routing rule as part of the major-version
+migration. A source-level regression test must prove that the legacy branded
+prefix is absent from v2 while parity tests retain every identity-neutral
+category.
 
 The OpenAPI vendor extension
 `x-studio-openapi-contract-testing-implicit-schema-name` is embedded in spec
