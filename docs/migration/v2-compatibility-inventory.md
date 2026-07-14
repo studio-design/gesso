@@ -54,8 +54,8 @@ members marked `@internal` are excluded.
 | Autoload file | `src/Pest/Autoload.php` | Rename imports and preserve no-Pest guard behavior |
 | Binaries | `bin/openapi-contract`, `bin/openapi-coverage-merge`; v1.10 adds `bin/gesso` | Remove the legacy binaries and retain the unified `gesso` command surface |
 | Laravel discovery | `Studio\OpenApiContractTesting\Laravel\OpenApiContractTestingServiceProvider` | Point discovery to the Gesso provider |
-| PHP requirement | `^8.2` | Decide from the v2 GA date, not from the rename alone |
-| PHPUnit requirement | `^11.0 || ^12.0 || ^13.0` | Update only with an explicit support decision |
+| PHP requirement | `^8.2` | Raise to `^8.3`; PHP 8.2 reaches security EOL at the end of 2026 |
+| PHPUnit requirement | `^11.0 || ^12.0 || ^13.0` | Support `^12.0 || ^13.0`; drop PHPUnit 11 after its bug-fix support ended |
 | Opis requirement | `opis/json-schema:^2.6` | Keep independent from the identity migration |
 | PSR requirements | `psr/http-client:^1.0`, `psr/http-factory:^1.0`, `psr/http-message:^1.0 || ^2.0` | Preserve unless separately justified |
 

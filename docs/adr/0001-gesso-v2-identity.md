@@ -1,6 +1,6 @@
 # ADR 0001: Align the v2 technical identity with Gesso
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-07-13
 - Owners: Gesso maintainers
 
@@ -168,6 +168,38 @@ defines a fixed value as the equivalent of a single-value enum, so changing the
 documented tool name is an incompatible value constraint even though no member
 is added or removed.
 
+### Runtime and test-runner support policy
+
+Gesso v2 requires PHP `^8.3` and supports PHPUnit `^12.0 || ^13.0`. The v2 CI
+matrix covers these compatible pairs:
+
+| PHP | PHPUnit 12 | PHPUnit 13 |
+| --- | --- | --- |
+| 8.3 | highest and lowest dependency lanes | Not compatible upstream |
+| 8.4 | highest dependency lane | highest dependency lane |
+| 8.5 | highest dependency lane | highest dependency lane |
+
+PHP 8.2 reaches upstream security EOL on 2026-12-31. The v1 lifecycle requires
+v2 stable to be available before that date unless the schedule is explicitly
+revised, so starting a new major on PHP 8.2 would leave no useful upstream
+support runway. PHP 8.3 remains under security support through 2027-12-31 and
+preserves a wider installation base than an unnecessary PHP 8.4 floor.
+
+PHPUnit 11 stopped receiving bug fixes on 2026-02-06. PHPUnit 12 supports PHP
+8.3 and receives bug fixes through 2027-02-05; PHPUnit 13 supports PHP 8.4 and
+later and receives bug fixes through 2028-02-04. Keeping both supported majors
+lets PHP 8.3 consumers use a maintained runner while PHP 8.4 and 8.5 consumers
+can adopt the current major. This is an intentional bounded constraint, not an
+open-ended major-version range.
+
+The optional Pest smoke test moves from Pest 3 / PHPUnit 11 to Pest 4 / PHPUnit
+12. Pest 4 requires PHP 8.3 or later and is built on PHPUnit 12. It remains a
+separate on-demand lane because Pest is not a production dependency and its
+current constraint must not prevent the regular matrix from exercising PHPUnit
+13. The Composer constraints, examples, CI jobs, and formatting target move to
+this policy only after `main` becomes the v2 development line; v1.10 retains its
+declared PHP and PHPUnit support.
+
 ## Scope boundaries
 
 The v2 identity migration does not by itself authorize unrelated redesigns.
@@ -205,14 +237,6 @@ Before the first breaking rename is merged:
    pre-releases begin. The completed
    [v1 maintenance lifecycle](../versioning.md#v1-maintenance-lifecycle) fixes
    the `1.x` branch workflow, accepted changes, and 2027-07-01 EOL date.
-
-## Open decisions
-
-The following require evidence or maintainer approval before this ADR becomes
-Accepted:
-
-- the PHP minimum version and supported PHPUnit matrix at the planned v2 GA
-  date;
 
 ## Consequences
 
@@ -260,6 +284,10 @@ Gesso 2.0 is not ready for stable release until all of the following pass:
 ## References
 
 - [Semantic Versioning 2.0.0](https://semver.org/)
+- [PHP supported versions](https://www.php.net/supported-versions.php)
+- [PHPUnit supported versions](https://phpunit.de/supported-versions.html)
+- [Pest support policy](https://pestphp.com/docs/support-policy)
+- [Pest 4 upgrade guide](https://pestphp.com/docs/upgrade-guide)
 - [JSON Schema 2020-12 validation keyword: `const`](https://json-schema.org/draft/2020-12/json-schema-validation#section-6.1.3)
 - [Composer package links and `replace`](https://getcomposer.org/doc/04-schema.md#package-links)
 - [Composer repositories and package renaming](https://getcomposer.org/doc/05-repositories.md)
