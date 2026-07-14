@@ -343,13 +343,13 @@ channel.
 
 | Format | v1.9 version | Compatibility responsibility |
 | --- | ---: | --- |
-| Coverage JSON report | `schema_version: 1` | Preserve documented fields or bump on removal/rename/shape change |
-| Coverage JSON tool identity | `studio-design/openapi-contract-testing` | Change deliberately and test downstream detection |
-| Coverage tracker state | `version: 1` | v2 merge reader should accept supported v1 payloads |
-| Strict-required tracker state | `version: 2` | Preserve mixed-worker import or document a hard boundary |
-| Sidecar envelope | `envelopeVersion: 2` | Continue accepting legacy bare coverage v1 payloads |
-| Laravel route parity JSON | `schema_version: 1` | Preserve fields or bump for incompatible changes |
-| Doctor JSON | `schemaVersion: 1` | Preserve stable fields/categories or bump |
+| Coverage JSON report | `schema_version: 1` | V2 emits schema 2 because the documented fixed tool identity changes; all other fields retain their v1 meanings |
+| Coverage JSON tool identity | `studio-design/openapi-contract-testing` | V2 emits only `studio-design/gesso` and pins it in a golden fixture |
+| Coverage tracker state | `version: 1` | V2 retains version 1 and accepts supported v1 payloads |
+| Strict-required tracker state | `version: 2` | V2 retains version 2 and preserves the documented import boundary |
+| Sidecar envelope | `envelopeVersion: 2` | V2 retains version 2 and continues accepting legacy bare coverage v1 payloads |
+| Laravel route parity JSON | `schema_version: 1` | V2 retains version 1 because neither identity nor shape changes |
+| Doctor JSON | `schemaVersion: 1` | V2 retains version 1 because neither identity nor shape changes |
 | Sidecar filenames | `part-*.json`, failure marker `failed-*` | Keep reader compatibility during mixed runs |
 
 Coverage JSON v1 documents `generated_at`, `tool`, `aggregate`, and `specs`.
@@ -368,6 +368,13 @@ Migration status: the exact v1.9 coverage JSON report and sidecar envelope are
 captured under `tests/fixtures/compatibility/`. The sidecar fixture pins coverage
 tracker state v1 and strict-required tracker state v2, and consumer-style tests
 verify both the envelope reader and the legacy bare-coverage reader path.
+
+V2 decision: only coverage JSON advances its schema version. Its documented
+`tool.name` behaves as a fixed value, so changing it to `studio-design/gesso` is
+an incompatible contract change even though the surrounding object shape stays
+the same. Format versions are otherwise independent of the Composer major:
+Doctor JSON, route parity JSON, the sidecar envelope, and both tracker states do
+not carry the legacy identity and therefore retain their existing versions.
 
 ## Diagnostic categories and embedded identifiers
 

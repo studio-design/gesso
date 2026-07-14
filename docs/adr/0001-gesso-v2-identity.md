@@ -132,6 +132,42 @@ published to one application configuration file. Laravel documents that
 existing file values rather than reconstructing or recursively combining two
 configurations.
 
+### Machine-readable format transition policy
+
+Gesso v2 changes the coverage JSON report from `schema_version: 1` to
+`schema_version: 2`. The report's documented `tool.name` value changes from
+`studio-design/openapi-contract-testing` to `studio-design/gesso`; although the
+JSON object shape is unchanged, that fixed value is part of the contract and a
+consumer may validate or route reports by it. Schema version 2 otherwise keeps
+the version 1 fields, types, and meanings. The v2 writer emits only the Gesso
+identity rather than a second legacy identity field.
+
+The identity migration does not change the other versioned formats:
+
+| Format | Gesso v2 writer | Gesso v2 reader responsibility | Reason |
+| --- | ---: | --- | --- |
+| Coverage JSON report | `schema_version: 2` | N/A (output contract) | The documented fixed `tool.name` value changes |
+| Doctor JSON | `schemaVersion: 1` | N/A (output contract) | It contains no package or namespace identity and its shape is unchanged |
+| Laravel route parity JSON | `schema_version: 1` | N/A (output contract) | It contains no package or namespace identity and its shape is unchanged |
+| Sidecar envelope | `envelopeVersion: 2` | Continue accepting the documented v1.9 envelope and legacy bare coverage state | No persisted field changes for the rename |
+| Coverage tracker state | `version: 1` | Continue accepting version 1 | No persisted field changes for the rename |
+| Strict-required tracker state | `version: 2` | Continue accepting version 2 inside supported envelopes | No persisted field changes for the rename |
+
+Format versions describe their own contracts, not the Composer package major.
+They are therefore not synchronized to `2` merely because Gesso itself reaches
+2.0. A later removal, rename, type change, changed required value, or other
+incompatible semantic change requires the owning format version to advance;
+an unchanged format retains its existing version. Unknown versions continue to
+fail loudly rather than being interpreted as the nearest known shape.
+
+The implementation must pin the coverage JSON v2 document and Gesso tool
+identity with a golden fixture. It must also retain regression tests proving
+that Doctor and route parity still emit version 1 and that the v2 sidecar reader
+accepts every older payload promised by the versioning policy. JSON Schema
+defines a fixed value as the equivalent of a single-value enum, so changing the
+documented tool name is an incompatible value constraint even though no member
+is added or removed.
+
 ## Scope boundaries
 
 The v2 identity migration does not by itself authorize unrelated redesigns.
@@ -175,7 +211,6 @@ Before the first breaking rename is merged:
 The following require evidence or maintainer approval before this ADR becomes
 Accepted:
 
-- which machine-readable formats require a schema-version increment;
 - the PHP minimum version and supported PHPUnit matrix at the planned v2 GA
   date;
 
@@ -225,6 +260,7 @@ Gesso 2.0 is not ready for stable release until all of the following pass:
 ## References
 
 - [Semantic Versioning 2.0.0](https://semver.org/)
+- [JSON Schema 2020-12 validation keyword: `const`](https://json-schema.org/draft/2020-12/json-schema-validation#section-6.1.3)
 - [Composer package links and `replace`](https://getcomposer.org/doc/04-schema.md#package-links)
 - [Composer repositories and package renaming](https://getcomposer.org/doc/05-repositories.md)
 - [Packagist package naming](https://packagist.org/about)
