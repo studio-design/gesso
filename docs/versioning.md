@@ -88,6 +88,13 @@ project additionally requires migration deprecations to ship in v1.10.0 before
 removal in v2. After v1.10.0, the v1 line receives patches from the `1.x`
 maintenance branch:
 
+V1.10.0 also provides lazy `Studio\Gesso\` aliases for all non-`@internal`
+public PHP types. Consumers should use these aliases to migrate imports before
+changing Composer packages. The aliases do not cover configuration, commands,
+wire formats, or literal class-name identity, and v2 does not provide a reverse
+legacy namespace shim. Follow the [staged v2 migration guide](migration/v2.md)
+for these boundaries.
+
 | Period | Dates | Accepted changes |
 | --- | --- | --- |
 | Active maintenance | through 2026-12-31 | Security fixes, backward-compatible bug fixes, and critical ecosystem interoperability fixes |

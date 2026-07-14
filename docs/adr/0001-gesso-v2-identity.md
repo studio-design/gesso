@@ -71,6 +71,20 @@ The migration will follow these rules:
 7. Release v2 through pre-release stages and dogfood it in the repository's
    framework examples before general availability.
 
+### Namespace transition policy
+
+V1.10.0 exposes lazy `Studio\Gesso\` aliases for every non-`@internal` public
+v1 type. The aliases are an explicit allowlist checked against the public API
+inventory; they do not make internal types part of the new public surface. This
+lets consumers migrate PHP imports while the v1 declarations and Composer
+package remain canonical.
+
+Gesso v2 declares `Studio\Gesso\` as canonical and does not ship a reverse
+`Studio\OpenApiContractTesting\` namespace shim. The major boundary is where
+the legacy PHP identity is removed. Reflection, serialization, configuration,
+commands, and package requirements are not made portable by the v1 aliases and
+must follow their documented migration steps.
+
 ## Scope boundaries
 
 The v2 identity migration does not by itself authorize unrelated redesigns.
@@ -102,8 +116,8 @@ Before the first breaking rename is merged:
    Composer optimized autoloading. Do not assume `class_alias()` covers every
    supported use case without tests. The completed
    [namespace compatibility spike](../migration/v2-namespace-compatibility-spike.md)
-   proves lazy aliases and records their identity limits; whether aliases ship
-   remains a release-policy decision.
+   proves lazy aliases and records their identity limits. The namespace
+   transition policy above fixes their v1 scope and excludes a reverse v2 shim.
 5. Define the v1 maintenance branch and end-of-support date before v2
    pre-releases begin. The completed
    [v1 maintenance lifecycle](../versioning.md#v1-maintenance-lifecycle) fixes
@@ -114,9 +128,6 @@ Before the first breaking rename is merged:
 The following require evidence or maintainer approval before this ADR becomes
 Accepted:
 
-- which forward `Studio\\Gesso\\` aliases v1.10.0 can safely provide;
-- whether any legacy PHP namespace shim ships in v2, and its exact removal
-  version;
 - whether `gesso coverage:merge` replaces the standalone binary immediately or
   keeps a deprecated executable shim;
 - how conflicts between old and new Laravel configuration are reported;

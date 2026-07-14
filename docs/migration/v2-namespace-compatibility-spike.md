@@ -1,8 +1,10 @@
 # v2 namespace compatibility spike
 
 This spike verifies the behavior and limits of a temporary namespace alias
-mechanism before the v2 source rename. It does not add aliases to the released
-package.
+mechanism before the v2 source rename. The release policy now uses the proven
+mechanism in the opposite direction for the v1.10 migration aid: a requested
+`Studio\Gesso\` public type aliases its canonical
+`Studio\OpenApiContractTesting\` declaration.
 
 ## Candidate mechanism
 
@@ -52,23 +54,23 @@ The v1 public inventory contains types rather than public namespaced functions,
 so the PHP-symbol portion is technically aliasable. The other surfaces still
 need their dedicated migration steps.
 
-## Recommendation
+## Release decision
 
 Use this mechanism only as a time-bounded migration aid, not as a permanent
-second public identity. The lowest-risk sequence is:
+second public identity. The approved sequence is:
 
-1. In the final v1 minor, optionally expose lazy `Studio\Gesso\` aliases whose
-   canonical declarations remain under `Studio\OpenApiContractTesting\`.
+1. In v1.10, expose lazy `Studio\Gesso\` aliases for every non-`@internal`
+   public type. Canonical declarations remain under
+   `Studio\OpenApiContractTesting\`.
 2. Tell consumers that reflection and serialized output keep the v1 canonical
    name until v2; do not promise literal-FQCN identity stability through aliases.
-3. In v2, declare only `Studio\Gesso\` as canonical. If a reverse legacy shim is
-   approved, give it an explicit removal release and test it with this fixture.
-4. Do not keep reverse aliases by default when the goal is a complete identity
-   migration; the major-version boundary already provides the source-breaking
-   migration point.
+3. In v2, declare only `Studio\Gesso\` as canonical and do not ship a reverse
+   legacy namespace shim. The major-version boundary provides the
+   source-breaking migration point.
 
-This leaves the exact decision to ship aliases in v1 or v2 as a release-policy
-choice, while removing uncertainty about the mechanism itself.
+The production allowlist is checked against the public API inventory. Internal
+and unknown types remain unresolved so the migration layer cannot expand the
+supported API accidentally.
 
 ## Sources
 
