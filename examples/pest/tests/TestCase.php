@@ -7,7 +7,7 @@ namespace Examples\Pest\Tests;
 use Illuminate\Support\Facades\Route;
 use Orchestra\Testbench\TestCase as TestbenchTestCase;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
-use Studio\Gesso\Laravel\OpenApiContractTestingServiceProvider;
+use Studio\Gesso\Laravel\GessoServiceProvider;
 use Studio\Gesso\Laravel\ValidatesOpenApiSchema;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 
@@ -24,7 +24,7 @@ use function dirname;
  *  - `OpenApiSpecLoader::configure(...)` once at boot (here in setUp; in a
  *    real project typically driven by the PHPUnit extension's
  *    `spec_base_path` parameter — see phpunit.xml.dist).
- *  - `config('openapi-contract-testing.default_spec', '...')`.
+ *  - `config('gesso.default_spec', '...')`.
  *  - The static-state resets in `setUp()` / `tearDown()`
  *    (`OpenApiSpecLoader::reset`, `OpenApiCoverageTracker::reset`,
  *    `self::resetValidatorCache()`). Orchestra Testbench shares these
@@ -44,7 +44,7 @@ class TestCase extends TestbenchTestCase
         OpenApiSpecLoader::configure(dirname(__DIR__) . '/openapi');
         OpenApiCoverageTracker::reset();
 
-        config()->set('openapi-contract-testing.default_spec', 'petstore');
+        config()->set('gesso.default_spec', 'petstore');
         // `auto_assert` and `auto_validate_request` are deliberately left at
         // their package defaults (false) so the example showcases the
         // explicit `expect(...)->toMatchOpenApi*Schema()` form. Set either to
@@ -64,7 +64,7 @@ class TestCase extends TestbenchTestCase
     /** @return array<int, class-string> */
     protected function getPackageProviders($app): array
     {
-        return [OpenApiContractTestingServiceProvider::class];
+        return [GessoServiceProvider::class];
     }
 
     protected function defineRoutes($router): void

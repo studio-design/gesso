@@ -2,7 +2,7 @@
 
 ```bash
 composer require --dev studio-design/gesso
-php artisan vendor:publish --tag=openapi-contract-testing
+php artisan vendor:publish --tag=gesso
 ```
 
 Set `default_spec` to `petstore`, add `ValidatesOpenApiSchema` to your base test case, then assert a normal Laravel response:

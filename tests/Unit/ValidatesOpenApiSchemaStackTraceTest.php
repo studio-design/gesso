@@ -37,7 +37,7 @@ class ValidatesOpenApiSchemaStackTraceTest extends TestCase
         OpenApiSpecLoader::configure(__DIR__ . '/../fixtures/specs');
         OpenApiCoverageTracker::reset();
         $GLOBALS['__openapi_testing_config'] = [
-            'openapi-contract-testing.default_spec' => 'petstore-3.0',
+            'gesso.default_spec' => 'petstore-3.0',
         ];
 
         $traitFile = (new ReflectionClass(ValidatesOpenApiSchema::class))->getFileName();
@@ -84,7 +84,7 @@ class ValidatesOpenApiSchemaStackTraceTest extends TestCase
         // The user-reported scenario in #131: failure originates inside the
         // auto-assert hook (maybeAutoAssertOpenApiSchema), which Laravel calls
         // from createTestResponse() during $this->get(...) requests.
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.auto_assert'] = true;
+        $GLOBALS['__openapi_testing_config']['gesso.auto_assert'] = true;
 
         $body = (string) json_encode(['wrong_key' => 'value'], JSON_THROW_ON_ERROR);
         $response = $this->makeTestResponse($body, 200);
@@ -105,7 +105,7 @@ class ValidatesOpenApiSchemaStackTraceTest extends TestCase
         // default_spec + no #[OpenApiSpec] attribute resolves to '', which the
         // trait reports via its own fail-with-message branch — different from
         // the assertTrue path the explicit-assert test exercises.
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.default_spec'] = '';
+        $GLOBALS['__openapi_testing_config']['gesso.default_spec'] = '';
 
         $body = (string) json_encode(['data' => []], JSON_THROW_ON_ERROR);
         $response = $this->makeTestResponse($body, 200);

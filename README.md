@@ -189,10 +189,10 @@ are covered in the [PSR-7 guide](docs/psr7.md).
 ### Laravel adapter
 
 ```bash
-php artisan vendor:publish --tag=openapi-contract-testing
+php artisan vendor:publish --tag=gesso
 ```
 
-Set `default_spec` in the published `config/openapi-contract-testing.php`, then mix in the trait:
+Set `default_spec` in the published `config/gesso.php`, then mix in the trait:
 
 ```php
 use Studio\Gesso\Laravel\ValidatesOpenApiSchema;

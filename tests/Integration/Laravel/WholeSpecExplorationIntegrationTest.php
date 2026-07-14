@@ -14,7 +14,7 @@ use Studio\Gesso\Fuzz\ExploredCase;
 use Studio\Gesso\Fuzz\ExploredOperation;
 use Studio\Gesso\HttpMethod;
 use Studio\Gesso\Laravel\ExploresOpenApiEndpoint;
-use Studio\Gesso\Laravel\OpenApiContractTestingServiceProvider;
+use Studio\Gesso\Laravel\GessoServiceProvider;
 use Studio\Gesso\Laravel\ValidatesOpenApiSchema;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 
@@ -31,8 +31,8 @@ class WholeSpecExplorationIntegrationTest extends TestCase
         OpenApiSpecLoader::reset();
         OpenApiSpecLoader::configure(dirname(__DIR__, 2) . '/fixtures/specs');
         OpenApiCoverageTracker::reset();
-        config()->set('openapi-contract-testing.default_spec', 'whole-spec-exploration');
-        config()->set('openapi-contract-testing.auto_assert', true);
+        config()->set('gesso.default_spec', 'whole-spec-exploration');
+        config()->set('gesso.auto_assert', true);
     }
 
     protected function tearDown(): void
@@ -71,7 +71,7 @@ class WholeSpecExplorationIntegrationTest extends TestCase
     /** @return array<int, class-string> */
     protected function getPackageProviders($app): array
     {
-        return [OpenApiContractTestingServiceProvider::class];
+        return [GessoServiceProvider::class];
     }
 
     protected function defineRoutes($router): void

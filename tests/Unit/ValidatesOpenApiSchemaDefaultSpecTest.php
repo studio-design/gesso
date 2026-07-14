@@ -57,7 +57,7 @@ class ValidatesOpenApiSchemaDefaultSpecTest extends TestCase
     #[Test]
     public function default_open_api_spec_returns_config_value(): void
     {
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.default_spec'] = 'petstore-3.0';
+        $GLOBALS['__openapi_testing_config']['gesso.default_spec'] = 'petstore-3.0';
 
         $this->assertSame('petstore-3.0', $this->openApiSpec());
     }
@@ -65,7 +65,7 @@ class ValidatesOpenApiSchemaDefaultSpecTest extends TestCase
     #[Test]
     public function null_config_value_returns_empty_string(): void
     {
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.default_spec'] = null;
+        $GLOBALS['__openapi_testing_config']['gesso.default_spec'] = null;
 
         $this->assertSame('', $this->openApiSpec());
     }
@@ -80,7 +80,7 @@ class ValidatesOpenApiSchemaDefaultSpecTest extends TestCase
             'openApiSpec() must return a non-empty spec name, but an empty string was returned. '
             . 'Either add #[OpenApiSpec(\'your-spec\')] to your test class or method, '
             . 'override openApiSpec() in your test class, or set the "default_spec" key '
-            . 'in config/openapi-contract-testing.php.',
+            . 'in config/gesso.php.',
         );
 
         $this->assertResponseMatchesOpenApiSchema(
@@ -93,7 +93,7 @@ class ValidatesOpenApiSchemaDefaultSpecTest extends TestCase
     #[Test]
     public function configured_default_spec_validates_successfully(): void
     {
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.default_spec'] = 'petstore-3.0';
+        $GLOBALS['__openapi_testing_config']['gesso.default_spec'] = 'petstore-3.0';
 
         $body = (string) json_encode(
             ['data' => [['id' => 1, 'name' => 'Fido', 'tag' => null]]],
@@ -115,8 +115,8 @@ class ValidatesOpenApiSchemaDefaultSpecTest extends TestCase
     #[Test]
     public function max_errors_config_limits_reported_errors(): void
     {
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.default_spec'] = 'petstore-3.0';
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.max_errors'] = 1;
+        $GLOBALS['__openapi_testing_config']['gesso.default_spec'] = 'petstore-3.0';
+        $GLOBALS['__openapi_testing_config']['gesso.max_errors'] = 1;
 
         $body = (string) json_encode(
             ['data' => [['id' => 'bad', 'name' => 123], ['id' => 'bad', 'name' => 456]]],
@@ -143,8 +143,8 @@ class ValidatesOpenApiSchemaDefaultSpecTest extends TestCase
     #[Test]
     public function string_numeric_max_errors_config_is_cast_to_int(): void
     {
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.default_spec'] = 'petstore-3.0';
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.max_errors'] = '1';
+        $GLOBALS['__openapi_testing_config']['gesso.default_spec'] = 'petstore-3.0';
+        $GLOBALS['__openapi_testing_config']['gesso.max_errors'] = '1';
 
         $body = (string) json_encode(
             ['data' => [['id' => 'bad', 'name' => 123], ['id' => 'bad', 'name' => 456]]],
@@ -169,8 +169,8 @@ class ValidatesOpenApiSchemaDefaultSpecTest extends TestCase
     #[Test]
     public function non_numeric_max_errors_config_falls_back_to_default(): void
     {
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.default_spec'] = 'petstore-3.0';
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.max_errors'] = 'not-a-number';
+        $GLOBALS['__openapi_testing_config']['gesso.default_spec'] = 'petstore-3.0';
+        $GLOBALS['__openapi_testing_config']['gesso.max_errors'] = 'not-a-number';
 
         $body = (string) json_encode(
             ['data' => [['id' => 'bad', 'name' => 123], ['id' => 'bad', 'name' => 456]]],
@@ -202,7 +202,7 @@ class ValidatesOpenApiSchemaDefaultSpecTest extends TestCase
     {
         // With no explicit config, the default from config.php (['5\d\d']) must
         // apply: a 503 that is not in the spec must NOT fail the assertion.
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.default_spec'] = 'petstore-3.0';
+        $GLOBALS['__openapi_testing_config']['gesso.default_spec'] = 'petstore-3.0';
 
         $body = (string) json_encode(['error' => 'service unavailable'], JSON_THROW_ON_ERROR);
         $response = $this->makeTestResponse($body, 503);
@@ -227,8 +227,8 @@ class ValidatesOpenApiSchemaDefaultSpecTest extends TestCase
     {
         // Empty array means "validate every status code" — a 503 not in the
         // spec must fall through to the usual "Status code not defined" failure.
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.default_spec'] = 'petstore-3.0';
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.skip_response_codes'] = [];
+        $GLOBALS['__openapi_testing_config']['gesso.default_spec'] = 'petstore-3.0';
+        $GLOBALS['__openapi_testing_config']['gesso.skip_response_codes'] = [];
 
         $body = (string) json_encode(['error' => 'service unavailable'], JSON_THROW_ON_ERROR);
         $response = $this->makeTestResponse($body, 503);
@@ -249,8 +249,8 @@ class ValidatesOpenApiSchemaDefaultSpecTest extends TestCase
     public function custom_skip_response_codes_config_widens_skip_set(): void
     {
         // Users can widen the skip to include 4xx by overriding the config.
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.default_spec'] = 'petstore-3.0';
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.skip_response_codes'] = ['4\d\d', '5\d\d'];
+        $GLOBALS['__openapi_testing_config']['gesso.default_spec'] = 'petstore-3.0';
+        $GLOBALS['__openapi_testing_config']['gesso.skip_response_codes'] = ['4\d\d', '5\d\d'];
 
         $response = $this->makeTestResponse('{}', 404);
 
@@ -264,13 +264,13 @@ class ValidatesOpenApiSchemaDefaultSpecTest extends TestCase
     #[Test]
     public function non_array_skip_response_codes_config_fails_with_clear_message(): void
     {
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.default_spec'] = 'petstore-3.0';
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.skip_response_codes'] = '5\d\d';
+        $GLOBALS['__openapi_testing_config']['gesso.default_spec'] = 'petstore-3.0';
+        $GLOBALS['__openapi_testing_config']['gesso.skip_response_codes'] = '5\d\d';
 
         $response = $this->makeTestResponse('{}', 500);
 
         $this->expectException(AssertionFailedError::class);
-        $this->expectExceptionMessage('openapi-contract-testing.skip_response_codes must be an array');
+        $this->expectExceptionMessage('gesso.skip_response_codes must be an array');
 
         $this->assertResponseMatchesOpenApiSchema(
             $response,
@@ -284,13 +284,13 @@ class ValidatesOpenApiSchemaDefaultSpecTest extends TestCase
     {
         // Integer status codes look tempting (`['skip_response_codes' => [500]]`)
         // but would silently break the regex-matching contract. Fail loudly.
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.default_spec'] = 'petstore-3.0';
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.skip_response_codes'] = [500];
+        $GLOBALS['__openapi_testing_config']['gesso.default_spec'] = 'petstore-3.0';
+        $GLOBALS['__openapi_testing_config']['gesso.skip_response_codes'] = [500];
 
         $response = $this->makeTestResponse('{}', 500);
 
         $this->expectException(AssertionFailedError::class);
-        $this->expectExceptionMessage('openapi-contract-testing.skip_response_codes[0] must be a string regex pattern');
+        $this->expectExceptionMessage('gesso.skip_response_codes[0] must be a string regex pattern');
 
         $this->assertResponseMatchesOpenApiSchema(
             $response,
@@ -304,13 +304,13 @@ class ValidatesOpenApiSchemaDefaultSpecTest extends TestCase
     {
         // An empty pattern compiles to /^(?:)$/ which silently matches nothing —
         // it should fail loudly at config time instead of becoming dead config.
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.default_spec'] = 'petstore-3.0';
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.skip_response_codes'] = [''];
+        $GLOBALS['__openapi_testing_config']['gesso.default_spec'] = 'petstore-3.0';
+        $GLOBALS['__openapi_testing_config']['gesso.skip_response_codes'] = [''];
 
         $response = $this->makeTestResponse('{}', 500);
 
         $this->expectException(AssertionFailedError::class);
-        $this->expectExceptionMessage('openapi-contract-testing.skip_response_codes[0] must not be an empty string');
+        $this->expectExceptionMessage('gesso.skip_response_codes[0] must not be an empty string');
 
         $this->assertResponseMatchesOpenApiSchema(
             $response,

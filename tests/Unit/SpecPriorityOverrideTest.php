@@ -22,7 +22,7 @@ class SpecPriorityOverrideTest extends TestCase
     {
         parent::setUp();
         $GLOBALS['__openapi_testing_config'] = [
-            'openapi-contract-testing.default_spec' => 'from-config',
+            'gesso.default_spec' => 'from-config',
         ];
     }
 

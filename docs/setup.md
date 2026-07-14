@@ -69,10 +69,10 @@ Add the coverage extension to your `phpunit.xml`:
 Publish the config file:
 
 ```bash
-php artisan vendor:publish --tag=openapi-contract-testing
+php artisan vendor:publish --tag=gesso
 ```
 
-This creates `config/openapi-contract-testing.php`:
+This creates `config/gesso.php`:
 
 ```php
 return [
@@ -172,14 +172,14 @@ Resolution priority (highest to lowest) — the first match wins:
 | 1 | Method-level `#[OpenApiSpec]` attribute | Per-test override inside a class whose other tests target a different spec |
 | 2 | Class-level `#[OpenApiSpec]` attribute  | Default spec for a class whose tests all hit the same API surface |
 | 3 | `openApiSpec()` method override          | Class-specific spec without the attribute (e.g. dynamically chosen at runtime) |
-| 4 | `config('openapi-contract-testing.default_spec')` | Project-wide default set once in `config/openapi-contract-testing.php` |
+| 4 | `config('gesso.default_spec')` | Project-wide default set once in `config/gesso.php` |
 
 Concrete example where all four layers are populated (class name differs from the earlier `MixedApiTest` example so both snippets can coexist in one project):
 
 ```php
 use Studio\Gesso\Attribute\OpenApiSpec;
 
-// config/openapi-contract-testing.php → ['default_spec' => 'front']   (layer 4)
+// config/gesso.php → ['default_spec' => 'front']   (layer 4)
 
 #[OpenApiSpec('admin')]                                             // layer 2
 class AllLayersPriorityTest extends TestCase
@@ -210,7 +210,7 @@ If every layer is absent (no attributes, `openApiSpec()` not overridden, and `de
 openApiSpec() must return a non-empty spec name, but an empty string was returned.
 Either add #[OpenApiSpec('your-spec')] to your test class or method,
 override openApiSpec() in your test class, or set the "default_spec" key
-in config/openapi-contract-testing.php.
+in config/gesso.php.
 ```
 
 > **Note:** `openApiSpec()` remains the original extension hook and is fully backward-compatible — overriding it works exactly as before.
@@ -324,13 +324,13 @@ $validator = new OpenApiResponseValidator(maxErrors: 0);
 $validator = new OpenApiResponseValidator(maxErrors: 1);
 ```
 
-For Laravel, set the `max_errors` key in `config/openapi-contract-testing.php`.
+For Laravel, set the `max_errors` key in `config/gesso.php`.
 
 ## Skipping responses by status code
 
 Production error responses (typically `5xx`) are often deliberately left out of the OpenAPI spec. Without special handling, a test that hits a `500` would fail twice: once from the underlying bug, and again from "Status code 500 not defined". To avoid that noise, every `5xx` response is **skipped by default** — body validation is not performed, the assertion passes, and the endpoint is still recorded as covered.
 
-Override via `skip_response_codes` in `config/openapi-contract-testing.php`:
+Override via `skip_response_codes` in `config/gesso.php`:
 
 ```php
 return [
@@ -365,7 +365,7 @@ Notes:
 Forgetting `$this->assertResponseMatchesOpenApiSchema($response)` in a test means the contract is silently unchecked. Enable `auto_assert` to validate every response produced by Laravel's HTTP helpers automatically — just include the trait:
 
 ```php
-// config/openapi-contract-testing.php
+// config/gesso.php
 return [
     'default_spec' => 'front',
     'auto_assert'  => true,
@@ -498,7 +498,7 @@ Notes:
 Request-side contract drift (missing query params, body-shape divergence, absent security headers) goes undetected unless the test explicitly checks for it. Enable `auto_validate_request` to run `OpenApiRequestValidator` against every request Laravel's HTTP helpers dispatch:
 
 ```php
-// config/openapi-contract-testing.php
+// config/gesso.php
 return [
     'default_spec'               => 'front',
     'auto_validate_request'      => true,

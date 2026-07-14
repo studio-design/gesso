@@ -41,6 +41,10 @@ final class RuntimeSupportPolicyTest extends TestCase
         $this->assertSame('*', $composer['conflict']['studio-design/openapi-contract-testing'] ?? null);
         $this->assertArrayNotHasKey('replace', $composer);
         $this->assertNotContains('src/Compatibility/GessoAliasLoader.php', $composer['autoload']['files'] ?? []);
+        $this->assertSame(
+            ['Studio\\Gesso\\Laravel\\GessoServiceProvider'],
+            $composer['extra']['laravel']['providers'] ?? null,
+        );
     }
 
     /**

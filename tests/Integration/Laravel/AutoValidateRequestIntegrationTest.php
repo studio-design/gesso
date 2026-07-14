@@ -9,7 +9,7 @@ use Orchestra\Testbench\TestCase;
 use PHPUnit\Framework\AssertionFailedError;
 use PHPUnit\Framework\Attributes\Test;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
-use Studio\Gesso\Laravel\OpenApiContractTestingServiceProvider;
+use Studio\Gesso\Laravel\GessoServiceProvider;
 use Studio\Gesso\Laravel\ValidatesOpenApiSchema;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 
@@ -32,7 +32,7 @@ class AutoValidateRequestIntegrationTest extends TestCase
         OpenApiSpecLoader::reset();
         OpenApiSpecLoader::configure(dirname(__DIR__, 2) . '/fixtures/specs');
         OpenApiCoverageTracker::reset();
-        config()->set('openapi-contract-testing.default_spec', 'petstore-3.0');
+        config()->set('gesso.default_spec', 'petstore-3.0');
     }
 
     protected function tearDown(): void
@@ -46,7 +46,7 @@ class AutoValidateRequestIntegrationTest extends TestCase
     #[Test]
     public function auto_validate_request_true_accepts_valid_post_body(): void
     {
-        config()->set('openapi-contract-testing.auto_validate_request', true);
+        config()->set('gesso.auto_validate_request', true);
 
         $response = $this->postJson('/v1/pets', ['name' => 'Buddy']);
         $response->assertCreated();
@@ -60,7 +60,7 @@ class AutoValidateRequestIntegrationTest extends TestCase
     {
         // Missing required `name` field — the canonical request-side drift.
         // Proves the hook survives the Laravel HTTP helper chain.
-        config()->set('openapi-contract-testing.auto_validate_request', true);
+        config()->set('gesso.auto_validate_request', true);
 
         $this->expectException(AssertionFailedError::class);
         $this->expectExceptionMessage('OpenAPI request validation failed');
@@ -71,7 +71,7 @@ class AutoValidateRequestIntegrationTest extends TestCase
     #[Test]
     public function auto_validate_request_false_does_not_validate_invalid_body(): void
     {
-        config()->set('openapi-contract-testing.auto_validate_request', false);
+        config()->set('gesso.auto_validate_request', false);
 
         $response = $this->postJson('/v1/pets', ['not_name' => 'x']);
         $response->assertCreated();
@@ -85,7 +85,7 @@ class AutoValidateRequestIntegrationTest extends TestCase
         // Fluent chain survives Laravel's dispatcher → createTestResponse
         // hook. Mirrors `without_validation_skips_next_http_call_only` for
         // the request side.
-        config()->set('openapi-contract-testing.auto_validate_request', true);
+        config()->set('gesso.auto_validate_request', true);
 
         $response = $this->withoutRequestValidation()->postJson('/v1/pets', ['not_name' => 'x']);
         $response->assertCreated();
@@ -96,7 +96,7 @@ class AutoValidateRequestIntegrationTest extends TestCase
     #[Test]
     public function without_request_validation_flag_resets_after_one_call_end_to_end(): void
     {
-        config()->set('openapi-contract-testing.auto_validate_request', true);
+        config()->set('gesso.auto_validate_request', true);
 
         $this->withoutRequestValidation()
             ->postJson('/v1/pets', ['not_name' => 'x'])
@@ -115,8 +115,8 @@ class AutoValidateRequestIntegrationTest extends TestCase
         // End-to-end for #69's second half: the test sets no Authorization,
         // but `auto_inject_dummy_bearer=true` fills it in for the validator
         // so security validation does not false-fail.
-        config()->set('openapi-contract-testing.auto_validate_request', true);
-        config()->set('openapi-contract-testing.auto_inject_dummy_bearer', true);
+        config()->set('gesso.auto_validate_request', true);
+        config()->set('gesso.auto_inject_dummy_bearer', true);
 
         $response = $this->get('/v1/secure/bearer');
         $response->assertOk();
@@ -130,7 +130,7 @@ class AutoValidateRequestIntegrationTest extends TestCase
     {
         // Default off: the test-author must set a real Authorization header
         // or opt into auto-inject. Confirms the feature is gated.
-        config()->set('openapi-contract-testing.auto_validate_request', true);
+        config()->set('gesso.auto_validate_request', true);
 
         $this->expectException(AssertionFailedError::class);
         $this->expectExceptionMessage('Authorization header is missing');
@@ -146,8 +146,8 @@ class AutoValidateRequestIntegrationTest extends TestCase
         // flag is consumed at the right boundary, (2) record coverage only
         // once per (spec,method,path) despite both hooks calling the tracker,
         // and (3) both validations must see a consistent request/response.
-        config()->set('openapi-contract-testing.auto_assert', true);
-        config()->set('openapi-contract-testing.auto_validate_request', true);
+        config()->set('gesso.auto_assert', true);
+        config()->set('gesso.auto_validate_request', true);
 
         $response = $this->postJson('/v1/pets', ['name' => 'Buddy']);
         $response->assertCreated();
@@ -166,8 +166,8 @@ class AutoValidateRequestIntegrationTest extends TestCase
         // assertion fires first (before the response hook runs), so the
         // surfaced error is the request one. Response drift on the same call
         // does not override this.
-        config()->set('openapi-contract-testing.auto_assert', true);
-        config()->set('openapi-contract-testing.auto_validate_request', true);
+        config()->set('gesso.auto_assert', true);
+        config()->set('gesso.auto_validate_request', true);
 
         $this->expectException(AssertionFailedError::class);
         $this->expectExceptionMessage('OpenAPI request validation failed');
@@ -178,7 +178,7 @@ class AutoValidateRequestIntegrationTest extends TestCase
     /** @return array<int, class-string> */
     protected function getPackageProviders($app): array
     {
-        return [OpenApiContractTestingServiceProvider::class];
+        return [GessoServiceProvider::class];
     }
 
     protected function defineRoutes($router): void

@@ -43,7 +43,7 @@ class ValidatesOpenApiSchemaAutoValidateRequestTest extends TestCase
         OpenApiSpecLoader::configure(__DIR__ . '/../fixtures/specs');
         OpenApiCoverageTracker::reset();
         $GLOBALS['__openapi_testing_config'] = [
-            'openapi-contract-testing.default_spec' => 'petstore-3.0',
+            'gesso.default_spec' => 'petstore-3.0',
         ];
     }
 
@@ -68,7 +68,7 @@ class ValidatesOpenApiSchemaAutoValidateRequestTest extends TestCase
     #[Test]
     public function auto_validate_request_true_passes_valid_post_body(): void
     {
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.auto_validate_request'] = true;
+        $GLOBALS['__openapi_testing_config']['gesso.auto_validate_request'] = true;
 
         $request = $this->makeJsonRequest('POST', '/v1/pets', ['name' => 'Fido']);
 
@@ -87,7 +87,7 @@ class ValidatesOpenApiSchemaAutoValidateRequestTest extends TestCase
         // refactor that forwards `!isSkipped()` from a request result (or
         // adds a request-side skip concept) would silently flip every
         // request-only endpoint to skipped-only without this assertion.
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.auto_validate_request'] = true;
+        $GLOBALS['__openapi_testing_config']['gesso.auto_validate_request'] = true;
 
         $request = $this->makeJsonRequest('POST', '/v1/pets', ['name' => 'Fido']);
 
@@ -117,7 +117,7 @@ class ValidatesOpenApiSchemaAutoValidateRequestTest extends TestCase
     {
         // /v1/pets POST requires `name` per the spec. Sending a body without
         // it is the canonical request-side contract drift.
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.auto_validate_request'] = true;
+        $GLOBALS['__openapi_testing_config']['gesso.auto_validate_request'] = true;
 
         $request = $this->makeJsonRequest('POST', '/v1/pets', ['not_name' => 'x']);
 
@@ -136,7 +136,7 @@ class ValidatesOpenApiSchemaAutoValidateRequestTest extends TestCase
         // `type: object` body, so a null body fails loudly with a schema type
         // error — before the fix the decoded `null` was misreported as an
         // empty body.
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.auto_validate_request'] = true;
+        $GLOBALS['__openapi_testing_config']['gesso.auto_validate_request'] = true;
 
         $request = Request::create('/v1/pets', 'POST', [], [], [], [], 'null');
         $request->headers->remove('Content-Type');
@@ -153,7 +153,7 @@ class ValidatesOpenApiSchemaAutoValidateRequestTest extends TestCase
         // Without auto-inject, a bearer-protected endpoint called without any
         // Authorization header must fail request validation — proves that the
         // security-side of the validator is wired through.
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.auto_validate_request'] = true;
+        $GLOBALS['__openapi_testing_config']['gesso.auto_validate_request'] = true;
 
         $request = Request::create('/v1/secure/bearer', 'GET');
 
@@ -166,7 +166,7 @@ class ValidatesOpenApiSchemaAutoValidateRequestTest extends TestCase
     #[Test]
     public function auto_validate_request_false_does_not_validate(): void
     {
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.auto_validate_request'] = false;
+        $GLOBALS['__openapi_testing_config']['gesso.auto_validate_request'] = false;
 
         $request = $this->makeJsonRequest('POST', '/v1/pets', ['not_name' => 'x']);
 
@@ -191,7 +191,7 @@ class ValidatesOpenApiSchemaAutoValidateRequestTest extends TestCase
     {
         // Flag must actually suppress validation now that the hook is live —
         // previously this was forward-looking and had no observable effect.
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.auto_validate_request'] = true;
+        $GLOBALS['__openapi_testing_config']['gesso.auto_validate_request'] = true;
 
         $request = $this->makeJsonRequest('POST', '/v1/pets', ['not_name' => 'x']);
 
@@ -206,7 +206,7 @@ class ValidatesOpenApiSchemaAutoValidateRequestTest extends TestCase
     public function without_request_validation_flag_resets_after_one_call(): void
     {
         // Core guarantee from #41 — same semantics apply to the request side.
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.auto_validate_request'] = true;
+        $GLOBALS['__openapi_testing_config']['gesso.auto_validate_request'] = true;
 
         $invalidRequest = $this->makeJsonRequest('POST', '/v1/pets', ['not_name' => 'x']);
 
@@ -226,7 +226,7 @@ class ValidatesOpenApiSchemaAutoValidateRequestTest extends TestCase
         // Flag tracks the HTTP call boundary; consumption must happen whether
         // or not validation ran. Otherwise, flipping auto_validate_request
         // from off → on mid-test would silently apply the stale flag.
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.auto_validate_request'] = false;
+        $GLOBALS['__openapi_testing_config']['gesso.auto_validate_request'] = false;
 
         $this->withoutRequestValidation();
         $this->maybeAutoValidateOpenApiRequest(
@@ -237,7 +237,7 @@ class ValidatesOpenApiSchemaAutoValidateRequestTest extends TestCase
 
         // Re-enable and send an invalid body — must throw, proving the flag
         // did not carry over from the previous (config-disabled) call.
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.auto_validate_request'] = true;
+        $GLOBALS['__openapi_testing_config']['gesso.auto_validate_request'] = true;
 
         $this->expectException(AssertionFailedError::class);
         $this->maybeAutoValidateOpenApiRequest(
@@ -251,7 +251,7 @@ class ValidatesOpenApiSchemaAutoValidateRequestTest extends TestCase
     #[SkipOpenApi(reason: 'intentional contract violation')]
     public function skip_open_api_attribute_opts_method_out_of_request_validation(): void
     {
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.auto_validate_request'] = true;
+        $GLOBALS['__openapi_testing_config']['gesso.auto_validate_request'] = true;
 
         $request = $this->makeJsonRequest('POST', '/v1/pets', ['not_name' => 'x']);
 
@@ -267,7 +267,7 @@ class ValidatesOpenApiSchemaAutoValidateRequestTest extends TestCase
     {
         // Defensive: createTestResponse receives a nullable $request from
         // Laravel. If null is ever passed through, the hook must not crash.
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.auto_validate_request'] = true;
+        $GLOBALS['__openapi_testing_config']['gesso.auto_validate_request'] = true;
 
         $this->maybeAutoValidateOpenApiRequest(null, null, null);
 
@@ -279,7 +279,7 @@ class ValidatesOpenApiSchemaAutoValidateRequestTest extends TestCase
     {
         // HttpMethod::tryFrom() returns null for unrecognized verbs (e.g. a
         // hypothetical LINK / UNLINK). The hook must not try to validate.
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.auto_validate_request'] = true;
+        $GLOBALS['__openapi_testing_config']['gesso.auto_validate_request'] = true;
 
         $request = $this->makeJsonRequest('POST', '/v1/pets', ['name' => 'ok']);
 
@@ -293,7 +293,7 @@ class ValidatesOpenApiSchemaAutoValidateRequestTest extends TestCase
     {
         // `'auto_validate_request' => env('X')` is the idiomatic Laravel path
         // and yields "true" (string) — must be coerced just like auto_assert.
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.auto_validate_request'] = 'true';
+        $GLOBALS['__openapi_testing_config']['gesso.auto_validate_request'] = 'true';
 
         $request = $this->makeJsonRequest('POST', '/v1/pets', ['name' => 'ok']);
 
@@ -305,7 +305,7 @@ class ValidatesOpenApiSchemaAutoValidateRequestTest extends TestCase
     #[Test]
     public function auto_validate_request_with_non_bool_value_fails_loudly(): void
     {
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.auto_validate_request'] = 'yolo';
+        $GLOBALS['__openapi_testing_config']['gesso.auto_validate_request'] = 'yolo';
 
         $request = $this->makeJsonRequest('POST', '/v1/pets', ['name' => 'ok']);
 
@@ -321,7 +321,7 @@ class ValidatesOpenApiSchemaAutoValidateRequestTest extends TestCase
         // OpenApiRequestValidator itself produces the "No matching path" error;
         // this test pins that the trait surfaces it as an assertion failure
         // rather than swallowing it.
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.auto_validate_request'] = true;
+        $GLOBALS['__openapi_testing_config']['gesso.auto_validate_request'] = true;
 
         $request = $this->makeJsonRequest('POST', '/does/not/exist', ['name' => 'ok']);
 
@@ -337,8 +337,8 @@ class ValidatesOpenApiSchemaAutoValidateRequestTest extends TestCase
         // Mirrors the response-side guard: returning `''` from openApiSpec()
         // is the misconfigured-defaults case. The trait must shout with an
         // actionable hint rather than silently skipping validation.
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.auto_validate_request'] = true;
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.default_spec'] = '';
+        $GLOBALS['__openapi_testing_config']['gesso.auto_validate_request'] = true;
+        $GLOBALS['__openapi_testing_config']['gesso.default_spec'] = '';
 
         $this->expectException(AssertionFailedError::class);
         $this->expectExceptionMessage('openApiSpec() must return a non-empty spec name');
@@ -356,7 +356,7 @@ class ValidatesOpenApiSchemaAutoValidateRequestTest extends TestCase
         // json_decode with JSON_THROW_ON_ERROR raises JsonException on broken
         // bodies; the trait converts it to a PHPUnit failure so the test
         // author sees what happened instead of a mid-stack exception.
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.auto_validate_request'] = true;
+        $GLOBALS['__openapi_testing_config']['gesso.auto_validate_request'] = true;
 
         $request = Request::create(
             '/v1/pets',
@@ -383,7 +383,7 @@ class ValidatesOpenApiSchemaAutoValidateRequestTest extends TestCase
         // knows to set it. Symfony's Request::create auto-sets Content-Type
         // to x-www-form-urlencoded when a body is provided, so we explicitly
         // clear it to reach the "empty Content-Type" branch of extractRequestBody().
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.auto_validate_request'] = true;
+        $GLOBALS['__openapi_testing_config']['gesso.auto_validate_request'] = true;
 
         $request = Request::create('/v1/pets', 'POST', [], [], [], [], '{not valid json');
         $request->headers->remove('Content-Type');
@@ -404,7 +404,7 @@ class ValidatesOpenApiSchemaAutoValidateRequestTest extends TestCase
         // undecoded and the validator surfaces its clean "Content-Type is not
         // defined" diagnostic instead of a misleading "could not be parsed as
         // JSON" parse error.
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.auto_validate_request'] = true;
+        $GLOBALS['__openapi_testing_config']['gesso.auto_validate_request'] = true;
 
         $request = Request::create(
             '/v1/pets',
@@ -431,7 +431,7 @@ class ValidatesOpenApiSchemaAutoValidateRequestTest extends TestCase
         // validator as raw content — it returns `null` so the validator's
         // body-schema check runs against "no JSON body" and surfaces the
         // right error rather than a coercion one.
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.auto_validate_request'] = true;
+        $GLOBALS['__openapi_testing_config']['gesso.auto_validate_request'] = true;
 
         $request = Request::create(
             '/v1/pets',
@@ -470,8 +470,8 @@ class ValidatesOpenApiSchemaAutoValidateRequestTest extends TestCase
         // The end-to-end goal of #179: an invalid POST body that yields a
         // documented 422 must not surface as a request-validation failure
         // when auto_validate_request is on with the default 422/400 skip set.
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.auto_validate_request'] = true;
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.default_spec'] = 'request-validation-skip';
+        $GLOBALS['__openapi_testing_config']['gesso.auto_validate_request'] = true;
+        $GLOBALS['__openapi_testing_config']['gesso.default_spec'] = 'request-validation-skip';
 
         $request = $this->makeJsonRequest('POST', '/exact-422', []); // missing required `name`
 
@@ -490,8 +490,8 @@ class ValidatesOpenApiSchemaAutoValidateRequestTest extends TestCase
         // /no-4xx documents only 200/500. A 422 there is a spec gap, and the
         // downgrade must NOT swallow it — the test author needs to see that
         // their impl is returning a status the spec never declared.
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.auto_validate_request'] = true;
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.default_spec'] = 'request-validation-skip';
+        $GLOBALS['__openapi_testing_config']['gesso.auto_validate_request'] = true;
+        $GLOBALS['__openapi_testing_config']['gesso.default_spec'] = 'request-validation-skip';
 
         $request = $this->makeJsonRequest('POST', '/no-4xx', []);
 
@@ -506,9 +506,9 @@ class ValidatesOpenApiSchemaAutoValidateRequestTest extends TestCase
     {
         // Opt-out: empty array disables the feature so strict request-side
         // validation is preserved.
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.auto_validate_request'] = true;
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.default_spec'] = 'request-validation-skip';
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.skip_request_validation_response_codes'] = [];
+        $GLOBALS['__openapi_testing_config']['gesso.auto_validate_request'] = true;
+        $GLOBALS['__openapi_testing_config']['gesso.default_spec'] = 'request-validation-skip';
+        $GLOBALS['__openapi_testing_config']['gesso.skip_request_validation_response_codes'] = [];
 
         $request = $this->makeJsonRequest('POST', '/exact-422', []);
 
@@ -524,8 +524,8 @@ class ValidatesOpenApiSchemaAutoValidateRequestTest extends TestCase
         // Common bug shape this guards against: a 200-expected test starts
         // returning 200 for an invalid body (impl missed the validation).
         // The downgrade must NOT fire on 200; the failure must still fail.
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.auto_validate_request'] = true;
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.default_spec'] = 'request-validation-skip';
+        $GLOBALS['__openapi_testing_config']['gesso.auto_validate_request'] = true;
+        $GLOBALS['__openapi_testing_config']['gesso.default_spec'] = 'request-validation-skip';
 
         $request = $this->makeJsonRequest('POST', '/exact-422', []);
 
@@ -542,8 +542,8 @@ class ValidatesOpenApiSchemaAutoValidateRequestTest extends TestCase
         // to documented 4xx response" so the spec-coverage report still
         // reflects that the endpoint was exercised, but with a skip reason
         // attached rather than a clean validated state.
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.auto_validate_request'] = true;
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.default_spec'] = 'request-validation-skip';
+        $GLOBALS['__openapi_testing_config']['gesso.auto_validate_request'] = true;
+        $GLOBALS['__openapi_testing_config']['gesso.default_spec'] = 'request-validation-skip';
 
         $request = $this->makeJsonRequest('POST', '/exact-422', []);
         $this->maybeAutoValidateOpenApiRequest($request, HttpMethod::POST, '/exact-422', 422);
@@ -565,8 +565,8 @@ class ValidatesOpenApiSchemaAutoValidateRequestTest extends TestCase
         // by the request validator. The trait must forward that skip reason
         // into coverage so the endpoint is recorded as request-reached with a
         // skip reason rather than a clean validated request.
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.auto_validate_request'] = true;
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.default_spec'] = 'non-json-content-schema';
+        $GLOBALS['__openapi_testing_config']['gesso.auto_validate_request'] = true;
+        $GLOBALS['__openapi_testing_config']['gesso.default_spec'] = 'non-json-content-schema';
 
         $request = Request::create(
             '/text-with-schema',
@@ -600,8 +600,8 @@ class ValidatesOpenApiSchemaAutoValidateRequestTest extends TestCase
         // When the second value changes mid-test (e.g. one test toggles it off
         // for strict assertions), the cached validator must be rebuilt or the
         // new config silently won't take effect.
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.auto_validate_request'] = true;
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.default_spec'] = 'request-validation-skip';
+        $GLOBALS['__openapi_testing_config']['gesso.auto_validate_request'] = true;
+        $GLOBALS['__openapi_testing_config']['gesso.default_spec'] = 'request-validation-skip';
 
         // First call: default ['422', '400'] — invalid body + documented 422
         // response is downgraded silently (no exception).
@@ -610,7 +610,7 @@ class ValidatesOpenApiSchemaAutoValidateRequestTest extends TestCase
 
         // Toggle to strict mode mid-test — the cached validator must be
         // rebuilt with the new (empty) skip set so the next call fails loud.
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.skip_request_validation_response_codes'] = [];
+        $GLOBALS['__openapi_testing_config']['gesso.skip_request_validation_response_codes'] = [];
 
         $this->expectException(AssertionFailedError::class);
         $this->expectExceptionMessage('OpenAPI request validation failed');
@@ -630,8 +630,8 @@ class ValidatesOpenApiSchemaAutoValidateRequestTest extends TestCase
         // forwarding response status) keep working — the trait method's new
         // 4th arg is optional and defaults to null, so the old 3-arg shape
         // continues to validate without downgrade.
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.auto_validate_request'] = true;
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.default_spec'] = 'request-validation-skip';
+        $GLOBALS['__openapi_testing_config']['gesso.auto_validate_request'] = true;
+        $GLOBALS['__openapi_testing_config']['gesso.default_spec'] = 'request-validation-skip';
 
         $request = $this->makeJsonRequest('POST', '/exact-422', []);
 

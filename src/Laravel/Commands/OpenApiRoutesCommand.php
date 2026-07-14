@@ -118,10 +118,10 @@ final class OpenApiRoutesCommand extends Command
             return $specs;
         }
 
-        $defaultSpec = config('openapi-contract-testing.default_spec');
+        $defaultSpec = config('gesso.default_spec');
         if (!is_string($defaultSpec) || trim($defaultSpec) === '') {
             throw new InvalidArgumentException(
-                'No OpenAPI spec selected. Pass --spec or configure openapi-contract-testing.default_spec.',
+                'No OpenAPI spec selected. Pass --spec or configure gesso.default_spec.',
             );
         }
 
@@ -131,23 +131,23 @@ final class OpenApiRoutesCommand extends Command
     /** @return array{string, list<string>} */
     private function loaderConfiguration(Application $application): array
     {
-        $basePath = config('openapi-contract-testing.spec_base_path');
+        $basePath = config('gesso.spec_base_path');
         if (!is_string($basePath) || trim($basePath) === '') {
             throw new InvalidArgumentException(
-                'openapi-contract-testing.spec_base_path must be a non-empty directory path.',
+                'gesso.spec_base_path must be a non-empty directory path.',
             );
         }
 
-        $stripPrefixes = config('openapi-contract-testing.strip_prefixes', []);
+        $stripPrefixes = config('gesso.strip_prefixes', []);
         if (!is_array($stripPrefixes)) {
-            throw new InvalidArgumentException('openapi-contract-testing.strip_prefixes must be an array of strings.');
+            throw new InvalidArgumentException('gesso.strip_prefixes must be an array of strings.');
         }
 
         $normalizedPrefixes = [];
         foreach ($stripPrefixes as $prefix) {
             if (!is_string($prefix) || trim($prefix) === '') {
                 throw new InvalidArgumentException(
-                    'openapi-contract-testing.strip_prefixes must contain only non-empty strings.',
+                    'gesso.strip_prefixes must contain only non-empty strings.',
                 );
             }
             $normalizedPrefixes[] = $prefix;

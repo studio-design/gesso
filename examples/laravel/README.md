@@ -2,7 +2,7 @@
 
 ```bash
 composer require --dev studio-design/gesso
-php artisan vendor:publish --tag=openapi-contract-testing
+php artisan vendor:publish --tag=gesso
 composer install
 composer test
 ```

@@ -35,7 +35,7 @@ class ValidatesOpenApiSchemaEnforceDiscriminatorTest extends TestCase
         self::resetValidatorCache();
         DiscriminatorEnforcement::reset();
         $GLOBALS['__openapi_testing_config'] = [
-            'openapi-contract-testing.default_spec' => 'petstore-3.0',
+            'gesso.default_spec' => 'petstore-3.0',
         ];
     }
 
@@ -64,7 +64,7 @@ class ValidatesOpenApiSchemaEnforceDiscriminatorTest extends TestCase
     #[Test]
     public function response_validator_build_disables_enforcement_when_config_false(): void
     {
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.enforce_discriminator'] = false;
+        $GLOBALS['__openapi_testing_config']['gesso.enforce_discriminator'] = false;
 
         $this->getOrCreateValidator();
 
@@ -76,7 +76,7 @@ class ValidatesOpenApiSchemaEnforceDiscriminatorTest extends TestCase
     {
         // The request-side build path configures the gate independently of the
         // response-side path.
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.enforce_discriminator'] = false;
+        $GLOBALS['__openapi_testing_config']['gesso.enforce_discriminator'] = false;
 
         $this->getOrCreateRequestValidator();
 
@@ -88,7 +88,7 @@ class ValidatesOpenApiSchemaEnforceDiscriminatorTest extends TestCase
     {
         // `enforce_discriminator => env('...')` yields a string; the shared
         // resolveBoolConfig() coercion must honour "false".
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.enforce_discriminator'] = 'false';
+        $GLOBALS['__openapi_testing_config']['gesso.enforce_discriminator'] = 'false';
 
         $this->getOrCreateValidator();
 
@@ -100,7 +100,7 @@ class ValidatesOpenApiSchemaEnforceDiscriminatorTest extends TestCase
     {
         // A typo must not silently flip the gate — same three-way coercion the
         // other flags use.
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.enforce_discriminator'] = 'yolo';
+        $GLOBALS['__openapi_testing_config']['gesso.enforce_discriminator'] = 'yolo';
 
         $this->expectException(AssertionFailedError::class);
         $this->expectExceptionMessage('enforce_discriminator must be a boolean');

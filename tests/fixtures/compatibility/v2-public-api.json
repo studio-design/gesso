@@ -4305,7 +4305,7 @@
             }
         }
     },
-    "Studio\\Gesso\\Laravel\\OpenApiContractTestingServiceProvider": {
+    "Studio\\Gesso\\Laravel\\GessoServiceProvider": {
         "kind": "class",
         "final": false,
         "abstract": false,

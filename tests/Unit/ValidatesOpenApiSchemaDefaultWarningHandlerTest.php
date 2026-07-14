@@ -40,7 +40,7 @@ class ValidatesOpenApiSchemaDefaultWarningHandlerTest extends TestCase
         OpenApiSpecLoader::configure(__DIR__ . '/../fixtures/specs');
         OpenApiCoverageTracker::reset();
         $GLOBALS['__openapi_testing_config'] = [
-            'openapi-contract-testing.default_spec' => 'petstore-3.0',
+            'gesso.default_spec' => 'petstore-3.0',
         ];
         // Intentionally do NOT set $skipWarningHandler — exercise the default.
     }

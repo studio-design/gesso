@@ -46,11 +46,11 @@ class ValidatesOpenApiSchemaSkipResponseCodeTest extends TestCase
         OpenApiSpecLoader::configure(__DIR__ . '/../fixtures/specs');
         OpenApiCoverageTracker::reset();
         $GLOBALS['__openapi_testing_config'] = [
-            'openapi-contract-testing.default_spec' => 'petstore-3.0',
-            'openapi-contract-testing.auto_assert' => true,
+            'gesso.default_spec' => 'petstore-3.0',
+            'gesso.auto_assert' => true,
             // Disable the default 5xx skip so per-request behavior is observable
             // without interference from the config-level skip set.
-            'openapi-contract-testing.skip_response_codes' => [],
+            'gesso.skip_response_codes' => [],
         ];
         // Capture warnings so the explicit-assert warning path does not
         // escalate E_USER_DEPRECATED during tests. Each test that asserts on
@@ -177,7 +177,7 @@ class ValidatesOpenApiSchemaSkipResponseCodeTest extends TestCase
         // Config default covers 5xx; per-request adds 4xx. A 404 call should
         // skip via per-request; a subsequent 503 call (no per-request) should
         // still skip via the config default.
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.skip_response_codes'] = ['5\d\d'];
+        $GLOBALS['__openapi_testing_config']['gesso.skip_response_codes'] = ['5\d\d'];
 
         $this->skipResponseCode('4\d\d');
         $this->maybeAutoAssertOpenApiSchema(
@@ -403,7 +403,7 @@ class ValidatesOpenApiSchemaSkipResponseCodeTest extends TestCase
         // auto_assert on mid-test would silently skip the wrong request.
         // Consumption must happen at the boundary regardless of config state,
         // mirroring how withoutValidation() behaves.
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.auto_assert'] = false;
+        $GLOBALS['__openapi_testing_config']['gesso.auto_assert'] = false;
 
         $this->skipResponseCode(503);
         $this->maybeAutoAssertOpenApiSchema(
@@ -414,7 +414,7 @@ class ValidatesOpenApiSchemaSkipResponseCodeTest extends TestCase
 
         // Now enable auto-assert and send a 503 — must throw, proving the
         // flag was already consumed by the previous call.
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.auto_assert'] = true;
+        $GLOBALS['__openapi_testing_config']['gesso.auto_assert'] = true;
 
         $this->expectException(AssertionFailedError::class);
         $this->maybeAutoAssertOpenApiSchema(

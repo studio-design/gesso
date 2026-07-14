@@ -76,8 +76,9 @@ a replacement.
 ## PHP public types
 
 Every type below maps by replacing the prefix
-`Studio\OpenApiContractTesting\` with `Studio\Gesso\`. Renaming or removing
-the domain-level short names is not part of the identity migration.
+`Studio\OpenApiContractTesting\` with `Studio\Gesso\`, except for the explicitly
+branded Laravel provider, which becomes `GessoServiceProvider`. Renaming or
+removing domain-level short names is not part of the identity migration.
 
 ### Core and attributes
 
@@ -299,11 +300,13 @@ The `openapi:routes` command accepts `--spec`, `--prefix`, `--middleware`,
 `--fail-on-undocumented`, and `--fail-on-unimplemented`. It uses Laravel's
 standard success (`0`), failure (`1`), and invalid usage (`2`) exit codes.
 
-Migration status: unchanged. The complete v1.9 configuration defaults,
-provider configuration key/publish tag/destination, and versioned route-parity
-JSON are captured under `tests/fixtures/compatibility/` and exercised through
-Laravel consumer-level integration tests. Text output remains covered
-semantically because Laravel owns its cross-version console table rendering.
+Migration status: implemented on the v2 development line. The complete v1.9
+configuration defaults remain unchanged, while `GessoServiceProvider` owns only
+the `gesso` key, publish tag, and `config/gesso.php` destination. Consumer-level
+tests cover defaults, application overrides, discovery metadata, publishing,
+and rejection of legacy-only and dual-key configurations. Versioned route-parity
+JSON remains unchanged. Text output remains covered semantically because Laravel
+owns its cross-version console table rendering.
 
 V1.10 intentionally does not register a `gesso` configuration alias. At the v2
 package boundary, consumers rename the published file and direct configuration

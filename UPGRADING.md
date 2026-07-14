@@ -7,6 +7,21 @@ full record.
 Sections are ordered newest-first. If you are jumping multiple minors,
 read each intermediate section in order — behavioural changes compose.
 
+## From v1.10.x to v2.0.0
+
+Gesso v2 uses `Studio\Gesso\` as its only PHP namespace and is installed from
+`studio-design/gesso`. Complete the staged namespace and CLI migration described
+in [`docs/migration/v2.md`](docs/migration/v2.md) before replacing the Composer
+requirement.
+
+Laravel applications must clear their configuration cache while v1.10 is still
+installed, rename `config/openapi-contract-testing.php` to `config/gesso.php`,
+and update direct lookups from `openapi-contract-testing.*` to `gesso.*`. Gesso
+v2 discovers `Studio\Gesso\Laravel\GessoServiceProvider`, publishes with the
+`gesso` tag, and rejects both legacy-only and dual-key configurations instead of
+guessing precedence. Rebuild the configuration cache only after the application
+boots successfully on v2.
+
 ## Within v1.x
 
 The v1.x line is covered end-to-end by SemVer (see "v0.x → v1.0.0"

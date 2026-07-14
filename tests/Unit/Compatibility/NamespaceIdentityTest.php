@@ -36,4 +36,10 @@ final class NamespaceIdentityTest extends TestCase
         $this->assertFalse(class_exists('Studio\\OpenApiContractTesting\\Laravel\\ValidatesOpenApiSchema'));
         $this->assertFalse(class_exists('Studio\\OpenApiContractTesting\\MissingType'));
     }
+
+    #[Test]
+    public function the_legacy_laravel_provider_short_name_is_not_available_in_v2(): void
+    {
+        $this->assertFalse(class_exists('Studio\\Gesso\\Laravel\\OpenApiContractTestingServiceProvider'));
+    }
 }

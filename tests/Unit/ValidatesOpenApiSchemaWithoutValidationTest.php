@@ -42,8 +42,8 @@ class ValidatesOpenApiSchemaWithoutValidationTest extends TestCase
         OpenApiSpecLoader::configure(__DIR__ . '/../fixtures/specs');
         OpenApiCoverageTracker::reset();
         $GLOBALS['__openapi_testing_config'] = [
-            'openapi-contract-testing.default_spec' => 'petstore-3.0',
-            'openapi-contract-testing.auto_assert' => true,
+            'gesso.default_spec' => 'petstore-3.0',
+            'gesso.auto_assert' => true,
         ];
     }
 
@@ -215,7 +215,7 @@ class ValidatesOpenApiSchemaWithoutValidationTest extends TestCase
         // If the flag leaked past an auto_assert=false HTTP call, toggling
         // auto_assert on mid-test would silently skip the wrong request.
         // Consumption must happen at the boundary regardless of config state.
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.auto_assert'] = false;
+        $GLOBALS['__openapi_testing_config']['gesso.auto_assert'] = false;
 
         $this->withoutValidation();
         $this->maybeAutoAssertOpenApiSchema(
@@ -226,7 +226,7 @@ class ValidatesOpenApiSchemaWithoutValidationTest extends TestCase
 
         // Now enable auto-assert and send an invalid body — must throw,
         // proving the flag was already consumed by the previous call.
-        $GLOBALS['__openapi_testing_config']['openapi-contract-testing.auto_assert'] = true;
+        $GLOBALS['__openapi_testing_config']['gesso.auto_assert'] = true;
         $invalidBody = (string) json_encode(['wrong_key' => 'value'], JSON_THROW_ON_ERROR);
 
         $this->expectException(AssertionFailedError::class);

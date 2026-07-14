@@ -473,7 +473,7 @@ trait ValidatesOpenApiSchema
                 'openApiSpec() must return a non-empty spec name, but an empty string was returned. '
                 . 'Either add #[OpenApiSpec(\'your-spec\')] to your test class or method, '
                 . 'override openApiSpec() in your test class, or set the "default_spec" key '
-                . 'in config/openapi-contract-testing.php.',
+                . 'in config/gesso.php.',
             );
         }
 
@@ -618,7 +618,7 @@ trait ValidatesOpenApiSchema
                 'openApiSpec() must return a non-empty spec name, but an empty string was returned. '
                 . 'Either add #[OpenApiSpec(\'your-spec\')] to your test class or method, '
                 . 'override openApiSpec() in your test class, or set the "default_spec" key '
-                . 'in config/openapi-contract-testing.php.',
+                . 'in config/gesso.php.',
             );
         }
 
@@ -931,7 +931,7 @@ trait ValidatesOpenApiSchema
 
     private function resolveMaxErrors(): int
     {
-        $maxErrors = config('openapi-contract-testing.max_errors', 20);
+        $maxErrors = config('gesso.max_errors', 20);
 
         return is_numeric($maxErrors) ? (int) $maxErrors : 20;
     }
@@ -939,11 +939,11 @@ trait ValidatesOpenApiSchema
     /** @return string[] */
     private function resolveSkipResponseCodes(): array
     {
-        $raw = config('openapi-contract-testing.skip_response_codes', OpenApiResponseValidator::DEFAULT_SKIP_RESPONSE_CODES);
+        $raw = config('gesso.skip_response_codes', OpenApiResponseValidator::DEFAULT_SKIP_RESPONSE_CODES);
 
         if (!is_array($raw)) {
             $this->failOpenApi(sprintf(
-                'openapi-contract-testing.skip_response_codes must be an array of regex patterns, got %s: %s.',
+                'gesso.skip_response_codes must be an array of regex patterns, got %s: %s.',
                 get_debug_type($raw),
                 var_export($raw, true),
             ));
@@ -953,14 +953,14 @@ trait ValidatesOpenApiSchema
         foreach ($raw as $index => $pattern) {
             if (!is_string($pattern)) {
                 $this->failOpenApi(sprintf(
-                    'openapi-contract-testing.skip_response_codes[%s] must be a string regex pattern, got %s.',
+                    'gesso.skip_response_codes[%s] must be a string regex pattern, got %s.',
                     (string) $index,
                     get_debug_type($pattern),
                 ));
             }
             if ($pattern === '') {
                 $this->failOpenApi(sprintf(
-                    'openapi-contract-testing.skip_response_codes[%s] must not be an empty string.',
+                    'gesso.skip_response_codes[%s] must not be an empty string.',
                     (string) $index,
                 ));
             }
@@ -974,13 +974,13 @@ trait ValidatesOpenApiSchema
     private function resolveSkipRequestValidationResponseCodes(): array
     {
         $raw = config(
-            'openapi-contract-testing.skip_request_validation_response_codes',
+            'gesso.skip_request_validation_response_codes',
             OpenApiRequestValidator::DEFAULT_SKIP_REQUEST_VALIDATION_RESPONSE_CODES,
         );
 
         if (!is_array($raw)) {
             $this->failOpenApi(sprintf(
-                'openapi-contract-testing.skip_request_validation_response_codes must be an array of regex patterns, got %s: %s.',
+                'gesso.skip_request_validation_response_codes must be an array of regex patterns, got %s: %s.',
                 get_debug_type($raw),
                 var_export($raw, true),
             ));
@@ -990,14 +990,14 @@ trait ValidatesOpenApiSchema
         foreach ($raw as $index => $pattern) {
             if (!is_string($pattern)) {
                 $this->failOpenApi(sprintf(
-                    'openapi-contract-testing.skip_request_validation_response_codes[%s] must be a string regex pattern, got %s.',
+                    'gesso.skip_request_validation_response_codes[%s] must be a string regex pattern, got %s.',
                     (string) $index,
                     get_debug_type($pattern),
                 ));
             }
             if ($pattern === '') {
                 $this->failOpenApi(sprintf(
-                    'openapi-contract-testing.skip_request_validation_response_codes[%s] must not be an empty string.',
+                    'gesso.skip_request_validation_response_codes[%s] must not be an empty string.',
                     (string) $index,
                 ));
             }
@@ -1106,7 +1106,7 @@ trait ValidatesOpenApiSchema
      */
     private function resolveBoolConfig(string $key, bool $default = false): bool
     {
-        $raw = config('openapi-contract-testing.' . $key, $default);
+        $raw = config('gesso.' . $key, $default);
 
         if ($raw === true) {
             return true;
@@ -1118,7 +1118,7 @@ trait ValidatesOpenApiSchema
         $parsed = filter_var($raw, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
         if ($parsed === null) {
             $this->failOpenApi(sprintf(
-                'openapi-contract-testing.%s must be a boolean (or a boolean-compatible value '
+                'gesso.%s must be a boolean (or a boolean-compatible value '
                 . 'like "true"/"false"/"1"/"0"), got %s: %s.',
                 $key,
                 get_debug_type($raw),

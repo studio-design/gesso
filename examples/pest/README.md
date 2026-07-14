@@ -43,7 +43,7 @@ asks for are:
 2. `OpenApiSpecLoader::configure(...)` once at boot (typically in your
    base test case's `setUp` or via the PHPUnit extension's `spec_base_path`
    parameter).
-3. `config('openapi-contract-testing.default_spec', '...')` for the spec
+3. `config('gesso.default_spec', '...')` for the spec
    the suite validates against.
 
 Then the Pest expectations are available everywhere:

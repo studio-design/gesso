@@ -19,7 +19,7 @@ trait ResolvesOpenApiSpec
 
     protected function openApiSpec(): string
     {
-        $spec = config('openapi-contract-testing.default_spec');
+        $spec = config('gesso.default_spec');
 
         if (!is_string($spec) || $spec === '') {
             return '';

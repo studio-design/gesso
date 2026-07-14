@@ -14,7 +14,7 @@ operation and validated its responses.
 Publish the Laravel config if you have not already:
 
 ```bash
-php artisan vendor:publish --tag=openapi-contract-testing
+php artisan vendor:publish --tag=gesso
 ```
 
 Configure the spec directory, default spec, and the same prefixes used by the

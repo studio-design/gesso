@@ -35,8 +35,8 @@ class ValidatesOpenApiSchemaSkipTest extends TestCase
         OpenApiSpecLoader::configure(__DIR__ . '/../fixtures/specs');
         OpenApiCoverageTracker::reset();
         $GLOBALS['__openapi_testing_config'] = [
-            'openapi-contract-testing.default_spec' => 'petstore-3.0',
-            'openapi-contract-testing.auto_assert' => true,
+            'gesso.default_spec' => 'petstore-3.0',
+            'gesso.auto_assert' => true,
         ];
 
         $this->capturedWarnings = [];

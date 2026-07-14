@@ -6,7 +6,7 @@ namespace Examples\Laravel\Tests;
 
 use Illuminate\Support\Facades\Route;
 use Orchestra\Testbench\TestCase;
-use Studio\Gesso\Laravel\OpenApiContractTestingServiceProvider;
+use Studio\Gesso\Laravel\GessoServiceProvider;
 use Studio\Gesso\Laravel\ValidatesOpenApiSchema;
 
 final class PetContractTest extends TestCase
@@ -23,8 +23,8 @@ final class PetContractTest extends TestCase
 
     public function test_automatic_request_and_response_validation(): void
     {
-        config()->set('openapi-contract-testing.auto_assert', true);
-        config()->set('openapi-contract-testing.auto_validate_request', true);
+        config()->set('gesso.auto_assert', true);
+        config()->set('gesso.auto_validate_request', true);
 
         $this->getJson('/pets')->assertOk();
     }
@@ -32,13 +32,13 @@ final class PetContractTest extends TestCase
     /** @return array<int, class-string> */
     protected function getPackageProviders($app): array
     {
-        return [OpenApiContractTestingServiceProvider::class];
+        return [GessoServiceProvider::class];
     }
 
     protected function defineEnvironment($app): void
     {
-        $app['config']->set('openapi-contract-testing.default_spec', 'petstore');
-        $app['config']->set('openapi-contract-testing.spec_base_path', __DIR__ . '/../openapi');
+        $app['config']->set('gesso.default_spec', 'petstore');
+        $app['config']->set('gesso.spec_base_path', __DIR__ . '/../openapi');
     }
 
     protected function defineRoutes($router): void

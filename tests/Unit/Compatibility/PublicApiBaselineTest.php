@@ -83,7 +83,7 @@ final class PublicApiBaselineTest extends TestCase
     }
 
     #[Test]
-    public function v2_public_api_only_changes_the_namespace_from_v1_9(): void
+    public function v2_public_api_matches_the_documented_identity_renames(): void
     {
         $root = dirname(__DIR__, 3);
         $v1Json = file_get_contents($root . '/tests/fixtures/compatibility/v1.9-public-api.json');
@@ -93,8 +93,14 @@ final class PublicApiBaselineTest extends TestCase
         $this->assertNotFalse($v2Json);
 
         $mappedV1Json = str_replace(
-            'Studio\\\\OpenApiContractTesting',
-            'Studio\\\\Gesso',
+            [
+                'Studio\\\\OpenApiContractTesting',
+                'OpenApiContractTestingServiceProvider',
+            ],
+            [
+                'Studio\\\\Gesso',
+                'GessoServiceProvider',
+            ],
             $v1Json,
         );
 

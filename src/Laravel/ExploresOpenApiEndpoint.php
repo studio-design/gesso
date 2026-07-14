@@ -28,7 +28,7 @@ use function is_string;
  *
  * Spec-name resolution mirrors {@see ValidatesOpenApiSchema}:
  * `#[OpenApiSpec]` method/class attribute → `openApiSpec()` override →
- * `config('openapi-contract-testing.default_spec')`.
+ * `config('gesso.default_spec')`.
  *
  * See README "Schema-driven request fuzzing" for usage examples; the
  * {@see ExploresOpenApiEndpointTest} suite pins the supported behaviour.
@@ -62,7 +62,7 @@ trait ExploresOpenApiEndpoint
                 'openApiSpec() must return a non-empty spec name, but an empty string was returned. '
                 . 'Either add #[OpenApiSpec(\'your-spec\')] to your test class or method, '
                 . 'override openApiSpec() in your test class, or set the "default_spec" key '
-                . 'in config/openapi-contract-testing.php.',
+                . 'in config/gesso.php.',
             );
         }
 
@@ -115,7 +115,7 @@ trait ExploresOpenApiEndpoint
                 'openApiSpec() must return a non-empty spec name, but an empty string was returned. '
                 . 'Either add #[OpenApiSpec(\'your-spec\')] to your test class or method, '
                 . 'override openApiSpec() in your test class, or set the "default_spec" key '
-                . 'in config/openapi-contract-testing.php.',
+                . 'in config/gesso.php.',
             );
         }
 

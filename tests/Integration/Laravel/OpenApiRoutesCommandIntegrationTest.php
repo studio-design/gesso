@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Route;
 use Orchestra\Testbench\TestCase;
 use PHPUnit\Framework\Attributes\Test;
-use Studio\Gesso\Laravel\OpenApiContractTestingServiceProvider;
+use Studio\Gesso\Laravel\GessoServiceProvider;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 
 use function array_map;
@@ -29,9 +29,9 @@ final class OpenApiRoutesCommandIntegrationTest extends TestCase
     {
         parent::setUp();
         OpenApiSpecLoader::reset();
-        config()->set('openapi-contract-testing.default_spec', 'route-parity');
-        config()->set('openapi-contract-testing.spec_base_path', dirname(__DIR__, 2) . '/fixtures/specs');
-        config()->set('openapi-contract-testing.strip_prefixes', ['/api']);
+        config()->set('gesso.default_spec', 'route-parity');
+        config()->set('gesso.spec_base_path', dirname(__DIR__, 2) . '/fixtures/specs');
+        config()->set('gesso.strip_prefixes', ['/api']);
     }
 
     protected function tearDown(): void
@@ -155,7 +155,7 @@ final class OpenApiRoutesCommandIntegrationTest extends TestCase
     /** @return array<int, class-string> */
     protected function getPackageProviders($app): array
     {
-        return [OpenApiContractTestingServiceProvider::class];
+        return [GessoServiceProvider::class];
     }
 
     protected function defineRoutes($router): void

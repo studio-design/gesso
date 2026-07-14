@@ -7,7 +7,7 @@ namespace Studio\Gesso\Tests\Helpers;
 use Illuminate\Support\Facades\Route;
 use Orchestra\Testbench\TestCase;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
-use Studio\Gesso\Laravel\OpenApiContractTestingServiceProvider;
+use Studio\Gesso\Laravel\GessoServiceProvider;
 use Studio\Gesso\Laravel\ValidatesOpenApiSchema;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 
@@ -33,7 +33,7 @@ class PestLaravelTestCase extends TestCase
         OpenApiSpecLoader::reset();
         OpenApiSpecLoader::configure(dirname(__DIR__) . '/fixtures/specs');
         OpenApiCoverageTracker::reset();
-        config()->set('openapi-contract-testing.default_spec', 'petstore-3.0');
+        config()->set('gesso.default_spec', 'petstore-3.0');
     }
 
     protected function tearDown(): void
@@ -47,7 +47,7 @@ class PestLaravelTestCase extends TestCase
     /** @return array<int, class-string> */
     protected function getPackageProviders($app): array
     {
-        return [OpenApiContractTestingServiceProvider::class];
+        return [GessoServiceProvider::class];
     }
 
     protected function defineRoutes($router): void
