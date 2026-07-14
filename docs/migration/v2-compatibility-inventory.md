@@ -221,6 +221,22 @@ Trait methods, explicit-spec precedence, validation defaults, assertion
 behavior, PSR-7 stream handling, and automatic coverage recording require
 consumer-level fixtures rather than namespace-only checks.
 
+Migration status: implemented on the v2 development line. A fixture captured
+from v1.9.0 pins a representative PSR-7 exchange and Symfony request/response
+assertion, including matched operation metadata and automatic coverage. The v2
+consumer test runs the same exchanges through the Gesso adapters and compares
+the normalized result with that fixture. The runnable PSR-7 and Symfony
+examples are separate CI jobs, so their Composer package, imports, PHPUnit
+extension, and real framework objects are exercised from an installed project.
+
+Pest 4 integration tests exercise the Gesso trait wiring, both registered
+expectations, their argument shapes, chaining, and coverage recording. A
+Pest-free subprocess fixture also loads the Composer autoload entrypoint with
+neither Pest symbol and with either symbol present alone, proving that absent
+or partially available optional dependencies remain dormant rather than
+causing a fatal error. The runnable Pest example is installed and executed in
+its own CI job.
+
 ## PHPUnit extension configuration
 
 The extension FQCN and every accepted parameter name are public configuration.
@@ -476,6 +492,12 @@ converter regression suite pins implicit discriminator parity.
 | CLI | old commands plus v1.10 `gesso` aliases and golden output | `gesso` only | flags, exit codes, stdout/stderr parity; legacy binaries absent |
 | Coverage | v1 JSON and sidecar | v2 output | v1 worker payload merged by v2 reader |
 | Doctor/routes | schema v1 consumers | v2 identity | incompatible field change requires version bump |
+
+Migration status: the Pest and PSR-7/Symfony rows are implemented by the
+consumer fixtures described above. Core, Laravel, Symfony, Pest, and PSR-7
+examples all install `studio-design/gesso` from the working tree, register the
+Gesso PHPUnit extension, and run in CI. The remaining matrix rows are covered
+by their surface-specific migration statuses in this inventory.
 
 The PHP row now has an executable
 [namespace compatibility spike](v2-namespace-compatibility-spike.md). It proves

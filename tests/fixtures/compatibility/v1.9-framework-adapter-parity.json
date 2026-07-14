@@ -1,0 +1,36 @@
+{
+    "baseline": {
+        "release": "v1.9.0",
+        "commit": "57920818e5677835ca681a499a8140ea651ea060"
+    },
+    "psr7": {
+        "request": {
+            "outcome": "success",
+            "matched_path": "/widgets/{id}"
+        },
+        "response": {
+            "outcome": "success",
+            "matched_path": "/widgets/{id}",
+            "matched_status_code": "201",
+            "matched_content_type": "application/json"
+        },
+        "coverage": {
+            "response_covered": 1,
+            "covered": {
+                "POST /widgets/{id}": true
+            }
+        }
+    },
+    "symfony": {
+        "assertions": {
+            "request": "passed",
+            "response": "passed"
+        },
+        "coverage": {
+            "response_covered": 1,
+            "covered": {
+                "GET /v1/pets": true
+            }
+        }
+    }
+}
