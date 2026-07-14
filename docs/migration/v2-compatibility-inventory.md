@@ -274,6 +274,12 @@ The `openapi:routes` command accepts `--spec`, `--prefix`, `--middleware`,
 `--fail-on-undocumented`, and `--fail-on-unimplemented`. It uses Laravel's
 standard success (`0`), failure (`1`), and invalid usage (`2`) exit codes.
 
+Migration status: unchanged. The complete v1.9 configuration defaults,
+provider configuration key/publish tag/destination, and versioned route-parity
+JSON are captured under `tests/fixtures/compatibility/` and exercised through
+Laravel consumer-level integration tests. Text output remains covered
+semantically because Laravel owns its cross-version console table rendering.
+
 ## CLI contracts
 
 ### Doctor

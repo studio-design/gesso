@@ -1,0 +1,88 @@
+{
+    "schema_version": 1,
+    "specs": [
+        "route-parity",
+        "route-parity-admin"
+    ],
+    "summary": {
+        "matched": 6,
+        "documented_but_not_registered": 1,
+        "registered_but_undocumented": 1,
+        "ambiguous": 0,
+        "unsupported": 0
+    },
+    "matched": [
+        {
+            "spec": "route-parity",
+            "method": "GET",
+            "openapi_path": "/v1/pets",
+            "operation_id": "listPets",
+            "route_uri": "/api/v1/pets",
+            "route_name": "pets.index",
+            "domain": "api.example.test"
+        },
+        {
+            "spec": "route-parity-admin",
+            "method": "GET",
+            "openapi_path": "/v1/pets",
+            "operation_id": "adminListPets",
+            "route_uri": "/api/v1/pets",
+            "route_name": "pets.index",
+            "domain": "api.example.test"
+        },
+        {
+            "spec": "route-parity",
+            "method": "POST",
+            "openapi_path": "/v1/pets",
+            "operation_id": "createPet",
+            "route_uri": "/api/v1/pets",
+            "route_name": "pets.index",
+            "domain": "api.example.test"
+        },
+        {
+            "spec": "route-parity",
+            "method": "GET",
+            "openapi_path": "/v1/pets/{petId}",
+            "operation_id": "showPet",
+            "route_uri": "/api/v1/pets/{pet}",
+            "route_name": "pets.show",
+            "domain": "api.example.test"
+        },
+        {
+            "spec": "route-parity",
+            "method": "GET",
+            "openapi_path": "/v1/optional",
+            "operation_id": "listOptional",
+            "route_uri": "/api/v1/optional",
+            "route_name": "optional.show",
+            "domain": "api.example.test"
+        },
+        {
+            "spec": "route-parity",
+            "method": "GET",
+            "openapi_path": "/v1/optional/{optionalId}",
+            "operation_id": "showOptional",
+            "route_uri": "/api/v1/optional/{optional?}",
+            "route_name": "optional.show",
+            "domain": "api.example.test"
+        }
+    ],
+    "documented_but_not_registered": [
+        {
+            "spec": "route-parity",
+            "method": "DELETE",
+            "openapi_path": "/v1/missing",
+            "operation_id": "deleteMissing"
+        }
+    ],
+    "registered_but_undocumented": [
+        {
+            "method": "GET",
+            "route_uri": "/api/v1/undocumented",
+            "route_name": "undocumented",
+            "domain": "api.example.test"
+        }
+    ],
+    "ambiguous": [],
+    "unsupported": []
+}

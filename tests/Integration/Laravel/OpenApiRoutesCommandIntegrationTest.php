@@ -17,6 +17,7 @@ use function array_map;
 use function count;
 use function dirname;
 use function explode;
+use function file_get_contents;
 use function json_decode;
 use function max;
 use function strlen;
@@ -78,6 +79,27 @@ final class OpenApiRoutesCommandIntegrationTest extends TestCase
         $this->assertSame(1, $decoded['summary']['documented_but_not_registered']);
         $this->assertSame(1, $decoded['summary']['registered_but_undocumented']);
         $this->assertSame(0, $decoded['summary']['ambiguous']);
+    }
+
+    #[Test]
+    public function json_output_matches_the_v1_9_compatibility_fixture(): void
+    {
+        $exitCode = Artisan::call('openapi:routes', [
+            '--spec' => ['route-parity', 'route-parity-admin'],
+            '--prefix' => 'api',
+            '--middleware' => ['api'],
+            '--domain' => ['api.example.test'],
+            '--exclude-route' => ['internal.*'],
+            '--format' => 'json',
+        ]);
+
+        $expected = file_get_contents(
+            dirname(__DIR__, 2) . '/fixtures/compatibility/v1.9-laravel-route-parity.json',
+        );
+
+        $this->assertIsString($expected);
+        $this->assertSame(0, $exitCode);
+        $this->assertSame(trim($expected), trim(Artisan::output()));
     }
 
     #[Test]
