@@ -28,6 +28,17 @@ their v1 meanings. Doctor JSON, Laravel route parity JSON, sidecar envelopes,
 and tracker-state versions are unchanged; see the
 [v2 migration guide](docs/migration/v2.md#update-coverage-json-consumers).
 
+Update log routing for the optional-Faker warning and Laravel contradictory-
+intent deprecation from `[openapi-contract-testing]` to `[Gesso]`. Feature-
+oriented prefixes such as `[OpenAPI Coverage]` and `[OpenAPI Schema]` are
+unchanged.
+
+If tooling persists arrays returned by the spec loader, reload the original
+OpenAPI Description after upgrading. V2 replaces the resolver-owned
+`x-studio-openapi-contract-testing-implicit-schema-name` provenance extension
+with `x-studio-gesso-implicit-schema-name`; it deliberately does not trust or
+dual-read either marker when authored in input.
+
 ## Within v1.x
 
 The v1.x line is covered end-to-end by SemVer (see "v0.x → v1.0.0"

@@ -441,9 +441,10 @@ V2 decision: feature-oriented prefixes remain unchanged because they are
 identity-neutral log-routing categories. Both `[openapi-contract-testing]`
 occurrences change to `[Gesso]` together. V2 does not dual-emit warnings; log
 consumers update the branded routing rule as part of the major-version
-migration. A source-level regression test must prove that the legacy branded
-prefix is absent from v2 while parity tests retain every identity-neutral
-category.
+migration. Migration status: the complete v2 inventory is pinned in
+`tests/fixtures/compatibility/v2-diagnostic-prefixes.json`; it records zero
+legacy branded occurrences, both `[Gesso]` channels, and exact file-level
+parity for every identity-neutral category.
 
 The OpenAPI vendor extension
 `x-studio-openapi-contract-testing-implicit-schema-name` is embedded in spec
@@ -458,8 +459,9 @@ input, and consumes only the newly generated Gesso marker. There is no
 dual-read period because a legacy input field cannot be authenticated as
 resolver output. Consumers must carry the original OpenAPI Description across
 the upgrade rather than persist and reload a resolved array. The validation
-semantics remain unchanged; v2 tests must cover direct-reference generation,
-both spoofed input names, and implicit discriminator parity.
+semantics remain unchanged. Migration status: the v2 resolver fixture covers
+direct-reference generation and both spoofed input names, while the schema
+converter regression suite pins implicit discriminator parity.
 
 ## v2 migration verification matrix
 

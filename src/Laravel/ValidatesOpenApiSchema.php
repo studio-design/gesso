@@ -1047,7 +1047,7 @@ trait ValidatesOpenApiSchema
         // PHPUnit's `displayDetailsOnTestsThatTriggerDeprecations` setting —
         // without it, the default config would only show a "1 deprecation"
         // tally and hide the actual contradictory-intent message.
-        fwrite(STDERR, sprintf("\n[openapi-contract-testing] %s\n", $message));
+        fwrite(STDERR, sprintf("\n[Gesso] %s\n", $message));
         // trigger_error still fires so PHPUnit counts the deprecation and
         // surfaces it in the run summary for downstream tools to detect.
         trigger_error($message, E_USER_DEPRECATED);

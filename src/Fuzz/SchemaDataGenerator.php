@@ -493,7 +493,7 @@ final class SchemaDataGenerator
 
         trigger_error(
             sprintf(
-                '[openapi-contract-testing] fakerphp/faker is not installed; '
+                '[Gesso] fakerphp/faker is not installed; '
                 . "string format '%s' will be generated as a deterministic primitive "
                 . 'and is unlikely to satisfy the spec constraint. '
                 . 'Install via: composer require --dev fakerphp/faker',

@@ -429,6 +429,7 @@ class SchemaDataGeneratorTest extends TestCase
         }
 
         $this->assertCount(1, $captured, 'warning should fire exactly once per format per process');
+        $this->assertStringStartsWith('[Gesso] ', $captured[0]);
         $this->assertStringContainsString("'email'", $captured[0]);
         $this->assertStringContainsString('fakerphp/faker', $captured[0]);
     }

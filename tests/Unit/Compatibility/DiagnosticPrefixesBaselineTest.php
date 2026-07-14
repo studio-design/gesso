@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Tests\Unit\Compatibility;
 
+use const ARRAY_FILTER_USE_KEY;
 use const JSON_THROW_ON_ERROR;
 use const T_CONSTANT_ENCAPSED_STRING;
 use const T_ENCAPSED_AND_WHITESPACE;
@@ -15,6 +16,7 @@ use RecursiveIteratorIterator;
 use SplFileInfo;
 
 use function array_fill_keys;
+use function array_filter;
 use function array_keys;
 use function dirname;
 use function file_get_contents;
@@ -29,15 +31,10 @@ use function token_get_all;
 final class DiagnosticPrefixesBaselineTest extends TestCase
 {
     #[Test]
-    public function diagnostic_prefixes_match_the_v1_9_inventory(): void
+    public function diagnostic_prefixes_match_the_v2_inventory(): void
     {
-        /** @var array<string, array<string, positive-int>> $fixture */
-        $fixture = json_decode(
-            $this->fixture(),
-            true,
-            flags: JSON_THROW_ON_ERROR,
-        );
-        /** @var array<string, array<string, positive-int>> $actual */
+        $fixture = $this->fixture('v2-diagnostic-prefixes.json');
+        /** @var array<string, array<string, positive-int>|array{}> $actual */
         $actual = array_fill_keys(array_keys($fixture), []);
 
         foreach ($this->sourceFiles() as $file => $contents) {
@@ -78,6 +75,24 @@ final class DiagnosticPrefixesBaselineTest extends TestCase
         $this->assertSame($fixture, $actual);
     }
 
+    #[Test]
+    public function identity_neutral_prefixes_retain_v1_9_parity(): void
+    {
+        $brandedPrefixes = ['[openapi-contract-testing]', '[Gesso]'];
+        $v1 = array_filter(
+            $this->fixture('v1.9-diagnostic-prefixes.json'),
+            static fn(string $prefix): bool => !in_array($prefix, $brandedPrefixes, true),
+            ARRAY_FILTER_USE_KEY,
+        );
+        $v2 = array_filter(
+            $this->fixture('v2-diagnostic-prefixes.json'),
+            static fn(string $prefix): bool => !in_array($prefix, $brandedPrefixes, true),
+            ARRAY_FILTER_USE_KEY,
+        );
+
+        $this->assertSame($v1, $v2);
+    }
+
     /** @return array<string, string> */
     private function sourceFiles(): array
     {
@@ -102,13 +117,15 @@ final class DiagnosticPrefixesBaselineTest extends TestCase
         return $sources;
     }
 
-    private function fixture(): string
+    /** @return array<string, array<string, positive-int>|array{}> */
+    private function fixture(string $filename): array
     {
         $contents = file_get_contents(
-            dirname(__DIR__, 2) . '/fixtures/compatibility/v1.9-diagnostic-prefixes.json',
+            dirname(__DIR__, 2) . '/fixtures/compatibility/' . $filename,
         );
         $this->assertIsString($contents);
 
-        return $contents;
+        /** @var array<string, array<string, positive-int>|array{}> */
+        return json_decode($contents, true, flags: JSON_THROW_ON_ERROR);
     }
 }

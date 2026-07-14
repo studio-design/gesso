@@ -1,0 +1,26 @@
+{
+    "components": {
+        "schemas": {
+            "Cat": {
+                "type": "object",
+                "required": [
+                    "meow"
+                ]
+            }
+        }
+    },
+    "schema": {
+        "oneOf": [
+            {
+                "type": "object",
+                "required": [
+                    "meow"
+                ],
+                "x-studio-gesso-implicit-schema-name": "Cat"
+            },
+            {
+                "type": "object"
+            }
+        ]
+    }
+}

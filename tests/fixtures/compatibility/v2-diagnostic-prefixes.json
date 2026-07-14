@@ -1,0 +1,49 @@
+{
+    "[Gesso]": {
+        "src/Fuzz/SchemaDataGenerator.php": 1,
+        "src/Laravel/ValidatesOpenApiSchema.php": 1
+    },
+    "[OpenAPI 3.2 $self]": {
+        "src/Spec/OpenApiSpecLoader.php": 1
+    },
+    "[OpenAPI 3.2 discriminator]": {
+        "src/Spec/OpenApiSchemaConverter.php": 1
+    },
+    "[OpenAPI 3.2 querystring]": {
+        "src/Validation/Request/QueryParameterValidator.php": 1
+    },
+    "[OpenAPI Coverage]": {
+        "src/Coverage/CoverageMergeCommand.php": 15,
+        "src/Coverage/CoverageThresholdEvaluator.php": 1,
+        "src/Coverage/OpenApiCoverageTracker.php": 2,
+        "src/PHPUnit/ConsoleOutput.php": 2,
+        "src/PHPUnit/CoverageReportSubscriber.php": 9,
+        "src/PHPUnit/OpenApiCoverageExtension.php": 8
+    },
+    "[OpenAPI Doctor]": {
+        "src/Cli/DoctorCommand.php": 1
+    },
+    "[OpenAPI Enum Drift]": {
+        "src/PHPUnit/OpenApiCoverageExtension.php": 7,
+        "src/Schema/EnumDriftAsserter.php": 1
+    },
+    "[OpenAPI Schema]": {
+        "src/Spec/OpenApiSchemaConverter.php": 4
+    },
+    "[OpenAPI Strict Required per-call]": {
+        "src/PHPUnit/OpenApiCoverageExtension.php": 1,
+        "src/Validation/Strict/StrictRequiredPerCallChecker.php": 4
+    },
+    "[OpenAPI Strict Required]": {
+        "src/Coverage/CoverageMergeCommand.php": 3,
+        "src/OpenApiResponseValidator.php": 1,
+        "src/PHPUnit/CoverageReportSubscriber.php": 3,
+        "src/PHPUnit/OpenApiCoverageExtension.php": 2,
+        "src/Validation/Strict/StrictRequiredAsserter.php": 1,
+        "src/Validation/Strict/StrictRequiredTracker.php": 1
+    },
+    "[openapi-contract-testing]": {},
+    "[security]": {
+        "src/Validation/Request/SecurityValidator.php": 8
+    }
+}
