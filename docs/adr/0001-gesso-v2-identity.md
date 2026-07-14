@@ -100,6 +100,38 @@ identity that the major release exists to remove. Command options, exit codes,
 and command-specific output remain compatible unless a separately documented
 v2 change requires otherwise.
 
+### PHPUnit extension transition policy
+
+PHPUnit consumers keep the existing XML structure and replace only the
+extension namespace when installing v2:
+
+```diff
+ <extensions>
+-    <bootstrap class="Studio\OpenApiContractTesting\PHPUnit\OpenApiCoverageExtension">
++    <bootstrap class="Studio\Gesso\PHPUnit\OpenApiCoverageExtension">
+         <!-- existing parameter elements remain unchanged -->
+     </bootstrap>
+ </extensions>
+```
+
+`OpenApiCoverageExtension` describes the extension's OpenAPI coverage role, so
+its short class name remains unchanged. Every existing parameter name, default,
+accepted value, validation rule, path-resolution rule, and environment input
+also remains unchanged. The v2 identity migration therefore does not require a
+second configuration block or parameter renames.
+
+V1.10 documentation continues to show the v1 extension FQCN. Consumers update
+the XML in the same change that replaces the Composer package: v2 does not ship
+a reverse namespace shim, so the legacy FQCN fails during PHPUnit extension
+loading instead of silently selecting a compatibility path. PHPUnit's
+`--migrate-configuration` command updates PHPUnit's own configuration schema;
+it is not a substitute for changing this package-owned class name.
+
+The v2 consumer fixture must boot PHPUnit with the Gesso FQCN and representative
+parameters, then prove that the legacy FQCN is rejected. Existing parameter
+unit tests continue to pin all missing, empty, invalid, and supported-value
+behavior independently of the namespace migration.
+
 ### Laravel configuration transition policy
 
 V1.10 continues to own only the `openapi-contract-testing` configuration key,
@@ -286,6 +318,8 @@ Gesso 2.0 is not ready for stable release until all of the following pass:
 - [Semantic Versioning 2.0.0](https://semver.org/)
 - [PHP supported versions](https://www.php.net/supported-versions.php)
 - [PHPUnit supported versions](https://phpunit.de/supported-versions.html)
+- [PHPUnit extension XML configuration](https://docs.phpunit.de/en/12.5/configuration.html#the-extensions-element)
+- [PHPUnit configuration migration option](https://docs.phpunit.de/en/12.5/cli-options.html#configuration)
 - [Pest support policy](https://pestphp.com/docs/support-policy)
 - [Pest 4 upgrade guide](https://pestphp.com/docs/upgrade-guide)
 - [JSON Schema 2020-12 validation keyword: `const`](https://json-schema.org/draft/2020-12/json-schema-validation#section-6.1.3)

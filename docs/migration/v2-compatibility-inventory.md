@@ -249,6 +249,21 @@ Environment inputs:
 - `TEST_TOKEN` selects the paratest worker sidecar path and suppresses final
   report writes from workers.
 
+V2 renames only the extension namespace:
+
+```text
+Studio\OpenApiContractTesting\PHPUnit\OpenApiCoverageExtension
+  -> Studio\Gesso\PHPUnit\OpenApiCoverageExtension
+```
+
+Migration status: contract fixed; implementation pending the v2 development
+line. The short class name, XML structure, parameters, defaults, accepted
+values, validation behavior, relative-path behavior, and environment inputs
+remain unchanged. The v2 package does not provide the legacy FQCN. Its consumer
+fixture must prove that the Gesso FQCN boots with representative parameters and
+that the legacy FQCN fails extension loading; the existing parameter tests keep
+covering the complete missing, empty, invalid, and supported-value matrix.
+
 ## Laravel configuration and command
 
 The v1 service provider merges and publishes configuration under
