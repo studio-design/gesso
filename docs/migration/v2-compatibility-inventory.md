@@ -344,11 +344,11 @@ states and unexpected observations. Laravel route parity JSON includes `specs`,
 `summary`, `matched`, `documented_but_not_registered`,
 `registered_but_undocumented`, `ambiguous`, and `unsupported`.
 
-There is a documentation ambiguity to resolve before v2: the versioning policy
-treats the sidecar wire format as part of the supported merge CLI, while older
-upgrade text describes the sidecar shape as non-frozen. The safe migration
-assumption is that the PHP import/export methods are internal but the released
-CLI must continue reading supported versioned v1 payloads.
+The sidecar compatibility boundary is now explicit in the
+[versioning policy](../versioning.md#versioned-sidecar-compatibility): the PHP
+import/export methods are internal, but versioned payloads accepted by the
+released merge CLI are compatibility inputs. A newer reader preserves the
+documented older inputs, while unknown or lossy formats fail loudly.
 
 Migration status: the exact v1.9 coverage JSON report and sidecar envelope are
 captured under `tests/fixtures/compatibility/`. The sidecar fixture pins coverage

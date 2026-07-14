@@ -58,6 +58,23 @@ trivial CI step has no extra config to keep in sync. Set `sidecar_dir` (in
 `phpunit.xml`) and `--sidecar-dir=` (on the merge CLI) to the same custom
 path if `sys_get_temp_dir()` is unavailable in your runner.
 
+## Sidecar compatibility
+
+Sidecars are a versioned worker-to-merge protocol, separate from the coverage
+report produced by `json_output`. The current writer emits an
+`envelopeVersion: 2` envelope containing coverage state `version: 1` and
+strict-required state `version: 2`. The merge reader also accepts the older
+bare coverage state `version: 1`, so coverage can still be combined while a
+worker fleet is being upgraded. That legacy payload has no strict-required
+observations, so a strict-required gate cannot be evaluated from it.
+
+Unknown envelope or tracker versions fail the merge rather than being guessed.
+Strict-required state `version: 1` is also rejected because merging it with the
+current nested-pointer shape would silently lose information. Keep workers on
+one version when using the strict-required gate. See the complete
+[versioning policy](versioning.md#versioned-sidecar-compatibility) before
+changing a sidecar shape or filename pattern.
+
 ## Notes
 
 - **Sequential runs are unchanged.** Without `TEST_TOKEN` the extension

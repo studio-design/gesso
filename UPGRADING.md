@@ -205,7 +205,10 @@ in v1.0.0 is covered by SemVer for the v1.x line.
   `OpenApiCoverageTracker::reset/exportState/importState`,
   `ValidatesOpenApiSchema::resetValidatorCache`, and
   `OpenApiSchemaConverter::resetWarningStateForTesting`.
-- The shape of paratest sidecar JSON (versioned via `STATE_FORMAT_VERSION`).
+- The `@internal` PHP methods used to import and export paratest state are not
+  frozen as PHP API. The versioned payloads accepted by the released merge CLI
+  remain a compatibility surface; see
+  [`docs/versioning.md`](docs/versioning.md#versioned-sidecar-compatibility).
 - Internal helper classes under `Internal/`, `Validation/Support/` (the
   classes themselves are not user-callable).
 - Error messages from validators (we may improve them).

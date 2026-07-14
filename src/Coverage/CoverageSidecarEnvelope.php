@@ -27,7 +27,7 @@ use function sprintf;
  * {
  *   "envelopeVersion": 2,
  *   "coverage":       { "version": 1, "specs":        { ... } },
- *   "strictRequired": { "version": 1, "observations": { ... } }
+ *   "strictRequired": { "version": 2, "observations": { ... } }
  * }
  * ```
  *
