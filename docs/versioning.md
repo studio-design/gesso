@@ -2,21 +2,25 @@
 
 This library follows [Semantic Versioning 2.0](https://semver.org/). v1.0.0 is the API stability commitment: anything not marked `@internal` in v1.0.0 is covered by SemVer for the entire v1.x line.
 
-- [What's covered by SemVer in v1.x](#whats-covered-by-semver-in-v1x)
+- [What's covered by SemVer](#whats-covered-by-semver)
 - [What's NOT covered by SemVer](#whats-not-covered-by-semver)
 - [Support policy](#support-policy)
 - [v1 maintenance lifecycle](#v1-maintenance-lifecycle)
 - [Release checklist](#release-checklist)
 
-## What's covered by SemVer in v1.x
+## What's covered by SemVer
 
 - Public class names and namespaces (anything not marked `@internal`)
 - Public method signatures (parameters, return types, visibility)
 - Public constants and their values
 - Enum cases (additions are minor; removals or renames are major)
 - The `OpenApiValidationResult` shape (`outcome()`, `errors()`, `matchedPath()`, `skipReason()`, `isValid()`, `isSkipped()`)
-- The `doctor` and `coverage:merge` CLI surfaces of `bin/gesso` (commands,
-  flags, exit codes, and versioned inputs and output where applicable)
+- CLI surfaces by major (commands, flags, exit codes, and versioned inputs and
+  output where applicable):
+  - v1.x: `bin/openapi-contract`, `bin/openapi-coverage-merge`, and the v1.10
+    `bin/gesso` entry point
+  - v2.x: the `doctor` and `coverage:merge` subcommands of `bin/gesso`; the
+    legacy standalone binaries are not shipped
 - The Laravel `openapi:routes` command surface (flags, exit codes, and versioned JSON output)
 - The `OpenApiCoverageExtension` PHPUnit configuration parameters (`spec_base_path`, `strip_prefixes`, `specs`, `output_file`, `console_output`, …)
 - The Laravel `ValidatesOpenApiSchema` trait's public methods
