@@ -5,14 +5,10 @@ declare(strict_types=1);
 namespace Studio\OpenApiContractTesting\Compatibility;
 
 use function class_alias;
-use function class_exists;
-use function enum_exists;
-use function interface_exists;
 use function spl_autoload_register;
 use function str_starts_with;
 use function strlen;
 use function substr;
-use function trait_exists;
 
 /**
  * Registers the time-bounded v1-to-v2 namespace migration aliases.
@@ -119,13 +115,8 @@ final class GessoAliasLoader
             }
 
             $v1Type = 'Studio\\OpenApiContractTesting\\' . $relativeType;
-            if (!class_exists($v1Type) &&
-                !interface_exists($v1Type) &&
-                !trait_exists($v1Type) &&
-                !enum_exists($v1Type)) {
-                return;
-            }
-
+            // The public-API inventory test guarantees that every allowlisted
+            // declaration exists; class_alias() autoloads its concrete kind.
             class_alias($v1Type, $gessoType);
         });
     }
