@@ -61,7 +61,7 @@ Choose based on the workflow you need rather than on a single yes/no feature cou
 | Schema-driven exploration | [Deterministic endpoint + whole-spec generation](docs/fuzzing.md) | — | — | — | — |
 | Drift / under-description checks | [Enum drift](docs/enum-drift.md), [strict required](docs/strict-required.md) | — | — | — | — |
 | First-class integration | [PSR-7](docs/psr7.md), [Laravel, Symfony, Pest](docs/setup.md) | [Laravel][spectator] | [PSR-7, PSR-15 middleware][league-middleware] | [HttpFoundation, PSR-7][osteel-readme] | [Laravel auto-validation][kirschbaum-readme] |
-| Declared runtime floor | PHP 8.2 core; [Testbench 9–11](composer.json) ([Laravel 11–12][testbench-compat]; [Laravel 13 / PHP 8.3][testbench-11-composer]) | [PHP 8.3, Laravel 12][spectator-composer] | [PHP 7.2][league-composer] | [PHP 8.0, HttpFoundation 5–8][osteel-composer] | [PHP 8.0, Illuminate 10–13][kirschbaum-composer] |
+| Declared runtime floor | PHP 8.3 core; [Testbench 9–11](composer.json) ([Laravel 11–12][testbench-compat]; [Laravel 13 / PHP 8.3][testbench-11-composer]) | [PHP 8.3, Laravel 12][spectator-composer] | [PHP 7.2][league-composer] | [PHP 8.0, HttpFoundation 5–8][osteel-composer] | [PHP 8.0, Illuminate 10–13][kirschbaum-composer] |
 
 **Legend**: ✅ supported · — no equivalent feature documented. “Not documented” is intentionally different from “unsupported”.
 
@@ -90,8 +90,8 @@ Choose based on the workflow you need rather than on a single yes/no feature cou
 
 ## Requirements
 
-- PHP 8.2+
-- PHPUnit 11, 12, or 13
+- PHP 8.3+
+- PHPUnit 12 or 13
 - A PSR-18 HTTP client + PSR-17 request factory (e.g. Guzzle, Symfony HttpClient) — only required when resolving HTTP(S) `$ref`s
 
 ## Installation

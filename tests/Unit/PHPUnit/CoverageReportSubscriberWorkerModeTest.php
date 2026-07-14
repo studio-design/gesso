@@ -588,7 +588,7 @@ class CoverageReportSubscriberWorkerModeTest extends TestCase
      * Build a stub `ExecutionFinished` without invoking its constructor. The
      * subscriber's `notify()` does not read the event, so a structurally
      * valid stand-in is enough — and the real Telemetry constructor signature
-     * has churned across PHPUnit 11/12/13, which would force version-gated
+     * has churned across PHPUnit 12/13, which would force version-gated
      * stub builders that add no test value.
      */
     private function fakeExecutionFinished(): ExecutionFinished

@@ -12,8 +12,8 @@ composer install
 composer ci   # runs cs-check + stan + test
 ```
 
-PHP 8.2 or newer is required. The CI matrix runs PHP 8.2/8.3/8.4 with
-PHPUnit 11/12/13.
+PHP 8.3 or newer is required. The CI matrix runs PHP 8.3/8.4/8.5 with
+PHPUnit 12/13.
 
 ## Local checks
 

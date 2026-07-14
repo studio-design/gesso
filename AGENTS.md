@@ -6,7 +6,7 @@ that agent's local configuration instead.
 
 ## Project scope
 
-`studio-design/openapi-contract-testing` is a PHP 8.2+ test-time library for
+`studio-design/openapi-contract-testing` is a PHP 8.3+ test-time library for
 validating requests and responses against OpenAPI 3.0, 3.1, and 3.2. Its core is
 framework-agnostic; adapters support PHPUnit, Laravel, Symfony, and Pest. It also
 provides endpoint/response coverage, schema-driven exploration, enum-drift and
@@ -96,10 +96,10 @@ composer cs
 ```
 
 `composer ci` runs both PHP-CS-Fixer configurations, PHPStan, and PHPUnit. CI also
-tests PHP 8.2-8.4 with PHPUnit 11-13, lowest dependencies, the optional Pest
+tests PHP 8.3-8.5 with PHPUnit 12-13, lowest dependencies, the optional Pest
 integration and example, Composer validation/audit, and generated Markdown lint.
 When changing one of those surfaces, run its focused check and rely on the matrix
-for combinations unavailable locally. Pest tests require Pest 3 and PHPUnit 11;
+for combinations unavailable locally. Pest tests require Pest 4 and PHPUnit 12;
 follow `composer.json` and `examples/pest/README.md` rather than adding Pest to the
 normal dependency set.
 
@@ -107,7 +107,7 @@ normal dependency set.
 
 - Follow PSR-4 under `Studio\OpenApiContractTesting\` and start PHP files with
   `declare(strict_types=1);`.
-- Keep code compatible with the PHP 8.2 floor.
+- Keep code compatible with the PHP 8.3 floor.
 - PHP-CS-Fixer is authoritative: PER-CS2.0, strict comparisons, explicit global
   function/constant imports, ordered imports/elements, and snake_case PHPUnit
   test methods. Pest callbacks are the intentional exception to `static_lambda`.

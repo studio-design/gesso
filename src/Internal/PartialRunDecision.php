@@ -28,7 +28,7 @@ use function implode;
  * resolved by `TestSuiteBuilder` before the filter pipeline. Issue
  * #221's primary reproducer is the CLI path-arg case, so we read the
  * `Configuration` structured getters instead, which cover every
- * selection mechanism uniformly across PHPUnit 11/12/13.
+ * selection mechanism uniformly across PHPUnit 12/13.
  *
  * Constructed from primitives (not from a real `Configuration` object)
  * because PHPUnit's `Configuration` is `final readonly` with 150+

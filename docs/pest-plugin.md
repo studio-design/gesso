@@ -6,15 +6,15 @@ Pest tests can use the same validator pipeline as PHPUnit through a custom-expec
 - [Wiring the trait into Pest tests](#wiring-the-trait-into-pest-tests)
 - [`expect(...)->toMatchOpenApiResponseSchema()`](#expect-tomatchopenapiresponseschema)
 - [`expect(...)->toMatchOpenApiRequestSchema()`](#expect-tomatchopenapirequestschema)
-- [Constraints (v1)](#constraints-v1)
+- [Constraints (v2)](#constraints-v2)
 
 ## Installation
 
 ```bash
-composer require --dev pestphp/pest:^3.0
+composer require --dev pestphp/pest:^4.0
 ```
 
-The plugin is auto-loaded via Composer's `autoload.files`. No further wiring needed at install time. Pest 4 (PHPUnit ^12) support is tracked separately.
+The plugin is auto-loaded via Composer's `autoload.files`. No further wiring needed at install time. Pest 4 uses PHPUnit 12; PHPUnit 13 remains supported by Gesso's PHPUnit integration but is not compatible with the Pest runner.
 
 ## Wiring the trait into Pest tests
 
@@ -75,8 +75,8 @@ it('accepts a documented request body shape', function () {
 
 The same `spec: / method: / path:` keyword arguments are accepted. The request bridge always runs (it bypasses the `auto_validate_request` config gate and `#[SkipOpenApi]`) because the explicit expectation reads as the user's direct intent. The response side warns when `#[SkipOpenApi]` and an explicit `assertResponseMatchesOpenApiSchema()` collide; the request side has no auto-vs-explicit advisory pattern to mirror, so silence on `expect($request)->toMatchOpenApiRequestSchema()` is the deliberate behaviour.
 
-## Constraints (v1)
+## Constraints (v2)
 
 - **Laravel only**. The expectations require the running Pest test class to use `ValidatesOpenApiSchema`. Standalone (Symfony / framework-less) Pest support against PSR-7 messages is tracked as a follow-up to [#109](https://github.com/studio-design/gesso/issues/109).
-- **Pest 3**. Pest 4 (PHPUnit ^12) is not yet in the CI matrix.
+- **Pest 4 / PHPUnit 12**. The Pest integration is tested on PHP 8.3, 8.4, and 8.5. Use the regular PHPUnit integration when running PHPUnit 13.
 - **Pest discovery contract**. The plugin guards against a missing Pest install at autoload time, so it is safe to leave installed in projects that don't actually use Pest. If `pestphp/pest` is absent, the bootstrap is a true no-op.

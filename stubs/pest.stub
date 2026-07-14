@@ -9,7 +9,8 @@ declare(strict_types=1);
  * tests/Integration/Pest/ reference Pest classes and global functions
  * (Pest\Expectation, expect(), test(), it(), uses(), HigherOrderTapProxy,
  * PendingCalls\TestCall). Pest is intentionally absent from require-dev
- * — Pest 3 conflicts with PHPUnit ^12 / ^13 from the mainline test
+ * — Pest 4 requires PHPUnit ^12 while the mainline test matrix also covers
+ * PHPUnit ^13
  * matrix — so the static-analysis CI job has no real Pest classes
  * available and would otherwise surface false "unknown class / function"
  * errors on every Pest-flavoured file.

@@ -28,7 +28,7 @@
                 Pest tests are dispatched by the Pest CLI (`composer test:pest`),
                 which runs them through its own pipeline. Excluding them here
                 keeps the PHPUnit `composer test` suite Pest-free so the main
-                CI matrix (PHPUnit 11/12/13) does not need a Pest dependency.
+                CI matrix (PHPUnit 12/13) does not need a Pest dependency.
             -->
             <exclude>tests/Integration/Pest</exclude>
         </testsuite>

@@ -15,25 +15,22 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - php: '8.2'
-            phpunit: '11'
+          - php: '8.3'
+            phpunit: '12'
             deps: highest
-          - php: '8.2'
-            phpunit: '11'
+          - php: '8.3'
+            phpunit: '12'
             deps: lowest
-          - php: '8.3'
-            phpunit: '11'
-            deps: highest
-          - php: '8.3'
-            phpunit: '12'
-            deps: highest
-          - php: '8.4'
-            phpunit: '11'
-            deps: highest
           - php: '8.4'
             phpunit: '12'
             deps: highest
           - php: '8.4'
+            phpunit: '13'
+            deps: highest
+          - php: '8.5'
+            phpunit: '12'
+            deps: highest
+          - php: '8.5'
             phpunit: '13'
             deps: highest
 
@@ -61,22 +58,19 @@ jobs:
   pest:
     name: Pest plugin smoke (PHP ${{ matrix.php }})
     runs-on: ubuntu-latest
-    # Pest 3 requires PHPUnit ^11; the mainline matrix also runs PHPUnit
-    # 12/13 for which Pest has no compatible major yet. Keeping this job on
-    # the PHPUnit 11 floor isolates the Pest plugin without forcing the rest
-    # of the matrix to drop newer PHPUnit versions. Pest is added on demand
+    # Pest 4 requires PHPUnit ^12; the mainline matrix also runs PHPUnit 13.
+    # Keeping this job on PHPUnit 12 isolates the Pest plugin without forcing
+    # the rest of the matrix to drop PHPUnit 13. Pest is added on demand
     # rather than to require-dev so the regular composer install used by the
     # matrix above stays Pest-free.
     #
-    # The 2-cell matrix (PHP 8.3 + 8.4) catches PHP-version regressions on
+    # The matrix covers the full supported PHP range and catches regressions on
     # the Pest internals the dispatcher depends on (HigherOrderTapProxy,
-    # PendingCalls\TestCall, dynamic property access). PHP 8.2 is excluded
-    # because Pest 3 dropped PHP 8.2 support around v3.5; bumping the upper
-    # Pest version (Pest 4 / PHPUnit ^12) is tracked separately.
+    # PendingCalls\TestCall, dynamic property access).
     strategy:
       fail-fast: false
       matrix:
-        php: ['8.3', '8.4']
+        php: ['8.3', '8.4', '8.5']
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
 
@@ -86,12 +80,12 @@ jobs:
           php-version: ${{ matrix.php }}
           coverage: none
 
-      - name: Install dependencies (with Pest 3)
+      - name: Install dependencies (with Pest 4)
         # Single resolve: any version conflict surfaces as one dependency
         # tree in the CI log, not as a "no-update succeeded but update
         # failed" two-step that obscures which constraint introduced the
         # conflict.
-        run: composer require --dev "phpunit/phpunit:^11.0" "pestphp/pest:^3.0" --prefer-dist --no-interaction --no-progress
+        run: composer require --dev "pestphp/pest:^4.0" --prefer-dist --no-interaction --no-progress
 
       - name: Run Pest smoke tests
         run: composer test:pest
@@ -130,7 +124,7 @@ jobs:
       - name: Setup PHP
         uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
         with:
-          php-version: '8.2'
+          php-version: '8.3'
           coverage: none
 
       - name: Install example dependencies
@@ -149,11 +143,11 @@ jobs:
       matrix:
         include:
           - example: core
-            php: '8.2'
+            php: '8.3'
           - example: laravel
-            php: '8.2'
+            php: '8.3'
           - example: symfony
-            php: '8.2'
+            php: '8.3'
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
 
@@ -232,7 +226,7 @@ jobs:
       - name: Setup PHP
         uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
         with:
-          php-version: '8.2'
+          php-version: '8.3'
           coverage: none
 
       - name: Install dependencies
@@ -251,9 +245,9 @@ jobs:
         uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
         with:
           # Run on the lowest supported PHP so any constraint mismatch
-          # between composer.json's `php: ^8.2` and the resolved lock
+          # between composer.json's `php: ^8.3` and the resolved dependencies
           # surfaces here, not at install time on a downstream consumer.
-          php-version: '8.2'
+          php-version: '8.3'
           coverage: none
 
       - name: Validate composer.json + composer.lock
@@ -271,7 +265,7 @@ jobs:
           # Same rationale as composer-validate: the audit itself is
           # platform-independent, but installing on the lowest PHP catches
           # platform-constraint regressions in dependencies.
-          php-version: '8.2'
+          php-version: '8.3'
           coverage: none
 
       - name: Install dependencies

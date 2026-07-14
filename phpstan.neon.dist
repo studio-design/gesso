@@ -15,8 +15,8 @@ parameters:
     paths:
         - src
         - tests
-    # Pest is intentionally not in require-dev (Pest 3 conflicts with the
-    # PHPUnit ^12 / ^13 cells of the matrix). Without this stub PHPStan
+    # Pest is intentionally not in require-dev (Pest 4 requires PHPUnit ^12
+    # while the matrix also covers PHPUnit ^13). Without this stub PHPStan
     # would surface "unknown class" / "unknown function" errors on every
     # Pest-flavoured file. The stub declares Pest\Expectation, the
     # HigherOrderTapProxy / TestCall wrappers, and the global

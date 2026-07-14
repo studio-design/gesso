@@ -380,7 +380,7 @@ final class OpenApiCoverageExtension implements Extension
     /**
      * Read the `defaultTestSuite` xml attribute via PHPUnit's
      * {@see Configuration} accessors. Both `hasDefaultTestSuite()` and
-     * `defaultTestSuite()` exist on PHPUnit 11/12/13, so a direct call is
+     * `defaultTestSuite()` exists on PHPUnit 12/13, so a direct call is
      * safe across the CI matrix (unlike {@see readTestSuiteList()}, which
      * needs the dynamic dispatch because PHPUnit 13 dropped the singular
      * `includeTestSuite()` accessor). The `hasDefaultTestSuite()` guard is
@@ -433,7 +433,7 @@ final class OpenApiCoverageExtension implements Extension
      * selection. PHPUnit 13 exposes only the plural array form, PHPUnit
      * 11 exposes only the singular comma-joined string form, and
      * PHPUnit 12 happens to ship both — so picking one at compile time
-     * would break the matrix CI (PHP 8.2/8.3/8.4 × PHPUnit 11/12/13).
+     * would break the matrix CI (PHP 8.3/8.4/8.5 × PHPUnit 12/13).
      * The dynamic method call also avoids a static analysis error on
      * whichever PHPUnit version PHPStan is resolving against locally.
      *

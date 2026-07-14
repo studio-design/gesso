@@ -4,7 +4,7 @@
   "license": "MIT",
   "type": "project",
   "require": {
-    "php": "^8.2",
+    "php": "^8.3",
     "studio-design/openapi-contract-testing": "@dev"
   },
   "autoload-dev": { "psr-4": { "Examples\\Core\\Tests\\": "tests/" } },

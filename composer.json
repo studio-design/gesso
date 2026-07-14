@@ -6,9 +6,9 @@
     "license": "MIT",
     "type": "library",
     "require": {
-        "php": "^8.2",
+        "php": "^8.3",
         "opis/json-schema": "^2.6",
-        "phpunit/phpunit": "^11.0 || ^12.0 || ^13.0",
+        "phpunit/phpunit": "^12.0 || ^13.0",
         "psr/http-client": "^1.0",
         "psr/http-factory": "^1.0",
         "psr/http-message": "^1.0 || ^2.0"
@@ -91,7 +91,7 @@
     },
     "scripts-descriptions": {
         "test": "Run the full PHPUnit test suite.",
-        "test:pest": "Run the Pest plugin test suite (requires `composer require --dev pestphp/pest:^3.0`).",
+        "test:pest": "Run the Pest plugin test suite (requires `composer require --dev pestphp/pest:^4.0`).",
         "stan": "Run PHPStan static analysis.",
         "cs": "Run PHP-CS-Fixer in fix mode (rewrites files).",
         "cs-check": "Run PHP-CS-Fixer in dry-run mode (CI gate).",
