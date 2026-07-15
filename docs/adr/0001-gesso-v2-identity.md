@@ -198,11 +198,11 @@ fail loudly rather than being interpreted as the nearest known shape.
 
 The implementation must pin the coverage JSON v2 document and Gesso tool
 identity with a golden fixture. It must also retain regression tests proving
-that Doctor and route parity still emit version 1 and that the v2 sidecar reader
-accepts every older payload promised by the versioning policy. JSON Schema
-defines a fixed value as the equivalent of a single-value enum, so changing the
-documented tool name is an incompatible value constraint even though no member
-is added or removed.
+that Doctor still emits version 1, route parity emits version 2, and the v2
+sidecar reader accepts every older payload promised by the versioning policy.
+JSON Schema defines a fixed value as the equivalent of a single-value enum, so
+changing the documented tool name is an incompatible value constraint even
+though no member is added or removed.
 
 ### Resolver provenance extension transition policy
 

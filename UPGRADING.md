@@ -24,8 +24,10 @@ boots successfully on v2.
 
 Coverage JSON consumers must accept `schema_version: 2` and the fixed
 `tool.name` value `studio-design/gesso`. The remaining coverage fields retain
-their v1 meanings. Doctor JSON, Laravel route parity JSON, sidecar envelopes,
-and tracker-state versions are unchanged; see the
+their v1 meanings. Laravel route parity JSON consumers must also accept
+`schema_version: 2`, including the new `external_operations` result and summary
+count. Doctor JSON remains at `schemaVersion: 1`; sidecar envelope and
+tracker-state versions are unchanged. See the
 [v2 migration guide](docs/migration/v2.md#update-coverage-json-consumers).
 
 Update log routing for the optional-Faker warning and Laravel contradictory-
