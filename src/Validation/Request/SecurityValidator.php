@@ -8,12 +8,12 @@ use const E_USER_WARNING;
 
 use Studio\Gesso\Validation\Support\HeaderNormalizer;
 
+use function array_is_list;
 use function array_key_exists;
 use function array_key_first;
 use function get_debug_type;
 use function in_array;
 use function is_array;
-use function is_int;
 use function is_string;
 use function preg_match;
 use function sprintf;
@@ -155,13 +155,15 @@ final class SecurityValidator
             return [];
         }
 
-        if (!is_array($security)) {
+        if (!is_array($security) || !array_is_list($security)) {
             return [
-                sprintf(
-                    '[security] %s %s: operation/root-level `security` must be an array of requirement objects, got %s.',
+                self::formatError(
                     $method,
                     $matchedPath,
-                    get_debug_type($security),
+                    sprintf(
+                        'operation/root-level `security` must be a list of requirement objects, got %s.',
+                        get_debug_type($security),
+                    ),
                 ),
             ];
         }
@@ -198,7 +200,7 @@ final class SecurityValidator
                     '[security] %s %s: security requirement at index %d must be an object mapping scheme names to scope arrays, got %s.',
                     $method,
                     $matchedPath,
-                    is_int($entryIndex) ? $entryIndex : 0,
+                    $entryIndex,
                     get_debug_type($entry),
                 );
 
@@ -210,7 +212,7 @@ final class SecurityValidator
             /** @var array<string, array{kind: SchemeKind, def: array<string, mixed>}> $validatable */
             $validatable = [];
 
-            foreach ($entry as $schemeName => $_scopes) {
+            foreach ($entry as $schemeName => $scopes) {
                 if (!is_string($schemeName)) {
                     $hardErrors[] = sprintf(
                         '[security] %s %s: security scheme name must be a string, got %s.',
@@ -220,6 +222,45 @@ final class SecurityValidator
                     );
                     $entryHasHardError = true;
 
+                    continue;
+                }
+
+                if (!is_array($scopes) || !array_is_list($scopes)) {
+                    $hardErrors[] = self::formatError(
+                        $method,
+                        $matchedPath,
+                        sprintf(
+                            "security requirement '%s' scopes must be a list of strings, got %s.",
+                            $schemeName,
+                            get_debug_type($scopes),
+                        ),
+                    );
+                    $entryHasHardError = true;
+
+                    continue;
+                }
+
+                $scopeHasHardError = false;
+                foreach ($scopes as $scopeIndex => $scope) {
+                    if (is_string($scope)) {
+                        continue;
+                    }
+
+                    $hardErrors[] = self::formatError(
+                        $method,
+                        $matchedPath,
+                        sprintf(
+                            "security requirement '%s' scope at index %d must be a string, got %s.",
+                            $schemeName,
+                            $scopeIndex,
+                            get_debug_type($scope),
+                        ),
+                    );
+                    $entryHasHardError = true;
+                    $scopeHasHardError = true;
+                }
+
+                if ($scopeHasHardError) {
                     continue;
                 }
 
@@ -314,6 +355,11 @@ final class SecurityValidator
         }
 
         return [...$hardErrors, ...$failureErrors];
+    }
+
+    private static function formatError(string $method, string $matchedPath, string $detail): string
+    {
+        return sprintf('[security] %s %s: %s', $method, $matchedPath, $detail);
     }
 
     /**

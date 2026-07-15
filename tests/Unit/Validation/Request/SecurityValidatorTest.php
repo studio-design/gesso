@@ -160,6 +160,109 @@ class SecurityValidatorTest extends TestCase
         $this->assertSame([], $errors);
     }
 
+    #[Test]
+    public function validate_rejects_associative_security_container(): void
+    {
+        $spec = [
+            'components' => [
+                'securitySchemes' => [
+                    'BearerAuth' => ['type' => 'http', 'scheme' => 'bearer'],
+                ],
+            ],
+        ];
+        $operation = ['security' => ['BearerAuth' => []]];
+
+        $errors = $this->validator->validate('GET', '/pets', $spec, $operation, [], [], []);
+
+        $this->assertCount(1, $errors);
+        $this->assertStringContainsString('must be a list of requirement objects', $errors[0]);
+    }
+
+    #[Test]
+    public function validate_accepts_empty_requirement_object_for_anonymous_access(): void
+    {
+        $operation = ['security' => [[]]];
+
+        $errors = $this->validator->validate('GET', '/pets', [], $operation, [], [], []);
+
+        $this->assertSame([], $errors);
+    }
+
+    #[Test]
+    public function validate_rejects_list_shaped_security_requirement(): void
+    {
+        $operation = ['security' => [[['BearerAuth' => []]]]];
+
+        $errors = $this->validator->validate('GET', '/pets', [], $operation, [], [], []);
+
+        $this->assertCount(1, $errors);
+        $this->assertStringContainsString('security scheme name must be a string', $errors[0]);
+    }
+
+    #[Test]
+    public function validate_rejects_non_list_scopes(): void
+    {
+        $spec = [
+            'components' => [
+                'securitySchemes' => [
+                    'BearerAuth' => ['type' => 'http', 'scheme' => 'bearer'],
+                ],
+            ],
+        ];
+        $operation = ['security' => [['BearerAuth' => 'not-a-list']]];
+
+        $errors = $this->validator->validate(
+            'GET',
+            '/pets',
+            $spec,
+            $operation,
+            ['Authorization' => 'Bearer token'],
+            [],
+            [],
+        );
+
+        $this->assertCount(1, $errors);
+        $this->assertStringContainsString("requirement 'BearerAuth' scopes must be a list of strings", $errors[0]);
+    }
+
+    #[Test]
+    public function validate_rejects_associative_scopes(): void
+    {
+        $spec = [
+            'components' => [
+                'securitySchemes' => [
+                    'OAuth' => ['type' => 'oauth2', 'flows' => []],
+                ],
+            ],
+        ];
+        $operation = ['security' => [['OAuth' => ['scope' => 'read']]]];
+
+        [$errors, $warnings] = $this->validateCapturingWarnings('GET', '/pets', $spec, $operation);
+
+        $this->assertCount(1, $errors);
+        $this->assertStringContainsString("requirement 'OAuth' scopes must be a list of strings", $errors[0]);
+        $this->assertSame([], $warnings);
+    }
+
+    #[Test]
+    public function validate_rejects_non_string_scope_values(): void
+    {
+        $spec = [
+            'components' => [
+                'securitySchemes' => [
+                    'OAuth' => ['type' => 'oauth2', 'flows' => []],
+                ],
+            ],
+        ];
+        $operation = ['security' => [['OAuth' => ['read', 123]]]];
+
+        [$errors, $warnings] = $this->validateCapturingWarnings('GET', '/pets', $spec, $operation);
+
+        $this->assertCount(1, $errors);
+        $this->assertStringContainsString("requirement 'OAuth' scope at index 1 must be a string", $errors[0]);
+        $this->assertSame([], $warnings);
+    }
+
     // ========================================
     // Loud-warning behaviour for unsupported security schemes.
     // ========================================
