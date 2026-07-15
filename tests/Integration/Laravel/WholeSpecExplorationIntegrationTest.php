@@ -11,7 +11,6 @@ use Orchestra\Testbench\TestCase;
 use PHPUnit\Framework\Attributes\Test;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\Fuzz\ExploredCase;
-use Studio\Gesso\Fuzz\ExploredOperation;
 use Studio\Gesso\HttpMethod;
 use Studio\Gesso\Laravel\ExploresOpenApiEndpoint;
 use Studio\Gesso\Laravel\GessoServiceProvider;
@@ -48,10 +47,10 @@ class WholeSpecExplorationIntegrationTest extends TestCase
     {
         $summary = $this->exploreSpec(casesPerOperation: 2, seed: 5)
             ->includeOperations(['listPets', 'createPet'])
-            ->dispatchUsing(function (ExploredCase $case, ExploredOperation $operation): TestResponse {
+            ->dispatchUsing(function (ExploredCase $case): TestResponse {
                 return match ($case->method) {
-                    HttpMethod::GET => $this->get($operation->path, $case->headers),
-                    HttpMethod::POST => $this->postJson($operation->path, $case->body, $case->headers),
+                    HttpMethod::GET => $this->get($case->uri(), $case->headers),
+                    HttpMethod::POST => $this->postJson($case->uri(), $case->bodyAsArray() ?? [], $case->headers),
                     default => throw new LogicException('Unexpected method in Laravel exploration example.'),
                 };
             })

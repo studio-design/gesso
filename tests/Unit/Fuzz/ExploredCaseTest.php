@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace Studio\Gesso\Tests\Unit\Fuzz;
 
 use InvalidArgumentException;
+use LogicException;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+use stdClass;
 use Studio\Gesso\Fuzz\ExploredCase;
 use Studio\Gesso\Fuzz\FailureReducer;
 use Studio\Gesso\HttpMethod;
@@ -69,6 +71,50 @@ class ExploredCaseTest extends TestCase
     }
 
     #[Test]
+    public function builds_a_concrete_uri_with_encoded_path_and_query_values(): void
+    {
+        $case = new ExploredCase(
+            body: null,
+            query: ['search' => 'snowy owl', 'page' => 2],
+            headers: [],
+            pathParams: ['petId' => 'pet/7'],
+            method: HttpMethod::GET,
+            matchedPath: '/v1/pets/{petId}',
+        );
+
+        $this->assertSame('/api/v1/pets/pet%2F7?search=snowy+owl&page=2', $case->uri('/api'));
+        $this->assertStringContainsString(
+            "'https://api.example.test/v1/pets/pet%2F7?search=snowy+owl&page=2'",
+            $case->curlSnippet('https://api.example.test'),
+        );
+    }
+
+    #[Test]
+    public function converts_json_object_and_array_bodies_for_array_typed_http_helpers(): void
+    {
+        $object = new stdClass();
+        $object->name = 'Snowy';
+        $object->details = (object) ['age' => 3];
+
+        $objectCase = $this->caseWithBody($object);
+        $arrayCase = $this->caseWithBody(['name' => 'Snowy']);
+
+        $this->assertSame(['name' => 'Snowy', 'details' => ['age' => 3]], $objectCase->bodyAsArray());
+        $this->assertSame(['name' => 'Snowy'], $arrayCase->bodyAsArray());
+        $this->assertNull($this->caseWithBody(null)->bodyAsArray());
+        $this->assertSame([], $this->caseWithBody(new stdClass())->bodyAsArray());
+    }
+
+    #[Test]
+    public function rejects_scalar_bodies_for_array_typed_http_helpers(): void
+    {
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessage('requires a JSON object or array body');
+
+        $this->caseWithBody('scalar')->bodyAsArray();
+    }
+
+    #[Test]
     public function reducer_preserves_the_original_failure_classification(): void
     {
         $case = new ExploredCase(
@@ -86,5 +132,17 @@ class ExploredCaseTest extends TestCase
         );
 
         $this->assertSame(['trigger' => true], $reduced->body);
+    }
+
+    private function caseWithBody(mixed $body): ExploredCase
+    {
+        return new ExploredCase(
+            body: $body,
+            query: [],
+            headers: [],
+            pathParams: [],
+            method: HttpMethod::POST,
+            matchedPath: '/v1/pets',
+        );
     }
 }

@@ -11,12 +11,14 @@ use PHPUnit\Framework\TestCase;
 use Studio\Gesso\Coverage\ConsoleCoverageRenderer;
 use Studio\Gesso\Coverage\HtmlCoverageRenderer;
 use Studio\Gesso\Coverage\JsonCoverageRenderer;
+use Studio\Gesso\Fuzz\ExploredCase;
 use Studio\Gesso\Tests\Helpers\PublicApiInventory;
 use Studio\Gesso\Tests\Unit\Compatibility\Fixture\PublicApiReturnTypeFixture;
 
 use function dirname;
 use function file_get_contents;
 use function json_decode;
+use function ksort;
 use function str_replace;
 
 final class PublicApiBaselineTest extends TestCase
@@ -108,6 +110,33 @@ final class PublicApiBaselineTest extends TestCase
         /** @var array<string, array<string, mixed>> $expected */
         $expected = json_decode($mappedV1Json, true, flags: JSON_THROW_ON_ERROR);
         $expected[JsonCoverageRenderer::class]['constants']['SCHEMA_VERSION'] = 2;
+        $expected[ExploredCase::class]['methods']['bodyAsArray'] = [
+            'static' => false,
+            'final' => false,
+            'abstract' => false,
+            'returns_reference' => false,
+            'return_type' => '?array',
+            'attributes' => [],
+            'parameters' => [],
+        ];
+        $expected[ExploredCase::class]['methods']['uri'] = [
+            'static' => false,
+            'final' => false,
+            'abstract' => false,
+            'returns_reference' => false,
+            'return_type' => 'string',
+            'attributes' => [],
+            'parameters' => [[
+                'name' => 'prefix',
+                'type' => 'string',
+                'optional' => true,
+                'variadic' => false,
+                'by_reference' => false,
+                'default' => '',
+                'attributes' => [],
+            ]],
+        ];
+        ksort($expected[ExploredCase::class]['methods']);
         /** @var array<string, array<string, mixed>> $actual */
         $actual = json_decode($v2Json, true, flags: JSON_THROW_ON_ERROR);
 

@@ -4,13 +4,19 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Fuzz;
 
+use const JSON_THROW_ON_ERROR;
+
 use InvalidArgumentException;
+use JsonException;
+use LogicException;
 use Studio\Gesso\HttpMethod;
 
 use function base64_encode;
 use function escapeshellarg;
 use function http_build_query;
 use function implode;
+use function is_array;
+use function json_decode;
 use function json_encode;
 use function rawurlencode;
 use function sprintf;
@@ -24,8 +30,7 @@ use function str_replace;
  * `query`, `headers`, and `pathParams` are name → value maps, where the
  * `pathParams` keys are the placeholder *names* extracted from `matchedPath`
  * (e.g. `petId`), not positional. `matchedPath` is the spec template with
- * `{placeholders}` unsubstituted — callers needing a concrete URI substitute
- * `pathParams` into it themselves.
+ * `{placeholders}` unsubstituted. Use {@see self::uri()} for a concrete URI.
  */
 final readonly class ExploredCase
 {
@@ -85,6 +90,45 @@ final readonly class ExploredCase
         return $this->copy($this->body, $this->query, $this->headers, $pathParams);
     }
 
+    /**
+     * Convert a generated JSON object or array for array-typed HTTP helpers.
+     *
+     * Empty JSON objects become empty PHP arrays, so callers that must preserve
+     * the distinction between `{}` and `[]` should encode {@see self::$body}
+     * directly instead.
+     *
+     * @return null|array<array-key, mixed>
+     *
+     * @throws JsonException when the generated body cannot be encoded or decoded
+     * @throws LogicException when the generated JSON body is a scalar
+     */
+    public function bodyAsArray(): ?array
+    {
+        if ($this->body === null) {
+            return null;
+        }
+
+        $body = json_decode(json_encode($this->body, JSON_THROW_ON_ERROR), true, flags: JSON_THROW_ON_ERROR);
+        if (!is_array($body)) {
+            throw new LogicException(
+                'ExploredCase::bodyAsArray() requires a JSON object or array body; encode the scalar body directly.',
+            );
+        }
+
+        return $body;
+    }
+
+    public function uri(string $prefix = ''): string
+    {
+        $path = $this->matchedPath;
+        foreach ($this->pathParams as $name => $value) {
+            $path = str_replace('{' . $name . '}', rawurlencode((string) $value), $path);
+        }
+        $query = $this->query !== [] ? '?' . http_build_query($this->query) : '';
+
+        return $prefix . $path . $query;
+    }
+
     public function replayToken(): string
     {
         return base64_encode((string) json_encode([
@@ -124,12 +168,7 @@ final readonly class ExploredCase
 
     public function curlSnippet(string $baseUrl = ''): string
     {
-        $path = $this->matchedPath;
-        foreach ($this->pathParams as $name => $value) {
-            $path = str_replace('{' . $name . '}', rawurlencode((string) $value), $path);
-        }
-        $query = $this->query !== [] ? '?' . http_build_query($this->query) : '';
-        $command = sprintf('curl -X %s %s', $this->method->value, escapeshellarg($baseUrl . $path . $query));
+        $command = sprintf('curl -X %s %s', $this->method->value, escapeshellarg($this->uri($baseUrl)));
         foreach ($this->headers as $name => $value) {
             $command .= ' -H ' . escapeshellarg($name . ': ' . (string) $value);
         }

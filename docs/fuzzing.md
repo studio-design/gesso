@@ -7,6 +7,7 @@ contract; this package does not claim feature parity.
 
 ```php
 use PHPUnit\Framework\TestCase;
+use Studio\Gesso\Fuzz\ExploredCase;
 use Studio\Gesso\Laravel\ExploresOpenApiEndpoint;
 use Studio\Gesso\Laravel\ValidatesOpenApiSchema;
 use Studio\Gesso\Attribute\OpenApiSpec;
@@ -20,7 +21,7 @@ class CreatePetTest extends TestCase
     public function test_create_pet_contract(): void
     {
         $this->exploreEndpoint('POST', '/v1/pets', cases: 50, seed: 1)
-            ->each(fn ($input) => $this->postJson('/api/v1/pets', $input->body)
+            ->each(fn (ExploredCase $case) => $this->postJson('/api/v1/pets', $case->bodyAsArray() ?? [])
                 ->assertSuccessful());
     }
 }
@@ -40,6 +41,13 @@ What you get per case (`Studio\Gesso\Fuzz\ExploredCase`):
 | `seed`, `caseIndex` | Stable replay identity |
 
 The collection is `Countable` and `IteratorAggregate`, so `foreach ($cases as $case)` works too if you prefer it over the fluent `each()` helper.
+
+Use `bodyAsArray()` with Laravel and other HTTP helpers that require an array
+payload. It recursively converts generated JSON objects, but an empty JSON
+object becomes an empty PHP array; encode `body` directly when the `{}` versus
+`[]` distinction matters. `uri($prefix)` substitutes and URL-encodes path
+parameters, prepends an optional application prefix, and appends the generated
+query string.
 
 ## Explore a whole spec
 
@@ -68,8 +76,8 @@ class ApiContractTest extends TestCase
             ->excludeOperations(['admin.users.destroy'])
             ->authenticateUsing(fn (ExploredOperation $operation) => $this->actingAs($this->userFor($operation)))
             ->dispatchUsing(fn (ExploredCase $case) => match ($case->method) {
-                HttpMethod::GET => $this->get($this->uriFor($case), $case->headers),
-                HttpMethod::POST => $this->postJson($this->uriFor($case), $case->body, $case->headers),
+                HttpMethod::GET => $this->get($case->uri('/api'), $case->headers),
+                HttpMethod::POST => $this->postJson($case->uri('/api'), $case->bodyAsArray() ?? [], $case->headers),
                 default => throw new LogicException('Add the method to the test dispatcher.'),
             })
             ->assertResponses(); // ValidatesOpenApiSchema auto_assert validates each response
@@ -187,7 +195,7 @@ $this->exploreInvalidEndpoint(
     cases: 20,
     seed: 7,
 )->each(function (ExploredCase $case): void {
-    $response = $this->postJson('/api/v1/pets', $case->body);
+    $response = $this->postJson('/api/v1/pets', $case->bodyAsArray() ?? []);
     self::assertContains(intdiv($response->getStatusCode(), 100), $case->expectedStatusClasses);
 });
 ```
