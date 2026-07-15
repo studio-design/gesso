@@ -10,6 +10,13 @@ the README for the full surface contract.
 
 ## Unreleased
 
+## [2.0.0-beta.2](https://github.com/studio-design/gesso/compare/v2.0.0-beta.1...v2.0.0-beta.2) (2026-07-15)
+
+
+### Bug Fixes
+
+* **fuzz:** make Laravel exploration examples executable ([#349](https://github.com/studio-design/gesso/issues/349)) ([a0d2f08](https://github.com/studio-design/gesso/commit/a0d2f08258eccf544b1fb209412a734efb173fbd))
+
 ## [2.0.0-beta.1](https://github.com/studio-design/gesso/compare/v1.10.0...v2.0.0-beta.1) (2026-07-15)
 
 
