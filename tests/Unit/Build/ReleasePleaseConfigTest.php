@@ -136,6 +136,14 @@ class ReleasePleaseConfigTest extends TestCase
             $this->config,
             'release-as MUST be absent after v2.0.0-beta.1 so later beta releases can increment normally.',
         );
+
+        $rootPackage = $this->config['packages']['.'] ?? null;
+        $this->assertIsArray($rootPackage);
+        $this->assertArrayNotHasKey(
+            'release-as',
+            $rootPackage,
+            'Package-level release-as MUST be absent after v2.0.0-beta.1 so it cannot override the root configuration.',
+        );
     }
 
     #[Test]
