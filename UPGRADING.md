@@ -62,6 +62,18 @@ use `RemoteRefDisallowed`, `HttpClientNotConfigured`, or
 `RemoteRefFetchFailed`; unsupported `file:` references use
 `FileSchemeNotSupported`.
 
+Several orchestration types that were unintentionally part of the v1 PHP API
+are marked `@internal` in v2. Do not call coverage renderer, sidecar I/O,
+threshold evaluator, or extension-configuration exception classes directly;
+use the PHPUnit extension or `gesso coverage:merge` options and consume their
+documented output formats. The same applies to `SchemaContext`,
+`SkipOpenApiResolver`, `Laravel\Commands\OpenApiRoutesCommand`,
+`PHPUnit\ConsoleOutput`, `PHPUnit\InvalidStrictRequiredConfigurationException`,
+and `Pest\Expectations`. Use the public validators and framework traits, the
+`openapi:routes` Artisan command, PHPUnit configuration values, and registered
+Pest expectations instead. These classes still exist as implementation details
+in v2.0.0, but their PHP signatures are no longer covered by SemVer.
+
 ## Within v1.x
 
 The v1.x line is covered end-to-end by SemVer (see "v0.x → v1.0.0"

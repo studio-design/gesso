@@ -9,12 +9,28 @@ use const JSON_THROW_ON_ERROR;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Studio\Gesso\Coverage\ConsoleCoverageRenderer;
+use Studio\Gesso\Coverage\CoverageSidecarEnvelope;
+use Studio\Gesso\Coverage\CoverageSidecarReader;
+use Studio\Gesso\Coverage\CoverageSidecarWriter;
+use Studio\Gesso\Coverage\CoverageThresholdEvaluator;
 use Studio\Gesso\Coverage\HtmlCoverageRenderer;
+use Studio\Gesso\Coverage\InvalidCoverageOutputPathException;
+use Studio\Gesso\Coverage\InvalidThresholdConfigurationException;
 use Studio\Gesso\Coverage\JsonCoverageRenderer;
+use Studio\Gesso\Coverage\JUnitCoverageRenderer;
+use Studio\Gesso\Coverage\MarkdownCoverageRenderer;
 use Studio\Gesso\Exception\InvalidOpenApiSpecReason;
 use Studio\Gesso\Fuzz\ExploredCase;
+use Studio\Gesso\Laravel\Commands\OpenApiRoutesCommand;
 use Studio\Gesso\OpenApiResponseValidator;
+use Studio\Gesso\Pest\Expectations;
+use Studio\Gesso\PHPUnit\ConsoleOutput;
+use Studio\Gesso\PHPUnit\InvalidStrictRequiredConfigurationException;
+use Studio\Gesso\SchemaContext;
+use Studio\Gesso\SkipOpenApiResolver;
 use Studio\Gesso\Tests\Helpers\PublicApiInventory;
+use Studio\Gesso\Tests\Unit\Compatibility\Fixture\PublicApiImplicitConstructorFixture;
+use Studio\Gesso\Tests\Unit\Compatibility\Fixture\PublicApiPrivateConstructorFixture;
 use Studio\Gesso\Tests\Unit\Compatibility\Fixture\PublicApiReturnTypeFixture;
 use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 
@@ -45,20 +61,19 @@ final class PublicApiBaselineTest extends TestCase
     #[Test]
     public function inventory_records_constructor_availability_and_visibility(): void
     {
-        $root = dirname(__DIR__, 3);
         $inventory = PublicApiInventory::capture(
-            $root . '/src',
-            'Studio\\Gesso\\',
+            __DIR__ . '/Fixture',
+            'Studio\\Gesso\\Tests\\Unit\\Compatibility\\Fixture\\',
         );
 
-        $implicitConstructor = $inventory[ConsoleCoverageRenderer::class];
+        $implicitConstructor = $inventory[PublicApiImplicitConstructorFixture::class];
         $this->assertTrue($implicitConstructor['instantiable']);
         $this->assertSame(
             ['kind' => 'implicit', 'visibility' => 'public'],
             $implicitConstructor['constructor'],
         );
 
-        $privateConstructor = $inventory[HtmlCoverageRenderer::class];
+        $privateConstructor = $inventory[PublicApiPrivateConstructorFixture::class];
         $this->assertFalse($privateConstructor['instantiable']);
         $this->assertSame('declared', $privateConstructor['constructor']['kind']);
         $this->assertSame('private', $privateConstructor['constructor']['visibility']);
@@ -161,6 +176,28 @@ final class PublicApiBaselineTest extends TestCase
             $maxErrors,
             $skipResponseCodes,
         ];
+
+        foreach ([
+            ConsoleCoverageRenderer::class,
+            CoverageSidecarEnvelope::class,
+            CoverageSidecarReader::class,
+            CoverageSidecarWriter::class,
+            CoverageThresholdEvaluator::class,
+            HtmlCoverageRenderer::class,
+            InvalidCoverageOutputPathException::class,
+            InvalidStrictRequiredConfigurationException::class,
+            InvalidThresholdConfigurationException::class,
+            JUnitCoverageRenderer::class,
+            JsonCoverageRenderer::class,
+            MarkdownCoverageRenderer::class,
+            OpenApiRoutesCommand::class,
+            ConsoleOutput::class,
+            Expectations::class,
+            SchemaContext::class,
+            SkipOpenApiResolver::class,
+        ] as $internalType) {
+            unset($expected[$internalType]);
+        }
 
         /** @var array<string, array<string, mixed>> $actual */
         $actual = json_decode($v2Json, true, flags: JSON_THROW_ON_ERROR);

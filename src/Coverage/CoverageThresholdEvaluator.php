@@ -26,6 +26,9 @@ use function strlen;
  * without duplicating it. The caller decides whether to print/exit; the
  * evaluator only reports.
  *
+ * @internal Used by the PHPUnit extension and merge CLI. Configuration and
+ *           diagnostics are the supported public surfaces.
+ *
  * @phpstan-import-type CoverageResult from OpenApiCoverageTracker
  *
  * @phpstan-type ThresholdLine array{percent: float, threshold: float, ok: bool}

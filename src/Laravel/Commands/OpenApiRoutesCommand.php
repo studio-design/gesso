@@ -33,6 +33,10 @@ use function preg_match;
 use function str_starts_with;
 use function trim;
 
+/**
+ * @internal Registered by GessoServiceProvider. Use the `openapi:routes`
+ *           Artisan command rather than constructing this class directly.
+ */
 final class OpenApiRoutesCommand extends Command
 {
     protected $signature = 'openapi:routes

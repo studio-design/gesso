@@ -38,6 +38,8 @@ use function unlink;
  * copy+unlink fallback may not provide the same guarantee. Configure
  * `sidecar_dir` to live alongside the merge target (same FS) to keep the
  * atomic guarantee.
+ *
+ * @internal PHPUnit extension implementation detail. Do not use from user code.
  */
 final class CoverageSidecarWriter
 {

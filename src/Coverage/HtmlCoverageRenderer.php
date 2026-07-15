@@ -37,6 +37,9 @@ use function strtolower;
  *  - HTML is intentionally excluded from `GITHUB_STEP_SUMMARY` (Markdown-only
  *    by design); see {@see CoverageReportSubscriber::appendGithubStepSummary()}.
  *
+ * @internal Output is exposed through the PHPUnit extension and merge CLI.
+ *           This renderer is not part of the public PHP API.
+ *
  * @phpstan-import-type CoverageResult from OpenApiCoverageTracker
  * @phpstan-import-type EndpointSummary from OpenApiCoverageTracker
  * @phpstan-import-type ResponseRow from OpenApiCoverageTracker

@@ -26,6 +26,8 @@ use Throwable;
  * and translates it to `exit(1)`. A typo in either parameter must fail
  * loud rather than silently disabling the feature — silently dropping the
  * gate is exactly the silent-pass mode the extension exists to prevent.
+ *
+ * @internal PHPUnit extension configuration boundary. Do not catch from user code.
  */
 final class InvalidStrictRequiredConfigurationException extends RuntimeException
 {

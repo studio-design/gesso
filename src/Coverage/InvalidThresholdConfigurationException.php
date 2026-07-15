@@ -22,6 +22,8 @@ use Throwable;
  *
  * In warn-only mode the same condition is downgraded to a `WARNING` and the
  * gate is dropped, so this exception is reserved for the strict path.
+ *
+ * @internal PHPUnit extension configuration boundary. Do not catch from user code.
  */
 final class InvalidThresholdConfigurationException extends RuntimeException
 {
