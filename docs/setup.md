@@ -598,6 +598,10 @@ OpenApiSpecLoader::configure(
 
 The library does not bundle an HTTP client — pick whichever your project already uses. (Guzzle 7+ implements PSR-18 directly; Guzzle 6 needs an adapter.)
 
+Remote-reference diagnostics remove URL userinfo and query values before they
+reach exception messages or CI logs. Configure authentication on the HTTP
+client instead of embedding credentials in a `$ref` URL.
+
 Misconfiguration is caught early:
 
 | Setup | Result |

@@ -255,6 +255,27 @@ class HttpRefLoaderTest extends TestCase
     }
 
     #[Test]
+    public function redacts_credentials_from_redirect_location(): void
+    {
+        $url = 'https://example.com/redirect.json';
+        $client = new FakeHttpClient([
+            $url => new Response(302, [
+                'Location' => 'https://alice:secret@example.com/canonical.json?token=redirect-secret',
+            ]),
+        ]);
+
+        try {
+            $cache = [];
+            HttpRefLoader::loadDocument($url, $client, $this->factory, $cache);
+            $this->fail('expected InvalidOpenApiSpecException');
+        } catch (InvalidOpenApiSpecException $e) {
+            $this->assertStringNotContainsString('alice', $e->getMessage());
+            $this->assertStringNotContainsString('secret', $e->getMessage());
+            $this->assertStringContainsString('https://example.com/canonical.json?token=[redacted]', $e->getMessage());
+        }
+    }
+
+    #[Test]
     public function url_extension_takes_precedence_over_conflicting_content_type(): void
     {
         // Pin the documented priority: extension wins, even if the
@@ -329,6 +350,29 @@ class HttpRefLoaderTest extends TestCase
             $this->assertStringNotContainsString('secret', $e->getMessage());
             $this->assertStringNotContainsString('alice', $e->getMessage());
             $this->assertStringContainsString('example.com', $e->getMessage());
+        }
+    }
+
+    #[Test]
+    public function redacts_credentials_from_transport_exception_chain(): void
+    {
+        $url = 'https://alice:secret@example.com/private/pet.json?token=query-secret';
+        $client = new FakeHttpClient([
+            $url => static function () use ($url): Response {
+                throw new FakeHttpClientUnexpectedRequest('request failed for ' . $url);
+            },
+        ]);
+
+        try {
+            $cache = [];
+            HttpRefLoader::loadDocument($url, $client, $this->factory, $cache);
+            $this->fail('expected InvalidOpenApiSpecException');
+        } catch (InvalidOpenApiSpecException $e) {
+            $this->assertStringNotContainsString('alice', $e->getMessage());
+            $this->assertStringNotContainsString('secret', $e->getMessage());
+            $this->assertStringContainsString('https://example.com/private/pet.json?token=[redacted]', $e->getMessage());
+            $this->assertSame('https://example.com/private/pet.json?token=[redacted]', $e->ref);
+            $this->assertNull($e->getPrevious());
         }
     }
 
