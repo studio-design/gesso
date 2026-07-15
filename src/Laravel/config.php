@@ -17,6 +17,15 @@ return [
     // `strip_prefixes` parameter so static parity and runtime validation agree.
     'strip_prefixes' => [],
 
+    // Documented operations implemented by another service in a gateway
+    // topology. Patterns use Laravel's `Str::is` wildcard matching. These
+    // operations remain visible in route-parity output under
+    // `external_operations`, but do not fail `--fail-on-unimplemented`.
+    'route_parity' => [
+        'external_operation_ids' => [],
+        'external_openapi_paths' => [],
+    ],
+
     // Maximum number of validation errors to report per response.
     // 0 = unlimited (reports all errors).
     'max_errors' => 20,

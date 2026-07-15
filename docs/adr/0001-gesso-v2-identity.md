@@ -177,13 +177,14 @@ consumer may validate or route reports by it. Schema version 2 otherwise keeps
 the version 1 fields, types, and meanings. The v2 writer emits only the Gesso
 identity rather than a second legacy identity field.
 
-The identity migration does not change the other versioned formats:
+The identity migration does not require the other versioned formats to change.
+Route parity advances independently because v2 adds a new result category:
 
 | Format | Gesso v2 writer | Gesso v2 reader responsibility | Reason |
 | --- | ---: | --- | --- |
 | Coverage JSON report | `schema_version: 2` | N/A (output contract) | The documented fixed `tool.name` value changes |
 | Doctor JSON | `schemaVersion: 1` | N/A (output contract) | It contains no package or namespace identity and its shape is unchanged |
-| Laravel route parity JSON | `schema_version: 1` | N/A (output contract) | It contains no package or namespace identity and its shape is unchanged |
+| Laravel route parity JSON | `schema_version: 2` | N/A (output contract) | `external_operations` is added to the result and summary |
 | Sidecar envelope | `envelopeVersion: 2` | Continue accepting the documented v1.9 envelope and legacy bare coverage state | No persisted field changes for the rename |
 | Coverage tracker state | `version: 1` | Continue accepting version 1 | No persisted field changes for the rename |
 | Strict-required tracker state | `version: 2` | Continue accepting version 2 inside supported envelopes | No persisted field changes for the rename |

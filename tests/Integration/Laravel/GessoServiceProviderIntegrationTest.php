@@ -23,12 +23,12 @@ use function json_encode;
 final class GessoServiceProviderIntegrationTest extends TestCase
 {
     #[Test]
-    public function provider_merges_unchanged_defaults_under_the_gesso_key(): void
+    public function provider_merges_v2_defaults_under_the_gesso_key(): void
     {
         /** @var array<string, mixed> $configuration */
         $configuration = require dirname(__DIR__, 3) . '/src/Laravel/config.php';
         $expected = file_get_contents(
-            dirname(__DIR__, 2) . '/fixtures/compatibility/v1.9-laravel-config.json',
+            dirname(__DIR__, 2) . '/fixtures/compatibility/v2-laravel-config.json',
         );
 
         $this->assertIsString($expected);

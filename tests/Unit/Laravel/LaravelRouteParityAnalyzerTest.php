@@ -120,6 +120,53 @@ final class LaravelRouteParityAnalyzerTest extends TestCase
     }
 
     #[Test]
+    public function classifies_unmatched_operation_id_and_path_patterns_as_external(): void
+    {
+        $result = (new LaravelRouteParityAnalyzer())->analyze(
+            ['front' => $this->spec([
+                '/gateway/forms/{formId}' => ['get' => ['operationId' => 'forms.show']],
+                '/gateway/proxy/chat' => ['post' => ['operationId' => 'proxyChat']],
+                '/local/missing' => ['delete' => ['operationId' => 'deleteMissing']],
+            ])],
+            [],
+            filters: [
+                'excluded_operation_ids' => ['forms.*'],
+                'excluded_openapi_paths' => ['/gateway/proxy/*'],
+            ],
+        );
+
+        $this->assertSame(
+            ['forms.show', 'proxyChat'],
+            array_column($result->externalOperations, 'operation_id'),
+        );
+        $this->assertSame(
+            ['deleteMissing'],
+            array_column($result->documentedButNotRegistered, 'operation_id'),
+        );
+    }
+
+    #[Test]
+    public function documented_side_exclusions_do_not_hide_matched_operations(): void
+    {
+        $route = new Route(['GET'], 'gateway/forms/{form}', static fn() => null);
+
+        $result = (new LaravelRouteParityAnalyzer())->analyze(
+            ['front' => $this->spec([
+                '/gateway/forms/{formId}' => ['get' => ['operationId' => 'forms.show']],
+            ])],
+            [$route],
+            filters: [
+                'excluded_operation_ids' => ['forms.*'],
+                'excluded_openapi_paths' => ['/gateway/*'],
+            ],
+        );
+
+        $this->assertCount(1, $result->matched);
+        $this->assertSame([], $result->externalOperations);
+        $this->assertSame([], $result->documentedButNotRegistered);
+    }
+
+    #[Test]
     public function reports_fallback_and_custom_method_without_openapi_declaration(): void
     {
         $fallback = new Route(['GET'], '{fallbackPlaceholder}', static fn() => null);

@@ -20,6 +20,8 @@ use Throwable;
 
 use function array_filter;
 use function array_map;
+use function array_merge;
+use function array_unique;
 use function array_values;
 use function count;
 use function implode;
@@ -39,6 +41,8 @@ final class OpenApiRoutesCommand extends Command
         {--middleware=* : Only include routes using all of these middleware names}
         {--domain=* : Only include routes registered for these exact domains}
         {--exclude-route=* : Exclude route names; * wildcards are supported}
+        {--exclude-operation=* : Classify unmatched operationIds as external; * wildcards are supported}
+        {--exclude-openapi-path=* : Classify unmatched OpenAPI paths as external; * wildcards are supported}
         {--format=text : Output format: text or json}
         {--fail-on-undocumented : Fail when a Laravel route is absent from OpenAPI}
         {--fail-on-unimplemented : Fail when an OpenAPI operation has no Laravel route}';
@@ -75,6 +79,14 @@ final class OpenApiRoutesCommand extends Command
                     'middleware' => $this->stringListOption('middleware'),
                     'domains' => $this->stringListOption('domain'),
                     'excluded_route_names' => $this->stringListOption('exclude-route'),
+                    'excluded_operation_ids' => $this->documentedSideExclusions(
+                        'exclude-operation',
+                        'gesso.route_parity.external_operation_ids',
+                    ),
+                    'excluded_openapi_paths' => $this->documentedSideExclusions(
+                        'exclude-openapi-path',
+                        'gesso.route_parity.external_openapi_paths',
+                    ),
                 ],
             );
         } catch (Throwable $e) {
@@ -192,16 +204,39 @@ final class OpenApiRoutesCommand extends Command
         ), static fn(string $entry): bool => $entry !== ''));
     }
 
+    /** @return list<string> */
+    private function documentedSideExclusions(string $option, string $configKey): array
+    {
+        $configured = config($configKey, []);
+        if (!is_array($configured)) {
+            throw new InvalidArgumentException("{$configKey} must be an array of strings.");
+        }
+
+        $normalized = [];
+        foreach ($configured as $entry) {
+            if (!is_string($entry) || trim($entry) === '') {
+                throw new InvalidArgumentException("{$configKey} must contain only non-empty strings.");
+            }
+            $normalized[] = trim($entry);
+        }
+
+        return array_values(array_unique(array_merge(
+            $normalized,
+            $this->stringListOption($option),
+        )));
+    }
+
     private function renderText(RouteParityResult $result): void
     {
         $this->components->info('OpenAPI route parity');
         $this->line('Specs: ' . implode(', ', $result->specs));
         $this->newLine();
         $this->table(
-            ['Matched', 'OpenAPI only', 'Laravel only', 'Ambiguous', 'Unsupported'],
+            ['Matched', 'OpenAPI only', 'External', 'Laravel only', 'Ambiguous', 'Unsupported'],
             [[
                 count($result->matched),
                 count($result->documentedButNotRegistered),
+                count($result->externalOperations),
                 count($result->registeredButUndocumented),
                 count($result->ambiguous),
                 count($result->unsupported),
@@ -218,6 +253,19 @@ final class OpenApiRoutesCommand extends Command
                     $entry['operation_id'] ?? '',
                 ],
                 $result->documentedButNotRegistered,
+            ));
+        }
+
+        if ($result->externalOperations !== []) {
+            $this->components->info('External operations');
+            $this->table(['Spec', 'Method', 'OpenAPI path', 'operationId'], array_map(
+                static fn(array $entry): array => [
+                    $entry['spec'],
+                    $entry['method'],
+                    $entry['openapi_path'],
+                    $entry['operation_id'] ?? '',
+                ],
+                $result->externalOperations,
             ));
         }
 

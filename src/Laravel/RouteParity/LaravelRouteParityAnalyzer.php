@@ -35,7 +35,7 @@ use function trim;
  *
  * @internal Not part of the package's public API.
  *
- * @phpstan-type Filters array{prefix?: ?string, middleware?: list<string>, domains?: list<string>, excluded_route_names?: list<string>}
+ * @phpstan-type Filters array{prefix?: ?string, middleware?: list<string>, domains?: list<string>, excluded_route_names?: list<string>, excluded_operation_ids?: list<string>, excluded_openapi_paths?: list<string>}
  * @phpstan-type Operation array{spec: string, method: string, openapi_path: string, normalized_path: string, operation_id: ?string}
  * @phpstan-type RegisteredRoute array{method: string, route_uri: string, normalized_path: string, route_name: ?string, domain: ?string}
  */
@@ -177,27 +177,64 @@ final class LaravelRouteParityAnalyzer
         }
 
         $openApiOnly = [];
+        $externalOperations = [];
         foreach ($operations as $index => $operation) {
             if (isset($matchedOperationIndexes[$index])) {
                 continue;
             }
 
-            $openApiOnly[] = [
+            $entry = [
                 'spec' => $operation['spec'],
                 'method' => $operation['method'],
                 'openapi_path' => $operation['openapi_path'],
                 'operation_id' => $operation['operation_id'],
             ];
+
+            if ($this->isExcludedOperation($operation, $filters)) {
+                $externalOperations[] = $entry;
+
+                continue;
+            }
+
+            $openApiOnly[] = $entry;
         }
 
         return new RouteParityResult(
             specs: array_keys($specs),
             matched: $matched,
             documentedButNotRegistered: $openApiOnly,
+            externalOperations: $externalOperations,
             registeredButUndocumented: $routeOnly,
             ambiguous: $ambiguous,
             unsupported: $unsupported,
         );
+    }
+
+    /**
+     * Documented-side exclusions only classify unmatched operations. A route
+     * that implements an excluded operation is still reported as matched.
+     *
+     * @param Operation $operation
+     * @param Filters $filters
+     */
+    private function isExcludedOperation(array $operation, array $filters): bool
+    {
+        $operationId = $operation['operation_id'];
+        if ($operationId !== null) {
+            foreach ($filters['excluded_operation_ids'] ?? [] as $pattern) {
+                if (Str::is($pattern, $operationId)) {
+                    return true;
+                }
+            }
+        }
+
+        foreach ($filters['excluded_openapi_paths'] ?? [] as $pattern) {
+            if (Str::is($pattern, $operation['openapi_path'])) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

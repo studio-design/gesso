@@ -32,6 +32,8 @@ final class OpenApiRoutesCommandIntegrationTest extends TestCase
         config()->set('gesso.default_spec', 'route-parity');
         config()->set('gesso.spec_base_path', dirname(__DIR__, 2) . '/fixtures/specs');
         config()->set('gesso.strip_prefixes', ['/api']);
+        config()->set('gesso.route_parity.external_operation_ids', []);
+        config()->set('gesso.route_parity.external_openapi_paths', []);
     }
 
     protected function tearDown(): void
@@ -73,16 +75,17 @@ final class OpenApiRoutesCommandIntegrationTest extends TestCase
 
         $this->assertSame(0, $exitCode);
         $decoded = json_decode(trim(Artisan::output()), true, flags: JSON_THROW_ON_ERROR);
-        $this->assertSame(1, $decoded['schema_version']);
+        $this->assertSame(2, $decoded['schema_version']);
         $this->assertSame(['route-parity', 'route-parity-admin'], $decoded['specs']);
         $this->assertSame(6, $decoded['summary']['matched']);
         $this->assertSame(1, $decoded['summary']['documented_but_not_registered']);
+        $this->assertSame(0, $decoded['summary']['external_operations']);
         $this->assertSame(1, $decoded['summary']['registered_but_undocumented']);
         $this->assertSame(0, $decoded['summary']['ambiguous']);
     }
 
     #[Test]
-    public function json_output_matches_the_v1_9_compatibility_fixture(): void
+    public function json_output_matches_the_v2_compatibility_fixture(): void
     {
         $exitCode = Artisan::call('openapi:routes', [
             '--spec' => ['route-parity', 'route-parity-admin'],
@@ -94,7 +97,7 @@ final class OpenApiRoutesCommandIntegrationTest extends TestCase
         ]);
 
         $expected = file_get_contents(
-            dirname(__DIR__, 2) . '/fixtures/compatibility/v1.9-laravel-route-parity.json',
+            dirname(__DIR__, 2) . '/fixtures/compatibility/v2-laravel-route-parity.json',
         );
 
         $this->assertIsString($expected);
@@ -119,7 +122,7 @@ final class OpenApiRoutesCommandIntegrationTest extends TestCase
         $decoded = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
         $lines = explode("\n", $output);
 
-        $this->assertSame(1, $decoded['schema_version']);
+        $this->assertSame(2, $decoded['schema_version']);
         $this->assertGreaterThan(1_000, count($lines));
         $this->assertLessThan(1_000, max(array_map(strlen(...), $lines)));
     }
@@ -143,6 +146,61 @@ final class OpenApiRoutesCommandIntegrationTest extends TestCase
             ...$options,
             '--fail-on-unimplemented' => true,
         ]));
+    }
+
+    #[Test]
+    public function documented_side_exclusions_are_reported_and_ignored_by_the_strict_gate(): void
+    {
+        $exitCode = Artisan::call('openapi:routes', [
+            '--prefix' => 'api',
+            '--middleware' => ['api'],
+            '--domain' => ['api.example.test'],
+            '--exclude-route' => ['internal.*', 'undocumented'],
+            '--exclude-operation' => ['delete*'],
+            '--format' => 'json',
+            '--fail-on-unimplemented' => true,
+        ]);
+
+        $decoded = json_decode(trim(Artisan::output()), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $exitCode);
+        $this->assertSame(0, $decoded['summary']['documented_but_not_registered']);
+        $this->assertSame(1, $decoded['summary']['external_operations']);
+        $this->assertSame('deleteMissing', $decoded['external_operations'][0]['operation_id']);
+    }
+
+    #[Test]
+    public function documented_side_exclusions_are_loaded_from_config_and_merged_with_options(): void
+    {
+        config()->set('gesso.route_parity.external_operation_ids', ['does-not-match']);
+        config()->set('gesso.route_parity.external_openapi_paths', ['/v1/miss*']);
+
+        $exitCode = Artisan::call('openapi:routes', [
+            '--prefix' => 'api',
+            '--middleware' => ['api'],
+            '--domain' => ['api.example.test'],
+            '--exclude-route' => ['internal.*'],
+            '--exclude-operation' => ['also-does-not-match'],
+            '--format' => 'json',
+        ]);
+
+        $decoded = json_decode(trim(Artisan::output()), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $exitCode);
+        $this->assertSame(1, $decoded['summary']['external_operations']);
+        $this->assertSame('/v1/missing', $decoded['external_operations'][0]['openapi_path']);
+    }
+
+    #[Test]
+    public function invalid_documented_side_exclusion_config_fails_loudly(): void
+    {
+        config()->set('gesso.route_parity.external_operation_ids', 'forms.*');
+
+        $this->assertSame(1, Artisan::call('openapi:routes'));
+        $this->assertStringContainsString(
+            'gesso.route_parity.external_operation_ids must be an array of strings',
+            Artisan::output(),
+        );
     }
 
     #[Test]

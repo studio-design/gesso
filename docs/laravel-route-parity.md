@@ -25,6 +25,10 @@ return [
     'default_spec' => 'front',
     'spec_base_path' => base_path('openapi/bundled'),
     'strip_prefixes' => ['/api'],
+    'route_parity' => [
+        'external_operation_ids' => ['forms.*'],
+        'external_openapi_paths' => ['/v2/proxy/*'],
+    ],
 ];
 ```
 
@@ -50,7 +54,9 @@ php artisan openapi:routes \
   --prefix=api/v2 \
   --middleware=api \
   --domain=api.example.com \
-  --exclude-route='internal.*'
+  --exclude-route='internal.*' \
+  --exclude-operation='forms.*' \
+  --exclude-openapi-path='/v2/proxy/*'
 ```
 
 Filters are combined with AND semantics:
@@ -60,6 +66,15 @@ Filters are combined with AND semantics:
 - Repeat `--domain` to allow any listed exact route domain.
 - Repeat `--exclude-route` to exclude named routes; `*` wildcards are
   supported. Unnamed routes are not excluded by this option.
+
+Documented-side exclusions classify operations implemented by another service
+in a gateway topology. Repeat `--exclude-operation` to match `operationId`, or
+`--exclude-openapi-path` to match the OpenAPI path template. Both support `*`
+wildcards and are merged with `route_parity.external_operation_ids` and
+`route_parity.external_openapi_paths` from the Laravel config. An exclusion is
+applied only when the operation has no matching Laravel route: implemented
+operations remain in `matched`. External operations are reported separately
+instead of being silently removed.
 
 Laravel parameter names do not need to equal OpenAPI parameter names:
 `/pets/{pet}` matches `/pets/{petId}`. A trailing optional Laravel parameter
@@ -86,7 +101,7 @@ php artisan openapi:routes --fail-on-unimplemented
 - `--fail-on-undocumented` exits `1` for registered-but-undocumented routes or
   unsupported route methods.
 - `--fail-on-unimplemented` exits `1` for documented-but-not-registered
-  operations.
+  operations, excluding those classified under `external_operations`.
 - Invalid command options exit `2`; load/configuration failures exit `1`.
 
 ## JSON output
@@ -111,11 +126,13 @@ of relying only on the job log:
     path: route-parity.json
 ```
 
-The top-level `schema_version` is currently `1`. The payload contains the
+The top-level `schema_version` is currently `2`. Version 2 adds the
+`external_operations` result and summary count. The payload contains the
 selected `specs`, a `summary`, and these result arrays:
 
 - `matched`
 - `documented_but_not_registered`
+- `external_operations`
 - `registered_but_undocumented`
 - `ambiguous`
 - `unsupported`
