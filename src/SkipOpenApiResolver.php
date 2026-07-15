@@ -8,6 +8,9 @@ use ReflectionClass;
 use ReflectionMethod;
 use Studio\Gesso\Attribute\SkipOpenApi;
 
+/**
+ * @internal Implementation detail shared by the public Laravel test trait.
+ */
 trait SkipOpenApiResolver
 {
     private function shouldSkipOpenApi(): bool

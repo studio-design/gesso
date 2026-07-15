@@ -241,6 +241,17 @@ or partially available optional dependencies remain dormant rather than
 causing a fatal error. The runnable Pest example is installed and executed in
 its own CI job.
 
+V2 narrows the PHP API without changing the supported configuration, commands,
+expectation names, or machine-readable formats. The coverage renderers,
+sidecar envelope/reader/writer, threshold evaluator, and extension-only
+configuration exceptions are now `@internal`. So are `SchemaContext`,
+`SkipOpenApiResolver`, `Laravel\Commands\OpenApiRoutesCommand`,
+`PHPUnit\ConsoleOutput`, `PHPUnit\InvalidStrictRequiredConfigurationException`,
+and the `Pest\Expectations` dispatch target. Their v1 entries above remain an
+accurate baseline; the v2 public API fixture intentionally excludes them. The
+coverage JSON and sidecar wire formats remain protected separately by their
+versioned compatibility fixtures.
+
 ## PHPUnit extension configuration
 
 The extension FQCN and every accepted parameter name are public configuration.

@@ -24,6 +24,8 @@ use function sprintf;
  * Used by the merge CLI to assemble per-worker coverage state into a single
  * report; the reader is intentionally narrow — it just decodes JSON and
  * hands back raw payloads, leaving merge logic to the tracker.
+ *
+ * @internal Merge CLI implementation detail. Do not use from user code.
  */
 final class CoverageSidecarReader
 {

@@ -9,6 +9,9 @@ use function round;
 use function sprintf;
 
 /**
+ * @internal Output is exposed through the PHPUnit extension and merge CLI.
+ *           This renderer is not part of the public PHP API.
+ *
  * @phpstan-import-type CoverageResult from OpenApiCoverageTracker
  * @phpstan-import-type EndpointSummary from OpenApiCoverageTracker
  * @phpstan-import-type ResponseRow from OpenApiCoverageTracker

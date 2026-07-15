@@ -44,6 +44,9 @@ use function sprintf;
  * payloads — which already use `version` at the top level — remain
  * distinguishable; see {@see self::parse()}'s discriminator order.
  *
+ * @internal Used by the PHPUnit extension and merge CLI. The accepted wire
+ *           formats remain versioned compatibility inputs.
+ *
  * @phpstan-import-type CoverageStatePayload from OpenApiCoverageTracker
  * @phpstan-import-type StrictRequiredStatePayload from StrictRequiredTracker
  *

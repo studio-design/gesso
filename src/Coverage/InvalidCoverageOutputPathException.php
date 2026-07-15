@@ -19,6 +19,8 @@ use Throwable;
  * from a generic SPL `InvalidArgumentException` so `bootstrap()` can catch
  * exactly this case without swallowing unrelated argument errors raised
  * deeper in the call graph (e.g. from spec loading or path matching).
+ *
+ * @internal PHPUnit extension configuration boundary. Do not catch from user code.
  */
 final class InvalidCoverageOutputPathException extends RuntimeException
 {

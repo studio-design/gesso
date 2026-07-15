@@ -33,6 +33,9 @@ use function strtoupper;
  * (non-Laravel) Pest support against PSR-7 messages is a follow-up to
  * the Pest plugin epic — see the README's "Pest plugin (Laravel)" section
  * for the documented v1 constraints.
+ *
+ * @internal Dispatch target for registered Pest expectations. User code calls
+ *           the expectations rather than this class directly.
  */
 final class Expectations
 {

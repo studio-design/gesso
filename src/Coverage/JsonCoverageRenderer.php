@@ -37,6 +37,9 @@ use function sprintf;
  *
  * See `docs/coverage-json-schema.md` for the full field reference.
  *
+ * @internal Output is exposed through the PHPUnit extension and merge CLI.
+ *           The versioned JSON document remains a compatibility surface.
+ *
  * @phpstan-import-type CoverageResult from OpenApiCoverageTracker
  * @phpstan-import-type EndpointSummary from OpenApiCoverageTracker
  * @phpstan-import-type ResponseRow from OpenApiCoverageTracker

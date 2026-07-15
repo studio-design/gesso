@@ -8,6 +8,8 @@ namespace Studio\Gesso;
  * Direction of validation for a schema conversion. Drives asymmetric handling
  * of OpenAPI's `readOnly` / `writeOnly` markers: `readOnly` properties are
  * forbidden in requests, `writeOnly` properties are forbidden in responses.
+ *
+ * @internal Used by the internal schema conversion pipeline.
  */
 enum SchemaContext
 {

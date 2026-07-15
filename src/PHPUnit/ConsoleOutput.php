@@ -11,6 +11,9 @@ use function getenv;
 use function mb_strtolower;
 use function trim;
 
+/**
+ * @internal Configuration value used by the PHPUnit extension and merge CLI.
+ */
 enum ConsoleOutput: string
 {
     case DEFAULT = 'default';
