@@ -13,6 +13,7 @@ use Studio\Gesso\DecodedBody;
 use Studio\Gesso\Exception\InvalidOpenApiSpecException;
 use Studio\Gesso\OpenApiResponseValidator;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
+use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 
 use function array_map;
 use function count;
@@ -30,7 +31,7 @@ class OpenApiResponseValidatorTest extends TestCase
         parent::setUp();
         OpenApiSpecLoader::reset();
         OpenApiSpecLoader::configure(__DIR__ . '/../fixtures/specs');
-        $this->validator = new OpenApiResponseValidator();
+        $this->validator = new OpenApiResponseValidator(strictRequiredTracker: new StrictRequiredTracker());
     }
 
     protected function tearDown(): void
@@ -451,7 +452,7 @@ class OpenApiResponseValidatorTest extends TestCase
     {
         // Opting out of the default skip list means 5xx behaves like any
         // other status code again — a 503 not in the spec becomes a failure.
-        $validator = new OpenApiResponseValidator(skipResponseCodes: []);
+        $validator = new OpenApiResponseValidator(strictRequiredTracker: new StrictRequiredTracker(), skipResponseCodes: []);
 
         $result = $validator->validate(
             'petstore-3.0',
@@ -470,7 +471,7 @@ class OpenApiResponseValidatorTest extends TestCase
     public function custom_skip_response_codes_pattern(): void
     {
         // Users can widen the skip set to cover 4xx or a specific code.
-        $validator = new OpenApiResponseValidator(skipResponseCodes: ['4\d\d', '5\d\d']);
+        $validator = new OpenApiResponseValidator(strictRequiredTracker: new StrictRequiredTracker(), skipResponseCodes: ['4\d\d', '5\d\d']);
 
         $result = $validator->validate(
             'petstore-3.0',
@@ -489,7 +490,7 @@ class OpenApiResponseValidatorTest extends TestCase
     {
         // Anchoring matters: "20" must not match "201". Without anchors, a
         // pattern like "20" would accidentally skip any code starting with 20.
-        $validator = new OpenApiResponseValidator(skipResponseCodes: ['20']);
+        $validator = new OpenApiResponseValidator(strictRequiredTracker: new StrictRequiredTracker(), skipResponseCodes: ['20']);
 
         $result = $validator->validate(
             'content-without-schema',
@@ -542,7 +543,7 @@ class OpenApiResponseValidatorTest extends TestCase
     {
         // Regression guard: the foreach in matchingSkipPattern must try every
         // configured pattern, not short-circuit on the first.
-        $validator = new OpenApiResponseValidator(skipResponseCodes: ['4\d\d', '5\d\d']);
+        $validator = new OpenApiResponseValidator(strictRequiredTracker: new StrictRequiredTracker(), skipResponseCodes: ['4\d\d', '5\d\d']);
 
         $result404 = $validator->validate('petstore-3.0', 'GET', '/v1/pets', 404, null);
         $result500 = $validator->validate('petstore-3.0', 'GET', '/v1/pets', 500, null);
@@ -557,7 +558,7 @@ class OpenApiResponseValidatorTest extends TestCase
         // skipReason() carries enough detail to audit which configured pattern
         // fired, not just which status code triggered — useful when running
         // with multiple distinct patterns.
-        $validator = new OpenApiResponseValidator(skipResponseCodes: ['4\d\d', '5\d\d']);
+        $validator = new OpenApiResponseValidator(strictRequiredTracker: new StrictRequiredTracker(), skipResponseCodes: ['4\d\d', '5\d\d']);
 
         $result = $validator->validate('petstore-3.0', 'GET', '/v1/pets', 503, null);
 
@@ -579,7 +580,7 @@ class OpenApiResponseValidatorTest extends TestCase
         // shape to compileSkipPatterns(). Pin the round-trip so a future
         // refactor that drops the (string) cast fails here, not at the
         // caller site where the root cause is less obvious.
-        $validator = new OpenApiResponseValidator(skipResponseCodes: ['503']);
+        $validator = new OpenApiResponseValidator(strictRequiredTracker: new StrictRequiredTracker(), skipResponseCodes: ['503']);
 
         $result = $validator->validate('petstore-3.0', 'GET', '/v1/pets', 503, null);
 
@@ -594,14 +595,14 @@ class OpenApiResponseValidatorTest extends TestCase
         $this->expectExceptionMessage('skipResponseCodes');
         $this->expectExceptionMessage('(unclosed');
 
-        new OpenApiResponseValidator(skipResponseCodes: ['(unclosed']);
+        new OpenApiResponseValidator(strictRequiredTracker: new StrictRequiredTracker(), skipResponseCodes: ['(unclosed']);
     }
 
     #[Test]
     public function invalid_skip_pattern_error_includes_preg_detail(): void
     {
         try {
-            new OpenApiResponseValidator(skipResponseCodes: ['(unclosed']);
+            new OpenApiResponseValidator(strictRequiredTracker: new StrictRequiredTracker(), skipResponseCodes: ['(unclosed']);
             $this->fail('Expected InvalidArgumentException was not thrown.');
         } catch (InvalidArgumentException $e) {
             // The message carries both the offending raw pattern and a
@@ -623,7 +624,7 @@ class OpenApiResponseValidatorTest extends TestCase
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage('must not be an empty string');
 
-        new OpenApiResponseValidator(skipResponseCodes: ['']);
+        new OpenApiResponseValidator(strictRequiredTracker: new StrictRequiredTracker(), skipResponseCodes: ['']);
     }
 
     // ========================================
@@ -1179,7 +1180,7 @@ class OpenApiResponseValidatorTest extends TestCase
             range(1, 50),
         );
 
-        $capped = new OpenApiResponseValidator(maxErrors: 5);
+        $capped = new OpenApiResponseValidator(strictRequiredTracker: new StrictRequiredTracker(), maxErrors: 5);
         $cappedResult = $capped->validate(
             'petstore-3.0',
             'GET',
@@ -1188,7 +1189,7 @@ class OpenApiResponseValidatorTest extends TestCase
             ['data' => $items],
         );
 
-        $unlimited = new OpenApiResponseValidator(maxErrors: 0);
+        $unlimited = new OpenApiResponseValidator(strictRequiredTracker: new StrictRequiredTracker(), maxErrors: 0);
         $unlimitedResult = $unlimited->validate(
             'petstore-3.0',
             'GET',
@@ -1208,7 +1209,7 @@ class OpenApiResponseValidatorTest extends TestCase
     #[Test]
     public function max_errors_one_limits_to_single_error(): void
     {
-        $validator = new OpenApiResponseValidator(maxErrors: 1);
+        $validator = new OpenApiResponseValidator(strictRequiredTracker: new StrictRequiredTracker(), maxErrors: 1);
         $result = $validator->validate(
             'petstore-3.0',
             'GET',
@@ -1234,7 +1235,7 @@ class OpenApiResponseValidatorTest extends TestCase
             range(1, 50),
         );
 
-        $validator = new OpenApiResponseValidator(maxErrors: 2);
+        $validator = new OpenApiResponseValidator(strictRequiredTracker: new StrictRequiredTracker(), maxErrors: 2);
         $result = $validator->validate(
             'petstore-3.0',
             'GET',
@@ -1255,7 +1256,7 @@ class OpenApiResponseValidatorTest extends TestCase
             range(1, 50),
         );
 
-        $validator = new OpenApiResponseValidator(maxErrors: 0);
+        $validator = new OpenApiResponseValidator(strictRequiredTracker: new StrictRequiredTracker(), maxErrors: 0);
         $result = $validator->validate(
             'petstore-3.0',
             'GET',
@@ -1274,7 +1275,7 @@ class OpenApiResponseValidatorTest extends TestCase
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage('maxErrors must be 0 (unlimited) or a positive integer, got -1.');
 
-        new OpenApiResponseValidator(maxErrors: -1);
+        new OpenApiResponseValidator(strictRequiredTracker: new StrictRequiredTracker(), maxErrors: -1);
     }
 
     // ========================================
@@ -1700,7 +1701,7 @@ class OpenApiResponseValidatorTest extends TestCase
         // Spec declares only `200` and `default`. A 418 response should
         // validate against the `default` schema rather than failing with
         // "Status code 418 not defined".
-        $validator = new OpenApiResponseValidator(skipResponseCodes: []);
+        $validator = new OpenApiResponseValidator(strictRequiredTracker: new StrictRequiredTracker(), skipResponseCodes: []);
 
         $result = $validator->validate(
             'spec-fallback',
@@ -1721,7 +1722,7 @@ class OpenApiResponseValidatorTest extends TestCase
     {
         // Falling back to `default` does not bypass schema validation —
         // a body that doesn't match `default`'s schema still fails.
-        $validator = new OpenApiResponseValidator(skipResponseCodes: []);
+        $validator = new OpenApiResponseValidator(strictRequiredTracker: new StrictRequiredTracker(), skipResponseCodes: []);
 
         $result = $validator->validate(
             'spec-fallback',
@@ -1739,7 +1740,7 @@ class OpenApiResponseValidatorTest extends TestCase
     #[Test]
     public function range_key_5xx_validates_503_response(): void
     {
-        $validator = new OpenApiResponseValidator(skipResponseCodes: []);
+        $validator = new OpenApiResponseValidator(strictRequiredTracker: new StrictRequiredTracker(), skipResponseCodes: []);
 
         $result = $validator->validate(
             'spec-fallback',
@@ -1761,7 +1762,7 @@ class OpenApiResponseValidatorTest extends TestCase
         // Spec declares both `503` (specific) and `5XX` (range). 503 must
         // match the specific key — and the test pins it via the unique
         // `specific: true` field that only the 503 schema requires.
-        $validator = new OpenApiResponseValidator(skipResponseCodes: []);
+        $validator = new OpenApiResponseValidator(strictRequiredTracker: new StrictRequiredTracker(), skipResponseCodes: []);
 
         $result = $validator->validate(
             'spec-fallback',
@@ -1780,7 +1781,7 @@ class OpenApiResponseValidatorTest extends TestCase
     public function range_key_falls_through_to_5_x_x_for_other_5xx_codes(): void
     {
         // 599 isn't declared explicitly, so the 5XX range key matches.
-        $validator = new OpenApiResponseValidator(skipResponseCodes: []);
+        $validator = new OpenApiResponseValidator(strictRequiredTracker: new StrictRequiredTracker(), skipResponseCodes: []);
 
         $result = $validator->validate(
             'spec-fallback',
@@ -1801,7 +1802,7 @@ class OpenApiResponseValidatorTest extends TestCase
         // OpenAPI permits both upper and lower case for the X in range keys
         // (`5XX` and `5xx` are both legal). The matched key preserves the
         // spec author's casing so coverage reports show what they wrote.
-        $validator = new OpenApiResponseValidator(skipResponseCodes: []);
+        $validator = new OpenApiResponseValidator(strictRequiredTracker: new StrictRequiredTracker(), skipResponseCodes: []);
 
         $result = $validator->validate(
             'spec-fallback',
@@ -1821,7 +1822,7 @@ class OpenApiResponseValidatorTest extends TestCase
     {
         // A 4xx response against a spec that only declares 5XX should still
         // fail (assuming default is not declared and skip patterns are off).
-        $validator = new OpenApiResponseValidator(skipResponseCodes: []);
+        $validator = new OpenApiResponseValidator(strictRequiredTracker: new StrictRequiredTracker(), skipResponseCodes: []);
 
         $result = $validator->validate(
             'spec-fallback',
@@ -1842,7 +1843,7 @@ class OpenApiResponseValidatorTest extends TestCase
         // /with-default-only declares both 200 and default. The exact
         // match must win — verified via a unique required field that
         // exists ONLY on the 200 schema.
-        $validator = new OpenApiResponseValidator(skipResponseCodes: []);
+        $validator = new OpenApiResponseValidator(strictRequiredTracker: new StrictRequiredTracker(), skipResponseCodes: []);
 
         $result = $validator->validate(
             'spec-fallback',
@@ -1863,7 +1864,7 @@ class OpenApiResponseValidatorTest extends TestCase
         // /with-range-and-default declares both 5XX and default. A 503
         // response must hit 5XX (range > default), verified via the
         // `from5xx` required field that only the 5XX schema requires.
-        $validator = new OpenApiResponseValidator(skipResponseCodes: []);
+        $validator = new OpenApiResponseValidator(strictRequiredTracker: new StrictRequiredTracker(), skipResponseCodes: []);
 
         $result = $validator->validate(
             'spec-fallback',
@@ -1883,7 +1884,7 @@ class OpenApiResponseValidatorTest extends TestCase
     {
         // Same fixture, but a 418 (non-5xx). 5XX doesn't match → falls
         // through to default. Verified via `fromDefault` required field.
-        $validator = new OpenApiResponseValidator(skipResponseCodes: []);
+        $validator = new OpenApiResponseValidator(strictRequiredTracker: new StrictRequiredTracker(), skipResponseCodes: []);
 
         $result = $validator->validate(
             'spec-fallback',
@@ -1905,7 +1906,7 @@ class OpenApiResponseValidatorTest extends TestCase
         // resolveResponseKey. A spec declaring only `default` + a 503
         // response with the default 5\d\d skip pattern enabled must yield
         // isSkipped() — NOT validated against `default`.
-        $validator = new OpenApiResponseValidator(); // default skip = ['5\d\d']
+        $validator = new OpenApiResponseValidator(strictRequiredTracker: new StrictRequiredTracker()); // default skip = ['5\d\d']
 
         $result = $validator->validate(
             'spec-fallback',
@@ -1931,7 +1932,7 @@ class OpenApiResponseValidatorTest extends TestCase
         // by other tests; this provider covers 1XX-4XX. Skip patterns are
         // off so the lookup actually runs (default 5\d\d skip wouldn't fire
         // on these classes anyway).
-        $validator = new OpenApiResponseValidator(skipResponseCodes: []);
+        $validator = new OpenApiResponseValidator(strictRequiredTracker: new StrictRequiredTracker(), skipResponseCodes: []);
 
         $result = $validator->validate(
             'spec-fallback',
@@ -1953,7 +1954,7 @@ class OpenApiResponseValidatorTest extends TestCase
         // truncated 404). When the literal status doesn't match exact or
         // range, and we're about to fall back to `default`, emit a warning
         // so the spec author notices the typo.
-        $validator = new OpenApiResponseValidator(skipResponseCodes: []);
+        $validator = new OpenApiResponseValidator(strictRequiredTracker: new StrictRequiredTracker(), skipResponseCodes: []);
 
         $captured = [];
         $previous = set_error_handler(static function (int $errno, string $message) use (&$captured): bool {

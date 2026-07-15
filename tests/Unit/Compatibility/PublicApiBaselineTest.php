@@ -12,8 +12,10 @@ use Studio\Gesso\Coverage\ConsoleCoverageRenderer;
 use Studio\Gesso\Coverage\HtmlCoverageRenderer;
 use Studio\Gesso\Coverage\JsonCoverageRenderer;
 use Studio\Gesso\Fuzz\ExploredCase;
+use Studio\Gesso\OpenApiResponseValidator;
 use Studio\Gesso\Tests\Helpers\PublicApiInventory;
 use Studio\Gesso\Tests\Unit\Compatibility\Fixture\PublicApiReturnTypeFixture;
+use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 
 use function dirname;
 use function file_get_contents;
@@ -137,6 +139,24 @@ final class PublicApiBaselineTest extends TestCase
             ]],
         ];
         ksort($expected[ExploredCase::class]['methods']);
+
+        $responseValidatorConstructor = $expected[OpenApiResponseValidator::class]['methods']['__construct'];
+        $maxErrors = $responseValidatorConstructor['parameters'][0];
+        $skipResponseCodes = $responseValidatorConstructor['parameters'][1];
+        $expected[OpenApiResponseValidator::class]['methods']['__construct']['parameters'] = [
+            [
+                'name' => 'strictRequiredTracker',
+                'type' => StrictRequiredTracker::class,
+                'optional' => false,
+                'variadic' => false,
+                'by_reference' => false,
+                'default' => ['unavailable' => true],
+                'attributes' => [],
+            ],
+            $maxErrors,
+            $skipResponseCodes,
+        ];
+
         /** @var array<string, array<string, mixed>> $actual */
         $actual = json_decode($v2Json, true, flags: JSON_THROW_ON_ERROR);
 

@@ -17,6 +17,7 @@ use Studio\Gesso\OpenApiRequestValidator;
 use Studio\Gesso\OpenApiResponseValidator;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Spec\OpenApiSpecResolver;
+use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 use Studio\Gesso\Validation\Support\ContentTypeMatcher;
 use Symfony\Component\BrowserKit\Exception\BadMethodCallException;
 use Symfony\Component\HttpFoundation\Request;
@@ -122,6 +123,7 @@ trait OpenApiAssertions
         $validator = $extraSkipResponseCodes === []
             ? $this->symfonyResponseValidator()
             : new OpenApiResponseValidator(
+                strictRequiredTracker: StrictRequiredTracker::current(),
                 maxErrors: $this->openApiMaxErrors(),
                 skipResponseCodes: array_merge(
                     OpenApiResponseValidator::DEFAULT_SKIP_RESPONSE_CODES,
@@ -313,6 +315,7 @@ trait OpenApiAssertions
     private function symfonyResponseValidator(): OpenApiResponseValidator
     {
         return $this->cachedSymfonyResponseValidator ??= new OpenApiResponseValidator(
+            strictRequiredTracker: StrictRequiredTracker::current(),
             maxErrors: $this->openApiMaxErrors(),
         );
     }

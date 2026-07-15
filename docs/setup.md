@@ -262,6 +262,7 @@ You can use the `#[OpenApiSpec]` attribute with the `OpenApiSpecResolver` trait 
 use Studio\Gesso\Attribute\OpenApiSpec;
 use Studio\Gesso\Spec\OpenApiSpecResolver;
 use Studio\Gesso\OpenApiResponseValidator;
+use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 
 #[OpenApiSpec('front')]
 class GetPetsTest extends TestCase
@@ -271,7 +272,7 @@ class GetPetsTest extends TestCase
     public function test_list_pets(): void
     {
         $specName = $this->resolveOpenApiSpec(); // 'front'
-        $validator = new OpenApiResponseValidator();
+        $validator = new OpenApiResponseValidator(new StrictRequiredTracker());
         $result = $validator->validate(
             specName: $specName,
             method: 'GET',
@@ -291,12 +292,13 @@ Or without the attribute, pass the spec name directly:
 ```php
 use Studio\Gesso\OpenApiResponseValidator;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
+use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 
 // Configure once (e.g., in bootstrap)
 OpenApiSpecLoader::configure(__DIR__ . '/openapi/bundled', ['/api']);
 
 // In your test
-$validator = new OpenApiResponseValidator();
+$validator = new OpenApiResponseValidator(new StrictRequiredTracker());
 $result = $validator->validate(
     specName: 'front',
     method: 'GET',
@@ -314,14 +316,16 @@ $this->assertTrue($result->isValid(), $result->errorMessage());
 By default, up to **20** validation errors are reported per response. You can change this via the constructor:
 
 ```php
+$tracker = new StrictRequiredTracker();
+
 // Report up to 5 errors
-$validator = new OpenApiResponseValidator(maxErrors: 5);
+$validator = new OpenApiResponseValidator($tracker, maxErrors: 5);
 
 // Report all errors (unlimited)
-$validator = new OpenApiResponseValidator(maxErrors: 0);
+$validator = new OpenApiResponseValidator($tracker, maxErrors: 0);
 
 // Stop at first error
-$validator = new OpenApiResponseValidator(maxErrors: 1);
+$validator = new OpenApiResponseValidator($tracker, maxErrors: 1);
 ```
 
 For Laravel, set the `max_errors` key in `config/gesso.php`.
@@ -348,7 +352,10 @@ return [
 Or pass directly to `OpenApiResponseValidator`:
 
 ```php
-$validator = new OpenApiResponseValidator(skipResponseCodes: ['5\d\d']);
+$validator = new OpenApiResponseValidator(
+    new StrictRequiredTracker(),
+    skipResponseCodes: ['5\d\d'],
+);
 ```
 
 Notes:

@@ -28,6 +28,7 @@ use Studio\Gesso\Spec\OpenApiOperationResolver;
 use Studio\Gesso\Spec\OpenApiPathMatcher;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Validation\Request\SecuritySchemeIntrospector;
+use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 use Studio\Gesso\Validation\Support\ContentTypeMatcher;
 use Studio\Gesso\Validation\Support\DiscriminatorEnforcement;
 use Studio\Gesso\Validation\Support\HeaderNormalizer;
@@ -891,6 +892,7 @@ trait ValidatesOpenApiSchema
             self::$cachedSkipResponseCodes !== $resolvedSkipCodes
         ) {
             self::$cachedValidator = new OpenApiResponseValidator(
+                strictRequiredTracker: StrictRequiredTracker::current(),
                 maxErrors: $resolvedMaxErrors,
                 skipResponseCodes: $resolvedSkipCodes,
             );
@@ -909,6 +911,7 @@ trait ValidatesOpenApiSchema
         $this->applyDiscriminatorEnforcementConfig();
 
         return new OpenApiResponseValidator(
+            strictRequiredTracker: StrictRequiredTracker::current(),
             maxErrors: $this->resolveMaxErrors(),
             skipResponseCodes: array_merge(
                 $this->resolveSkipResponseCodes(),

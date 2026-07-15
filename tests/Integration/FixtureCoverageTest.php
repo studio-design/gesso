@@ -13,6 +13,7 @@ use Studio\Gesso\OpenApiRequestValidator;
 use Studio\Gesso\OpenApiResponseValidator;
 use Studio\Gesso\Spec\OpenApiSchemaConverter;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
+use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 use Studio\Gesso\Validation\Support\DiscriminatorEnforcement;
 
 use function implode;
@@ -53,7 +54,7 @@ class FixtureCoverageTest extends TestCase
         // a prior test that toggled the process-global gate (#262).
         DiscriminatorEnforcement::reset();
         OpenApiSpecLoader::configure(__DIR__ . '/../fixtures/specs');
-        $this->responseValidator = new OpenApiResponseValidator();
+        $this->responseValidator = new OpenApiResponseValidator(strictRequiredTracker: new StrictRequiredTracker());
         $this->requestValidator = new OpenApiRequestValidator();
     }
 

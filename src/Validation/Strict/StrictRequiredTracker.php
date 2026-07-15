@@ -30,11 +30,10 @@ use function trigger_error;
  * Tracker that accumulates response body object-node observations per
  * `(spec, METHOD path, statusKey, contentTypeKey)` across a test run.
  * Exposed through a static facade (see {@see self::current()} /
- * {@see self::setCurrent()}) so the Laravel `ValidatesOpenApiSchema` trait
- * can still reach it without DI — the trait has no constructor and cannot
- * receive an instance through injection. Production callers (the PHPUnit
- * extension, the merge CLI, the validator) construct and use instances
- * directly.
+ * {@see self::setCurrent()}) so framework adapters without constructor
+ * injection can resolve the run-level instance at their integration boundary.
+ * The validator itself requires an instance explicitly; the PHPUnit extension
+ * and merge CLI construct and use their owned instances directly.
  *
  * Each observation feeds a JSON-Pointer-like map `pointer => list<string>`
  * (see {@see StrictRequiredBodyWalker}) describing the keys present at every
@@ -84,11 +83,11 @@ final class StrictRequiredTracker
     public const STATE_FORMAT_VERSION = 2;
 
     /**
-     * Service-locator slot for the static facade (Issue #229). Symmetric with
-     * {@see OpenApiCoverageTracker::$current}: the Laravel trait and the
-     * {@see OpenApiResponseValidator} reach for the tracker via static call,
-     * and we route those to whichever instance the host installed via
-     * {@see self::setCurrent()}.
+     * Service-locator slot for the framework-adapter facade (Issue #229).
+     * Symmetric with {@see OpenApiCoverageTracker::$current}: adapters resolve
+     * whichever run-level instance the host installed via
+     * {@see self::setCurrent()}, then inject it into
+     * {@see OpenApiResponseValidator}.
      */
     private static ?self $current = null;
 

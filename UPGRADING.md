@@ -39,6 +39,20 @@ OpenAPI Description after upgrading. V2 replaces the resolver-owned
 with `x-studio-gesso-implicit-schema-name`; it deliberately does not trust or
 dual-read either marker when authored in input.
 
+Direct `OpenApiResponseValidator` construction now requires a
+`StrictRequiredTracker` as its first argument. Create one tracker per test run
+and reuse it across validators; framework adapters inject their run-level
+tracker automatically:
+
+```php
+$tracker = new StrictRequiredTracker();
+$validator = new OpenApiResponseValidator($tracker, maxErrors: 20);
+```
+
+This removes the validator's fallback to the process-global tracker. Named
+`maxErrors` and `skipResponseCodes` arguments remain unchanged after the new
+required first argument.
+
 ## Within v1.x
 
 The v1.x line is covered end-to-end by SemVer (see "v0.x → v1.0.0"
