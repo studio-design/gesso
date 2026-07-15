@@ -17,6 +17,7 @@ use Studio\Gesso\DecodedBody;
 use Studio\Gesso\OpenApiRequestValidator;
 use Studio\Gesso\OpenApiResponseValidator;
 use Studio\Gesso\OpenApiValidationResult;
+use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 use Studio\Gesso\Validation\Support\ContentTypeMatcher;
 
 use function array_key_exists;
@@ -59,6 +60,7 @@ final class OpenApiPsr7Validator
             skipRequestValidationResponseCodes: $skipRequestValidationResponseCodes,
         );
         $this->responseValidator = new OpenApiResponseValidator(
+            strictRequiredTracker: StrictRequiredTracker::current(),
             maxErrors: $maxErrors,
             skipResponseCodes: $skipResponseCodes,
         );

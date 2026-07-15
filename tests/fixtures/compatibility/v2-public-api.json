@@ -4630,6 +4630,17 @@
                 "attributes": [],
                 "parameters": [
                     {
+                        "name": "strictRequiredTracker",
+                        "type": "Studio\\Gesso\\Validation\\Strict\\StrictRequiredTracker",
+                        "optional": false,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": {
+                            "unavailable": true
+                        },
+                        "attributes": []
+                    },
+                    {
                         "name": "maxErrors",
                         "type": "int",
                         "optional": true,
@@ -4650,15 +4661,6 @@
                                 "5\\d\\d"
                             ]
                         },
-                        "attributes": []
-                    },
-                    {
-                        "name": "strictRequiredTracker",
-                        "type": "?Studio\\Gesso\\Validation\\Strict\\StrictRequiredTracker",
-                        "optional": true,
-                        "variadic": false,
-                        "by_reference": false,
-                        "default": null,
                         "attributes": []
                     }
                 ]

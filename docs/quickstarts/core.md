@@ -7,7 +7,7 @@ composer require --dev studio-design/gesso
 Copy the minimal [`examples/core`](https://github.com/studio-design/gesso/tree/main/examples/core) project. Its test validates a JSON response without a framework adapter:
 
 ```php
-$result = (new OpenApiResponseValidator())->validate(
+$result = (new OpenApiResponseValidator(new StrictRequiredTracker()))->validate(
     'petstore', 'GET', '/pets', 200,
     [['id' => 1, 'name' => 'Fido']],
     'application/json',

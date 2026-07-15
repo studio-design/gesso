@@ -33,7 +33,7 @@ final class StrictRequiredValidatorIntegrationTest extends TestCase
         OpenApiSpecLoader::configure(__DIR__ . '/../../../fixtures/specs');
         StrictRequiredTracker::reset();
         StrictRequiredPerCallChecker::reset();
-        $this->validator = new OpenApiResponseValidator();
+        $this->validator = new OpenApiResponseValidator(StrictRequiredTracker::current());
     }
 
     protected function tearDown(): void
@@ -47,8 +47,8 @@ final class StrictRequiredValidatorIntegrationTest extends TestCase
     #[Test]
     public function injected_tracker_receives_observations_instead_of_current_locator(): void
     {
-        // Issue #229: the validator accepts an optional StrictRequiredTracker
-        // via ctor. When one is injected, observations must go to the
+        // Issue #234: the validator requires a StrictRequiredTracker via its
+        // constructor. Observations must go to the
         // injected instance, NOT the process-global current() locator. A
         // regression that drops the field would silently route to current()
         // and the suite-level intersection would absorb the test traffic.

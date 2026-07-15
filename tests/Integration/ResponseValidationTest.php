@@ -13,6 +13,7 @@ use Studio\Gesso\Laravel\ValidatesOpenApiSchema;
 use Studio\Gesso\OpenApiResponseValidator;
 use Studio\Gesso\OpenApiValidationResult;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
+use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 
 class ResponseValidationTest extends TestCase
 {
@@ -24,7 +25,7 @@ class ResponseValidationTest extends TestCase
         OpenApiSpecLoader::reset();
         OpenApiCoverageTracker::reset();
         OpenApiSpecLoader::configure(__DIR__ . '/../fixtures/specs');
-        $this->validator = new OpenApiResponseValidator();
+        $this->validator = new OpenApiResponseValidator(strictRequiredTracker: new StrictRequiredTracker());
     }
 
     protected function tearDown(): void
