@@ -10,6 +10,27 @@ the README for the full surface contract.
 
 ## Unreleased
 
+## [2.0.0-beta.1](https://github.com/studio-design/gesso/compare/v1.10.0...v2.0.0-beta.1) (2026-07-15)
+
+
+### ⚠ BREAKING CHANGES
+
+* **identity:** rename diagnostic and resolver identifiers ([#344](https://github.com/studio-design/gesso/issues/344))
+* **coverage:** publish the gesso json contract ([#343](https://github.com/studio-design/gesso/issues/343))
+* **cli:** consolidate commands under gesso ([#342](https://github.com/studio-design/gesso/issues/342))
+* **laravel:** adopt the gesso configuration identity ([#341](https://github.com/studio-design/gesso/issues/341))
+* **namespace:** adopt the gesso package identity ([#340](https://github.com/studio-design/gesso/issues/340))
+* **runtime:** require php 8.3 and maintained test runners ([#338](https://github.com/studio-design/gesso/issues/338))
+
+### Features
+
+* **cli:** consolidate commands under gesso ([#342](https://github.com/studio-design/gesso/issues/342)) ([c597f19](https://github.com/studio-design/gesso/commit/c597f1928c07ff9ac34391eeca0eece8c789b4c2))
+* **coverage:** publish the gesso json contract ([#343](https://github.com/studio-design/gesso/issues/343)) ([0f51511](https://github.com/studio-design/gesso/commit/0f51511ba6c59abe3311cfd3152c7c4638e9296c))
+* **identity:** rename diagnostic and resolver identifiers ([#344](https://github.com/studio-design/gesso/issues/344)) ([286f099](https://github.com/studio-design/gesso/commit/286f09914a3c596c6635b935fcdae1705b5c5291))
+* **laravel:** adopt the gesso configuration identity ([#341](https://github.com/studio-design/gesso/issues/341)) ([768dc39](https://github.com/studio-design/gesso/commit/768dc393186617c43d71c0e6219f0206fedf577d))
+* **namespace:** adopt the gesso package identity ([#340](https://github.com/studio-design/gesso/issues/340)) ([29a96d9](https://github.com/studio-design/gesso/commit/29a96d97aaee94a2934f441922abfbe97d1f1395))
+* **runtime:** require php 8.3 and maintained test runners ([#338](https://github.com/studio-design/gesso/issues/338)) ([36d46d9](https://github.com/studio-design/gesso/commit/36d46d98bc91faa36aaff5eea8c1531500383549))
+
 ## [1.10.0](https://github.com/studio-design/gesso/compare/v1.9.0...v1.10.0) (2026-07-14)
 
 
