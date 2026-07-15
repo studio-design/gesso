@@ -89,6 +89,30 @@ final class RuntimeSupportPolicyTest extends TestCase
         $this->assertStringNotContainsString('composer require --dev "phpunit/phpunit:', $workflow);
     }
 
+    #[Test]
+    public function documentation_distinguishes_v1_and_v2_support_surfaces(): void
+    {
+        $versioning = file_get_contents(__DIR__ . '/../../../docs/versioning.md');
+        $upgrading = file_get_contents(__DIR__ . '/../../../UPGRADING.md');
+
+        $this->assertNotFalse($versioning);
+        $this->assertNotFalse($upgrading);
+        $this->assertStringContainsString('v2.x: 8.3, 8.4, 8.5', $versioning);
+        $this->assertStringContainsString('v1.x: `^8.2`', $versioning);
+        $this->assertStringContainsString('v2.x: 12.x, 13.x', $versioning);
+        $this->assertStringContainsString('v1.x: 11.x, 12.x, 13.x', $versioning);
+        $this->assertStringContainsString(
+            'Laravel route parity JSON consumers must also accept',
+            $upgrading,
+        );
+        $this->assertStringContainsString('`schema_version: 2`', $upgrading);
+        $this->assertStringContainsString('`external_operations`', $upgrading);
+        $this->assertStringNotContainsString(
+            'Doctor JSON, Laravel route parity JSON',
+            $upgrading,
+        );
+    }
+
     /**
      * @return array<string, mixed>
      *

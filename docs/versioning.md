@@ -78,12 +78,15 @@ See [UPGRADING.md](https://github.com/studio-design/gesso/blob/main/UPGRADING.md
 
 | Component | Supported |
 | --- | --- |
-| PHP runtime | 8.2, 8.3, 8.4 (CI matrix). PHP 8.2 is supported until its security-EOL (2026-12); a SemVer-major bump may drop it after that. |
-| PHPUnit | 11.x, 12.x, 13.x (CI matrix). New stable PHPUnit majors are added to the matrix; older majors are dropped in a SemVer-major bump. |
-| `opis/json-schema` | `^2.6` for v1.x. A jump to `^3` would be a SemVer-major. |
+| PHP runtime | v2.x: 8.3, 8.4, 8.5 (CI matrix). v1.x: `^8.2`, subject to the lifecycle below. |
+| PHPUnit | v2.x: 12.x, 13.x. v1.x: 11.x, 12.x, 13.x. Each line is covered by its branch CI matrix. |
+| `opis/json-schema` | `^2.6` for v1.x and v2.x. A jump to `^3` would be a SemVer-major. |
 | Laravel (optional adapter) | Whatever `orchestra/testbench` `^9 \|\| ^10 \|\| ^11` supports. |
 
-Bug fixes and security updates land on the latest minor of v1.x. There is no LTS branch for older minors — upgrade to the latest minor to receive fixes.
+After v2 stable, v2 bug fixes and security updates land on its latest minor.
+The v1 line follows the maintenance lifecycle below. Neither major maintains
+older minor branches; upgrade to the latest minor of the selected major to
+receive fixes.
 
 ## v1 maintenance lifecycle
 
