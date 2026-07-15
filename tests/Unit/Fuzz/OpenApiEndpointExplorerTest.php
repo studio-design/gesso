@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Tests\Unit\Fuzz;
 
+use const PHP_URL_PATH;
+use const PHP_URL_QUERY;
+
 use InvalidArgumentException;
 use Opis\JsonSchema\Validator;
 use PHPUnit\Framework\Attributes\Test;
@@ -14,10 +17,13 @@ use Studio\Gesso\Fuzz\ExplorationCases;
 use Studio\Gesso\Fuzz\ExploredCase;
 use Studio\Gesso\Fuzz\OpenApiEndpointExplorer;
 use Studio\Gesso\HttpMethod;
+use Studio\Gesso\OpenApiRequestValidator;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 
 use function json_decode;
 use function json_encode;
+use function parse_str;
+use function parse_url;
 use function str_repeat;
 
 class OpenApiEndpointExplorerTest extends TestCase
@@ -136,6 +142,40 @@ class OpenApiEndpointExplorerTest extends TestCase
             }
         }
         $this->assertTrue($sawValue, 'at least one case should generate the dryRun query param');
+    }
+
+    #[Test]
+    public function generated_boolean_query_round_trips_through_uri_and_request_validation(): void
+    {
+        $cases = OpenApiEndpointExplorer::explore('petstore-3.0', 'POST', '/v1/pets', cases: 2, seed: 1);
+        $validator = new OpenApiRequestValidator();
+        $serialisedValues = [];
+
+        foreach ($cases as $case) {
+            $uri = $case->uri();
+            $path = parse_url($uri, PHP_URL_PATH);
+            $queryString = parse_url($uri, PHP_URL_QUERY);
+            $this->assertIsString($path);
+            $this->assertIsString($queryString);
+
+            $query = [];
+            parse_str($queryString, $query);
+            $serialisedValues[] = $query['dryRun'] ?? null;
+
+            $result = $validator->validate(
+                'petstore-3.0',
+                'POST',
+                $path,
+                $query,
+                [],
+                $case->body,
+                'application/json',
+            );
+
+            $this->assertTrue($result->isValid(), $result->errorMessage());
+        }
+
+        $this->assertSame(['false', 'true'], $serialisedValues);
     }
 
     #[Test]

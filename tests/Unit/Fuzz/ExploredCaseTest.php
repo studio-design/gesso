@@ -75,16 +75,23 @@ class ExploredCaseTest extends TestCase
     {
         $case = new ExploredCase(
             body: null,
-            query: ['search' => 'snowy owl', 'page' => 2],
+            query: [
+                'search' => 'snowy owl',
+                'page' => 2,
+                'active' => true,
+                'filters' => ['archived' => false],
+            ],
             headers: [],
             pathParams: ['petId' => 'pet/7'],
             method: HttpMethod::GET,
             matchedPath: '/v1/pets/{petId}',
         );
 
-        $this->assertSame('/api/v1/pets/pet%2F7?search=snowy+owl&page=2', $case->uri('/api'));
+        $expectedQuery = 'search=snowy+owl&page=2&active=true&filters%5Barchived%5D=false';
+
+        $this->assertSame('/api/v1/pets/pet%2F7?' . $expectedQuery, $case->uri('/api'));
         $this->assertStringContainsString(
-            "'https://api.example.test/v1/pets/pet%2F7?search=snowy+owl&page=2'",
+            "'https://api.example.test/v1/pets/pet%2F7?{$expectedQuery}'",
             $case->curlSnippet('https://api.example.test'),
         );
     }

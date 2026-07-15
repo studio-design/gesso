@@ -11,11 +11,13 @@ use JsonException;
 use LogicException;
 use Studio\Gesso\HttpMethod;
 
+use function array_map;
 use function base64_encode;
 use function escapeshellarg;
 use function http_build_query;
 use function implode;
 use function is_array;
+use function is_bool;
 use function json_decode;
 use function json_encode;
 use function rawurlencode;
@@ -124,7 +126,9 @@ final readonly class ExploredCase
         foreach ($this->pathParams as $name => $value) {
             $path = str_replace('{' . $name . '}', rawurlencode((string) $value), $path);
         }
-        $query = $this->query !== [] ? '?' . http_build_query($this->query) : '';
+        $query = $this->query !== []
+            ? '?' . http_build_query(array_map(self::serialiseQueryValue(...), $this->query))
+            : '';
 
         return $prefix . $path . $query;
     }
@@ -177,6 +181,17 @@ final readonly class ExploredCase
         }
 
         return $command;
+    }
+
+    private static function serialiseQueryValue(mixed $value): mixed
+    {
+        if (is_bool($value)) {
+            return $value ? 'true' : 'false';
+        }
+
+        return is_array($value)
+            ? array_map(self::serialiseQueryValue(...), $value)
+            : $value;
     }
 
     /**
