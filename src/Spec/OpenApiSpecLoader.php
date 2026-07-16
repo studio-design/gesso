@@ -403,7 +403,7 @@ final class OpenApiSpecLoader
         }
 
         foreach (self::SEARCH_EXTENSIONS as $extension) {
-            $candidate = "{$basePath}/{$specName}.{$extension}";
+            $candidate = self::joinBasePath($basePath, "{$specName}.{$extension}");
             if (!file_exists($candidate)) {
                 continue;
             }
@@ -421,6 +421,20 @@ final class OpenApiSpecLoader
         }
 
         throw self::specFileNotFound($specName, $basePath);
+    }
+
+    private static function joinBasePath(
+        string $basePath,
+        string $relativePath,
+        string $separator = DIRECTORY_SEPARATOR,
+    ): string {
+        if ($basePath === '') {
+            return $relativePath;
+        }
+
+        $basePath = rtrim($basePath, '/\\');
+
+        return ($basePath === '' ? $separator : $basePath . $separator) . $relativePath;
     }
 
     private static function isPathInsideRoot(string $path, string $root): bool

@@ -12,6 +12,7 @@ use GuzzleHttp\Psr7\HttpFactory;
 use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+use ReflectionMethod;
 use stdClass;
 use Studio\Gesso\Exception\InvalidOpenApiSpecException;
 use Studio\Gesso\Exception\InvalidOpenApiSpecReason;
@@ -102,6 +103,17 @@ class OpenApiSpecLoaderTest extends TestCase
             unlink($path);
             rmdir($scratchDir);
         }
+    }
+
+    #[Test]
+    public function joining_a_windows_root_does_not_create_a_unc_path(): void
+    {
+        $joinBasePath = new ReflectionMethod(OpenApiSpecLoader::class, 'joinBasePath');
+
+        $candidate = $joinBasePath->invoke(null, '/', 'server/share/spec.json', '\\');
+
+        $this->assertSame('\\server/share/spec.json', $candidate);
+        $this->assertStringStartsNotWith('\\\\', $candidate);
     }
 
     #[Test]
