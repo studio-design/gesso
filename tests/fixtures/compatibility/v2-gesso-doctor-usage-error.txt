@@ -8,6 +8,8 @@ Usage:
 Options:
   --spec=<path[,path]>       JSON/YAML entry document. Repeat for multiple specs.
   --strip-prefix=<prefix>    Request-path prefix used by PHPUnit. Repeat as needed.
+  --local-ref-root=<dir>     Filesystem boundary for local refs (default: each
+                             entry document's directory).
   --format=text|json         Output format (default: text).
   --allow-remote-refs        Resolve HTTP(S) refs with an installed Guzzle or
                              Symfony PSR-18 implementation.

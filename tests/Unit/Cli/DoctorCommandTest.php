@@ -55,6 +55,7 @@ class DoctorCommandTest extends TestCase
                 'format' => 'json',
                 'allow_remote_refs' => true,
                 'remote_ref_max_bytes' => '4096',
+                'local_ref_root' => '/trusted/openapi',
                 'phpunit_snippet' => true,
             ],
             DoctorCommand::parseArgv([
@@ -67,9 +68,59 @@ class DoctorCommandTest extends TestCase
                 '--remote-ref-host=specs.example.com',
                 '--remote-ref-host=schemas.example.com',
                 '--remote-ref-max-bytes=4096',
+                '--local-ref-root=/trusted/openapi',
                 '--phpunit-snippet',
             ]),
         );
+    }
+
+    #[Test]
+    public function local_ref_root_allows_shared_files_inside_an_explicit_common_boundary(): void
+    {
+        $specDir = $this->workDir . '/specs';
+        $sharedDir = $this->workDir . '/shared';
+        mkdir($specDir);
+        mkdir($sharedDir);
+        $root = $specDir . '/root.json';
+        file_put_contents($root, (string) json_encode([
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'Test', 'version' => '1'],
+            'paths' => [],
+            'components' => ['schemas' => ['Shared' => ['$ref' => '../shared/schema.json']]],
+        ], JSON_THROW_ON_ERROR));
+        file_put_contents($sharedDir . '/schema.json', '{"type":"string"}');
+
+        try {
+            $output = '';
+            $command = new DoctorCommand(stdoutWriter: static function (string $message) use (&$output): void {
+                $output .= $message;
+            });
+            $exit = $command->run(['specs' => [$root], 'format' => 'json']);
+            $report = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+
+            $this->assertSame(DoctorCommand::EXIT_DIAGNOSTIC_FAILURE, $exit);
+            $this->assertStringContainsString('--local-ref-root', $report['issues'][0]['suggestion']);
+
+            $output = '';
+            $command = new DoctorCommand(stdoutWriter: static function (string $message) use (&$output): void {
+                $output .= $message;
+            });
+            $exit = $command->run([
+                'specs' => [$root],
+                'format' => 'json',
+                'local_ref_root' => $this->workDir,
+                'phpunit_snippet' => true,
+            ]);
+            $report = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+
+            $this->assertSame(DoctorCommand::EXIT_OK, $exit);
+            $this->assertStringContainsString('specs/root', $report['phpunit']);
+        } finally {
+            unlink($root);
+            unlink($sharedDir . '/schema.json');
+            rmdir($specDir);
+            rmdir($sharedDir);
+        }
     }
 
     #[Test]

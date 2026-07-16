@@ -12,6 +12,7 @@ namespace Studio\Gesso\Exception;
 enum InvalidOpenApiSpecReason
 {
     case LocalRefNotFound;
+    case LocalRefOutsideAllowedRoot;
     case LocalRefUnreadable;
     case LocalRefRequiresSourceFile;
     case RemoteRefDisallowed;

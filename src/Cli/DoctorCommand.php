@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Cli;
 
+use const DIRECTORY_SEPARATOR;
 use const E_USER_WARNING;
 use const ENT_QUOTES;
 use const ENT_XML1;
@@ -52,6 +53,7 @@ use function implode;
 use function in_array;
 use function is_array;
 use function is_callable;
+use function is_dir;
 use function is_file;
 use function is_readable;
 use function is_string;
@@ -68,11 +70,12 @@ use function str_starts_with;
 use function strlen;
 use function strtoupper;
 use function substr;
+use function trim;
 
 /**
  * Pre-test compatibility diagnostics for one or more OpenAPI documents.
  *
- * @phpstan-type DoctorOptions array{specs?: list<string>, strip_prefixes?: list<string>, remote_ref_hosts?: list<string>, remote_ref_max_bytes?: int|string, format?: string, allow_remote_refs?: bool, phpunit_snippet?: bool, help?: bool, invalid_options?: list<string>}
+ * @phpstan-type DoctorOptions array{specs?: list<string>, strip_prefixes?: list<string>, remote_ref_hosts?: list<string>, remote_ref_max_bytes?: int|string, local_ref_root?: string, format?: string, allow_remote_refs?: bool, phpunit_snippet?: bool, help?: bool, invalid_options?: list<string>}
  * @phpstan-type DoctorIssue array{severity: 'error'|'warning'|'skipped', category: string, spec: ?string, message: string, suggestion: ?string}
  * @phpstan-type SpecResult array{path: string, name: string, openapi: string, dialect: string, operations: int, responses: int}
  *
@@ -155,6 +158,10 @@ final class DoctorCommand
                     $options['remote_ref_max_bytes'] = $value;
 
                     break;
+                case 'local_ref_root':
+                    $options['local_ref_root'] = $value;
+
+                    break;
                 case 'phpunit_snippet':
                     $options['phpunit_snippet'] = !in_array($value, ['0', 'false', 'no'], true);
 
@@ -178,6 +185,8 @@ final class DoctorCommand
             Options:
               --spec=<path[,path]>       JSON/YAML entry document. Repeat for multiple specs.
               --strip-prefix=<prefix>    Request-path prefix used by PHPUnit. Repeat as needed.
+              --local-ref-root=<dir>     Filesystem boundary for local refs (default: each
+                                         entry document's directory).
               --format=text|json         Output format (default: text).
               --allow-remote-refs        Resolve HTTP(S) refs with an installed Guzzle or
                                          Symfony PSR-18 implementation.
@@ -242,6 +251,16 @@ final class DoctorCommand
             return self::EXIT_USAGE;
         }
 
+        if (array_key_exists('local_ref_root', $options)) {
+            $localRefRoot = realpath(trim($options['local_ref_root']));
+            if ($localRefRoot === false || !is_dir($localRefRoot)) {
+                $this->writeUsageError('--local-ref-root must be an existing directory.');
+
+                return self::EXIT_USAGE;
+            }
+            $options['local_ref_root'] = $localRefRoot;
+        }
+
         $transport = $allowRemoteRefs ? $this->remoteTransport() : null;
         if ($allowRemoteRefs && $transport === null) {
             $report = $this->report([], [[
@@ -259,7 +278,17 @@ final class DoctorCommand
         $specResults = [];
         $issues = [];
         foreach ($options['specs'] as $path) {
-            $this->diagnoseSpec($path, $options['strip_prefixes'] ?? [], $allowRemoteRefs, $remoteRefHosts, $maxRemoteRefBytes, $transport, $specResults, $issues);
+            $this->diagnoseSpec(
+                $path,
+                $options['strip_prefixes'] ?? [],
+                $allowRemoteRefs,
+                $remoteRefHosts,
+                $maxRemoteRefBytes,
+                $options['local_ref_root'] ?? null,
+                $transport,
+                $specResults,
+                $issues,
+            );
         }
 
         $report = $this->report($specResults, $issues, $options);
@@ -274,10 +303,18 @@ final class DoctorCommand
         return self::EXIT_OK;
     }
 
+    private static function pathIsInsideRoot(string $path, string $root): bool
+    {
+        $root = rtrim($root, '/\\');
+
+        return $path === $root || str_starts_with($path, $root . DIRECTORY_SEPARATOR);
+    }
+
     /**
      * @param list<string> $stripPrefixes
      * @param list<string> $remoteRefHosts
      * @param positive-int $maxRemoteRefBytes
+     * @param null|string $localRefRoot canonical configured local-ref boundary
      * @param null|array{0: ClientInterface, 1: RequestFactoryInterface} $transport
      * @param list<SpecResult> $specResults
      * @param list<DoctorIssue> $issues
@@ -288,6 +325,7 @@ final class DoctorCommand
         bool $allowRemoteRefs,
         array $remoteRefHosts,
         int $maxRemoteRefBytes,
+        ?string $localRefRoot,
         ?array $transport,
         array &$specResults,
         array &$issues,
@@ -299,6 +337,7 @@ final class DoctorCommand
 
             return;
         }
+        $path = realpath($path) ?: $path;
 
         $extension = pathinfo($path, PATHINFO_EXTENSION);
         if (!in_array($extension, ['json', 'yaml', 'yml'], true)) {
@@ -307,8 +346,22 @@ final class DoctorCommand
             return;
         }
 
-        $name = pathinfo($path, PATHINFO_FILENAME);
-        $basePath = pathinfo($path, PATHINFO_DIRNAME);
+        $basePath = $localRefRoot ?? pathinfo($path, PATHINFO_DIRNAME);
+        if ($localRefRoot !== null && !self::pathIsInsideRoot($path, $localRefRoot)) {
+            $issues[] = $this->issue(
+                'error',
+                'configuration',
+                $label,
+                'The entry document is outside --local-ref-root.',
+                'Choose a common trusted directory that contains the entry document and its local refs.',
+            );
+
+            return;
+        }
+        $relativePath = $localRefRoot === null
+            ? pathinfo($path, PATHINFO_FILENAME) . '.' . $extension
+            : substr($path, strlen(rtrim($localRefRoot, '/\\')) + 1);
+        $name = substr($relativePath, 0, -(strlen($extension) + 1));
         foreach (['json', 'yaml', 'yml'] as $candidateExtension) {
             $candidate = $basePath . '/' . $name . '.' . $candidateExtension;
             if (!is_file($candidate)) {
@@ -648,7 +701,9 @@ final class DoctorCommand
             ],
             'specs' => $specs,
             'issues' => $issues,
-            'phpunit' => ($options['phpunit_snippet'] ?? false) ? $this->phpunitSnippet($specs, $options['strip_prefixes'] ?? []) : null,
+            'phpunit' => ($options['phpunit_snippet'] ?? false)
+                ? $this->phpunitSnippet($specs, $options['strip_prefixes'] ?? [], $options['local_ref_root'] ?? null)
+                : null,
         ];
     }
 
@@ -687,15 +742,17 @@ final class DoctorCommand
      * @param list<SpecResult> $specs
      * @param list<string> $stripPrefixes
      */
-    private function phpunitSnippet(array $specs, array $stripPrefixes): ?string
+    private function phpunitSnippet(array $specs, array $stripPrefixes, ?string $localRefRoot): ?string
     {
         if ($specs === []) {
             return null;
         }
-        $basePath = dirname($specs[0]['path']);
-        foreach ($specs as $spec) {
-            if (dirname($spec['path']) !== $basePath) {
-                return '<!-- Specs use different directories; one PHPUnit extension instance requires a shared spec_base_path. -->';
+        $basePath = $localRefRoot ?? dirname($specs[0]['path']);
+        if ($localRefRoot === null) {
+            foreach ($specs as $spec) {
+                if (dirname($spec['path']) !== $basePath) {
+                    return '<!-- Specs use different directories; one PHPUnit extension instance requires a shared spec_base_path. -->';
+                }
             }
         }
         $names = implode(',', array_map(static fn(array $spec): string => $spec['name'], $specs));
@@ -748,6 +805,7 @@ final class DoctorCommand
             'YamlLibraryMissing' => 'Run: composer require --dev symfony/yaml',
             'RemoteRefDisallowed' => 'Re-run with --allow-remote-refs and install a supported PSR-18 implementation, or bundle the spec.',
             'RemoteRefHostDisallowed' => 'Add the exact trusted host with --remote-ref-host, or bundle the spec.',
+            'LocalRefOutsideAllowedRoot' => 'Use --local-ref-root with the narrowest trusted common directory, or bundle the spec.',
             'HttpClientNotConfigured' => 'Install Guzzle or Symfony HttpClient and re-run with --allow-remote-refs.',
             default => null,
         };

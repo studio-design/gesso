@@ -623,6 +623,46 @@ class OpenApiSpecLoaderTest extends TestCase
     }
 
     #[Test]
+    public function load_confines_local_refs_to_the_spec_base_path_and_allows_a_shared_common_base(): void
+    {
+        $scratchDir = sys_get_temp_dir() . '/openapi-local-ref-root-' . uniqid('', true);
+        $specDir = $scratchDir . '/specs';
+        $sharedDir = $scratchDir . '/shared';
+        mkdir($scratchDir);
+        mkdir($specDir);
+        mkdir($sharedDir);
+
+        try {
+            file_put_contents(
+                $specDir . '/root.json',
+                '{"openapi":"3.0.3","info":{"title":"Root","version":"1"},"paths":{},'
+                . '"components":{"schemas":{"Shared":{"$ref":"../shared/schema.json"}}}}',
+            );
+            file_put_contents($sharedDir . '/schema.json', '{"type":"string"}');
+
+            OpenApiSpecLoader::configure($specDir);
+
+            try {
+                OpenApiSpecLoader::load('root');
+                $this->fail('expected InvalidOpenApiSpecException');
+            } catch (InvalidOpenApiSpecException $e) {
+                $this->assertSame(InvalidOpenApiSpecReason::LocalRefOutsideAllowedRoot, $e->reason);
+            }
+
+            OpenApiSpecLoader::configure($scratchDir);
+            $spec = OpenApiSpecLoader::load('specs/root');
+
+            $this->assertSame('string', $spec['components']['schemas']['Shared']['type']);
+        } finally {
+            unlink($specDir . '/root.json');
+            unlink($sharedDir . '/schema.json');
+            rmdir($specDir);
+            rmdir($sharedDir);
+            rmdir($scratchDir);
+        }
+    }
+
+    #[Test]
     public function load_throws_on_unresolvable_ref(): void
     {
         $fixturesPath = __DIR__ . '/../../fixtures/specs';

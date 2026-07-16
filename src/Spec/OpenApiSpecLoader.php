@@ -287,6 +287,7 @@ final class OpenApiSpecLoader
                     self::$allowRemoteRefs,
                     self::$allowedRemoteRefHosts,
                     self::$maxRemoteRefBytes,
+                    [self::getBasePath()],
                 ),
             );
         } catch (InvalidOpenApiSpecException $e) {

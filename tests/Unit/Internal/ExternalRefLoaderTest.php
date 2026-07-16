@@ -6,6 +6,7 @@ namespace Studio\Gesso\Tests\Unit\Internal;
 
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+use ReflectionMethod;
 use Studio\Gesso\Exception\InvalidOpenApiSpecException;
 use Studio\Gesso\Exception\InvalidOpenApiSpecReason;
 use Studio\Gesso\Internal\ExternalRefLoader;
@@ -19,6 +20,7 @@ use function mkdir;
 use function posix_geteuid;
 use function rmdir;
 use function scandir;
+use function symlink;
 use function sys_get_temp_dir;
 use function uniqid;
 use function unlink;
@@ -39,6 +41,20 @@ class ExternalRefLoaderTest extends TestCase
         $this->removeDir($this->workDir);
         YamlAvailability::reset();
         parent::tearDown();
+    }
+
+    #[Test]
+    public function preserves_the_unc_server_and_share_as_the_windows_root_prefix(): void
+    {
+        $normalizePath = new ReflectionMethod(ExternalRefLoader::class, 'normalizePathLexically');
+
+        $normalized = $normalizePath->invoke(null, '\\\\server\\share\\root\\missing.json', '\\');
+
+        $this->assertSame('\\\\server\\share\\root\\missing.json', $normalized);
+
+        $normalizedAtShareRoot = $normalizePath->invoke(null, '\\\\server\\share\\..\\missing.json', '\\');
+
+        $this->assertSame('\\\\server\\share\\missing.json', $normalizedAtShareRoot);
     }
 
     #[Test]
@@ -77,9 +93,85 @@ class ExternalRefLoaderTest extends TestCase
         file_put_contents($this->workDir . '/shared.json', '{"name":"shared"}');
 
         $cache = [];
-        $result = ExternalRefLoader::loadDocument('../shared.json', $sourceFile, $cache);
+        $result = ExternalRefLoader::loadDocument('../shared.json', $sourceFile, $cache, [$this->workDir]);
 
         $this->assertSame(['name' => 'shared'], $result->decoded);
+    }
+
+    #[Test]
+    public function rejects_parent_traversal_outside_the_default_source_root(): void
+    {
+        $allowedRoot = $this->workDir . '/specs';
+        mkdir($allowedRoot);
+        $sourceFile = $allowedRoot . '/root.yaml';
+        file_put_contents($sourceFile, "openapi: 3.0.3\n");
+        file_put_contents($this->workDir . '/secret.json', '{"secret":true}');
+
+        try {
+            $cache = [];
+            ExternalRefLoader::loadDocument('../secret.json', $sourceFile, $cache);
+            $this->fail('expected InvalidOpenApiSpecException');
+        } catch (InvalidOpenApiSpecException $e) {
+            $this->assertSame(InvalidOpenApiSpecReason::LocalRefOutsideAllowedRoot, $e->reason);
+            $this->assertStringContainsString('../secret.json', $e->getMessage());
+            $this->assertStringNotContainsString($this->workDir . '/secret.json', $e->getMessage());
+        }
+    }
+
+    #[Test]
+    public function rejects_a_missing_target_outside_the_root_without_disclosing_its_existence(): void
+    {
+        $allowedRoot = $this->workDir . '/specs';
+        mkdir($allowedRoot);
+        $sourceFile = $allowedRoot . '/root.yaml';
+        file_put_contents($sourceFile, "openapi: 3.0.3\n");
+
+        try {
+            $cache = [];
+            ExternalRefLoader::loadDocument('../missing.json', $sourceFile, $cache);
+            $this->fail('expected InvalidOpenApiSpecException');
+        } catch (InvalidOpenApiSpecException $e) {
+            $this->assertSame(InvalidOpenApiSpecReason::LocalRefOutsideAllowedRoot, $e->reason);
+        }
+    }
+
+    #[Test]
+    public function rejects_a_missing_target_under_a_nonexistent_parent_outside_the_root(): void
+    {
+        $allowedRoot = $this->workDir . '/specs';
+        mkdir($allowedRoot);
+        $sourceFile = $allowedRoot . '/root.yaml';
+        file_put_contents($sourceFile, "openapi: 3.0.3\n");
+
+        try {
+            $cache = [];
+            ExternalRefLoader::loadDocument('../absent/missing.json', $sourceFile, $cache);
+            $this->fail('expected InvalidOpenApiSpecException');
+        } catch (InvalidOpenApiSpecException $e) {
+            $this->assertSame(InvalidOpenApiSpecReason::LocalRefOutsideAllowedRoot, $e->reason);
+        }
+    }
+
+    #[Test]
+    public function rejects_a_symlink_whose_canonical_target_is_outside_the_allowed_root(): void
+    {
+        $allowedRoot = $this->workDir . '/specs';
+        mkdir($allowedRoot);
+        $sourceFile = $allowedRoot . '/root.yaml';
+        file_put_contents($sourceFile, "openapi: 3.0.3\n");
+        $outsideTarget = $this->workDir . '/secret.json';
+        file_put_contents($outsideTarget, '{"secret":true}');
+        if (!@symlink($outsideTarget, $allowedRoot . '/linked.json')) {
+            $this->markTestSkipped('symlinks are unavailable on this platform');
+        }
+
+        try {
+            $cache = [];
+            ExternalRefLoader::loadDocument('./linked.json', $sourceFile, $cache);
+            $this->fail('expected InvalidOpenApiSpecException');
+        } catch (InvalidOpenApiSpecException $e) {
+            $this->assertSame(InvalidOpenApiSpecReason::LocalRefOutsideAllowedRoot, $e->reason);
+        }
     }
 
     #[Test]

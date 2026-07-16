@@ -125,7 +125,9 @@ production-unused `InvalidOpenApiSpecReason::ExternalRef` and
 the specific local, remote, HTTP-client, fetch, or file-scheme reason described
 in the repository's `UPGRADING.md`. V2 also adds
 `InvalidOpenApiSpecReason::RemoteRefHostDisallowed` for the destination
-allowlist enforced before HTTP requests.
+allowlist enforced before HTTP requests and
+`InvalidOpenApiSpecReason::LocalRefOutsideAllowedRoot` for canonical local
+targets that escape `spec_base_path`.
 
 ### Spec loading
 
@@ -388,6 +390,7 @@ Accepted options:
 
 - repeated `--spec=<path[,path]>`;
 - repeated `--strip-prefix=<prefix>`;
+- `--local-ref-root=<directory>`;
 - `--format=text|json`;
 - `--allow-remote-refs`;
 - repeatable `--remote-ref-host=<host>` (required with `--allow-remote-refs`);
@@ -399,7 +402,10 @@ Exit codes are `0` for a usable contract, `1` for diagnostic failure, and `2`
 for invalid usage. JSON uses `schemaVersion: 1`; issue fields are `severity`,
 `category`, `spec`, `message`, and nullable `suggestion`.
 
-Migration status: v2 adds the host allowlist and remote response-size option.
+Migration status: v2 adds the local-reference root, remote host allowlist, and
+remote response-size options. Local external references are confined to the
+configured `spec_base_path` after canonicalization; projects that share schemas
+across sibling directories must use their trusted common parent as the base.
 The exact v1.9 help and invalid-usage output remain captured under
 `tests/fixtures/compatibility/`, while v2 fixtures pin the additive options.
 Both generations are exercised through the installed-style binary integration

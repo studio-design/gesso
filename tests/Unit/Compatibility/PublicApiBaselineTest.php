@@ -175,6 +175,9 @@ final class PublicApiBaselineTest extends TestCase
         $reasonCases = [];
         foreach ($expected[InvalidOpenApiSpecReason::class]['cases'] as $name => $value) {
             $reasonCases[$name] = $value;
+            if ($name === 'LocalRefNotFound') {
+                $reasonCases['LocalRefOutsideAllowedRoot'] = null;
+            }
             if ($name === 'RemoteRefDisallowed') {
                 $reasonCases['RemoteRefHostDisallowed'] = null;
             }

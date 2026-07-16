@@ -136,6 +136,7 @@ final class OpenApiRefResolver
      * @param array<string, mixed> $spec
      * @param list<string> $allowedRemoteRefHosts exact hosts allowed for HTTP(S) refs
      * @param int $maxRemoteRefBytes maximum response bytes read per remote document; must be positive
+     * @param list<string> $allowedLocalRefRoots canonical filesystem roots local refs may read from
      *
      * @return array<string, mixed>
      *
@@ -149,6 +150,7 @@ final class OpenApiRefResolver
         bool $allowRemoteRefs = false,
         array $allowedRemoteRefHosts = [],
         int $maxRemoteRefBytes = OpenApiSpecLoader::DEFAULT_MAX_REMOTE_REF_BYTES,
+        array $allowedLocalRefRoots = [],
     ): array {
         // OpenApiSpecLoader::configure() catches this earlier with an
         // InvalidArgumentException; this guard is for callers that
@@ -181,8 +183,15 @@ final class OpenApiRefResolver
         // After the guard above, allowRemoteRefs:true implies non-null
         // client + factory.
         $context = $allowRemoteRefs
-            ? RefResolutionContext::withRemoteRefs($httpClient, $requestFactory, $allowedRemoteRefHosts, $sourceFile, $maxRemoteRefBytes)
-            : RefResolutionContext::filesystemOnly($sourceFile);
+            ? RefResolutionContext::withRemoteRefs(
+                $httpClient,
+                $requestFactory,
+                $allowedRemoteRefHosts,
+                $sourceFile,
+                $maxRemoteRefBytes,
+                $allowedLocalRefRoots,
+            )
+            : RefResolutionContext::filesystemOnly($sourceFile, $allowedLocalRefRoots);
 
         // $root is a frozen snapshot used for pointer lookups. PHP array
         // copy-on-write keeps it untouched as we mutate $spec via $node refs.
@@ -480,9 +489,9 @@ final class OpenApiRefResolver
 
         if (str_starts_with($ref, 'file://')) {
             // Reject `file://` separately from ordinary path refs so a
-            // visual scan of the spec doesn't gloss over it. Path-traversal
-            // sandboxing for ordinary paths is intentionally absent — see
-            // ExternalRefLoader's class-level docblock for the trust model.
+            // visual scan of the spec doesn't gloss over it. Ordinary local
+            // paths are canonicalized and checked against the configured
+            // filesystem root by ExternalRefLoader.
             throw new InvalidOpenApiSpecException(
                 InvalidOpenApiSpecReason::FileSchemeNotSupported,
                 sprintf(
@@ -712,7 +721,12 @@ final class OpenApiRefResolver
         // sourceFile non-null asserted by the caller (resolveRef).
         /** @var string $sourceFile */
         $sourceFile = $context->sourceFile;
-        $document = ExternalRefLoader::loadDocument($pathPart, $sourceFile, $documentCache);
+        $document = ExternalRefLoader::loadDocument(
+            $pathPart,
+            $sourceFile,
+            $documentCache,
+            $context->allowedLocalRefRoots,
+        );
 
         self::descendIntoLoadedDocument(
             $node,

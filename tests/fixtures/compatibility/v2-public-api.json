@@ -1402,6 +1402,7 @@
         "backing_type": null,
         "cases": {
             "LocalRefNotFound": null,
+            "LocalRefOutsideAllowedRoot": null,
             "LocalRefUnreadable": null,
             "LocalRefRequiresSourceFile": null,
             "RemoteRefDisallowed": null,

@@ -29,6 +29,22 @@ vendor/bin/gesso doctor \
 
 `--phpunit-snippet` prints the equivalent extension configuration when all entry documents share one directory. The snippet uses each entry document's filename without its extension as the configured spec name.
 
+Local external references are confined to each entry document's directory by
+default. If an entry and its shared schemas use sibling directories, pass their
+narrowest trusted common parent:
+
+```bash
+vendor/bin/gesso doctor \
+  --spec=openapi/bundled/front.yaml \
+  --local-ref-root=openapi \
+  --phpunit-snippet
+```
+
+The generated PHPUnit snippet then uses `spec_base_path="openapi"` and the
+spec name `bundled/front`. Targets that escape the canonical root through
+`../`, an absolute path, or a symlink are rejected; those forms remain valid
+when their canonical targets stay inside the root.
+
 ## HTTP references
 
 Remote references remain opt-in because diagnostics must not access the network unexpectedly:

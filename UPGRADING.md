@@ -59,10 +59,20 @@ required first argument.
 `InvalidOpenApiSpecReason::RemoteRefNotImplemented` have been removed. Neither
 case was emitted by production code by the end of v1. Use the specific resolver
 reason instead: local-reference failures use `LocalRefNotFound`,
-`LocalRefUnreadable`, or `LocalRefRequiresSourceFile`; remote-reference failures
+`LocalRefOutsideAllowedRoot`, `LocalRefUnreadable`, or
+`LocalRefRequiresSourceFile`; remote-reference failures
 use `RemoteRefDisallowed`, `HttpClientNotConfigured`,
 `RemoteRefHostDisallowed`, or `RemoteRefFetchFailed`; unsupported `file:` references use
 `FileSchemeNotSupported`.
+
+Local external `$ref` targets are now confined to `spec_base_path` after
+canonicalization. An absolute path, `../` traversal, or symlink is rejected
+when its canonical target resolves outside the configured directory. If entry
+documents and shared schemas are siblings, move `spec_base_path` to their narrowest
+trusted common parent and include the entry subdirectory in `specs` (for
+example, `spec_base_path=openapi` with `specs=bundled/front`). Doctor uses the
+same policy; pass `--local-ref-root=openapi` for that layout. Code branching on
+resolver reasons should handle the new `LocalRefOutsideAllowedRoot` case.
 
 HTTP(S) `$ref` resolution now requires an explicit destination allowlist.
 Pass `allowedRemoteRefHosts: ['specs.example.com']` together with

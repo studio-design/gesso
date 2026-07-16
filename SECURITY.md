@@ -45,6 +45,8 @@ release notes (with permission).
 
 This is a test-only library — it has no runtime production surface. The
 relevant attack vectors are:
+- Resolving local external `$ref`s — canonical targets are confined to
+  `spec_base_path`; use the narrowest trusted common directory
 - Resolving HTTP(S) `$ref`s (opt-in, off by default) — verify any untrusted
   spec source before enabling `allowRemoteRefs`
 - YAML spec loading (opt-in via `symfony/yaml`) — `symfony/yaml` is

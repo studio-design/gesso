@@ -39,15 +39,19 @@ final class RefResolutionContext
         /** @var list<string> */
         public readonly array $allowedRemoteRefHosts,
         public readonly int $maxRemoteRefBytes,
+        /** @var list<string> */
+        public readonly array $allowedLocalRefRoots,
     ) {}
 
     /**
      * A context that can resolve internal `$ref` plus local-filesystem
      * external refs. HTTP refs reject with `RemoteRefDisallowed`.
+     *
+     * @param list<string> $allowedLocalRefRoots
      */
-    public static function filesystemOnly(?string $sourceFile = null): self
+    public static function filesystemOnly(?string $sourceFile = null, array $allowedLocalRefRoots = []): self
     {
-        return new self($sourceFile, null, null, false, [], HttpRefLoader::DEFAULT_MAX_RESPONSE_BYTES);
+        return new self($sourceFile, null, null, false, [], HttpRefLoader::DEFAULT_MAX_RESPONSE_BYTES, $allowedLocalRefRoots);
     }
 
     /**
@@ -56,6 +60,7 @@ final class RefResolutionContext
      * structurally impossible via this factory.
      *
      * @param list<string> $allowedRemoteRefHosts
+     * @param list<string> $allowedLocalRefRoots
      */
     public static function withRemoteRefs(
         ClientInterface $client,
@@ -63,8 +68,17 @@ final class RefResolutionContext
         array $allowedRemoteRefHosts,
         ?string $sourceFile = null,
         int $maxRemoteRefBytes = HttpRefLoader::DEFAULT_MAX_RESPONSE_BYTES,
+        array $allowedLocalRefRoots = [],
     ): self {
-        return new self($sourceFile, $client, $factory, true, $allowedRemoteRefHosts, $maxRemoteRefBytes);
+        return new self(
+            $sourceFile,
+            $client,
+            $factory,
+            true,
+            $allowedRemoteRefHosts,
+            $maxRemoteRefBytes,
+            $allowedLocalRefRoots,
+        );
     }
 
     /**
@@ -83,6 +97,7 @@ final class RefResolutionContext
             $this->allowRemoteRefs,
             $this->allowedRemoteRefHosts,
             $this->maxRemoteRefBytes,
+            $this->allowedLocalRefRoots,
         );
     }
 }
