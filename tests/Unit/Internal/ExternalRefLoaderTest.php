@@ -121,6 +121,23 @@ class ExternalRefLoaderTest extends TestCase
     }
 
     #[Test]
+    public function rejects_a_missing_target_under_a_nonexistent_parent_outside_the_root(): void
+    {
+        $allowedRoot = $this->workDir . '/specs';
+        mkdir($allowedRoot);
+        $sourceFile = $allowedRoot . '/root.yaml';
+        file_put_contents($sourceFile, "openapi: 3.0.3\n");
+
+        try {
+            $cache = [];
+            ExternalRefLoader::loadDocument('../absent/missing.json', $sourceFile, $cache);
+            $this->fail('expected InvalidOpenApiSpecException');
+        } catch (InvalidOpenApiSpecException $e) {
+            $this->assertSame(InvalidOpenApiSpecReason::LocalRefOutsideAllowedRoot, $e->reason);
+        }
+    }
+
+    #[Test]
     public function rejects_a_symlink_whose_canonical_target_is_outside_the_allowed_root(): void
     {
         $allowedRoot = $this->workDir . '/specs';

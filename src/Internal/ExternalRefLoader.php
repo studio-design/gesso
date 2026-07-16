@@ -10,18 +10,23 @@ use const PATHINFO_EXTENSION;
 use Studio\Gesso\Exception\InvalidOpenApiSpecException;
 use Studio\Gesso\Exception\InvalidOpenApiSpecReason;
 
+use function array_pop;
 use function dirname;
 use function error_clear_last;
 use function error_get_last;
+use function explode;
 use function file_exists;
 use function file_get_contents;
+use function implode;
 use function is_readable;
 use function pathinfo;
 use function realpath;
 use function rtrim;
 use function sprintf;
+use function str_replace;
 use function str_starts_with;
 use function strtolower;
+use function substr;
 
 /**
  * Resolves and decodes external `$ref` target documents from the local
@@ -79,8 +84,16 @@ final class ExternalRefLoader
         // the right reason category.
         $absolutePath = realpath($candidate);
         if ($absolutePath === false) {
-            $candidateParent = realpath(dirname($candidate));
-            if ($candidateParent !== false && !self::isInsideAllowedRoot($candidateParent, $allowedLocalRefRoots)) {
+            // Check both the lexical path (so missing components cannot hide a
+            // `..` escape) and the filesystem path (so existing symlink
+            // ancestors cannot hide an escape).
+            $lexicalAncestor = self::deepestCanonicalAncestor(self::normalizePathLexically($candidate));
+            $resolvedAncestor = self::deepestCanonicalAncestor($candidate);
+            if ($lexicalAncestor === null ||
+                $resolvedAncestor === null ||
+                !self::isInsideAllowedRoot($lexicalAncestor, $allowedLocalRefRoots) ||
+                !self::isInsideAllowedRoot($resolvedAncestor, $allowedLocalRefRoots)
+            ) {
                 throw self::outsideAllowedRoot($refPath);
             }
             if (!file_exists($candidate)) {
@@ -156,6 +169,61 @@ final class ExternalRefLoader
         }
 
         return false;
+    }
+
+    private static function deepestCanonicalAncestor(string $candidate): ?string
+    {
+        $ancestor = $candidate;
+
+        while (true) {
+            $canonicalAncestor = realpath($ancestor);
+            if ($canonicalAncestor !== false) {
+                return $canonicalAncestor;
+            }
+
+            $parent = dirname($ancestor);
+            if ($parent === $ancestor) {
+                return null;
+            }
+
+            $ancestor = $parent;
+        }
+    }
+
+    private static function normalizePathLexically(string $path): string
+    {
+        if (DIRECTORY_SEPARATOR === '\\') {
+            $path = str_replace('/', '\\', $path);
+        }
+
+        $prefix = '';
+        if (DIRECTORY_SEPARATOR === '\\' && isset($path[2]) && $path[1] === ':' && $path[2] === '\\') {
+            $prefix = substr($path, 0, 3);
+            $path = substr($path, 3);
+        } elseif (str_starts_with($path, DIRECTORY_SEPARATOR)) {
+            $prefix = DIRECTORY_SEPARATOR;
+            $path = substr($path, 1);
+        }
+
+        $segments = [];
+        foreach (explode(DIRECTORY_SEPARATOR, $path) as $segment) {
+            if ($segment === '' || $segment === '.') {
+                continue;
+            }
+            if ($segment === '..') {
+                if ($segments !== []) {
+                    array_pop($segments);
+                } elseif ($prefix === '') {
+                    $segments[] = '..';
+                }
+
+                continue;
+            }
+
+            $segments[] = $segment;
+        }
+
+        return $prefix . implode(DIRECTORY_SEPARATOR, $segments);
     }
 
     private static function outsideAllowedRoot(string $refPath): InvalidOpenApiSpecException
