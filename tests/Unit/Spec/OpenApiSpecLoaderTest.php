@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Tests\Unit\Spec;
 
+use const DIRECTORY_SEPARATOR;
 use const JSON_THROW_ON_ERROR;
 
 use GuzzleHttp\Client;
@@ -24,10 +25,12 @@ use Symfony\Component\Yaml\Yaml;
 use function class_exists;
 use function file_put_contents;
 use function json_encode;
+use function ltrim;
 use function mkdir;
 use function restore_error_handler;
 use function rmdir;
 use function set_error_handler;
+use function substr;
 use function symlink;
 use function sys_get_temp_dir;
 use function uniqid;
@@ -62,6 +65,43 @@ class OpenApiSpecLoaderTest extends TestCase
         OpenApiSpecLoader::configure('/path/to/specs/');
 
         $this->assertSame('/path/to/specs', OpenApiSpecLoader::getBasePath());
+    }
+
+    #[Test]
+    public function configure_preserves_filesystem_roots(): void
+    {
+        OpenApiSpecLoader::configure('/', enumBasePath: '/');
+
+        $this->assertSame('/', OpenApiSpecLoader::getBasePath());
+        $this->assertSame('/', OpenApiSpecLoader::getEnumBasePath());
+
+        OpenApiSpecLoader::configure('C:/', enumBasePath: 'C:/');
+
+        $this->assertSame('C:/', OpenApiSpecLoader::getBasePath());
+        $this->assertSame('C:/', OpenApiSpecLoader::getEnumBasePath());
+    }
+
+    #[Test]
+    public function load_supports_the_posix_filesystem_root_as_the_base_path(): void
+    {
+        if (DIRECTORY_SEPARATOR !== '/') {
+            $this->markTestSkipped('POSIX filesystem root regression');
+        }
+
+        $scratchDir = sys_get_temp_dir() . '/openapi-root-base-' . uniqid('', true);
+        $path = $scratchDir . '/root.json';
+        mkdir($scratchDir);
+        file_put_contents($path, '{"openapi":"3.0.3","info":{"title":"Root base","version":"1"},"paths":{}}');
+
+        try {
+            OpenApiSpecLoader::configure('/');
+            $specName = ltrim(substr($path, 0, -5), '/');
+
+            $this->assertSame('Root base', OpenApiSpecLoader::load($specName)['info']['title']);
+        } finally {
+            unlink($path);
+            rmdir($scratchDir);
+        }
     }
 
     #[Test]

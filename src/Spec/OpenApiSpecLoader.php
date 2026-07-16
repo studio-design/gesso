@@ -180,8 +180,8 @@ final class OpenApiSpecLoader
             );
         }
 
-        self::$basePath = rtrim($basePath, '/');
-        self::$enumBasePath = $enumBasePath !== null ? rtrim($enumBasePath, '/') : null;
+        self::$basePath = self::normalizeConfiguredBasePath($basePath);
+        self::$enumBasePath = $enumBasePath !== null ? self::normalizeConfiguredBasePath($enumBasePath) : null;
         self::$stripPrefixes = $stripPrefixes;
         self::$httpClient = $httpClient;
         self::$requestFactory = $requestFactory;
@@ -432,6 +432,19 @@ final class OpenApiSpecLoader
         }
 
         return $path === $root || str_starts_with($path, $root . DIRECTORY_SEPARATOR);
+    }
+
+    private static function normalizeConfiguredBasePath(string $path): string
+    {
+        $trimmed = rtrim($path, '/');
+        if ($path !== '' && $trimmed === '') {
+            return '/';
+        }
+        if (preg_match('/^[A-Za-z]:$/', $trimmed) === 1 && str_ends_with($path, '/')) {
+            return $trimmed . '/';
+        }
+
+        return $trimmed;
     }
 
     private static function specFileNotFound(string $specName, string $basePath): SpecFileNotFoundException
