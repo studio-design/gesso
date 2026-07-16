@@ -51,6 +51,7 @@ final class HttpRefLoader
 {
     public const DEFAULT_MAX_RESPONSE_BYTES = 10_485_760;
     private const READ_CHUNK_BYTES = 8192;
+    private const MAX_EMPTY_READ_RETRIES = 3;
 
     private function __construct() {}
 
@@ -225,6 +226,7 @@ final class HttpRefLoader
     private static function readLimitedBody(StreamInterface $stream, string $safeUrl, int $maxResponseBytes): string
     {
         $body = '';
+        $emptyReadRetries = 0;
         while (!$stream->eof()) {
             $remaining = $maxResponseBytes - strlen($body);
             $readLength = $remaining >= self::READ_CHUNK_BYTES
@@ -232,9 +234,18 @@ final class HttpRefLoader
                 : $remaining + 1;
             $chunk = $stream->read($readLength);
             if ($chunk === '') {
-                throw new RuntimeException('response body stream returned no data before EOF');
+                $emptyReadRetries++;
+                if ($emptyReadRetries > self::MAX_EMPTY_READ_RETRIES) {
+                    throw new RuntimeException(sprintf(
+                        'response body stream made no progress after %d retries before EOF',
+                        self::MAX_EMPTY_READ_RETRIES,
+                    ));
+                }
+
+                continue;
             }
 
+            $emptyReadRetries = 0;
             $body .= $chunk;
             if (strlen($body) > $maxResponseBytes) {
                 throw self::responseTooLarge($safeUrl, $maxResponseBytes);

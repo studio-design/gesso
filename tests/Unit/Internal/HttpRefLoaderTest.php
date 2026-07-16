@@ -19,6 +19,7 @@ use Studio\Gesso\Tests\Helpers\FakeHttpClient;
 use Studio\Gesso\Tests\Helpers\FakeHttpClientUnexpectedRequest;
 
 use function ini_set;
+use function substr;
 
 class HttpRefLoaderTest extends TestCase
 {
@@ -463,6 +464,68 @@ class HttpRefLoaderTest extends TestCase
             $this->assertStringNotContainsString('query-secret', $rendered);
             $this->assertStringNotContainsString('nested-query-secret', $rendered);
             $this->assertNull($e->getPrevious());
+        }
+    }
+
+    #[Test]
+    public function tolerates_a_transient_empty_read_before_response_data_is_available(): void
+    {
+        $url = 'https://example.com/delayed.json';
+        $readCount = 0;
+        $finished = false;
+        $stream = FnStream::decorate(Utils::streamFor(''), [
+            'getSize' => static fn(): ?int => null,
+            'eof' => static function () use (&$finished): bool {
+                return $finished;
+            },
+            'read' => static function (int $length) use (&$readCount, &$finished): string {
+                $readCount++;
+                if ($readCount === 1) {
+                    return '';
+                }
+
+                $finished = true;
+
+                return substr('{"type":"object"}', 0, $length);
+            },
+        ]);
+        $client = new FakeHttpClient([
+            $url => new Response(200, ['Content-Type' => 'application/json'], $stream),
+        ]);
+
+        $cache = [];
+        $result = HttpRefLoader::loadDocument($url, $client, $this->factory, $cache, ['example.com']);
+
+        $this->assertSame(['type' => 'object'], $result->decoded);
+        $this->assertSame(2, $readCount);
+    }
+
+    #[Test]
+    public function rejects_a_response_stream_that_repeatedly_makes_no_progress(): void
+    {
+        $url = 'https://example.com/stalled.json';
+        $readCount = 0;
+        $stream = FnStream::decorate(Utils::streamFor(''), [
+            'getSize' => static fn(): ?int => null,
+            'eof' => static fn(): bool => false,
+            'read' => static function (int $length) use (&$readCount): string {
+                $readCount++;
+
+                return '';
+            },
+        ]);
+        $client = new FakeHttpClient([
+            $url => new Response(200, ['Content-Type' => 'application/json'], $stream),
+        ]);
+
+        try {
+            $cache = [];
+            HttpRefLoader::loadDocument($url, $client, $this->factory, $cache, ['example.com']);
+            $this->fail('expected InvalidOpenApiSpecException');
+        } catch (InvalidOpenApiSpecException $e) {
+            $this->assertSame(InvalidOpenApiSpecReason::RemoteRefFetchFailed, $e->reason);
+            $this->assertStringContainsString('made no progress', $e->getMessage());
+            $this->assertLessThanOrEqual(10, $readCount);
         }
     }
 
