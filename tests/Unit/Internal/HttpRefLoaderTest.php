@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Tests\Unit\Internal;
 
+use GuzzleHttp\Psr7\FnStream;
 use GuzzleHttp\Psr7\HttpFactory;
 use GuzzleHttp\Psr7\Response;
+use GuzzleHttp\Psr7\Utils;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\RequestInterface;
@@ -422,6 +424,45 @@ class HttpRefLoaderTest extends TestCase
         } finally {
             ini_set('zend.exception_ignore_args', $previousIgnoreArgs);
             ini_set('zend.exception_string_param_max_len', $previousMaxLength);
+        }
+    }
+
+    #[Test]
+    public function redacts_credentials_from_response_body_exception_chain(): void
+    {
+        $url = 'https://example.com/private/pet.json';
+        $cause = new RuntimeException(
+            'socket failed for https://nested:nested-secret@example.com/body.json?token=nested-query-secret',
+        );
+        $stream = FnStream::decorate(Utils::streamFor(''), [
+            'isSeekable' => static fn(): bool => false,
+            'getContents' => static function () use ($cause): never {
+                throw new RuntimeException(
+                    'body read failed for https://alice:secret@example.com/body.json?token=query-secret',
+                    0,
+                    $cause,
+                );
+            },
+        ]);
+        $client = new FakeHttpClient([
+            $url => new Response(200, ['Content-Type' => 'application/json'], $stream),
+        ]);
+
+        try {
+            $cache = [];
+            HttpRefLoader::loadDocument($url, $client, $this->factory, $cache, ['example.com']);
+            $this->fail('expected InvalidOpenApiSpecException');
+        } catch (InvalidOpenApiSpecException $e) {
+            $rendered = (string) $e;
+
+            $this->assertSame(InvalidOpenApiSpecReason::RemoteRefFetchFailed, $e->reason);
+            $this->assertStringContainsString('body read failed', $rendered);
+            $this->assertStringContainsString('https://example.com/body.json?token=[redacted]', $rendered);
+            $this->assertStringNotContainsString('alice', $rendered);
+            $this->assertStringNotContainsString('secret', $rendered);
+            $this->assertStringNotContainsString('query-secret', $rendered);
+            $this->assertStringNotContainsString('nested-query-secret', $rendered);
+            $this->assertNull($e->getPrevious());
         }
     }
 

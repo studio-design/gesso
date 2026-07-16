@@ -138,11 +138,16 @@ final class HttpRefLoader
             }
             $body = $bodyStream->getContents();
         } catch (RuntimeException $e) {
+            $safeBodyMessage = self::redactSensitiveUrlData($e->getMessage());
+
             throw new InvalidOpenApiSpecException(
                 InvalidOpenApiSpecReason::RemoteRefFetchFailed,
-                sprintf('HTTP $ref response body unreadable: %s (%s)', $safeUrl, $e->getMessage()),
+                sprintf('HTTP $ref response body unreadable: %s (%s)', $safeUrl, $safeBodyMessage),
                 ref: $safeUrl,
-                previous: $e,
+                // A response stream is supplied by the injected HTTP client
+                // and may include request credentials in its exception or
+                // nested causes. Do not reconnect the raw chain to a public
+                // exception that is commonly rendered in CI logs.
             );
         }
 
