@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Tests\Integration\Laravel;
 
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Route;
 use Orchestra\Testbench\TestCase;
 use PHPUnit\Framework\AssertionFailedError;
@@ -175,6 +176,54 @@ class AutoValidateRequestIntegrationTest extends TestCase
         $this->postJson('/v1/pets', ['not_name' => 'x']);
     }
 
+    #[Test]
+    public function required_multipart_body_accepts_an_uploaded_file(): void
+    {
+        config()->set('gesso.auto_validate_request', true);
+        config()->set('gesso.default_spec', 'non-json-content-schema');
+
+        $response = $this
+            ->withHeader('Content-Type', 'multipart/form-data')
+            ->post('/multipart-required', [
+                'font_file' => UploadedFile::fake()->create('font.woff', 10, 'font/woff'),
+            ]);
+
+        $response->assertNoContent();
+
+        $covered = OpenApiCoverageTracker::getCovered();
+        $this->assertArrayHasKey(
+            'POST /multipart-required',
+            $covered['non-json-content-schema'] ?? [],
+        );
+    }
+
+    #[Test]
+    public function required_multipart_body_rejects_an_empty_request(): void
+    {
+        config()->set('gesso.auto_validate_request', true);
+        config()->set('gesso.default_spec', 'non-json-content-schema');
+
+        $this->expectException(AssertionFailedError::class);
+        $this->expectExceptionMessage('Request body is empty');
+
+        $this
+            ->withHeader('Content-Type', 'multipart/form-data')
+            ->post('/multipart-required');
+    }
+
+    #[Test]
+    public function required_form_body_accepts_parsed_parameters(): void
+    {
+        config()->set('gesso.auto_validate_request', true);
+        config()->set('gesso.default_spec', 'non-json-content-schema');
+
+        $response = $this
+            ->withHeader('Content-Type', 'application/x-www-form-urlencoded')
+            ->post('/form-required', ['name' => 'Fido']);
+
+        $response->assertNoContent();
+    }
+
     /** @return array<int, class-string> */
     protected function getPackageProviders($app): array
     {
@@ -187,6 +236,9 @@ class AutoValidateRequestIntegrationTest extends TestCase
             ['data' => ['id' => 42, 'name' => 'Buddy', 'tag' => null]],
             201,
         ));
+
+        Route::post('/multipart-required', static fn() => response()->noContent());
+        Route::post('/form-required', static fn() => response()->noContent());
 
         // Bearer-protected endpoint in the spec. Route implementation is
         // auth-free in the test app — the library validates against the

@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Studio\Gesso;
 
 /**
- * Envelope for a request / response body after JSON decoding, carrying the
- * absent-vs-present distinction as a single value.
+ * Envelope for a request / response body, carrying the absent-vs-present
+ * distinction alongside its decoded value when available.
  *
  * A decoded body is one of four shapes — a JSON object/array, a JSON scalar,
  * the literal JSON `null`, or no body at all. PHP's `json_decode()` collapses
@@ -16,9 +16,11 @@ namespace Studio\Gesso;
  * patched with an internal marker enum and issue #248 closes properly here.
  *
  * `present` records whether the wire carried a body; `value` is the decoded
- * value (always `null` when `present` is false). A literal-null body is
- * `present === true` with `value === null` — exactly the state a bare `null`
- * could not express.
+ * value when the adapter can decode it (always `null` when `present` is
+ * false). A literal-null JSON body is `present === true` with `value === null`
+ * — exactly the state a bare `null` could not express. Adapters also use that
+ * shape for an opaque non-JSON body whose presence is known but whose value is
+ * intentionally not decoded.
  *
  * The framework adapters build this envelope; the body validators consume it.
  * The public `OpenApiResponseValidator::validate()` /
@@ -49,7 +51,7 @@ final readonly class DecodedBody
 
     /**
      * A body was carried on the wire; `$value` is its decoded value (which may
-     * itself be `null` for a literal JSON `null` body).
+     * itself be `null` for a literal JSON `null` or an opaque non-JSON body).
      */
     public static function present(mixed $value): self
     {

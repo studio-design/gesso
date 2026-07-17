@@ -1135,8 +1135,10 @@ trait ValidatesOpenApiSchema
     /**
      * Extract the request body in the shape OpenApiRequestValidator expects.
      * Mirrors {@see self::extractJsonBody()} for the request side: the body is
-     * JSON-decoded only when the Content-Type is a JSON media type (or absent);
-     * an empty body, or a non-JSON Content-Type, yields an absent envelope.
+     * JSON-decoded only when the Content-Type is a JSON media type (or absent).
+     * For non-JSON media types, the envelope records only whether raw content,
+     * parsed form parameters, or uploaded files were present; its value stays
+     * `null` because the validator does not evaluate non-JSON body schemas.
      *
      * A non-JSON body is left undecoded rather than guessed at: the Content-Type
      * is forwarded to the validator separately, which resolves non-JSON media
@@ -1156,16 +1158,24 @@ trait ValidatesOpenApiSchema
     private function extractRequestBody(Request $request, string $contentType): DecodedBody
     {
         $content = $request->getContent();
-        if ($content === '') {
-            return DecodedBody::absent();
-        }
 
-        // Non-JSON Content-Type: leave the body undecoded and report it absent.
-        // The validator receives the Content-Type separately and decides the
-        // contract verdict from it (issue #251).
+        // Symfony does not retain a serialized multipart/form-data body when
+        // a request is created from parsed form values or uploaded files.
+        // Preserve the wire-presence bit from all three representations so a
+        // required non-JSON body is not mistaken for an empty request. The
+        // value is intentionally null: the validator receives Content-Type
+        // separately and does not evaluate non-JSON schemas (issue #251).
         if ($contentType !== '' && !ContentTypeMatcher::isJsonContentType(
             ContentTypeMatcher::normalizeMediaType($contentType),
         )) {
+            if ($content !== '' || $request->request->all() !== [] || $request->files->all() !== []) {
+                return DecodedBody::present(null);
+            }
+
+            return DecodedBody::absent();
+        }
+
+        if ($content === '') {
             return DecodedBody::absent();
         }
 
