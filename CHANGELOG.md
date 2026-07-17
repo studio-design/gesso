@@ -10,6 +10,15 @@ the README for the full surface contract.
 
 ## Unreleased
 
+## [2.0.0-beta.4](https://github.com/studio-design/gesso/compare/v2.0.0-beta.3...v2.0.0-beta.4) (2026-07-17)
+
+
+### Performance Improvements
+
+* **spec:** combine templated path patterns ([#378](https://github.com/studio-design/gesso/issues/378)) ([b6abc9f](https://github.com/studio-design/gesso/commit/b6abc9f4f1856242dd95e764977c988f3ccd54a2))
+* **spec:** index OpenAPI path matches ([#377](https://github.com/studio-design/gesso/issues/377)) ([db5f358](https://github.com/studio-design/gesso/commit/db5f3582812dae9cefc03aa52d4105cf67695790))
+* **validation:** reuse compiled schemas across validations ([#376](https://github.com/studio-design/gesso/issues/376)) ([45771aa](https://github.com/studio-design/gesso/commit/45771aa0dfe2f7c38f4e073b6976b60c233142f4))
+
 ## [2.0.0-beta.3](https://github.com/studio-design/gesso/compare/v2.0.0-beta.2...v2.0.0-beta.3) (2026-07-17)
 
 
