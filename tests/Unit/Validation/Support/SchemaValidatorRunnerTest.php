@@ -7,13 +7,16 @@ namespace Studio\Gesso\Tests\Unit\Validation\Support;
 use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+use ReflectionProperty;
 use Studio\Gesso\OpenApiVersion;
 use Studio\Gesso\Spec\OpenApiSchemaConverter;
 use Studio\Gesso\Validation\Support\ObjectConverter;
 use Studio\Gesso\Validation\Support\SchemaValidatorRunner;
 
 use function count;
+use function gc_collect_cycles;
 use function implode;
+use function memory_get_usage;
 use function sprintf;
 use function str_contains;
 
@@ -56,6 +59,76 @@ class SchemaValidatorRunnerTest extends TestCase
         $errors = $runner->validate($schema, $data);
 
         $this->assertArrayHasKey('/count', $errors);
+    }
+
+    #[Test]
+    public function equivalent_fresh_schema_objects_reuse_one_canonical_opis_schema(): void
+    {
+        $runner = new SchemaValidatorRunner(20);
+        $schema = [
+            'type' => 'object',
+            'required' => ['data'],
+            'properties' => [
+                'data' => [
+                    'type' => 'array',
+                    'items' => [
+                        'type' => 'object',
+                        'required' => ['id', 'name'],
+                        'properties' => [
+                            'id' => ['type' => 'integer'],
+                            'name' => ['type' => 'string'],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+        $data = ObjectConverter::convert(['data' => [['id' => 1, 'name' => 'Ada']]]);
+
+        gc_collect_cycles();
+        $memoryBefore = memory_get_usage();
+        for ($i = 0; $i < 1_000; $i++) {
+            // Reproduce the real request/response-validator path: schema
+            // conversion returns a fresh object graph on every assertion.
+            $freshSchema = ObjectConverter::convert(
+                OpenApiSchemaConverter::convert($schema, OpenApiVersion::V3_1),
+            );
+            $this->assertSame([], $runner->validate($freshSchema, $data));
+        }
+        gc_collect_cycles();
+
+        $retainedBytes = memory_get_usage() - $memoryBefore;
+        $this->assertLessThan(
+            4 * 1024 * 1024,
+            $retainedBytes,
+            sprintf(
+                'Equivalent schema validations retained %.2f MiB; Opis schema identities are growing per assertion.',
+                $retainedBytes / 1024 / 1024,
+            ),
+        );
+
+        $cache = (new ReflectionProperty($runner, 'canonicalSchemas'))->getValue($runner);
+        $this->assertCount(1, $cache);
+    }
+
+    #[Test]
+    public function canonical_schema_cache_is_bounded_for_dynamic_schema_workloads(): void
+    {
+        $runner = new SchemaValidatorRunner(20);
+
+        for ($i = 0; $i < 1_025; $i++) {
+            $schema = ObjectConverter::convert([
+                'type' => 'integer',
+                'const' => $i,
+            ]);
+            $this->assertSame([], $runner->validate($schema, $i));
+        }
+
+        $cache = (new ReflectionProperty($runner, 'canonicalSchemas'))->getValue($runner);
+        $this->assertCount(
+            1,
+            $cache,
+            'Crossing the cache limit must release both Gesso and Opis schema caches before retaining new identities.',
+        );
     }
 
     #[Test]

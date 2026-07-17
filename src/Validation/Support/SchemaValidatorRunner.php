@@ -19,13 +19,16 @@ use function array_keys;
 use function array_values;
 use function count;
 use function get_object_vars;
+use function hash;
 use function implode;
 use function in_array;
 use function is_array;
 use function is_int;
+use function is_object;
 use function is_string;
 use function preg_match;
 use function property_exists;
+use function serialize;
 use function sprintf;
 
 /**
@@ -33,8 +36,24 @@ use function sprintf;
  */
 final class SchemaValidatorRunner
 {
+    /**
+     * Bound the canonical schema set retained by this runner. Opis keeps every
+     * parsed schema object in a SplObjectStorage cache, so accepting a fresh
+     * but equivalent stdClass on every validation grows memory linearly with
+     * the number of assertions. Reusing one canonical object per schema lets
+     * Opis reuse its parsed representation instead.
+     *
+     * A runner is normally shared by one request or response validator. 1,024
+     * entries covers large multi-spec suites while keeping dynamically-created
+     * schema workloads bounded. Reaching the limit clears both sides of the
+     * cache atomically so Opis cannot retain objects we no longer own.
+     */
+    private const MAX_CANONICAL_SCHEMAS = 1024;
     private readonly Validator $opisValidator;
     private readonly ErrorFormatter $errorFormatter;
+
+    /** @var array<string, object> SHA-256 of the serialized converted schema => canonical schema object */
+    private array $canonicalSchemas = [];
 
     public function __construct(int $maxErrors)
     {
@@ -74,6 +93,7 @@ final class SchemaValidatorRunner
      */
     public function validate(mixed $jsonSchema, mixed $data): array
     {
+        $jsonSchema = $this->canonicalSchema($jsonSchema);
         $result = $this->opisValidator->validate($data, $jsonSchema);
 
         if ($result->isValid()) {
@@ -321,5 +341,36 @@ final class SchemaValidatorRunner
         }
 
         return array_keys(get_object_vars($current->properties));
+    }
+
+    /**
+     * Return the stable object identity Opis uses for its parsed-schema cache.
+     *
+     * Callers intentionally convert PHP schema arrays to stdClass before
+     * every validation. Object equality is not enough for Opis: its loader is
+     * keyed by identity, so equivalent fresh objects are parsed and retained
+     * independently. A content fingerprint maps them back to one canonical
+     * object without changing validation semantics. Boolean schemas bypass
+     * the cache because Opis does not retain them by object identity.
+     */
+    private function canonicalSchema(mixed $schema): mixed
+    {
+        if (!is_object($schema)) {
+            return $schema;
+        }
+
+        $fingerprint = hash('sha256', serialize($schema));
+        if (isset($this->canonicalSchemas[$fingerprint])) {
+            return $this->canonicalSchemas[$fingerprint];
+        }
+
+        if (count($this->canonicalSchemas) >= self::MAX_CANONICAL_SCHEMAS) {
+            $this->canonicalSchemas = [];
+            $this->opisValidator->loader()->clearCache();
+        }
+
+        $this->canonicalSchemas[$fingerprint] = $schema;
+
+        return $schema;
     }
 }
