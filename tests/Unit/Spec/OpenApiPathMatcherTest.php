@@ -8,7 +8,12 @@ use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+use ReflectionProperty;
 use Studio\Gesso\Spec\OpenApiPathMatcher;
+
+use function array_fill;
+use function implode;
+use function sprintf;
 
 class OpenApiPathMatcherTest extends TestCase
 {
@@ -121,6 +126,77 @@ class OpenApiPathMatcherTest extends TestCase
     }
 
     #[Test]
+    public function combined_template_patterns_preserve_order_across_bounded_chunks(): void
+    {
+        $paths = [];
+        for ($i = 0; $i < 40; $i++) {
+            $paths[] = sprintf('/{parameter%d}/fixed', $i);
+        }
+        $matcher = new OpenApiPathMatcher($paths);
+
+        $this->assertSame('/{parameter0}/fixed', $matcher->match('/value/fixed'));
+    }
+
+    #[Test]
+    public function combined_template_patterns_extract_variables_from_later_chunks(): void
+    {
+        $paths = [];
+        for ($i = 0; $i < 40; $i++) {
+            $paths[] = sprintf('/resource%d/{parameter%d}', $i, $i);
+        }
+        $matcher = new OpenApiPathMatcher($paths);
+
+        $this->assertSame(
+            ['path' => '/resource35/{parameter35}', 'variables' => ['parameter35' => 'value']],
+            $matcher->matchWithVariables('/resource35/value'),
+        );
+    }
+
+    #[Test]
+    public function combined_patterns_split_before_the_pcre_named_capture_limit(): void
+    {
+        $paths = [];
+        for ($i = 0; $i < 32; $i++) {
+            $paths[] = self::pathWithParameters("/resource{$i}", "parameter{$i}_", 400);
+        }
+        $matcher = new OpenApiPathMatcher($paths);
+        $requestPath = '/resource31/' . implode('/', array_fill(0, 400, 'value'));
+
+        $matched = $matcher->matchWithVariables($requestPath);
+
+        $this->assertNotNull($matched);
+        $this->assertSame($paths[31], $matched['path']);
+        $this->assertCount(400, $matched['variables']);
+        $this->assertSame('value', $matched['variables']['parameter31_399']);
+    }
+
+    #[Test]
+    public function a_single_template_above_the_pcre_capture_limit_is_rejected_explicitly(): void
+    {
+        $path = self::pathWithParameters('/large', 'parameter', 10_001);
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('declares 10001 placeholders; a single template may declare at most 10000');
+
+        new OpenApiPathMatcher([$path]);
+    }
+
+    #[Test]
+    public function a_single_template_above_the_jit_capture_budget_disables_jit(): void
+    {
+        $path = self::pathWithParameters('/large', 'parameter', 401);
+        $matcher = new OpenApiPathMatcher([$path]);
+        $compiled = (new ReflectionProperty($matcher, 'compiledPathsBySegmentCount'))->getValue($matcher);
+
+        $this->assertStringStartsWith('#(*NO_JIT)', $compiled[402][0]['pattern']);
+
+        $requestPath = '/large/' . implode('/', array_fill(0, 401, 'x'));
+        $matched = $matcher->matchWithVariables($requestPath);
+        $this->assertNotNull($matched);
+        $this->assertCount(401, $matched['variables']);
+    }
+
+    #[Test]
     #[DataProvider('provideMatches_paths_with_strip_prefixCases')]
     public function matches_paths_with_strip_prefix(string $requestPath, ?string $expected): void
     {
@@ -202,6 +278,23 @@ class OpenApiPathMatcherTest extends TestCase
         $matcher = self::createMatcher();
 
         $this->assertNull($matcher->matchWithVariables('/v2/unknown/path'));
+    }
+
+    #[Test]
+    public function parameterized_paths_require_one_leading_slash(): void
+    {
+        $matcher = new OpenApiPathMatcher(['/v2/projects/{project_id}']);
+
+        $this->assertNull($matcher->matchWithVariables('v2/projects/abc123'));
+        $this->assertNull($matcher->matchWithVariables('//v2/projects/abc123'));
+    }
+
+    #[Test]
+    public function parameterized_paths_reject_empty_segments(): void
+    {
+        $matcher = new OpenApiPathMatcher(['/v2/projects/{project_id}/assets']);
+
+        $this->assertNull($matcher->matchWithVariables('/v2/projects//assets'));
     }
 
     #[Test]
@@ -320,5 +413,15 @@ class OpenApiPathMatcherTest extends TestCase
             '/v2/workspace/{workspace_id}/members',
             '/v2/add-on/plans',
         ]);
+    }
+
+    private static function pathWithParameters(string $prefix, string $parameterPrefix, int $count): string
+    {
+        $segments = [$prefix];
+        for ($i = 0; $i < $count; $i++) {
+            $segments[] = sprintf('{%s%d}', $parameterPrefix, $i);
+        }
+
+        return implode('/', $segments);
     }
 }

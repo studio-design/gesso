@@ -6,6 +6,7 @@ namespace Studio\Gesso\Spec;
 
 use InvalidArgumentException;
 
+use function count;
 use function explode;
 use function implode;
 use function in_array;
@@ -26,10 +27,27 @@ use function usort;
  */
 final class OpenApiPathMatcher
 {
+    /** Keep each combined PCRE bounded for specs with thousands of templates. */
+    private const MAX_TEMPLATES_PER_PATTERN = 32;
+
+    /** Keep JIT patterns at the largest capture count exercised safely by the legacy matcher. */
+    private const MAX_CAPTURES_PER_JIT_PATTERN = 400;
+
+    /** Leave headroom below PCRE's compiled-pattern size ceiling. */
+    private const MAX_COMBINED_PATTERN_BYTES = 30_000;
+
+    /** Reject one template that cannot be split below PCRE's named-capture ceiling. */
+    private const MAX_PARAMETERS_PER_TEMPLATE = 10_000;
+
     /** @var array<string, string> normalized request path => original spec path */
     private array $literalPaths;
 
-    /** @var array<int, array{pattern: string, path: string, paramNames: string[], literalSegments: int}[]> */
+    /**
+     * @var array<int, list<array{
+     *     pattern: string,
+     *     matches: array<int, array{path: string, parameters: array<string, int>}>,
+     * }>>
+     */
     private array $compiledPathsBySegmentCount;
 
     /**
@@ -45,8 +63,9 @@ final class OpenApiPathMatcher
         foreach ($specPaths as $specPath) {
             $segments = explode('/', trim($specPath, '/'));
             $literalCount = 0;
-            $regexSegments = [];
+            $compiledSegments = [];
             $paramNames = [];
+            $patternBytes = 16; // anchors, non-capturing wrapper, and MARK
 
             foreach ($segments as $segment) {
                 if (preg_match('/^\{(.+)\}$/', $segment, $m)) {
@@ -62,12 +81,24 @@ final class OpenApiPathMatcher
                         ));
                     }
 
-                    $regexSegments[] = '([^/]+)';
+                    $compiledSegments[] = ['parameter' => $m[1]];
                     $paramNames[] = $m[1];
+                    $patternBytes += 8; // slash plus `([^/]+)`
                 } else {
-                    $regexSegments[] = preg_quote($segment, '#');
+                    $compiledSegments[] = ['literal' => $segment];
                     $literalCount++;
+                    $patternBytes += strlen(preg_quote($segment, '#')) + 1;
                 }
+            }
+
+            $parameterCount = count($paramNames);
+            if ($parameterCount > self::MAX_PARAMETERS_PER_TEMPLATE) {
+                throw new InvalidArgumentException(sprintf(
+                    "Spec path '%s' declares %d placeholders; a single template may declare at most %d.",
+                    $specPath,
+                    $parameterCount,
+                    self::MAX_PARAMETERS_PER_TEMPLATE,
+                ));
             }
 
             if ($paramNames === []) {
@@ -83,22 +114,82 @@ final class OpenApiPathMatcher
                 continue;
             }
 
-            $pattern = '#^/' . implode('/', $regexSegments) . '$#';
             $compiled[] = [
-                'pattern' => $pattern,
+                'segments' => $compiledSegments,
                 'path' => $specPath,
-                'paramNames' => $paramNames,
                 'literalSegments' => $literalCount,
+                'parameterCount' => $parameterCount,
+                'patternBytes' => $patternBytes,
             ];
         }
 
         // Sort by literal segment count descending so more specific paths match first
         usort($compiled, static fn(array $a, array $b): int => $b['literalSegments'] <=> $a['literalSegments']);
 
-        $compiledPathsBySegmentCount = [];
+        $pathsBySegmentCount = [];
         foreach ($compiled as $path) {
             $segmentCount = self::segmentCount($path['path']);
-            $compiledPathsBySegmentCount[$segmentCount][] = $path;
+            $pathsBySegmentCount[$segmentCount][] = $path;
+        }
+
+        $compiledPathsBySegmentCount = [];
+        foreach ($pathsBySegmentCount as $segmentCount => $paths) {
+            $chunks = [];
+            $chunk = [];
+            $chunkCaptureCount = 0;
+            $chunkPatternBytes = 0;
+            foreach ($paths as $path) {
+                if ($chunk !== [] && (
+                    count($chunk) >= self::MAX_TEMPLATES_PER_PATTERN ||
+                    $chunkCaptureCount + $path['parameterCount'] > self::MAX_CAPTURES_PER_JIT_PATTERN ||
+                    $chunkPatternBytes + $path['patternBytes'] > self::MAX_COMBINED_PATTERN_BYTES
+                )) {
+                    $chunks[] = $chunk;
+                    $chunk = [];
+                    $chunkCaptureCount = 0;
+                    $chunkPatternBytes = 0;
+                }
+
+                // A single long-literal template can exceed the combination
+                // byte budget but still compile on its own, as in the legacy
+                // one-pattern-per-template implementation.
+                $chunk[] = $path;
+                $chunkCaptureCount += $path['parameterCount'];
+                $chunkPatternBytes += $path['patternBytes'];
+            }
+            $chunks[] = $chunk;
+
+            foreach ($chunks as $chunk) {
+                $alternatives = [];
+                $matches = [];
+                $captureIndex = 1;
+                foreach ($chunk as $pathIndex => $path) {
+                    $regexSegments = [];
+                    $parameters = [];
+                    foreach ($path['segments'] as $segment) {
+                        if (isset($segment['literal'])) {
+                            $regexSegments[] = preg_quote($segment['literal'], '#');
+
+                            continue;
+                        }
+
+                        $regexSegments[] = '([^/]+)';
+                        $parameters[$segment['parameter']] = $captureIndex++;
+                    }
+
+                    $marker = (string) $pathIndex;
+                    $alternatives[] = '/' . implode('/', $regexSegments) . sprintf('(*MARK:%s)', $marker);
+                    $matches[$marker] = ['path' => $path['path'], 'parameters' => $parameters];
+                }
+
+                $jitControl = $captureIndex - 1 > self::MAX_CAPTURES_PER_JIT_PATTERN
+                    ? '(*NO_JIT)'
+                    : '';
+                $compiledPathsBySegmentCount[$segmentCount][] = [
+                    'pattern' => '#' . $jitControl . '^(?:' . implode('|', $alternatives) . ')$#',
+                    'matches' => $matches,
+                ];
+            }
         }
 
         $this->literalPaths = $literalPaths;
@@ -180,19 +271,22 @@ final class OpenApiPathMatcher
             return ['path' => $this->literalPaths[$normalizedPath], 'variables' => []];
         }
 
-        $compiledPaths = $this->compiledPathsBySegmentCount[self::segmentCount($normalizedPath)] ?? [];
-        foreach ($compiledPaths as $compiled) {
-            if (preg_match($compiled['pattern'], $normalizedPath, $matches) !== 1) {
+        $compiledPatterns = $this->compiledPathsBySegmentCount[self::segmentCount($normalizedPath)] ?? [];
+        foreach ($compiledPatterns as $compiled) {
+            $captures = [];
+            if (preg_match($compiled['pattern'], $normalizedPath, $captures) !== 1) {
                 continue;
             }
 
+            // Numeric-string array keys are stored as integers by PHP; PCRE's
+            // MARK capture is the corresponding numeric string.
+            $matched = $compiled['matches'][(int) $captures['MARK']];
             $variables = [];
-            foreach ($compiled['paramNames'] as $i => $name) {
-                // $matches[0] is the full match; capture groups start at index 1.
-                $variables[$name] = $matches[$i + 1];
+            foreach ($matched['parameters'] as $name => $captureIndex) {
+                $variables[$name] = $captures[$captureIndex];
             }
 
-            return ['path' => $compiled['path'], 'variables' => $variables];
+            return ['path' => $matched['path'], 'variables' => $variables];
         }
 
         return null;
