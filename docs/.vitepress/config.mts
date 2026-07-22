@@ -40,9 +40,32 @@ export default defineConfig({
       markdown.renderer.rules.table_open = (tokens, index, options, _env, renderer) => {
         tokens[index].attrJoin('class', 'tombo-table')
 
+        let tableNumber = 1
+        let heading = ''
+
+        for (let cursor = 0; cursor < index; cursor++) {
+          if (tokens[cursor].type === 'table_open') {
+            tableNumber++
+          }
+
+          if (tokens[cursor].type !== 'heading_open') {
+            continue
+          }
+
+          const inline = tokens[cursor + 1]
+          heading = inline?.children
+            ?.filter((token) => token.type === 'text' || token.type === 'code_inline')
+            .map((token) => token.content)
+            .join('')
+            .trim() ?? ''
+        }
+
+        const label = heading === ''
+          ? `Data table ${tableNumber}`
+          : `Data table ${tableNumber}: ${heading}`
         const table = renderer.renderToken(tokens, index, options)
 
-        return `<div class="tombo-table-wrap" role="region" aria-label="Scrollable data table" tabindex="0">\n${table}`
+        return `<div class="tombo-table-wrap" role="region" aria-label="${markdown.utils.escapeHtml(label)}" tabindex="0">\n${table}`
       }
 
       markdown.renderer.rules.table_close = (tokens, index, options, _env, renderer) => {

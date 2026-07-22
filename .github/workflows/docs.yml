@@ -44,6 +44,9 @@ jobs:
           DOCS_VERSION: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'next' }}
         run: npm run docs:build
 
+      - name: Verify documentation accessibility invariants
+        run: npm run docs:verify-accessibility
+
       - name: Verify documentation base path
         run: npm run docs:verify-base
 

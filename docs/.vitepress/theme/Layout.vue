@@ -16,7 +16,7 @@ const docsVersion = __DOCS_VERSION__
       </div>
     </template>
     <template #layout-bottom>
-      <div class="tombo-site-footer tombo-shell" aria-label="Site design information">
+      <footer class="tombo-site-footer tombo-shell" aria-label="Site design information">
         <span class="tombo-logo" aria-hidden="true">
           <i class="h"></i><i class="b"></i><i class="w1"></i><i class="w2"></i><i class="t"></i>
         </span>
@@ -24,7 +24,7 @@ const docsVersion = __DOCS_VERSION__
           GESSO / STUDIO-DESIGN / MIT LICENSE<br>
           SET IN TOMBO — WADAKATU DESIGN SYSTEM
         </p>
-      </div>
+      </footer>
     </template>
   </Layout>
 </template>

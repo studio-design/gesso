@@ -210,6 +210,9 @@ jobs:
           DOCS_VERSION: next
         run: npm run docs:verify-version
 
+      - name: Verify documentation accessibility invariants
+        run: npm run docs:verify-accessibility
+
       - name: Verify documentation base path
         run: npm run docs:verify-base
 
