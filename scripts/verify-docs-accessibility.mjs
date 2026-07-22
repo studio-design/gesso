@@ -9,9 +9,23 @@ if (!/^layout: home$/mu.test(docsIndex) || !/^markdownStyles: false$/mu.test(doc
 
 const distDirectory = 'docs/.vitepress/dist'
 const home = await readFile(join(distDirectory, 'index.html'), 'utf8')
+const documentationPage = await readFile(join(distDirectory, 'coverage.html'), 'utf8')
+const footerFrameClasses = (html) => {
+  const classAttribute = html.match(/<div class="([^"]*tombo-site-footer-frame[^"]*)">/u)?.[1]
+
+  return new Set(classAttribute?.split(/\s+/u) ?? [])
+}
 
 if (!home.includes('<footer class="tombo-site-footer tombo-shell"')) {
   throw new Error('The documentation homepage does not expose its site footer as a footer landmark')
+}
+
+if (!footerFrameClasses(home).has('tombo-site-footer-frame') || footerFrameClasses(home).has('has-sidebar')) {
+  throw new Error('The documentation homepage footer must remain aligned to the page shell')
+}
+
+if (!footerFrameClasses(documentationPage).has('has-sidebar')) {
+  throw new Error('Documentation page footers must account for the desktop sidebar')
 }
 
 let tableCount = 0

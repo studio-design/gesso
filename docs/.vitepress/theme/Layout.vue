@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import DefaultTheme from 'vitepress/theme'
+import DefaultTheme, { useSidebar } from 'vitepress/theme'
 
 declare const __DOCS_VERSION__: string
 
 const { Layout } = DefaultTheme
+const { hasSidebar } = useSidebar()
 const docsVersion = __DOCS_VERSION__
 </script>
 
@@ -16,15 +17,17 @@ const docsVersion = __DOCS_VERSION__
       </div>
     </template>
     <template #layout-bottom>
-      <footer class="tombo-site-footer tombo-shell" aria-label="Site design information">
-        <span class="tombo-logo" aria-hidden="true">
-          <i class="h"></i><i class="b"></i><i class="w1"></i><i class="w2"></i><i class="t"></i>
-        </span>
-        <p>
-          GESSO / STUDIO-DESIGN / MIT LICENSE<br>
-          SET IN TOMBO — WADAKATU DESIGN SYSTEM
-        </p>
-      </footer>
+      <div class="tombo-site-footer-frame" :class="{ 'has-sidebar': hasSidebar }">
+        <footer class="tombo-site-footer tombo-shell" aria-label="Site design information">
+          <span class="tombo-logo" aria-hidden="true">
+            <i class="h"></i><i class="b"></i><i class="w1"></i><i class="w2"></i><i class="t"></i>
+          </span>
+          <p>
+            GESSO / STUDIO-DESIGN / MIT LICENSE<br>
+            SET IN TOMBO — WADAKATU DESIGN SYSTEM
+          </p>
+        </footer>
+      </div>
     </template>
   </Layout>
 </template>

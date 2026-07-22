@@ -338,6 +338,10 @@ body {
   background: var(--tombo-surface);
 }
 
+.tombo-site-footer-frame {
+  width: 100%;
+}
+
 .tombo-site-footer {
   display: flex;
   align-items: center;
@@ -355,7 +359,18 @@ body {
   letter-spacing: 0.1em;
 }
 
+@media (min-width: 960px) {
+  .tombo-site-footer-frame.has-sidebar {
+    padding-left: var(--vp-sidebar-width);
+  }
+}
+
 @media (min-width: 1440px) {
+  .tombo-site-footer-frame.has-sidebar {
+    padding-right: calc((100vw - var(--vp-layout-max-width)) / 2);
+    padding-left: calc((100vw - var(--vp-layout-max-width)) / 2 + var(--vp-sidebar-width));
+  }
+
   .VPDoc {
     background-image:
       linear-gradient(90deg, var(--tombo-grid) 1px, transparent 1px),
