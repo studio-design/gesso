@@ -9,7 +9,7 @@
 Gesso is the primer applied to a canvas before painting—a stable, receptive ground on which the finished work can be built. Gesso brings that same idea to APIs, providing a dependable foundation for OpenAPI contract testing in PHP.
 
 [![CI](https://github.com/studio-design/gesso/actions/workflows/ci.yml/badge.svg)](https://github.com/studio-design/gesso/actions/workflows/ci.yml)
-[![Latest Stable Version](https://poser.pugx.org/studio-design/gesso/v)](https://packagist.org/packages/studio-design/gesso)
+[![Latest Version](https://poser.pugx.org/studio-design/gesso/v)](https://packagist.org/packages/studio-design/gesso)
 [![Total Downloads](https://poser.pugx.org/studio-design/gesso/downloads)](https://packagist.org/packages/studio-design/gesso)
 [![PHP Version Require](https://poser.pugx.org/studio-design/gesso/require/php)](https://packagist.org/packages/studio-design/gesso)
 [![License](https://poser.pugx.org/studio-design/gesso/license)](https://packagist.org/packages/studio-design/gesso)
@@ -98,9 +98,18 @@ Choose based on the workflow you need rather than on a single yes/no feature cou
 
 ## Installation
 
+> **Pre-release evaluation only.** Gesso 2 has not reached a stable release.
+> Evaluate the beta in an isolated branch or CI job, and keep the existing v1
+> dependency in projects that require a stable contract.
+
 ```bash
-composer require --dev studio-design/gesso
+composer require --dev "studio-design/gesso:^2.0@beta"
 ```
+
+The explicit stability flag lets Composer select the published prerelease; it
+is not a stable-release recommendation. After v2.0.0 stable is published, new
+installations can use `composer require --dev "studio-design/gesso:^2.0"`
+instead.
 
 > **YAML specs require `symfony/yaml`.** It is listed under `suggest` so it isn't installed automatically. If your spec is JSON, you can skip this. If your spec is `.yaml` / `.yml`, add it explicitly:
 >
@@ -124,8 +133,12 @@ Choose the CI-tested five-minute path matching your stack:
 
 All paths start with the same development dependency:
 
+> The command below installs a prerelease for isolated evaluation. See the
+> [installation warning](#installation) before adopting it in an existing
+> project.
+
 ```bash
-composer require --dev studio-design/gesso
+composer require --dev "studio-design/gesso:^2.0@beta"
 ```
 
 The example below uses a PSR-7 request and response. The searchable documentation contains the complete [core](https://studio-design.github.io/gesso/quickstarts/core), [Laravel](https://studio-design.github.io/gesso/quickstarts/laravel), [Symfony](https://studio-design.github.io/gesso/quickstarts/symfony), and [Pest](https://studio-design.github.io/gesso/quickstarts/pest) quickstarts.

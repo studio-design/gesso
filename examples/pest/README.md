@@ -6,6 +6,9 @@ Mirrors the patterns documented in the main README's
 
 ## Run it
 
+> **Pre-release evaluation only.** Run this beta in an isolated branch or CI
+> job; Gesso 2 has not reached a stable release.
+
 ```bash
 cd examples/pest
 composer install
@@ -20,7 +23,7 @@ chaining, and a coverage-tracker smoke assertion.
 
 | Path | Purpose |
 |---|---|
-| `composer.json` | Wires the library via a `path` repository (`../..`). In your real project, replace it with `composer require --dev studio-design/gesso pestphp/pest`. |
+| `composer.json` | Wires the library via a `path` repository (`../..`). In your real project, replace it with `composer require --dev "studio-design/gesso:^2.0@beta" pestphp/pest`. |
 | `openapi/petstore.json` | Tiny OpenAPI 3.1 spec with three endpoints (`GET /v1/pets`, `POST /v1/pets`, `GET /v1/health`). |
 | `phpunit.xml.dist` | Minimal PHPUnit config that registers `OpenApiCoverageExtension` and points it at `openapi/`. |
 | `tests/TestCase.php` | Base test case extending Orchestra Testbench, mixing in `ValidatesOpenApiSchema`, declaring sample routes, and resetting library state per test. |

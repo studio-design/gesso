@@ -1,7 +1,10 @@
 # Core / PHPUnit quickstart
 
+> **Pre-release evaluation only.** Run this beta in an isolated branch or CI
+> job; Gesso 2 has not reached a stable release.
+
 ```bash
-composer require --dev studio-design/gesso
+composer require --dev "studio-design/gesso:^2.0@beta"
 ```
 
 Copy the minimal [`examples/core`](https://github.com/studio-design/gesso/tree/main/examples/core) project. Its test validates a JSON response without a framework adapter:
