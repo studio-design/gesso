@@ -10,6 +10,19 @@ the README for the full surface contract.
 
 ## Unreleased
 
+## [2.0.0-beta.5](https://github.com/studio-design/gesso/compare/v2.0.0-beta.4...v2.0.0-beta.5) (2026-07-23)
+
+
+### Features
+
+* **docs:** redesign site with tombo ([#382](https://github.com/studio-design/gesso/issues/382)) ([a694b07](https://github.com/studio-design/gesso/commit/a694b072909c8b588b19a79814ff47d990ff674f))
+
+
+### Bug Fixes
+
+* **docs:** keep footer clear of sidebar ([#384](https://github.com/studio-design/gesso/issues/384)) ([0f7717b](https://github.com/studio-design/gesso/commit/0f7717b76bb5d83f289a2d015b1100efa5f22fe2))
+* **docs:** use wide layout for reference content ([#385](https://github.com/studio-design/gesso/issues/385)) ([2bb72b9](https://github.com/studio-design/gesso/commit/2bb72b9a3aeee126454e8a6f70116d7837c53982))
+
 ## [2.0.0-beta.4](https://github.com/studio-design/gesso/compare/v2.0.0-beta.3...v2.0.0-beta.4) (2026-07-17)
 
 
