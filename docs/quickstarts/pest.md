@@ -1,10 +1,7 @@
 # Pest quickstart
 
-> **Pre-release evaluation only.** Run this beta in an isolated branch or CI
-> job; Gesso 2 has not reached a stable release.
-
 ```bash
-composer require --dev "studio-design/gesso:^2.0@beta" pestphp/pest
+composer require --dev "studio-design/gesso:^2.0" pestphp/pest
 ```
 
 Use the automatically registered expectation with a Laravel response:

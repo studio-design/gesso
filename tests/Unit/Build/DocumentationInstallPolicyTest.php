@@ -13,7 +13,7 @@ use function file_get_contents;
 final class DocumentationInstallPolicyTest extends TestCase
 {
     #[Test]
-    public function installation_guides_keep_the_beta_constraint_until_stable_is_published(): void
+    public function installation_guides_use_the_stable_v2_constraint(): void
     {
         $root = dirname(__DIR__, 3);
 
@@ -32,19 +32,19 @@ final class DocumentationInstallPolicyTest extends TestCase
             $this->assertIsString($contents);
 
             $this->assertStringContainsString(
-                'studio-design/gesso:^2.0@beta',
+                'studio-design/gesso:^2.0',
                 $contents,
-                $relativePath . ' must keep using the published beta until v2.0.0 stable is installable.',
-            );
-            $this->assertStringContainsString(
-                'Pre-release evaluation only',
-                $contents,
-                $relativePath . ' must retain the prerelease warning until v2.0.0 stable is installable.',
+                $relativePath . ' must use the stable v2 constraint.',
             );
             $this->assertStringNotContainsString(
-                'composer require --dev studio-design/gesso',
+                'studio-design/gesso:^2.0@beta',
                 $contents,
-                $relativePath . ' must not present an unpublished stable release as the current install path.',
+                $relativePath . ' must not opt stable users into beta releases.',
+            );
+            $this->assertStringNotContainsString(
+                'Pre-release evaluation only',
+                $contents,
+                $relativePath . ' must not present v2 as a prerelease.',
             );
         }
 
@@ -52,14 +52,14 @@ final class DocumentationInstallPolicyTest extends TestCase
         $this->assertIsString($homeContents);
 
         $this->assertStringContainsString(
-            'studio-design/gesso:^2.0@beta',
+            'studio-design/gesso:^2.0',
             $homeContents,
-            'The home page must keep using the published beta until v2.0.0 stable is installable.',
+            'The home page must use the stable v2 constraint.',
         );
         $this->assertStringNotContainsString(
-            'composer require --dev studio-design/gesso',
+            'studio-design/gesso:^2.0@beta',
             $homeContents,
-            'The home page must not present an unpublished stable release as the current install path.',
+            'The home page must not opt stable users into beta releases.',
         );
     }
 }

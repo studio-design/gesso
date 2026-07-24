@@ -160,7 +160,7 @@ const quickstarts = [
           <div class="quickstart-proof">
             <figure class="tombo-code">
               <figcaption><span>SHELL — INSTALL &amp; RUN</span><span>02 STEPS</span></figcaption>
-              <pre><code><span class="code-line"><i>001</i><b>$</b> composer require --dev &quot;studio-design/gesso:^2.0@beta&quot;</span>
+              <pre><code><span class="code-line"><i>001</i><b>$</b> composer require --dev &quot;studio-design/gesso:^2.0&quot;</span>
 <span class="code-line"><i>002</i><b>$</b> vendor/bin/phpunit</span>
 <span class="code-line code-comment"><i>003</i># coverage: method · path · status · content-type</span></code></pre>
             </figure>
