@@ -41,6 +41,24 @@ html.dark {
   html.dark {
     color-scheme: light;
   }
+
+  html.dark .vp-doc div[class*="language-"] {
+    background: #fff;
+  }
+
+  html.dark .vp-doc div[class*="language-"] pre {
+    background: transparent;
+    color: var(--tombo-ink);
+  }
+
+  html.dark .vp-doc div[class*="language-"] code {
+    background: transparent;
+    color: var(--tombo-ink);
+  }
+
+  html.dark .vp-code span {
+    color: var(--shiki-light, var(--tombo-ink));
+  }
 }
 
 body {
