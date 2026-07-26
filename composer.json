@@ -1,8 +1,8 @@
 {
     "name": "studio-design/gesso",
-    "description": "Gesso: framework-agnostic OpenAPI 3.0/3.1/3.2 contract testing for PHPUnit with endpoint coverage tracking",
+    "description": "Gesso — OpenAPI 3.0/3.1/3.2 contract testing for PHP. Framework-independent core with Laravel, Symfony, Pest, and PSR-7 adapters. PHPUnit coverage, request/response validation, fuzzing, and drift detection.",
     "homepage": "https://studio-design.github.io/gesso/",
-    "keywords": ["openapi", "openapi3", "openapi31", "contract-testing", "phpunit", "pest", "laravel", "symfony", "api-testing", "coverage", "fuzzing"],
+    "keywords": ["gesso", "openapi", "openapi3", "openapi31", "contract-testing", "api-testing", "validation", "openapi-validator", "phpunit", "pest", "laravel", "symfony", "psr7", "coverage", "fuzzing"],
     "license": "MIT",
     "type": "library",
     "require": {
