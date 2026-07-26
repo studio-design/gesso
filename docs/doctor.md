@@ -4,6 +4,10 @@
 
 It is not a replacement for a semantic or style linter such as Spectral or Redocly.
 
+## Scope
+
+`gesso doctor` is a preflight for a local OpenAPI file. It confirms Gesso can load and enforce the document — version and dialect, references, warned-about keywords, structurally valid operations — and exits non-zero when it can't. It does not fetch a deployed spec URL, and it does not compare the checked-in spec against what a running service returns. `--allow-remote-refs` only covers `$ref` targets from the local entry document.
+
 ## Basic usage
 
 ```bash
