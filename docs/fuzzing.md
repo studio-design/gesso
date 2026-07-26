@@ -1,7 +1,10 @@
 # Schema-driven request fuzzing
 
-The `ExploresOpenApiEndpoint` trait generates deterministic request inputs for
-one operation or a filtered whole spec. Its workflow is inspired by
+The `ExploresOpenApiEndpoint` trait ships for Laravel only. It generates
+deterministic request inputs for one operation or a filtered whole spec. Symfony,
+Pest, and plain PHPUnit users call the framework-agnostic
+[`OpenApiSpecExplorer::explore()`](#framework-agnostic-exploration) instead. The
+workflow is inspired by
 [Schemathesis][schemathesis], but the supported strategy matrix below is the
 contract; this package does not claim feature parity.
 
@@ -87,11 +90,26 @@ class ApiContractTest extends TestCase
 }
 ```
 
-Framework-agnostic code starts with
-`OpenApiSpecExplorer::explore('front', casesPerOperation: 20, seed: 1)` and
-adds `assertResponseUsing()` to validate whatever the dispatcher returns. The
-runnable [`examples/psr7`](https://github.com/studio-design/gesso/tree/main/examples/psr7) suite demonstrates this with
-`OpenApiPsr7Validator` assertions.
+### Framework-agnostic exploration
+
+`ExploresOpenApiEndpoint` is Laravel-only; there is no Symfony equivalent.
+Symfony, Pest, and plain PHPUnit users call `OpenApiSpecExplorer::explore()`
+directly. It returns the same filter/hook builder, so everything below applies
+unchanged:
+
+```php
+use Studio\Gesso\Fuzz\ExploredCase;
+use Studio\Gesso\Fuzz\OpenApiSpecExplorer;
+
+$summary = OpenApiSpecExplorer::explore('petstore', casesPerOperation: 20, seed: 7)
+    ->dispatchUsing(fn (ExploredCase $case) => $this->sendRequest($case))
+    ->assertResponseUsing(fn (mixed $exchange) => $this->assertExchangeIsValid($exchange));
+```
+
+`dispatchUsing()` returns whatever your client produces and
+`assertResponseUsing()` validates it. The runnable
+[`examples/psr7`](https://github.com/studio-design/gesso/tree/main/examples/psr7)
+suite demonstrates this with `OpenApiPsr7Validator` assertions.
 
 ### Filters and hooks
 
