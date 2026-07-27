@@ -8,6 +8,30 @@ const repositoryUrl = `https://github.com/${repository}`
 const siteUrl = new URL(base, 'https://studio-design.github.io').toString()
 const socialPreviewUrl = new URL('gesso-social-preview.png', siteUrl).toString()
 
+// Anchors "Gesso" as a named software entity for engines that resolve entities
+// from JSON-LD, and disambiguates the package from the art-primer term.
+const homeStructuredData = {
+  '@context': 'https://schema.org',
+  '@type': 'SoftwareApplication',
+  name: 'Gesso',
+  alternateName: repository,
+  description:
+    'OpenAPI 3.0/3.1/3.2 contract testing for PHP. Framework-independent core with Laravel, Symfony, Pest, and PSR-7 adapters. PHPUnit coverage, request/response validation, fuzzing, and drift detection.',
+  applicationCategory: 'DeveloperApplication',
+  operatingSystem: 'PHP 8.3+',
+  url: siteUrl,
+  codeRepository: repositoryUrl,
+  programmingLanguage: 'PHP',
+  license: 'https://opensource.org/licenses/MIT',
+  // Only tagged documentation builds know a published version; `next` does not.
+  ...(version.startsWith('v') ? { softwareVersion: version.slice(1) } : {}),
+  offers: {
+    '@type': 'Offer',
+    price: '0',
+    priceCurrency: 'USD'
+  }
+}
+
 export default defineConfig({
   title: 'Gesso',
   description: 'OpenAPI contract testing for PHP',
@@ -32,6 +56,29 @@ export default defineConfig({
   ],
   cleanUrls: true,
   lastUpdated: true,
+  transformPageData(pageData) {
+    if (pageData.relativePath !== 'index.md') {
+      return
+    }
+
+    const head = (pageData.frontmatter.head ??= [])
+    const isStructuredData = (entry: unknown[]) =>
+      entry[0] === 'script' &&
+      typeof entry[1] === 'object' &&
+      entry[1] !== null &&
+      (entry[1] as Record<string, string>).type === 'application/ld+json'
+
+    // `transformPageData` re-runs on hot reload; keep exactly one block.
+    if (head.some(isStructuredData)) {
+      return
+    }
+
+    head.push([
+      'script',
+      { type: 'application/ld+json' },
+      JSON.stringify(homeStructuredData)
+    ])
+  },
   sitemap: { hostname: siteUrl },
   vite: { define: { __DOCS_VERSION__: JSON.stringify(version) } },
   markdown: {
