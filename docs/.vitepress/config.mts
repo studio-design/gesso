@@ -100,7 +100,8 @@ export default defineConfig({
           { text: 'Doctor command', link: '/doctor' },
           { text: 'PSR-7 validation', link: '/psr7' },
           { text: 'Laravel route parity', link: '/laravel-route-parity' },
-          { text: 'Schema-driven fuzzing', link: '/fuzzing' }
+          { text: 'Schema-driven fuzzing', link: '/fuzzing' },
+          { text: 'Symfony contract testing', link: '/contract-testing-symfony' }
         ]
       },
       {
