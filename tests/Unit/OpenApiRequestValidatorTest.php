@@ -17,6 +17,7 @@ use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Validation\Request\SecurityValidator;
 
 use function array_filter;
+use function array_map;
 use function fclose;
 use function fopen;
 use function implode;
@@ -202,6 +203,66 @@ class OpenApiRequestValidatorTest extends TestCase
 
         $this->assertFalse($result->isValid());
         $this->assertNotEmpty($result->errors());
+    }
+
+    #[Test]
+    public function issues_carry_categories_and_operation_context(): void
+    {
+        $body = $this->validator->validate(
+            'petstore-3.0',
+            'POST',
+            '/v1/pets',
+            [],
+            [],
+            ['tag' => 'dog'],
+            'application/json',
+        );
+
+        $this->assertFalse($body->isValid());
+        $bodyIssues = $body->issues();
+        $this->assertNotEmpty($bodyIssues);
+        $this->assertContains('request.body', array_map(static fn($issue) => $issue->category, $bodyIssues));
+        $this->assertSame('POST', $bodyIssues[0]->method);
+        $this->assertSame('/v1/pets', $bodyIssues[0]->path);
+        $this->assertSame(
+            $body->errors(),
+            array_map(static fn($issue) => $issue->message, $bodyIssues),
+        );
+
+        $security = $this->validator->validate('petstore-3.0', 'GET', '/v1/secure/bearer', [], [], null);
+        $this->assertContains(
+            'request.security',
+            array_map(static fn($issue) => $issue->category, $security->issues()),
+        );
+
+        $query = $this->validator->validate('openapi-3.2', 'GET', '/v1/filter', ['limit' => '0'], [], null);
+        $this->assertContains(
+            'request.parameter.query',
+            array_map(static fn($issue) => $issue->category, $query->issues()),
+        );
+    }
+
+    #[Test]
+    public function path_not_found_issue_is_categorized(): void
+    {
+        $result = $this->validator->validate('petstore-3.0', 'GET', '/v1/does-not-exist', [], [], null);
+
+        $issues = $result->issues();
+        $this->assertCount(1, $issues);
+        $this->assertSame('request.path_match', $issues[0]->category);
+        $this->assertSame('GET', $issues[0]->method);
+        $this->assertNull($issues[0]->path);
+    }
+
+    #[Test]
+    public function method_not_defined_issue_is_categorized(): void
+    {
+        $result = $this->validator->validate('petstore-3.0', 'DELETE', '/v1/pets', [], [], null);
+
+        $issues = $result->issues();
+        $this->assertCount(1, $issues);
+        $this->assertSame('request.method', $issues[0]->category);
+        $this->assertSame('/v1/pets', $issues[0]->path);
     }
 
     #[Test]

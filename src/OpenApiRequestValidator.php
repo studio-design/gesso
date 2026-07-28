@@ -27,6 +27,7 @@ use Studio\Gesso\Validation\Support\ValidatorErrorBoundary;
 
 use function array_key_exists;
 use function array_keys;
+use function array_map;
 use function is_array;
 use function sprintf;
 
@@ -144,15 +145,18 @@ final class OpenApiRequestValidator
         // `?? []`. Surface it as a loud spec error instead, mirroring the
         // response-side traversal guards (issue #259).
         if (array_key_exists('paths', $spec) && MalformedSpecNode::isMalformed($spec['paths'])) {
-            return OpenApiValidationResult::failure([
-                sprintf(
-                    "Malformed 'paths' for %s %s in '%s' spec: expected object, got %s.",
-                    $method,
-                    $requestPath,
-                    $specName,
-                    MalformedSpecNode::describe($spec['paths']),
-                ),
-            ]);
+            $message = sprintf(
+                "Malformed 'paths' for %s %s in '%s' spec: expected object, got %s.",
+                $method,
+                $requestPath,
+                $specName,
+                MalformedSpecNode::describe($spec['paths']),
+            );
+
+            return OpenApiValidationResult::failure(
+                [$message],
+                issues: [new ValidationIssue('request.spec', $message, method: $method)],
+            );
         }
 
         /** @var string[] $specPaths */
@@ -161,9 +165,12 @@ final class OpenApiRequestValidator
         $matched = $matcher->matchWithVariables($requestPath);
 
         if ($matched === null) {
-            return OpenApiValidationResult::failure([
-                PathDiagnosticsFormatter::pathNotFound($specName, $method, $requestPath, $matcher, $spec),
-            ]);
+            $message = PathDiagnosticsFormatter::pathNotFound($specName, $method, $requestPath, $matcher, $spec);
+
+            return OpenApiValidationResult::failure(
+                [$message],
+                issues: [new ValidationIssue('request.path_match', $message, method: $method)],
+            );
         }
 
         $matchedPath = $matched['path'];
@@ -182,24 +189,32 @@ final class OpenApiRequestValidator
         // raising an uncaught TypeError, and a list mis-resolves silently.
         // Surface it loudly instead (issue #259).
         if (MalformedSpecNode::isMalformed($pathSpec)) {
-            return OpenApiValidationResult::failure([
-                sprintf(
-                    "Malformed 'paths[\"%s\"]' for %s %s in '%s' spec: expected object, got %s.",
-                    $matchedPath,
-                    $method,
-                    $matchedPath,
-                    $specName,
-                    MalformedSpecNode::describe($pathSpec),
-                ),
-            ], $matchedPath);
+            $message = sprintf(
+                "Malformed 'paths[\"%s\"]' for %s %s in '%s' spec: expected object, got %s.",
+                $matchedPath,
+                $method,
+                $matchedPath,
+                $specName,
+                MalformedSpecNode::describe($pathSpec),
+            );
+
+            return OpenApiValidationResult::failure(
+                [$message],
+                $matchedPath,
+                issues: [new ValidationIssue('request.spec', $message, method: $method, path: $matchedPath)],
+            );
         }
 
         /** @var array<string, mixed> $pathSpec */
         $resolvedOperation = OpenApiOperationResolver::resolve($pathSpec, $method);
         if (!$resolvedOperation['found']) {
-            return OpenApiValidationResult::failure([
-                PathDiagnosticsFormatter::methodNotDefined($specName, $method, $matchedPath, $spec),
-            ], $matchedPath);
+            $message = PathDiagnosticsFormatter::methodNotDefined($specName, $method, $matchedPath, $spec);
+
+            return OpenApiValidationResult::failure(
+                [$message],
+                $matchedPath,
+                issues: [new ValidationIssue('request.method', $message, method: $method, path: $matchedPath)],
+            );
         }
 
         $operation = $resolvedOperation['operation'];
@@ -211,17 +226,21 @@ final class OpenApiRequestValidator
         // parameter (the first scalar-typed sink) and raise an uncaught
         // TypeError; a list mis-resolves silently (issue #259).
         if (MalformedSpecNode::isMalformed($operation)) {
-            return OpenApiValidationResult::failure([
-                sprintf(
-                    "Malformed 'paths[\"%s\"].%s' for %s %s in '%s' spec: expected object, got %s.",
-                    $matchedPath,
-                    $operationLocation,
-                    $method,
-                    $matchedPath,
-                    $specName,
-                    MalformedSpecNode::describe($operation),
-                ),
-            ], $matchedPath);
+            $message = sprintf(
+                "Malformed 'paths[\"%s\"].%s' for %s %s in '%s' spec: expected object, got %s.",
+                $matchedPath,
+                $operationLocation,
+                $method,
+                $matchedPath,
+                $specName,
+                MalformedSpecNode::describe($operation),
+            );
+
+            return OpenApiValidationResult::failure(
+                [$message],
+                $matchedPath,
+                issues: [new ValidationIssue('request.spec', $message, method: $method, path: $matchedPath)],
+            );
         }
 
         // Collect merged path/operation parameters once so path + query + header
@@ -252,14 +271,25 @@ final class OpenApiRequestValidator
         $discriminatorContext = new DiscriminatorContext($spec, DiscriminatorEnforcement::isEnabled());
         $bodyResult = $this->validateBody($specName, $method, $matchedPath, $operation, $body, $contentType, $version, $discriminatorContext, $jsonSchemaDialect);
 
-        $errors = [
-            ...$collected->specErrors,
-            ...ValidatorErrorBoundary::safely('path', $specName, $method, $matchedPath, fn(): array => $this->pathValidator->validate($method, $matchedPath, $collected->parameters, $pathVariables, $version, $jsonSchemaDialect)),
-            ...ValidatorErrorBoundary::safely('query', $specName, $method, $matchedPath, fn(): array => $this->queryValidator->validate($method, $matchedPath, $collected->parameters, $queryParams, $version, $jsonSchemaDialect)),
-            ...ValidatorErrorBoundary::safely('header', $specName, $method, $matchedPath, fn(): array => $this->headerValidator->validate($method, $matchedPath, $collected->parameters, $headers, $version, $jsonSchemaDialect)),
-            ...ValidatorErrorBoundary::safely('security', $specName, $method, $matchedPath, fn(): array => $this->securityValidator->validate($method, $matchedPath, $spec, $operation, $headers, $queryParams, $cookies)),
-            ...$bodyResult->errors,
+        // Category tags mirror the sub-validator that produced each message so
+        // issues() can expose a structured view without touching the
+        // sub-validators themselves (#282, stage 1).
+        $issueGroups = [
+            ['request.spec', $collected->specErrors],
+            ['request.parameter.path', ValidatorErrorBoundary::safely('path', $specName, $method, $matchedPath, fn(): array => $this->pathValidator->validate($method, $matchedPath, $collected->parameters, $pathVariables, $version, $jsonSchemaDialect))],
+            ['request.parameter.query', ValidatorErrorBoundary::safely('query', $specName, $method, $matchedPath, fn(): array => $this->queryValidator->validate($method, $matchedPath, $collected->parameters, $queryParams, $version, $jsonSchemaDialect))],
+            ['request.parameter.header', ValidatorErrorBoundary::safely('header', $specName, $method, $matchedPath, fn(): array => $this->headerValidator->validate($method, $matchedPath, $collected->parameters, $headers, $version, $jsonSchemaDialect))],
+            ['request.security', ValidatorErrorBoundary::safely('security', $specName, $method, $matchedPath, fn(): array => $this->securityValidator->validate($method, $matchedPath, $spec, $operation, $headers, $queryParams, $cookies))],
+            ['request.body', $bodyResult->errors],
         ];
+
+        $issues = [];
+        foreach ($issueGroups as [$category, $messages]) {
+            foreach ($messages as $message) {
+                $issues[] = new ValidationIssue($category, $message, method: $method, path: $matchedPath);
+            }
+        }
+        $errors = array_map(static fn(ValidationIssue $issue): string => $issue->message, $issues);
 
         if ($errors === []) {
             // Issue #254: a non-JSON request Content-Type matched a spec
@@ -317,7 +347,7 @@ final class OpenApiRequestValidator
             }
         }
 
-        return OpenApiValidationResult::failure($errors, $matchedPath);
+        return OpenApiValidationResult::failure($errors, $matchedPath, issues: $issues);
     }
 
     /**
