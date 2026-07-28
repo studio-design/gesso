@@ -45,7 +45,10 @@ same `message` plus a stable `category` slug (e.g. `request.security`,
 `response.body` — the full list is in
 [versioning.md](versioning.md#whats-covered-by-semver)) and the operation
 context the validator resolved (`method`, `path`, `statusCode`,
-`contentType`). Assert on `category` and context instead of message wording —
+`contentType`). A context field is `null` when that dimension does not apply
+or was not resolved — request-side issues never carry a `statusCode`, and
+`contentType` is set only on body issues (the resolved spec media-type key).
+Assert on `category` and context instead of message wording —
 the prose is not a compatibility surface. `instancePath` and `keyword` are
 reserved for body-schema errors and are always `null` today (issue #282,
 stage 2). Results built by code that predates the structured API derive

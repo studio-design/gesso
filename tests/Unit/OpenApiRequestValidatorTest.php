@@ -18,6 +18,7 @@ use Studio\Gesso\Validation\Request\SecurityValidator;
 
 use function array_filter;
 use function array_map;
+use function array_values;
 use function fclose;
 use function fopen;
 use function implode;
@@ -240,6 +241,53 @@ class OpenApiRequestValidatorTest extends TestCase
             'request.parameter.query',
             array_map(static fn($issue) => $issue->category, $query->issues()),
         );
+    }
+
+    #[Test]
+    public function request_body_issues_carry_the_matched_content_type(): void
+    {
+        $schemaError = $this->validator->validate(
+            'petstore-3.0',
+            'POST',
+            '/v1/pets',
+            [],
+            [],
+            ['tag' => 'dog'],
+            'application/json',
+        );
+
+        $bodyIssues = array_values(array_filter(
+            $schemaError->issues(),
+            static fn($issue) => $issue->category === 'request.body',
+        ));
+        $this->assertNotEmpty($bodyIssues);
+        $this->assertSame('application/json', $bodyIssues[0]->contentType);
+
+        $missingBody = $this->validator->validate(
+            'petstore-3.0',
+            'POST',
+            '/v1/pets',
+            [],
+            [],
+            null,
+            'application/json',
+        );
+
+        $missingBodyIssues = array_values(array_filter(
+            $missingBody->issues(),
+            static fn($issue) => $issue->category === 'request.body',
+        ));
+        $this->assertNotEmpty($missingBodyIssues);
+        $this->assertSame('application/json', $missingBodyIssues[0]->contentType);
+
+        // Parameter issues have no resolved media type — contentType stays null.
+        $query = $this->validator->validate('openapi-3.2', 'GET', '/v1/filter', ['limit' => '0'], [], null);
+        $queryIssues = array_values(array_filter(
+            $query->issues(),
+            static fn($issue) => $issue->category === 'request.parameter.query',
+        ));
+        $this->assertNotEmpty($queryIssues);
+        $this->assertNull($queryIssues[0]->contentType);
     }
 
     #[Test]

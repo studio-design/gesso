@@ -273,20 +273,21 @@ final class OpenApiRequestValidator
 
         // Category tags mirror the sub-validator that produced each message so
         // issues() can expose a structured view without touching the
-        // sub-validators themselves (#282, stage 1).
+        // sub-validators themselves (#282, stage 1). Only body issues have a
+        // resolved spec media-type key; parameter/security issues carry null.
         $issueGroups = [
-            ['request.spec', $collected->specErrors],
-            ['request.parameter.path', ValidatorErrorBoundary::safely('path', $specName, $method, $matchedPath, fn(): array => $this->pathValidator->validate($method, $matchedPath, $collected->parameters, $pathVariables, $version, $jsonSchemaDialect))],
-            ['request.parameter.query', ValidatorErrorBoundary::safely('query', $specName, $method, $matchedPath, fn(): array => $this->queryValidator->validate($method, $matchedPath, $collected->parameters, $queryParams, $version, $jsonSchemaDialect))],
-            ['request.parameter.header', ValidatorErrorBoundary::safely('header', $specName, $method, $matchedPath, fn(): array => $this->headerValidator->validate($method, $matchedPath, $collected->parameters, $headers, $version, $jsonSchemaDialect))],
-            ['request.security', ValidatorErrorBoundary::safely('security', $specName, $method, $matchedPath, fn(): array => $this->securityValidator->validate($method, $matchedPath, $spec, $operation, $headers, $queryParams, $cookies))],
-            ['request.body', $bodyResult->errors],
+            ['request.spec', $collected->specErrors, null],
+            ['request.parameter.path', ValidatorErrorBoundary::safely('path', $specName, $method, $matchedPath, fn(): array => $this->pathValidator->validate($method, $matchedPath, $collected->parameters, $pathVariables, $version, $jsonSchemaDialect)), null],
+            ['request.parameter.query', ValidatorErrorBoundary::safely('query', $specName, $method, $matchedPath, fn(): array => $this->queryValidator->validate($method, $matchedPath, $collected->parameters, $queryParams, $version, $jsonSchemaDialect)), null],
+            ['request.parameter.header', ValidatorErrorBoundary::safely('header', $specName, $method, $matchedPath, fn(): array => $this->headerValidator->validate($method, $matchedPath, $collected->parameters, $headers, $version, $jsonSchemaDialect)), null],
+            ['request.security', ValidatorErrorBoundary::safely('security', $specName, $method, $matchedPath, fn(): array => $this->securityValidator->validate($method, $matchedPath, $spec, $operation, $headers, $queryParams, $cookies)), null],
+            ['request.body', $bodyResult->errors, $bodyResult->matchedContentType],
         ];
 
         $issues = [];
-        foreach ($issueGroups as [$category, $messages]) {
+        foreach ($issueGroups as [$category, $messages, $issueContentType]) {
             foreach ($messages as $message) {
-                $issues[] = new ValidationIssue($category, $message, method: $method, path: $matchedPath);
+                $issues[] = new ValidationIssue($category, $message, method: $method, path: $matchedPath, contentType: $issueContentType);
             }
         }
         $errors = array_map(static fn(ValidationIssue $issue): string => $issue->message, $issues);

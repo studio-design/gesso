@@ -171,7 +171,7 @@ final class RequestBodyValidator
                 $matchedKey = ContentTypeMatcher::findContentTypeKey($normalizedType, $content);
                 if ($matchedKey !== null) {
                     if ($required && !$requestBody->present) {
-                        return self::missingRequiredBodyResult($specName, $method, $matchedPath);
+                        return self::missingRequiredBodyResult($specName, $method, $matchedPath, $matchedKey);
                     }
 
                     if (isset($content[$matchedKey]['itemSchema'])) {
@@ -227,7 +227,7 @@ final class RequestBodyValidator
         // matching so an unknown actual Content-Type remains the primary
         // diagnostic, but before the no-JSON/no-schema early returns below.
         if ($required && !$requestBody->present) {
-            return self::missingRequiredBodyResult($specName, $method, $matchedPath);
+            return self::missingRequiredBodyResult($specName, $method, $matchedPath, $jsonContentType);
         }
 
         // If no JSON-compatible content type is defined, skip body validation.
@@ -291,17 +291,21 @@ final class RequestBodyValidator
             }
         }
 
-        return new RequestBodyValidationResult($errors);
+        return new RequestBodyValidationResult($errors, matchedContentType: $jsonContentType);
     }
 
     private static function missingRequiredBodyResult(
         string $specName,
         string $method,
         string $matchedPath,
+        ?string $matchedContentType = null,
     ): RequestBodyValidationResult {
-        return new RequestBodyValidationResult([
-            "Request body is empty but {$method} {$matchedPath} defines a required request body in '{$specName}' spec.",
-        ]);
+        return new RequestBodyValidationResult(
+            [
+                "Request body is empty but {$method} {$matchedPath} defines a required request body in '{$specName}' spec.",
+            ],
+            matchedContentType: $matchedContentType,
+        );
     }
 
     private static function unsupportedItemSchemaResult(string $mediaType): RequestBodyValidationResult
