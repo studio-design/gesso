@@ -65,6 +65,60 @@ class OpenApiResponseValidatorTest extends TestCase
         yield '4XX matches 499' => [499, '4XX'];
     }
 
+    #[Test]
+    public function issues_carry_categories_and_operation_context(): void
+    {
+        // psr7 spec: POST /widgets/{id} 201 requires header X-Trace and an
+        // object body with integer `id` — wrong body type + missing header
+        // yields one issue from each source.
+        $result = $this->validator->validate(
+            'psr7',
+            'POST',
+            '/widgets/42',
+            201,
+            ['id' => 'not-an-integer'],
+            'application/json',
+            [],
+        );
+
+        $this->assertFalse($result->isValid());
+        $issues = $result->issues();
+        $categories = array_map(static fn($issue) => $issue->category, $issues);
+        $this->assertContains('response.body', $categories);
+        $this->assertContains('response.header', $categories);
+        $this->assertSame('POST', $issues[0]->method);
+        $this->assertSame('/widgets/{id}', $issues[0]->path);
+        $this->assertSame('201', $issues[0]->statusCode);
+        $this->assertSame('application/json', $issues[0]->contentType);
+        $this->assertSame(
+            $result->errors(),
+            array_map(static fn($issue) => $issue->message, $issues),
+        );
+    }
+
+    #[Test]
+    public function undefined_status_issue_is_categorized_with_status(): void
+    {
+        $result = $this->validator->validate('psr7', 'GET', '/body/scalar', 418, 5, 'application/json');
+
+        $issues = $result->issues();
+        $this->assertCount(1, $issues);
+        $this->assertSame('response.status', $issues[0]->category);
+        $this->assertSame('418', $issues[0]->statusCode);
+        $this->assertSame('/body/scalar', $issues[0]->path);
+    }
+
+    #[Test]
+    public function response_path_not_found_issue_is_categorized(): void
+    {
+        $result = $this->validator->validate('psr7', 'GET', '/does-not-exist', 200, null);
+
+        $issues = $result->issues();
+        $this->assertCount(1, $issues);
+        $this->assertSame('response.request_context', $issues[0]->category);
+        $this->assertSame('GET', $issues[0]->method);
+    }
+
     // ========================================
     // OAS 3.0 tests
     // ========================================
