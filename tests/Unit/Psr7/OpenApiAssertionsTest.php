@@ -59,6 +59,61 @@ final class OpenApiAssertionsTest extends TestCase
         }
     }
 
+    #[Test]
+    public function assertion_failure_includes_a_redacted_curl_reproduction(): void
+    {
+        $request = new Request(
+            'GET',
+            'https://example.test/body/scalar',
+            ['Authorization' => 'Bearer real-token'],
+        );
+        $response = new Response(200, ['Content-Type' => 'application/json'], '"wrong"');
+
+        try {
+            $this->assertPsr7ResponseMatchesOpenApiSchema($request, $response);
+            $this->fail('Expected the PSR-7 assertion to fail.');
+        } catch (AssertionFailedError $e) {
+            $this->assertStringContainsString(
+                "Reproduce: curl -X GET 'https://example.test/body/scalar'",
+                $e->getMessage(),
+            );
+            $this->assertStringContainsString("-H 'Authorization: <redacted>'", $e->getMessage());
+            $this->assertStringNotContainsString('real-token', $e->getMessage());
+        }
+    }
+
+    #[Test]
+    public function request_assertion_failure_includes_curl_with_json_body(): void
+    {
+        $request = new Request(
+            'POST',
+            'https://example.test/widgets/42',
+            ['Content-Type' => 'application/json'],
+            '{"message":123}',
+        );
+
+        try {
+            $this->assertPsr7RequestMatchesOpenApiSchema($request);
+            $this->fail('Expected the PSR-7 request assertion to fail.');
+        } catch (AssertionFailedError $e) {
+            $this->assertStringContainsString('Reproduce: curl -X POST', $e->getMessage());
+            $this->assertStringContainsString('--data \'{"message":123}\'', $e->getMessage());
+        }
+    }
+
+    #[Test]
+    public function operation_assertion_failure_includes_a_method_and_path_curl(): void
+    {
+        $response = new Response(200, ['Content-Type' => 'application/json'], '"wrong"');
+
+        try {
+            $this->assertPsr7ResponseForOperationMatchesOpenApiSchema('GET', '/body/scalar', $response);
+            $this->fail('Expected the PSR-7 assertion to fail.');
+        } catch (AssertionFailedError $e) {
+            $this->assertStringContainsString("Reproduce: curl -X GET '/body/scalar'", $e->getMessage());
+        }
+    }
+
     protected function openApiSpec(): string
     {
         return 'psr7';
