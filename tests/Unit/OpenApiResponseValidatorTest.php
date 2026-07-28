@@ -139,6 +139,9 @@ class OpenApiResponseValidatorTest extends TestCase
         $this->assertNotEmpty($headerIssues);
         $this->assertNull($headerIssues[0]->instancePath);
         $this->assertNull($headerIssues[0]->keyword);
+        // Header validation is independent of the response media type —
+        // contentType is documented as body-issue-only context.
+        $this->assertNull($headerIssues[0]->contentType);
     }
 
     #[Test]

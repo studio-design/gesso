@@ -429,7 +429,10 @@ final class OpenApiResponseValidator
             );
         }
         foreach ($headerErrors as $message) {
-            $issues[] = new ValidationIssue('response.header', $message, method: $method, path: $matchedPath, statusCode: $statusCodeStr, contentType: $bodyResult->matchedContentType);
+            // No contentType: header validation is independent of the response
+            // media type, and the documented contract reserves that context
+            // field for body issues.
+            $issues[] = new ValidationIssue('response.header', $message, method: $method, path: $matchedPath, statusCode: $statusCodeStr);
         }
         $errors = array_merge($bodyResult->errors, $headerErrors);
 
