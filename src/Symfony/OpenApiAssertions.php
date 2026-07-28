@@ -12,6 +12,7 @@ use PHPUnit\Framework\AssertionFailedError;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\DecodedBody;
 use Studio\Gesso\HttpMethod;
+use Studio\Gesso\Internal\CurlCommandFormatter;
 use Studio\Gesso\Internal\StackTraceFilter;
 use Studio\Gesso\OpenApiRequestValidator;
 use Studio\Gesso\OpenApiResponseValidator;
@@ -156,11 +157,12 @@ trait OpenApiAssertions
         $this->assertOpenApi(
             $result->isValid(),
             sprintf(
-                "OpenAPI schema validation failed for %s %s (spec: %s):\n%s",
+                "OpenAPI schema validation failed for %s %s (spec: %s):\n%s\nReproduce: %s",
                 $method->value,
                 $path,
                 $specName,
                 $result->errorMessage(),
+                $this->symfonyReproduceCommand($request),
             ),
         );
     }
@@ -210,11 +212,12 @@ trait OpenApiAssertions
         $this->assertOpenApi(
             $result->isValid(),
             sprintf(
-                "OpenAPI request validation failed for %s %s (spec: %s):\n%s",
+                "OpenAPI request validation failed for %s %s (spec: %s):\n%s\nReproduce: %s",
                 $method->value,
                 $path,
                 $specName,
                 $result->errorMessage(),
+                $this->symfonyReproduceCommand($request),
             ),
         );
     }
@@ -297,6 +300,19 @@ trait OpenApiAssertions
         }
 
         return $method;
+    }
+
+    private function symfonyReproduceCommand(Request $request): string
+    {
+        $body = $request->getContent();
+
+        return CurlCommandFormatter::format(
+            $request->getMethod(),
+            $request->getUri(),
+            $request->headers->all(),
+            $body !== '' ? $body : null,
+            $request->headers->get('Content-Type'),
+        );
     }
 
     private function resolveSymfonyOpenApiSpec(): string
