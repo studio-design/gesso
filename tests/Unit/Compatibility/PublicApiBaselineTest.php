@@ -21,6 +21,7 @@ use Studio\Gesso\Coverage\JUnitCoverageRenderer;
 use Studio\Gesso\Coverage\MarkdownCoverageRenderer;
 use Studio\Gesso\Exception\InvalidOpenApiSpecReason;
 use Studio\Gesso\Fuzz\ExploredCase;
+use Studio\Gesso\JsonValidationResultRenderer;
 use Studio\Gesso\Laravel\Commands\OpenApiRoutesCommand;
 use Studio\Gesso\OpenApiResponseValidator;
 use Studio\Gesso\OpenApiValidationResult;
@@ -354,6 +355,54 @@ final class PublicApiBaselineTest extends TestCase
                         $issueOptionalParam('path'),
                         $issueOptionalParam('statusCode'),
                         $issueOptionalParam('contentType'),
+                    ],
+                ],
+            ],
+        ];
+        // New public class in v2.x (#282 stage 2): versioned JSON output for
+        // validation results.
+        $expected[JsonValidationResultRenderer::class] = [
+            'kind' => 'class',
+            'final' => true,
+            'abstract' => false,
+            'readonly' => false,
+            'instantiable' => true,
+            'constructor' => ['kind' => 'implicit', 'visibility' => 'public'],
+            'parent' => null,
+            'interfaces' => [],
+            'traits' => [],
+            'attributes' => [],
+            'backing_type' => null,
+            'cases' => [],
+            'constants' => ['SCHEMA_VERSION' => 1],
+            'properties' => [],
+            'methods' => [
+                'render' => [
+                    'static' => true,
+                    'final' => false,
+                    'abstract' => false,
+                    'returns_reference' => false,
+                    'return_type' => 'string',
+                    'attributes' => [],
+                    'parameters' => [
+                        [
+                            'name' => 'result',
+                            'type' => 'Studio\Gesso\OpenApiValidationResult',
+                            'optional' => false,
+                            'variadic' => false,
+                            'by_reference' => false,
+                            'default' => ['unavailable' => true],
+                            'attributes' => [],
+                        ],
+                        [
+                            'name' => 'reproduceCommand',
+                            'type' => '?string',
+                            'optional' => true,
+                            'variadic' => false,
+                            'by_reference' => false,
+                            'default' => null,
+                            'attributes' => [],
+                        ],
                     ],
                 ],
             ],
