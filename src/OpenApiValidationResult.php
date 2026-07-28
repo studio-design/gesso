@@ -148,9 +148,10 @@ final readonly class OpenApiValidationResult
      * non-JSON-only specs with no Content-Type header — no spec media-type
      * key was resolved). It carries the spec media-type key only when the
      * skip happened *after* a content-type lookup matched a declared key:
-     * the "non-JSON media type with an unvalidatable `schema`" response case
-     * (issue #254), where it lets coverage record the skip against that exact
-     * media-type row instead of the wildcard bucket, and the documented-4xx
+     * the "non-JSON media type with an unvalidatable `schema`" case (issue
+     * #254, request and response sides), where it lets coverage record the
+     * response skip against that exact media-type row instead of the
+     * wildcard bucket, and the documented-4xx
      * request downgrade (issue #179), where it preserves the request
      * media-type key the body validator resolved before the downgrade so
      * adapters can still tag their `request.body` issues with it.

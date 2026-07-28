@@ -175,7 +175,7 @@ final class RequestBodyValidator
                     }
 
                     if (isset($content[$matchedKey]['itemSchema'])) {
-                        return self::unsupportedItemSchemaResult($normalizedType);
+                        return self::unsupportedItemSchemaResult($normalizedType, $matchedKey);
                     }
 
                     // A matched non-JSON media type that declares a `schema`
@@ -200,10 +200,11 @@ final class RequestBodyValidator
                                 $normalizedType,
                                 $matchedKey,
                             ),
+                            $matchedKey,
                         );
                     }
 
-                    return new RequestBodyValidationResult([]);
+                    return new RequestBodyValidationResult([], matchedContentType: $matchedKey);
                 }
 
                 $defined = implode(', ', array_keys($content));
@@ -236,7 +237,7 @@ final class RequestBodyValidator
         if ($jsonContentType === null) {
             foreach ($content as $mediaType => $mediaTypeSpec) {
                 if (isset($mediaTypeSpec['itemSchema'])) {
-                    return self::unsupportedItemSchemaResult((string) $mediaType);
+                    return self::unsupportedItemSchemaResult((string) $mediaType, (string) $mediaType);
                 }
             }
 
@@ -245,10 +246,10 @@ final class RequestBodyValidator
 
         if (!isset($content[$jsonContentType]['schema'])) {
             if (isset($content[$jsonContentType]['itemSchema'])) {
-                return self::unsupportedItemSchemaResult($jsonContentType);
+                return self::unsupportedItemSchemaResult($jsonContentType, $jsonContentType);
             }
 
-            return new RequestBodyValidationResult([]);
+            return new RequestBodyValidationResult([], matchedContentType: $jsonContentType);
         }
 
         // Required absence was rejected before content negotiation. An absent
@@ -257,7 +258,7 @@ final class RequestBodyValidator
         // #248), so it falls through to schema type-checking below instead of
         // taking this branch.
         if (!$requestBody->present) {
-            return new RequestBodyValidationResult([]);
+            return new RequestBodyValidationResult([], matchedContentType: $jsonContentType);
         }
 
         $bodyValue = $requestBody->value;
@@ -308,8 +309,10 @@ final class RequestBodyValidator
         );
     }
 
-    private static function unsupportedItemSchemaResult(string $mediaType): RequestBodyValidationResult
-    {
+    private static function unsupportedItemSchemaResult(
+        string $mediaType,
+        ?string $matchedContentType = null,
+    ): RequestBodyValidationResult {
         return new RequestBodyValidationResult(
             [],
             sprintf(
@@ -317,6 +320,7 @@ final class RequestBodyValidator
                 . 'stream items cannot be validated from the buffered request body and were explicitly skipped',
                 $mediaType,
             ),
+            $matchedContentType,
         );
     }
 

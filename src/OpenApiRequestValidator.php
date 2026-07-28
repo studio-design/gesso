@@ -300,11 +300,22 @@ final class OpenApiRequestValidator
             // is non-failing — but the body went unchecked, so surface a
             // Skipped result (rather than a clean Success) and forward the
             // reason to coverage tracking.
+            // Both outcomes carry the media-type key the body validator
+            // resolved (null when no `requestBody` lookup happened) so
+            // adapters can tag their own body-level diagnostics with it even
+            // when this result contributes no issues of its own.
             if ($bodyResult->skipReason !== null) {
-                return OpenApiValidationResult::skipped($matchedPath, $bodyResult->skipReason);
+                return OpenApiValidationResult::skipped(
+                    $matchedPath,
+                    $bodyResult->skipReason,
+                    matchedContentType: $bodyResult->matchedContentType,
+                );
             }
 
-            return OpenApiValidationResult::success($matchedPath);
+            return OpenApiValidationResult::success(
+                $matchedPath,
+                matchedContentType: $bodyResult->matchedContentType,
+            );
         }
 
         // Issue #179: when the response is a documented 4xx and the test

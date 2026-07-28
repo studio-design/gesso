@@ -350,4 +350,31 @@ final class OpenApiPsr7ValidatorTest extends TestCase
             'the media-type key resolved before the downgrade must survive into the adapter issue',
         );
     }
+
+    #[Test]
+    public function request_adapter_issue_keeps_content_type_when_inner_result_succeeds(): void
+    {
+        // Optional request body + a non-seekable stream: the adapter refuses
+        // to read the body, the inner validator sees an absent optional body
+        // and succeeds — so there is no sibling body issue to borrow the
+        // media-type key from. The Success result must carry the key the
+        // body validator resolved.
+        $stream = new NoSeekStream(Utils::streamFor('{"text":"hi"}'));
+        $request = new ServerRequest(
+            'POST',
+            'https://example.test/notes',
+            ['Content-Type' => 'application/json'],
+            $stream,
+        );
+
+        $result = $this->validator->validateRequest($request);
+
+        $this->assertFalse($result->isValid());
+        $issues = $result->issues();
+        $this->assertCount(1, $issues);
+        $this->assertSame('request.body', $issues[0]->category);
+        $this->assertStringContainsString('not seekable', $issues[0]->message);
+        $this->assertNull($issues[0]->statusCode, 'request issues never carry a statusCode');
+        $this->assertSame('application/json', $issues[0]->contentType);
+    }
 }

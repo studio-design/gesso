@@ -187,6 +187,11 @@ class OpenApiRequestValidatorTest extends TestCase
 
         $this->assertTrue($result->isValid());
         $this->assertSame('/v1/pets', $result->matchedPath());
+        $this->assertSame(
+            'application/json',
+            $result->matchedContentType(),
+            'a successful request result must expose the media-type key the body was checked against',
+        );
     }
 
     #[Test]
