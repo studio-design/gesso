@@ -335,6 +335,11 @@ final class OpenApiRequestValidator
                         SpecResponseKeyResolver::warnSuspiciousKeys($specName, $method, $matchedPath, $responses);
                     }
 
+                    // Carry the media-type key the body validator resolved
+                    // before the downgrade: the Skipped result has no issues,
+                    // so this is the only channel through which adapters
+                    // (e.g. PSR-7 body-decode errors) can keep tagging their
+                    // request.body issues with the resolved key.
                     return OpenApiValidationResult::skipped(
                         $matchedPath,
                         sprintf(
@@ -344,6 +349,7 @@ final class OpenApiRequestValidator
                             $matchingPattern,
                         ),
                         $matchedResponseKey,
+                        $bodyResult->matchedContentType,
                     );
                 }
             }

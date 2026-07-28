@@ -3490,6 +3490,11 @@ class OpenApiRequestValidatorTest extends TestCase
         $this->assertTrue($result->isSkipped(), 'documented-4xx downgrade must produce a Skipped outcome');
         $this->assertSame('/exact-422', $result->matchedPath());
         $this->assertSame('422', $result->matchedStatusCode(), 'matchedStatusCode must reflect the spec key the response resolved to');
+        $this->assertSame(
+            'application/json',
+            $result->matchedContentType(),
+            'the media-type key resolved before the downgrade must survive on the Skipped result',
+        );
         $this->assertNotNull($result->skipReason());
         $this->assertStringContainsString('422', (string) $result->skipReason());
     }

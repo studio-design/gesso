@@ -344,5 +344,10 @@ final class OpenApiPsr7ValidatorTest extends TestCase
         $this->assertCount(1, $issues);
         $this->assertSame('request.body', $issues[0]->category);
         $this->assertNull($issues[0]->statusCode, 'request issues never carry a statusCode');
+        $this->assertSame(
+            'application/json',
+            $issues[0]->contentType,
+            'the media-type key resolved before the downgrade must survive into the adapter issue',
+        );
     }
 }

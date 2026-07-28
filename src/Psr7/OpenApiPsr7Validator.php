@@ -252,11 +252,13 @@ final class OpenApiPsr7Validator
     }
 
     /**
-     * Media-type key for a request-side adapter body issue. A request result
-     * does not expose the resolved request media-type at result level, but its
-     * tagged `request.body` issues do — reuse theirs so the adapter entry and
-     * its sibling body issues report the same key. Null when the result has no
-     * tagged body issue (no `requestBody` in the spec, success, or skip).
+     * Media-type key for a request-side adapter body issue. A failed request
+     * result carries the resolved request media-type on its tagged
+     * `request.body` issues — reuse theirs so the adapter entry and its
+     * sibling body issues report the same key. A downgraded (documented-4xx)
+     * request result is Skipped and has no issues; there the key resolved
+     * before the downgrade is carried at result level instead. Null when
+     * neither channel has one (no `requestBody` in the spec, success).
      */
     private static function requestBodyIssueContentType(OpenApiValidationResult $result): ?string
     {
@@ -266,7 +268,7 @@ final class OpenApiPsr7Validator
             }
         }
 
-        return null;
+        return $result->matchedContentType();
     }
 
     private static function requestPath(RequestInterface $request): string
