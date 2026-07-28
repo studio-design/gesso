@@ -145,7 +145,10 @@ assertion failure prints the spec, operation ID, method/path, both seeds, case
 index, and a minimal `OpenApiEndpointExplorer::explore(...)` replay expression.
 Each case also exposes `replayToken()`, `replaySnippet($specName)`, and
 `curlSnippet($baseUrl)`. The token identifies generation inputs; the PHP and
-curl output include the concrete generated request.
+curl output include the concrete generated request. `curlSnippet()` redacts
+sensitive header values (`Authorization`, `Cookie`, API-key/token/secret-style
+names) as `<redacted>` so the command is safe to paste into CI logs; pass
+`redactSensitiveHeaders: false` to keep the raw values.
 
 Summaries are local immutable values; the explorer adds no process-global
 aggregation. Run one plan per parallel worker partition and use the existing

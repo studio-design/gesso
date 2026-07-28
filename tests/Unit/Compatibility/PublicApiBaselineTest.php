@@ -232,6 +232,15 @@ final class PublicApiBaselineTest extends TestCase
                 'attributes' => [],
             ]],
         ];
+        $expected[ExploredCase::class]['methods']['curlSnippet']['parameters'][] = [
+            'name' => 'redactSensitiveHeaders',
+            'type' => 'bool',
+            'optional' => true,
+            'variadic' => false,
+            'by_reference' => false,
+            'default' => true,
+            'attributes' => [],
+        ];
         ksort($expected[ExploredCase::class]['methods']);
 
         $responseValidatorConstructor = $expected[OpenApiResponseValidator::class]['methods']['__construct'];

@@ -2134,6 +2134,15 @@
                         "by_reference": false,
                         "default": "",
                         "attributes": []
+                    },
+                    {
+                        "name": "redactSensitiveHeaders",
+                        "type": "bool",
+                        "optional": true,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": true,
+                        "attributes": []
                     }
                 ]
             },

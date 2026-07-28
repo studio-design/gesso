@@ -71,6 +71,29 @@ class ExploredCaseTest extends TestCase
     }
 
     #[Test]
+    public function redacts_sensitive_headers_in_curl_snippet_by_default(): void
+    {
+        $case = new ExploredCase(
+            body: null,
+            query: [],
+            headers: ['Authorization' => 'Bearer real-token', 'X-Trace' => 'abc'],
+            pathParams: [],
+            method: HttpMethod::GET,
+            matchedPath: '/v1/pets',
+        );
+
+        $redacted = $case->curlSnippet();
+
+        $this->assertStringContainsString("-H 'Authorization: <redacted>'", $redacted);
+        $this->assertStringContainsString("-H 'X-Trace: abc'", $redacted);
+        $this->assertStringNotContainsString('real-token', $redacted);
+        $this->assertStringContainsString(
+            "-H 'Authorization: Bearer real-token'",
+            $case->curlSnippet(redactSensitiveHeaders: false),
+        );
+    }
+
+    #[Test]
     public function builds_a_concrete_uri_with_encoded_path_and_query_values(): void
     {
         $case = new ExploredCase(
