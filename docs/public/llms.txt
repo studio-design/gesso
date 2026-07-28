@@ -1,0 +1,43 @@
+# Gesso
+
+> Gesso provides framework-agnostic OpenAPI 3.0/3.1/3.2 contract testing for PHPUnit with endpoint coverage tracking.
+
+## Get started
+
+- [Overview](https://studio-design.github.io/gesso/): what Gesso is, what it validates, and how coverage tracking works.
+- [Core / PHPUnit](https://studio-design.github.io/gesso/quickstarts/core): validate a response with plain PHPUnit, no framework adapter.
+- [Laravel](https://studio-design.github.io/gesso/quickstarts/laravel): publish the config and assert responses with the `ValidatesOpenApiSchema` trait.
+- [Symfony](https://studio-design.github.io/gesso/quickstarts/symfony): register the PHPUnit extension and assert `WebTestCase` responses against a spec.
+- [Pest](https://studio-design.github.io/gesso/quickstarts/pest): use the `toMatchOpenApiResponseSchema()` expectation registered by the Pest plugin.
+
+## Guides
+
+- [Doctor command](https://studio-design.github.io/gesso/doctor): preflight a local spec for load and enforcement problems before tests run.
+- [PSR-7 validation](https://studio-design.github.io/gesso/psr7): validate PSR-7 requests and responses from any HTTP client or middleware.
+- [Laravel route parity](https://studio-design.github.io/gesso/laravel-route-parity): compare registered Laravel routes with spec operations to catch undocumented drift.
+- [Schema-driven fuzzing](https://studio-design.github.io/gesso/fuzzing): generate deterministic valid and invalid request cases from schemas, with replay tokens.
+- [Symfony contract testing](https://studio-design.github.io/gesso/contract-testing-symfony): full guide to spec-driven provider-side contract testing in a Symfony application.
+
+## Recipes
+
+- [GitHub Actions](https://studio-design.github.io/gesso/recipes/github-actions): publish the coverage report as a Step Summary and workflow artifact.
+- [Fuzzing and drift checks](https://studio-design.github.io/gesso/recipes/advanced-validation): wire fuzzing, enum drift, and strict-required detection into CI jobs.
+- [Parallel test runners](https://studio-design.github.io/gesso/parallel): merge per-worker coverage sidecars from paratest or `pest --parallel`.
+
+## Migration
+
+- [Prepare for Gesso 2.0](https://studio-design.github.io/gesso/migration/v2): staged path for the package rename and PHP namespace change.
+- [From other validators](https://studio-design.github.io/gesso/migration/from-other-validators): incremental migration from Spectator, league/openapi-psr7-validator, and osteel.
+
+## Reference
+
+- [Setup](https://studio-design.github.io/gesso/setup): end-to-end configuration, extension parameters, auto-validation, and per-test opt-out mechanisms.
+- [Coverage](https://studio-design.github.io/gesso/coverage): report formats, endpoint markers, and `(method, path, status, content-type)` coverage granularity.
+- [Supported features](https://studio-design.github.io/gesso/supported-features): what is validated, what is skipped, and known limitations per OpenAPI version.
+- [API reference](https://studio-design.github.io/gesso/api-reference): public classes — validators, spec loader, explorer, and coverage tracker.
+- [Versioning](https://studio-design.github.io/gesso/versioning): the v1.x compatibility policy and which symbols and formats it covers.
+
+## Optional
+
+- [Source](https://github.com/studio-design/gesso)
+- [Packagist](https://packagist.org/packages/studio-design/gesso)
