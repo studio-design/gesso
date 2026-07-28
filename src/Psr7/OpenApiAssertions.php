@@ -175,15 +175,25 @@ trait OpenApiAssertions
         $body = null;
         $stream = $request->getBody();
         if ($stream->isSeekable()) {
+            $position = null;
+
             try {
                 $position = $stream->tell();
                 $stream->rewind();
                 $body = $stream->getContents();
-                $stream->seek($position);
             } catch (Throwable) {
-                // An unreadable or unrestorable stream must not replace the
-                // real validation failure; degrade to a body-less command.
+                // An unreadable stream must not replace the real validation
+                // failure; degrade to a body-less command.
                 $body = null;
+            } finally {
+                if ($position !== null) {
+                    try {
+                        $stream->seek($position);
+                    } catch (Throwable) {
+                        // Restoring the cursor is best-effort; the command
+                        // must still render.
+                    }
+                }
             }
         }
 

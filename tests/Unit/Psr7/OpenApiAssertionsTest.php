@@ -164,6 +164,27 @@ final class OpenApiAssertionsTest extends TestCase
         }
     }
 
+    #[Test]
+    public function stream_cursor_is_restored_even_when_reading_the_body_throws(): void
+    {
+        $stream = FnStream::decorate(Utils::streamFor('{"x":1}'), [
+            'getContents' => static function (): string {
+                throw new RuntimeException('read failed mid-stream');
+            },
+        ]);
+        $request = new Request('GET', 'https://example.test/body/scalar', [], $stream);
+        $request->getBody()->seek(3);
+        $response = new Response(200, ['Content-Type' => 'application/json'], '"wrong"');
+
+        try {
+            $this->assertPsr7ResponseMatchesOpenApiSchema($request, $response);
+            $this->fail('Expected the PSR-7 assertion to fail.');
+        } catch (AssertionFailedError $e) {
+            $this->assertSame(3, $request->getBody()->tell());
+            $this->assertStringNotContainsString('--data', $e->getMessage());
+        }
+    }
+
     protected function openApiSpec(): string
     {
         return 'psr7';
