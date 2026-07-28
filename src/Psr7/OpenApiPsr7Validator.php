@@ -102,7 +102,14 @@ final class OpenApiPsr7Validator
             $cookies,
             $responseStatusCode,
         );
-        $result = self::withAdapterErrors($result, $decoded['errors'], 'request.body', $method);
+        $result = self::withAdapterErrors(
+            $result,
+            $decoded['errors'],
+            'request.body',
+            $method,
+            statusCode: null,
+            contentType: self::requestBodyIssueContentType($result),
+        );
 
         if ($result->matchedPath() !== null) {
             OpenApiCoverageTracker::recordRequest(
@@ -149,7 +156,14 @@ final class OpenApiPsr7Validator
             $contentType,
             $response->getHeaders(),
         );
-        $result = self::withAdapterErrors($result, $decoded['errors'], 'response.body', $method);
+        $result = self::withAdapterErrors(
+            $result,
+            $decoded['errors'],
+            'response.body',
+            $method,
+            statusCode: $result->matchedStatusCode(),
+            contentType: $result->matchedContentType(),
+        );
 
         if ($result->matchedPath() !== null) {
             OpenApiCoverageTracker::recordResponse(
@@ -195,6 +209,13 @@ final class OpenApiPsr7Validator
      * validator's structured issues are kept as-is, in the same order as
      * `errors()`, so `issues()` never degrades to `unknown` here.
      *
+     * `$statusCode` / `$contentType` are the issue context for the adapter
+     * entries and are side-specific: the caller passes the result's matched
+     * values on the response side, and `statusCode: null` on the request side
+     * — request issues never carry a status, and the result-level
+     * matchedStatusCode of a downgraded (documented-4xx) request result is a
+     * response spec key that must not leak into request issue context.
+     *
      * @param list<string> $adapterErrors
      */
     private static function withAdapterErrors(
@@ -202,6 +223,8 @@ final class OpenApiPsr7Validator
         array $adapterErrors,
         string $category,
         string $method,
+        ?string $statusCode,
+        ?string $contentType,
     ): OpenApiValidationResult {
         if ($adapterErrors === []) {
             return $result;
@@ -214,8 +237,8 @@ final class OpenApiPsr7Validator
                 $message,
                 method: $method,
                 path: $result->matchedPath(),
-                statusCode: $result->matchedStatusCode(),
-                contentType: $result->matchedContentType(),
+                statusCode: $statusCode,
+                contentType: $contentType,
             );
         }
 
@@ -226,6 +249,24 @@ final class OpenApiPsr7Validator
             $result->matchedContentType(),
             array_merge($adapterIssues, $result->issues()),
         );
+    }
+
+    /**
+     * Media-type key for a request-side adapter body issue. A request result
+     * does not expose the resolved request media-type at result level, but its
+     * tagged `request.body` issues do — reuse theirs so the adapter entry and
+     * its sibling body issues report the same key. Null when the result has no
+     * tagged body issue (no `requestBody` in the spec, success, or skip).
+     */
+    private static function requestBodyIssueContentType(OpenApiValidationResult $result): ?string
+    {
+        foreach ($result->issues() as $issue) {
+            if ($issue->category === 'request.body') {
+                return $issue->contentType;
+            }
+        }
+
+        return null;
     }
 
     private static function requestPath(RequestInterface $request): string

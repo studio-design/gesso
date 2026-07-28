@@ -3448,6 +3448,15 @@ class OpenApiRequestValidatorTest extends TestCase
         $this->assertStringContainsString('[path.id]', $joined, 'path-param error must survive body throw');
         $this->assertStringContainsString('[request-body]', $joined, 'body throw must surface as boundary error');
         $this->assertStringContainsString('InvalidKeywordException', $joined, 'exception class name preserved for diagnostics');
+
+        // The synthetic boundary error is still a body issue: it must carry
+        // the media-type key the validator had resolved before it threw.
+        $bodyIssues = array_values(array_filter(
+            $result->issues(),
+            static fn($issue) => $issue->category === 'request.body',
+        ));
+        $this->assertNotEmpty($bodyIssues);
+        $this->assertSame('application/json', $bodyIssues[0]->contentType);
     }
 
     // ========================================

@@ -278,6 +278,8 @@ final class OpenApiPsr7ValidatorTest extends TestCase
         );
         $this->assertSame('response.body', $issues[0]->category);
         $this->assertSame('POST', $issues[0]->method);
+        $this->assertSame('201', $issues[0]->statusCode);
+        $this->assertSame('application/json', $issues[0]->contentType);
         $this->assertStringContainsString('could not be parsed as JSON', $issues[0]->message);
         $this->assertNotContains(
             'unknown',
@@ -307,10 +309,40 @@ final class OpenApiPsr7ValidatorTest extends TestCase
         );
         $this->assertSame('request.body', $issues[0]->category);
         $this->assertSame('POST', $issues[0]->method);
+        $this->assertNull($issues[0]->statusCode, 'request issues never carry a statusCode');
+        $this->assertSame(
+            'application/json',
+            $issues[0]->contentType,
+            'adapter body issue must share the media-type key its sibling body issues resolved',
+        );
         $this->assertStringContainsString('could not be parsed as JSON', $issues[0]->message);
         $this->assertNotContains(
             'unknown',
             array_map(static fn($issue) => $issue->category, $issues),
         );
+    }
+
+    #[Test]
+    public function request_adapter_issue_context_stays_request_side_after_downgrade(): void
+    {
+        // Invalid JSON + a documented 422 response: the inner request result
+        // is downgraded to Skipped carrying matchedStatusCode '422'. The
+        // adapter error rebuilds it as a Failure — the request-side issue
+        // must not inherit that response status.
+        $validator = new OpenApiPsr7Validator('request-validation-skip');
+        $request = new ServerRequest(
+            'POST',
+            'https://example.test/exact-422',
+            ['Content-Type' => 'application/json'],
+            '{invalid',
+        );
+
+        $result = $validator->validateRequest($request, 422);
+
+        $this->assertFalse($result->isValid());
+        $issues = $result->issues();
+        $this->assertCount(1, $issues);
+        $this->assertSame('request.body', $issues[0]->category);
+        $this->assertNull($issues[0]->statusCode, 'request issues never carry a statusCode');
     }
 }

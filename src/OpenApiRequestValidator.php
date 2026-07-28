@@ -16,6 +16,7 @@ use Studio\Gesso\Validation\Request\QueryParameterValidator;
 use Studio\Gesso\Validation\Request\RequestBodyValidationResult;
 use Studio\Gesso\Validation\Request\RequestBodyValidator;
 use Studio\Gesso\Validation\Request\SecurityValidator;
+use Studio\Gesso\Validation\Support\ContentTypeMatcher;
 use Studio\Gesso\Validation\Support\DiscriminatorContext;
 use Studio\Gesso\Validation\Support\DiscriminatorEnforcement;
 use Studio\Gesso\Validation\Support\MalformedSpecNode;
@@ -352,6 +353,30 @@ final class OpenApiRequestValidator
     }
 
     /**
+     * Media-type key for the synthetic boundary error above. A
+     * `RuntimeException` can only originate on the JSON schema path — schema
+     * conversion and validation run after {@see RequestBodyValidator} resolved
+     * the JSON media-type key (the non-JSON and malformed-spec paths return
+     * before touching the converter) — so re-resolving the key from the same
+     * `content` map reproduces exactly what the validator matched before it
+     * threw.
+     *
+     * @param array<string, mixed> $operation
+     */
+    private static function thrownBodyContentType(array $operation): ?string
+    {
+        $requestBody = $operation['requestBody'] ?? null;
+        if (!is_array($requestBody) || !is_array($requestBody['content'] ?? null)) {
+            return null;
+        }
+
+        /** @var array<string, mixed> $content */
+        $content = $requestBody['content'];
+
+        return ContentTypeMatcher::findJsonContentType($content);
+    }
+
+    /**
      * Run the request-body validator behind the same narrow
      * `RuntimeException` boundary {@see ValidatorErrorBoundary::safely()}
      * applies to the other sub-validators: a `RuntimeException` (typically
@@ -385,16 +410,19 @@ final class OpenApiRequestValidator
                 ? sprintf(' (caused by %s: %s)', $previous::class, $previous->getMessage())
                 : '';
 
-            return new RequestBodyValidationResult([sprintf(
-                "[%s] %s %s in '%s' spec: %s threw: %s%s",
-                'request-body',
-                $method,
-                $matchedPath,
-                $specName,
-                $e::class,
-                $e->getMessage(),
-                $previousSuffix,
-            )]);
+            return new RequestBodyValidationResult(
+                [sprintf(
+                    "[%s] %s %s in '%s' spec: %s threw: %s%s",
+                    'request-body',
+                    $method,
+                    $matchedPath,
+                    $specName,
+                    $e::class,
+                    $e->getMessage(),
+                    $previousSuffix,
+                )],
+                matchedContentType: self::thrownBodyContentType($operation),
+            );
         }
     }
 
