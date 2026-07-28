@@ -17,6 +17,7 @@
 - [Laravel route parity](https://studio-design.github.io/gesso/laravel-route-parity): compare registered Laravel routes with spec operations to catch undocumented drift.
 - [Schema-driven fuzzing](https://studio-design.github.io/gesso/fuzzing): generate deterministic valid and invalid request cases from schemas, with replay tokens.
 - [Symfony contract testing](https://studio-design.github.io/gesso/contract-testing-symfony): full guide to spec-driven provider-side contract testing in a Symfony application.
+- [Spec-driven vs consumer-driven](https://studio-design.github.io/gesso/spec-driven-vs-consumer-driven): decision framework for choosing between spec-driven contract testing with Gesso and consumer-driven contract testing with Pact PHP.
 
 ## Recipes
 
