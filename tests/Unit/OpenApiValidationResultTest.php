@@ -9,6 +9,7 @@ use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Studio\Gesso\OpenApiValidationOutcome;
 use Studio\Gesso\OpenApiValidationResult;
+use Studio\Gesso\ValidationIssue;
 
 class OpenApiValidationResultTest extends TestCase
 {
@@ -47,6 +48,70 @@ class OpenApiValidationResultTest extends TestCase
         $this->assertFalse($result->isSkipped());
         $this->assertSame($errors, $result->errors());
         $this->assertNull($result->matchedPath());
+    }
+
+    #[Test]
+    public function failure_with_tagged_issues_returns_them(): void
+    {
+        $issues = [
+            new ValidationIssue('request.parameter.query', 'Error 1', method: 'GET', path: '/v1/pets'),
+            new ValidationIssue('request.security', 'Error 2', method: 'GET', path: '/v1/pets'),
+        ];
+        $result = OpenApiValidationResult::failure(['Error 1', 'Error 2'], '/v1/pets', issues: $issues);
+
+        $this->assertSame($issues, $result->issues());
+    }
+
+    #[Test]
+    public function failure_without_issues_derives_unknown_issues_with_result_context(): void
+    {
+        $result = OpenApiValidationResult::failure(
+            ['Error 1', 'Error 2'],
+            '/v1/pets',
+            '200',
+            'application/json',
+        );
+
+        $issues = $result->issues();
+        $this->assertCount(2, $issues);
+        $this->assertSame('unknown', $issues[0]->category);
+        $this->assertSame('Error 1', $issues[0]->message);
+        $this->assertSame('/v1/pets', $issues[0]->path);
+        $this->assertSame('200', $issues[0]->statusCode);
+        $this->assertSame('application/json', $issues[0]->contentType);
+        $this->assertNull($issues[0]->method);
+        $this->assertSame('Error 2', $issues[1]->message);
+    }
+
+    #[Test]
+    public function failure_with_mismatched_issue_count_throws(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('must mirror');
+
+        OpenApiValidationResult::failure(
+            ['Error 1', 'Error 2'],
+            issues: [new ValidationIssue('request.spec', 'Error 1')],
+        );
+    }
+
+    #[Test]
+    public function failure_with_mismatched_issue_message_throws(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('must mirror');
+
+        OpenApiValidationResult::failure(
+            ['Error 1'],
+            issues: [new ValidationIssue('request.spec', 'Different message')],
+        );
+    }
+
+    #[Test]
+    public function success_and_skipped_have_no_issues(): void
+    {
+        $this->assertSame([], OpenApiValidationResult::success('/v1/pets')->issues());
+        $this->assertSame([], OpenApiValidationResult::skipped('/v1/pets', 'reason')->issues());
     }
 
     #[Test]
