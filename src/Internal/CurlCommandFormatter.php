@@ -49,7 +49,11 @@ final class CurlCommandFormatter
         if ($redact) {
             $uri = self::redactQueryValues($uri);
         }
-        $command = sprintf('curl -X %s %s', $method, escapeshellarg($uri));
+        // OpenAPI 3.2 additionalOperations allow arbitrary custom method
+        // strings, so anything beyond plain token characters must be quoted
+        // or a crafted method becomes an injected shell command on paste.
+        $safeMethod = preg_match('/^[A-Za-z0-9-]+$/', $method) === 1 ? $method : escapeshellarg($method);
+        $command = sprintf('curl -X %s %s', $safeMethod, escapeshellarg($uri));
 
         foreach ($headers as $name => $value) {
             foreach (is_array($value) ? $value : [$value] as $single) {

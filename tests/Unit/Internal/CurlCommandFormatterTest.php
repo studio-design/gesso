@@ -70,6 +70,17 @@ final class CurlCommandFormatterTest extends TestCase
     }
 
     #[Test]
+    public function test_quotes_methods_containing_shell_metacharacters(): void
+    {
+        $injected = CurlCommandFormatter::format('GET; id', '/v1/pets', [], null, null);
+        $custom = CurlCommandFormatter::format('X-CUSTOM', '/v1/pets', [], null, null);
+
+        $this->assertStringContainsString("curl -X 'GET; id' ", $injected);
+        $this->assertFalse(str_contains($injected, 'curl -X GET; id'));
+        $this->assertStringContainsString('curl -X X-CUSTOM ', $custom);
+    }
+
+    #[Test]
     public function test_redacts_sensitive_query_parameter_values(): void
     {
         $command = CurlCommandFormatter::format(
