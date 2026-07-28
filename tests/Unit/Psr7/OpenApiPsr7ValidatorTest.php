@@ -377,4 +377,30 @@ final class OpenApiPsr7ValidatorTest extends TestCase
         $this->assertNull($issues[0]->statusCode, 'request issues never carry a statusCode');
         $this->assertSame('application/json', $issues[0]->contentType);
     }
+
+    #[Test]
+    public function request_adapter_issue_keeps_content_type_alongside_non_body_sibling_errors(): void
+    {
+        // Optional body + unreadable stream + a path-parameter error: the
+        // inner result is a Failure whose issues contain no request.body
+        // entry, so the media-type key must come from the Failure's
+        // result-level matchedContentType.
+        $stream = new NoSeekStream(Utils::streamFor('{"text":"hi"}'));
+        $request = new ServerRequest(
+            'POST',
+            'https://example.test/notes/abc',
+            ['Content-Type' => 'application/json'],
+            $stream,
+        );
+
+        $result = $this->validator->validateRequest($request);
+
+        $this->assertFalse($result->isValid());
+        $issues = $result->issues();
+        $categories = array_map(static fn($issue) => $issue->category, $issues);
+        $this->assertContains('request.parameter.path', $categories, 'the sibling path error must surface');
+        $this->assertSame('request.body', $issues[0]->category);
+        $this->assertStringContainsString('not seekable', $issues[0]->message);
+        $this->assertSame('application/json', $issues[0]->contentType);
+    }
 }

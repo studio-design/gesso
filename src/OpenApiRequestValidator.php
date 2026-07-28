@@ -366,7 +366,17 @@ final class OpenApiRequestValidator
             }
         }
 
-        return OpenApiValidationResult::failure($errors, $matchedPath, issues: $issues);
+        // Carry the resolved media-type key at result level here too, so all
+        // three outcomes (Success / Skipped above, Failure) expose it
+        // consistently — adapters fall back to it when the failure has no
+        // request.body issue to borrow the key from (e.g. only sibling
+        // parameter errors alongside an adapter-level body error).
+        return OpenApiValidationResult::failure(
+            $errors,
+            $matchedPath,
+            matchedContentType: $bodyResult->matchedContentType,
+            issues: $issues,
+        );
     }
 
     /**
