@@ -10,10 +10,10 @@ use InvalidArgumentException;
 use JsonException;
 use LogicException;
 use Studio\Gesso\HttpMethod;
+use Studio\Gesso\Internal\CurlCommandFormatter;
 
 use function array_map;
 use function base64_encode;
-use function escapeshellarg;
 use function http_build_query;
 use function implode;
 use function is_array;
@@ -174,17 +174,23 @@ final readonly class ExploredCase
         );
     }
 
-    public function curlSnippet(string $baseUrl = ''): string
+    public function curlSnippet(string $baseUrl = '', bool $redactSensitiveHeaders = true): string
     {
-        $command = sprintf('curl -X %s %s', $this->method->value, escapeshellarg($this->uri($baseUrl)));
-        foreach ($this->headers as $name => $value) {
-            $command .= ' -H ' . escapeshellarg($name . ': ' . (string) $value);
-        }
+        $headers = $this->headers;
+        $body = null;
         if ($this->body !== null) {
-            $command .= " -H 'Content-Type: application/json' --data " . escapeshellarg((string) json_encode($this->body));
+            $headers['Content-Type'] = 'application/json';
+            $body = (string) json_encode($this->body);
         }
 
-        return $command;
+        return CurlCommandFormatter::format(
+            $this->method->value,
+            $this->uri($baseUrl),
+            $headers,
+            $body,
+            $body !== null ? 'application/json' : null,
+            $redactSensitiveHeaders,
+        );
     }
 
     private static function serialiseParameterValue(mixed $value): mixed

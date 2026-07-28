@@ -20,6 +20,7 @@ use Studio\Gesso\Attribute\SkipOpenApi;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\DecodedBody;
 use Studio\Gesso\HttpMethod;
+use Studio\Gesso\Internal\CurlCommandFormatter;
 use Studio\Gesso\Internal\StackTraceFilter;
 use Studio\Gesso\OpenApiRequestValidator;
 use Studio\Gesso\OpenApiResponseValidator;
@@ -39,11 +40,14 @@ use WeakMap;
 use function array_key_first;
 use function array_merge;
 use function filter_var;
+use function function_exists;
 use function fwrite;
 use function get_debug_type;
+use function implode;
 use function is_array;
 use function is_int;
 use function is_numeric;
+use function is_scalar;
 use function is_string;
 use function json_decode;
 use function sprintf;
@@ -575,7 +579,8 @@ trait ValidatesOpenApiSchema
         $this->assertOpenApi(
             $result->isValid(),
             "OpenAPI schema validation failed for {$resolvedMethod} {$resolvedPath} (spec: {$specName}):\n"
-            . $result->errorMessage(),
+            . $result->errorMessage()
+            . "\nReproduce: " . $this->responseReproduceCommand($resolvedMethod, $resolvedPath),
         );
     }
 
@@ -743,7 +748,56 @@ trait ValidatesOpenApiSchema
         $this->assertOpenApi(
             $result->isValid(),
             "OpenAPI request validation failed for {$resolvedMethod} {$resolvedPath} (spec: {$specName}):\n"
-            . $result->errorMessage(),
+            . $result->errorMessage()
+            . "\nReproduce: " . $this->requestReproduceCommand($request),
+        );
+    }
+
+    /**
+     * A full curl line is only possible when the container still holds the
+     * request that produced the response; the bound request is used only when
+     * its identity matches the resolved method/path, so an explicit assert
+     * against an unrelated response never renders a misleading command.
+     */
+    private function responseReproduceCommand(string $resolvedMethod, string $resolvedPath): string
+    {
+        if (function_exists('app') && app()->bound('request')) {
+            $request = app('request');
+            if (
+                $request instanceof Request &&
+                strtoupper($request->getMethod()) === $resolvedMethod &&
+                $request->getPathInfo() === $resolvedPath
+            ) {
+                return $this->requestReproduceCommand($request);
+            }
+        }
+
+        return CurlCommandFormatter::format($resolvedMethod, $resolvedPath, [], null, null);
+    }
+
+    private function requestReproduceCommand(Request $request): string
+    {
+        $body = $request->getContent();
+
+        // Cookies live in Request::$cookies, not the header bag, so a Cookie
+        // header has to be synthesized or cookie-based auth and cookie
+        // parameters would silently vanish from the curl command. The
+        // formatter redacts the value.
+        $headers = $request->headers->all();
+        $cookiePairs = [];
+        foreach ($request->cookies->all() as $name => $value) {
+            $cookiePairs[] = $name . '=' . (is_scalar($value) ? (string) $value : '');
+        }
+        if ($cookiePairs !== []) {
+            $headers['cookie'] = [implode('; ', $cookiePairs)];
+        }
+
+        return CurlCommandFormatter::format(
+            $request->getMethod(),
+            $request->getUri(),
+            $headers,
+            $body !== '' ? $body : null,
+            $request->headers->get('Content-Type'),
         );
     }
 

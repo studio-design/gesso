@@ -109,6 +109,20 @@ class ValidatesOpenApiSchemaTest extends TestCase
     }
 
     #[Test]
+    public function validation_failure_message_includes_a_curl_reproduction(): void
+    {
+        $body = (string) json_encode(['wrong_key' => 'value'], JSON_THROW_ON_ERROR);
+        $response = $this->makeTestResponse($body, 200);
+
+        try {
+            $this->assertResponseMatchesOpenApiSchema($response, HttpMethod::GET, '/v1/pets');
+            $this->fail('Expected the response assertion to fail.');
+        } catch (AssertionFailedError $e) {
+            $this->assertStringContainsString("Reproduce: curl -X GET '/v1/pets'", $e->getMessage());
+        }
+    }
+
+    #[Test]
     public function validation_failure_message_includes_spec_name(): void
     {
         $body = (string) json_encode(['wrong_key' => 'value'], JSON_THROW_ON_ERROR);

@@ -154,6 +154,69 @@ final class OpenApiAssertionsTest extends TestCase
     }
 
     #[Test]
+    public function request_failure_includes_a_redacted_curl_reproduction(): void
+    {
+        $request = Request::create(
+            '/v1/pets',
+            'POST',
+            [],
+            [],
+            [],
+            ['CONTENT_TYPE' => 'application/json', 'HTTP_AUTHORIZATION' => 'Bearer real-token'],
+            '{}',
+        );
+
+        try {
+            $this->assertRequestMatchesOpenApiSchema($request);
+            $this->fail('Expected the request assertion to fail.');
+        } catch (AssertionFailedError $e) {
+            $this->assertStringContainsString('Reproduce: curl -X POST', $e->getMessage());
+            $this->assertStringContainsString("--data '{}'", $e->getMessage());
+            $this->assertStringContainsString(': <redacted>', $e->getMessage());
+            $this->assertStringNotContainsString('real-token', $e->getMessage());
+        }
+    }
+
+    #[Test]
+    public function response_failure_includes_a_curl_reproduction(): void
+    {
+        $request = Request::create('/v1/pets', 'GET', server: ['HTTP_AUTHORIZATION' => 'Bearer real-token']);
+        $response = new JsonResponse(['unexpected' => 'shape']);
+
+        try {
+            $this->assertResponseMatchesOpenApiSchema($request, $response);
+            $this->fail('Expected the response assertion to fail.');
+        } catch (AssertionFailedError $e) {
+            $this->assertStringContainsString('Reproduce: curl -X GET', $e->getMessage());
+            $this->assertStringContainsString('/v1/pets', $e->getMessage());
+            $this->assertStringContainsString(': <redacted>', $e->getMessage());
+            $this->assertStringNotContainsString('real-token', $e->getMessage());
+        }
+    }
+
+    #[Test]
+    public function request_failure_curl_includes_cookies_as_a_redacted_header(): void
+    {
+        $request = Request::create(
+            '/v1/pets',
+            'POST',
+            [],
+            ['session' => 'secret-session'],
+            [],
+            ['CONTENT_TYPE' => 'application/json'],
+            '{}',
+        );
+
+        try {
+            $this->assertRequestMatchesOpenApiSchema($request);
+            $this->fail('Expected the request assertion to fail.');
+        } catch (AssertionFailedError $e) {
+            $this->assertStringContainsString("-H 'cookie: <redacted>'", $e->getMessage());
+            $this->assertStringNotContainsString('secret-session', $e->getMessage());
+        }
+    }
+
+    #[Test]
     public function unsupported_http_method_fails_with_clear_message(): void
     {
         $request = Request::create('/v1/pets', 'TRACE');

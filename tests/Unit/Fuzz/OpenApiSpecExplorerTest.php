@@ -278,6 +278,7 @@ class OpenApiSpecExplorerTest extends TestCase
             $this->assertStringContainsString('Method/path: POST /pets', $e->getMessage());
             $this->assertStringContainsString('Global seed: 77', $e->getMessage());
             $this->assertStringContainsString('OpenApiEndpointExplorer::explore(', $e->getMessage());
+            $this->assertStringContainsString("\nCurl: curl -X POST", $e->getMessage());
             $this->assertSame('application failure', $e->getPrevious()?->getMessage());
         }
     }

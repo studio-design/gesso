@@ -468,7 +468,7 @@ final class OpenApiSpecExploration
     private function caseFailureMessage(ExploredOperation $operation, ExploredCase $case, int $caseIndex): string
     {
         return sprintf(
-            "Whole-spec exploration failed.\nSpec: %s\nOperation: %s\nMethod/path: %s %s\nGlobal seed: %d\nOperation seed: %d\nCase: %d\nReplay: %s",
+            "Whole-spec exploration failed.\nSpec: %s\nOperation: %s\nMethod/path: %s %s\nGlobal seed: %d\nOperation seed: %d\nCase: %d\nReplay: %s\nCurl: %s",
             $operation->specName,
             $operation->operationId ?? '(none)',
             $operation->method,
@@ -477,6 +477,7 @@ final class OpenApiSpecExploration
             $operation->seed,
             $caseIndex,
             $case->replaySnippet($operation->specName),
+            $case->curlSnippet(),
         );
     }
 

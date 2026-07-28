@@ -4,15 +4,18 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Psr7;
 
+use Closure;
 use PHPUnit\Framework\Assert;
 use PHPUnit\Framework\AssertionFailedError;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
+use Studio\Gesso\Internal\CurlCommandFormatter;
 use Studio\Gesso\Internal\StackTraceFilter;
 use Studio\Gesso\OpenApiRequestValidator;
 use Studio\Gesso\OpenApiResponseValidator;
 use Studio\Gesso\OpenApiValidationResult;
 use Studio\Gesso\Spec\OpenApiSpecResolver;
+use Throwable;
 
 use function sprintf;
 
@@ -41,6 +44,7 @@ trait OpenApiAssertions
                 $request->getMethod(),
                 $request->getUri()->getPath() ?: '/',
             ),
+            fn(): string => $this->psr7ReproduceCommand($request),
         );
     }
 
@@ -57,6 +61,7 @@ trait OpenApiAssertions
                 $request->getMethod(),
                 $request->getUri()->getPath() ?: '/',
             ),
+            fn(): string => $this->psr7ReproduceCommand($request),
         );
     }
 
@@ -70,6 +75,7 @@ trait OpenApiAssertions
         $this->assertPsr7Result(
             $result,
             sprintf('OpenAPI PSR-7 response validation failed for %s %s', $method, $requestPath),
+            static fn(): string => CurlCommandFormatter::format($method, $requestPath, [], null, null),
         );
     }
 
@@ -81,12 +87,13 @@ trait OpenApiAssertions
 
         $this->assertPsr7(
             $result->isValid(),
-            sprintf(
-                "OpenAPI PSR-7 exchange validation failed for %s %s (spec: %s):\n%s",
+            $result->isValid() ? '' : sprintf(
+                "OpenAPI PSR-7 exchange validation failed for %s %s (spec: %s):\n%s\nReproduce: %s",
                 $request->getMethod(),
                 $request->getUri()->getPath() ?: '/',
                 $this->cachedPsr7SpecName,
                 $result->errorMessage(),
+                $this->psr7ReproduceCommand($request),
             ),
         );
     }
@@ -142,11 +149,60 @@ trait OpenApiAssertions
         return $this->cachedPsr7Validator;
     }
 
-    private function assertPsr7Result(OpenApiValidationResult $result, string $prefix): void
+    /**
+     * The reproduce command is a closure so the request body stream is only
+     * touched when the assertion actually fails; a passing assertion must not
+     * observe or move the caller's stream cursor.
+     *
+     * @param Closure(): string $reproduceCommand
+     */
+    private function assertPsr7Result(OpenApiValidationResult $result, string $prefix, Closure $reproduceCommand): void
     {
         $this->assertPsr7(
             $result->isValid(),
-            sprintf("%s (spec: %s):\n%s", $prefix, $this->cachedPsr7SpecName, $result->errorMessage()),
+            $result->isValid() ? '' : sprintf(
+                "%s (spec: %s):\n%s\nReproduce: %s",
+                $prefix,
+                $this->cachedPsr7SpecName,
+                $result->errorMessage(),
+                $reproduceCommand(),
+            ),
+        );
+    }
+
+    private function psr7ReproduceCommand(RequestInterface $request): string
+    {
+        $body = null;
+        $stream = $request->getBody();
+        if ($stream->isSeekable()) {
+            $position = null;
+
+            try {
+                $position = $stream->tell();
+                $stream->rewind();
+                $body = $stream->getContents();
+            } catch (Throwable) {
+                // An unreadable stream must not replace the real validation
+                // failure; degrade to a body-less command.
+                $body = null;
+            } finally {
+                if ($position !== null) {
+                    try {
+                        $stream->seek($position);
+                    } catch (Throwable) {
+                        // Restoring the cursor is best-effort; the command
+                        // must still render.
+                    }
+                }
+            }
+        }
+
+        return CurlCommandFormatter::format(
+            $request->getMethod(),
+            (string) $request->getUri(),
+            $request->getHeaders(),
+            $body,
+            $request->getHeaderLine('Content-Type') ?: null,
         );
     }
 
