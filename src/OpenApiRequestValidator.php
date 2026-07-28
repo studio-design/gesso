@@ -16,6 +16,7 @@ use Studio\Gesso\Validation\Request\QueryParameterValidator;
 use Studio\Gesso\Validation\Request\RequestBodyValidationResult;
 use Studio\Gesso\Validation\Request\RequestBodyValidator;
 use Studio\Gesso\Validation\Request\SecurityValidator;
+use Studio\Gesso\Validation\Support\ContentTypeMatcher;
 use Studio\Gesso\Validation\Support\DiscriminatorContext;
 use Studio\Gesso\Validation\Support\DiscriminatorEnforcement;
 use Studio\Gesso\Validation\Support\MalformedSpecNode;
@@ -27,6 +28,7 @@ use Studio\Gesso\Validation\Support\ValidatorErrorBoundary;
 
 use function array_key_exists;
 use function array_keys;
+use function array_map;
 use function is_array;
 use function sprintf;
 
@@ -144,15 +146,18 @@ final class OpenApiRequestValidator
         // `?? []`. Surface it as a loud spec error instead, mirroring the
         // response-side traversal guards (issue #259).
         if (array_key_exists('paths', $spec) && MalformedSpecNode::isMalformed($spec['paths'])) {
-            return OpenApiValidationResult::failure([
-                sprintf(
-                    "Malformed 'paths' for %s %s in '%s' spec: expected object, got %s.",
-                    $method,
-                    $requestPath,
-                    $specName,
-                    MalformedSpecNode::describe($spec['paths']),
-                ),
-            ]);
+            $message = sprintf(
+                "Malformed 'paths' for %s %s in '%s' spec: expected object, got %s.",
+                $method,
+                $requestPath,
+                $specName,
+                MalformedSpecNode::describe($spec['paths']),
+            );
+
+            return OpenApiValidationResult::failure(
+                [$message],
+                issues: [new ValidationIssue('request.spec', $message, method: $method)],
+            );
         }
 
         /** @var string[] $specPaths */
@@ -161,9 +166,12 @@ final class OpenApiRequestValidator
         $matched = $matcher->matchWithVariables($requestPath);
 
         if ($matched === null) {
-            return OpenApiValidationResult::failure([
-                PathDiagnosticsFormatter::pathNotFound($specName, $method, $requestPath, $matcher, $spec),
-            ]);
+            $message = PathDiagnosticsFormatter::pathNotFound($specName, $method, $requestPath, $matcher, $spec);
+
+            return OpenApiValidationResult::failure(
+                [$message],
+                issues: [new ValidationIssue('request.path_match', $message, method: $method)],
+            );
         }
 
         $matchedPath = $matched['path'];
@@ -182,24 +190,32 @@ final class OpenApiRequestValidator
         // raising an uncaught TypeError, and a list mis-resolves silently.
         // Surface it loudly instead (issue #259).
         if (MalformedSpecNode::isMalformed($pathSpec)) {
-            return OpenApiValidationResult::failure([
-                sprintf(
-                    "Malformed 'paths[\"%s\"]' for %s %s in '%s' spec: expected object, got %s.",
-                    $matchedPath,
-                    $method,
-                    $matchedPath,
-                    $specName,
-                    MalformedSpecNode::describe($pathSpec),
-                ),
-            ], $matchedPath);
+            $message = sprintf(
+                "Malformed 'paths[\"%s\"]' for %s %s in '%s' spec: expected object, got %s.",
+                $matchedPath,
+                $method,
+                $matchedPath,
+                $specName,
+                MalformedSpecNode::describe($pathSpec),
+            );
+
+            return OpenApiValidationResult::failure(
+                [$message],
+                $matchedPath,
+                issues: [new ValidationIssue('request.spec', $message, method: $method, path: $matchedPath)],
+            );
         }
 
         /** @var array<string, mixed> $pathSpec */
         $resolvedOperation = OpenApiOperationResolver::resolve($pathSpec, $method);
         if (!$resolvedOperation['found']) {
-            return OpenApiValidationResult::failure([
-                PathDiagnosticsFormatter::methodNotDefined($specName, $method, $matchedPath, $spec),
-            ], $matchedPath);
+            $message = PathDiagnosticsFormatter::methodNotDefined($specName, $method, $matchedPath, $spec);
+
+            return OpenApiValidationResult::failure(
+                [$message],
+                $matchedPath,
+                issues: [new ValidationIssue('request.method', $message, method: $method, path: $matchedPath)],
+            );
         }
 
         $operation = $resolvedOperation['operation'];
@@ -211,17 +227,21 @@ final class OpenApiRequestValidator
         // parameter (the first scalar-typed sink) and raise an uncaught
         // TypeError; a list mis-resolves silently (issue #259).
         if (MalformedSpecNode::isMalformed($operation)) {
-            return OpenApiValidationResult::failure([
-                sprintf(
-                    "Malformed 'paths[\"%s\"].%s' for %s %s in '%s' spec: expected object, got %s.",
-                    $matchedPath,
-                    $operationLocation,
-                    $method,
-                    $matchedPath,
-                    $specName,
-                    MalformedSpecNode::describe($operation),
-                ),
-            ], $matchedPath);
+            $message = sprintf(
+                "Malformed 'paths[\"%s\"].%s' for %s %s in '%s' spec: expected object, got %s.",
+                $matchedPath,
+                $operationLocation,
+                $method,
+                $matchedPath,
+                $specName,
+                MalformedSpecNode::describe($operation),
+            );
+
+            return OpenApiValidationResult::failure(
+                [$message],
+                $matchedPath,
+                issues: [new ValidationIssue('request.spec', $message, method: $method, path: $matchedPath)],
+            );
         }
 
         // Collect merged path/operation parameters once so path + query + header
@@ -252,14 +272,26 @@ final class OpenApiRequestValidator
         $discriminatorContext = new DiscriminatorContext($spec, DiscriminatorEnforcement::isEnabled());
         $bodyResult = $this->validateBody($specName, $method, $matchedPath, $operation, $body, $contentType, $version, $discriminatorContext, $jsonSchemaDialect);
 
-        $errors = [
-            ...$collected->specErrors,
-            ...ValidatorErrorBoundary::safely('path', $specName, $method, $matchedPath, fn(): array => $this->pathValidator->validate($method, $matchedPath, $collected->parameters, $pathVariables, $version, $jsonSchemaDialect)),
-            ...ValidatorErrorBoundary::safely('query', $specName, $method, $matchedPath, fn(): array => $this->queryValidator->validate($method, $matchedPath, $collected->parameters, $queryParams, $version, $jsonSchemaDialect)),
-            ...ValidatorErrorBoundary::safely('header', $specName, $method, $matchedPath, fn(): array => $this->headerValidator->validate($method, $matchedPath, $collected->parameters, $headers, $version, $jsonSchemaDialect)),
-            ...ValidatorErrorBoundary::safely('security', $specName, $method, $matchedPath, fn(): array => $this->securityValidator->validate($method, $matchedPath, $spec, $operation, $headers, $queryParams, $cookies)),
-            ...$bodyResult->errors,
+        // Category tags mirror the sub-validator that produced each message so
+        // issues() can expose a structured view without touching the
+        // sub-validators themselves (#282, stage 1). Only body issues have a
+        // resolved spec media-type key; parameter/security issues carry null.
+        $issueGroups = [
+            ['request.spec', $collected->specErrors, null],
+            ['request.parameter.path', ValidatorErrorBoundary::safely('path', $specName, $method, $matchedPath, fn(): array => $this->pathValidator->validate($method, $matchedPath, $collected->parameters, $pathVariables, $version, $jsonSchemaDialect)), null],
+            ['request.parameter.query', ValidatorErrorBoundary::safely('query', $specName, $method, $matchedPath, fn(): array => $this->queryValidator->validate($method, $matchedPath, $collected->parameters, $queryParams, $version, $jsonSchemaDialect)), null],
+            ['request.parameter.header', ValidatorErrorBoundary::safely('header', $specName, $method, $matchedPath, fn(): array => $this->headerValidator->validate($method, $matchedPath, $collected->parameters, $headers, $version, $jsonSchemaDialect)), null],
+            ['request.security', ValidatorErrorBoundary::safely('security', $specName, $method, $matchedPath, fn(): array => $this->securityValidator->validate($method, $matchedPath, $spec, $operation, $headers, $queryParams, $cookies)), null],
+            ['request.body', $bodyResult->errors, $bodyResult->matchedContentType],
         ];
+
+        $issues = [];
+        foreach ($issueGroups as [$category, $messages, $issueContentType]) {
+            foreach ($messages as $message) {
+                $issues[] = new ValidationIssue($category, $message, method: $method, path: $matchedPath, contentType: $issueContentType);
+            }
+        }
+        $errors = array_map(static fn(ValidationIssue $issue): string => $issue->message, $issues);
 
         if ($errors === []) {
             // Issue #254: a non-JSON request Content-Type matched a spec
@@ -268,11 +300,22 @@ final class OpenApiRequestValidator
             // is non-failing — but the body went unchecked, so surface a
             // Skipped result (rather than a clean Success) and forward the
             // reason to coverage tracking.
+            // Both outcomes carry the media-type key the body validator
+            // resolved (null when no `requestBody` lookup happened) so
+            // adapters can tag their own body-level diagnostics with it even
+            // when this result contributes no issues of its own.
             if ($bodyResult->skipReason !== null) {
-                return OpenApiValidationResult::skipped($matchedPath, $bodyResult->skipReason);
+                return OpenApiValidationResult::skipped(
+                    $matchedPath,
+                    $bodyResult->skipReason,
+                    matchedContentType: $bodyResult->matchedContentType,
+                );
             }
 
-            return OpenApiValidationResult::success($matchedPath);
+            return OpenApiValidationResult::success(
+                $matchedPath,
+                matchedContentType: $bodyResult->matchedContentType,
+            );
         }
 
         // Issue #179: when the response is a documented 4xx and the test
@@ -303,6 +346,11 @@ final class OpenApiRequestValidator
                         SpecResponseKeyResolver::warnSuspiciousKeys($specName, $method, $matchedPath, $responses);
                     }
 
+                    // Carry the media-type key the body validator resolved
+                    // before the downgrade: the Skipped result has no issues,
+                    // so this is the only channel through which adapters
+                    // (e.g. PSR-7 body-decode errors) can keep tagging their
+                    // request.body issues with the resolved key.
                     return OpenApiValidationResult::skipped(
                         $matchedPath,
                         sprintf(
@@ -312,12 +360,47 @@ final class OpenApiRequestValidator
                             $matchingPattern,
                         ),
                         $matchedResponseKey,
+                        $bodyResult->matchedContentType,
                     );
                 }
             }
         }
 
-        return OpenApiValidationResult::failure($errors, $matchedPath);
+        // Carry the resolved media-type key at result level here too, so all
+        // three outcomes (Success / Skipped above, Failure) expose it
+        // consistently — adapters fall back to it when the failure has no
+        // request.body issue to borrow the key from (e.g. only sibling
+        // parameter errors alongside an adapter-level body error).
+        return OpenApiValidationResult::failure(
+            $errors,
+            $matchedPath,
+            matchedContentType: $bodyResult->matchedContentType,
+            issues: $issues,
+        );
+    }
+
+    /**
+     * Media-type key for the synthetic boundary error above. A
+     * `RuntimeException` can only originate on the JSON schema path — schema
+     * conversion and validation run after {@see RequestBodyValidator} resolved
+     * the JSON media-type key (the non-JSON and malformed-spec paths return
+     * before touching the converter) — so re-resolving the key from the same
+     * `content` map reproduces exactly what the validator matched before it
+     * threw.
+     *
+     * @param array<string, mixed> $operation
+     */
+    private static function thrownBodyContentType(array $operation): ?string
+    {
+        $requestBody = $operation['requestBody'] ?? null;
+        if (!is_array($requestBody) || !is_array($requestBody['content'] ?? null)) {
+            return null;
+        }
+
+        /** @var array<string, mixed> $content */
+        $content = $requestBody['content'];
+
+        return ContentTypeMatcher::findJsonContentType($content);
     }
 
     /**
@@ -354,16 +437,19 @@ final class OpenApiRequestValidator
                 ? sprintf(' (caused by %s: %s)', $previous::class, $previous->getMessage())
                 : '';
 
-            return new RequestBodyValidationResult([sprintf(
-                "[%s] %s %s in '%s' spec: %s threw: %s%s",
-                'request-body',
-                $method,
-                $matchedPath,
-                $specName,
-                $e::class,
-                $e->getMessage(),
-                $previousSuffix,
-            )]);
+            return new RequestBodyValidationResult(
+                [sprintf(
+                    "[%s] %s %s in '%s' spec: %s threw: %s%s",
+                    'request-body',
+                    $method,
+                    $matchedPath,
+                    $specName,
+                    $e::class,
+                    $e->getMessage(),
+                    $previousSuffix,
+                )],
+                matchedContentType: self::thrownBodyContentType($operation),
+            );
         }
     }
 

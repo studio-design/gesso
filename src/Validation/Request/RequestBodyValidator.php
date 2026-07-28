@@ -171,11 +171,11 @@ final class RequestBodyValidator
                 $matchedKey = ContentTypeMatcher::findContentTypeKey($normalizedType, $content);
                 if ($matchedKey !== null) {
                     if ($required && !$requestBody->present) {
-                        return self::missingRequiredBodyResult($specName, $method, $matchedPath);
+                        return self::missingRequiredBodyResult($specName, $method, $matchedPath, $matchedKey);
                     }
 
                     if (isset($content[$matchedKey]['itemSchema'])) {
-                        return self::unsupportedItemSchemaResult($normalizedType);
+                        return self::unsupportedItemSchemaResult($normalizedType, $matchedKey);
                     }
 
                     // A matched non-JSON media type that declares a `schema`
@@ -200,10 +200,11 @@ final class RequestBodyValidator
                                 $normalizedType,
                                 $matchedKey,
                             ),
+                            $matchedKey,
                         );
                     }
 
-                    return new RequestBodyValidationResult([]);
+                    return new RequestBodyValidationResult([], matchedContentType: $matchedKey);
                 }
 
                 $defined = implode(', ', array_keys($content));
@@ -227,7 +228,7 @@ final class RequestBodyValidator
         // matching so an unknown actual Content-Type remains the primary
         // diagnostic, but before the no-JSON/no-schema early returns below.
         if ($required && !$requestBody->present) {
-            return self::missingRequiredBodyResult($specName, $method, $matchedPath);
+            return self::missingRequiredBodyResult($specName, $method, $matchedPath, $jsonContentType);
         }
 
         // If no JSON-compatible content type is defined, skip body validation.
@@ -236,7 +237,7 @@ final class RequestBodyValidator
         if ($jsonContentType === null) {
             foreach ($content as $mediaType => $mediaTypeSpec) {
                 if (isset($mediaTypeSpec['itemSchema'])) {
-                    return self::unsupportedItemSchemaResult((string) $mediaType);
+                    return self::unsupportedItemSchemaResult((string) $mediaType, (string) $mediaType);
                 }
             }
 
@@ -245,10 +246,10 @@ final class RequestBodyValidator
 
         if (!isset($content[$jsonContentType]['schema'])) {
             if (isset($content[$jsonContentType]['itemSchema'])) {
-                return self::unsupportedItemSchemaResult($jsonContentType);
+                return self::unsupportedItemSchemaResult($jsonContentType, $jsonContentType);
             }
 
-            return new RequestBodyValidationResult([]);
+            return new RequestBodyValidationResult([], matchedContentType: $jsonContentType);
         }
 
         // Required absence was rejected before content negotiation. An absent
@@ -257,7 +258,7 @@ final class RequestBodyValidator
         // #248), so it falls through to schema type-checking below instead of
         // taking this branch.
         if (!$requestBody->present) {
-            return new RequestBodyValidationResult([]);
+            return new RequestBodyValidationResult([], matchedContentType: $jsonContentType);
         }
 
         $bodyValue = $requestBody->value;
@@ -291,21 +292,27 @@ final class RequestBodyValidator
             }
         }
 
-        return new RequestBodyValidationResult($errors);
+        return new RequestBodyValidationResult($errors, matchedContentType: $jsonContentType);
     }
 
     private static function missingRequiredBodyResult(
         string $specName,
         string $method,
         string $matchedPath,
+        ?string $matchedContentType = null,
     ): RequestBodyValidationResult {
-        return new RequestBodyValidationResult([
-            "Request body is empty but {$method} {$matchedPath} defines a required request body in '{$specName}' spec.",
-        ]);
+        return new RequestBodyValidationResult(
+            [
+                "Request body is empty but {$method} {$matchedPath} defines a required request body in '{$specName}' spec.",
+            ],
+            matchedContentType: $matchedContentType,
+        );
     }
 
-    private static function unsupportedItemSchemaResult(string $mediaType): RequestBodyValidationResult
-    {
+    private static function unsupportedItemSchemaResult(
+        string $mediaType,
+        ?string $matchedContentType = null,
+    ): RequestBodyValidationResult {
         return new RequestBodyValidationResult(
             [],
             sprintf(
@@ -313,6 +320,7 @@ final class RequestBodyValidator
                 . 'stream items cannot be validated from the buffered request body and were explicitly skipped',
                 $mediaType,
             ),
+            $matchedContentType,
         );
     }
 

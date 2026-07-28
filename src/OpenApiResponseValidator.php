@@ -117,15 +117,18 @@ final class OpenApiResponseValidator
         // traversal-level sibling of the per-response content/schema guards
         // (issue #259).
         if (array_key_exists('paths', $spec) && MalformedSpecNode::isMalformed($spec['paths'])) {
-            return OpenApiValidationResult::failure([
-                sprintf(
-                    "Malformed 'paths' for %s %s in '%s' spec: expected object, got %s.",
-                    $method,
-                    $requestPath,
-                    $specName,
-                    MalformedSpecNode::describe($spec['paths']),
-                ),
-            ]);
+            $message = sprintf(
+                "Malformed 'paths' for %s %s in '%s' spec: expected object, got %s.",
+                $method,
+                $requestPath,
+                $specName,
+                MalformedSpecNode::describe($spec['paths']),
+            );
+
+            return OpenApiValidationResult::failure(
+                [$message],
+                issues: [new ValidationIssue('response.spec', $message, method: $method)],
+            );
         }
 
         /** @var string[] $specPaths */
@@ -134,9 +137,12 @@ final class OpenApiResponseValidator
         $matchedPath = $matcher->match($requestPath);
 
         if ($matchedPath === null) {
-            return OpenApiValidationResult::failure([
-                PathDiagnosticsFormatter::pathNotFound($specName, $method, $requestPath, $matcher, $spec),
-            ]);
+            $message = PathDiagnosticsFormatter::pathNotFound($specName, $method, $requestPath, $matcher, $spec);
+
+            return OpenApiValidationResult::failure(
+                [$message],
+                issues: [new ValidationIssue('response.request_context', $message, method: $method)],
+            );
         }
 
         // `$matchedPath` is always a key of `$spec['paths']` (the matcher was
@@ -151,23 +157,31 @@ final class OpenApiResponseValidator
         // (uncaught TypeError) and a list mis-resolves silently. Surface it
         // loudly instead (issue #259).
         if (MalformedSpecNode::isMalformed($pathSpec)) {
-            return OpenApiValidationResult::failure([
-                sprintf(
-                    "Malformed 'paths[\"%s\"]' for %s %s in '%s' spec: expected object, got %s.",
-                    $matchedPath,
-                    $method,
-                    $matchedPath,
-                    $specName,
-                    MalformedSpecNode::describe($pathSpec),
-                ),
-            ], $matchedPath);
+            $message = sprintf(
+                "Malformed 'paths[\"%s\"]' for %s %s in '%s' spec: expected object, got %s.",
+                $matchedPath,
+                $method,
+                $matchedPath,
+                $specName,
+                MalformedSpecNode::describe($pathSpec),
+            );
+
+            return OpenApiValidationResult::failure(
+                [$message],
+                $matchedPath,
+                issues: [new ValidationIssue('response.spec', $message, method: $method, path: $matchedPath)],
+            );
         }
 
         $resolvedOperation = OpenApiOperationResolver::resolve($pathSpec, $method);
         if (!$resolvedOperation['found']) {
-            return OpenApiValidationResult::failure([
-                PathDiagnosticsFormatter::methodNotDefined($specName, $method, $matchedPath, $spec),
-            ], $matchedPath);
+            $message = PathDiagnosticsFormatter::methodNotDefined($specName, $method, $matchedPath, $spec);
+
+            return OpenApiValidationResult::failure(
+                [$message],
+                $matchedPath,
+                issues: [new ValidationIssue('response.request_context', $message, method: $method, path: $matchedPath)],
+            );
         }
 
         $operation = $resolvedOperation['operation'];
@@ -178,17 +192,21 @@ final class OpenApiResponseValidator
         // non-array reaches the `array_key_exists()` `responses` lookup below
         // (uncaught TypeError) and a list mis-resolves silently (issue #259).
         if (MalformedSpecNode::isMalformed($operation)) {
-            return OpenApiValidationResult::failure([
-                sprintf(
-                    "Malformed 'paths[\"%s\"].%s' for %s %s in '%s' spec: expected object, got %s.",
-                    $matchedPath,
-                    $operationLocation,
-                    $method,
-                    $matchedPath,
-                    $specName,
-                    MalformedSpecNode::describe($operation),
-                ),
-            ], $matchedPath);
+            $message = sprintf(
+                "Malformed 'paths[\"%s\"].%s' for %s %s in '%s' spec: expected object, got %s.",
+                $matchedPath,
+                $operationLocation,
+                $method,
+                $matchedPath,
+                $specName,
+                MalformedSpecNode::describe($operation),
+            );
+
+            return OpenApiValidationResult::failure(
+                [$message],
+                $matchedPath,
+                issues: [new ValidationIssue('response.spec', $message, method: $method, path: $matchedPath)],
+            );
         }
 
         /** @var array<string, mixed> $operation */
@@ -209,17 +227,21 @@ final class OpenApiResponseValidator
         // not hide it. This is the traversal-level sibling of the #258
         // `responses[$status]` per-entry guard (issue #259).
         if (MalformedSpecNode::isMalformed($responses)) {
-            return OpenApiValidationResult::failure([
-                sprintf(
-                    "Malformed 'paths[\"%s\"].%s.responses' for %s %s in '%s' spec: expected object, got %s.",
-                    $matchedPath,
-                    $operationLocation,
-                    $method,
-                    $matchedPath,
-                    $specName,
-                    MalformedSpecNode::describe($responses),
-                ),
-            ], $matchedPath);
+            $message = sprintf(
+                "Malformed 'paths[\"%s\"].%s.responses' for %s %s in '%s' spec: expected object, got %s.",
+                $matchedPath,
+                $operationLocation,
+                $method,
+                $matchedPath,
+                $specName,
+                MalformedSpecNode::describe($responses),
+            );
+
+            return OpenApiValidationResult::failure(
+                [$message],
+                $matchedPath,
+                issues: [new ValidationIssue('response.spec', $message, method: $method, path: $matchedPath)],
+            );
         }
 
         // Skip-by-status-code: applied before the "Status code not defined"
@@ -256,9 +278,13 @@ final class OpenApiResponseValidator
         // typically use `default` for the error envelope).
         $matchedResponseKey = SpecResponseKeyResolver::resolve($statusCodeStr, $responses);
         if ($matchedResponseKey === null) {
-            return OpenApiValidationResult::failure([
-                "Status code {$statusCode} not defined for {$method} {$matchedPath} in '{$specName}' spec.",
-            ], $matchedPath);
+            $message = "Status code {$statusCode} not defined for {$method} {$matchedPath} in '{$specName}' spec.";
+
+            return OpenApiValidationResult::failure(
+                [$message],
+                $matchedPath,
+                issues: [new ValidationIssue('response.status', $message, method: $method, path: $matchedPath, statusCode: $statusCodeStr)],
+            );
         }
         // Before silently surfacing a `default` fallback, surface any keys
         // that LOOK like attempted spec keys but don't satisfy the exact /
@@ -290,16 +316,21 @@ final class OpenApiResponseValidator
         // content-level guards in validateBody() and RequestBodyValidator's
         // `requestBody` guard.
         if (MalformedSpecNode::isMalformed($responseSpec)) {
-            return OpenApiValidationResult::failure([
-                sprintf(
-                    "Malformed 'responses[%s]' for %s %s in '%s' spec: expected object, got %s.",
-                    $matchedResponseKey,
-                    $method,
-                    $matchedPath,
-                    $specName,
-                    MalformedSpecNode::describe($responseSpec),
-                ),
-            ], $matchedPath, $statusCodeStr);
+            $message = sprintf(
+                "Malformed 'responses[%s]' for %s %s in '%s' spec: expected object, got %s.",
+                $matchedResponseKey,
+                $method,
+                $matchedPath,
+                $specName,
+                MalformedSpecNode::describe($responseSpec),
+            );
+
+            return OpenApiValidationResult::failure(
+                [$message],
+                $matchedPath,
+                $statusCodeStr,
+                issues: [new ValidationIssue('response.spec', $message, method: $method, path: $matchedPath, statusCode: $statusCodeStr)],
+            );
         }
 
         // Carry the resolved root + enforce gate so the body validator can
@@ -376,7 +407,15 @@ final class OpenApiResponseValidator
 
         // Order is body errors first, headers second. Tests that pin
         // specific positions rely on this; reordering would silently
-        // change diagnostic flow without breaking behaviour.
+        // change diagnostic flow without breaking behaviour. Category tags
+        // mirror the producing sub-validator (#282, stage 1).
+        $issues = [];
+        foreach ($bodyResult->errors as $message) {
+            $issues[] = new ValidationIssue('response.body', $message, method: $method, path: $matchedPath, statusCode: $statusCodeStr, contentType: $bodyResult->matchedContentType);
+        }
+        foreach ($headerErrors as $message) {
+            $issues[] = new ValidationIssue('response.header', $message, method: $method, path: $matchedPath, statusCode: $statusCodeStr, contentType: $bodyResult->matchedContentType);
+        }
         $errors = array_merge($bodyResult->errors, $headerErrors);
 
         if ($errors === []) {
@@ -409,6 +448,7 @@ final class OpenApiResponseValidator
             $matchedPath,
             $statusCodeStr,
             $bodyResult->matchedContentType,
+            issues: $issues,
         );
     }
 

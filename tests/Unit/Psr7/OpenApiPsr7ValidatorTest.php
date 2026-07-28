@@ -19,6 +19,8 @@ use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\Psr7\OpenApiPsr7Validator;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 
+use function array_map;
+
 final class OpenApiPsr7ValidatorTest extends TestCase
 {
     private OpenApiPsr7Validator $validator;
@@ -255,5 +257,150 @@ final class OpenApiPsr7ValidatorTest extends TestCase
         $this->assertFalse($result->isValid());
         $this->assertStringContainsString('could not be parsed as JSON', $result->errorMessage());
         $this->assertSame('/widgets/{id}', $result->matchedPath());
+    }
+
+    #[Test]
+    public function response_adapter_errors_preserve_structured_issues(): void
+    {
+        $response = new Response(
+            201,
+            ['Content-Type' => 'application/json', 'X-Trace' => 'trace-1'],
+            '{invalid',
+        );
+
+        $result = $this->validator->validateResponseForOperation('POST', '/widgets/42', $response);
+
+        $this->assertFalse($result->isValid());
+        $issues = $result->issues();
+        $this->assertSame(
+            $result->errors(),
+            array_map(static fn($issue) => $issue->message, $issues),
+        );
+        $this->assertSame('response.body', $issues[0]->category);
+        $this->assertSame('POST', $issues[0]->method);
+        $this->assertSame('201', $issues[0]->statusCode);
+        $this->assertSame('application/json', $issues[0]->contentType);
+        $this->assertStringContainsString('could not be parsed as JSON', $issues[0]->message);
+        $this->assertNotContains(
+            'unknown',
+            array_map(static fn($issue) => $issue->category, $issues),
+        );
+    }
+
+    #[Test]
+    public function request_adapter_errors_preserve_structured_issues(): void
+    {
+        $request = (new ServerRequest(
+            'POST',
+            'https://example.test/widgets/42?q=blue',
+            ['Content-Type' => 'application/json', 'X-Token' => 'secret'],
+            '{invalid',
+        ))
+            ->withQueryParams(['q' => 'blue'])
+            ->withCookieParams(['session' => 'abc']);
+
+        $result = $this->validator->validateRequest($request);
+
+        $this->assertFalse($result->isValid());
+        $issues = $result->issues();
+        $this->assertSame(
+            $result->errors(),
+            array_map(static fn($issue) => $issue->message, $issues),
+        );
+        $this->assertSame('request.body', $issues[0]->category);
+        $this->assertSame('POST', $issues[0]->method);
+        $this->assertNull($issues[0]->statusCode, 'request issues never carry a statusCode');
+        $this->assertSame(
+            'application/json',
+            $issues[0]->contentType,
+            'adapter body issue must share the media-type key its sibling body issues resolved',
+        );
+        $this->assertStringContainsString('could not be parsed as JSON', $issues[0]->message);
+        $this->assertNotContains(
+            'unknown',
+            array_map(static fn($issue) => $issue->category, $issues),
+        );
+    }
+
+    #[Test]
+    public function request_adapter_issue_context_stays_request_side_after_downgrade(): void
+    {
+        // Invalid JSON + a documented 422 response: the inner request result
+        // is downgraded to Skipped carrying matchedStatusCode '422'. The
+        // adapter error rebuilds it as a Failure — the request-side issue
+        // must not inherit that response status.
+        $validator = new OpenApiPsr7Validator('request-validation-skip');
+        $request = new ServerRequest(
+            'POST',
+            'https://example.test/exact-422',
+            ['Content-Type' => 'application/json'],
+            '{invalid',
+        );
+
+        $result = $validator->validateRequest($request, 422);
+
+        $this->assertFalse($result->isValid());
+        $issues = $result->issues();
+        $this->assertCount(1, $issues);
+        $this->assertSame('request.body', $issues[0]->category);
+        $this->assertNull($issues[0]->statusCode, 'request issues never carry a statusCode');
+        $this->assertSame(
+            'application/json',
+            $issues[0]->contentType,
+            'the media-type key resolved before the downgrade must survive into the adapter issue',
+        );
+    }
+
+    #[Test]
+    public function request_adapter_issue_keeps_content_type_when_inner_result_succeeds(): void
+    {
+        // Optional request body + a non-seekable stream: the adapter refuses
+        // to read the body, the inner validator sees an absent optional body
+        // and succeeds — so there is no sibling body issue to borrow the
+        // media-type key from. The Success result must carry the key the
+        // body validator resolved.
+        $stream = new NoSeekStream(Utils::streamFor('{"text":"hi"}'));
+        $request = new ServerRequest(
+            'POST',
+            'https://example.test/notes',
+            ['Content-Type' => 'application/json'],
+            $stream,
+        );
+
+        $result = $this->validator->validateRequest($request);
+
+        $this->assertFalse($result->isValid());
+        $issues = $result->issues();
+        $this->assertCount(1, $issues);
+        $this->assertSame('request.body', $issues[0]->category);
+        $this->assertStringContainsString('not seekable', $issues[0]->message);
+        $this->assertNull($issues[0]->statusCode, 'request issues never carry a statusCode');
+        $this->assertSame('application/json', $issues[0]->contentType);
+    }
+
+    #[Test]
+    public function request_adapter_issue_keeps_content_type_alongside_non_body_sibling_errors(): void
+    {
+        // Optional body + unreadable stream + a path-parameter error: the
+        // inner result is a Failure whose issues contain no request.body
+        // entry, so the media-type key must come from the Failure's
+        // result-level matchedContentType.
+        $stream = new NoSeekStream(Utils::streamFor('{"text":"hi"}'));
+        $request = new ServerRequest(
+            'POST',
+            'https://example.test/notes/abc',
+            ['Content-Type' => 'application/json'],
+            $stream,
+        );
+
+        $result = $this->validator->validateRequest($request);
+
+        $this->assertFalse($result->isValid());
+        $issues = $result->issues();
+        $categories = array_map(static fn($issue) => $issue->category, $issues);
+        $this->assertContains('request.parameter.path', $categories, 'the sibling path error must surface');
+        $this->assertSame('request.body', $issues[0]->category);
+        $this->assertStringContainsString('not seekable', $issues[0]->message);
+        $this->assertSame('application/json', $issues[0]->contentType);
     }
 }

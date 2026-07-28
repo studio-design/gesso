@@ -19,6 +19,7 @@ use Studio\Gesso\OpenApiResponseValidator;
 use Studio\Gesso\OpenApiValidationResult;
 use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 use Studio\Gesso\Validation\Support\ContentTypeMatcher;
+use Studio\Gesso\ValidationIssue;
 
 use function array_key_exists;
 use function array_merge;
@@ -101,7 +102,14 @@ final class OpenApiPsr7Validator
             $cookies,
             $responseStatusCode,
         );
-        $result = self::withAdapterErrors($result, $decoded['errors']);
+        $result = self::withAdapterErrors(
+            $result,
+            $decoded['errors'],
+            'request.body',
+            $method,
+            statusCode: null,
+            contentType: self::requestBodyIssueContentType($result),
+        );
 
         if ($result->matchedPath() !== null) {
             OpenApiCoverageTracker::recordRequest(
@@ -148,7 +156,14 @@ final class OpenApiPsr7Validator
             $contentType,
             $response->getHeaders(),
         );
-        $result = self::withAdapterErrors($result, $decoded['errors']);
+        $result = self::withAdapterErrors(
+            $result,
+            $decoded['errors'],
+            'response.body',
+            $method,
+            statusCode: $result->matchedStatusCode(),
+            contentType: $result->matchedContentType(),
+        );
 
         if ($result->matchedPath() !== null) {
             OpenApiCoverageTracker::recordResponse(
@@ -187,13 +202,44 @@ final class OpenApiPsr7Validator
         ];
     }
 
-    /** @param list<string> $adapterErrors */
+    /**
+     * Prepend adapter-level body errors (unreadable/non-seekable stream, JSON
+     * parse failure) to the validator result. Adapter errors are tagged with
+     * the given body category (`request.body` / `response.body`) and the
+     * validator's structured issues are kept as-is, in the same order as
+     * `errors()`, so `issues()` never degrades to `unknown` here.
+     *
+     * `$statusCode` / `$contentType` are the issue context for the adapter
+     * entries and are side-specific: the caller passes the result's matched
+     * values on the response side, and `statusCode: null` on the request side
+     * — request issues never carry a status, and the result-level
+     * matchedStatusCode of a downgraded (documented-4xx) request result is a
+     * response spec key that must not leak into request issue context.
+     *
+     * @param list<string> $adapterErrors
+     */
     private static function withAdapterErrors(
         OpenApiValidationResult $result,
         array $adapterErrors,
+        string $category,
+        string $method,
+        ?string $statusCode,
+        ?string $contentType,
     ): OpenApiValidationResult {
         if ($adapterErrors === []) {
             return $result;
+        }
+
+        $adapterIssues = [];
+        foreach ($adapterErrors as $message) {
+            $adapterIssues[] = new ValidationIssue(
+                $category,
+                $message,
+                method: $method,
+                path: $result->matchedPath(),
+                statusCode: $statusCode,
+                contentType: $contentType,
+            );
         }
 
         return OpenApiValidationResult::failure(
@@ -201,7 +247,28 @@ final class OpenApiPsr7Validator
             $result->matchedPath(),
             $result->matchedStatusCode(),
             $result->matchedContentType(),
+            array_merge($adapterIssues, $result->issues()),
         );
+    }
+
+    /**
+     * Media-type key for a request-side adapter body issue. A failed request
+     * result carries the resolved request media-type on its tagged
+     * `request.body` issues — reuse theirs so the adapter entry and its
+     * sibling body issues report the same key. A downgraded (documented-4xx)
+     * request result is Skipped and has no issues; there the key resolved
+     * before the downgrade is carried at result level instead. Null when
+     * neither channel has one (no `requestBody` in the spec, success).
+     */
+    private static function requestBodyIssueContentType(OpenApiValidationResult $result): ?string
+    {
+        foreach ($result->issues() as $issue) {
+            if ($issue->category === 'request.body') {
+                return $issue->contentType;
+            }
+        }
+
+        return $result->matchedContentType();
     }
 
     private static function requestPath(RequestInterface $request): string

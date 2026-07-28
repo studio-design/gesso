@@ -8,6 +8,7 @@ use InvalidArgumentException;
 use Studio\Gesso\OpenApiRequestValidator;
 use Studio\Gesso\OpenApiValidationResult;
 use Studio\Gesso\Validation\Response\ResponseBodyValidationResult;
+use Studio\Gesso\ValidationIssue;
 
 /**
  * Outcome of {@see RequestBodyValidator::validate()}.
@@ -27,9 +28,13 @@ use Studio\Gesso\Validation\Response\ResponseBodyValidationResult;
  * orchestrator builds a `failure()` instead and the `skipReason` is dropped
  * — a genuine failure takes precedence over a skip.
  *
- * This mirrors {@see ResponseBodyValidationResult} on the response side;
- * request-side coverage has no per-content-type dimension, so no
- * `matchedContentType` is carried.
+ * This mirrors {@see ResponseBodyValidationResult} on the response side.
+ * `matchedContentType` is the spec media-type key the body was resolved
+ * against, or null when validation stopped before a media-type lookup
+ * (missing/malformed `requestBody` nodes, Content-Type not defined).
+ * Request-side coverage has no per-content-type dimension; the key is
+ * carried so the orchestrator can attach it to `request.body`
+ * {@see ValidationIssue}s (issue #282).
  *
  * @internal Not part of the package's public API. Do not use from user code.
  */
@@ -46,6 +51,7 @@ final readonly class RequestBodyValidationResult
     public function __construct(
         public array $errors,
         public ?string $skipReason = null,
+        public ?string $matchedContentType = null,
     ) {
         if ($skipReason !== null && $errors !== []) {
             throw new InvalidArgumentException(

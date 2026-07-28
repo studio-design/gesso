@@ -17,6 +17,8 @@ use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Validation\Request\SecurityValidator;
 
 use function array_filter;
+use function array_map;
+use function array_values;
 use function fclose;
 use function fopen;
 use function implode;
@@ -185,6 +187,11 @@ class OpenApiRequestValidatorTest extends TestCase
 
         $this->assertTrue($result->isValid());
         $this->assertSame('/v1/pets', $result->matchedPath());
+        $this->assertSame(
+            'application/json',
+            $result->matchedContentType(),
+            'a successful request result must expose the media-type key the body was checked against',
+        );
     }
 
     #[Test]
@@ -202,6 +209,118 @@ class OpenApiRequestValidatorTest extends TestCase
 
         $this->assertFalse($result->isValid());
         $this->assertNotEmpty($result->errors());
+        $this->assertSame(
+            'application/json',
+            $result->matchedContentType(),
+            'a failed request result must expose the media-type key the body was checked against',
+        );
+    }
+
+    #[Test]
+    public function issues_carry_categories_and_operation_context(): void
+    {
+        $body = $this->validator->validate(
+            'petstore-3.0',
+            'POST',
+            '/v1/pets',
+            [],
+            [],
+            ['tag' => 'dog'],
+            'application/json',
+        );
+
+        $this->assertFalse($body->isValid());
+        $bodyIssues = $body->issues();
+        $this->assertNotEmpty($bodyIssues);
+        $this->assertContains('request.body', array_map(static fn($issue) => $issue->category, $bodyIssues));
+        $this->assertSame('POST', $bodyIssues[0]->method);
+        $this->assertSame('/v1/pets', $bodyIssues[0]->path);
+        $this->assertSame(
+            $body->errors(),
+            array_map(static fn($issue) => $issue->message, $bodyIssues),
+        );
+
+        $security = $this->validator->validate('petstore-3.0', 'GET', '/v1/secure/bearer', [], [], null);
+        $this->assertContains(
+            'request.security',
+            array_map(static fn($issue) => $issue->category, $security->issues()),
+        );
+
+        $query = $this->validator->validate('openapi-3.2', 'GET', '/v1/filter', ['limit' => '0'], [], null);
+        $this->assertContains(
+            'request.parameter.query',
+            array_map(static fn($issue) => $issue->category, $query->issues()),
+        );
+    }
+
+    #[Test]
+    public function request_body_issues_carry_the_matched_content_type(): void
+    {
+        $schemaError = $this->validator->validate(
+            'petstore-3.0',
+            'POST',
+            '/v1/pets',
+            [],
+            [],
+            ['tag' => 'dog'],
+            'application/json',
+        );
+
+        $bodyIssues = array_values(array_filter(
+            $schemaError->issues(),
+            static fn($issue) => $issue->category === 'request.body',
+        ));
+        $this->assertNotEmpty($bodyIssues);
+        $this->assertSame('application/json', $bodyIssues[0]->contentType);
+
+        $missingBody = $this->validator->validate(
+            'petstore-3.0',
+            'POST',
+            '/v1/pets',
+            [],
+            [],
+            null,
+            'application/json',
+        );
+
+        $missingBodyIssues = array_values(array_filter(
+            $missingBody->issues(),
+            static fn($issue) => $issue->category === 'request.body',
+        ));
+        $this->assertNotEmpty($missingBodyIssues);
+        $this->assertSame('application/json', $missingBodyIssues[0]->contentType);
+
+        // Parameter issues have no resolved media type — contentType stays null.
+        $query = $this->validator->validate('openapi-3.2', 'GET', '/v1/filter', ['limit' => '0'], [], null);
+        $queryIssues = array_values(array_filter(
+            $query->issues(),
+            static fn($issue) => $issue->category === 'request.parameter.query',
+        ));
+        $this->assertNotEmpty($queryIssues);
+        $this->assertNull($queryIssues[0]->contentType);
+    }
+
+    #[Test]
+    public function path_not_found_issue_is_categorized(): void
+    {
+        $result = $this->validator->validate('petstore-3.0', 'GET', '/v1/does-not-exist', [], [], null);
+
+        $issues = $result->issues();
+        $this->assertCount(1, $issues);
+        $this->assertSame('request.path_match', $issues[0]->category);
+        $this->assertSame('GET', $issues[0]->method);
+        $this->assertNull($issues[0]->path);
+    }
+
+    #[Test]
+    public function method_not_defined_issue_is_categorized(): void
+    {
+        $result = $this->validator->validate('petstore-3.0', 'DELETE', '/v1/pets', [], [], null);
+
+        $issues = $result->issues();
+        $this->assertCount(1, $issues);
+        $this->assertSame('request.method', $issues[0]->category);
+        $this->assertSame('/v1/pets', $issues[0]->path);
     }
 
     #[Test]
@@ -3339,6 +3458,15 @@ class OpenApiRequestValidatorTest extends TestCase
         $this->assertStringContainsString('[path.id]', $joined, 'path-param error must survive body throw');
         $this->assertStringContainsString('[request-body]', $joined, 'body throw must surface as boundary error');
         $this->assertStringContainsString('InvalidKeywordException', $joined, 'exception class name preserved for diagnostics');
+
+        // The synthetic boundary error is still a body issue: it must carry
+        // the media-type key the validator had resolved before it threw.
+        $bodyIssues = array_values(array_filter(
+            $result->issues(),
+            static fn($issue) => $issue->category === 'request.body',
+        ));
+        $this->assertNotEmpty($bodyIssues);
+        $this->assertSame('application/json', $bodyIssues[0]->contentType);
     }
 
     // ========================================
@@ -3372,6 +3500,11 @@ class OpenApiRequestValidatorTest extends TestCase
         $this->assertTrue($result->isSkipped(), 'documented-4xx downgrade must produce a Skipped outcome');
         $this->assertSame('/exact-422', $result->matchedPath());
         $this->assertSame('422', $result->matchedStatusCode(), 'matchedStatusCode must reflect the spec key the response resolved to');
+        $this->assertSame(
+            'application/json',
+            $result->matchedContentType(),
+            'the media-type key resolved before the downgrade must survive on the Skipped result',
+        );
         $this->assertNotNull($result->skipReason());
         $this->assertStringContainsString('422', (string) $result->skipReason());
     }

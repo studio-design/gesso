@@ -6,6 +6,8 @@ namespace Studio\Gesso;
 
 use InvalidArgumentException;
 
+use function array_values;
+use function count;
 use function implode;
 
 final readonly class OpenApiValidationResult
@@ -30,7 +32,12 @@ final readonly class OpenApiValidationResult
      * only for the issue #254 case — a non-JSON media type whose declared
      * `schema` this JSON-Schema engine cannot evaluate.
      *
+     * `issues` mirrors `errors` one-to-one when provided (guarded in
+     * {@see self::failure()}); an empty list means the caller predates the
+     * structured API and {@see self::issues()} derives untagged issues.
+     *
      * @param string[] $errors
+     * @param list<ValidationIssue> $issues
      */
     private function __construct(
         private OpenApiValidationOutcome $outcome,
@@ -39,6 +46,7 @@ final readonly class OpenApiValidationResult
         private ?string $skipReason = null,
         private ?string $matchedStatusCode = null,
         private ?string $matchedContentType = null,
+        private array $issues = [],
     ) {}
 
     public static function success(
@@ -73,21 +81,43 @@ final readonly class OpenApiValidationResult
      * observed to emit whitespace-only errors in practice, tightening
      * this guard (e.g. rejecting all-blank arrays) can be reconsidered.
      *
-     * @param non-empty-array<string> $errors
+     * When `$issues` is provided it must mirror `$errors` exactly — same
+     * count, and `issues[$i]->message === errors[$i]` — so the two views can
+     * never drift apart. Callers either tag every error or none.
      *
-     * @throws InvalidArgumentException when $errors is empty
+     * @param non-empty-array<string> $errors
+     * @param list<ValidationIssue> $issues
+     *
+     * @throws InvalidArgumentException when $errors is empty or $issues does not mirror $errors
      */
     public static function failure(
         array $errors,
         ?string $matchedPath = null,
         ?string $matchedStatusCode = null,
         ?string $matchedContentType = null,
+        array $issues = [],
     ): self {
         // @phpstan-ignore-next-line identical.alwaysFalse — PHPDoc bound is not enforced at runtime; keep guard for consumers without static analysis
         if ($errors === []) {
             throw new InvalidArgumentException(
                 'OpenApiValidationResult::failure() requires at least one error message.',
             );
+        }
+
+        if ($issues !== []) {
+            $errorList = array_values($errors);
+            if (count($issues) !== count($errorList)) {
+                throw new InvalidArgumentException(
+                    'OpenApiValidationResult::failure() issues must mirror errors one-to-one (count mismatch).',
+                );
+            }
+            foreach ($issues as $index => $issue) {
+                if ($issue->message !== $errorList[$index]) {
+                    throw new InvalidArgumentException(
+                        'OpenApiValidationResult::failure() issues must mirror errors one-to-one (message mismatch at index ' . $index . ').',
+                    );
+                }
+            }
         }
 
         return new self(
@@ -97,6 +127,7 @@ final readonly class OpenApiValidationResult
             null,
             $matchedStatusCode,
             $matchedContentType,
+            $issues,
         );
     }
 
@@ -116,10 +147,14 @@ final readonly class OpenApiValidationResult
      * `matchedContentType` is null for most skip cases (status-code skip,
      * non-JSON-only specs with no Content-Type header — no spec media-type
      * key was resolved). It carries the spec media-type key only when the
-     * skip happened *after* a content-type lookup matched a declared key —
+     * skip happened *after* a content-type lookup matched a declared key:
      * the "non-JSON media type with an unvalidatable `schema`" case (issue
-     * #254). Passing it through lets coverage record the skip against that
-     * exact media-type row instead of the wildcard bucket.
+     * #254, request and response sides), where it lets coverage record the
+     * response skip against that exact media-type row instead of the
+     * wildcard bucket, and the documented-4xx
+     * request downgrade (issue #179), where it preserves the request
+     * media-type key the body validator resolved before the downgrade so
+     * adapters can still tag their `request.body` issues with it.
      */
     public static function skipped(
         ?string $matchedPath = null,
@@ -164,6 +199,35 @@ final readonly class OpenApiValidationResult
     public function errorMessage(): string
     {
         return implode("\n", $this->errors);
+    }
+
+    /**
+     * Structured view of {@see self::errors()}. Results built by the current
+     * orchestrators carry tagged issues; results built by legacy callers of
+     * `failure()` derive one issue per error string with category `unknown`
+     * and this result's matched operation context, so consumers can rely on
+     * `count(issues()) === count(errors())` either way.
+     *
+     * @return list<ValidationIssue>
+     */
+    public function issues(): array
+    {
+        if ($this->issues !== []) {
+            return $this->issues;
+        }
+
+        $derived = [];
+        foreach (array_values($this->errors) as $message) {
+            $derived[] = new ValidationIssue(
+                'unknown',
+                $message,
+                path: $this->matchedPath,
+                statusCode: $this->matchedStatusCode,
+                contentType: $this->matchedContentType,
+            );
+        }
+
+        return $derived;
     }
 
     public function matchedPath(): ?string
