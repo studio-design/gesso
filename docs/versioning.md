@@ -23,9 +23,15 @@ This library follows [Semantic Versioning 2.0](https://semver.org/). v1.0.0 is t
   `request.body`, `response.spec`, `response.request_context`,
   `response.status`, `response.body`, `response.header`, and the legacy
   fallback `unknown`). New categories may be added in minor releases;
-  renaming or removing one is major. `instancePath` / `keyword` are reserved
-  and currently always `null` (issue #282, stage 2). `message` remains
+  renaming or removing one is major. `instancePath` / `keyword` are populated
+  on body-schema violations and `null` for every other error source; new
+  `keyword` values may appear in minor releases. `message` remains
   explicitly outside the contract (see below).
+- The validation JSON document rendered by `JsonValidationResultRenderer`
+  (`schema_version` 1) — see
+  [validation-json-schema.md](validation-json-schema.md) for the field-level
+  rules (additions are minor, removals/renames/type changes are major and
+  bump `schema_version`).
 - CLI surfaces by major (commands, flags, exit codes, and versioned inputs and
   output where applicable):
   - v1.x: `bin/openapi-contract`, `bin/openapi-coverage-merge`, and the v1.10

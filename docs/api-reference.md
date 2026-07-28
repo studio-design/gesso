@@ -49,10 +49,27 @@ context the validator resolved (`method`, `path`, `statusCode`,
 or was not resolved — request-side issues never carry a `statusCode`, and
 `contentType` is set only on body issues (the resolved spec media-type key).
 Assert on `category` and context instead of message wording —
-the prose is not a compatibility surface. `instancePath` and `keyword` are
-reserved for body-schema errors and are always `null` today (issue #282,
-stage 2). Results built by code that predates the structured API derive
+the prose is not a compatibility surface. On body-schema violations
+(`request.body` / `response.body` issues produced by schema validation),
+`instancePath` carries the JSON Pointer into the validated body and `keyword`
+the failing JSON Schema keyword (`type`, `required`, …); both stay `null` for
+every other error source, including non-schema body errors such as a missing
+required body. Results built by code that predates the structured API derive
 issues with category `unknown`.
+
+To hand the full result to machine consumers (CI ingestion, IDE annotations),
+render it as a versioned JSON document:
+
+```php
+use Studio\Gesso\JsonValidationResultRenderer;
+
+$json = JsonValidationResultRenderer::render($result);
+// Optionally embed a (pre-redacted) reproduction command:
+$json = JsonValidationResultRenderer::render($result, $curlCommand);
+```
+
+The document shape (`schema_version` 1) is a compatibility surface — see
+[validation-json-schema.md](validation-json-schema.md).
 
 Prefer `outcome()` when you need to distinguish all three states explicitly — PHPStan enforces `match` exhaustiveness, so adding a future outcome cannot silently slip past a caller:
 
