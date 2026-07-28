@@ -95,7 +95,7 @@ final class SchemaValidatorRunner
     {
         $grouped = [];
         foreach ($this->validateStructured($jsonSchema, $data) as $violation) {
-            $grouped[$violation->instancePath][] = $violation->message;
+            $grouped[$violation->displayPath()][] = $violation->message;
         }
 
         return $grouped;
@@ -108,6 +108,10 @@ final class SchemaValidatorRunner
      * and failing keyword as fields instead of baking the pointer into a
      * `[{pointer}] {message}` prefix. Runs through the same cascade-dedup
      * pipeline (issue #159).
+     *
+     * Pointers here are RFC 6901 (`''` = document root, `'/'` = the
+     * empty-string key) — unlike the map view, which keeps opis's legacy
+     * rendering of both as `'/'` ({@see SchemaViolation::displayPath()}).
      *
      * @return list<SchemaViolation>
      */
@@ -128,15 +132,16 @@ final class SchemaValidatorRunner
             // ErrorFormatter::format() and producing a TypeError, so the
             // validator still surfaces *something* if the opis invariant
             // ever changes.
-            return [new SchemaViolation('/', null, 'Schema validation failed but opis reported no error detail.')];
+            return [new SchemaViolation('', null, 'Schema validation failed but opis reported no error detail.')];
         }
 
         $cascadeActions = self::computeCascadeActions($error, $jsonSchema);
 
         // Custom formatter callable so each entry keeps its keyword next to
-        // the interpolated message; the default key formatter still renders
-        // the instance pointer, preserving the grouping/order `validate()`
-        // has always produced.
+        // the interpolated message; the custom key formatter produces RFC
+        // 6901 pointers (root = '') instead of opis's default, which renders
+        // the root and the empty-string key identically as '/'. Grouping and
+        // order are otherwise exactly what `validate()` has always produced.
         /** @var array<string, list<array{message: string, keyword: string}>> $formatted */
         $formatted = $this->errorFormatter->format(
             $error,
@@ -145,6 +150,7 @@ final class SchemaValidatorRunner
                 'message' => $this->errorFormatter->formatErrorMessage($entryError, $message),
                 'keyword' => $entryError->keyword(),
             ],
+            static fn(ValidationError $entryError): string => self::instancePointer($entryError->data()->fullPath()),
         );
 
         $violations = [];
@@ -155,6 +161,20 @@ final class SchemaValidatorRunner
         }
 
         return $violations;
+    }
+
+    /**
+     * Render raw data-path segments as an RFC 6901 JSON Pointer. Non-empty
+     * paths match opis's `JsonPointer::pathToString()` byte-for-byte; the
+     * empty path becomes `''` (the RFC root pointer) where opis would return
+     * `'/'` — which is also what it returns for the empty-string key, an
+     * ambiguity the structured output must not inherit.
+     *
+     * @param array<int, mixed> $segments
+     */
+    private static function instancePointer(array $segments): string
+    {
+        return $segments === [] ? '' : JsonPointer::pathToString($segments);
     }
 
     /**
@@ -220,7 +240,7 @@ final class SchemaValidatorRunner
                     // unchanged so we don't pay the format-pass cost or
                     // risk re-encoding the message.
                     if (count($real) < count($listed)) {
-                        $actions[JsonPointer::pathToString($segments)] = $real;
+                        $actions[self::instancePointer($segments)] = $real;
                     }
                 }
             }

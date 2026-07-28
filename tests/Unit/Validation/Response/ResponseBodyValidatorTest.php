@@ -104,7 +104,7 @@ class ResponseBodyValidatorTest extends TestCase
         $this->assertCount(2, $result->violations);
         foreach ($result->violations as $index => $violation) {
             $this->assertSame(
-                "[{$violation->instancePath}] {$violation->message}",
+                "[{$violation->displayPath()}] {$violation->message}",
                 $result->errors[$index],
             );
             $this->assertNotNull($violation->keyword);

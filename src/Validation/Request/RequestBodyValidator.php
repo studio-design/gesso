@@ -287,7 +287,7 @@ final class RequestBodyValidator
 
         $errors = [];
         foreach ($violations as $violation) {
-            $errors[] = "[{$violation->instancePath}] {$violation->message}";
+            $errors[] = "[{$violation->displayPath()}] {$violation->message}";
         }
 
         return new RequestBodyValidationResult(

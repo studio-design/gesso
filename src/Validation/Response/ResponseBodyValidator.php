@@ -257,7 +257,7 @@ final class ResponseBodyValidator
 
         $errors = [];
         foreach ($violations as $violation) {
-            $errors[] = "[{$violation->instancePath}] {$violation->message}";
+            $errors[] = "[{$violation->displayPath()}] {$violation->message}";
         }
 
         return new ResponseBodyValidationResult($errors, $jsonContentType, violations: $violations);

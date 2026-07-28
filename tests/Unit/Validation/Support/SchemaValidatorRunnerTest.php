@@ -1204,8 +1204,40 @@ class SchemaValidatorRunnerTest extends TestCase
         $this->assertSame('type', $byPath['/count'][0]->keyword);
         $this->assertStringContainsString('integer', $byPath['/count'][0]->message);
 
-        $this->assertArrayHasKey('/', $byPath);
-        $this->assertSame('required', $byPath['/'][0]->keyword);
+        // RFC 6901: the document root is the empty pointer, NOT '/'.
+        $this->assertArrayHasKey('', $byPath);
+        $this->assertSame('required', $byPath[''][0]->keyword);
+    }
+
+    #[Test]
+    public function validate_structured_distinguishes_root_from_empty_string_key(): void
+    {
+        // RFC 6901 pins '' = document root and '/' = the property whose name
+        // is the empty string. opis's pathToString() renders both as '/';
+        // the structured view must not inherit that ambiguity (the JSON
+        // output's instance_path is a frozen compatibility surface), while
+        // the legacy pointer-keyed map keeps rendering both as '/'.
+        $runner = new SchemaValidatorRunner(0);
+
+        $rootViolationSchema = ObjectConverter::convert(['type' => 'object']);
+        $rootViolations = $runner->validateStructured($rootViolationSchema, 'not-an-object');
+        $this->assertCount(1, $rootViolations);
+        $this->assertSame('', $rootViolations[0]->instancePath);
+        $this->assertSame('/', $rootViolations[0]->displayPath());
+        $this->assertArrayHasKey('/', $runner->validate($rootViolationSchema, 'not-an-object'));
+
+        $emptyKeySchema = ObjectConverter::convert([
+            'type' => 'object',
+            'properties' => [
+                '' => ['type' => 'integer'],
+            ],
+        ]);
+        $emptyKeyData = ObjectConverter::convert(['' => 'not-an-int']);
+        $emptyKeyViolations = $runner->validateStructured($emptyKeySchema, $emptyKeyData);
+        $this->assertCount(1, $emptyKeyViolations);
+        $this->assertSame('/', $emptyKeyViolations[0]->instancePath);
+        $this->assertSame('/', $emptyKeyViolations[0]->displayPath());
+        $this->assertArrayHasKey('/', $runner->validate($emptyKeySchema, $emptyKeyData));
     }
 
     #[Test]
@@ -1230,9 +1262,11 @@ class SchemaValidatorRunnerTest extends TestCase
                 $flattenedMap[] = [$path, $message];
             }
         }
+        // displayPath() bridges the one deliberate divergence: the map view
+        // renders the RFC-6901 root pointer '' as the legacy '/'.
         $flattenedStructured = [];
         foreach ($structured as $violation) {
-            $flattenedStructured[] = [$violation->instancePath, $violation->message];
+            $flattenedStructured[] = [$violation->displayPath(), $violation->message];
         }
 
         $this->assertNotSame([], $flattenedStructured);
@@ -1283,7 +1317,7 @@ class SchemaValidatorRunnerTest extends TestCase
 
         $rewritten = null;
         foreach ($violations as $violation) {
-            if ($violation->instancePath === '/') {
+            if ($violation->instancePath === '') {
                 $rewritten = $violation;
             }
         }

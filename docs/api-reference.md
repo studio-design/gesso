@@ -51,10 +51,11 @@ or was not resolved — request-side issues never carry a `statusCode`, and
 Assert on `category` and context instead of message wording —
 the prose is not a compatibility surface. On body-schema violations
 (`request.body` / `response.body` issues produced by schema validation),
-`instancePath` carries the JSON Pointer into the validated body and `keyword`
-the failing JSON Schema keyword (`type`, `required`, …); both stay `null` for
-every other error source, including non-schema body errors such as a missing
-required body. Results built by code that predates the structured API derive
+`instancePath` carries the RFC 6901 JSON Pointer into the validated body
+(`''` = document root — the `message` prefix renders it as `[/]` for
+historical reasons) and `keyword` the failing JSON Schema keyword (`type`,
+`required`, …); both stay `null` for every other error source, including
+non-schema body errors such as a missing required body. Results built by code that predates the structured API derive
 issues with category `unknown`.
 
 To hand the full result to machine consumers (CI ingestion, IDE annotations),
