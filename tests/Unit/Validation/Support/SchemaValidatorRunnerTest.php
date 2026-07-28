@@ -1161,6 +1161,138 @@ class SchemaValidatorRunnerTest extends TestCase
         );
     }
 
+    // ============================================================
+    // Structured output (issue #282, stage 2)
+    //
+    // validateStructured() is the source of truth; validate() derives
+    // its pointer-keyed map from it. These tests pin the structured
+    // entries (pointer + keyword + unprefixed message) and the
+    // equivalence between the two views, including through the
+    // cascade-dedup pipeline above.
+    // ============================================================
+
+    #[Test]
+    public function validate_structured_returns_empty_list_for_valid_data(): void
+    {
+        $runner = new SchemaValidatorRunner(20);
+        $schema = ObjectConverter::convert(['type' => 'integer']);
+
+        $this->assertSame([], $runner->validateStructured($schema, 42));
+    }
+
+    #[Test]
+    public function validate_structured_carries_pointer_and_keyword_per_violation(): void
+    {
+        $runner = new SchemaValidatorRunner(0);
+        $schema = ObjectConverter::convert([
+            'type' => 'object',
+            'properties' => [
+                'count' => ['type' => 'integer'],
+            ],
+            'required' => ['count', 'name'],
+        ]);
+        $data = ObjectConverter::convert(['count' => 'not-an-int']);
+
+        $violations = $runner->validateStructured($schema, $data);
+
+        $byPath = [];
+        foreach ($violations as $violation) {
+            $byPath[$violation->instancePath][] = $violation;
+        }
+
+        $this->assertArrayHasKey('/count', $byPath);
+        $this->assertSame('type', $byPath['/count'][0]->keyword);
+        $this->assertStringContainsString('integer', $byPath['/count'][0]->message);
+
+        $this->assertArrayHasKey('/', $byPath);
+        $this->assertSame('required', $byPath['/'][0]->keyword);
+    }
+
+    #[Test]
+    public function validate_structured_flattening_matches_validate_output(): void
+    {
+        $schema = ObjectConverter::convert([
+            'type' => 'object',
+            'properties' => [
+                'a' => ['type' => 'integer'],
+                'b' => ['type' => 'string', 'enum' => ['ok']],
+            ],
+            'required' => ['a', 'b', 'missing'],
+        ]);
+        $data = ObjectConverter::convert(['a' => 'not-int', 'b' => 'not-ok']);
+
+        $mapView = (new SchemaValidatorRunner(0))->validate($schema, $data);
+        $structured = (new SchemaValidatorRunner(0))->validateStructured($schema, $data);
+
+        $flattenedMap = [];
+        foreach ($mapView as $path => $messages) {
+            foreach ($messages as $message) {
+                $flattenedMap[] = [$path, $message];
+            }
+        }
+        $flattenedStructured = [];
+        foreach ($structured as $violation) {
+            $flattenedStructured[] = [$violation->instancePath, $violation->message];
+        }
+
+        $this->assertNotSame([], $flattenedStructured);
+        $this->assertSame($flattenedMap, $flattenedStructured);
+    }
+
+    #[Test]
+    public function validate_structured_applies_cascade_suppression(): void
+    {
+        // Issue #159 repro through the structured view: the cascading
+        // additionalProperties artifact at `/` must be suppressed, leaving
+        // only the real enum violation with its keyword.
+        $schema = ObjectConverter::convert([
+            'type' => 'object',
+            'required' => ['message', 'code'],
+            'properties' => [
+                'message' => ['type' => 'string'],
+                'code' => ['type' => 'string', 'enum' => ['allowedCode']],
+            ],
+            'additionalProperties' => false,
+        ]);
+        $data = ObjectConverter::convert(['message' => 'oops', 'code' => 'notInEnum']);
+
+        $violations = (new SchemaValidatorRunner(0))->validateStructured($schema, $data);
+
+        $this->assertCount(1, $violations);
+        $this->assertSame('/code', $violations[0]->instancePath);
+        $this->assertSame('enum', $violations[0]->keyword);
+    }
+
+    #[Test]
+    public function validate_structured_rewrites_partial_cascade_message(): void
+    {
+        // Mixed cascade: declared `code` is stripped from the
+        // additionalProperties message while the genuinely-undeclared
+        // `extra` survives, and the rewritten entry keeps its keyword.
+        $schema = ObjectConverter::convert([
+            'type' => 'object',
+            'required' => ['code'],
+            'properties' => [
+                'code' => ['type' => 'string', 'enum' => ['allowedCode']],
+            ],
+            'additionalProperties' => false,
+        ]);
+        $data = ObjectConverter::convert(['code' => 'notInEnum', 'extra' => 'nope']);
+
+        $violations = (new SchemaValidatorRunner(0))->validateStructured($schema, $data);
+
+        $rewritten = null;
+        foreach ($violations as $violation) {
+            if ($violation->instancePath === '/') {
+                $rewritten = $violation;
+            }
+        }
+
+        $this->assertNotNull($rewritten);
+        $this->assertSame('additionalProperties', $rewritten->keyword);
+        $this->assertSame('Additional object properties are not allowed: extra', $rewritten->message);
+    }
+
     /**
      * @param array<string, string[]> $errors
      */
