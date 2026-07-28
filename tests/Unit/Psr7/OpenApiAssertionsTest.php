@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Tests\Unit\Psr7;
 
+use GuzzleHttp\Psr7\FnStream;
 use GuzzleHttp\Psr7\Request;
 use GuzzleHttp\Psr7\Response;
+use GuzzleHttp\Psr7\Utils;
 use PHPUnit\Framework\AssertionFailedError;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+use RuntimeException;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\Psr7\OpenApiAssertions;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
@@ -111,6 +114,53 @@ final class OpenApiAssertionsTest extends TestCase
             $this->fail('Expected the PSR-7 assertion to fail.');
         } catch (AssertionFailedError $e) {
             $this->assertStringContainsString("Reproduce: curl -X GET '/body/scalar'", $e->getMessage());
+        }
+    }
+
+    #[Test]
+    public function successful_assertion_does_not_disturb_the_request_body_stream_cursor(): void
+    {
+        $request = new Request('GET', 'https://example.test/body/scalar', [], 'ignored-body');
+        $request->getBody()->seek(3);
+        $response = new Response(200, ['Content-Type' => 'application/json'], '5');
+
+        $this->assertPsr7ResponseMatchesOpenApiSchema($request, $response);
+
+        $this->assertSame(3, $request->getBody()->tell());
+    }
+
+    #[Test]
+    public function failed_assertion_restores_the_request_body_stream_cursor(): void
+    {
+        $request = new Request('GET', 'https://example.test/body/scalar', [], 'ignored-body');
+        $request->getBody()->seek(3);
+        $response = new Response(200, ['Content-Type' => 'application/json'], '"wrong"');
+
+        try {
+            $this->assertPsr7ResponseMatchesOpenApiSchema($request, $response);
+            $this->fail('Expected the PSR-7 assertion to fail.');
+        } catch (AssertionFailedError) {
+            $this->assertSame(3, $request->getBody()->tell());
+        }
+    }
+
+    #[Test]
+    public function unreadable_seekable_stream_degrades_to_a_bodyless_curl(): void
+    {
+        $stream = FnStream::decorate(Utils::streamFor('{"x":1}'), [
+            'rewind' => static function (): void {
+                throw new RuntimeException('stream is not readable');
+            },
+        ]);
+        $request = new Request('GET', 'https://example.test/body/scalar', [], $stream);
+        $response = new Response(200, ['Content-Type' => 'application/json'], '"wrong"');
+
+        try {
+            $this->assertPsr7ResponseMatchesOpenApiSchema($request, $response);
+            $this->fail('Expected the PSR-7 assertion to fail.');
+        } catch (AssertionFailedError $e) {
+            $this->assertStringContainsString('Reproduce: curl -X GET', $e->getMessage());
+            $this->assertStringNotContainsString('--data', $e->getMessage());
         }
     }
 

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Psr7;
 
+use Closure;
 use PHPUnit\Framework\Assert;
 use PHPUnit\Framework\AssertionFailedError;
 use Psr\Http\Message\RequestInterface;
@@ -14,6 +15,7 @@ use Studio\Gesso\OpenApiRequestValidator;
 use Studio\Gesso\OpenApiResponseValidator;
 use Studio\Gesso\OpenApiValidationResult;
 use Studio\Gesso\Spec\OpenApiSpecResolver;
+use Throwable;
 
 use function sprintf;
 
@@ -42,7 +44,7 @@ trait OpenApiAssertions
                 $request->getMethod(),
                 $request->getUri()->getPath() ?: '/',
             ),
-            $this->psr7ReproduceCommand($request),
+            fn(): string => $this->psr7ReproduceCommand($request),
         );
     }
 
@@ -59,7 +61,7 @@ trait OpenApiAssertions
                 $request->getMethod(),
                 $request->getUri()->getPath() ?: '/',
             ),
-            $this->psr7ReproduceCommand($request),
+            fn(): string => $this->psr7ReproduceCommand($request),
         );
     }
 
@@ -73,7 +75,7 @@ trait OpenApiAssertions
         $this->assertPsr7Result(
             $result,
             sprintf('OpenAPI PSR-7 response validation failed for %s %s', $method, $requestPath),
-            CurlCommandFormatter::format($method, $requestPath, [], null, null),
+            static fn(): string => CurlCommandFormatter::format($method, $requestPath, [], null, null),
         );
     }
 
@@ -85,7 +87,7 @@ trait OpenApiAssertions
 
         $this->assertPsr7(
             $result->isValid(),
-            sprintf(
+            $result->isValid() ? '' : sprintf(
                 "OpenAPI PSR-7 exchange validation failed for %s %s (spec: %s):\n%s\nReproduce: %s",
                 $request->getMethod(),
                 $request->getUri()->getPath() ?: '/',
@@ -147,16 +149,23 @@ trait OpenApiAssertions
         return $this->cachedPsr7Validator;
     }
 
-    private function assertPsr7Result(OpenApiValidationResult $result, string $prefix, string $reproduceCommand): void
+    /**
+     * The reproduce command is a closure so the request body stream is only
+     * touched when the assertion actually fails; a passing assertion must not
+     * observe or move the caller's stream cursor.
+     *
+     * @param Closure(): string $reproduceCommand
+     */
+    private function assertPsr7Result(OpenApiValidationResult $result, string $prefix, Closure $reproduceCommand): void
     {
         $this->assertPsr7(
             $result->isValid(),
-            sprintf(
+            $result->isValid() ? '' : sprintf(
                 "%s (spec: %s):\n%s\nReproduce: %s",
                 $prefix,
                 $this->cachedPsr7SpecName,
                 $result->errorMessage(),
-                $reproduceCommand,
+                $reproduceCommand(),
             ),
         );
     }
@@ -166,9 +175,16 @@ trait OpenApiAssertions
         $body = null;
         $stream = $request->getBody();
         if ($stream->isSeekable()) {
-            $stream->rewind();
-            $body = $stream->getContents();
-            $stream->rewind();
+            try {
+                $position = $stream->tell();
+                $stream->rewind();
+                $body = $stream->getContents();
+                $stream->seek($position);
+            } catch (Throwable) {
+                // An unreadable or unrestorable stream must not replace the
+                // real validation failure; degrade to a body-less command.
+                $body = null;
+            }
         }
 
         return CurlCommandFormatter::format(
