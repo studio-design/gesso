@@ -1,0 +1,151 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Studio\Gesso\Tests\Unit\Internal;
+
+use PHPUnit\Framework\Attributes\Test;
+use PHPUnit\Framework\TestCase;
+use Studio\Gesso\Internal\CurlCommandFormatter;
+
+use function str_contains;
+
+final class CurlCommandFormatterTest extends TestCase
+{
+    #[Test]
+    public function test_renders_method_and_quoted_uri_without_headers_or_body(): void
+    {
+        $command = CurlCommandFormatter::format('GET', '/v1/pets?limit=5', [], null, null);
+
+        $this->assertSame("curl -X GET '/v1/pets?limit=5'", $command);
+    }
+
+    #[Test]
+    public function test_renders_headers_including_list_values(): void
+    {
+        $command = CurlCommandFormatter::format(
+            'GET',
+            'https://api.example.test/v1/pets',
+            [
+                'Accept' => 'application/json',
+                'X-Trace' => ['abc', 'def'],
+            ],
+            null,
+            null,
+        );
+
+        $this->assertStringContainsString("-H 'Accept: application/json'", $command);
+        $this->assertStringContainsString("-H 'X-Trace: abc'", $command);
+        $this->assertStringContainsString("-H 'X-Trace: def'", $command);
+    }
+
+    #[Test]
+    public function test_redacts_sensitive_headers_by_default(): void
+    {
+        $command = CurlCommandFormatter::format(
+            'GET',
+            '/v1/pets',
+            [
+                'Authorization' => 'Bearer real-token',
+                'cookie' => 'session=abc',
+                'Proxy-Authorization' => 'Basic dXNlcg==',
+                'X-Api-Key' => 'k-123',
+                'X-Auth-Token' => 't-456',
+                'Client-Secret' => 's-789',
+                'Accept' => 'application/json',
+            ],
+            null,
+            null,
+        );
+
+        $this->assertStringContainsString("-H 'Authorization: <redacted>'", $command);
+        $this->assertStringContainsString("-H 'cookie: <redacted>'", $command);
+        $this->assertStringContainsString("-H 'Proxy-Authorization: <redacted>'", $command);
+        $this->assertStringContainsString("-H 'X-Api-Key: <redacted>'", $command);
+        $this->assertStringContainsString("-H 'X-Auth-Token: <redacted>'", $command);
+        $this->assertStringContainsString("-H 'Client-Secret: <redacted>'", $command);
+        $this->assertStringContainsString("-H 'Accept: application/json'", $command);
+        $this->assertFalse(str_contains($command, 'real-token'));
+        $this->assertFalse(str_contains($command, 'session=abc'));
+    }
+
+    #[Test]
+    public function test_redaction_can_be_disabled(): void
+    {
+        $command = CurlCommandFormatter::format(
+            'GET',
+            '/v1/pets',
+            ['Authorization' => 'Bearer real-token'],
+            null,
+            null,
+            redact: false,
+        );
+
+        $this->assertStringContainsString("-H 'Authorization: Bearer real-token'", $command);
+        $this->assertFalse(str_contains($command, '<redacted>'));
+    }
+
+    #[Test]
+    public function test_appends_data_for_json_content_types(): void
+    {
+        $plain = CurlCommandFormatter::format(
+            'POST',
+            '/v1/pets',
+            [],
+            '{"name":"Snowy"}',
+            'application/json; charset=utf-8',
+        );
+        $vendor = CurlCommandFormatter::format(
+            'POST',
+            '/v1/pets',
+            [],
+            '{"name":"Snowy"}',
+            'application/vnd.example+json',
+        );
+
+        $this->assertStringContainsString('--data \'{"name":"Snowy"}\'', $plain);
+        $this->assertStringContainsString('--data \'{"name":"Snowy"}\'', $vendor);
+    }
+
+    #[Test]
+    public function test_omits_data_for_non_json_body_null_body_and_empty_body(): void
+    {
+        $multipart = CurlCommandFormatter::format('POST', '/v1/pets', [], 'raw-bytes', 'multipart/form-data');
+        $nullBody = CurlCommandFormatter::format('POST', '/v1/pets', [], null, 'application/json');
+        $emptyBody = CurlCommandFormatter::format('POST', '/v1/pets', [], '', 'application/json');
+
+        $this->assertFalse(str_contains($multipart, '--data'));
+        $this->assertFalse(str_contains($nullBody, '--data'));
+        $this->assertFalse(str_contains($emptyBody, '--data'));
+    }
+
+    #[Test]
+    public function test_output_is_a_single_line_even_with_multiline_body(): void
+    {
+        $command = CurlCommandFormatter::format(
+            'POST',
+            '/v1/pets',
+            ['X-Note' => "line1\nline2"],
+            "{\n  \"name\": \"Snowy\"\n}",
+            'application/json',
+        );
+
+        $this->assertFalse(str_contains($command, "\n"));
+    }
+
+    #[Test]
+    public function test_scalar_header_values_are_stringified(): void
+    {
+        $command = CurlCommandFormatter::format(
+            'GET',
+            '/v1/pets',
+            ['X-Count' => 3, 'X-Flag' => true, 'X-Null' => null],
+            null,
+            null,
+        );
+
+        $this->assertStringContainsString("-H 'X-Count: 3'", $command);
+        $this->assertStringContainsString("-H 'X-Flag: 1'", $command);
+        $this->assertStringContainsString("-H 'X-Null: '", $command);
+    }
+}
