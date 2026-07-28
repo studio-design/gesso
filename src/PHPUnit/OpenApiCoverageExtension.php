@@ -411,6 +411,13 @@ final class OpenApiCoverageExtension implements Extension
             return null;
         }
 
+        // PHPUnit 13.2.6 documents defaultTestSuite() as non-empty-string,
+        // but an XML `defaultTestSuite=""` attribute still reaches this code
+        // as '' at runtime (pinned by OpenApiCoverageExtensionBootstrapTest),
+        // and PHPUnit 12 does not carry the narrowed PHPDoc at all. Widen the
+        // type locally so the guard below stays analyzable on every PHPUnit
+        // version in the support matrix.
+        /** @var string $value */
         $value = $configuration->defaultTestSuite();
 
         if ($value === '') {
