@@ -52,7 +52,7 @@ Each entry serialises one `ValidationIssue` field-for-field (snake_case). The
 |-------|------|-------------|
 | `category` | `string` | Stable slug naming the producing validator (`request.body`, `response.header`, …). Results built by code that predates the structured API derive `"unknown"`. |
 | `message` | `string` | Exact human-readable error text. **Not** a compatibility surface — assert on `category` and context instead. |
-| `instance_path` | `string \| null` | JSON Pointer into the validated body (`/` = document root). Set only on body-schema violations; `null` for every other error source. |
+| `instance_path` | `string \| null` | RFC 6901 JSON Pointer into the validated body: `""` is the document root and `"/"` is the property whose name is the empty string. (The human-readable `message` prefix renders the root as `[/]` for historical reasons; `instance_path` is the unambiguous form.) Set only on body-schema violations; `null` for every other error source. |
 | `keyword` | `string \| null` | JSON Schema keyword that failed (`type`, `required`, `enum`, …). Set together with `instance_path`; `null` otherwise. |
 | `method` | `string \| null` | HTTP method of the validated operation. |
 | `path` | `string \| null` | Matched spec path template. |
@@ -71,8 +71,11 @@ The document shape is covered by the [versioning policy](versioning.md):
 
 ## Security notes
 
-- No absolute filesystem paths are emitted.
-- `message` values can embed fragments of the request/response under test;
-  treat the document with the same sensitivity as your test payloads.
+- The renderer itself adds no filesystem paths or environment details — every
+  field is derived from the validation result plus the caller-supplied
+  `reproduce_command`. `message` and `reproduce_command` are emitted verbatim,
+  so anything they embed (request/response fragments, absolute paths in test
+  payloads or commands) passes through: treat the document with the same
+  sensitivity as your test payloads and redact before rendering if needed.
 - Invalid UTF-8 byte sequences inside messages are replaced with U+FFFD so the
   document always renders instead of masking the original validation failure.
