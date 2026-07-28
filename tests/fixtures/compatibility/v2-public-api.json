@@ -4600,6 +4600,28 @@
                     "attributes": [],
                     "parameters": []
                 },
+                "requestReproduceCommand": {
+                    "visibility": "private",
+                    "static": false,
+                    "final": false,
+                    "abstract": false,
+                    "returns_reference": false,
+                    "return_type": "string",
+                    "attributes": [],
+                    "parameters": [
+                        {
+                            "name": "request",
+                            "type": "Symfony\\Component\\HttpFoundation\\Request",
+                            "optional": false,
+                            "variadic": false,
+                            "by_reference": false,
+                            "default": {
+                                "unavailable": true
+                            },
+                            "attributes": []
+                        }
+                    ]
+                },
                 "resolveAutoInjectCredentials": {
                     "visibility": "private",
                     "static": false,
@@ -4747,6 +4769,39 @@
                     "return_type": "array",
                     "attributes": [],
                     "parameters": []
+                },
+                "responseReproduceCommand": {
+                    "visibility": "private",
+                    "static": false,
+                    "final": false,
+                    "abstract": false,
+                    "returns_reference": false,
+                    "return_type": "string",
+                    "attributes": [],
+                    "parameters": [
+                        {
+                            "name": "resolvedMethod",
+                            "type": "string",
+                            "optional": false,
+                            "variadic": false,
+                            "by_reference": false,
+                            "default": {
+                                "unavailable": true
+                            },
+                            "attributes": []
+                        },
+                        {
+                            "name": "resolvedPath",
+                            "type": "string",
+                            "optional": false,
+                            "variadic": false,
+                            "by_reference": false,
+                            "default": {
+                                "unavailable": true
+                            },
+                            "attributes": []
+                        }
+                    ]
                 },
                 "runRequestAssertion": {
                     "visibility": "private",
@@ -6172,6 +6227,17 @@
                                 "unavailable": true
                             },
                             "attributes": []
+                        },
+                        {
+                            "name": "reproduceCommand",
+                            "type": "string",
+                            "optional": false,
+                            "variadic": false,
+                            "by_reference": false,
+                            "default": {
+                                "unavailable": true
+                            },
+                            "attributes": []
                         }
                     ]
                 },
@@ -6246,6 +6312,28 @@
                     "return_type": "string",
                     "attributes": [],
                     "parameters": []
+                },
+                "psr7ReproduceCommand": {
+                    "visibility": "private",
+                    "static": false,
+                    "final": false,
+                    "abstract": false,
+                    "returns_reference": false,
+                    "return_type": "string",
+                    "attributes": [],
+                    "parameters": [
+                        {
+                            "name": "request",
+                            "type": "Psr\\Http\\Message\\RequestInterface",
+                            "optional": false,
+                            "variadic": false,
+                            "by_reference": false,
+                            "default": {
+                                "unavailable": true
+                            },
+                            "attributes": []
+                        }
+                    ]
                 },
                 "psr7Validator": {
                     "visibility": "private",
@@ -7407,6 +7495,28 @@
                     "return_type": "string",
                     "attributes": [],
                     "parameters": []
+                },
+                "symfonyReproduceCommand": {
+                    "visibility": "private",
+                    "static": false,
+                    "final": false,
+                    "abstract": false,
+                    "returns_reference": false,
+                    "return_type": "string",
+                    "attributes": [],
+                    "parameters": [
+                        {
+                            "name": "request",
+                            "type": "Symfony\\Component\\HttpFoundation\\Request",
+                            "optional": false,
+                            "variadic": false,
+                            "by_reference": false,
+                            "default": {
+                                "unavailable": true
+                            },
+                            "attributes": []
+                        }
+                    ]
                 },
                 "symfonyRequestValidator": {
                     "visibility": "private",
