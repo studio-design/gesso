@@ -301,6 +301,66 @@ class OpenApiRequestValidatorTest extends TestCase
     }
 
     #[Test]
+    public function request_body_issues_carry_instance_path_and_keyword(): void
+    {
+        // Issue #282 stage 2: schema-produced request.body issues expose the
+        // structured pointer and failing keyword; every other error source
+        // keeps both fields null.
+        $result = $this->validator->validate(
+            'petstore-3.0',
+            'POST',
+            '/v1/pets',
+            [],
+            [],
+            ['name' => 42, 'tag' => 7],
+            'application/json',
+        );
+
+        $bodyIssues = array_values(array_filter(
+            $result->issues(),
+            static fn($issue) => $issue->category === 'request.body',
+        ));
+        $this->assertCount(2, $bodyIssues);
+        $byPointer = [];
+        foreach ($bodyIssues as $issue) {
+            $byPointer[$issue->instancePath] = $issue;
+            $this->assertStringStartsWith("[{$issue->instancePath}] ", $issue->message);
+        }
+        $this->assertArrayHasKey('/name', $byPointer);
+        $this->assertSame('type', $byPointer['/name']->keyword);
+        $this->assertArrayHasKey('/tag', $byPointer);
+        $this->assertSame('type', $byPointer['/tag']->keyword);
+
+        // Non-schema body error (missing required body) stays null/null.
+        $missingBody = $this->validator->validate(
+            'petstore-3.0',
+            'POST',
+            '/v1/pets',
+            [],
+            [],
+            null,
+            'application/json',
+        );
+        $missingBodyIssues = array_values(array_filter(
+            $missingBody->issues(),
+            static fn($issue) => $issue->category === 'request.body',
+        ));
+        $this->assertNotEmpty($missingBodyIssues);
+        $this->assertNull($missingBodyIssues[0]->instancePath);
+        $this->assertNull($missingBodyIssues[0]->keyword);
+
+        // Parameter issues never carry schema context.
+        $query = $this->validator->validate('openapi-3.2', 'GET', '/v1/filter', ['limit' => '0'], [], null);
+        $queryIssues = array_values(array_filter(
+            $query->issues(),
+            static fn($issue) => $issue->category === 'request.parameter.query',
+        ));
+        $this->assertNotEmpty($queryIssues);
+        $this->assertNull($queryIssues[0]->instancePath);
+        $this->assertNull($queryIssues[0]->keyword);
+    }
+
+    #[Test]
     public function path_not_found_issue_is_categorized(): void
     {
         $result = $this->validator->validate('petstore-3.0', 'GET', '/v1/does-not-exist', [], [], null);

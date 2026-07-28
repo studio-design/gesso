@@ -15,7 +15,9 @@ use Studio\Gesso\OpenApiResponseValidator;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 
+use function array_filter;
 use function array_map;
+use function array_values;
 use function count;
 use function implode;
 use function range;
@@ -94,6 +96,49 @@ class OpenApiResponseValidatorTest extends TestCase
             $result->errors(),
             array_map(static fn($issue) => $issue->message, $issues),
         );
+    }
+
+    #[Test]
+    public function response_body_issues_carry_instance_path_and_keyword(): void
+    {
+        // Issue #282 stage 2: schema-produced response.body issues expose the
+        // structured pointer and failing keyword.
+        $result = $this->validator->validate(
+            'psr7',
+            'POST',
+            '/widgets/42',
+            201,
+            ['id' => 'not-an-integer'],
+            'application/json',
+            ['X-Trace' => 'abc'],
+        );
+
+        $bodyIssues = array_values(array_filter(
+            $result->issues(),
+            static fn($issue) => $issue->category === 'response.body',
+        ));
+        $this->assertNotEmpty($bodyIssues);
+        $this->assertSame('/id', $bodyIssues[0]->instancePath);
+        $this->assertSame('type', $bodyIssues[0]->keyword);
+        $this->assertStringStartsWith('[/id] ', $bodyIssues[0]->message);
+
+        // Header issues are not schema violations — both fields stay null.
+        $headerFailure = $this->validator->validate(
+            'psr7',
+            'POST',
+            '/widgets/42',
+            201,
+            ['id' => 1],
+            'application/json',
+            [],
+        );
+        $headerIssues = array_values(array_filter(
+            $headerFailure->issues(),
+            static fn($issue) => $issue->category === 'response.header',
+        ));
+        $this->assertNotEmpty($headerIssues);
+        $this->assertNull($headerIssues[0]->instancePath);
+        $this->assertNull($headerIssues[0]->keyword);
     }
 
     #[Test]

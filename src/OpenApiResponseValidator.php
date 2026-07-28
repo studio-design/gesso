@@ -29,6 +29,8 @@ use Studio\Gesso\Validation\Support\ValidatorErrorBoundary;
 use function array_key_exists;
 use function array_keys;
 use function array_merge;
+use function array_values;
+use function count;
 use function get_debug_type;
 use function is_array;
 use function sprintf;
@@ -410,8 +412,21 @@ final class OpenApiResponseValidator
         // change diagnostic flow without breaking behaviour. Category tags
         // mirror the producing sub-validator (#282, stage 1).
         $issues = [];
-        foreach ($bodyResult->errors as $message) {
-            $issues[] = new ValidationIssue('response.body', $message, method: $method, path: $matchedPath, statusCode: $statusCodeStr, contentType: $bodyResult->matchedContentType);
+        // The violation list mirrors the body errors index-for-index only on
+        // the schema-error path; non-schema body errors (empty body, decode
+        // failures) ship an empty list, so gate on the counts before pairing.
+        $aligned = $bodyResult->violations !== [] && count($bodyResult->violations) === count($bodyResult->errors);
+        foreach (array_values($bodyResult->errors) as $index => $message) {
+            $issues[] = new ValidationIssue(
+                'response.body',
+                $message,
+                instancePath: $aligned ? $bodyResult->violations[$index]->instancePath : null,
+                keyword: $aligned ? $bodyResult->violations[$index]->keyword : null,
+                method: $method,
+                path: $matchedPath,
+                statusCode: $statusCodeStr,
+                contentType: $bodyResult->matchedContentType,
+            );
         }
         foreach ($headerErrors as $message) {
             $issues[] = new ValidationIssue('response.header', $message, method: $method, path: $matchedPath, statusCode: $statusCodeStr, contentType: $bodyResult->matchedContentType);

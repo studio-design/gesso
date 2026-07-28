@@ -29,6 +29,8 @@ use Studio\Gesso\Validation\Support\ValidatorErrorBoundary;
 use function array_key_exists;
 use function array_keys;
 use function array_map;
+use function array_values;
+use function count;
 use function is_array;
 use function sprintf;
 
@@ -275,20 +277,33 @@ final class OpenApiRequestValidator
         // Category tags mirror the sub-validator that produced each message so
         // issues() can expose a structured view without touching the
         // sub-validators themselves (#282, stage 1). Only body issues have a
-        // resolved spec media-type key; parameter/security issues carry null.
+        // resolved spec media-type key and (on the schema-error path) a
+        // structured violation twin; parameter/security issues carry null.
         $issueGroups = [
-            ['request.spec', $collected->specErrors, null],
-            ['request.parameter.path', ValidatorErrorBoundary::safely('path', $specName, $method, $matchedPath, fn(): array => $this->pathValidator->validate($method, $matchedPath, $collected->parameters, $pathVariables, $version, $jsonSchemaDialect)), null],
-            ['request.parameter.query', ValidatorErrorBoundary::safely('query', $specName, $method, $matchedPath, fn(): array => $this->queryValidator->validate($method, $matchedPath, $collected->parameters, $queryParams, $version, $jsonSchemaDialect)), null],
-            ['request.parameter.header', ValidatorErrorBoundary::safely('header', $specName, $method, $matchedPath, fn(): array => $this->headerValidator->validate($method, $matchedPath, $collected->parameters, $headers, $version, $jsonSchemaDialect)), null],
-            ['request.security', ValidatorErrorBoundary::safely('security', $specName, $method, $matchedPath, fn(): array => $this->securityValidator->validate($method, $matchedPath, $spec, $operation, $headers, $queryParams, $cookies)), null],
-            ['request.body', $bodyResult->errors, $bodyResult->matchedContentType],
+            ['request.spec', $collected->specErrors, null, []],
+            ['request.parameter.path', ValidatorErrorBoundary::safely('path', $specName, $method, $matchedPath, fn(): array => $this->pathValidator->validate($method, $matchedPath, $collected->parameters, $pathVariables, $version, $jsonSchemaDialect)), null, []],
+            ['request.parameter.query', ValidatorErrorBoundary::safely('query', $specName, $method, $matchedPath, fn(): array => $this->queryValidator->validate($method, $matchedPath, $collected->parameters, $queryParams, $version, $jsonSchemaDialect)), null, []],
+            ['request.parameter.header', ValidatorErrorBoundary::safely('header', $specName, $method, $matchedPath, fn(): array => $this->headerValidator->validate($method, $matchedPath, $collected->parameters, $headers, $version, $jsonSchemaDialect)), null, []],
+            ['request.security', ValidatorErrorBoundary::safely('security', $specName, $method, $matchedPath, fn(): array => $this->securityValidator->validate($method, $matchedPath, $spec, $operation, $headers, $queryParams, $cookies)), null, []],
+            ['request.body', $bodyResult->errors, $bodyResult->matchedContentType, $bodyResult->violations],
         ];
 
         $issues = [];
-        foreach ($issueGroups as [$category, $messages, $issueContentType]) {
-            foreach ($messages as $message) {
-                $issues[] = new ValidationIssue($category, $message, method: $method, path: $matchedPath, contentType: $issueContentType);
+        foreach ($issueGroups as [$category, $messages, $issueContentType, $violations]) {
+            // The violation list mirrors the messages index-for-index only on
+            // the schema-error path; non-schema body errors ship an empty
+            // list, so gate on the counts before pairing the two.
+            $aligned = $violations !== [] && count($violations) === count($messages);
+            foreach (array_values($messages) as $index => $message) {
+                $issues[] = new ValidationIssue(
+                    $category,
+                    $message,
+                    instancePath: $aligned ? $violations[$index]->instancePath : null,
+                    keyword: $aligned ? $violations[$index]->keyword : null,
+                    method: $method,
+                    path: $matchedPath,
+                    contentType: $issueContentType,
+                );
             }
         }
         $errors = array_map(static fn(ValidationIssue $issue): string => $issue->message, $issues);

@@ -266,8 +266,8 @@ final class SchemaValidatorRunner
             $real = $actions[$path];
             $kept = [];
             foreach ($entries as $entry) {
-                if ($entry['keyword'] !== 'additionalProperties'
-                    || preg_match('/^Additional object properties are not allowed: /', $entry['message']) !== 1
+                if ($entry['keyword'] !== 'additionalProperties' ||
+                    preg_match('/^Additional object properties are not allowed: /', $entry['message']) !== 1
                 ) {
                     $kept[] = $entry;
 
