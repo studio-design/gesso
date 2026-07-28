@@ -195,6 +195,28 @@ final class OpenApiAssertionsTest extends TestCase
     }
 
     #[Test]
+    public function request_failure_curl_includes_cookies_as_a_redacted_header(): void
+    {
+        $request = Request::create(
+            '/v1/pets',
+            'POST',
+            [],
+            ['session' => 'secret-session'],
+            [],
+            ['CONTENT_TYPE' => 'application/json'],
+            '{}',
+        );
+
+        try {
+            $this->assertRequestMatchesOpenApiSchema($request);
+            $this->fail('Expected the request assertion to fail.');
+        } catch (AssertionFailedError $e) {
+            $this->assertStringContainsString("-H 'cookie: <redacted>'", $e->getMessage());
+            $this->assertStringNotContainsString('secret-session', $e->getMessage());
+        }
+    }
+
+    #[Test]
     public function unsupported_http_method_fails_with_clear_message(): void
     {
         $request = Request::create('/v1/pets', 'TRACE');

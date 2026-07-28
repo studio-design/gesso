@@ -43,9 +43,11 @@ use function filter_var;
 use function function_exists;
 use function fwrite;
 use function get_debug_type;
+use function implode;
 use function is_array;
 use function is_int;
 use function is_numeric;
+use function is_scalar;
 use function is_string;
 use function json_decode;
 use function sprintf;
@@ -777,10 +779,23 @@ trait ValidatesOpenApiSchema
     {
         $body = $request->getContent();
 
+        // Cookies live in Request::$cookies, not the header bag, so a Cookie
+        // header has to be synthesized or cookie-based auth and cookie
+        // parameters would silently vanish from the curl command. The
+        // formatter redacts the value.
+        $headers = $request->headers->all();
+        $cookiePairs = [];
+        foreach ($request->cookies->all() as $name => $value) {
+            $cookiePairs[] = $name . '=' . (is_scalar($value) ? (string) $value : '');
+        }
+        if ($cookiePairs !== []) {
+            $headers['cookie'] = [implode('; ', $cookiePairs)];
+        }
+
         return CurlCommandFormatter::format(
             $request->getMethod(),
             $request->getUri(),
-            $request->headers->all(),
+            $headers,
             $body !== '' ? $body : null,
             $request->headers->get('Content-Type'),
         );

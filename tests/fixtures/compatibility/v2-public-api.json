@@ -6230,7 +6230,7 @@
                         },
                         {
                             "name": "reproduceCommand",
-                            "type": "string",
+                            "type": "Closure",
                             "optional": false,
                             "variadic": false,
                             "by_reference": false,

@@ -401,6 +401,30 @@ class ValidatesOpenApiSchemaAutoValidateRequestTest extends TestCase
     }
 
     #[Test]
+    public function request_failure_curl_includes_cookies_as_a_redacted_header(): void
+    {
+        $GLOBALS['__openapi_testing_config']['gesso.auto_validate_request'] = true;
+
+        $request = Request::create(
+            '/v1/pets',
+            'POST',
+            [],
+            ['session' => 'secret-session'],
+            [],
+            ['CONTENT_TYPE' => 'application/json'],
+            '{}',
+        );
+
+        try {
+            $this->maybeAutoValidateOpenApiRequest($request, HttpMethod::POST, '/v1/pets');
+            $this->fail('Expected the request assertion to fail.');
+        } catch (AssertionFailedError $e) {
+            $this->assertStringContainsString("-H 'cookie: <redacted>'", $e->getMessage());
+            $this->assertStringNotContainsString('secret-session', $e->getMessage());
+        }
+    }
+
+    #[Test]
     public function malformed_json_body_without_content_type_adds_hint(): void
     {
         // Missing Content-Type on a non-empty body falls through to the JSON

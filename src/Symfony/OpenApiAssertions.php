@@ -26,6 +26,8 @@ use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\HttpKernelBrowser;
 
 use function array_merge;
+use function implode;
+use function is_scalar;
 use function json_decode;
 use function sprintf;
 use function strtolower;
@@ -306,10 +308,23 @@ trait OpenApiAssertions
     {
         $body = $request->getContent();
 
+        // Symfony keeps cookies in Request::$cookies, not in the header bag,
+        // so a Cookie header has to be synthesized or cookie-based auth and
+        // cookie parameters would silently vanish from the curl command. The
+        // formatter redacts the value.
+        $headers = $request->headers->all();
+        $cookiePairs = [];
+        foreach ($request->cookies->all() as $name => $value) {
+            $cookiePairs[] = $name . '=' . (is_scalar($value) ? (string) $value : '');
+        }
+        if ($cookiePairs !== []) {
+            $headers['cookie'] = [implode('; ', $cookiePairs)];
+        }
+
         return CurlCommandFormatter::format(
             $request->getMethod(),
             $request->getUri(),
-            $request->headers->all(),
+            $headers,
             $body !== '' ? $body : null,
             $request->headers->get('Content-Type'),
         );
