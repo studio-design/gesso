@@ -19,6 +19,8 @@ use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\Psr7\OpenApiPsr7Validator;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 
+use function array_map;
+
 final class OpenApiPsr7ValidatorTest extends TestCase
 {
     private OpenApiPsr7Validator $validator;
@@ -255,5 +257,60 @@ final class OpenApiPsr7ValidatorTest extends TestCase
         $this->assertFalse($result->isValid());
         $this->assertStringContainsString('could not be parsed as JSON', $result->errorMessage());
         $this->assertSame('/widgets/{id}', $result->matchedPath());
+    }
+
+    #[Test]
+    public function response_adapter_errors_preserve_structured_issues(): void
+    {
+        $response = new Response(
+            201,
+            ['Content-Type' => 'application/json', 'X-Trace' => 'trace-1'],
+            '{invalid',
+        );
+
+        $result = $this->validator->validateResponseForOperation('POST', '/widgets/42', $response);
+
+        $this->assertFalse($result->isValid());
+        $issues = $result->issues();
+        $this->assertSame(
+            $result->errors(),
+            array_map(static fn($issue) => $issue->message, $issues),
+        );
+        $this->assertSame('response.body', $issues[0]->category);
+        $this->assertSame('POST', $issues[0]->method);
+        $this->assertStringContainsString('could not be parsed as JSON', $issues[0]->message);
+        $this->assertNotContains(
+            'unknown',
+            array_map(static fn($issue) => $issue->category, $issues),
+        );
+    }
+
+    #[Test]
+    public function request_adapter_errors_preserve_structured_issues(): void
+    {
+        $request = (new ServerRequest(
+            'POST',
+            'https://example.test/widgets/42?q=blue',
+            ['Content-Type' => 'application/json', 'X-Token' => 'secret'],
+            '{invalid',
+        ))
+            ->withQueryParams(['q' => 'blue'])
+            ->withCookieParams(['session' => 'abc']);
+
+        $result = $this->validator->validateRequest($request);
+
+        $this->assertFalse($result->isValid());
+        $issues = $result->issues();
+        $this->assertSame(
+            $result->errors(),
+            array_map(static fn($issue) => $issue->message, $issues),
+        );
+        $this->assertSame('request.body', $issues[0]->category);
+        $this->assertSame('POST', $issues[0]->method);
+        $this->assertStringContainsString('could not be parsed as JSON', $issues[0]->message);
+        $this->assertNotContains(
+            'unknown',
+            array_map(static fn($issue) => $issue->category, $issues),
+        );
     }
 }

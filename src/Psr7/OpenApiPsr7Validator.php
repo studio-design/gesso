@@ -19,6 +19,7 @@ use Studio\Gesso\OpenApiResponseValidator;
 use Studio\Gesso\OpenApiValidationResult;
 use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 use Studio\Gesso\Validation\Support\ContentTypeMatcher;
+use Studio\Gesso\ValidationIssue;
 
 use function array_key_exists;
 use function array_merge;
@@ -101,7 +102,7 @@ final class OpenApiPsr7Validator
             $cookies,
             $responseStatusCode,
         );
-        $result = self::withAdapterErrors($result, $decoded['errors']);
+        $result = self::withAdapterErrors($result, $decoded['errors'], 'request.body', $method);
 
         if ($result->matchedPath() !== null) {
             OpenApiCoverageTracker::recordRequest(
@@ -148,7 +149,7 @@ final class OpenApiPsr7Validator
             $contentType,
             $response->getHeaders(),
         );
-        $result = self::withAdapterErrors($result, $decoded['errors']);
+        $result = self::withAdapterErrors($result, $decoded['errors'], 'response.body', $method);
 
         if ($result->matchedPath() !== null) {
             OpenApiCoverageTracker::recordResponse(
@@ -187,13 +188,35 @@ final class OpenApiPsr7Validator
         ];
     }
 
-    /** @param list<string> $adapterErrors */
+    /**
+     * Prepend adapter-level body errors (unreadable/non-seekable stream, JSON
+     * parse failure) to the validator result. Adapter errors are tagged with
+     * the given body category (`request.body` / `response.body`) and the
+     * validator's structured issues are kept as-is, in the same order as
+     * `errors()`, so `issues()` never degrades to `unknown` here.
+     *
+     * @param list<string> $adapterErrors
+     */
     private static function withAdapterErrors(
         OpenApiValidationResult $result,
         array $adapterErrors,
+        string $category,
+        string $method,
     ): OpenApiValidationResult {
         if ($adapterErrors === []) {
             return $result;
+        }
+
+        $adapterIssues = [];
+        foreach ($adapterErrors as $message) {
+            $adapterIssues[] = new ValidationIssue(
+                $category,
+                $message,
+                method: $method,
+                path: $result->matchedPath(),
+                statusCode: $result->matchedStatusCode(),
+                contentType: $result->matchedContentType(),
+            );
         }
 
         return OpenApiValidationResult::failure(
@@ -201,6 +224,7 @@ final class OpenApiPsr7Validator
             $result->matchedPath(),
             $result->matchedStatusCode(),
             $result->matchedContentType(),
+            array_merge($adapterIssues, $result->issues()),
         );
     }
 
