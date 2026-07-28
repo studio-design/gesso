@@ -35,9 +35,21 @@ $result->isValid();      // bool (true for both successes AND skipped results)
 $result->isSkipped();    // bool (true when the status code matched skip_response_codes)
 $result->errors();       // string[]
 $result->errorMessage(); // string (joined errors)
+$result->issues();       // list<ValidationIssue> (structured view of errors())
 $result->matchedPath();  // ?string (e.g., '/v1/pets/{petId}')
 $result->skipReason();   // ?string (non-null when skipped)
 ```
+
+`issues()` mirrors `errors()` one-to-one: each `ValidationIssue` carries the
+same `message` plus a stable `category` slug (e.g. `request.security`,
+`response.body` — the full list is in
+[versioning.md](versioning.md#whats-covered-by-semver)) and the operation
+context the validator resolved (`method`, `path`, `statusCode`,
+`contentType`). Assert on `category` and context instead of message wording —
+the prose is not a compatibility surface. `instancePath` and `keyword` are
+reserved for body-schema errors and are always `null` today (issue #282,
+stage 2). Results built by code that predates the structured API derive
+issues with category `unknown`.
 
 Prefer `outcome()` when you need to distinguish all three states explicitly — PHPStan enforces `match` exhaustiveness, so adding a future outcome cannot silently slip past a caller:
 

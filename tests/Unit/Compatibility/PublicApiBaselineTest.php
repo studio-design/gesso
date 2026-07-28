@@ -23,6 +23,7 @@ use Studio\Gesso\Exception\InvalidOpenApiSpecReason;
 use Studio\Gesso\Fuzz\ExploredCase;
 use Studio\Gesso\Laravel\Commands\OpenApiRoutesCommand;
 use Studio\Gesso\OpenApiResponseValidator;
+use Studio\Gesso\OpenApiValidationResult;
 use Studio\Gesso\Pest\Expectations;
 use Studio\Gesso\PHPUnit\ConsoleOutput;
 use Studio\Gesso\PHPUnit\InvalidStrictRequiredConfigurationException;
@@ -36,6 +37,7 @@ use Studio\Gesso\Tests\Unit\Compatibility\Fixture\PublicApiReturnTypeFixture;
 use Studio\Gesso\Tests\Unit\Compatibility\Fixture\PublicApiTraitSurfaceConsumerFixture;
 use Studio\Gesso\Tests\Unit\Compatibility\Fixture\PublicApiTraitSurfaceFixture;
 use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
+use Studio\Gesso\ValidationIssue;
 
 use function array_keys;
 use function dirname;
@@ -250,6 +252,104 @@ final class PublicApiBaselineTest extends TestCase
             $maxErrors,
             $skipResponseCodes,
         ];
+
+        $expected[OpenApiValidationResult::class]['methods']['failure']['parameters'][] = [
+            'name' => 'issues',
+            'type' => 'array',
+            'optional' => true,
+            'variadic' => false,
+            'by_reference' => false,
+            'default' => [],
+            'attributes' => [],
+        ];
+        $expected[OpenApiValidationResult::class]['methods']['issues'] = [
+            'static' => false,
+            'final' => false,
+            'abstract' => false,
+            'returns_reference' => false,
+            'return_type' => 'array',
+            'attributes' => [],
+            'parameters' => [],
+        ];
+        ksort($expected[OpenApiValidationResult::class]['methods']);
+
+        // New public class in v2.x (#282 stage 1): structured issue DTO.
+        $issueStringProperty = static fn(): array => [
+            'type' => 'string',
+            'static' => false,
+            'readonly' => true,
+            'default' => ['unavailable' => true],
+        ];
+        $issueNullableProperty = static fn(): array => [
+            'type' => '?string',
+            'static' => false,
+            'readonly' => true,
+            'default' => ['unavailable' => true],
+        ];
+        $issueRequiredParam = static fn(string $name): array => [
+            'name' => $name,
+            'type' => 'string',
+            'optional' => false,
+            'variadic' => false,
+            'by_reference' => false,
+            'default' => ['unavailable' => true],
+            'attributes' => [],
+        ];
+        $issueOptionalParam = static fn(string $name): array => [
+            'name' => $name,
+            'type' => '?string',
+            'optional' => true,
+            'variadic' => false,
+            'by_reference' => false,
+            'default' => null,
+            'attributes' => [],
+        ];
+        $expected[ValidationIssue::class] = [
+            'kind' => 'class',
+            'final' => true,
+            'abstract' => false,
+            'readonly' => true,
+            'instantiable' => true,
+            'constructor' => ['kind' => 'declared', 'visibility' => 'public'],
+            'parent' => null,
+            'interfaces' => [],
+            'traits' => [],
+            'attributes' => [],
+            'backing_type' => null,
+            'cases' => [],
+            'constants' => [],
+            'properties' => [
+                'category' => $issueStringProperty(),
+                'contentType' => $issueNullableProperty(),
+                'instancePath' => $issueNullableProperty(),
+                'keyword' => $issueNullableProperty(),
+                'message' => $issueStringProperty(),
+                'method' => $issueNullableProperty(),
+                'path' => $issueNullableProperty(),
+                'statusCode' => $issueNullableProperty(),
+            ],
+            'methods' => [
+                '__construct' => [
+                    'static' => false,
+                    'final' => false,
+                    'abstract' => false,
+                    'returns_reference' => false,
+                    'return_type' => null,
+                    'attributes' => [],
+                    'parameters' => [
+                        $issueRequiredParam('category'),
+                        $issueRequiredParam('message'),
+                        $issueOptionalParam('instancePath'),
+                        $issueOptionalParam('keyword'),
+                        $issueOptionalParam('method'),
+                        $issueOptionalParam('path'),
+                        $issueOptionalParam('statusCode'),
+                        $issueOptionalParam('contentType'),
+                    ],
+                ],
+            ],
+        ];
+        ksort($expected);
 
         foreach ([
             ConsoleCoverageRenderer::class,

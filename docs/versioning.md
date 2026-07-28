@@ -16,7 +16,16 @@ This library follows [Semantic Versioning 2.0](https://semver.org/). v1.0.0 is t
 - Every non-`@internal` member composed by a public trait, including protected
   and private methods, properties, and constants
 - Enum cases (additions are minor; removals or renames are major)
-- The `OpenApiValidationResult` shape (`outcome()`, `errors()`, `matchedPath()`, `skipReason()`, `isValid()`, `isSkipped()`)
+- The `OpenApiValidationResult` shape (`outcome()`, `errors()`, `issues()`, `matchedPath()`, `skipReason()`, `isValid()`, `isSkipped()`)
+- The `ValidationIssue` shape and its `category` slugs (`request.spec`,
+  `request.path_match`, `request.method`, `request.parameter.path`,
+  `request.parameter.query`, `request.parameter.header`, `request.security`,
+  `request.body`, `response.spec`, `response.request_context`,
+  `response.status`, `response.body`, `response.header`, and the legacy
+  fallback `unknown`). New categories may be added in minor releases;
+  renaming or removing one is major. `instancePath` / `keyword` are reserved
+  and currently always `null` (issue #282, stage 2). `message` remains
+  explicitly outside the contract (see below).
 - CLI surfaces by major (commands, flags, exit codes, and versioned inputs and
   output where applicable):
   - v1.x: `bin/openapi-contract`, `bin/openapi-coverage-merge`, and the v1.10
