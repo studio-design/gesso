@@ -70,6 +70,41 @@ final class CurlCommandFormatterTest extends TestCase
     }
 
     #[Test]
+    public function test_redacts_sensitive_query_parameter_values(): void
+    {
+        $command = CurlCommandFormatter::format(
+            'GET',
+            'https://api.example.test/v1/pets?api_key=real-secret&access_token=tok-1&limit=5',
+            [],
+            null,
+            null,
+        );
+
+        $this->assertStringContainsString('api_key=<redacted>', $command);
+        $this->assertStringContainsString('access_token=<redacted>', $command);
+        $this->assertStringContainsString('limit=5', $command);
+        $this->assertFalse(str_contains($command, 'real-secret'));
+        $this->assertFalse(str_contains($command, 'tok-1'));
+    }
+
+    #[Test]
+    public function test_query_redaction_handles_encoded_names_and_valueless_pairs(): void
+    {
+        $command = CurlCommandFormatter::format(
+            'GET',
+            '/v1/pets?client%5Fsecret=s-1&flag&x=1',
+            [],
+            null,
+            null,
+        );
+
+        $this->assertStringContainsString('client%5Fsecret=<redacted>', $command);
+        $this->assertStringContainsString('flag', $command);
+        $this->assertStringContainsString('x=1', $command);
+        $this->assertFalse(str_contains($command, 's-1'));
+    }
+
+    #[Test]
     public function test_redaction_can_be_disabled(): void
     {
         $command = CurlCommandFormatter::format(
