@@ -283,16 +283,18 @@ final class RequestBodyValidator
         $schemaObject = ObjectConverter::convert($jsonSchema);
         $dataObject = ObjectConverter::convert($bodyValue);
 
-        $formatted = $this->runner->validate($schemaObject, $dataObject);
+        $violations = $this->runner->validateStructured($schemaObject, $dataObject);
 
         $errors = [];
-        foreach ($formatted as $path => $messages) {
-            foreach ($messages as $message) {
-                $errors[] = "[{$path}] {$message}";
-            }
+        foreach ($violations as $violation) {
+            $errors[] = "[{$violation->instancePath}] {$violation->message}";
         }
 
-        return new RequestBodyValidationResult($errors, matchedContentType: $jsonContentType);
+        return new RequestBodyValidationResult(
+            $errors,
+            matchedContentType: $jsonContentType,
+            violations: $violations,
+        );
     }
 
     private static function missingRequiredBodyResult(

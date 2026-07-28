@@ -413,6 +413,72 @@ class RequestBodyValidatorTest extends TestCase
     }
 
     #[Test]
+    public function validate_carries_structured_violations_aligned_with_errors(): void
+    {
+        // Issue #282 stage 2: schema errors keep their structured twin so the
+        // orchestrator can attach instancePath/keyword to request.body issues.
+        $operation = [
+            'requestBody' => [
+                'content' => [
+                    'application/json' => [
+                        'schema' => [
+                            'type' => 'object',
+                            'properties' => ['name' => ['type' => 'string']],
+                            'required' => ['name', 'age'],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $result = $this->validator->validate(
+            'spec',
+            'POST',
+            '/pets',
+            $operation,
+            DecodedBody::present(['name' => 42]),
+            'application/json',
+            OpenApiVersion::V3_0,
+        );
+
+        $this->assertCount(2, $result->errors);
+        $this->assertCount(2, $result->violations);
+        foreach ($result->violations as $index => $violation) {
+            $this->assertSame(
+                "[{$violation->instancePath}] {$violation->message}",
+                $result->errors[$index],
+            );
+            $this->assertNotNull($violation->keyword);
+        }
+    }
+
+    #[Test]
+    public function validate_reports_no_violations_for_non_schema_errors(): void
+    {
+        $operation = [
+            'requestBody' => [
+                'required' => true,
+                'content' => [
+                    'application/json' => ['schema' => ['type' => 'object']],
+                ],
+            ],
+        ];
+
+        $result = $this->validator->validate(
+            'spec',
+            'POST',
+            '/pets',
+            $operation,
+            DecodedBody::absent(),
+            'application/json',
+            OpenApiVersion::V3_0,
+        );
+
+        $this->assertNotSame([], $result->errors);
+        $this->assertSame([], $result->violations);
+    }
+
+    #[Test]
     public function validate_accepts_empty_object_body_against_type_object(): void
     {
         // PHP's `json_decode('{}', true) === []` — the Laravel adapter's
