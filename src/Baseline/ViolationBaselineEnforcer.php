@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace Studio\Gesso\Baseline;
 
 use Studio\Gesso\OpenApiValidationResult;
+use Studio\Gesso\Spec\OpenApiOperationResolver;
 
 use function array_key_exists;
 use function count;
-use function strtoupper;
 
 /**
  * Run-level enforcement of a committed violation baseline (issue #402).
@@ -94,6 +94,8 @@ final class ViolationBaselineEnforcer
      * rebuilt exactly as the adapters record it at generation time: raw
      * request method / path with no matched status, content-type, or
      * pointer context, because the failure happens before path matching.
+     * Method normalization matches {@see ViolationFingerprint::fromIssue()}
+     * — fixed HTTP methods uppercase, custom methods case-sensitive.
      */
     public function suppressesDecodeFailure(
         string $specName,
@@ -103,7 +105,7 @@ final class ViolationBaselineEnforcer
     ): bool {
         $fingerprint = new ViolationFingerprint(
             $specName,
-            strtoupper($method),
+            OpenApiOperationResolver::normalizeMethodForKey($method),
             $path,
             null,
             null,

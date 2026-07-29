@@ -53,6 +53,11 @@ instance path, keyword)`. Two properties make it survive unrelated change:
   defect reported at `/data/0/id` and `/data/3/id` is one entry, regardless
   of test-data size or ordering.
 
+Fixed HTTP methods normalize to their canonical uppercase form (`get` and
+`GET` are one entry). OpenAPI 3.2 custom `additionalOperations` methods are
+case-sensitive, so `COPY` and `copy` are distinct entries — a baselined
+`COPY` violation never absorbs a new `copy` violation.
+
 Non-body violations carry the parameter / response-header / security-scheme
 name plus the failing keyword, so a known `limit` violation does not absorb a
 future `page` violation, and a known "`limit` missing" does not absorb a
@@ -107,9 +112,16 @@ the generation command, which rewrites the file to exactly the current debt).
 Hand-edited entries are re-normalized on load, so removing an entry is safe
 without regenerating.
 
-Stale evaluation needs the full suite: a `--filter` / `--testsuite` subset
-cannot prove an entry no longer occurs, so partial runs report entries/hits
-only and never trip the `fail` gate.
+Stale evaluation needs a complete, clean run: an entry is only provably
+gone when every assertion that could hit it actually ran. It is therefore
+skipped — entries/hits are still reported, and the `fail` gate never trips —
+in two cases:
+
+- **Partial runs** (`--filter` / `--testsuite` / path arguments): the subset
+  cannot prove an entry no longer occurs.
+- **Runs with failed, errored, skipped, or incomplete tests** (including
+  `--stop-on-failure` aborts): later assertions may never have executed, so
+  an unhit entry proves nothing.
 
 ## Limitations
 

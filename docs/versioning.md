@@ -45,7 +45,9 @@ This library follows [Semantic Versioning 2.0](https://semver.org/). v1.0.0 is t
 - The violation baseline file (`baseline_version` 1): the entry fields
   (`spec`, `method`, `path`, `status_code`, `content_type`, `category`,
   `parameter`, `instance_path`, `keyword`), the fingerprint composition those
-  fields encode (the human-readable message is deliberately excluded; numeric
+  fields encode (the human-readable message is deliberately excluded; fixed
+  HTTP methods are normalized to uppercase while OpenAPI 3.2 custom
+  `additionalOperations` methods stay case-sensitive; numeric
   `instance_path` segments are canonicalized to `*`; non-body issues are
   distinguished by the parameter / response-header / security-scheme name in
   `parameter`, and parameter / response-header schema violations additionally

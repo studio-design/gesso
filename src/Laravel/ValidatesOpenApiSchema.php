@@ -1111,7 +1111,7 @@ trait ValidatesOpenApiSchema
             if ($collector !== null) {
                 $collector->record(new ViolationFingerprint(
                     $specName,
-                    strtoupper($method),
+                    OpenApiOperationResolver::normalizeMethodForKey($method),
                     $path,
                     null,
                     null,

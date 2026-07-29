@@ -4,13 +4,13 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Baseline;
 
+use Studio\Gesso\Spec\OpenApiOperationResolver;
 use Studio\Gesso\ValidationIssue;
 
 use function explode;
 use function implode;
 use function preg_match;
 use function sprintf;
-use function strtoupper;
 
 /**
  * Stable identity of one contract violation for the violation baseline
@@ -69,6 +69,11 @@ final readonly class ViolationFingerprint
      * Build a fingerprint from one structured issue. The adapter's resolved
      * method and raw request path fill in when the issue carries no context
      * of its own (e.g. path-match failures never resolve a spec template).
+     *
+     * Fixed HTTP methods normalize to their canonical uppercase key; OpenAPI
+     * 3.2 custom `additionalOperations` methods keep their exact spelling
+     * because they are case-sensitive — a baselined `COPY` violation must
+     * not absorb a new `copy` violation.
      */
     public static function fromIssue(
         string $specName,
@@ -78,7 +83,7 @@ final readonly class ViolationFingerprint
     ): self {
         return new self(
             spec: $specName,
-            method: strtoupper($issue->method ?? $fallbackMethod),
+            method: OpenApiOperationResolver::normalizeMethodForKey($issue->method ?? $fallbackMethod),
             path: $issue->path ?? $fallbackPath,
             statusCode: $issue->statusCode,
             contentType: $issue->contentType,

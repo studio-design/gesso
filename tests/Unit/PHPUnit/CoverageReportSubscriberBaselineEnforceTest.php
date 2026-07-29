@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Tests\Unit\PHPUnit;
 
+use PHPUnit\Event\Test\Failed;
 use PHPUnit\Event\TestRunner\ExecutionFinished;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
@@ -17,6 +18,7 @@ use Studio\Gesso\Internal\PartialRunDecision;
 use Studio\Gesso\OpenApiValidationResult;
 use Studio\Gesso\PHPUnit\ConsoleOutput;
 use Studio\Gesso\PHPUnit\CoverageReportSubscriber;
+use Studio\Gesso\PHPUnit\TestRunDefectTracer;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\ValidationIssue;
 
@@ -146,6 +148,45 @@ class CoverageReportSubscriberBaselineEnforceTest extends TestCase
     }
 
     #[Test]
+    public function a_run_with_test_defects_skips_stale_evaluation_with_a_note(): void
+    {
+        // A failed / errored / skipped test means later assertions may never
+        // have run, so an unhit entry proves nothing — it must not be
+        // reported as removable, and baseline_stale=fail must not trip.
+        $this->installEnforcerWithTwoEntriesOneHit();
+        $tracer = new TestRunDefectTracer();
+        $tracer->trace((new ReflectionClass(Failed::class))->newInstanceWithoutConstructor());
+
+        $stderr = '';
+        $exitCode = null;
+        $subscriber = $this->subscriber(
+            $stderr,
+            staleMode: BaselineStaleMode::Fail,
+            exitCode: $exitCode,
+            defectTracer: $tracer,
+        );
+
+        $this->notify($subscriber);
+
+        $this->assertStringContainsString('[Gesso] baseline: 2 entries, 1 hit.', $stderr);
+        $this->assertStringContainsString('stale evaluation is skipped because the run did not complete cleanly (1 failed)', $stderr);
+        $this->assertNull($exitCode, 'a defective run must never fail the stale gate');
+    }
+
+    #[Test]
+    public function a_clean_defect_tracer_leaves_stale_evaluation_active(): void
+    {
+        $this->installEnforcerWithTwoEntriesOneHit();
+
+        $stderr = '';
+        $subscriber = $this->subscriber($stderr, defectTracer: new TestRunDefectTracer());
+
+        $this->notify($subscriber);
+
+        $this->assertStringContainsString('[Gesso] baseline: 2 entries, 1 hit, 1 stale (removable).', $stderr);
+    }
+
+    #[Test]
     public function a_partial_run_skips_stale_evaluation_with_a_note(): void
     {
         $this->installEnforcerWithTwoEntriesOneHit();
@@ -231,6 +272,7 @@ class CoverageReportSubscriberBaselineEnforceTest extends TestCase
         ?PartialRunDecision $partialRun = null,
         ?int &$exitCode = null,
         ?string $githubSummaryPath = null,
+        ?TestRunDefectTracer $defectTracer = null,
     ): CoverageReportSubscriber {
         return new CoverageReportSubscriber(
             specs: ['petstore-3.0'],
@@ -245,6 +287,7 @@ class CoverageReportSubscriberBaselineEnforceTest extends TestCase
             },
             partialRun: $partialRun,
             baselineStaleMode: $staleMode,
+            baselineDefectTracer: $defectTracer,
         );
     }
 

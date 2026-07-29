@@ -153,6 +153,22 @@ class ViolationBaselineEnforcerTest extends TestCase
     }
 
     #[Test]
+    public function a_custom_method_decode_failure_is_matched_case_sensitively(): void
+    {
+        // OpenAPI 3.2 `additionalOperations`: COPY and copy are distinct
+        // operations, so a baselined COPY violation must not suppress a new
+        // copy violation. Fixed HTTP methods still match case-insensitively.
+        $baseline = new ViolationBaseline();
+        $baseline->add(new ViolationFingerprint('front', 'COPY', '/v1/pets', null, null, 'request.body', null, null));
+        $baseline->add(new ViolationFingerprint('front', 'GET', '/v1/pets', null, null, 'response.body', null, null));
+        $enforcer = new ViolationBaselineEnforcer($baseline);
+
+        $this->assertFalse($enforcer->suppressesDecodeFailure('front', 'copy', '/v1/pets', 'request.body'));
+        $this->assertTrue($enforcer->suppressesDecodeFailure('front', 'COPY', '/v1/pets', 'request.body'));
+        $this->assertTrue($enforcer->suppressesDecodeFailure('front', 'get', '/v1/pets', 'response.body'));
+    }
+
+    #[Test]
     public function stale_entries_are_the_baseline_entries_never_hit(): void
     {
         $baseline = new ViolationBaseline();

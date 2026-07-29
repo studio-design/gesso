@@ -22,6 +22,7 @@ use Studio\Gesso\Internal\StackTraceFilter;
 use Studio\Gesso\OpenApiRequestValidator;
 use Studio\Gesso\OpenApiResponseValidator;
 use Studio\Gesso\OpenApiValidationResult;
+use Studio\Gesso\Spec\OpenApiOperationResolver;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Spec\OpenApiSpecResolver;
 use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
@@ -413,7 +414,7 @@ trait OpenApiAssertions
             if ($collector !== null) {
                 $collector->record(new ViolationFingerprint(
                     $specName,
-                    strtoupper($method),
+                    OpenApiOperationResolver::normalizeMethodForKey($method),
                     $path,
                     null,
                     null,
