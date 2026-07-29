@@ -18,6 +18,7 @@ use PHPUnit\Framework\Assert;
 use PHPUnit\Framework\AssertionFailedError;
 use RuntimeException;
 use Studio\Gesso\Attribute\SkipOpenApi;
+use Studio\Gesso\Baseline\ViolationBaselineCollector;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\DecodedBody;
 use Studio\Gesso\HttpMethod;
@@ -583,6 +584,9 @@ trait ValidatesOpenApiSchema
 
         $this->assertLaravelOpenApiResult(
             $result,
+            $specName,
+            $resolvedMethod,
+            $resolvedPath,
             "OpenAPI schema validation failed for {$resolvedMethod} {$resolvedPath} (spec: {$specName})",
             fn(): string => $this->responseReproduceCommand($resolvedMethod, $resolvedPath),
         );
@@ -751,6 +755,9 @@ trait ValidatesOpenApiSchema
 
         $this->assertLaravelOpenApiResult(
             $result,
+            $specName,
+            $resolvedMethod,
+            $resolvedPath,
             "OpenAPI request validation failed for {$resolvedMethod} {$resolvedPath} (spec: {$specName})",
             fn(): string => $this->requestReproduceCommand($request),
         );
@@ -1166,15 +1173,30 @@ trait ValidatesOpenApiSchema
      * "Failed asserting that false is true." suffix; text mode keeps the
      * historical assertTrue() message byte-for-byte.
      *
+     * During a baseline generation run (issue #402) the failure is demoted
+     * instead: fingerprints are recorded and the assertion passes so the
+     * whole suite completes in one run.
+     *
      * @param Closure(): string $reproduceCommand built lazily so the curl
      *                                            command is only rendered when the assertion actually fails
      */
     private function assertLaravelOpenApiResult(
         OpenApiValidationResult $result,
+        string $specName,
+        string $method,
+        string $path,
         string $header,
         Closure $reproduceCommand,
     ): void {
         if ($result->isValid()) {
+            $this->assertOpenApi(true, '');
+
+            return;
+        }
+
+        $collector = ViolationBaselineCollector::current();
+        if ($collector !== null) {
+            $collector->recordResult($specName, $result, $method, $path);
             $this->assertOpenApi(true, '');
 
             return;
