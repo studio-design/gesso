@@ -336,8 +336,8 @@ final class SecurityValidator
                         $method,
                         $matchedPath,
                         $schemeName,
-                        $schemeError,
-                    ));
+                        $schemeError['message'],
+                    ), keyword: $schemeError['keyword']);
                 }
             }
 
@@ -413,7 +413,10 @@ final class SecurityValidator
     /**
      * Check whether a single (already-classified, well-formed) security scheme
      * is satisfied by the request. Returns an empty list when satisfied, or
-     * one or more error strings explaining why not.
+     * one or more failures explaining why not. Each failure carries a stable
+     * violation-kind `keyword` (`required` = credentials absent, `format` =
+     * present but not a usable credential) so baseline fingerprints
+     * (issue #402) can tell the two kinds apart on one scheme.
      *
      * Only `Bearer` and `ApiKey` reach this method — `Malformed` and
      * `Unsupported` classifications are short-circuited by the caller in
@@ -425,7 +428,7 @@ final class SecurityValidator
      * @param array<string, mixed> $queryParams
      * @param array<string, mixed> $cookies
      *
-     * @return string[]
+     * @return list<array{keyword: string, message: string}>
      */
     private function checkSchemeSatisfaction(
         SchemeKind $kind,
@@ -444,14 +447,14 @@ final class SecurityValidator
     /**
      * @param array<string, mixed> $normalizedHeaders
      *
-     * @return string[]
+     * @return list<array{keyword: string, message: string}>
      */
     private function checkBearerSatisfied(array $normalizedHeaders): array
     {
         $raw = $normalizedHeaders['authorization'] ?? null;
         $value = $this->extractSingleStringValue($raw);
         if ($value === null || $value === '') {
-            return ['Authorization header is missing.'];
+            return [['keyword' => 'required', 'message' => 'Authorization header is missing.']];
         }
 
         // RFC 6750 §2.1: `Bearer <token>`. Scheme name is case-insensitive
@@ -459,7 +462,7 @@ final class SecurityValidator
         // Require a non-empty token portion; "Bearer" alone or "Bearer " is
         // not a valid credential.
         if (preg_match('/^bearer\s+(\S+)/i', $value) !== 1) {
-            return ["Authorization header does not contain a 'Bearer <token>' credential."];
+            return [['keyword' => 'format', 'message' => "Authorization header does not contain a 'Bearer <token>' credential."]];
         }
 
         return [];
@@ -471,7 +474,7 @@ final class SecurityValidator
      * @param array<string, mixed> $queryParams
      * @param array<string, mixed> $cookies
      *
-     * @return string[]
+     * @return list<array{keyword: string, message: string}>
      */
     private function checkApiKeySatisfied(
         array $schemeDef,
@@ -493,7 +496,7 @@ final class SecurityValidator
 
         $value = $this->extractSingleStringValue($raw);
         if ($value === null || $value === '') {
-            return [sprintf("api key '%s' is missing from the %s.", $name, $in)];
+            return [['keyword' => 'required', 'message' => sprintf("api key '%s' is missing from the %s.", $name, $in)]];
         }
 
         return [];

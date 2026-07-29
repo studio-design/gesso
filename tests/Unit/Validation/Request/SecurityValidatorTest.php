@@ -88,6 +88,71 @@ class SecurityValidatorTest extends TestCase
     }
 
     #[Test]
+    public function satisfaction_failures_carry_a_stable_violation_kind_keyword(): void
+    {
+        // Baseline fingerprints (issue #402) distinguish "credentials absent"
+        // from "credentials present but malformed" on one scheme via the
+        // keyword; without it, a baselined missing-token violation would
+        // absorb a future malformed-token violation.
+        $spec = [
+            'components' => [
+                'securitySchemes' => [
+                    'BearerAuth' => ['type' => 'http', 'scheme' => 'bearer'],
+                ],
+            ],
+        ];
+        $operation = ['security' => [['BearerAuth' => []]]];
+
+        $missing = $this->validator->validate('GET', '/pets', $spec, $operation, [], [], []);
+        $this->assertCount(1, $missing);
+        $this->assertSame('required', $missing[0]->keyword);
+
+        $malformed = $this->validator->validate(
+            'GET',
+            '/pets',
+            $spec,
+            $operation,
+            ['Authorization' => 'Basic dXNlcjpwYXNz'],
+            [],
+            [],
+        );
+        $this->assertCount(1, $malformed);
+        $this->assertSame('format', $malformed[0]->keyword);
+
+        // Spec-malformation hard errors stay keyword-less: they are not a
+        // property of the request, so they keep collapsing per scheme.
+        $hardError = $this->validator->validate(
+            'GET',
+            '/pets',
+            ['components' => ['securitySchemes' => []]],
+            ['security' => [['Undefined' => []]]],
+            [],
+            [],
+            [],
+        );
+        $this->assertCount(1, $hardError);
+        $this->assertNull($hardError[0]->keyword);
+    }
+
+    #[Test]
+    public function validate_flags_missing_api_key_with_required_keyword(): void
+    {
+        $spec = [
+            'components' => [
+                'securitySchemes' => [
+                    'ApiKey' => ['type' => 'apiKey', 'in' => 'header', 'name' => 'X-Api-Key'],
+                ],
+            ],
+        ];
+        $operation = ['security' => [['ApiKey' => []]]];
+
+        $errors = $this->validator->validate('GET', '/pets', $spec, $operation, [], [], []);
+
+        $this->assertCount(1, $errors);
+        $this->assertSame('required', $errors[0]->keyword);
+    }
+
+    #[Test]
     public function validate_surfaces_hard_error_for_undefined_scheme(): void
     {
         $spec = ['components' => ['securitySchemes' => []]];

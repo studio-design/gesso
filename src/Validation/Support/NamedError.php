@@ -15,11 +15,12 @@ namespace Studio\Gesso\Validation\Support;
  * violation" — and a known missing-`limit` from a future type-mismatched
  * `limit` — on the same operation without depending on message wording.
  * `name === null` means the error is not attributable to a single named
- * object (structural spec errors, error-boundary captures). `keyword` is
- * also set to `required` for missing required parameters / headers, which
- * never reach a schema run; it stays null for spec-malformation and other
- * structural errors, which therefore still collapse per
- * `(operation, category, name)` in the baseline.
+ * object (structural spec errors, error-boundary captures). `keyword` also
+ * carries synthetic violation kinds that never reach a schema run:
+ * `required` for missing required parameters / headers / credentials and
+ * `format` for a present-but-unusable credential. It stays null for
+ * spec-malformation and other structural errors, which therefore still
+ * collapse per `(operation, category, name)` in the baseline.
  *
  * @internal Not part of the package's public API. Do not use from user code.
  */

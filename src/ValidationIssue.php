@@ -14,10 +14,11 @@ namespace Studio\Gesso;
  * `instancePath` (RFC 6901 JSON Pointer, `''` = document root) and `keyword`
  * (the failing JSON Schema keyword) are populated on schema violations: for
  * body issues the pointer is into the validated body (issue #282, stage 2);
- * for parameter / response-header issues it is into the named value, and
- * `keyword` is additionally `'required'` when a required parameter or header
- * is missing (issue #402). Both stay null for structural and spec-malformation
- * errors. `parameter` names the spec object a non-body issue is about — the
+ * for parameter / response-header issues it is into the named value.
+ * `keyword` additionally carries synthetic violation kinds — `'required'`
+ * when a required parameter, header, or security credential is missing and
+ * `'format'` when a credential is present but unusable (issue #402). Both
+ * stay null for structural and spec-malformation errors. `parameter` names the spec object a non-body issue is about — the
  * request parameter (`request.parameter.*`), response header
  * (`response.header`), or security scheme (`request.security`) — and is null
  * for body issues and for errors not attributable to a single named object.
