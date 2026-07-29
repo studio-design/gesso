@@ -97,6 +97,7 @@ class OpenApiCoverageExtensionValidationOutputTest extends TestCase
         $this->assertSame(ValidationOutputFormat::Text, ValidationOutput::format());
     }
 
+    /** @param array<string, string> $parameters */
     private function setupExtension(array $parameters): void
     {
         $extension = new OpenApiCoverageExtension();
