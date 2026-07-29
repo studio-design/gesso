@@ -19,6 +19,7 @@ use PHPUnit\Framework\AssertionFailedError;
 use RuntimeException;
 use Studio\Gesso\Attribute\SkipOpenApi;
 use Studio\Gesso\Baseline\ViolationBaselineCollector;
+use Studio\Gesso\Baseline\ViolationFingerprint;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\DecodedBody;
 use Studio\Gesso\HttpMethod;
@@ -544,12 +545,23 @@ trait ValidatesOpenApiSchema
         $validator = $extraSkipResponseCodes !== []
             ? $this->buildOneOffValidator($extraSkipResponseCodes)
             : $this->getOrCreateValidator();
+        $decodedBody = $this->extractOrRecordBaselineViolation(
+            fn(): DecodedBody => $this->extractJsonBody($content, $contentType),
+            $specName,
+            $resolvedMethod,
+            $resolvedPath,
+            'response.body',
+        );
+        if ($decodedBody === null) {
+            return;
+        }
+
         $result = $validator->validate(
             $specName,
             $resolvedMethod,
             $resolvedPath,
             $response->getStatusCode(),
-            $this->extractJsonBody($content, $contentType),
+            $decodedBody,
             $contentType !== '' ? $contentType : null,
             // HeaderNormalizer is idempotent; HeaderBag's already-lower-cased
             // keys pass through unchanged.
@@ -695,7 +707,16 @@ trait ValidatesOpenApiSchema
         $rawContentType = $request->headers->get('Content-Type');
         $contentType = is_string($rawContentType) ? $rawContentType : '';
 
-        $body = $this->extractRequestBody($request, $contentType);
+        $body = $this->extractOrRecordBaselineViolation(
+            fn(): DecodedBody => $this->extractRequestBody($request, $contentType),
+            $specName,
+            $resolvedMethod,
+            $resolvedPath,
+            'request.body',
+        );
+        if ($body === null) {
+            return;
+        }
 
         foreach ($this->resolveAutoInjectCredentials($specName, $resolvedMethod, $resolvedPath, $headers, $cookies, $queryParams) as $credential) {
             if ($credential['kind'] === 'bearer') {
@@ -1043,11 +1064,58 @@ trait ValidatesOpenApiSchema
         DiscriminatorEnforcement::configure($this->resolveBoolConfig('enforce_discriminator', true));
     }
 
+    /**
+     * Run a body-decode step; during a baseline generation run (issue #402)
+     * a decode failure (the `AssertionFailedError` raised by the extract
+     * helper) is recorded as a body-category fingerprint and demoted, so
+     * generation also covers endpoints whose body is not parseable JSON —
+     * mirroring how the PSR-7 adapter folds adapter-level body errors into
+     * the validation result. Returns null when the failure was demoted (the
+     * assertion already passed); normal runs re-throw untouched.
+     *
+     * @param Closure(): DecodedBody $extract
+     */
+    private function extractOrRecordBaselineViolation(
+        Closure $extract,
+        string $specName,
+        string $method,
+        string $path,
+        string $category,
+    ): ?DecodedBody {
+        $collector = ViolationBaselineCollector::current();
+        if ($collector === null) {
+            return $extract();
+        }
+
+        try {
+            return $extract();
+        } catch (AssertionFailedError) {
+            $collector->record(new ViolationFingerprint(
+                $specName,
+                strtoupper($method),
+                $path,
+                null,
+                null,
+                $category,
+                null,
+                null,
+            ));
+            $this->assertOpenApi(true, '');
+
+            return null;
+        }
+    }
+
     private function resolveMaxErrors(): int
     {
         $maxErrors = config('gesso.max_errors', 20);
 
-        return is_numeric($maxErrors) ? (int) $maxErrors : 20;
+        // A baseline generation run (issue #402) lifts the cap: a truncated
+        // error list would drop violations from the generated baseline. The
+        // cached validators key on this resolved value, so the uncapped
+        // resolution also invalidates a validator built before the collector
+        // was installed.
+        return ViolationBaselineCollector::uncap(is_numeric($maxErrors) ? (int) $maxErrors : 20);
     }
 
     /** @return string[] */

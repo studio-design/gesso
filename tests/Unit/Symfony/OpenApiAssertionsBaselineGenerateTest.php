@@ -14,6 +14,7 @@ use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Symfony\OpenApiAssertions;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\Response;
 
 #[OpenApiSpec('petstore-3.0')]
 final class OpenApiAssertionsBaselineGenerateTest extends TestCase
@@ -74,6 +75,79 @@ final class OpenApiAssertionsBaselineGenerateTest extends TestCase
             null,
             null,
             'request.parameter.query',
+            null,
+            null,
+            parameter: 'limit',
+        )));
+    }
+
+    #[Test]
+    public function a_generation_run_is_not_truncated_by_the_default_max_errors_cap(): void
+    {
+        // 20 id violations followed by one name violation: with the default
+        // maxErrors=20 cap the name violation would be dropped and later
+        // surface as "new" despite existing at generation time.
+        $data = [];
+        for ($i = 0; $i < 20; $i++) {
+            $data[] = ['id' => 'not-an-integer', 'name' => 'Fido'];
+        }
+        $data[] = ['id' => 1, 'name' => 123];
+        $request = Request::create('/v1/pets', 'GET');
+        $response = new JsonResponse(['data' => $data]);
+
+        $this->assertResponseMatchesOpenApiSchema($request, $response);
+
+        $this->assertTrue($this->collector->baseline()->contains(new ViolationFingerprint(
+            'petstore-3.0',
+            'GET',
+            '/v1/pets',
+            '200',
+            'application/json',
+            'response.body',
+            '/data/*/name',
+            'type',
+        )), 'the 21st violation must be recorded during a generation run');
+    }
+
+    #[Test]
+    public function an_undecodable_response_body_is_demoted_and_recorded(): void
+    {
+        $request = Request::create('/v1/pets', 'GET');
+        $response = new Response('{invalid', 200, ['Content-Type' => 'application/json']);
+
+        $this->assertResponseMatchesOpenApiSchema($request, $response);
+
+        $this->assertTrue($this->collector->baseline()->contains(new ViolationFingerprint(
+            'petstore-3.0',
+            'GET',
+            '/v1/pets',
+            null,
+            null,
+            'response.body',
+            null,
+            null,
+        )));
+    }
+
+    #[Test]
+    public function an_undecodable_request_body_is_demoted_and_recorded(): void
+    {
+        $request = Request::create(
+            '/v1/pets',
+            'POST',
+            server: ['CONTENT_TYPE' => 'application/json'],
+            content: '{invalid',
+        );
+
+        $this->assertRequestMatchesOpenApiSchema($request);
+
+        $this->assertTrue($this->collector->baseline()->contains(new ViolationFingerprint(
+            'petstore-3.0',
+            'POST',
+            '/v1/pets',
+            null,
+            null,
+            'request.body',
             null,
             null,
         )));

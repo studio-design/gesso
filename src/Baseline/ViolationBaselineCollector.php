@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Studio\Gesso\Baseline;
 
 use Studio\Gesso\OpenApiValidationResult;
+use Studio\Gesso\Validation\Support\SchemaValidatorRunner;
 
 /**
  * Run-level recorder for baseline generation (issue #402).
@@ -42,6 +43,19 @@ final class ViolationBaselineCollector
     public static function resetCurrent(): void
     {
         self::$current = null;
+    }
+
+    /**
+     * Effective maxErrors for a validator an adapter is about to construct.
+     * During a generation run the cap is lifted (0 = unlimited in
+     * {@see SchemaValidatorRunner}) —
+     * a truncated error list would drop violations from the baseline, and
+     * the dropped ones would later resurface as "new" the moment an earlier
+     * entry is fixed.
+     */
+    public static function uncap(int $maxErrors): int
+    {
+        return self::$current === null ? $maxErrors : 0;
     }
 
     public function record(ViolationFingerprint $fingerprint): void

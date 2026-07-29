@@ -11,6 +11,7 @@ use JsonException;
 use PHPUnit\Framework\Assert;
 use PHPUnit\Framework\AssertionFailedError;
 use Studio\Gesso\Baseline\ViolationBaselineCollector;
+use Studio\Gesso\Baseline\ViolationFingerprint;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\DecodedBody;
 use Studio\Gesso\HttpMethod;
@@ -133,19 +134,30 @@ trait OpenApiAssertions
             ? $this->symfonyResponseValidator()
             : new OpenApiResponseValidator(
                 strictRequiredTracker: StrictRequiredTracker::current(),
-                maxErrors: $this->openApiMaxErrors(),
+                maxErrors: ViolationBaselineCollector::uncap($this->openApiMaxErrors()),
                 skipResponseCodes: array_merge(
                     OpenApiResponseValidator::DEFAULT_SKIP_RESPONSE_CODES,
                     $extraSkipResponseCodes,
                 ),
             );
 
+        $decodedBody = $this->extractOrRecordBaselineViolation(
+            fn(): DecodedBody => $this->extractSymfonyJsonBody($content, $contentType, 'Response'),
+            $specName,
+            $method->value,
+            $path,
+            'response.body',
+        );
+        if ($decodedBody === null) {
+            return;
+        }
+
         $result = $validator->validate(
             $specName,
             $method->value,
             $path,
             $response->getStatusCode(),
-            $this->extractSymfonyJsonBody($content, $contentType, 'Response'),
+            $decodedBody,
             $contentType !== '' ? $contentType : null,
             $response->headers->all(),
         );
@@ -193,13 +205,24 @@ trait OpenApiAssertions
 
         $contentType = $request->headers->get('Content-Type') ?? '';
 
+        $decodedBody = $this->extractOrRecordBaselineViolation(
+            fn(): DecodedBody => $this->extractSymfonyJsonBody($request->getContent(), $contentType, 'Request'),
+            $specName,
+            $method->value,
+            $path,
+            'request.body',
+        );
+        if ($decodedBody === null) {
+            return;
+        }
+
         $result = $this->symfonyRequestValidator()->validate(
             $specName,
             $method->value,
             $path,
             $request->query->all(),
             $request->headers->all(),
-            $this->extractSymfonyJsonBody($request->getContent(), $contentType, 'Request'),
+            $decodedBody,
             $contentType !== '' ? $contentType : null,
             $request->cookies->all(),
             $responseStatusCode,
@@ -343,11 +366,53 @@ trait OpenApiAssertions
         return $specName;
     }
 
+    /**
+     * Run a body-decode step; during a baseline generation run (issue #402)
+     * a decode failure (the `AssertionFailedError` raised by the extract
+     * helper) is recorded as a body-category fingerprint and demoted, so
+     * generation also covers endpoints whose body is not parseable JSON —
+     * mirroring how the PSR-7 adapter folds adapter-level body errors into
+     * the validation result. Returns null when the failure was demoted (the
+     * assertion already passed); normal runs re-throw untouched.
+     *
+     * @param Closure(): DecodedBody $extract
+     */
+    private function extractOrRecordBaselineViolation(
+        Closure $extract,
+        string $specName,
+        string $method,
+        string $path,
+        string $category,
+    ): ?DecodedBody {
+        $collector = ViolationBaselineCollector::current();
+        if ($collector === null) {
+            return $extract();
+        }
+
+        try {
+            return $extract();
+        } catch (AssertionFailedError) {
+            $collector->record(new ViolationFingerprint(
+                $specName,
+                strtoupper($method),
+                $path,
+                null,
+                null,
+                $category,
+                null,
+                null,
+            ));
+            $this->assertOpenApi(true, '');
+
+            return null;
+        }
+    }
+
     private function symfonyResponseValidator(): OpenApiResponseValidator
     {
         return $this->cachedSymfonyResponseValidator ??= new OpenApiResponseValidator(
             strictRequiredTracker: StrictRequiredTracker::current(),
-            maxErrors: $this->openApiMaxErrors(),
+            maxErrors: ViolationBaselineCollector::uncap($this->openApiMaxErrors()),
         );
     }
 
@@ -356,7 +421,7 @@ trait OpenApiAssertions
         // The documented-4xx downgrade is on by default here, matching the
         // Laravel adapter's `skip_request_validation_response_codes` default.
         return $this->cachedSymfonyRequestValidator ??= new OpenApiRequestValidator(
-            maxErrors: $this->openApiMaxErrors(),
+            maxErrors: ViolationBaselineCollector::uncap($this->openApiMaxErrors()),
             skipRequestValidationResponseCodes: OpenApiRequestValidator::DEFAULT_SKIP_REQUEST_VALIDATION_RESPONSE_CODES,
         );
     }

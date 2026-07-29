@@ -175,7 +175,7 @@ trait OpenApiAssertions
         if ($this->cachedPsr7Validator === null || $this->cachedPsr7SpecName !== $specName) {
             $this->cachedPsr7Validator = new OpenApiPsr7Validator(
                 $specName,
-                maxErrors: $this->openApiMaxErrors(),
+                maxErrors: ViolationBaselineCollector::uncap($this->openApiMaxErrors()),
                 skipResponseCodes: $this->openApiSkipResponseCodes(),
                 skipRequestValidationResponseCodes: $this->openApiSkipRequestValidationResponseCodes(),
             );

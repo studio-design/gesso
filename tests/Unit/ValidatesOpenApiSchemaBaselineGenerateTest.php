@@ -69,6 +69,25 @@ class ValidatesOpenApiSchemaBaselineGenerateTest extends TestCase
     }
 
     #[Test]
+    public function an_undecodable_response_body_is_demoted_and_recorded(): void
+    {
+        $response = $this->makeTestResponse('{invalid', 200);
+
+        $this->assertResponseMatchesOpenApiSchema($response, HttpMethod::GET, '/v1/pets');
+
+        $this->assertTrue($this->collector->baseline()->contains(new ViolationFingerprint(
+            'petstore-3.0',
+            'GET',
+            '/v1/pets',
+            null,
+            null,
+            'response.body',
+            null,
+            null,
+        )));
+    }
+
+    #[Test]
     public function a_valid_response_records_nothing(): void
     {
         $body = (string) json_encode(
