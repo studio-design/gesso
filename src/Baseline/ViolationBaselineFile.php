@@ -35,8 +35,10 @@ use function sprintf;
  * timestamps — so re-generating an unchanged contract produces a
  * byte-identical file. Parsing validates the whole payload before returning
  * (mirroring `StrictRequiredTracker::importState()`), and re-normalizes
- * hand-edited entries (method casing, instance-path canonicalization) so a
- * literal `/data/0/id` still matches its canonical runtime form.
+ * hand-edited entries (fixed-HTTP-method casing, instance-path
+ * canonicalization) so a literal `/data/0/id` still matches its canonical
+ * runtime form. OpenAPI 3.2 custom `additionalOperations` methods keep
+ * their exact spelling — they are case-sensitive.
  *
  * @internal The committed baseline file format is the supported,
  *           versioned compatibility surface (docs/versioning.md); this

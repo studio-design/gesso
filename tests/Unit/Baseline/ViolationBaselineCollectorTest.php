@@ -6,7 +6,9 @@ namespace Studio\Gesso\Tests\Unit\Baseline;
 
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+use Studio\Gesso\Baseline\ViolationBaseline;
 use Studio\Gesso\Baseline\ViolationBaselineCollector;
+use Studio\Gesso\Baseline\ViolationBaselineEnforcer;
 use Studio\Gesso\Baseline\ViolationFingerprint;
 
 class ViolationBaselineCollectorTest extends TestCase
@@ -14,6 +16,7 @@ class ViolationBaselineCollectorTest extends TestCase
     protected function tearDown(): void
     {
         ViolationBaselineCollector::resetCurrent();
+        ViolationBaselineEnforcer::resetCurrent();
         parent::tearDown();
     }
 
@@ -46,5 +49,20 @@ class ViolationBaselineCollectorTest extends TestCase
 
         $this->assertSame(1, $collector->baseline()->count());
         $this->assertTrue($collector->baseline()->contains($fingerprint));
+    }
+
+    #[Test]
+    public function uncap_lifts_the_cap_only_while_a_collector_or_enforcer_is_installed(): void
+    {
+        $this->assertSame(20, ViolationBaselineCollector::uncap(20));
+
+        ViolationBaselineCollector::setCurrent(new ViolationBaselineCollector());
+        $this->assertSame(0, ViolationBaselineCollector::uncap(20));
+        ViolationBaselineCollector::resetCurrent();
+
+        // Enforcement needs the full error list too: a truncated list could
+        // hide a new violation behind baselined ones and suppress it.
+        ViolationBaselineEnforcer::setCurrent(new ViolationBaselineEnforcer(new ViolationBaseline()));
+        $this->assertSame(0, ViolationBaselineCollector::uncap(20));
     }
 }

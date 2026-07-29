@@ -10,7 +10,9 @@ use const STDERR;
 use PHPUnit\Event\TestRunner\ExecutionFinished;
 use PHPUnit\Event\TestRunner\ExecutionFinishedSubscriber;
 use RuntimeException;
+use Studio\Gesso\Baseline\BaselineStaleMode;
 use Studio\Gesso\Baseline\ViolationBaselineCollector;
+use Studio\Gesso\Baseline\ViolationBaselineEnforcer;
 use Studio\Gesso\Baseline\ViolationBaselineFile;
 use Studio\Gesso\Coverage\ConsoleCoverageRenderer;
 use Studio\Gesso\Coverage\CoverageMergeCommand;
@@ -79,6 +81,11 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
      *                                          collected fingerprints here at run end; partial runs refuse the write
      *                                          (an incomplete baseline would hide violations) and worker mode warns
      *                                          (parallel generation is not supported yet).
+     * @param null|TestRunCompletionTracer $baselineCompletionTracer Issue #402: registered by the extension for
+     *                                                               enforcement runs. Unless it can prove every
+     *                                                               planned test finished with no defects, stale
+     *                                                               evaluation is skipped — an unhit baseline entry
+     *                                                               proves nothing if later assertions never ran.
      * @param null|PartialRunDecision $partialRun Issue #221: when non-null (the run is partial), the subscriber
      *                                            skips every persistent file write (output_file, junit_output,
      *                                            json_output, html_output, GITHUB_STEP_SUMMARY) and emits one
@@ -107,6 +114,8 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
         private ?PartialRunDecision $partialRun = null,
         private StrictRequiredMode $strictRequiredMode = StrictRequiredMode::Off,
         private ?string $baselineGeneratePath = null,
+        private BaselineStaleMode $baselineStaleMode = BaselineStaleMode::Note,
+        private ?TestRunCompletionTracer $baselineCompletionTracer = null,
     ) {
         // Eager resolution at construction time keeps the readonly invariant
         // honest: by the time any other method runs, $coverageTracker and
@@ -159,6 +168,7 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
             // though the user had opted into fail-fast via min_*_coverage.
             $this->failOnEmptyResultsIfGated();
             $this->writeBaselineFile();
+            $this->reportBaselineEnforcement();
             $this->evaluateStrictRequiredGate();
 
             return;
@@ -169,6 +179,8 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
         $this->writeReports($results);
 
         $this->writeBaselineFile();
+
+        $this->reportBaselineEnforcement();
 
         $this->evaluateThresholdGate($results);
 
@@ -449,6 +461,98 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
             $collector->baseline()->count(),
             $this->baselineGeneratePath,
         ));
+    }
+
+    /**
+     * Issue #402: end-of-run summary for an enforcement run — how much
+     * baselined debt exists, how much of it still occurs, and which entries
+     * no longer occur (stale, removable — the ratchet-down signal, matching
+     * PHPStan's baseline behavior).
+     *
+     * Stale evaluation needs the full suite: a subset run cannot prove an
+     * entry no longer occurs, so partial runs report entries/hits only and
+     * never trip the `baseline_stale=fail` gate. Worker mode never reaches
+     * this method (the worker-token branch returns earlier), so per-worker
+     * partial views cannot mis-report staleness either.
+     */
+    private function reportBaselineEnforcement(): void
+    {
+        $enforcer = ViolationBaselineEnforcer::current();
+        if ($enforcer === null) {
+            return;
+        }
+
+        $entries = $enforcer->baseline()->count();
+        $hits = $enforcer->hitCount();
+
+        if ($this->partialRun !== null) {
+            $this->writeStderr(sprintf(
+                "[Gesso] baseline: %d entries, %d hit. NOTE: stale evaluation is skipped on partial runs (%s) because a subset run cannot prove an entry no longer occurs. Run the full suite to evaluate removable entries.\n",
+                $entries,
+                $hits,
+                $this->partialRun->reason,
+            ));
+
+            return;
+        }
+
+        if ($this->baselineStaleMode === BaselineStaleMode::Off) {
+            $this->writeStderr(sprintf("[Gesso] baseline: %d entries, %d hit.\n", $entries, $hits));
+
+            return;
+        }
+
+        // Stale evaluation is only trustworthy when the tracer can prove
+        // every planned test finished with no defects. A truncated run
+        // (--stop-on-* of any kind, hook failures) or a failed / errored /
+        // skipped / incomplete test means later assertions may never have
+        // run, so an unhit entry proves nothing — reporting it as removable
+        // would mark still-live debt for deletion.
+        if ($this->baselineCompletionTracer !== null && !$this->baselineCompletionTracer->completedCleanly()) {
+            $this->writeStderr(sprintf(
+                "[Gesso] baseline: %d entries, %d hit. NOTE: stale evaluation is skipped because the run did not complete cleanly (%s). Re-run with all tests passing to evaluate removable entries.\n",
+                $entries,
+                $hits,
+                $this->baselineCompletionTracer->describe(),
+            ));
+
+            return;
+        }
+
+        $stale = $enforcer->staleEntries();
+        $this->writeStderr(sprintf(
+            "[Gesso] baseline: %d entries, %d hit, %d stale (removable).\n",
+            $entries,
+            $hits,
+            count($stale),
+        ));
+
+        if ($stale === []) {
+            return;
+        }
+
+        $isFatal = $this->baselineStaleMode === BaselineStaleMode::Fail;
+        $listing = [];
+        foreach ($stale as $fingerprint) {
+            $listing[] = '  - ' . $fingerprint->describe();
+        }
+        $body = implode("\n", $listing);
+
+        $this->writeStderr(sprintf(
+            "[Gesso] %s: %d baseline entry(ies) no longer occurred and can be removed from the baseline file:\n%s\n",
+            $isFatal ? 'FATAL' : 'NOTE',
+            count($stale),
+            $body,
+        ));
+        OpenApiCoverageExtension::appendGithubStepSummaryBaselineStaleBlock(
+            $this->githubSummaryPath,
+            $body,
+            $isFatal,
+        );
+
+        if ($isFatal) {
+            $this->exitNonZero();
+        }
     }
 
     /**

@@ -29,6 +29,23 @@ class ViolationFingerprintTest extends TestCase
     }
 
     #[Test]
+    public function from_issue_normalizes_fixed_methods_but_preserves_custom_method_case(): void
+    {
+        // OpenAPI 3.2 `additionalOperations` methods are case-sensitive:
+        // COPY and copy are distinct operations and must not share a
+        // fingerprint. Fixed HTTP fields keep their canonical uppercase key.
+        $issue = new ValidationIssue('response.body', 'violation');
+
+        $this->assertSame('GET', ViolationFingerprint::fromIssue('front', $issue, 'get', '/v1/pets')->method);
+        $this->assertSame('copy', ViolationFingerprint::fromIssue('front', $issue, 'copy', '/v1/pets')->method);
+        $this->assertSame('COPY', ViolationFingerprint::fromIssue('front', $issue, 'COPY', '/v1/pets')->method);
+        $this->assertNotSame(
+            ViolationFingerprint::fromIssue('front', $issue, 'copy', '/v1/pets')->key(),
+            ViolationFingerprint::fromIssue('front', $issue, 'COPY', '/v1/pets')->key(),
+        );
+    }
+
+    #[Test]
     public function from_issue_uses_the_issue_context_and_canonicalizes(): void
     {
         $issue = new ValidationIssue(

@@ -45,7 +45,9 @@ This library follows [Semantic Versioning 2.0](https://semver.org/). v1.0.0 is t
 - The violation baseline file (`baseline_version` 1): the entry fields
   (`spec`, `method`, `path`, `status_code`, `content_type`, `category`,
   `parameter`, `instance_path`, `keyword`), the fingerprint composition those
-  fields encode (the human-readable message is deliberately excluded; numeric
+  fields encode (the human-readable message is deliberately excluded; fixed
+  HTTP methods are normalized to uppercase while OpenAPI 3.2 custom
+  `additionalOperations` methods stay case-sensitive; numeric
   `instance_path` segments are canonicalized to `*`; non-body issues are
   distinguished by the parameter / response-header / security-scheme name in
   `parameter`, and parameter / response-header schema violations additionally
@@ -53,7 +55,12 @@ This library follows [Semantic Versioning 2.0](https://semver.org/). v1.0.0 is t
   carry `keyword: required`, and security-scheme satisfaction failures carry
   `keyword: required` (credentials absent) or `keyword: format` (present but
   unusable)), the `OPENAPI_BASELINE_GENERATE` environment variable, and the
-  `baseline_file` extension parameter. Unknown `baseline_version` values are
+  `baseline_file` / `baseline_stale` extension parameters (`baseline_stale`
+  values: `off` | `note` | `fail`, default `note`). The enforcement semantics
+  are part of the contract too: with `baseline_file` configured, a failing
+  assertion is suppressed only when **every** one of its violations is
+  baselined, and entries that no longer occur during a full run are reported
+  as stale per `baseline_stale`. Unknown `baseline_version` values are
   rejected.
 - CLI surfaces by major (commands, flags, exit codes, and versioned inputs and
   output where applicable):

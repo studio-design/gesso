@@ -51,11 +51,16 @@ final class ViolationBaselineCollector
      * {@see SchemaValidatorRunner}) —
      * a truncated error list would drop violations from the baseline, and
      * the dropped ones would later resurface as "new" the moment an earlier
-     * entry is fixed.
+     * entry is fixed. An enforcement run ({@see ViolationBaselineEnforcer})
+     * lifts it for the mirror-image reason: a new violation truncated away
+     * behind baselined ones would let the suppression check pass on an
+     * incomplete issue list.
      */
     public static function uncap(int $maxErrors): int
     {
-        return self::$current === null ? $maxErrors : 0;
+        return self::$current === null && ViolationBaselineEnforcer::current() === null
+            ? $maxErrors
+            : 0;
     }
 
     public function record(ViolationFingerprint $fingerprint): void

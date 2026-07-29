@@ -13,8 +13,11 @@ use PHPUnit\Runner\Extension\Extension;
 use PHPUnit\Runner\Extension\Facade;
 use PHPUnit\Runner\Extension\ParameterCollection;
 use PHPUnit\TextUI\Configuration\Configuration;
+use Studio\Gesso\Baseline\BaselineStaleMode;
 use Studio\Gesso\Baseline\InvalidBaselineConfigurationException;
 use Studio\Gesso\Baseline\ViolationBaselineCollector;
+use Studio\Gesso\Baseline\ViolationBaselineEnforcer;
+use Studio\Gesso\Baseline\ViolationBaselineFile;
 use Studio\Gesso\Coverage\InvalidCoverageOutputPathException;
 use Studio\Gesso\Coverage\InvalidThresholdConfigurationException;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
@@ -141,6 +144,45 @@ final class OpenApiCoverageExtension implements Extension
         $written = file_put_contents($path, $block, FILE_APPEND);
         if ($written === false) {
             self::writeStderr("[OpenAPI Strict Required] WARNING: Failed to append block to GITHUB_STEP_SUMMARY ({$path})\n");
+        }
+    }
+
+    /**
+     * Append a Markdown block listing stale baseline entries to the GitHub
+     * Actions Step Summary file. Structurally mirrors
+     * {@see appendGithubStepSummaryStrictRequiredBlock()}, with its own
+     * title/body wording so log scrapers can route the channels by title.
+     *
+     * @internal Exposed so {@see CoverageReportSubscriber} can render the
+     *           stale gate outcome at ExecutionFinished.
+     */
+    public static function appendGithubStepSummaryBaselineStaleBlock(
+        ?string $path,
+        string $body,
+        bool $isFatal,
+    ): void {
+        if ($path === null) {
+            return;
+        }
+
+        $title = $isFatal
+            ? '## :rotating_light: FATAL OpenAPI baseline stale entries'
+            : '## :warning: OpenAPI baseline stale entries';
+
+        $block = $title . PHP_EOL
+            . PHP_EOL
+            . ($isFatal
+                ? 'Baseline entries no longer occurred and the test run was aborted (baseline_stale=fail). Remove them from the baseline file.'
+                : 'Baseline entries no longer occurred and can be removed from the baseline file.') . PHP_EOL
+            . PHP_EOL
+            . '```' . PHP_EOL
+            . $body . PHP_EOL
+            . '```' . PHP_EOL
+            . PHP_EOL;
+
+        $written = file_put_contents($path, $block, FILE_APPEND);
+        if ($written === false) {
+            self::writeStderr("[Gesso] WARNING: Failed to append baseline block to GITHUB_STEP_SUMMARY ({$path})\n");
         }
     }
 
@@ -307,7 +349,12 @@ final class OpenApiCoverageExtension implements Extension
             }
         }
 
+        // Resolve baseline_stale before any baseline wiring so a typo'd or
+        // orphaned parameter aborts bootstrap first (fail-loud policy).
+        $baselineStaleMode = self::resolveBaselineStaleMode($parameters, $baselineFile !== null);
+
         ViolationBaselineCollector::resetCurrent();
+        ViolationBaselineEnforcer::resetCurrent();
         $baselineGeneratePath = null;
         if (self::baselineGenerationRequested()) {
             // Refuse generation in paratest workers up front: every worker
@@ -344,6 +391,26 @@ final class OpenApiCoverageExtension implements Extension
 
             ViolationBaselineCollector::setCurrent(new ViolationBaselineCollector());
             $baselineGeneratePath = $baselineFile;
+        } elseif ($baselineFile !== null) {
+            // Issue #402: enforcement. A configured baseline_file that cannot
+            // be loaded is FATAL — swallowing a typo'd path or a corrupted
+            // file would silently disable suppression (all-red run) or, worse,
+            // look like "no known violations" to anyone reading the config.
+            try {
+                $baseline = ViolationBaselineFile::read($baselineFile);
+            } catch (InvalidArgumentException $e) {
+                self::writeStderr(
+                    "[Gesso] FATAL: baseline_file could not be loaded: {$e->getMessage()}\n"
+                    . "  Action: generate it with `OPENAPI_BASELINE_GENERATE=1 vendor/bin/phpunit`, fix the path, or remove the `baseline_file` parameter.\n",
+                );
+
+                throw new InvalidBaselineConfigurationException(
+                    'baseline_file could not be loaded: ' . $e->getMessage(),
+                    previous: $e,
+                );
+            }
+
+            ViolationBaselineEnforcer::setCurrent(new ViolationBaselineEnforcer($baseline));
         }
 
         // Resolve strict first so threshold validation can promote bad values
@@ -403,6 +470,16 @@ final class OpenApiCoverageExtension implements Extension
             return;
         }
 
+        // Issue #402: on enforcement runs, verify that every planned test
+        // finished with no defects — the stale gate must not report unhit
+        // entries as removable when later assertions never ran (truncated
+        // --stop-on-* runs, hook failures, failed/skipped tests).
+        $baselineCompletionTracer = null;
+        if (ViolationBaselineEnforcer::current() !== null) {
+            $baselineCompletionTracer = new TestRunCompletionTracer();
+            $facade->registerTracer($baselineCompletionTracer);
+        }
+
         $facade->registerSubscriber(new CoverageReportSubscriber(
             specs: $specs,
             outputFile: $outputFile,
@@ -420,7 +497,43 @@ final class OpenApiCoverageExtension implements Extension
             partialRun: $partialRun,
             strictRequiredMode: $strictRequiredMode,
             baselineGeneratePath: $baselineGeneratePath,
+            baselineStaleMode: $baselineStaleMode,
+            baselineCompletionTracer: $baselineCompletionTracer,
         ));
+    }
+
+    /**
+     * Issue #402: read the `baseline_stale` parameter. Missing and empty
+     * values resolve to {@see BaselineStaleMode::Note}; unrecognised values
+     * and a `baseline_stale` without a `baseline_file` (nothing to evaluate
+     * staleness against) are FATAL — silently dropping the parameter would
+     * defeat the opt-in fail-loud policy this extension enforces.
+     */
+    private static function resolveBaselineStaleMode(
+        ParameterCollection $parameters,
+        bool $hasBaselineFile,
+    ): BaselineStaleMode {
+        if (!$parameters->has('baseline_stale')) {
+            return BaselineStaleMode::Note;
+        }
+
+        if (!$hasBaselineFile) {
+            $reason = 'baseline_stale is set but no `baseline_file` extension parameter is configured. '
+                . 'Stale evaluation needs a baseline to compare against; set `baseline_file` or remove `baseline_stale`.';
+            self::writeStderr("[Gesso] FATAL: {$reason}\n");
+
+            throw new InvalidBaselineConfigurationException($reason);
+        }
+
+        $raw = $parameters->get('baseline_stale');
+
+        try {
+            return BaselineStaleMode::fromConfigValue($raw);
+        } catch (InvalidArgumentException $e) {
+            self::writeStderr("[Gesso] FATAL: {$e->getMessage()}\n");
+
+            throw new InvalidBaselineConfigurationException($e->getMessage(), previous: $e);
+        }
     }
 
     /**

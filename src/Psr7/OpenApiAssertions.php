@@ -10,6 +10,7 @@ use PHPUnit\Framework\AssertionFailedError;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
 use Studio\Gesso\Baseline\ViolationBaselineCollector;
+use Studio\Gesso\Baseline\ViolationBaselineEnforcer;
 use Studio\Gesso\Internal\CurlCommandFormatter;
 use Studio\Gesso\Internal\FailureOutput;
 use Studio\Gesso\Internal\StackTraceFilter;
@@ -115,6 +116,28 @@ trait OpenApiAssertions
             return;
         }
 
+        $enforcer = ViolationBaselineEnforcer::current();
+        if ($enforcer !== null) {
+            $method = $request->getMethod();
+            $path = $request->getUri()->getPath() ?: '/';
+            // Every failing side is checked — no short-circuit — so hits are
+            // marked on baselined sides even when another side fails loud.
+            $allSuppressed = true;
+            foreach ([$result->requestResult(), $result->responseResult()] as $sideResult) {
+                if (
+                    !$sideResult->isValid() &&
+                    !$enforcer->suppressesResult((string) $this->cachedPsr7SpecName, $sideResult, $method, $path)
+                ) {
+                    $allSuppressed = false;
+                }
+            }
+            if ($allSuppressed) {
+                $this->assertPsr7(true, '');
+
+                return;
+            }
+        }
+
         $message = FailureOutput::composeExchange(
             sprintf(
                 'OpenAPI PSR-7 exchange validation failed for %s %s (spec: %s)',
@@ -192,7 +215,9 @@ trait OpenApiAssertions
      *
      * During a baseline generation run (issue #402) the failure is demoted
      * instead: fingerprints are recorded and the assertion passes so the
-     * whole suite completes in one run.
+     * whole suite completes in one run. During an enforcement run the
+     * failure is suppressed only when every issue is baselined; any new
+     * violation falls through to the full, unmodified failure.
      *
      * @param Closure(): string $reproduceCommand
      */
@@ -212,6 +237,13 @@ trait OpenApiAssertions
         $collector = ViolationBaselineCollector::current();
         if ($collector !== null) {
             $collector->recordResult((string) $this->cachedPsr7SpecName, $result, $method, $path);
+            $this->assertPsr7(true, '');
+
+            return;
+        }
+
+        $enforcer = ViolationBaselineEnforcer::current();
+        if ($enforcer !== null && $enforcer->suppressesResult((string) $this->cachedPsr7SpecName, $result, $method, $path)) {
             $this->assertPsr7(true, '');
 
             return;

@@ -4,12 +4,13 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Baseline;
 
+use Studio\Gesso\Spec\OpenApiOperationResolver;
 use Studio\Gesso\ValidationIssue;
 
 use function explode;
 use function implode;
 use function preg_match;
-use function strtoupper;
+use function sprintf;
 
 /**
  * Stable identity of one contract violation for the violation baseline
@@ -68,6 +69,11 @@ final readonly class ViolationFingerprint
      * Build a fingerprint from one structured issue. The adapter's resolved
      * method and raw request path fill in when the issue carries no context
      * of its own (e.g. path-match failures never resolve a spec template).
+     *
+     * Fixed HTTP methods normalize to their canonical uppercase key; OpenAPI
+     * 3.2 custom `additionalOperations` methods keep their exact spelling
+     * because they are case-sensitive — a baselined `COPY` violation must
+     * not absorb a new `copy` violation.
      */
     public static function fromIssue(
         string $specName,
@@ -77,7 +83,7 @@ final readonly class ViolationFingerprint
     ): self {
         return new self(
             spec: $specName,
-            method: strtoupper($issue->method ?? $fallbackMethod),
+            method: OpenApiOperationResolver::normalizeMethodForKey($issue->method ?? $fallbackMethod),
             path: $issue->path ?? $fallbackPath,
             statusCode: $issue->statusCode,
             contentType: $issue->contentType,
@@ -137,6 +143,34 @@ final readonly class ViolationFingerprint
         }
 
         return implode("\x1f", $parts);
+    }
+
+    /**
+     * One-line human-readable rendering for stale-entry listings. Null
+     * fields are omitted so the line stays compact; the empty-string
+     * instance path (document root) renders as `""` to stay visible.
+     */
+    public function describe(): string
+    {
+        $line = sprintf('[%s] %s %s', $this->spec, $this->method, $this->path);
+        if ($this->statusCode !== null) {
+            $line .= ' status=' . $this->statusCode;
+        }
+        if ($this->contentType !== null) {
+            $line .= ' content-type=' . $this->contentType;
+        }
+        $line .= ' ' . $this->category;
+        if ($this->parameter !== null) {
+            $line .= ' parameter=' . $this->parameter;
+        }
+        if ($this->instancePath !== null) {
+            $line .= ' instance_path=' . ($this->instancePath === '' ? '""' : $this->instancePath);
+        }
+        if ($this->keyword !== null) {
+            $line .= ' keyword=' . $this->keyword;
+        }
+
+        return $line;
     }
 
     /** @return FingerprintEntry */
