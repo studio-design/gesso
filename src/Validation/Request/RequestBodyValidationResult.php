@@ -39,8 +39,9 @@ use Studio\Gesso\ValidationIssue;
  *
  * `violations` carries the structured twin of `errors` on the schema-error
  * path only: index-aligned, with `errors[$i]` always equal to
- * `"[{$violations[$i]->instancePath}] {$violations[$i]->message}"`. Every
- * non-schema error site (missing required body, unknown content type,
+ * `"[{$violations[$i]->displayPath()}] {$violations[$i]->message}"` (the
+ * display path renders the RFC 6901 root pointer `''` as the legacy `/`).
+ * Every non-schema error site (missing required body, unknown content type,
  * exception boundary) leaves it empty — consumers must check the counts
  * align before pairing the two lists.
  *
