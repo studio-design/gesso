@@ -53,6 +53,16 @@ use function sprintf;
  */
 final readonly class ViolationFingerprint
 {
+    /**
+     * Synthetic keyword marking an adapter body-decode failure (unparseable
+     * JSON, unreadable/non-seekable stream). It keeps the failure distinct
+     * from a genuinely empty body reported on the same operation — both
+     * otherwise collapse to a body-category entry with no pointer context —
+     * and marks same-category sibling issues as placeholder artifacts
+     * ({@see decodeFailureCategories()}).
+     */
+    public const KEYWORD_PARSE = 'parse';
+
     public function __construct(
         public string $spec,
         public string $method,
@@ -94,6 +104,56 @@ final readonly class ViolationFingerprint
             keyword: $issue->keyword,
             parameter: $issue->parameter,
         );
+    }
+
+    /**
+     * Fingerprint of a body-decode failure the Laravel / Symfony adapters
+     * record before validation runs. It deliberately carries no matched
+     * status / content-type / pointer context — the failure happens before
+     * path matching — so enforcement can rebuild it from the raw request
+     * context alone. The PSR-7 adapter instead folds the failure into the
+     * result as a `parse`-keyword issue and goes through {@see fromIssue()}.
+     */
+    public static function forDecodeFailure(
+        string $specName,
+        string $method,
+        string $path,
+        string $category,
+    ): self {
+        return new self(
+            spec: $specName,
+            method: OpenApiOperationResolver::normalizeMethodForKey($method),
+            path: $path,
+            statusCode: null,
+            contentType: null,
+            category: $category,
+            instancePath: null,
+            keyword: self::KEYWORD_PARSE,
+        );
+    }
+
+    /**
+     * Categories whose non-`parse` issues are artifacts of an adapter
+     * body-decode failure in the same result: the validator ran against a
+     * placeholder (absent or raw-string) body, so its same-side body
+     * verdicts describe the placeholder, not the real payload. Recording
+     * them would let the baseline absorb a future genuine violation —
+     * e.g. a truly empty body.
+     *
+     * @param list<ValidationIssue> $issues
+     *
+     * @return array<string, true>
+     */
+    public static function decodeFailureCategories(array $issues): array
+    {
+        $categories = [];
+        foreach ($issues as $issue) {
+            if ($issue->keyword === self::KEYWORD_PARSE) {
+                $categories[$issue->category] = true;
+            }
+        }
+
+        return $categories;
     }
 
     /**

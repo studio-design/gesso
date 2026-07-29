@@ -52,9 +52,11 @@ This library follows [Semantic Versioning 2.0](https://semver.org/). v1.0.0 is t
   distinguished by the parameter / response-header / security-scheme name in
   `parameter`, and parameter / response-header schema violations additionally
   by `keyword` and `instance_path` — missing required parameters and headers
-  carry `keyword: required`, and security-scheme satisfaction failures carry
+  carry `keyword: required`, security-scheme satisfaction failures carry
   `keyword: required` (credentials absent) or `keyword: format` (present but
-  unusable)), the `OPENAPI_BASELINE_GENERATE` environment variable, and the
+  unusable), and adapter body-decode failures (unparseable JSON, unreadable
+  stream) carry `keyword: parse` so they stay distinct from a genuinely empty
+  body), the `OPENAPI_BASELINE_GENERATE` environment variable, and the
   `baseline_file` / `baseline_stale` extension parameters (`baseline_stale`
   values: `off` | `note` | `fail`, default `note`). The enforcement semantics
   are part of the contract too: with `baseline_file` configured, a failing

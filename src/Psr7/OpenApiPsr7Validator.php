@@ -12,6 +12,7 @@ use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Message\StreamInterface;
 use RuntimeException;
+use Studio\Gesso\Baseline\ViolationFingerprint;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\DecodedBody;
 use Studio\Gesso\OpenApiRequestValidator;
@@ -206,8 +207,11 @@ final class OpenApiPsr7Validator
      * Prepend adapter-level body errors (unreadable/non-seekable stream, JSON
      * parse failure) to the validator result. Adapter errors are tagged with
      * the given body category (`request.body` / `response.body`) and the
-     * validator's structured issues are kept as-is, in the same order as
-     * `errors()`, so `issues()` never degrades to `unknown` here.
+     * synthetic `parse` keyword — the violation baseline uses it to keep a
+     * decode failure distinct from a genuinely empty body and to identify
+     * same-category sibling issues as placeholder artifacts. The validator's
+     * structured issues are kept as-is, in the same order as `errors()`, so
+     * `issues()` never degrades to `unknown` here.
      *
      * `$statusCode` / `$contentType` are the issue context for the adapter
      * entries and are side-specific: the caller passes the result's matched
@@ -235,6 +239,7 @@ final class OpenApiPsr7Validator
             $adapterIssues[] = new ValidationIssue(
                 $category,
                 $message,
+                keyword: ViolationFingerprint::KEYWORD_PARSE,
                 method: $method,
                 path: $result->matchedPath(),
                 statusCode: $statusCode,

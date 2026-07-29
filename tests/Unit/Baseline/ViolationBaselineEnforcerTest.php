@@ -143,8 +143,9 @@ class ViolationBaselineEnforcerTest extends TestCase
     {
         $baseline = new ViolationBaseline();
         // Exactly the fingerprint the adapters record at generation time:
-        // raw method / path, no matched status or content-type, no pointer.
-        $baseline->add(new ViolationFingerprint('front', 'GET', '/v1/pets', null, null, 'response.body', null, null));
+        // raw method / path, no matched status or content-type, no pointer,
+        // the synthetic `parse` keyword.
+        $baseline->add(ViolationFingerprint::forDecodeFailure('front', 'GET', '/v1/pets', 'response.body'));
         $enforcer = new ViolationBaselineEnforcer($baseline);
 
         $this->assertTrue($enforcer->suppressesDecodeFailure('front', 'GET', '/v1/pets', 'response.body'));
@@ -159,8 +160,8 @@ class ViolationBaselineEnforcerTest extends TestCase
         // operations, so a baselined COPY violation must not suppress a new
         // copy violation. Fixed HTTP methods still match case-insensitively.
         $baseline = new ViolationBaseline();
-        $baseline->add(new ViolationFingerprint('front', 'COPY', '/v1/pets', null, null, 'request.body', null, null));
-        $baseline->add(new ViolationFingerprint('front', 'GET', '/v1/pets', null, null, 'response.body', null, null));
+        $baseline->add(ViolationFingerprint::forDecodeFailure('front', 'COPY', '/v1/pets', 'request.body'));
+        $baseline->add(ViolationFingerprint::forDecodeFailure('front', 'GET', '/v1/pets', 'response.body'));
         $enforcer = new ViolationBaselineEnforcer($baseline);
 
         $this->assertFalse($enforcer->suppressesDecodeFailure('front', 'copy', '/v1/pets', 'request.body'));

@@ -1109,16 +1109,7 @@ trait ValidatesOpenApiSchema
             return $extract();
         } catch (AssertionFailedError $e) {
             if ($collector !== null) {
-                $collector->record(new ViolationFingerprint(
-                    $specName,
-                    OpenApiOperationResolver::normalizeMethodForKey($method),
-                    $path,
-                    null,
-                    null,
-                    $category,
-                    null,
-                    null,
-                ));
+                $collector->record(ViolationFingerprint::forDecodeFailure($specName, $method, $path, $category));
                 $decodeFailureDemoted = true;
 
                 return DecodedBody::absent();

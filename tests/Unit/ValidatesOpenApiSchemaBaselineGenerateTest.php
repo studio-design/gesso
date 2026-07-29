@@ -87,7 +87,7 @@ class ValidatesOpenApiSchemaBaselineGenerateTest extends TestCase
             null,
             'response.body',
             null,
-            null,
+            'parse',
         )));
     }
 
@@ -110,7 +110,7 @@ class ValidatesOpenApiSchemaBaselineGenerateTest extends TestCase
             null,
             'response.body',
             null,
-            null,
+            'parse',
         )));
         $this->assertTrue($this->collector->baseline()->contains(new ViolationFingerprint(
             'petstore-3.0',
