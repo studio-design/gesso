@@ -9,19 +9,10 @@ use RuntimeException;
 use Studio\Gesso\HttpMethod;
 use Studio\Gesso\Spec\OpenApiOperationResolver;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
-use Studio\Gesso\Validation\Support\MalformedSpecNode;
 use Throwable;
 
-use function array_filter;
-use function array_intersect;
-use function array_key_exists;
-use function array_map;
-use function array_values;
 use function crc32;
 use function implode;
-use function in_array;
-use function is_array;
-use function is_string;
 use function sprintf;
 
 /**
@@ -33,30 +24,7 @@ use function sprintf;
  */
 final class OpenApiSpecExploration
 {
-    /** @var list<string> */
-    private array $includedTags = [];
-
-    /** @var list<string> */
-    private array $excludedTags = [];
-
-    /** @var list<string> */
-    private array $includedMethods = [];
-
-    /** @var list<string> */
-    private array $excludedMethods = [];
-
-    /** @var list<string> */
-    private array $includedPaths = [];
-
-    /** @var list<string> */
-    private array $excludedPaths = [];
-
-    /** @var list<string> */
-    private array $includedOperationIds = [];
-
-    /** @var list<string> */
-    private array $excludedOperationIds = [];
-    private bool $includeDeprecated = false;
+    use SelectsExploredOperations;
 
     /** @var null|list<int> */
     private ?array $negativeExpectedStatusClasses = null;
@@ -84,77 +52,6 @@ final class OpenApiSpecExploration
         private readonly int $casesPerOperation,
         private readonly int $seed,
     ) {}
-
-    /** @param list<string> $tags */
-    public function includeTags(array $tags): self
-    {
-        $this->includedTags = $tags;
-
-        return $this;
-    }
-
-    /** @param list<string> $tags */
-    public function excludeTags(array $tags): self
-    {
-        $this->excludedTags = $tags;
-
-        return $this;
-    }
-
-    /** @param list<string> $methods */
-    public function includeMethods(array $methods): self
-    {
-        $this->includedMethods = array_map(self::normalizeFilterMethod(...), $methods);
-
-        return $this;
-    }
-
-    /** @param list<string> $methods */
-    public function excludeMethods(array $methods): self
-    {
-        $this->excludedMethods = array_map(self::normalizeFilterMethod(...), $methods);
-
-        return $this;
-    }
-
-    /** @param list<string> $paths */
-    public function includePaths(array $paths): self
-    {
-        $this->includedPaths = $paths;
-
-        return $this;
-    }
-
-    /** @param list<string> $paths */
-    public function excludePaths(array $paths): self
-    {
-        $this->excludedPaths = $paths;
-
-        return $this;
-    }
-
-    /** @param list<string> $operationIds */
-    public function includeOperations(array $operationIds): self
-    {
-        $this->includedOperationIds = $operationIds;
-
-        return $this;
-    }
-
-    /** @param list<string> $operationIds */
-    public function excludeOperations(array $operationIds): self
-    {
-        $this->excludedOperationIds = $operationIds;
-
-        return $this;
-    }
-
-    public function includeDeprecated(bool $include = true): self
-    {
-        $this->includeDeprecated = $include;
-
-        return $this;
-    }
 
     /**
      * Switch the plan to single-constraint invalid cases. The expected status
@@ -235,7 +132,7 @@ final class OpenApiSpecExploration
         }
 
         $spec = OpenApiSpecLoader::load($this->specName);
-        $paths = $this->validatedPaths($spec);
+        $paths = SpecPathsPreflight::validatedPaths($this->specName, $spec);
         $selected = 0;
         $executedOperations = 0;
         $executedCases = 0;
@@ -300,128 +197,12 @@ final class OpenApiSpecExploration
         return new SpecExplorationSummary($executedOperations, $executedCases, $operations, $skips);
     }
 
-    private static function normalizeFilterMethod(string $method): string
-    {
-        return OpenApiOperationResolver::normalizeMethodForKey($method);
-    }
-
-    /**
-     * Validate every structural node required to enumerate the spec before
-     * dispatching any request. A mixed valid/malformed document must fail
-     * atomically instead of executing the valid prefix and silently omitting
-     * the malformed remainder.
-     *
-     * @param array<string, mixed> $spec
-     *
-     * @return array<string, array<string, mixed>>
-     */
-    private function validatedPaths(array $spec): array
-    {
-        $paths = array_key_exists('paths', $spec) ? $spec['paths'] : [];
-        if (MalformedSpecNode::isMalformed($paths)) {
-            throw new InvalidArgumentException(sprintf(
-                "Malformed 'paths' in '%s' spec: expected object, got %s.",
-                $this->specName,
-                MalformedSpecNode::describe($paths),
-            ));
-        }
-
-        foreach ($paths as $path => $pathItem) {
-            if (!is_string($path)) {
-                throw new InvalidArgumentException(sprintf(
-                    "Malformed 'paths' in '%s' spec: expected string path key.",
-                    $this->specName,
-                ));
-            }
-
-            if (MalformedSpecNode::isMalformed($pathItem)) {
-                throw new InvalidArgumentException(sprintf(
-                    "Malformed 'paths[\"%s\"]' in '%s' spec: expected object, got %s.",
-                    $path,
-                    $this->specName,
-                    MalformedSpecNode::describe($pathItem),
-                ));
-            }
-
-            if (array_key_exists('additionalOperations', $pathItem) &&
-                MalformedSpecNode::isMalformed($pathItem['additionalOperations'])) {
-                throw new InvalidArgumentException(sprintf(
-                    "Malformed 'paths[\"%s\"].additionalOperations' in '%s' spec: expected object, got %s.",
-                    $path,
-                    $this->specName,
-                    MalformedSpecNode::describe($pathItem['additionalOperations']),
-                ));
-            }
-
-            foreach (OpenApiOperationResolver::declaredOperations($pathItem) as $declared) {
-                if (!MalformedSpecNode::isMalformed($declared['operation'])) {
-                    continue;
-                }
-
-                throw new InvalidArgumentException(sprintf(
-                    "Malformed 'paths[\"%s\"].%s' for %s %s in '%s' spec: expected object, got %s.",
-                    $path,
-                    $declared['location'],
-                    $declared['method'],
-                    $path,
-                    $this->specName,
-                    MalformedSpecNode::describe($declared['operation']),
-                ));
-            }
-        }
-
-        return $paths;
-    }
-
     private function operationFromDeclaration(string $path, string $method, mixed $rawOperation): ExploredOperation
     {
         $normalizedMethod = OpenApiOperationResolver::normalizeMethodForKey($method);
-        $operation = is_array($rawOperation) ? $rawOperation : [];
-        $operationId = is_string($operation['operationId'] ?? null) ? $operation['operationId'] : null;
-        $tags = is_array($operation['tags'] ?? null)
-            ? array_values(array_filter($operation['tags'], is_string(...)))
-            : [];
         $derivedSeed = crc32(implode("\0", [$this->specName, $normalizedMethod, $path, (string) $this->seed])) & 0x7fffffff;
 
-        return new ExploredOperation(
-            $this->specName,
-            $normalizedMethod,
-            $path,
-            $operationId,
-            $tags,
-            ($operation['deprecated'] ?? false) === true,
-            $derivedSeed,
-        );
-    }
-
-    private function matchesFilters(ExploredOperation $operation): bool
-    {
-        if (!$this->includeDeprecated && $operation->deprecated) {
-            return false;
-        }
-        if ($this->includedTags !== [] && array_intersect($this->includedTags, $operation->tags) === []) {
-            return false;
-        }
-        if (array_intersect($this->excludedTags, $operation->tags) !== []) {
-            return false;
-        }
-        if ($this->includedMethods !== [] && !in_array($operation->method, $this->includedMethods, true)) {
-            return false;
-        }
-        if (in_array($operation->method, $this->excludedMethods, true)) {
-            return false;
-        }
-        if ($this->includedPaths !== [] && !in_array($operation->path, $this->includedPaths, true)) {
-            return false;
-        }
-        if (in_array($operation->path, $this->excludedPaths, true)) {
-            return false;
-        }
-        if ($this->includedOperationIds !== [] && !in_array($operation->operationId, $this->includedOperationIds, true)) {
-            return false;
-        }
-
-        return !in_array($operation->operationId, $this->excludedOperationIds, true);
+        return ExploredOperation::fromDeclaration($this->specName, $path, $method, $rawOperation, $derivedSeed);
     }
 
     private function runOperation(
