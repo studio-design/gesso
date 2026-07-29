@@ -267,9 +267,13 @@ operations passes the filters. Override the pass statuses per check with
 frameworks that answer unknown methods with 404.
 
 Probe construction: candidates are the explorer-supported methods (`GET`,
-`POST`, `PUT`, `PATCH`, `DELETE`, `QUERY`) minus the path's documented fixed
-methods; OpenAPI 3.2 `additionalOperations` are never probed (case-sensitive
-custom methods). Concrete path parameters are generated from a documented
+`POST`, `PUT`, `PATCH`, `DELETE`, `QUERY`) minus every method the path
+documents — fixed fields and `additionalOperations` keys, matched
+case-sensitively, so a (spec-invalid but runtime-honored) `"PUT"` entry
+under `additionalOperations` removes `PUT` from the candidates while a
+custom `"copy"` entry removes nothing. OpenAPI 3.2 `additionalOperations`
+are never probed themselves (case-sensitive custom methods). Concrete path
+parameters are generated from a documented
 operation of the same path. Paths where every explorable method is documented,
 or where no documented operation's values can be generated, appear in
 `$summary->skips` with a reason. `ContractCheckFailure::describe()` names the

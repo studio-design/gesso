@@ -11,14 +11,12 @@ use Studio\Gesso\Spec\OpenApiOperationResolver;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Throwable;
 
-use function array_key_exists;
 use function array_values;
 use function count;
 use function crc32;
 use function implode;
 use function in_array;
 use function sprintf;
-use function strtoupper;
 
 /**
  * Fluent, process-local plan that dispatches named negative contract checks
@@ -206,8 +204,9 @@ final class ContractCheckPlan
     /**
      * Choose one undocumented explorable method for the path and build the
      * probe case from a generatable documented operation's concrete values.
-     * `additionalOperations` names are never probe candidates: they are
-     * case-sensitive custom methods outside the fixed HTTP set.
+     * `additionalOperations` names are never probed themselves (case-sensitive
+     * custom methods), but every declared name counts as documented and is
+     * excluded from the candidates.
      *
      * @param array<string, mixed> $pathItem
      * @param non-empty-list<ExploredOperation> $matching
@@ -223,11 +222,15 @@ final class ContractCheckPlan
         int $derivedSeed,
         array &$skips,
     ): ?array {
+        // Every declared method name counts as documented: fixed fields under
+        // their canonical uppercase key, additionalOperations entries verbatim.
+        // OAS 3.2 forbids additionalOperations entries that spell a fixed
+        // method ("PUT"), but the runtime resolver honors them case-sensitively,
+        // so the probe must too — otherwise a documented method would be
+        // reported as an unsupported-method contract failure.
         $documented = [];
-        foreach (OpenApiOperationResolver::FIXED_OPERATION_FIELDS as $field) {
-            if (array_key_exists($field, $pathItem)) {
-                $documented[] = strtoupper($field);
-            }
+        foreach (OpenApiOperationResolver::declaredOperations($pathItem) as $declared) {
+            $documented[] = $declared['method'];
         }
 
         $candidates = [];

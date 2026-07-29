@@ -14,6 +14,8 @@ use Studio\Gesso\Fuzz\ExploredOperation;
 use Studio\Gesso\Fuzz\OpenApiContractChecks;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 
+use function range;
+
 class OpenApiContractChecksTest extends TestCase
 {
     protected function setUp(): void
@@ -235,6 +237,29 @@ class OpenApiContractChecksTest extends TestCase
         $this->assertSame(0, $summary->dispatchedProbes);
         $this->assertCount(1, $summary->skips);
         $this->assertStringContainsString('explorer-supported method', $summary->skips[0]->reason);
+    }
+
+    #[Test]
+    public function an_additional_operations_entry_spelling_a_fixed_method_is_documented_not_probed(): void
+    {
+        $methods = [];
+        foreach (range(1, 10) as $seed) {
+            OpenApiContractChecks::run('contract-checks', seed: $seed)
+                ->checks([ContractCheck::UnsupportedMethod])
+                ->includePaths(['/mixed'])
+                ->dispatchUsing(static function (ExploredCase $case) use (&$methods): int {
+                    $methods[] = $case->method->value;
+
+                    return 405;
+                })
+                ->report();
+        }
+
+        // /mixed documents GET (fixed field) and PUT (additionalOperations
+        // "PUT" — the wire method PUT, resolved case-sensitively at runtime).
+        $this->assertNotContains('PUT', $methods);
+        $this->assertNotContains('GET', $methods);
+        $this->assertNotSame([], $methods);
     }
 
     #[Test]
