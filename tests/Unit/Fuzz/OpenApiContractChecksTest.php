@@ -176,6 +176,13 @@ class OpenApiContractChecksTest extends TestCase
     }
 
     #[Test]
+    public function expected_statuses_rejects_an_empty_list(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        OpenApiContractChecks::run('contract-checks')->expectedStatuses(ContractCheck::UnsupportedMethod, []);
+    }
+
+    #[Test]
     public function run_rejects_an_empty_spec_name(): void
     {
         $this->expectException(InvalidArgumentException::class);
@@ -251,7 +258,7 @@ class OpenApiContractChecksTest extends TestCase
         $first = $probeFor(7);
         $this->assertSame($first, $probeFor(7), 'same seed must choose the same probe method');
         $this->assertContains($first, ['PUT', 'PATCH', 'DELETE', 'QUERY']);
-        // Pinned regression: fill in the literal observed on first green run.
+        // Pinned regression: seed 7 deterministically selects PUT for /pets.
         $this->assertSame('PUT', $first);
     }
 }

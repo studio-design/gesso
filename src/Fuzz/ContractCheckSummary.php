@@ -13,6 +13,7 @@ use function implode;
 final readonly class ContractCheckSummary
 {
     /**
+     * @param int $probedPaths unique paths for which at least one probe was dispatched
      * @param list<ContractCheckFailure> $failures
      * @param list<ContractCheckSkip> $skips
      */

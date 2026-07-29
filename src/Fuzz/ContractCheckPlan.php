@@ -124,10 +124,10 @@ final class ContractCheckPlan
     public function report(): ContractCheckSummary
     {
         if ($this->dispatch === null) {
-            throw new InvalidArgumentException('Contract checks requires dispatchUsing() before report().');
+            throw new InvalidArgumentException('The contract check plan requires dispatchUsing() before report().');
         }
         if ($this->checks === []) {
-            throw new InvalidArgumentException('Contract checks requires checks() with at least one check before report().');
+            throw new InvalidArgumentException('The contract check plan requires checks() with at least one check before report().');
         }
 
         $spec = OpenApiSpecLoader::load($this->specName);
@@ -135,7 +135,8 @@ final class ContractCheckPlan
 
         $failures = [];
         $skips = [];
-        $probedPaths = 0;
+        /** @var array<string, true> */
+        $probedPathSet = [];
         $dispatchedProbes = 0;
         $selected = 0;
 
@@ -160,14 +161,16 @@ final class ContractCheckPlan
                 }
                 $selected += count($matching);
 
-                $probe = $this->buildUnsupportedMethodProbe($check, $path, $pathItem, $matching, $derivedSeed, $skips);
+                $probe = match ($check) {
+                    ContractCheck::UnsupportedMethod => $this->buildUnsupportedMethodProbe($check, $path, $pathItem, $matching, $derivedSeed, $skips),
+                };
                 if ($probe === null) {
                     continue;
                 }
                 [$case, $sourceOperation] = $probe;
-                $probedPaths++;
+                $probedPathSet[$path] = true;
 
-                $actualStatus = $this->dispatchProbe($check, $case, $sourceOperation);
+                $actualStatus = $this->dispatchProbe($check, $case, $sourceOperation, $derivedSeed);
                 $dispatchedProbes++;
 
                 $expected = $this->expectedStatusOverrides[$check->value] ?? $check->defaultExpectedStatuses();
@@ -192,7 +195,7 @@ final class ContractCheckPlan
             ));
         }
 
-        return new ContractCheckSummary($probedPaths, $dispatchedProbes, $failures, $skips);
+        return new ContractCheckSummary(count($probedPathSet), $dispatchedProbes, $failures, $skips);
     }
 
     private function derivedSeed(ContractCheck $check, string $path): int
@@ -263,6 +266,8 @@ final class ContractCheckPlan
                 $lastReason = $e->getMessage();
 
                 continue;
+            } catch (Throwable $e) {
+                throw new RuntimeException($this->generationFailureMessage($check, $operation, $derivedSeed, $e), 0, $e);
             }
 
             foreach ($cases as $sourceCase) {
@@ -287,7 +292,26 @@ final class ContractCheckPlan
         return null;
     }
 
-    private function dispatchProbe(ContractCheck $check, ExploredCase $case, ExploredOperation $operation): int
+    private function generationFailureMessage(
+        ContractCheck $check,
+        ExploredOperation $operation,
+        int $derivedSeed,
+        Throwable $failure,
+    ): string {
+        return sprintf(
+            "Contract check input generation failed.\nCheck: %s\nSpec: %s\nOperation: %s\nMethod/path: %s %s\nGlobal seed: %d\nDerived seed: %d\nMessage: %s",
+            $check->value,
+            $this->specName,
+            $operation->operationId ?? '(none)',
+            $operation->method,
+            $operation->path,
+            $this->seed,
+            $derivedSeed,
+            $failure->getMessage(),
+        );
+    }
+
+    private function dispatchProbe(ContractCheck $check, ExploredCase $case, ExploredOperation $operation, int $derivedSeed): int
     {
         try {
             if ($this->setUp !== null) {
@@ -309,7 +333,7 @@ final class ContractCheckPlan
                     $case->method->value,
                     $case->matchedPath,
                     $this->seed,
-                    $case->seed ?? 0,
+                    $derivedSeed,
                     $case->curlSnippet(),
                 ), 0, $e);
             }

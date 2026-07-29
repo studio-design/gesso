@@ -21,6 +21,11 @@ final readonly class ContractCheckFailure
         public ContractCheck $check,
         public string $method,
         public string $path,
+        /**
+         * Null for unsupported_method (the probe's method has no documented
+         * operation by definition); populated by per-operation checks
+         * (planned: ignored_auth, missing_required_header).
+         */
         public ?string $operationId,
         public array $expectedStatuses,
         public int $actualStatus,
