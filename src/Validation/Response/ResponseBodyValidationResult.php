@@ -6,6 +6,7 @@ namespace Studio\Gesso\Validation\Response;
 
 use InvalidArgumentException;
 use Studio\Gesso\OpenApiValidationResult;
+use Studio\Gesso\Validation\Support\SchemaViolation;
 
 /**
  * Outcome of {@see ResponseBodyValidator::validate()}.
@@ -28,12 +29,20 @@ use Studio\Gesso\OpenApiValidationResult;
  * Coverage tracking uses `matchedContentType` to record per-(status, media-type)
  * granularity instead of treating the whole endpoint as a single bucket.
  *
+ * `violations` carries the structured twin of `errors` on the schema-error
+ * path only: index-aligned, with `errors[$i]` always equal to
+ * `"[{$violations[$i]->displayPath()}] {$violations[$i]->message}"` (the
+ * display path renders the RFC 6901 root pointer `''` as the legacy `/`).
+ * Every non-schema error site (empty body, decode failure) leaves it empty —
+ * consumers must check the counts align before pairing the two lists.
+ *
  * @internal Not part of the package's public API. Do not use from user code.
  */
 final readonly class ResponseBodyValidationResult
 {
     /**
      * @param string[] $errors
+     * @param list<SchemaViolation> $violations
      *
      * @throws InvalidArgumentException when `skipReason` is set alongside a
      *                                  non-empty `errors` list (a skip is mutually exclusive with
@@ -45,6 +54,7 @@ final readonly class ResponseBodyValidationResult
         public array $errors,
         public ?string $matchedContentType,
         public ?string $skipReason = null,
+        public array $violations = [],
     ) {
         if ($skipReason !== null && $errors !== []) {
             throw new InvalidArgumentException(

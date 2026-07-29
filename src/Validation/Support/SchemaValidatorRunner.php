@@ -93,6 +93,30 @@ final class SchemaValidatorRunner
      */
     public function validate(mixed $jsonSchema, mixed $data): array
     {
+        $grouped = [];
+        foreach ($this->validateStructured($jsonSchema, $data) as $violation) {
+            $grouped[$violation->displayPath()][] = $violation->message;
+        }
+
+        return $grouped;
+    }
+
+    /**
+     * Structured variant of {@see self::validate()}: same violations, same
+     * order (the pointer-keyed map above is derived from this list, so the
+     * two views can never drift), but each entry keeps the instance pointer
+     * and failing keyword as fields instead of baking the pointer into a
+     * `[{pointer}] {message}` prefix. Runs through the same cascade-dedup
+     * pipeline (issue #159).
+     *
+     * Pointers here are RFC 6901 (`''` = document root, `'/'` = the
+     * empty-string key) — unlike the map view, which keeps opis's legacy
+     * rendering of both as `'/'` ({@see SchemaViolation::displayPath()}).
+     *
+     * @return list<SchemaViolation>
+     */
+    public function validateStructured(mixed $jsonSchema, mixed $data): array
+    {
         $jsonSchema = $this->canonicalSchema($jsonSchema);
         $result = $this->opisValidator->validate($data, $jsonSchema);
 
@@ -108,15 +132,49 @@ final class SchemaValidatorRunner
             // ErrorFormatter::format() and producing a TypeError, so the
             // validator still surfaces *something* if the opis invariant
             // ever changes.
-            return ['/' => ['Schema validation failed but opis reported no error detail.']];
+            return [new SchemaViolation('', null, 'Schema validation failed but opis reported no error detail.')];
         }
 
         $cascadeActions = self::computeCascadeActions($error, $jsonSchema);
 
-        return self::applyCascadeActions(
-            $this->errorFormatter->format($error),
-            $cascadeActions,
+        // Custom formatter callable so each entry keeps its keyword next to
+        // the interpolated message; the custom key formatter produces RFC
+        // 6901 pointers (root = '') instead of opis's default, which renders
+        // the root and the empty-string key identically as '/'. Grouping and
+        // order are otherwise exactly what `validate()` has always produced.
+        /** @var array<string, list<array{message: string, keyword: string}>> $formatted */
+        $formatted = $this->errorFormatter->format(
+            $error,
+            true,
+            fn(ValidationError $entryError, ?string $message = null): array => [
+                'message' => $this->errorFormatter->formatErrorMessage($entryError, $message),
+                'keyword' => $entryError->keyword(),
+            ],
+            static fn(ValidationError $entryError): string => self::instancePointer($entryError->data()->fullPath()),
         );
+
+        $violations = [];
+        foreach (self::applyCascadeActions($formatted, $cascadeActions) as $path => $entries) {
+            foreach ($entries as $entry) {
+                $violations[] = new SchemaViolation($path, $entry['keyword'], $entry['message']);
+            }
+        }
+
+        return $violations;
+    }
+
+    /**
+     * Render raw data-path segments as an RFC 6901 JSON Pointer. Non-empty
+     * paths match opis's `JsonPointer::pathToString()` byte-for-byte; the
+     * empty path becomes `''` (the RFC root pointer) where opis would return
+     * `'/'` — which is also what it returns for the empty-string key, an
+     * ambiguity the structured output must not inherit.
+     *
+     * @param array<int, mixed> $segments
+     */
+    private static function instancePointer(array $segments): string
+    {
+        return $segments === [] ? '' : JsonPointer::pathToString($segments);
     }
 
     /**
@@ -182,7 +240,7 @@ final class SchemaValidatorRunner
                     // unchanged so we don't pay the format-pass cost or
                     // risk re-encoding the message.
                     if (count($real) < count($listed)) {
-                        $actions[JsonPointer::pathToString($segments)] = $real;
+                        $actions[self::instancePointer($segments)] = $real;
                     }
                 }
             }
@@ -200,18 +258,19 @@ final class SchemaValidatorRunner
      * genuinely-additional names. Sibling messages at the same path (e.g. a
      * `required` failure that fired in the same object) are preserved.
      *
-     * The detection of which message line is the cascade target uses a regex
-     * against opis's English template (`Additional object properties are not
-     * allowed: ...`). If opis ever rewords this template, the regex stops
-     * matching and we leave the messages unchanged — fail-safe in the noisy
-     * direction (no silent suppression of real violations). This is the only
-     * string-based step in the pipeline; the property-name comparison itself
-     * is fully structural.
+     * The cascade target is identified structurally (`keyword ===
+     * 'additionalProperties'`) AND by opis's English template (`Additional
+     * object properties are not allowed: ...`) — the rewrite re-renders that
+     * template, so it must not fire on a message whose wording it cannot
+     * reproduce. If opis ever rewords the template, the regex stops matching
+     * and the messages are left unchanged — fail-safe in the noisy direction
+     * (no silent suppression of real violations). The property-name
+     * comparison itself is fully structural.
      *
-     * @param array<string, string[]> $errors
+     * @param array<string, list<array{message: string, keyword: string}>> $errors
      * @param array<string, list<string>> $actions
      *
-     * @return array<string, string[]>
+     * @return array<string, list<array{message: string, keyword: string}>>
      */
     private static function applyCascadeActions(array $errors, array $actions): array
     {
@@ -219,16 +278,18 @@ final class SchemaValidatorRunner
             return $errors;
         }
 
-        foreach ($errors as $path => $messages) {
+        foreach ($errors as $path => $entries) {
             if (!array_key_exists($path, $actions)) {
                 continue;
             }
 
             $real = $actions[$path];
             $kept = [];
-            foreach ($messages as $message) {
-                if (preg_match('/^Additional object properties are not allowed: /', $message) !== 1) {
-                    $kept[] = $message;
+            foreach ($entries as $entry) {
+                if ($entry['keyword'] !== 'additionalProperties' ||
+                    preg_match('/^Additional object properties are not allowed: /', $entry['message']) !== 1
+                ) {
+                    $kept[] = $entry;
 
                     continue;
                 }
@@ -238,10 +299,13 @@ final class SchemaValidatorRunner
                     continue;
                 }
 
-                $kept[] = sprintf(
-                    'Additional object properties are not allowed: %s',
-                    implode(', ', $real),
-                );
+                $kept[] = [
+                    'message' => sprintf(
+                        'Additional object properties are not allowed: %s',
+                        implode(', ', $real),
+                    ),
+                    'keyword' => $entry['keyword'],
+                ];
             }
 
             if ($kept === []) {

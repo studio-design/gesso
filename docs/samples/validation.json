@@ -1,0 +1,37 @@
+{
+    "schema_version": 1,
+    "tool": {
+        "name": "studio-design/gesso",
+        "version": "dev-main"
+    },
+    "outcome": "failure",
+    "matched": {
+        "path": "/v1/pets",
+        "status_code": null,
+        "content_type": "application/json"
+    },
+    "skip_reason": null,
+    "reproduce_command": "curl -X POST 'https://api.example.test/v1/pets' -H 'Authorization: <redacted>' -H 'Content-Type: application/json' --data '{\"name\":42}'",
+    "issues": [
+        {
+            "category": "request.body",
+            "message": "[/name] The data (integer) must match the type: string",
+            "instance_path": "/name",
+            "keyword": "type",
+            "method": "POST",
+            "path": "/v1/pets",
+            "status_code": null,
+            "content_type": "application/json"
+        },
+        {
+            "category": "request.parameter.query",
+            "message": "Required query parameter 'limit' is missing for GET /v1/pets in 'petstore' spec.",
+            "instance_path": null,
+            "keyword": null,
+            "method": "POST",
+            "path": "/v1/pets",
+            "status_code": null,
+            "content_type": null
+        }
+    ]
+}

@@ -75,6 +75,65 @@ class ResponseBodyValidatorTest extends TestCase
     }
 
     #[Test]
+    public function validate_carries_structured_violations_aligned_with_errors(): void
+    {
+        // Issue #282 stage 2: schema errors keep their structured twin so the
+        // orchestrator can attach instancePath/keyword to response.body issues.
+        $content = [
+            'application/json' => [
+                'schema' => [
+                    'type' => 'object',
+                    'properties' => ['id' => ['type' => 'integer']],
+                    'required' => ['id', 'name'],
+                ],
+            ],
+        ];
+
+        $result = $this->validator->validate(
+            'spec',
+            'GET',
+            '/pets',
+            200,
+            $content,
+            DecodedBody::present(['id' => 'not-an-int']),
+            'application/json',
+            OpenApiVersion::V3_0,
+        );
+
+        $this->assertCount(2, $result->errors);
+        $this->assertCount(2, $result->violations);
+        foreach ($result->violations as $index => $violation) {
+            $this->assertSame(
+                "[{$violation->displayPath()}] {$violation->message}",
+                $result->errors[$index],
+            );
+            $this->assertNotNull($violation->keyword);
+        }
+    }
+
+    #[Test]
+    public function validate_reports_no_violations_for_non_schema_errors(): void
+    {
+        $content = [
+            'application/json' => ['schema' => ['type' => 'object']],
+        ];
+
+        $result = $this->validator->validate(
+            'spec',
+            'GET',
+            '/pets',
+            200,
+            $content,
+            DecodedBody::absent(),
+            'application/json',
+            OpenApiVersion::V3_0,
+        );
+
+        $this->assertNotSame([], $result->errors);
+        $this->assertSame([], $result->violations);
+    }
+
+    #[Test]
     public function validate_type_checks_present_literal_null_body_against_object_schema(): void
     {
         // Issue #246: a response body of the literal JSON `null` (the four

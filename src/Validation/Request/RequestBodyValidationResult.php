@@ -8,6 +8,7 @@ use InvalidArgumentException;
 use Studio\Gesso\OpenApiRequestValidator;
 use Studio\Gesso\OpenApiValidationResult;
 use Studio\Gesso\Validation\Response\ResponseBodyValidationResult;
+use Studio\Gesso\Validation\Support\SchemaViolation;
 use Studio\Gesso\ValidationIssue;
 
 /**
@@ -36,12 +37,21 @@ use Studio\Gesso\ValidationIssue;
  * carried so the orchestrator can attach it to `request.body`
  * {@see ValidationIssue}s (issue #282).
  *
+ * `violations` carries the structured twin of `errors` on the schema-error
+ * path only: index-aligned, with `errors[$i]` always equal to
+ * `"[{$violations[$i]->displayPath()}] {$violations[$i]->message}"` (the
+ * display path renders the RFC 6901 root pointer `''` as the legacy `/`).
+ * Every non-schema error site (missing required body, unknown content type,
+ * exception boundary) leaves it empty — consumers must check the counts
+ * align before pairing the two lists.
+ *
  * @internal Not part of the package's public API. Do not use from user code.
  */
 final readonly class RequestBodyValidationResult
 {
     /**
      * @param string[] $errors
+     * @param list<SchemaViolation> $violations
      *
      * @throws InvalidArgumentException when `skipReason` is set alongside a
      *                                  non-empty `errors` list — a skip means the body was deliberately
@@ -52,6 +62,7 @@ final readonly class RequestBodyValidationResult
         public array $errors,
         public ?string $skipReason = null,
         public ?string $matchedContentType = null,
+        public array $violations = [],
     ) {
         if ($skipReason !== null && $errors !== []) {
             throw new InvalidArgumentException(

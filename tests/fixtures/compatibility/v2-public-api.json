@@ -3395,6 +3395,59 @@
             }
         }
     },
+    "Studio\\Gesso\\JsonValidationResultRenderer": {
+        "kind": "class",
+        "final": true,
+        "abstract": false,
+        "readonly": false,
+        "instantiable": true,
+        "constructor": {
+            "kind": "implicit",
+            "visibility": "public"
+        },
+        "parent": null,
+        "interfaces": [],
+        "traits": [],
+        "attributes": [],
+        "backing_type": null,
+        "cases": [],
+        "constants": {
+            "SCHEMA_VERSION": 1
+        },
+        "properties": [],
+        "methods": {
+            "render": {
+                "static": true,
+                "final": false,
+                "abstract": false,
+                "returns_reference": false,
+                "return_type": "string",
+                "attributes": [],
+                "parameters": [
+                    {
+                        "name": "result",
+                        "type": "Studio\\Gesso\\OpenApiValidationResult",
+                        "optional": false,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": {
+                            "unavailable": true
+                        },
+                        "attributes": []
+                    },
+                    {
+                        "name": "reproduceCommand",
+                        "type": "?string",
+                        "optional": true,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": null,
+                        "attributes": []
+                    }
+                ]
+            }
+        }
+    },
     "Studio\\Gesso\\Laravel\\ExploresOpenApiEndpoint": {
         "kind": "trait",
         "final": false,

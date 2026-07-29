@@ -253,16 +253,14 @@ final class ResponseBodyValidator
         $schemaObject = ObjectConverter::convert($jsonSchema);
         $dataObject = ObjectConverter::convert($bodyValue);
 
-        $formatted = $this->runner->validate($schemaObject, $dataObject);
+        $violations = $this->runner->validateStructured($schemaObject, $dataObject);
 
         $errors = [];
-        foreach ($formatted as $path => $messages) {
-            foreach ($messages as $message) {
-                $errors[] = "[{$path}] {$message}";
-            }
+        foreach ($violations as $violation) {
+            $errors[] = "[{$violation->displayPath()}] {$violation->message}";
         }
 
-        return new ResponseBodyValidationResult($errors, $jsonContentType);
+        return new ResponseBodyValidationResult($errors, $jsonContentType, violations: $violations);
     }
 
     private static function unsupportedItemSchemaResult(string $matchedKey, string $actualMediaType): ResponseBodyValidationResult

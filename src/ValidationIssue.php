@@ -11,8 +11,10 @@ namespace Studio\Gesso;
  * `category` is a stable slug and part of the documented compatibility
  * surface (see docs/versioning.md); `message` is the exact human-readable
  * error text and remains explicitly outside the compatibility contract.
- * `instancePath` and `keyword` are reserved for body-schema errors and stay
- * null until the structured schema-runner output ships (issue #282, stage 2).
+ * `instancePath` (RFC 6901 JSON Pointer into the validated body, `''` =
+ * document root) and `keyword` (the failing JSON Schema keyword) are
+ * populated on body-schema violations and stay null for every other error
+ * source (issue #282, stage 2).
  */
 final readonly class ValidationIssue
 {

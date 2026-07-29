@@ -233,6 +233,7 @@ To validate every response automatically, set `'auto_assert' => true` and drop t
 | Coverage report modes & threshold gate | [`docs/coverage.md`](docs/coverage.md) |
 | HTML coverage output | [`docs/coverage-html-output.md`](docs/coverage-html-output.md) |
 | JSON coverage output schema | [`docs/coverage-json-schema.md`](docs/coverage-json-schema.md) |
+| JSON validation result output schema | [`docs/validation-json-schema.md`](docs/validation-json-schema.md) |
 | Parallel test runners (paratest / Pest `--parallel`) | [`docs/parallel.md`](docs/parallel.md) |
 | CI integration (GitHub Actions, PR comments, output formats, partial-run handling) | [`docs/ci.md`](docs/ci.md) |
 | API reference (`OpenApiResponseValidator`, `OpenApiSpecLoader`, `OpenApiCoverageTracker`) | [`docs/api-reference.md`](docs/api-reference.md) |
