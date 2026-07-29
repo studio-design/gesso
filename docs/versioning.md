@@ -24,9 +24,13 @@ This library follows [Semantic Versioning 2.0](https://semver.org/). v1.0.0 is t
   `response.status`, `response.body`, `response.header`, and the legacy
   fallback `unknown`). New categories may be added in minor releases;
   renaming or removing one is major. `instancePath` / `keyword` are populated
-  on body-schema violations and `null` for every other error source; new
-  `keyword` values may appear in minor releases. `message` remains
-  explicitly outside the contract (see below).
+  on schema violations — for body issues the pointer is into the validated
+  body, for parameter / response-header issues into the named value — and
+  `keyword` additionally carries synthetic violation kinds (`required` for a
+  missing required parameter / header / credential, `format` for a present
+  but unusable credential); both are `null` for structural and
+  spec-malformation errors. New `keyword` values may appear in minor
+  releases. `message` remains explicitly outside the contract (see below).
 - The validation JSON document rendered by `JsonValidationResultRenderer`
   (`schema_version` 1) — see
   [validation-json-schema.md](validation-json-schema.md) for the field-level
@@ -46,7 +50,9 @@ This library follows [Semantic Versioning 2.0](https://semver.org/). v1.0.0 is t
   distinguished by the parameter / response-header / security-scheme name in
   `parameter`, and parameter / response-header schema violations additionally
   by `keyword` and `instance_path` — missing required parameters and headers
-  carry `keyword: required`), the `OPENAPI_BASELINE_GENERATE` environment variable, and the
+  carry `keyword: required`, and security-scheme satisfaction failures carry
+  `keyword: required` (credentials absent) or `keyword: format` (present but
+  unusable)), the `OPENAPI_BASELINE_GENERATE` environment variable, and the
   `baseline_file` extension parameter. Unknown `baseline_version` values are
   rejected.
 - CLI surfaces by major (commands, flags, exit codes, and versioned inputs and
