@@ -552,9 +552,6 @@ trait ValidatesOpenApiSchema
             $resolvedPath,
             'response.body',
         );
-        if ($decodedBody === null) {
-            return;
-        }
 
         $result = $validator->validate(
             $specName,
@@ -714,9 +711,6 @@ trait ValidatesOpenApiSchema
             $resolvedPath,
             'request.body',
         );
-        if ($body === null) {
-            return;
-        }
 
         foreach ($this->resolveAutoInjectCredentials($specName, $resolvedMethod, $resolvedPath, $headers, $cookies, $queryParams) as $credential) {
             if ($credential['kind'] === 'bearer') {
@@ -1067,11 +1061,15 @@ trait ValidatesOpenApiSchema
     /**
      * Run a body-decode step; during a baseline generation run (issue #402)
      * a decode failure (the `AssertionFailedError` raised by the extract
-     * helper) is recorded as a body-category fingerprint and demoted, so
-     * generation also covers endpoints whose body is not parseable JSON —
-     * mirroring how the PSR-7 adapter folds adapter-level body errors into
-     * the validation result. Returns null when the failure was demoted (the
-     * assertion already passed); normal runs re-throw untouched.
+     * helper) is recorded as a body-category fingerprint and demoted, and an
+     * absent body is returned so the rest of the validation pipeline still
+     * runs — mirroring how the PSR-7 adapter folds adapter-level body errors
+     * into the validation result while validating everything else. Any
+     * further violations are then demoted and recorded by the normal assert
+     * path. The fingerprint deliberately carries no matched status /
+     * content-type context: the failure happens before path matching, so
+     * enforcement must be able to rebuild the identical fingerprint from the
+     * raw request context alone. Normal runs re-throw untouched.
      *
      * @param Closure(): DecodedBody $extract
      */
@@ -1081,7 +1079,7 @@ trait ValidatesOpenApiSchema
         string $method,
         string $path,
         string $category,
-    ): ?DecodedBody {
+    ): DecodedBody {
         $collector = ViolationBaselineCollector::current();
         if ($collector === null) {
             return $extract();
@@ -1100,9 +1098,8 @@ trait ValidatesOpenApiSchema
                 null,
                 null,
             ));
-            $this->assertOpenApi(true, '');
 
-            return null;
+            return DecodedBody::absent();
         }
     }
 

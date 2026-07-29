@@ -75,8 +75,42 @@ final class OpenApiAssertionsBaselineGenerateTest extends TestCase
             null,
             null,
             'request.parameter.query',
+            '',
+            'type',
+            parameter: 'limit',
+        )));
+    }
+
+    #[Test]
+    public function fingerprints_of_two_violation_kinds_on_one_parameter_differ(): void
+    {
+        // A baselined "required but missing" violation on `limit` must not
+        // absorb a future type-mismatch violation on the same parameter:
+        // the failing keyword is part of the fingerprint identity.
+        $this->assertRequestMatchesOpenApiSchema(Request::create('/v1/pets/search', 'GET'));
+        $this->assertRequestMatchesOpenApiSchema(Request::create('/v1/pets/search?limit=not-an-integer', 'GET'));
+
+        $this->assertSame(2, $this->collector->baseline()->count());
+        $this->assertTrue($this->collector->baseline()->contains(new ViolationFingerprint(
+            'petstore-3.0',
+            'GET',
+            '/v1/pets/search',
             null,
             null,
+            'request.parameter.query',
+            null,
+            'required',
+            parameter: 'limit',
+        )));
+        $this->assertTrue($this->collector->baseline()->contains(new ViolationFingerprint(
+            'petstore-3.0',
+            'GET',
+            '/v1/pets/search',
+            null,
+            null,
+            'request.parameter.query',
+            '',
+            'type',
             parameter: 'limit',
         )));
     }
@@ -124,6 +158,40 @@ final class OpenApiAssertionsBaselineGenerateTest extends TestCase
             null,
             null,
             'response.body',
+            null,
+            null,
+        )));
+    }
+
+    #[Test]
+    public function an_undecodable_response_body_does_not_mask_other_violations(): void
+    {
+        // Decode failure must not short-circuit validation during generation:
+        // the rest of the response pipeline (here: the unmatched path) still
+        // runs against an absent body, mirroring the PSR-7 adapter, so its
+        // violations land in the baseline too.
+        $request = Request::create('/v1/unknown', 'GET');
+        $response = new Response('{invalid', 418, ['Content-Type' => 'application/json']);
+
+        $this->assertResponseMatchesOpenApiSchema($request, $response);
+
+        $this->assertTrue($this->collector->baseline()->contains(new ViolationFingerprint(
+            'petstore-3.0',
+            'GET',
+            '/v1/unknown',
+            null,
+            null,
+            'response.body',
+            null,
+            null,
+        )));
+        $this->assertTrue($this->collector->baseline()->contains(new ViolationFingerprint(
+            'petstore-3.0',
+            'GET',
+            '/v1/unknown',
+            null,
+            null,
+            'response.request_context',
             null,
             null,
         )));

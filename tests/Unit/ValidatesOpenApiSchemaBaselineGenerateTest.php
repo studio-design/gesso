@@ -88,6 +88,38 @@ class ValidatesOpenApiSchemaBaselineGenerateTest extends TestCase
     }
 
     #[Test]
+    public function an_undecodable_response_body_does_not_mask_other_violations(): void
+    {
+        // Decode failure must not short-circuit validation during generation:
+        // the unmatched-path violation still surfaces alongside the
+        // body-decode fingerprint, mirroring the PSR-7 adapter.
+        $response = $this->makeTestResponse('{invalid', 418);
+
+        $this->assertResponseMatchesOpenApiSchema($response, HttpMethod::GET, '/v1/unknown');
+
+        $this->assertTrue($this->collector->baseline()->contains(new ViolationFingerprint(
+            'petstore-3.0',
+            'GET',
+            '/v1/unknown',
+            null,
+            null,
+            'response.body',
+            null,
+            null,
+        )));
+        $this->assertTrue($this->collector->baseline()->contains(new ViolationFingerprint(
+            'petstore-3.0',
+            'GET',
+            '/v1/unknown',
+            null,
+            null,
+            'response.request_context',
+            null,
+            null,
+        )));
+    }
+
+    #[Test]
     public function a_valid_response_records_nothing(): void
     {
         $body = (string) json_encode(
