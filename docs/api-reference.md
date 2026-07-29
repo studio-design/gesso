@@ -3,6 +3,7 @@
 - [`OpenApiResponseValidator`](#openapiresponsevalidator)
 - [`OpenApiPsr7Validator`](#openapipsr7validator)
 - [`OpenApiSpecExplorer`](#openapispecexplorer)
+- [`OpenApiContractChecks`](#openapicontractchecks)
 - [`OpenApiSpecLoader`](#openapispecloader)
 - [`OpenApiCoverageTracker`](#openapicoveragetracker)
 
@@ -155,6 +156,36 @@ For one operation, use
 `OpenApiEndpointExplorer::exploreInvalid(..., expectedStatusClasses: [4])` or
 Laravel's `exploreInvalidEndpoint()`. `FailureReducer::reduce()` minimizes a
 failing body while preserving a caller-defined failure classification.
+
+## `OpenApiContractChecks`
+
+Builds a plan of named negative contract checks — probes for protocol-level
+holes schema validation cannot see. The first check, `unsupported_method`,
+dispatches one deterministically chosen undocumented HTTP method per
+documented path and expects 405 by default:
+
+```php
+use Studio\Gesso\Fuzz\ContractCheck;
+use Studio\Gesso\Fuzz\OpenApiContractChecks;
+
+$summary = OpenApiContractChecks::run('front', seed: 7)
+    ->checks([ContractCheck::UnsupportedMethod])
+    ->includeTags(['public'])
+    ->expectedStatuses(ContractCheck::UnsupportedMethod, [405, 404]) // optional override
+    ->dispatchUsing(fn ($case) => dispatch_request($case))
+    ->report();
+
+self::assertSame([], $summary->failures, $summary->describeFailures());
+```
+
+The plan shares the exploration filter set (tags, methods, paths, operation
+IDs, deprecated) and the `authenticateUsing()` / `setUpUsing()` /
+`tearDownUsing()` hooks. `dispatchUsing()` may return an `int`, a PSR-7
+response, or any object exposing `getStatusCode(): int`. Probes never throw
+on a status mismatch — the returned `ContractCheckSummary` collects every
+`ContractCheckFailure` (with a replayable curl command) and every explained
+`ContractCheckSkip`, plus `probedPaths` / `dispatchedProbes` counts. See
+[named contract checks](fuzzing.md#named-contract-checks).
 
 ## `OpenApiSpecLoader`
 
