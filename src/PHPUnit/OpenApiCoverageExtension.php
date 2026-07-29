@@ -470,13 +470,14 @@ final class OpenApiCoverageExtension implements Extension
             return;
         }
 
-        // Issue #402: on enforcement runs, watch for tests that fail, error,
-        // are skipped, or are marked incomplete — the stale gate must not
-        // report unhit entries as removable when later assertions never ran.
-        $baselineDefectTracer = null;
+        // Issue #402: on enforcement runs, verify that every planned test
+        // finished with no defects — the stale gate must not report unhit
+        // entries as removable when later assertions never ran (truncated
+        // --stop-on-* runs, hook failures, failed/skipped tests).
+        $baselineCompletionTracer = null;
         if (ViolationBaselineEnforcer::current() !== null) {
-            $baselineDefectTracer = new TestRunDefectTracer();
-            $facade->registerTracer($baselineDefectTracer);
+            $baselineCompletionTracer = new TestRunCompletionTracer();
+            $facade->registerTracer($baselineCompletionTracer);
         }
 
         $facade->registerSubscriber(new CoverageReportSubscriber(
@@ -497,7 +498,7 @@ final class OpenApiCoverageExtension implements Extension
             strictRequiredMode: $strictRequiredMode,
             baselineGeneratePath: $baselineGeneratePath,
             baselineStaleMode: $baselineStaleMode,
-            baselineDefectTracer: $baselineDefectTracer,
+            baselineCompletionTracer: $baselineCompletionTracer,
         ));
     }
 

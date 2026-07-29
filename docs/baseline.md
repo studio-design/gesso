@@ -119,9 +119,12 @@ in two cases:
 
 - **Partial runs** (`--filter` / `--testsuite` / path arguments): the subset
   cannot prove an entry no longer occurs.
-- **Runs with failed, errored, skipped, or incomplete tests** (including
-  `--stop-on-failure` aborts): later assertions may never have executed, so
-  an unhit entry proves nothing.
+- **Runs that did not complete cleanly**: any failed, errored, skipped, or
+  incomplete test, a skipped test suite (class-level requirements), or a
+  truncated run (any `--stop-on-*` flag, hook failures — detected by
+  comparing the planned test count against the tests that actually
+  finished): later assertions may never have executed, so an unhit entry
+  proves nothing.
 
 ## Limitations
 

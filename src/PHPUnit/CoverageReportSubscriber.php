@@ -81,11 +81,11 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
      *                                          collected fingerprints here at run end; partial runs refuse the write
      *                                          (an incomplete baseline would hide violations) and worker mode warns
      *                                          (parallel generation is not supported yet).
-     * @param null|TestRunDefectTracer $baselineDefectTracer Issue #402: registered by the extension for
-     *                                                       enforcement runs. When it observed failed / errored /
-     *                                                       skipped / incomplete tests, stale evaluation is skipped
-     *                                                       — an unhit baseline entry proves nothing if later
-     *                                                       assertions never ran.
+     * @param null|TestRunCompletionTracer $baselineCompletionTracer Issue #402: registered by the extension for
+     *                                                               enforcement runs. Unless it can prove every
+     *                                                               planned test finished with no defects, stale
+     *                                                               evaluation is skipped — an unhit baseline entry
+     *                                                               proves nothing if later assertions never ran.
      * @param null|PartialRunDecision $partialRun Issue #221: when non-null (the run is partial), the subscriber
      *                                            skips every persistent file write (output_file, junit_output,
      *                                            json_output, html_output, GITHUB_STEP_SUMMARY) and emits one
@@ -115,7 +115,7 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
         private StrictRequiredMode $strictRequiredMode = StrictRequiredMode::Off,
         private ?string $baselineGeneratePath = null,
         private BaselineStaleMode $baselineStaleMode = BaselineStaleMode::Note,
-        private ?TestRunDefectTracer $baselineDefectTracer = null,
+        private ?TestRunCompletionTracer $baselineCompletionTracer = null,
     ) {
         // Eager resolution at construction time keeps the readonly invariant
         // honest: by the time any other method runs, $coverageTracker and
@@ -502,17 +502,18 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
             return;
         }
 
-        // A failed / errored / skipped / incomplete test means later
-        // assertions may never have run, so an unhit entry proves nothing —
-        // stale evaluation would report still-live debt as removable
-        // (sharpest under --stop-on-failure, where one new violation would
-        // otherwise mark every later baselined entry stale).
-        if ($this->baselineDefectTracer !== null && $this->baselineDefectTracer->hasDefects()) {
+        // Stale evaluation is only trustworthy when the tracer can prove
+        // every planned test finished with no defects. A truncated run
+        // (--stop-on-* of any kind, hook failures) or a failed / errored /
+        // skipped / incomplete test means later assertions may never have
+        // run, so an unhit entry proves nothing — reporting it as removable
+        // would mark still-live debt for deletion.
+        if ($this->baselineCompletionTracer !== null && !$this->baselineCompletionTracer->completedCleanly()) {
             $this->writeStderr(sprintf(
                 "[Gesso] baseline: %d entries, %d hit. NOTE: stale evaluation is skipped because the run did not complete cleanly (%s). Re-run with all tests passing to evaluate removable entries.\n",
                 $entries,
                 $hits,
-                $this->baselineDefectTracer->describe(),
+                $this->baselineCompletionTracer->describe(),
             ));
 
             return;

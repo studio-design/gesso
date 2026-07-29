@@ -5,10 +5,15 @@ declare(strict_types=1);
 namespace Studio\Gesso\Tests\Unit\PHPUnit;
 
 use PHPUnit\Event\Test\Failed;
+use PHPUnit\Event\Test\Finished;
 use PHPUnit\Event\TestRunner\ExecutionFinished;
+use PHPUnit\Event\TestRunner\ExecutionStarted;
+use PHPUnit\Event\TestSuite\TestSuite;
+use PHPUnit\Event\TestSuite\TestSuiteWithName;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use ReflectionClass;
+use ReflectionProperty;
 use Studio\Gesso\Baseline\BaselineStaleMode;
 use Studio\Gesso\Baseline\ViolationBaseline;
 use Studio\Gesso\Baseline\ViolationBaselineEnforcer;
@@ -18,7 +23,7 @@ use Studio\Gesso\Internal\PartialRunDecision;
 use Studio\Gesso\OpenApiValidationResult;
 use Studio\Gesso\PHPUnit\ConsoleOutput;
 use Studio\Gesso\PHPUnit\CoverageReportSubscriber;
-use Studio\Gesso\PHPUnit\TestRunDefectTracer;
+use Studio\Gesso\PHPUnit\TestRunCompletionTracer;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\ValidationIssue;
 
@@ -154,7 +159,7 @@ class CoverageReportSubscriberBaselineEnforceTest extends TestCase
         // have run, so an unhit entry proves nothing — it must not be
         // reported as removable, and baseline_stale=fail must not trip.
         $this->installEnforcerWithTwoEntriesOneHit();
-        $tracer = new TestRunDefectTracer();
+        $tracer = $this->completionTracer(plannedTests: 2, finishedTests: 2);
         $tracer->trace((new ReflectionClass(Failed::class))->newInstanceWithoutConstructor());
 
         $stderr = '';
@@ -163,7 +168,7 @@ class CoverageReportSubscriberBaselineEnforceTest extends TestCase
             $stderr,
             staleMode: BaselineStaleMode::Fail,
             exitCode: $exitCode,
-            defectTracer: $tracer,
+            completionTracer: $tracer,
         );
 
         $this->notify($subscriber);
@@ -174,12 +179,38 @@ class CoverageReportSubscriberBaselineEnforceTest extends TestCase
     }
 
     #[Test]
-    public function a_clean_defect_tracer_leaves_stale_evaluation_active(): void
+    public function an_interrupted_run_without_defect_events_skips_stale_evaluation(): void
+    {
+        // --stop-on-warning-style interruptions emit none of the four
+        // outcome-defect events; the planned-vs-finished mismatch must
+        // still veto the stale listing.
+        $this->installEnforcerWithTwoEntriesOneHit();
+
+        $stderr = '';
+        $exitCode = null;
+        $subscriber = $this->subscriber(
+            $stderr,
+            staleMode: BaselineStaleMode::Fail,
+            exitCode: $exitCode,
+            completionTracer: $this->completionTracer(plannedTests: 3, finishedTests: 2),
+        );
+
+        $this->notify($subscriber);
+
+        $this->assertStringContainsString('stale evaluation is skipped because the run did not complete cleanly (2 of 3 tests finished)', $stderr);
+        $this->assertNull($exitCode, 'a truncated run must never fail the stale gate');
+    }
+
+    #[Test]
+    public function a_cleanly_completed_run_leaves_stale_evaluation_active(): void
     {
         $this->installEnforcerWithTwoEntriesOneHit();
 
         $stderr = '';
-        $subscriber = $this->subscriber($stderr, defectTracer: new TestRunDefectTracer());
+        $subscriber = $this->subscriber(
+            $stderr,
+            completionTracer: $this->completionTracer(plannedTests: 1, finishedTests: 1),
+        );
 
         $this->notify($subscriber);
 
@@ -266,13 +297,29 @@ class CoverageReportSubscriberBaselineEnforceTest extends TestCase
         $enforcer->suppressesResult($fingerprint->spec, $result, $fingerprint->method, $fingerprint->path);
     }
 
+    private function completionTracer(int $plannedTests, int $finishedTests): TestRunCompletionTracer
+    {
+        $suite = (new ReflectionClass(TestSuiteWithName::class))->newInstanceWithoutConstructor();
+        (new ReflectionProperty(TestSuite::class, 'count'))->setValue($suite, $plannedTests);
+        $started = (new ReflectionClass(ExecutionStarted::class))->newInstanceWithoutConstructor();
+        (new ReflectionProperty(ExecutionStarted::class, 'testSuite'))->setValue($started, $suite);
+
+        $tracer = new TestRunCompletionTracer();
+        $tracer->trace($started);
+        for ($i = 0; $i < $finishedTests; $i++) {
+            $tracer->trace((new ReflectionClass(Finished::class))->newInstanceWithoutConstructor());
+        }
+
+        return $tracer;
+    }
+
     private function subscriber(
         string &$stderr,
         BaselineStaleMode $staleMode = BaselineStaleMode::Note,
         ?PartialRunDecision $partialRun = null,
         ?int &$exitCode = null,
         ?string $githubSummaryPath = null,
-        ?TestRunDefectTracer $defectTracer = null,
+        ?TestRunCompletionTracer $completionTracer = null,
     ): CoverageReportSubscriber {
         return new CoverageReportSubscriber(
             specs: ['petstore-3.0'],
@@ -287,7 +334,7 @@ class CoverageReportSubscriberBaselineEnforceTest extends TestCase
             },
             partialRun: $partialRun,
             baselineStaleMode: $staleMode,
-            baselineDefectTracer: $defectTracer,
+            baselineCompletionTracer: $completionTracer,
         );
     }
 
