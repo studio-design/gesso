@@ -266,7 +266,11 @@ final class OpenApiCoverageExtension implements Extension
             $validationOutput = ValidationOutputFormat::tryFrom(mb_strtolower(trim($rawValidationOutput)));
 
             if ($validationOutput === null) {
-                self::writeStderr("[OpenAPI Coverage] WARNING: Invalid validation_output parameter '{$rawValidationOutput}'. Valid values: text, json. Falling back to 'text'.\n");
+                // [Gesso] rather than [OpenAPI Coverage]: the setting selects
+                // gesso-wide validation failure output, and the migration
+                // baseline pins identity-neutral prefix counts (ADR 0001) —
+                // new diagnostics go through the branded channel.
+                self::writeStderr("[Gesso] WARNING: Invalid validation_output parameter '{$rawValidationOutput}'. Valid values: text, json. Falling back to 'text'.\n");
             } else {
                 ValidationOutput::use($validationOutput);
             }

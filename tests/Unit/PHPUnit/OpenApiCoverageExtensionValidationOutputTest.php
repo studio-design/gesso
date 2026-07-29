@@ -51,26 +51,6 @@ class OpenApiCoverageExtensionValidationOutputTest extends TestCase
         parent::tearDown();
     }
 
-    private function setupExtension(array $parameters): void
-    {
-        $extension = new OpenApiCoverageExtension();
-        $extension->setupExtension(null, ParameterCollection::fromArray([
-            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
-            'specs' => 'petstore-3.0',
-            ...$parameters,
-        ]), null);
-    }
-
-    private function capturedStderr(): string
-    {
-        if ($this->stderrBuffer === null) {
-            return '';
-        }
-        rewind($this->stderrBuffer);
-
-        return (string) stream_get_contents($this->stderrBuffer);
-    }
-
     #[Test]
     public function validation_output_parameter_selects_the_json_format(): void
     {
@@ -115,5 +95,25 @@ class OpenApiCoverageExtensionValidationOutputTest extends TestCase
         $this->setupExtension(['validation_output' => 'json']);
 
         $this->assertSame(ValidationOutputFormat::Text, ValidationOutput::format());
+    }
+
+    private function setupExtension(array $parameters): void
+    {
+        $extension = new OpenApiCoverageExtension();
+        $extension->setupExtension(null, ParameterCollection::fromArray([
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => 'petstore-3.0',
+            ...$parameters,
+        ]), null);
+    }
+
+    private function capturedStderr(): string
+    {
+        if ($this->stderrBuffer === null) {
+            return '';
+        }
+        rewind($this->stderrBuffer);
+
+        return (string) stream_get_contents($this->stderrBuffer);
     }
 }

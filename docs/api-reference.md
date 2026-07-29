@@ -72,6 +72,23 @@ $json = JsonValidationResultRenderer::render($result, $curlCommand);
 The document shape (`schema_version` 1) is a compatibility surface — see
 [validation-json-schema.md](validation-json-schema.md).
 
+Framework adapters (Laravel, Symfony, Pest, PSR-7) can emit the same document
+in their assertion failure messages instead of the plain text shape. Select
+the mode process-wide with the `OPENAPI_VALIDATION_OUTPUT` environment
+variable (`text` | `json`), programmatically, or via the PHPUnit extension's
+`validation_output` parameter — the environment variable wins when set:
+
+```php
+use Studio\Gesso\ValidationOutput;
+use Studio\Gesso\ValidationOutputFormat;
+
+ValidationOutput::use(ValidationOutputFormat::Json); // e.g. in tests/bootstrap.php
+ValidationOutput::reset();                           // restore the text default
+```
+
+See [validation-json-schema.md](validation-json-schema.md#selecting-json-failure-output-in-adapters)
+for the failure message shape and resolution rules.
+
 Prefer `outcome()` when you need to distinguish all three states explicitly — PHPStan enforces `match` exhaustiveness, so adding a future outcome cannot silently slip past a caller:
 
 ```php

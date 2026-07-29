@@ -21,6 +21,48 @@ The document is deliberately timestamp-free: rendering the same result twice
 produces byte-identical output, so snapshot tests and CI diffing work without
 masking.
 
+## Selecting json failure output in adapters
+
+Every framework adapter (Laravel, Symfony, Pest, PSR-7) can emit this document
+in its assertion failure message instead of the plain text shape. One
+process-wide switch selects the mode everywhere, resolved in priority order:
+
+1. the `OPENAPI_VALIDATION_OUTPUT` environment variable (`text` | `json`);
+2. `ValidationOutput::use(ValidationOutputFormat::Json)` — call it from your
+   test bootstrap, or set the `validation_output` parameter on the PHPUnit
+   extension, which calls it for you:
+
+   ```xml
+   <extensions>
+       <bootstrap class="Studio\Gesso\PHPUnit\OpenApiCoverageExtension">
+           <parameter name="spec_base_path" value="openapi/dist"/>
+           <parameter name="validation_output" value="json"/>
+       </bootstrap>
+   </extensions>
+   ```
+
+3. `text` (the default — failure output is unchanged unless you opt in).
+
+An unrecognised value warns on STDERR and falls through to the next source.
+
+In json mode a failing assertion message is one human-readable header line
+followed by this document (the curl reproduction moves into
+`reproduce_command`, so no separate `Reproduce:` line is emitted):
+
+```
+OpenAPI schema validation failed for GET /v1/pets (spec: front):
+{
+    "schema_version": 1,
+    ...
+}
+```
+
+Everything after the first line parses as JSON. The one exception is the PSR-7
+exchange assertion (`assertPsr7ExchangeMatchesOpenApiSchema()`), which
+validates two results at once: it emits one `[request]` / `[response]` label
+line plus document per *failing* side, each block parseable on its own and all
+blocks sharing the same `reproduce_command`.
+
 ## Top level
 
 | Field | Type | Description |

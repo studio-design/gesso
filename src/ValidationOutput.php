@@ -30,7 +30,6 @@ use function trim;
 final class ValidationOutput
 {
     private static ?ValidationOutputFormat $selected = null;
-
     private static bool $warnedInvalidEnv = false;
 
     private function __construct() {}
@@ -48,7 +47,7 @@ final class ValidationOutput
 
             if (!self::$warnedInvalidEnv) {
                 self::$warnedInvalidEnv = true;
-                fwrite(STDERR, "[OpenAPI Validation] WARNING: Invalid OPENAPI_VALIDATION_OUTPUT value '{$envValue}'. Valid values: text, json. Falling back to the configured format.\n");
+                fwrite(STDERR, "[Gesso] WARNING: Invalid OPENAPI_VALIDATION_OUTPUT value '{$envValue}'. Valid values: text, json. Falling back to the configured format.\n");
             }
         }
 

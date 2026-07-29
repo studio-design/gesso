@@ -32,6 +32,12 @@ This library follows [Semantic Versioning 2.0](https://semver.org/). v1.0.0 is t
   [validation-json-schema.md](validation-json-schema.md) for the field-level
   rules (additions are minor, removals/renames/type changes are major and
   bump `schema_version`).
+- The validation failure output selection: the `ValidationOutputFormat` enum
+  (`text` | `json`), the `ValidationOutput` methods (`format()`, `use()`,
+  `reset()`), the `OPENAPI_VALIDATION_OUTPUT` environment variable, and the
+  json-mode failure shape (one header line followed by the versioned JSON
+  document; for the PSR-7 exchange assertion, one `[request]` / `[response]`
+  labelled document per failing side).
 - CLI surfaces by major (commands, flags, exit codes, and versioned inputs and
   output where applicable):
   - v1.x: `bin/openapi-contract`, `bin/openapi-coverage-merge`, and the v1.10
@@ -39,7 +45,7 @@ This library follows [Semantic Versioning 2.0](https://semver.org/). v1.0.0 is t
   - v2.x: the `doctor` and `coverage:merge` subcommands of `bin/gesso`; the
     legacy standalone binaries are not shipped
 - The Laravel `openapi:routes` command surface (flags, exit codes, and versioned JSON output)
-- The `OpenApiCoverageExtension` PHPUnit configuration parameters (`spec_base_path`, `strip_prefixes`, `specs`, `output_file`, `console_output`, …)
+- The `OpenApiCoverageExtension` PHPUnit configuration parameters (`spec_base_path`, `strip_prefixes`, `specs`, `output_file`, `console_output`, `validation_output`, …)
 - The Laravel `ValidatesOpenApiSchema` trait's public methods
 - The category prefixes used in `E_USER_WARNING` messages (`[security]`, `[OpenAPI Schema]`, and the `[OpenAPI 3.2 ...]` categories)
 

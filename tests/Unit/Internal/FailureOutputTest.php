@@ -17,7 +17,6 @@ use Studio\Gesso\ValidationOutputFormat;
 use function explode;
 use function json_decode;
 use function putenv;
-use function str_starts_with;
 
 class FailureOutputTest extends TestCase
 {
@@ -35,26 +34,6 @@ class FailureOutputTest extends TestCase
         ValidationOutput::reset();
 
         parent::tearDown();
-    }
-
-    private static function failureResult(): OpenApiValidationResult
-    {
-        return OpenApiValidationResult::failure(
-            ['[/name] The data (integer) must match the type: string'],
-            '/v1/pets',
-            matchedContentType: 'application/json',
-            issues: [
-                new ValidationIssue(
-                    'request.body',
-                    '[/name] The data (integer) must match the type: string',
-                    instancePath: '/name',
-                    keyword: 'type',
-                    method: 'POST',
-                    path: '/v1/pets',
-                    contentType: 'application/json',
-                ),
-            ],
-        );
     }
 
     #[Test]
@@ -88,7 +67,7 @@ class FailureOutputTest extends TestCase
         [$header, $document] = explode("\n", $message, 2);
 
         $this->assertSame('OpenAPI request validation failed for POST /v1/pets (spec: front):', $header);
-        $this->assertTrue(str_starts_with($document, '{'));
+        $this->assertStringStartsWith('{', $document);
 
         /** @var array<string, mixed> $decoded */
         $decoded = json_decode($document, true, 512, JSON_THROW_ON_ERROR);
@@ -111,5 +90,25 @@ class FailureOutputTest extends TestCase
         );
 
         $this->assertStringContainsString('"schema_version": 1', $message);
+    }
+
+    private static function failureResult(): OpenApiValidationResult
+    {
+        return OpenApiValidationResult::failure(
+            ['[/name] The data (integer) must match the type: string'],
+            '/v1/pets',
+            matchedContentType: 'application/json',
+            issues: [
+                new ValidationIssue(
+                    'request.body',
+                    '[/name] The data (integer) must match the type: string',
+                    instancePath: '/name',
+                    keyword: 'type',
+                    method: 'POST',
+                    path: '/v1/pets',
+                    contentType: 'application/json',
+                ),
+            ],
+        );
     }
 }
