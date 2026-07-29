@@ -54,7 +54,7 @@ class PathParameterValidatorTest extends TestCase
         );
 
         $this->assertNotEmpty($errors);
-        $this->assertStringContainsString('[path.id', $errors[0]);
+        $this->assertStringContainsString('[path.id', $errors[0]->message);
     }
 
     #[Test]
@@ -70,6 +70,6 @@ class PathParameterValidatorTest extends TestCase
         );
 
         $this->assertCount(1, $errors);
-        $this->assertStringContainsString("is not declared as an 'in: path' parameter", $errors[0]);
+        $this->assertStringContainsString("is not declared as an 'in: path' parameter", $errors[0]->message);
     }
 }

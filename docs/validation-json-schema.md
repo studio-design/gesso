@@ -98,6 +98,7 @@ Each entry serialises one `ValidationIssue` field-for-field (snake_case). The
 | `message` | `string` | Exact human-readable error text. **Not** a compatibility surface — assert on `category` and context instead. |
 | `instance_path` | `string \| null` | RFC 6901 JSON Pointer into the validated body: `""` is the document root and `"/"` is the property whose name is the empty string. (The human-readable `message` prefix renders the root as `[/]` for historical reasons; `instance_path` is the unambiguous form.) Set only on body-schema violations; `null` for every other error source. |
 | `keyword` | `string \| null` | JSON Schema keyword that failed (`type`, `required`, `enum`, …). Set together with `instance_path`; `null` otherwise. |
+| `parameter` | `string \| null` | Name of the spec object a non-body issue is about: the request parameter (`request.parameter.*`), response header (`response.header`), or security scheme (`request.security`). `null` for body issues and for errors not attributable to one named object (structural spec errors, error-boundary captures). |
 | `method` | `string \| null` | HTTP method of the validated operation. |
 | `path` | `string \| null` | Matched spec path template. |
 | `status_code` | `string \| null` | Spec response key. Always `null` on request-side issues. |

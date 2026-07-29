@@ -58,7 +58,7 @@ class QueryParameterValidatorTest extends TestCase
         $errors = $this->validator->validate('GET', '/pets', $parameters, [], OpenApiVersion::V3_0);
 
         $this->assertCount(1, $errors);
-        $this->assertStringContainsString('required query parameter is missing', $errors[0]);
+        $this->assertStringContainsString('required query parameter is missing', $errors[0]->message);
     }
 
     #[Test]
@@ -95,7 +95,7 @@ class QueryParameterValidatorTest extends TestCase
 
         $this->assertSame([], $valid);
         $this->assertNotSame([], $invalid);
-        $this->assertStringContainsString('[querystring', $invalid[0]);
+        $this->assertStringContainsString('[querystring', $invalid[0]->message);
     }
 
     #[Test]

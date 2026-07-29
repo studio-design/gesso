@@ -75,7 +75,7 @@ class HeaderParameterValidatorTest extends TestCase
         );
 
         $this->assertCount(1, $errors);
-        $this->assertStringContainsString('multiple values received', $errors[0]);
+        $this->assertStringContainsString('multiple values received', $errors[0]->message);
     }
 
     #[Test]
@@ -94,6 +94,6 @@ class HeaderParameterValidatorTest extends TestCase
         );
 
         $this->assertCount(1, $errors);
-        $this->assertStringContainsString('value must be a scalar', $errors[0]);
+        $this->assertStringContainsString('value must be a scalar', $errors[0]->message);
     }
 }

@@ -20,8 +20,11 @@ use function strtoupper;
  * validator prose changes. `instancePath` is canonicalized: numeric JSON
  * Pointer segments become `*`, so the same schema defect reported at
  * `/data/0/id` and `/data/3/id` shares one fingerprint regardless of test
- * data size or ordering. Consequence: non-body issues (null
- * `instancePath`/`keyword`) collapse per `(operation, category)`.
+ * data size or ordering. Non-body issues are distinguished by `parameter`
+ * — the request parameter, response header, or security scheme name — so a
+ * known `limit` violation does not absorb a future `page` violation on the
+ * same operation. Issues that carry no name (structural spec errors,
+ * error-boundary captures) still collapse per `(operation, category)`.
  *
  * The serialized shape ({@see toArray()}) is the versioned baseline-file
  * entry format documented in docs/versioning.md.
@@ -36,6 +39,7 @@ use function strtoupper;
  *     status_code: string|null,
  *     content_type: string|null,
  *     category: string,
+ *     parameter: string|null,
  *     instance_path: string|null,
  *     keyword: string|null,
  * }
@@ -51,6 +55,7 @@ final readonly class ViolationFingerprint
         public string $category,
         public ?string $instancePath,
         public ?string $keyword,
+        public ?string $parameter = null,
     ) {}
 
     /**
@@ -75,6 +80,7 @@ final readonly class ViolationFingerprint
                 ? null
                 : self::canonicalizeInstancePath($issue->instancePath),
             keyword: $issue->keyword,
+            parameter: $issue->parameter,
         );
     }
 
@@ -117,6 +123,7 @@ final readonly class ViolationFingerprint
             $this->statusCode,
             $this->contentType,
             $this->category,
+            $this->parameter,
             $this->instancePath,
             $this->keyword,
         ] as $field) {
@@ -136,6 +143,7 @@ final readonly class ViolationFingerprint
             'status_code' => $this->statusCode,
             'content_type' => $this->contentType,
             'category' => $this->category,
+            'parameter' => $this->parameter,
             'instance_path' => $this->instancePath,
             'keyword' => $this->keyword,
         ];

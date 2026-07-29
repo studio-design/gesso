@@ -52,7 +52,7 @@ final class ViolationBaselineFile
     public const BASELINE_VERSION = 1;
 
     private const REQUIRED_STRING_FIELDS = ['spec', 'method', 'path', 'category'];
-    private const NULLABLE_STRING_FIELDS = ['status_code', 'content_type', 'instance_path', 'keyword'];
+    private const NULLABLE_STRING_FIELDS = ['status_code', 'content_type', 'parameter', 'instance_path', 'keyword'];
 
     private function __construct() {}
 
@@ -187,6 +187,7 @@ final class ViolationBaselineFile
                 path: $values['path'],
                 statusCode: $values['status_code'],
                 contentType: $values['content_type'],
+                parameter: $values['parameter'],
             ),
             $values['method'],
             $values['path'],

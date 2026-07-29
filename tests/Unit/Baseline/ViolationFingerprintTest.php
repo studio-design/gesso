@@ -51,6 +51,7 @@ class ViolationFingerprintTest extends TestCase
             'status_code' => '200',
             'content_type' => 'application/json',
             'category' => 'response.body',
+            'parameter' => null,
             'instance_path' => '/data/*/id',
             'keyword' => 'type',
         ], $fingerprint->toArray());
@@ -70,9 +71,32 @@ class ViolationFingerprintTest extends TestCase
             'status_code' => null,
             'content_type' => null,
             'category' => 'request.path_match',
+            'parameter' => null,
             'instance_path' => null,
             'keyword' => null,
         ], $fingerprint->toArray());
+    }
+
+    #[Test]
+    public function fingerprints_of_two_parameters_on_one_operation_differ(): void
+    {
+        $limit = ViolationFingerprint::fromIssue('front', new ValidationIssue(
+            'request.parameter.query',
+            '[query.limit] The data (string) must match the type: integer',
+            method: 'GET',
+            path: '/v1/pets/search',
+            parameter: 'limit',
+        ), 'GET', '/v1/pets/search');
+        $page = ViolationFingerprint::fromIssue('front', new ValidationIssue(
+            'request.parameter.query',
+            '[query.page] The data (string) must match the type: integer',
+            method: 'GET',
+            path: '/v1/pets/search',
+            parameter: 'page',
+        ), 'GET', '/v1/pets/search');
+
+        $this->assertSame('limit', $limit->parameter);
+        $this->assertNotSame($limit->key(), $page->key());
     }
 
     #[Test]

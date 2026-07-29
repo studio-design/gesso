@@ -337,6 +337,9 @@ final class PublicApiBaselineTest extends TestCase
                 'keyword' => $issueNullableProperty(),
                 'message' => $issueStringProperty(),
                 'method' => $issueNullableProperty(),
+                // #402: names the parameter / response header / security
+                // scheme a non-body issue is about (minor addition).
+                'parameter' => $issueNullableProperty(),
                 'path' => $issueNullableProperty(),
                 'statusCode' => $issueNullableProperty(),
             ],
@@ -357,6 +360,7 @@ final class PublicApiBaselineTest extends TestCase
                         $issueOptionalParam('path'),
                         $issueOptionalParam('statusCode'),
                         $issueOptionalParam('contentType'),
+                        $issueOptionalParam('parameter'),
                     ],
                 ],
             ],

@@ -7,6 +7,7 @@ namespace Studio\Gesso\Validation\Request;
 use Studio\Gesso\OpenApiVersion;
 use Studio\Gesso\SchemaContext;
 use Studio\Gesso\Spec\OpenApiSchemaConverter;
+use Studio\Gesso\Validation\Support\NamedError;
 use Studio\Gesso\Validation\Support\ObjectConverter;
 use Studio\Gesso\Validation\Support\SchemaValidatorRunner;
 use Studio\Gesso\Validation\Support\TypeCoercer;
@@ -43,7 +44,7 @@ final class PathParameterValidator
      * @param list<array<string, mixed>> $parameters pre-collected merged parameters
      * @param array<string, string> $pathVariables values extracted by OpenApiPathMatcher
      *
-     * @return string[]
+     * @return list<NamedError>
      */
     public function validate(
         string $method,
@@ -69,7 +70,7 @@ final class PathParameterValidator
             // been captured by the regex. A mismatch here means the spec template and
             // the compiled matcher disagree — surface it loudly rather than skipping.
             if (!array_key_exists($name, $pathVariables)) {
-                $errors[] = "[path.{$name}] declared in {$method} {$matchedPath} spec but not captured by path matcher.";
+                $errors[] = new NamedError($name, "[path.{$name}] declared in {$method} {$matchedPath} spec but not captured by path matcher.");
 
                 continue;
             }
@@ -78,7 +79,7 @@ final class PathParameterValidator
                 // Path parameters are implicitly required (OpenAPI spec), so a schema-less
                 // entry means every value passes — exactly the silent-drift outcome this
                 // library exists to prevent.
-                $errors[] = "[path.{$name}] parameter has no schema for {$method} {$matchedPath} — cannot validate.";
+                $errors[] = new NamedError($name, "[path.{$name}] parameter has no schema for {$method} {$matchedPath} — cannot validate.");
 
                 continue;
             }
@@ -97,7 +98,7 @@ final class PathParameterValidator
             foreach ($formatted as $path => $messages) {
                 $suffix = $path === '/' ? '' : $path;
                 foreach ($messages as $message) {
-                    $errors[] = "[path.{$name}{$suffix}] {$message}";
+                    $errors[] = new NamedError($name, "[path.{$name}{$suffix}] {$message}");
                 }
             }
         }
@@ -108,7 +109,7 @@ final class PathParameterValidator
         // let any value pass silently — the drift this library exists to catch.
         foreach ($pathVariables as $name => $_) {
             if (!isset($declared[$name])) {
-                $errors[] = "[path.{$name}] placeholder in {$method} {$matchedPath} template is not declared as an 'in: path' parameter — malformed spec (OpenAPI requires every placeholder to be declared).";
+                $errors[] = new NamedError($name, "[path.{$name}] placeholder in {$method} {$matchedPath} template is not declared as an 'in: path' parameter — malformed spec (OpenAPI requires every placeholder to be declared).");
             }
         }
 
