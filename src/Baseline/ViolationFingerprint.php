@@ -9,6 +9,7 @@ use Studio\Gesso\ValidationIssue;
 use function explode;
 use function implode;
 use function preg_match;
+use function sprintf;
 use function strtoupper;
 
 /**
@@ -137,6 +138,34 @@ final readonly class ViolationFingerprint
         }
 
         return implode("\x1f", $parts);
+    }
+
+    /**
+     * One-line human-readable rendering for stale-entry listings. Null
+     * fields are omitted so the line stays compact; the empty-string
+     * instance path (document root) renders as `""` to stay visible.
+     */
+    public function describe(): string
+    {
+        $line = sprintf('[%s] %s %s', $this->spec, $this->method, $this->path);
+        if ($this->statusCode !== null) {
+            $line .= ' status=' . $this->statusCode;
+        }
+        if ($this->contentType !== null) {
+            $line .= ' content-type=' . $this->contentType;
+        }
+        $line .= ' ' . $this->category;
+        if ($this->parameter !== null) {
+            $line .= ' parameter=' . $this->parameter;
+        }
+        if ($this->instancePath !== null) {
+            $line .= ' instance_path=' . ($this->instancePath === '' ? '""' : $this->instancePath);
+        }
+        if ($this->keyword !== null) {
+            $line .= ' keyword=' . $this->keyword;
+        }
+
+        return $line;
     }
 
     /** @return FingerprintEntry */

@@ -19,6 +19,7 @@ use PHPUnit\Framework\AssertionFailedError;
 use RuntimeException;
 use Studio\Gesso\Attribute\SkipOpenApi;
 use Studio\Gesso\Baseline\ViolationBaselineCollector;
+use Studio\Gesso\Baseline\ViolationBaselineEnforcer;
 use Studio\Gesso\Baseline\ViolationFingerprint;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\DecodedBody;
@@ -1077,9 +1078,13 @@ trait ValidatesOpenApiSchema
      * artifacts — `$decodeFailureDemoted` tells the caller to exclude that
      * category when recording. The fingerprint deliberately carries no
      * matched status / content-type context: the failure happens before path
-     * matching, so enforcement must be able to rebuild the identical
-     * fingerprint from the raw request context alone. Normal runs re-throw
-     * untouched.
+     * matching, so enforcement rebuilds the identical fingerprint from the
+     * raw request context alone.
+     *
+     * During an enforcement run a baselined decode failure is suppressed the
+     * same way — absent body, validation continues, same-side body verdicts
+     * excluded — while an unbaselined one re-throws as the normal failure.
+     * Runs with neither collector nor enforcer re-throw untouched.
      *
      * @param Closure(): DecodedBody $extract
      *
@@ -1095,26 +1100,39 @@ trait ValidatesOpenApiSchema
     ): DecodedBody {
         $decodeFailureDemoted = false;
         $collector = ViolationBaselineCollector::current();
-        if ($collector === null) {
+        $enforcer = ViolationBaselineEnforcer::current();
+        if ($collector === null && $enforcer === null) {
             return $extract();
         }
 
         try {
             return $extract();
-        } catch (AssertionFailedError) {
-            $collector->record(new ViolationFingerprint(
-                $specName,
-                strtoupper($method),
-                $path,
-                null,
-                null,
-                $category,
-                null,
-                null,
-            ));
-            $decodeFailureDemoted = true;
+        } catch (AssertionFailedError $e) {
+            if ($collector !== null) {
+                $collector->record(new ViolationFingerprint(
+                    $specName,
+                    strtoupper($method),
+                    $path,
+                    null,
+                    null,
+                    $category,
+                    null,
+                    null,
+                ));
+                $decodeFailureDemoted = true;
 
-            return DecodedBody::absent();
+                return DecodedBody::absent();
+            }
+
+            // $enforcer is non-null here: the early return above covered the
+            // neither-installed case and the collector branch just returned.
+            if ($enforcer->suppressesDecodeFailure($specName, $method, $path, $category)) {
+                $decodeFailureDemoted = true;
+
+                return DecodedBody::absent();
+            }
+
+            throw $e;
         }
     }
 
@@ -1255,7 +1273,9 @@ trait ValidatesOpenApiSchema
      *
      * During a baseline generation run (issue #402) the failure is demoted
      * instead: fingerprints are recorded and the assertion passes so the
-     * whole suite completes in one run.
+     * whole suite completes in one run. During an enforcement run the
+     * failure is suppressed only when every issue is baselined; any new
+     * violation falls through to the full, unmodified failure.
      *
      * @param Closure(): string $reproduceCommand built lazily so the curl
      *                                            command is only rendered when the assertion actually fails
@@ -1278,6 +1298,13 @@ trait ValidatesOpenApiSchema
         $collector = ViolationBaselineCollector::current();
         if ($collector !== null) {
             $collector->recordResult($specName, $result, $method, $path, $recordExcludeCategory);
+            $this->assertOpenApi(true, '');
+
+            return;
+        }
+
+        $enforcer = ViolationBaselineEnforcer::current();
+        if ($enforcer !== null && $enforcer->suppressesResult($specName, $result, $method, $path, $recordExcludeCategory)) {
             $this->assertOpenApi(true, '');
 
             return;
