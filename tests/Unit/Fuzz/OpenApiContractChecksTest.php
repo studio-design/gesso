@@ -193,4 +193,65 @@ class OpenApiContractChecksTest extends TestCase
             ->dispatchUsing(static fn(ExploredCase $case): int => 405)
             ->report();
     }
+
+    #[Test]
+    public function a_fully_documented_path_is_skipped_with_a_reason(): void
+    {
+        $dispatched = 0;
+
+        $summary = OpenApiContractChecks::run('contract-checks', seed: 7)
+            ->checks([ContractCheck::UnsupportedMethod])
+            ->includePaths(['/saturated'])
+            ->dispatchUsing(static function (ExploredCase $case) use (&$dispatched): int {
+                $dispatched++;
+
+                return 405;
+            })
+            ->report();
+
+        $this->assertSame(0, $dispatched);
+        $this->assertCount(1, $summary->skips);
+        $this->assertSame('/saturated', $summary->skips[0]->path);
+        $this->assertNull($summary->skips[0]->method);
+        $this->assertStringContainsString('Every explorable HTTP method is documented', $summary->skips[0]->reason);
+    }
+
+    #[Test]
+    public function a_custom_method_only_path_is_skipped_not_probed(): void
+    {
+        $summary = OpenApiContractChecks::run('contract-checks', seed: 7)
+            ->checks([ContractCheck::UnsupportedMethod])
+            ->includePaths(['/custom-only'])
+            ->dispatchUsing(static fn(ExploredCase $case): int => 405)
+            ->report();
+
+        $this->assertSame(0, $summary->dispatchedProbes);
+        $this->assertCount(1, $summary->skips);
+        $this->assertStringContainsString('explorer-supported method', $summary->skips[0]->reason);
+    }
+
+    #[Test]
+    public function probe_method_is_deterministic_for_a_seed_and_undocumented(): void
+    {
+        $probeFor = static function (int $seed): string {
+            $method = null;
+            OpenApiContractChecks::run('contract-checks', seed: $seed)
+                ->checks([ContractCheck::UnsupportedMethod])
+                ->includePaths(['/pets'])
+                ->dispatchUsing(static function (ExploredCase $case) use (&$method): int {
+                    $method = $case->method->value;
+
+                    return 405;
+                })
+                ->report();
+
+            return $method ?? self::fail('probe did not dispatch');
+        };
+
+        $first = $probeFor(7);
+        $this->assertSame($first, $probeFor(7), 'same seed must choose the same probe method');
+        $this->assertContains($first, ['PUT', 'PATCH', 'DELETE', 'QUERY']);
+        // Pinned regression: fill in the literal observed on first green run.
+        $this->assertSame('PUT', $first);
+    }
 }
