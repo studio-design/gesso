@@ -1,0 +1,52 @@
+{
+    "openapi": "3.1.0",
+    "info": { "title": "Contract checks fixture", "version": "1.0.0" },
+    "paths": {
+        "/pets": {
+            "get": {
+                "operationId": "listPets",
+                "tags": ["public"],
+                "responses": { "200": { "description": "ok" } }
+            },
+            "post": {
+                "operationId": "createPet",
+                "tags": ["public"],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": ["name"],
+                                "properties": { "name": { "type": "string", "minLength": 1 } }
+                            }
+                        }
+                    }
+                },
+                "responses": { "201": { "description": "created" } }
+            }
+        },
+        "/pets/{petId}": {
+            "get": {
+                "operationId": "showPet",
+                "tags": ["public"],
+                "parameters": [
+                    { "name": "petId", "in": "path", "required": true, "schema": { "type": "integer", "minimum": 1 } }
+                ],
+                "responses": { "200": { "description": "ok" } }
+            }
+        },
+        "/saturated": {
+            "get": { "operationId": "saturatedGet", "responses": { "200": { "description": "ok" } } },
+            "put": { "operationId": "saturatedPut", "responses": { "200": { "description": "ok" } } },
+            "post": { "operationId": "saturatedPost", "responses": { "200": { "description": "ok" } } },
+            "delete": { "operationId": "saturatedDelete", "responses": { "204": { "description": "gone" } } },
+            "patch": { "operationId": "saturatedPatch", "responses": { "200": { "description": "ok" } } },
+            "query": { "operationId": "saturatedQuery", "responses": { "200": { "description": "ok" } } }
+        },
+        "/custom-only": {
+            "additionalOperations": {
+                "COPY": { "operationId": "copyThing", "responses": { "200": { "description": "ok" } } }
+            }
+        }
+    }
+}
