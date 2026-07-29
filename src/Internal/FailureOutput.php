@@ -10,6 +10,8 @@ use Studio\Gesso\OpenApiValidationResult;
 use Studio\Gesso\ValidationOutput;
 use Studio\Gesso\ValidationOutputFormat;
 
+use function implode;
+
 /**
  * Composes the assertion failure message every adapter raises, switching on
  * the process-wide {@see ValidationOutput} format so Laravel, Symfony, Pest,
@@ -51,5 +53,55 @@ final class FailureOutput
         }
 
         return "{$header}:\n{$result->errorMessage()}\nReproduce: {$reproduceCommand()}";
+    }
+
+    /**
+     * Composes a failure message for an exchange-style assertion that
+     * validated several results at once (PSR-7 request + response).
+     *
+     * Text mode reproduces the historical merged shape: every error line
+     * prefixed with its side label, one trailing `Reproduce:` line. Json mode
+     * emits one labelled document per FAILING side — each block after a
+     * `[{label}]` line parses standalone against the documented schema, and
+     * all blocks share the same `reproduce_command` (the command reproduces
+     * the whole exchange):
+     *
+     *     {header}:
+     *     [request]
+     *     {document}
+     *     [response]
+     *     {document}
+     *
+     * @param array<string, OpenApiValidationResult> $sides label => result,
+     *                                                      in output order
+     * @param Closure(): string $reproduceCommand see {@see compose()}
+     */
+    public static function composeExchange(
+        string $header,
+        array $sides,
+        Closure $reproduceCommand,
+    ): string {
+        if (ValidationOutput::format() === ValidationOutputFormat::Json) {
+            $command = $reproduceCommand();
+            $blocks = '';
+            foreach ($sides as $label => $result) {
+                if ($result->isValid()) {
+                    continue;
+                }
+
+                $blocks .= "[{$label}]\n" . JsonValidationResultRenderer::render($result, $command);
+            }
+
+            return "{$header}:\n{$blocks}";
+        }
+
+        $lines = [];
+        foreach ($sides as $label => $result) {
+            foreach ($result->errors() as $error) {
+                $lines[] = "[{$label}] {$error}";
+            }
+        }
+
+        return "{$header}:\n" . implode("\n", $lines) . "\nReproduce: {$reproduceCommand()}";
     }
 }
