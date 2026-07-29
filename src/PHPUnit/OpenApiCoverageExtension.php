@@ -13,6 +13,8 @@ use PHPUnit\Runner\Extension\Extension;
 use PHPUnit\Runner\Extension\Facade;
 use PHPUnit\Runner\Extension\ParameterCollection;
 use PHPUnit\TextUI\Configuration\Configuration;
+use Studio\Gesso\Baseline\InvalidBaselineConfigurationException;
+use Studio\Gesso\Baseline\ViolationBaselineCollector;
 use Studio\Gesso\Coverage\InvalidCoverageOutputPathException;
 use Studio\Gesso\Coverage\InvalidThresholdConfigurationException;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
@@ -151,7 +153,7 @@ final class OpenApiCoverageExtension implements Extension
                 getenv('GITHUB_STEP_SUMMARY') ?: null,
                 self::detectPartialRun($configuration, $parameters),
             );
-        } catch (EnumBindingException|EnumDriftException|InvalidCoverageOutputPathException|InvalidOpenApiSpecException|InvalidStrictRequiredConfigurationException|InvalidThresholdConfigurationException|SpecFileNotFoundException) {
+        } catch (EnumBindingException|EnumDriftException|InvalidBaselineConfigurationException|InvalidCoverageOutputPathException|InvalidOpenApiSpecException|InvalidStrictRequiredConfigurationException|InvalidThresholdConfigurationException|SpecFileNotFoundException) {
             // setupExtension() has already written a FATAL line to stderr and
             // (if GITHUB_STEP_SUMMARY is set) appended a fatal block to it.
             // PHPUnit's ExtensionBootstrapper::bootstrap() wraps this call in
@@ -293,6 +295,39 @@ final class OpenApiCoverageExtension implements Extension
             }
         }
 
+        // Issue #402: violation baseline generation. `baseline_file` names
+        // the committed baseline; the run only demotes failures when the
+        // user explicitly asked for a generation run via the environment
+        // variable, so a plain `vendor/bin/phpunit` never masks violations.
+        $baselineFile = null;
+        if ($parameters->has('baseline_file') && trim($parameters->get('baseline_file')) !== '') {
+            $baselineFile = trim($parameters->get('baseline_file'));
+            if (!str_starts_with($baselineFile, '/')) {
+                $baselineFile = getcwd() . '/' . $baselineFile;
+            }
+        }
+
+        ViolationBaselineCollector::resetCurrent();
+        $baselineGeneratePath = null;
+        if (self::baselineGenerationRequested()) {
+            if ($baselineFile === null) {
+                // A generation run with nowhere to write would complete
+                // "green" (all failures demoted) and then drop every
+                // recorded violation on the floor — abort bootstrap instead.
+                self::writeStderr(
+                    "[Gesso] FATAL: OPENAPI_BASELINE_GENERATE is set but no `baseline_file` extension parameter is configured.\n"
+                    . "  Action: add <parameter name=\"baseline_file\" value=\"gesso-baseline.json\"/> to the extension bootstrap.\n",
+                );
+
+                throw new InvalidBaselineConfigurationException(
+                    'OPENAPI_BASELINE_GENERATE requires the baseline_file extension parameter.',
+                );
+            }
+
+            ViolationBaselineCollector::setCurrent(new ViolationBaselineCollector());
+            $baselineGeneratePath = $baselineFile;
+        }
+
         // Resolve strict first so threshold validation can promote bad values
         // to FATAL when the user opted in to fail-fast (issue #135 review C1).
         $minCoverageStrict = self::resolveStrictFlag($parameters);
@@ -366,7 +401,23 @@ final class OpenApiCoverageExtension implements Extension
             htmlOutput: $htmlOutput,
             partialRun: $partialRun,
             strictRequiredMode: $strictRequiredMode,
+            baselineGeneratePath: $baselineGeneratePath,
         ));
+    }
+
+    /**
+     * Issue #402: whether this run is a baseline generation run. Truthy
+     * semantics mirror {@see self::resolveStrictFlag()}: any non-empty value
+     * except `0` / `false` / `no` requests generation.
+     */
+    private static function baselineGenerationRequested(): bool
+    {
+        $value = getenv('OPENAPI_BASELINE_GENERATE');
+        if ($value === false || trim($value) === '') {
+            return false;
+        }
+
+        return !in_array(mb_strtolower(trim($value)), ['0', 'false', 'no'], true);
     }
 
     /**

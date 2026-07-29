@@ -10,6 +10,8 @@ use const STDERR;
 use PHPUnit\Event\TestRunner\ExecutionFinished;
 use PHPUnit\Event\TestRunner\ExecutionFinishedSubscriber;
 use RuntimeException;
+use Studio\Gesso\Baseline\ViolationBaselineCollector;
+use Studio\Gesso\Baseline\ViolationBaselineFile;
 use Studio\Gesso\Coverage\ConsoleCoverageRenderer;
 use Studio\Gesso\Coverage\CoverageMergeCommand;
 use Studio\Gesso\Coverage\CoverageSidecarEnvelope;
@@ -72,6 +74,11 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
      * @param bool $minCoverageStrict Treat threshold misses as exit non-zero (default warn-only).
      * @param null|callable(int): void $exitHandler Test seam for the strict-miss exit. Defaults to native `exit()`
      *                                              so production behavior matches PHPUnit's own coverage gate.
+     * @param null|string $baselineGeneratePath Issue #402: destination of a violation-baseline generation run
+     *                                          (`OPENAPI_BASELINE_GENERATE`). When non-null the subscriber writes the
+     *                                          collected fingerprints here at run end; partial runs refuse the write
+     *                                          (an incomplete baseline would hide violations) and worker mode warns
+     *                                          (parallel generation is not supported yet).
      * @param null|PartialRunDecision $partialRun Issue #221: when non-null (the run is partial), the subscriber
      *                                            skips every persistent file write (output_file, junit_output,
      *                                            json_output, html_output, GITHUB_STEP_SUMMARY) and emits one
@@ -99,6 +106,7 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
         private ?string $htmlOutput = null,
         private ?PartialRunDecision $partialRun = null,
         private StrictRequiredMode $strictRequiredMode = StrictRequiredMode::Off,
+        private ?string $baselineGeneratePath = null,
     ) {
         // Eager resolution at construction time keeps the readonly invariant
         // honest: by the time any other method runs, $coverageTracker and
@@ -116,6 +124,16 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
     {
         $workerToken = self::resolveWorkerToken();
         if ($workerToken !== null) {
+            // Issue #402: worker collectors demote failures like the
+            // sequential run does, but no per-worker file merge exists yet —
+            // surface the gap instead of silently writing nothing.
+            if ($this->baselineGeneratePath !== null) {
+                $this->writeStderr(
+                    '[Gesso] WARNING: baseline generation is not supported under parallel test runners yet; no baseline file was written. '
+                    . "Run the suite without parallelism to generate the baseline.\n",
+                );
+            }
+
             $this->writeWorkerSidecar($workerToken);
 
             // Free cached spec data; the merge CLI re-loads on its own.
@@ -134,6 +152,7 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
             // assertions ran. Pre-fix, this branch quietly returned 0 even
             // though the user had opted into fail-fast via min_*_coverage.
             $this->failOnEmptyResultsIfGated();
+            $this->writeBaselineFile();
             $this->evaluateStrictRequiredGate();
 
             return;
@@ -142,6 +161,8 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
         echo ConsoleCoverageRenderer::render($results, $this->consoleOutput);
 
         $this->writeReports($results);
+
+        $this->writeBaselineFile();
 
         $this->evaluateThresholdGate($results);
 
@@ -374,6 +395,74 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
             $this->writeStderr("[OpenAPI Coverage] WARNING: failed to write sidecar (token={$token}): {$e->getMessage()}\n");
             CoverageSidecarWriter::writeFailureMarker($dir, $token, $e->getMessage());
         }
+    }
+
+    /**
+     * Issue #402: persist the violation baseline collected during a
+     * generation run. A partial run refuses the write — a subset run would
+     * produce an incomplete baseline that then fails CI on every violation
+     * the filtered-out tests would have recorded — and exits non-zero so
+     * the generation invocation surfaces the refusal instead of looking
+     * like a successful (empty) generation.
+     */
+    private function writeBaselineFile(): void
+    {
+        if ($this->baselineGeneratePath === null) {
+            return;
+        }
+
+        $collector = ViolationBaselineCollector::current();
+        if ($collector === null) {
+            // The extension installs the collector together with the path,
+            // so a missing collector means a test seam constructed the
+            // subscriber directly; nothing was recorded, nothing to write.
+            return;
+        }
+
+        if ($this->partialRun !== null) {
+            $this->writeStderr(sprintf(
+                "[Gesso] WARNING: baseline generation refused on a partial run (%s) — a subset run would write an incomplete baseline. No file was written.\n",
+                $this->partialRun->reason,
+            ));
+            $this->exitNonZero();
+
+            return;
+        }
+
+        try {
+            ViolationBaselineFile::write($this->baselineGeneratePath, $collector->baseline());
+        } catch (RuntimeException $e) {
+            $this->writeStderr("[Gesso] WARNING: {$e->getMessage()}\n");
+            $this->exitNonZero();
+
+            return;
+        }
+
+        $this->writeStderr(sprintf(
+            "[Gesso] Baseline written: %d violation(s) → %s\n",
+            $collector->baseline()->count(),
+            $this->baselineGeneratePath,
+        ));
+    }
+
+    /**
+     * Mirror of the gate fail-fast pattern (see evaluateStrictRequiredGate):
+     * PHPUnit does not propagate subscriber failures to the exit code, so
+     * a failed baseline generation must terminate the process itself.
+     */
+    private function exitNonZero(): void
+    {
+        if ($this->stderrWriter === null) {
+            fflush(STDERR);
+        }
+        $exit = $this->exitHandler;
+        if (is_callable($exit)) {
+            $exit(1);
+
+            return;
+        }
+
+        exit(1);
     }
 
     private function writeStderr(string $message): void
