@@ -82,9 +82,20 @@ class OpenApiCoverageExtensionValidationOutputTest extends TestCase
 
         $this->assertSame(ValidationOutputFormat::Text, ValidationOutput::format());
         $this->assertStringContainsString(
-            "Invalid validation_output parameter 'yaml'. Valid values: text, json.",
+            "Invalid validation_output parameter 'yaml'. Valid values: text, json. "
+            . 'Falling back to the configured format.',
             $this->capturedStderr(),
         );
+    }
+
+    #[Test]
+    public function invalid_parameter_keeps_a_previously_selected_format(): void
+    {
+        ValidationOutput::use(ValidationOutputFormat::Json);
+
+        $this->setupExtension(['validation_output' => 'yaml']);
+
+        $this->assertSame(ValidationOutputFormat::Json, ValidationOutput::format());
     }
 
     #[Test]

@@ -43,7 +43,9 @@ process-wide switch selects the mode everywhere, resolved in priority order:
 
 3. `text` (the default — failure output is unchanged unless you opt in).
 
-An unrecognised value warns on STDERR and falls through to the next source.
+An unrecognised value warns on STDERR and never changes the selection:
+resolution falls through to the next source (so an invalid `validation_output`
+parameter keeps a format already selected via `ValidationOutput::use()`).
 
 In json mode a failing assertion message is one human-readable header line
 followed by this document (the curl reproduction moves into
