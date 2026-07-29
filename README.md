@@ -230,6 +230,7 @@ To validate every response automatically, set `'auto_assert' => true` and drop t
 | Schema-driven request fuzzing | [`docs/fuzzing.md`](docs/fuzzing.md) |
 | Enum drift detection | [`docs/enum-drift.md`](docs/enum-drift.md) |
 | Schema under-description detection (`strict_required`) | [`docs/strict-required.md`](docs/strict-required.md) |
+| Violation baseline: adopt on a legacy API, fail only on new violations | [`docs/baseline.md`](docs/baseline.md) |
 | Coverage report modes & threshold gate | [`docs/coverage.md`](docs/coverage.md) |
 | HTML coverage output | [`docs/coverage-html-output.md`](docs/coverage-html-output.md) |
 | JSON coverage output schema | [`docs/coverage-json-schema.md`](docs/coverage-json-schema.md) |

@@ -53,7 +53,12 @@ This library follows [Semantic Versioning 2.0](https://semver.org/). v1.0.0 is t
   carry `keyword: required`, and security-scheme satisfaction failures carry
   `keyword: required` (credentials absent) or `keyword: format` (present but
   unusable)), the `OPENAPI_BASELINE_GENERATE` environment variable, and the
-  `baseline_file` extension parameter. Unknown `baseline_version` values are
+  `baseline_file` / `baseline_stale` extension parameters (`baseline_stale`
+  values: `off` | `note` | `fail`, default `note`). The enforcement semantics
+  are part of the contract too: with `baseline_file` configured, a failing
+  assertion is suppressed only when **every** one of its violations is
+  baselined, and entries that no longer occur during a full run are reported
+  as stale per `baseline_stale`. Unknown `baseline_version` values are
   rejected.
 - CLI surfaces by major (commands, flags, exit codes, and versioned inputs and
   output where applicable):
