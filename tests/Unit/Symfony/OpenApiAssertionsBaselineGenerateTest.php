@@ -151,6 +151,11 @@ final class OpenApiAssertionsBaselineGenerateTest extends TestCase
 
         $this->assertResponseMatchesOpenApiSchema($request, $response);
 
+        // Exactly the decode fingerprint: the "body is empty" violation the
+        // validator reports against the absent placeholder is an artifact of
+        // the decode failure, and recording it would let the baseline absorb
+        // a future genuinely-empty body.
+        $this->assertSame(1, $this->collector->baseline()->count());
         $this->assertTrue($this->collector->baseline()->contains(new ViolationFingerprint(
             'petstore-3.0',
             'GET',
@@ -175,6 +180,7 @@ final class OpenApiAssertionsBaselineGenerateTest extends TestCase
 
         $this->assertResponseMatchesOpenApiSchema($request, $response);
 
+        $this->assertSame(2, $this->collector->baseline()->count());
         $this->assertTrue($this->collector->baseline()->contains(new ViolationFingerprint(
             'petstore-3.0',
             'GET',
@@ -209,6 +215,7 @@ final class OpenApiAssertionsBaselineGenerateTest extends TestCase
 
         $this->assertRequestMatchesOpenApiSchema($request);
 
+        $this->assertSame(1, $this->collector->baseline()->count());
         $this->assertTrue($this->collector->baseline()->contains(new ViolationFingerprint(
             'petstore-3.0',
             'POST',

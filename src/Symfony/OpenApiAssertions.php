@@ -141,12 +141,14 @@ trait OpenApiAssertions
                 ),
             );
 
+        $decodeFailureDemoted = false;
         $decodedBody = $this->extractOrRecordBaselineViolation(
             fn(): DecodedBody => $this->extractSymfonyJsonBody($content, $contentType, 'Response'),
             $specName,
             $method->value,
             $path,
             'response.body',
+            $decodeFailureDemoted,
         );
 
         $result = $validator->validate(
@@ -178,6 +180,7 @@ trait OpenApiAssertions
             $path,
             sprintf('OpenAPI schema validation failed for %s %s (spec: %s)', $method->value, $path, $specName),
             fn(): string => $this->symfonyReproduceCommand($request),
+            $decodeFailureDemoted ? 'response.body' : null,
         );
     }
 
@@ -202,12 +205,14 @@ trait OpenApiAssertions
 
         $contentType = $request->headers->get('Content-Type') ?? '';
 
+        $decodeFailureDemoted = false;
         $decodedBody = $this->extractOrRecordBaselineViolation(
             fn(): DecodedBody => $this->extractSymfonyJsonBody($request->getContent(), $contentType, 'Request'),
             $specName,
             $method->value,
             $path,
             'request.body',
+            $decodeFailureDemoted,
         );
 
         $result = $this->symfonyRequestValidator()->validate(
@@ -238,6 +243,7 @@ trait OpenApiAssertions
             $path,
             sprintf('OpenAPI request validation failed for %s %s (spec: %s)', $method->value, $path, $specName),
             fn(): string => $this->symfonyReproduceCommand($request),
+            $decodeFailureDemoted ? 'request.body' : null,
         );
     }
 
@@ -368,12 +374,18 @@ trait OpenApiAssertions
      * runs — mirroring how the PSR-7 adapter folds adapter-level body errors
      * into the validation result while validating everything else. Any
      * further violations are then demoted and recorded by the normal assert
-     * path. The fingerprint deliberately carries no matched status /
-     * content-type context: the failure happens before path matching, so
-     * enforcement must be able to rebuild the identical fingerprint from the
-     * raw request context alone. Normal runs re-throw untouched.
+     * path, except same-side body issues: the validator saw an absent
+     * placeholder, not the real (undecodable) body, so its body verdicts are
+     * artifacts — `$decodeFailureDemoted` tells the caller to exclude that
+     * category when recording. The fingerprint deliberately carries no
+     * matched status / content-type context: the failure happens before path
+     * matching, so enforcement must be able to rebuild the identical
+     * fingerprint from the raw request context alone. Normal runs re-throw
+     * untouched.
      *
      * @param Closure(): DecodedBody $extract
+     *
+     * @param-out bool $decodeFailureDemoted
      */
     private function extractOrRecordBaselineViolation(
         Closure $extract,
@@ -381,7 +393,9 @@ trait OpenApiAssertions
         string $method,
         string $path,
         string $category,
+        bool &$decodeFailureDemoted,
     ): DecodedBody {
+        $decodeFailureDemoted = false;
         $collector = ViolationBaselineCollector::current();
         if ($collector === null) {
             return $extract();
@@ -400,6 +414,7 @@ trait OpenApiAssertions
                 null,
                 null,
             ));
+            $decodeFailureDemoted = true;
 
             return DecodedBody::absent();
         }
@@ -495,6 +510,7 @@ trait OpenApiAssertions
         string $path,
         string $header,
         Closure $reproduceCommand,
+        ?string $recordExcludeCategory = null,
     ): void {
         if ($result->isValid()) {
             $this->assertOpenApi(true, '');
@@ -504,7 +520,7 @@ trait OpenApiAssertions
 
         $collector = ViolationBaselineCollector::current();
         if ($collector !== null) {
-            $collector->recordResult($specName, $result, $method, $path);
+            $collector->recordResult($specName, $result, $method, $path, $recordExcludeCategory);
             $this->assertOpenApi(true, '');
 
             return;

@@ -4129,6 +4129,15 @@
                                 "unavailable": true
                             },
                             "attributes": []
+                        },
+                        {
+                            "name": "recordExcludeCategory",
+                            "type": "?string",
+                            "optional": true,
+                            "variadic": false,
+                            "by_reference": false,
+                            "default": null,
+                            "attributes": []
                         }
                     ]
                 },
@@ -4413,6 +4422,17 @@
                             "optional": false,
                             "variadic": false,
                             "by_reference": false,
+                            "default": {
+                                "unavailable": true
+                            },
+                            "attributes": []
+                        },
+                        {
+                            "name": "decodeFailureDemoted",
+                            "type": "bool",
+                            "optional": false,
+                            "variadic": false,
+                            "by_reference": true,
                             "default": {
                                 "unavailable": true
                             },
@@ -7668,6 +7688,15 @@
                                 "unavailable": true
                             },
                             "attributes": []
+                        },
+                        {
+                            "name": "recordExcludeCategory",
+                            "type": "?string",
+                            "optional": true,
+                            "variadic": false,
+                            "by_reference": false,
+                            "default": null,
+                            "attributes": []
                         }
                     ]
                 },
@@ -7730,6 +7759,17 @@
                             "optional": false,
                             "variadic": false,
                             "by_reference": false,
+                            "default": {
+                                "unavailable": true
+                            },
+                            "attributes": []
+                        },
+                        {
+                            "name": "decodeFailureDemoted",
+                            "type": "bool",
+                            "optional": false,
+                            "variadic": false,
+                            "by_reference": true,
                             "default": {
                                 "unavailable": true
                             },

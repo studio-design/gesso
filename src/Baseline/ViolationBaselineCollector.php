@@ -67,14 +67,24 @@ final class ViolationBaselineCollector
      * Record every issue of a failing result. The adapter's resolved method
      * and raw request path back-fill issues that carry no context of their
      * own (e.g. path-match failures).
+     *
+     * `$excludeCategory` skips issues of one category: an adapter that
+     * already recorded a body-decode-failure fingerprint ran the validator
+     * against an absent placeholder body, so same-side body issues are
+     * artifacts of the decode failure — recording them would let the
+     * baseline absorb a future genuinely-empty body.
      */
     public function recordResult(
         string $specName,
         OpenApiValidationResult $result,
         string $fallbackMethod,
         string $fallbackPath,
+        ?string $excludeCategory = null,
     ): void {
         foreach ($result->issues() as $issue) {
+            if ($issue->category === $excludeCategory) {
+                continue;
+            }
             $this->record(ViolationFingerprint::fromIssue($specName, $issue, $fallbackMethod, $fallbackPath));
         }
     }
