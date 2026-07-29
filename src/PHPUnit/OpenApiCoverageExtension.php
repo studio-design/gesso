@@ -31,6 +31,8 @@ use Studio\Gesso\Validation\Strict\StrictRequiredPerCallChecker;
 use Studio\Gesso\Validation\Strict\StrictRequiredPerCallMode;
 use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 use Studio\Gesso\Validation\Support\DiscriminatorEnforcement;
+use Studio\Gesso\ValidationOutput;
+use Studio\Gesso\ValidationOutputFormat;
 
 use function array_filter;
 use function array_map;
@@ -49,6 +51,7 @@ use function is_dir;
 use function is_numeric;
 use function is_string;
 use function is_writable;
+use function mb_strtolower;
 use function method_exists;
 use function sprintf;
 use function str_starts_with;
@@ -254,6 +257,20 @@ final class OpenApiCoverageExtension implements Extension
         $junitOutput = self::resolveOutputPathParameter($parameters, 'junit_output', $githubSummaryPath);
         $jsonOutput = self::resolveOutputPathParameter($parameters, 'json_output', $githubSummaryPath);
         $htmlOutput = self::resolveOutputPathParameter($parameters, 'html_output', $githubSummaryPath);
+
+        // Issue #282: run-wide validation failure output selection. Only a
+        // valid parameter reaches ValidationOutput::use(); the environment
+        // variable keeps priority inside ValidationOutput::format() itself.
+        if ($parameters->has('validation_output') && trim($parameters->get('validation_output')) !== '') {
+            $rawValidationOutput = $parameters->get('validation_output');
+            $validationOutput = ValidationOutputFormat::tryFrom(mb_strtolower(trim($rawValidationOutput)));
+
+            if ($validationOutput === null) {
+                self::writeStderr("[OpenAPI Coverage] WARNING: Invalid validation_output parameter '{$rawValidationOutput}'. Valid values: text, json. Falling back to 'text'.\n");
+            } else {
+                ValidationOutput::use($validationOutput);
+            }
+        }
 
         $consoleOutput = ConsoleOutput::resolve(
             $parameters->has('console_output') ? $parameters->get('console_output') : null,
