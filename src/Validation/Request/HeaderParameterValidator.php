@@ -101,7 +101,7 @@ final class HeaderParameterValidator
             // A repeated header that was sent zero times is semantically absent.
             if ($rawValue === null || $rawValue === []) {
                 if ($required) {
-                    $errors[] = new NamedError($name, "[header.{$name}] required header is missing.");
+                    $errors[] = new NamedError($name, "[header.{$name}] required header is missing.", keyword: 'required');
                 }
 
                 continue;
@@ -134,7 +134,7 @@ final class HeaderParameterValidator
             // hide the root cause.
             if ($rawValue === null) {
                 if ($required) {
-                    $errors[] = new NamedError($name, "[header.{$name}] required header is missing.");
+                    $errors[] = new NamedError($name, "[header.{$name}] required header is missing.", keyword: 'required');
                 }
 
                 continue;
@@ -160,12 +160,9 @@ final class HeaderParameterValidator
             $schemaObject = ObjectConverter::convert($jsonSchema);
             $dataObject = ObjectConverter::convert($coerced);
 
-            $formatted = $this->runner->validate($schemaObject, $dataObject);
-            foreach ($formatted as $path => $messages) {
-                $suffix = $path === '/' ? '' : $path;
-                foreach ($messages as $message) {
-                    $errors[] = new NamedError($name, "[header.{$name}{$suffix}] {$message}");
-                }
+            foreach ($this->runner->validateStructured($schemaObject, $dataObject) as $violation) {
+                $suffix = $violation->displayPath() === '/' ? '' : $violation->displayPath();
+                $errors[] = new NamedError($name, "[header.{$name}{$suffix}] {$violation->message}", $violation->instancePath, $violation->keyword);
             }
         }
 

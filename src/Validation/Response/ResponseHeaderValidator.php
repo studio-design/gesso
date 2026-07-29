@@ -137,7 +137,7 @@ final class ResponseHeaderValidator
             // semantically absent.
             if ($rawValue === null || $rawValue === []) {
                 if ($required) {
-                    $errors[] = new NamedError((string) $name, sprintf('[response-header.%s] required header is missing.', $name));
+                    $errors[] = new NamedError((string) $name, sprintf('[response-header.%s] required header is missing.', $name), keyword: 'required');
                 }
 
                 continue;
@@ -163,7 +163,7 @@ final class ResponseHeaderValidator
             // a `nullable` schema or surface as a `/` type mismatch from opis.
             if ($rawValue === null) {
                 if ($required) {
-                    $errors[] = new NamedError((string) $name, sprintf('[response-header.%s] required header is missing.', $name));
+                    $errors[] = new NamedError((string) $name, sprintf('[response-header.%s] required header is missing.', $name), keyword: 'required');
                 }
 
                 continue;
@@ -185,12 +185,9 @@ final class ResponseHeaderValidator
             $schemaObject = ObjectConverter::convert($jsonSchema);
             $dataObject = ObjectConverter::convert($coerced);
 
-            $formatted = $this->runner->validate($schemaObject, $dataObject);
-            foreach ($formatted as $path => $messages) {
-                $suffix = $path === '/' ? '' : $path;
-                foreach ($messages as $message) {
-                    $errors[] = new NamedError((string) $name, sprintf('[response-header.%s%s] %s', $name, $suffix, $message));
-                }
+            foreach ($this->runner->validateStructured($schemaObject, $dataObject) as $violation) {
+                $suffix = $violation->displayPath() === '/' ? '' : $violation->displayPath();
+                $errors[] = new NamedError((string) $name, sprintf('[response-header.%s%s] %s', $name, $suffix, $violation->message), $violation->instancePath, $violation->keyword);
             }
         }
 

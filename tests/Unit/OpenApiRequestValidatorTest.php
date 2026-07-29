@@ -349,15 +349,18 @@ class OpenApiRequestValidatorTest extends TestCase
         $this->assertNull($missingBodyIssues[0]->instancePath);
         $this->assertNull($missingBodyIssues[0]->keyword);
 
-        // Parameter issues never carry schema context.
+        // Parameter schema violations carry the pointer into the named
+        // value and the failing keyword (issue #402): a baselined `minimum`
+        // violation on `limit` must not absorb a future different violation
+        // on the same parameter.
         $query = $this->validator->validate('openapi-3.2', 'GET', '/v1/filter', ['limit' => '0'], [], null);
         $queryIssues = array_values(array_filter(
             $query->issues(),
             static fn($issue) => $issue->category === 'request.parameter.query',
         ));
         $this->assertNotEmpty($queryIssues);
-        $this->assertNull($queryIssues[0]->instancePath);
-        $this->assertNull($queryIssues[0]->keyword);
+        $this->assertSame('/limit', $queryIssues[0]->instancePath);
+        $this->assertSame('minimum', $queryIssues[0]->keyword);
     }
 
     #[Test]

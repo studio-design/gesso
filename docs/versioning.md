@@ -44,7 +44,9 @@ This library follows [Semantic Versioning 2.0](https://semver.org/). v1.0.0 is t
   fields encode (the human-readable message is deliberately excluded; numeric
   `instance_path` segments are canonicalized to `*`; non-body issues are
   distinguished by the parameter / response-header / security-scheme name in
-  `parameter`), the `OPENAPI_BASELINE_GENERATE` environment variable, and the
+  `parameter`, and parameter / response-header schema violations additionally
+  by `keyword` and `instance_path` — missing required parameters and headers
+  carry `keyword: required`), the `OPENAPI_BASELINE_GENERATE` environment variable, and the
   `baseline_file` extension parameter. Unknown `baseline_version` values are
   rejected.
 - CLI surfaces by major (commands, flags, exit codes, and versioned inputs and

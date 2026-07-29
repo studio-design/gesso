@@ -94,12 +94,9 @@ final class PathParameterValidator
             $schemaObject = ObjectConverter::convert($jsonSchema);
             $dataObject = ObjectConverter::convert($coerced);
 
-            $formatted = $this->runner->validate($schemaObject, $dataObject);
-            foreach ($formatted as $path => $messages) {
-                $suffix = $path === '/' ? '' : $path;
-                foreach ($messages as $message) {
-                    $errors[] = new NamedError($name, "[path.{$name}{$suffix}] {$message}");
-                }
+            foreach ($this->runner->validateStructured($schemaObject, $dataObject) as $violation) {
+                $suffix = $violation->displayPath() === '/' ? '' : $violation->displayPath();
+                $errors[] = new NamedError($name, "[path.{$name}{$suffix}] {$violation->message}", $violation->instancePath, $violation->keyword);
             }
         }
 

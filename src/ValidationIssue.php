@@ -11,14 +11,16 @@ namespace Studio\Gesso;
  * `category` is a stable slug and part of the documented compatibility
  * surface (see docs/versioning.md); `message` is the exact human-readable
  * error text and remains explicitly outside the compatibility contract.
- * `instancePath` (RFC 6901 JSON Pointer into the validated body, `''` =
- * document root) and `keyword` (the failing JSON Schema keyword) are
- * populated on body-schema violations and stay null for every other error
- * source (issue #282, stage 2). `parameter` names the spec object a
- * non-body issue is about — the request parameter (`request.parameter.*`),
- * response header (`response.header`), or security scheme
- * (`request.security`) — and is null for body issues and for errors not
- * attributable to a single named object (issue #402).
+ * `instancePath` (RFC 6901 JSON Pointer, `''` = document root) and `keyword`
+ * (the failing JSON Schema keyword) are populated on schema violations: for
+ * body issues the pointer is into the validated body (issue #282, stage 2);
+ * for parameter / response-header issues it is into the named value, and
+ * `keyword` is additionally `'required'` when a required parameter or header
+ * is missing (issue #402). Both stay null for structural and spec-malformation
+ * errors. `parameter` names the spec object a non-body issue is about — the
+ * request parameter (`request.parameter.*`), response header
+ * (`response.header`), or security scheme (`request.security`) — and is null
+ * for body issues and for errors not attributable to a single named object.
  */
 final readonly class ValidationIssue
 {

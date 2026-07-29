@@ -102,7 +102,7 @@ final class QueryParameterValidator
             $present = array_key_exists($name, $queryParams) && $queryParams[$name] !== null;
             if (!$present) {
                 if ($required) {
-                    $errors[] = new NamedError($name, "[query.{$name}] required query parameter is missing.");
+                    $errors[] = new NamedError($name, "[query.{$name}] required query parameter is missing.", keyword: 'required');
                 }
 
                 continue;
@@ -114,12 +114,9 @@ final class QueryParameterValidator
             $schemaObject = ObjectConverter::convert($jsonSchema);
             $dataObject = ObjectConverter::convert($coerced);
 
-            $formatted = $this->runner->validate($schemaObject, $dataObject);
-            foreach ($formatted as $path => $messages) {
-                $suffix = $path === '/' ? '' : $path;
-                foreach ($messages as $message) {
-                    $errors[] = new NamedError($name, "[query.{$name}{$suffix}] {$message}");
-                }
+            foreach ($this->runner->validateStructured($schemaObject, $dataObject) as $violation) {
+                $suffix = $violation->displayPath() === '/' ? '' : $violation->displayPath();
+                $errors[] = new NamedError($name, "[query.{$name}{$suffix}] {$violation->message}", $violation->instancePath, $violation->keyword);
             }
         }
 
@@ -198,7 +195,7 @@ final class QueryParameterValidator
 
         if ($queryParams === []) {
             return ($parameter['required'] ?? false) === true
-                ? [new NamedError($qsName, "[querystring] required URL query string is missing for {$method} {$matchedPath}.")]
+                ? [new NamedError($qsName, "[querystring] required URL query string is missing for {$method} {$matchedPath}.", keyword: 'required')]
                 : [];
         }
 
@@ -214,17 +211,14 @@ final class QueryParameterValidator
         }
 
         $jsonSchema = OpenApiSchemaConverter::convert($schema, $version, SchemaContext::Request, null, $jsonSchemaDialect);
-        $formatted = $this->runner->validate(
-            ObjectConverter::convert($jsonSchema),
-            ObjectConverter::convert($coerced),
-        );
 
         $errors = [];
-        foreach ($formatted as $path => $messages) {
-            $suffix = $path === '/' ? '' : $path;
-            foreach ($messages as $message) {
-                $errors[] = new NamedError($qsName, "[querystring{$suffix}] {$message}");
-            }
+        foreach ($this->runner->validateStructured(
+            ObjectConverter::convert($jsonSchema),
+            ObjectConverter::convert($coerced),
+        ) as $violation) {
+            $suffix = $violation->displayPath() === '/' ? '' : $violation->displayPath();
+            $errors[] = new NamedError($qsName, "[querystring{$suffix}] {$violation->message}", $violation->instancePath, $violation->keyword);
         }
 
         return $errors;

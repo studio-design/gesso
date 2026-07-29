@@ -122,7 +122,10 @@ class OpenApiResponseValidatorTest extends TestCase
         $this->assertSame('type', $bodyIssues[0]->keyword);
         $this->assertStringStartsWith('[/id] ', $bodyIssues[0]->message);
 
-        // Header issues are not schema violations — both fields stay null.
+        // A missing required header carries the synthetic `required` keyword
+        // (issue #402) so its baseline fingerprint stays distinct from a
+        // future schema violation on the same header; there is no value to
+        // point into, so instancePath stays null.
         $headerFailure = $this->validator->validate(
             'psr7',
             'POST',
@@ -138,7 +141,7 @@ class OpenApiResponseValidatorTest extends TestCase
         ));
         $this->assertNotEmpty($headerIssues);
         $this->assertNull($headerIssues[0]->instancePath);
-        $this->assertNull($headerIssues[0]->keyword);
+        $this->assertSame('required', $headerIssues[0]->keyword);
         // Header validation is independent of the response media type —
         // contentType is documented as body-issue-only context.
         $this->assertNull($headerIssues[0]->contentType);

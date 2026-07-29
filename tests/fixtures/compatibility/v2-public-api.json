@@ -4360,7 +4360,7 @@
                     "final": false,
                     "abstract": false,
                     "returns_reference": false,
-                    "return_type": "?Studio\\Gesso\\DecodedBody",
+                    "return_type": "Studio\\Gesso\\DecodedBody",
                     "attributes": [],
                     "parameters": [
                         {
@@ -7677,7 +7677,7 @@
                     "final": false,
                     "abstract": false,
                     "returns_reference": false,
-                    "return_type": "?Studio\\Gesso\\DecodedBody",
+                    "return_type": "Studio\\Gesso\\DecodedBody",
                     "attributes": [],
                     "parameters": [
                         {

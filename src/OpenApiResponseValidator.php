@@ -436,7 +436,7 @@ final class OpenApiResponseValidator
             // field for body issues. The header name rides along as
             // `parameter` so baseline fingerprints can tell two header
             // violations on one operation apart (#402).
-            $issues[] = new ValidationIssue('response.header', $headerError->message, method: $method, path: $matchedPath, statusCode: $statusCodeStr, parameter: $headerError->name);
+            $issues[] = new ValidationIssue('response.header', $headerError->message, instancePath: $headerError->instancePath, keyword: $headerError->keyword, method: $method, path: $matchedPath, statusCode: $statusCodeStr, parameter: $headerError->name);
         }
         $errors = array_merge(
             $bodyResult->errors,

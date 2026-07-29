@@ -301,8 +301,8 @@ final class OpenApiRequestValidator
                 $issues[] = new ValidationIssue(
                     $category,
                     $namedError->message,
-                    instancePath: $aligned ? $violations[$index]->instancePath : null,
-                    keyword: $aligned ? $violations[$index]->keyword : null,
+                    instancePath: $aligned ? $violations[$index]->instancePath : $namedError->instancePath,
+                    keyword: $aligned ? $violations[$index]->keyword : $namedError->keyword,
                     method: $method,
                     path: $matchedPath,
                     contentType: $issueContentType,

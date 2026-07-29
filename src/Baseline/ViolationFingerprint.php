@@ -23,8 +23,12 @@ use function strtoupper;
  * data size or ordering. Non-body issues are distinguished by `parameter`
  * — the request parameter, response header, or security scheme name — so a
  * known `limit` violation does not absorb a future `page` violation on the
- * same operation. Issues that carry no name (structural spec errors,
- * error-boundary captures) still collapse per `(operation, category)`.
+ * same operation. Parameter / response-header schema violations further
+ * carry the failing `keyword` and the pointer into the named value (and
+ * missing required parameters carry `keyword: required`), so two different
+ * violation kinds on one parameter stay distinct. Issues that carry neither
+ * a name nor a keyword (structural spec errors, error-boundary captures,
+ * security-scheme checks) still collapse per `(operation, category[, name])`.
  *
  * The serialized shape ({@see toArray()}) is the versioned baseline-file
  * entry format documented in docs/versioning.md.
