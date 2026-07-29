@@ -39,6 +39,8 @@ use Studio\Gesso\Tests\Unit\Compatibility\Fixture\PublicApiTraitSurfaceConsumerF
 use Studio\Gesso\Tests\Unit\Compatibility\Fixture\PublicApiTraitSurfaceFixture;
 use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 use Studio\Gesso\ValidationIssue;
+use Studio\Gesso\ValidationOutput;
+use Studio\Gesso\ValidationOutputFormat;
 
 use function array_keys;
 use function dirname;
@@ -401,6 +403,141 @@ final class PublicApiBaselineTest extends TestCase
                             'variadic' => false,
                             'by_reference' => false,
                             'default' => null,
+                            'attributes' => [],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+        // New public symbols in v2.x (#282 stage 3): process-wide validation
+        // failure output format selection.
+        $expected[ValidationOutput::class] = [
+            'kind' => 'class',
+            'final' => true,
+            'abstract' => false,
+            'readonly' => false,
+            'instantiable' => false,
+            'constructor' => ['kind' => 'declared', 'visibility' => 'private'],
+            'parent' => null,
+            'interfaces' => [],
+            'traits' => [],
+            'attributes' => [],
+            'backing_type' => null,
+            'cases' => [],
+            'constants' => [],
+            'properties' => [],
+            'methods' => [
+                'format' => [
+                    'static' => true,
+                    'final' => false,
+                    'abstract' => false,
+                    'returns_reference' => false,
+                    'return_type' => 'Studio\Gesso\ValidationOutputFormat',
+                    'attributes' => [],
+                    'parameters' => [],
+                ],
+                'reset' => [
+                    'static' => true,
+                    'final' => false,
+                    'abstract' => false,
+                    'returns_reference' => false,
+                    'return_type' => 'void',
+                    'attributes' => [],
+                    'parameters' => [],
+                ],
+                'use' => [
+                    'static' => true,
+                    'final' => false,
+                    'abstract' => false,
+                    'returns_reference' => false,
+                    'return_type' => 'void',
+                    'attributes' => [],
+                    'parameters' => [
+                        [
+                            'name' => 'format',
+                            'type' => 'Studio\Gesso\ValidationOutputFormat',
+                            'optional' => false,
+                            'variadic' => false,
+                            'by_reference' => false,
+                            'default' => ['unavailable' => true],
+                            'attributes' => [],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+        $expected[ValidationOutputFormat::class] = [
+            'kind' => 'enum',
+            'final' => true,
+            'abstract' => false,
+            'readonly' => false,
+            'instantiable' => false,
+            'constructor' => null,
+            'parent' => null,
+            'interfaces' => ['BackedEnum', 'UnitEnum'],
+            'traits' => [],
+            'attributes' => [],
+            'backing_type' => 'string',
+            'cases' => ['Text' => 'text', 'Json' => 'json'],
+            'constants' => [],
+            'properties' => [
+                'name' => [
+                    'type' => 'string',
+                    'static' => false,
+                    'readonly' => true,
+                    'default' => ['unavailable' => true],
+                ],
+                'value' => [
+                    'type' => 'string',
+                    'static' => false,
+                    'readonly' => true,
+                    'default' => ['unavailable' => true],
+                ],
+            ],
+            'methods' => [
+                'cases' => [
+                    'static' => true,
+                    'final' => false,
+                    'abstract' => false,
+                    'returns_reference' => false,
+                    'return_type' => 'array',
+                    'attributes' => [],
+                    'parameters' => [],
+                ],
+                'from' => [
+                    'static' => true,
+                    'final' => false,
+                    'abstract' => false,
+                    'returns_reference' => false,
+                    'return_type' => 'static',
+                    'attributes' => [],
+                    'parameters' => [
+                        [
+                            'name' => 'value',
+                            'type' => 'string|int',
+                            'optional' => false,
+                            'variadic' => false,
+                            'by_reference' => false,
+                            'default' => ['unavailable' => true],
+                            'attributes' => [],
+                        ],
+                    ],
+                ],
+                'tryFrom' => [
+                    'static' => true,
+                    'final' => false,
+                    'abstract' => false,
+                    'returns_reference' => false,
+                    'return_type' => '?static',
+                    'attributes' => [],
+                    'parameters' => [
+                        [
+                            'name' => 'value',
+                            'type' => 'string|int',
+                            'optional' => false,
+                            'variadic' => false,
+                            'by_reference' => false,
+                            'default' => ['unavailable' => true],
                             'attributes' => [],
                         ],
                     ],

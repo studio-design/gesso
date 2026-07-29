@@ -1,7 +1,9 @@
 {
     "[Gesso]": {
         "src/Fuzz/SchemaDataGenerator.php": 1,
-        "src/Laravel/ValidatesOpenApiSchema.php": 1
+        "src/Laravel/ValidatesOpenApiSchema.php": 1,
+        "src/PHPUnit/OpenApiCoverageExtension.php": 1,
+        "src/ValidationOutput.php": 1
     },
     "[OpenAPI 3.2 $self]": {
         "src/Spec/OpenApiSpecLoader.php": 1

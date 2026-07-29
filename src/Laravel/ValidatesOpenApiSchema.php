@@ -10,6 +10,7 @@ use const FILTER_VALIDATE_BOOLEAN;
 use const JSON_THROW_ON_ERROR;
 use const STDERR;
 
+use Closure;
 use Illuminate\Testing\TestResponse;
 use InvalidArgumentException;
 use JsonException;
@@ -21,9 +22,11 @@ use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\DecodedBody;
 use Studio\Gesso\HttpMethod;
 use Studio\Gesso\Internal\CurlCommandFormatter;
+use Studio\Gesso\Internal\FailureOutput;
 use Studio\Gesso\Internal\StackTraceFilter;
 use Studio\Gesso\OpenApiRequestValidator;
 use Studio\Gesso\OpenApiResponseValidator;
+use Studio\Gesso\OpenApiValidationResult;
 use Studio\Gesso\SkipOpenApiResolver;
 use Studio\Gesso\Spec\OpenApiOperationResolver;
 use Studio\Gesso\Spec\OpenApiPathMatcher;
@@ -33,6 +36,8 @@ use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 use Studio\Gesso\Validation\Support\ContentTypeMatcher;
 use Studio\Gesso\Validation\Support\DiscriminatorEnforcement;
 use Studio\Gesso\Validation\Support\HeaderNormalizer;
+use Studio\Gesso\ValidationOutput;
+use Studio\Gesso\ValidationOutputFormat;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use WeakMap;
@@ -576,11 +581,10 @@ trait ValidatesOpenApiSchema
             );
         }
 
-        $this->assertOpenApi(
-            $result->isValid(),
-            "OpenAPI schema validation failed for {$resolvedMethod} {$resolvedPath} (spec: {$specName}):\n"
-            . $result->errorMessage()
-            . "\nReproduce: " . $this->responseReproduceCommand($resolvedMethod, $resolvedPath),
+        $this->assertLaravelOpenApiResult(
+            $result,
+            "OpenAPI schema validation failed for {$resolvedMethod} {$resolvedPath} (spec: {$specName})",
+            fn(): string => $this->responseReproduceCommand($resolvedMethod, $resolvedPath),
         );
     }
 
@@ -745,11 +749,10 @@ trait ValidatesOpenApiSchema
             );
         }
 
-        $this->assertOpenApi(
-            $result->isValid(),
-            "OpenAPI request validation failed for {$resolvedMethod} {$resolvedPath} (spec: {$specName}):\n"
-            . $result->errorMessage()
-            . "\nReproduce: " . $this->requestReproduceCommand($request),
+        $this->assertLaravelOpenApiResult(
+            $result,
+            "OpenAPI request validation failed for {$resolvedMethod} {$resolvedPath} (spec: {$specName})",
+            fn(): string => $this->requestReproduceCommand($request),
         );
     }
 
@@ -1155,6 +1158,35 @@ trait ValidatesOpenApiSchema
         // trigger_error still fires so PHPUnit counts the deprecation and
         // surfaces it in the run summary for downstream tools to detect.
         trigger_error($message, E_USER_DEPRECATED);
+    }
+
+    /**
+     * Raise the adapter's standard failure for an invalid result. Json mode
+     * must end with the parseable document, so it fails without PHPUnit's
+     * "Failed asserting that false is true." suffix; text mode keeps the
+     * historical assertTrue() message byte-for-byte.
+     *
+     * @param Closure(): string $reproduceCommand built lazily so the curl
+     *                                            command is only rendered when the assertion actually fails
+     */
+    private function assertLaravelOpenApiResult(
+        OpenApiValidationResult $result,
+        string $header,
+        Closure $reproduceCommand,
+    ): void {
+        if ($result->isValid()) {
+            $this->assertOpenApi(true, '');
+
+            return;
+        }
+
+        $message = FailureOutput::compose($header, $result, $reproduceCommand);
+
+        if (ValidationOutput::format() === ValidationOutputFormat::Json) {
+            $this->failOpenApi($message);
+        }
+
+        $this->assertOpenApi(false, $message);
     }
 
     /** Like Assert::fail() but with vendor frames stripped from the trace. */

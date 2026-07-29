@@ -10,11 +10,14 @@ use PHPUnit\Framework\AssertionFailedError;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
 use Studio\Gesso\Internal\CurlCommandFormatter;
+use Studio\Gesso\Internal\FailureOutput;
 use Studio\Gesso\Internal\StackTraceFilter;
 use Studio\Gesso\OpenApiRequestValidator;
 use Studio\Gesso\OpenApiResponseValidator;
 use Studio\Gesso\OpenApiValidationResult;
 use Studio\Gesso\Spec\OpenApiSpecResolver;
+use Studio\Gesso\ValidationOutput;
+use Studio\Gesso\ValidationOutputFormat;
 use Throwable;
 
 use function sprintf;
@@ -85,17 +88,29 @@ trait OpenApiAssertions
     ): void {
         $result = $this->psr7Validator()->validateExchange($request, $response);
 
-        $this->assertPsr7(
-            $result->isValid(),
-            $result->isValid() ? '' : sprintf(
-                "OpenAPI PSR-7 exchange validation failed for %s %s (spec: %s):\n%s\nReproduce: %s",
+        if ($result->isValid()) {
+            $this->assertPsr7(true, '');
+
+            return;
+        }
+
+        $message = FailureOutput::composeExchange(
+            sprintf(
+                'OpenAPI PSR-7 exchange validation failed for %s %s (spec: %s)',
                 $request->getMethod(),
                 $request->getUri()->getPath() ?: '/',
                 $this->cachedPsr7SpecName,
-                $result->errorMessage(),
-                $this->psr7ReproduceCommand($request),
             ),
+            ['request' => $result->requestResult(), 'response' => $result->responseResult()],
+            fn(): string => $this->psr7ReproduceCommand($request),
         );
+
+        // See assertPsr7Result(): json mode must end with parseable documents.
+        if (ValidationOutput::format() === ValidationOutputFormat::Json) {
+            $this->failPsr7($message);
+        }
+
+        $this->assertPsr7(false, $message);
     }
 
     /** User-overridable fallback when no #[OpenApiSpec] attribute is present. */
@@ -158,16 +173,26 @@ trait OpenApiAssertions
      */
     private function assertPsr7Result(OpenApiValidationResult $result, string $prefix, Closure $reproduceCommand): void
     {
-        $this->assertPsr7(
-            $result->isValid(),
-            $result->isValid() ? '' : sprintf(
-                "%s (spec: %s):\n%s\nReproduce: %s",
-                $prefix,
-                $this->cachedPsr7SpecName,
-                $result->errorMessage(),
-                $reproduceCommand(),
-            ),
+        if ($result->isValid()) {
+            $this->assertPsr7(true, '');
+
+            return;
+        }
+
+        $message = FailureOutput::compose(
+            sprintf('%s (spec: %s)', $prefix, $this->cachedPsr7SpecName),
+            $result,
+            $reproduceCommand,
         );
+
+        // Json mode must end with the parseable document, so fail without
+        // PHPUnit's "Failed asserting that false is true." suffix; text mode
+        // keeps the historical assertTrue() message byte-for-byte.
+        if (ValidationOutput::format() === ValidationOutputFormat::Json) {
+            $this->failPsr7($message);
+        }
+
+        $this->assertPsr7(false, $message);
     }
 
     private function psr7ReproduceCommand(RequestInterface $request): string

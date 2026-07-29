@@ -4055,6 +4055,50 @@
                     "attributes": [],
                     "parameters": []
                 },
+                "assertLaravelOpenApiResult": {
+                    "visibility": "private",
+                    "static": false,
+                    "final": false,
+                    "abstract": false,
+                    "returns_reference": false,
+                    "return_type": "void",
+                    "attributes": [],
+                    "parameters": [
+                        {
+                            "name": "result",
+                            "type": "Studio\\Gesso\\OpenApiValidationResult",
+                            "optional": false,
+                            "variadic": false,
+                            "by_reference": false,
+                            "default": {
+                                "unavailable": true
+                            },
+                            "attributes": []
+                        },
+                        {
+                            "name": "header",
+                            "type": "string",
+                            "optional": false,
+                            "variadic": false,
+                            "by_reference": false,
+                            "default": {
+                                "unavailable": true
+                            },
+                            "attributes": []
+                        },
+                        {
+                            "name": "reproduceCommand",
+                            "type": "Closure",
+                            "optional": false,
+                            "variadic": false,
+                            "by_reference": false,
+                            "default": {
+                                "unavailable": true
+                            },
+                            "attributes": []
+                        }
+                    ]
+                },
                 "assertOpenApi": {
                     "visibility": "private",
                     "static": false,
@@ -7429,6 +7473,50 @@
                         }
                     ]
                 },
+                "assertSymfonyOpenApiResult": {
+                    "visibility": "private",
+                    "static": false,
+                    "final": false,
+                    "abstract": false,
+                    "returns_reference": false,
+                    "return_type": "void",
+                    "attributes": [],
+                    "parameters": [
+                        {
+                            "name": "result",
+                            "type": "Studio\\Gesso\\OpenApiValidationResult",
+                            "optional": false,
+                            "variadic": false,
+                            "by_reference": false,
+                            "default": {
+                                "unavailable": true
+                            },
+                            "attributes": []
+                        },
+                        {
+                            "name": "header",
+                            "type": "string",
+                            "optional": false,
+                            "variadic": false,
+                            "by_reference": false,
+                            "default": {
+                                "unavailable": true
+                            },
+                            "attributes": []
+                        },
+                        {
+                            "name": "reproduceCommand",
+                            "type": "Closure",
+                            "optional": false,
+                            "variadic": false,
+                            "by_reference": false,
+                            "default": {
+                                "unavailable": true
+                            },
+                            "attributes": []
+                        }
+                    ]
+                },
                 "extractSymfonyJsonBody": {
                     "visibility": "private",
                     "static": false,
@@ -7778,6 +7866,158 @@
                         "variadic": false,
                         "by_reference": false,
                         "default": null,
+                        "attributes": []
+                    }
+                ]
+            }
+        }
+    },
+    "Studio\\Gesso\\ValidationOutput": {
+        "kind": "class",
+        "final": true,
+        "abstract": false,
+        "readonly": false,
+        "instantiable": false,
+        "constructor": {
+            "kind": "declared",
+            "visibility": "private"
+        },
+        "parent": null,
+        "interfaces": [],
+        "traits": [],
+        "attributes": [],
+        "backing_type": null,
+        "cases": [],
+        "constants": [],
+        "properties": [],
+        "methods": {
+            "format": {
+                "static": true,
+                "final": false,
+                "abstract": false,
+                "returns_reference": false,
+                "return_type": "Studio\\Gesso\\ValidationOutputFormat",
+                "attributes": [],
+                "parameters": []
+            },
+            "reset": {
+                "static": true,
+                "final": false,
+                "abstract": false,
+                "returns_reference": false,
+                "return_type": "void",
+                "attributes": [],
+                "parameters": []
+            },
+            "use": {
+                "static": true,
+                "final": false,
+                "abstract": false,
+                "returns_reference": false,
+                "return_type": "void",
+                "attributes": [],
+                "parameters": [
+                    {
+                        "name": "format",
+                        "type": "Studio\\Gesso\\ValidationOutputFormat",
+                        "optional": false,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": {
+                            "unavailable": true
+                        },
+                        "attributes": []
+                    }
+                ]
+            }
+        }
+    },
+    "Studio\\Gesso\\ValidationOutputFormat": {
+        "kind": "enum",
+        "final": true,
+        "abstract": false,
+        "readonly": false,
+        "instantiable": false,
+        "constructor": null,
+        "parent": null,
+        "interfaces": [
+            "BackedEnum",
+            "UnitEnum"
+        ],
+        "traits": [],
+        "attributes": [],
+        "backing_type": "string",
+        "cases": {
+            "Text": "text",
+            "Json": "json"
+        },
+        "constants": [],
+        "properties": {
+            "name": {
+                "type": "string",
+                "static": false,
+                "readonly": true,
+                "default": {
+                    "unavailable": true
+                }
+            },
+            "value": {
+                "type": "string",
+                "static": false,
+                "readonly": true,
+                "default": {
+                    "unavailable": true
+                }
+            }
+        },
+        "methods": {
+            "cases": {
+                "static": true,
+                "final": false,
+                "abstract": false,
+                "returns_reference": false,
+                "return_type": "array",
+                "attributes": [],
+                "parameters": []
+            },
+            "from": {
+                "static": true,
+                "final": false,
+                "abstract": false,
+                "returns_reference": false,
+                "return_type": "static",
+                "attributes": [],
+                "parameters": [
+                    {
+                        "name": "value",
+                        "type": "string|int",
+                        "optional": false,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": {
+                            "unavailable": true
+                        },
+                        "attributes": []
+                    }
+                ]
+            },
+            "tryFrom": {
+                "static": true,
+                "final": false,
+                "abstract": false,
+                "returns_reference": false,
+                "return_type": "?static",
+                "attributes": [],
+                "parameters": [
+                    {
+                        "name": "value",
+                        "type": "string|int",
+                        "optional": false,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": {
+                            "unavailable": true
+                        },
                         "attributes": []
                     }
                 ]

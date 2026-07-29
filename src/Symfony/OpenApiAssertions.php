@@ -6,6 +6,7 @@ namespace Studio\Gesso\Symfony;
 
 use const JSON_THROW_ON_ERROR;
 
+use Closure;
 use JsonException;
 use PHPUnit\Framework\Assert;
 use PHPUnit\Framework\AssertionFailedError;
@@ -13,13 +14,17 @@ use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\DecodedBody;
 use Studio\Gesso\HttpMethod;
 use Studio\Gesso\Internal\CurlCommandFormatter;
+use Studio\Gesso\Internal\FailureOutput;
 use Studio\Gesso\Internal\StackTraceFilter;
 use Studio\Gesso\OpenApiRequestValidator;
 use Studio\Gesso\OpenApiResponseValidator;
+use Studio\Gesso\OpenApiValidationResult;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Spec\OpenApiSpecResolver;
 use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 use Studio\Gesso\Validation\Support\ContentTypeMatcher;
+use Studio\Gesso\ValidationOutput;
+use Studio\Gesso\ValidationOutputFormat;
 use Symfony\Component\BrowserKit\Exception\BadMethodCallException;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -156,16 +161,10 @@ trait OpenApiAssertions
             );
         }
 
-        $this->assertOpenApi(
-            $result->isValid(),
-            sprintf(
-                "OpenAPI schema validation failed for %s %s (spec: %s):\n%s\nReproduce: %s",
-                $method->value,
-                $path,
-                $specName,
-                $result->errorMessage(),
-                $this->symfonyReproduceCommand($request),
-            ),
+        $this->assertSymfonyOpenApiResult(
+            $result,
+            sprintf('OpenAPI schema validation failed for %s %s (spec: %s)', $method->value, $path, $specName),
+            fn(): string => $this->symfonyReproduceCommand($request),
         );
     }
 
@@ -211,16 +210,10 @@ trait OpenApiAssertions
             );
         }
 
-        $this->assertOpenApi(
-            $result->isValid(),
-            sprintf(
-                "OpenAPI request validation failed for %s %s (spec: %s):\n%s\nReproduce: %s",
-                $method->value,
-                $path,
-                $specName,
-                $result->errorMessage(),
-                $this->symfonyReproduceCommand($request),
-            ),
+        $this->assertSymfonyOpenApiResult(
+            $result,
+            sprintf('OpenAPI request validation failed for %s %s (spec: %s)', $method->value, $path, $specName),
+            fn(): string => $this->symfonyReproduceCommand($request),
         );
     }
 
@@ -411,6 +404,35 @@ trait OpenApiAssertions
                     : '',
             ));
         }
+    }
+
+    /**
+     * Raise the adapter's standard failure for an invalid result. Json mode
+     * must end with the parseable document, so it fails without PHPUnit's
+     * "Failed asserting that false is true." suffix; text mode keeps the
+     * historical assertTrue() message byte-for-byte.
+     *
+     * @param Closure(): string $reproduceCommand built lazily so the curl
+     *                                            command is only rendered when the assertion actually fails
+     */
+    private function assertSymfonyOpenApiResult(
+        OpenApiValidationResult $result,
+        string $header,
+        Closure $reproduceCommand,
+    ): void {
+        if ($result->isValid()) {
+            $this->assertOpenApi(true, '');
+
+            return;
+        }
+
+        $message = FailureOutput::compose($header, $result, $reproduceCommand);
+
+        if (ValidationOutput::format() === ValidationOutputFormat::Json) {
+            $this->failOpenApi($message);
+        }
+
+        $this->assertOpenApi(false, $message);
     }
 
     /** Like Assert::fail() but with vendor frames stripped from the trace. */

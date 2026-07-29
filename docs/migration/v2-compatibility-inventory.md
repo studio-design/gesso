@@ -506,8 +506,10 @@ occurrences change to `[Gesso]` together. V2 does not dual-emit warnings; log
 consumers update the branded routing rule as part of the major-version
 migration. Migration status: the complete v2 inventory is pinned in
 `tests/fixtures/compatibility/v2-diagnostic-prefixes.json`; it records zero
-legacy branded occurrences, both `[Gesso]` channels, and exact file-level
-parity for every identity-neutral category.
+legacy branded occurrences, every `[Gesso]` channel, and exact file-level
+parity for every identity-neutral category. Diagnostics introduced after the
+2.0 migration use the branded `[Gesso]` prefix so the identity-neutral
+categories stay frozen at their v1.9 shape.
 
 The OpenAPI vendor extension
 `x-studio-openapi-contract-testing-implicit-schema-name` is embedded in spec
