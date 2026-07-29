@@ -13,6 +13,7 @@
 ## Guides
 
 - [Doctor command](https://studio-design.github.io/gesso/doctor): preflight a local spec for load and enforcement problems before tests run.
+- [Violation baseline](https://studio-design.github.io/gesso/baseline): adopt contract testing on a legacy API by baselining existing violations and failing only on new ones.
 - [PSR-7 validation](https://studio-design.github.io/gesso/psr7): validate PSR-7 requests and responses from any HTTP client or middleware.
 - [Laravel route parity](https://studio-design.github.io/gesso/laravel-route-parity): compare registered Laravel routes with spec operations to catch undocumented drift.
 - [Schema-driven fuzzing](https://studio-design.github.io/gesso/fuzzing): generate deterministic valid and invalid request cases from schemas, with replay tokens.
