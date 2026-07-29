@@ -10,6 +10,7 @@ use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use stdClass;
 use Studio\Gesso\Validation\Request\SecurityValidator;
+use Studio\Gesso\Validation\Support\NamedError;
 
 use function restore_error_handler;
 use function set_error_handler;
@@ -83,7 +84,72 @@ class SecurityValidatorTest extends TestCase
         $errors = $this->validator->validate('GET', '/pets', $spec, $operation, [], [], []);
 
         $this->assertCount(1, $errors);
-        $this->assertStringContainsString('Authorization header is missing', $errors[0]);
+        $this->assertStringContainsString('Authorization header is missing', $errors[0]->message);
+    }
+
+    #[Test]
+    public function satisfaction_failures_carry_a_stable_violation_kind_keyword(): void
+    {
+        // Baseline fingerprints (issue #402) distinguish "credentials absent"
+        // from "credentials present but malformed" on one scheme via the
+        // keyword; without it, a baselined missing-token violation would
+        // absorb a future malformed-token violation.
+        $spec = [
+            'components' => [
+                'securitySchemes' => [
+                    'BearerAuth' => ['type' => 'http', 'scheme' => 'bearer'],
+                ],
+            ],
+        ];
+        $operation = ['security' => [['BearerAuth' => []]]];
+
+        $missing = $this->validator->validate('GET', '/pets', $spec, $operation, [], [], []);
+        $this->assertCount(1, $missing);
+        $this->assertSame('required', $missing[0]->keyword);
+
+        $malformed = $this->validator->validate(
+            'GET',
+            '/pets',
+            $spec,
+            $operation,
+            ['Authorization' => 'Basic dXNlcjpwYXNz'],
+            [],
+            [],
+        );
+        $this->assertCount(1, $malformed);
+        $this->assertSame('format', $malformed[0]->keyword);
+
+        // Spec-malformation hard errors stay keyword-less: they are not a
+        // property of the request, so they keep collapsing per scheme.
+        $hardError = $this->validator->validate(
+            'GET',
+            '/pets',
+            ['components' => ['securitySchemes' => []]],
+            ['security' => [['Undefined' => []]]],
+            [],
+            [],
+            [],
+        );
+        $this->assertCount(1, $hardError);
+        $this->assertNull($hardError[0]->keyword);
+    }
+
+    #[Test]
+    public function validate_flags_missing_api_key_with_required_keyword(): void
+    {
+        $spec = [
+            'components' => [
+                'securitySchemes' => [
+                    'ApiKey' => ['type' => 'apiKey', 'in' => 'header', 'name' => 'X-Api-Key'],
+                ],
+            ],
+        ];
+        $operation = ['security' => [['ApiKey' => []]]];
+
+        $errors = $this->validator->validate('GET', '/pets', $spec, $operation, [], [], []);
+
+        $this->assertCount(1, $errors);
+        $this->assertSame('required', $errors[0]->keyword);
     }
 
     #[Test]
@@ -95,7 +161,7 @@ class SecurityValidatorTest extends TestCase
         $errors = $this->validator->validate('GET', '/pets', $spec, $operation, [], [], []);
 
         $this->assertCount(1, $errors);
-        $this->assertStringContainsString("references undefined scheme 'MissingScheme'", $errors[0]);
+        $this->assertStringContainsString("references undefined scheme 'MissingScheme'", $errors[0]->message);
     }
 
     #[Test]
@@ -115,8 +181,8 @@ class SecurityValidatorTest extends TestCase
         $errors = $this->validator->validate('GET', '/pets', $spec, $operation, [], [], []);
 
         $this->assertCount(1, $errors);
-        $this->assertStringContainsString('is malformed', $errors[0]);
-        $this->assertStringContainsString("unknown type 'htpp'", $errors[0]);
+        $this->assertStringContainsString('is malformed', $errors[0]->message);
+        $this->assertStringContainsString("unknown type 'htpp'", $errors[0]->message);
     }
 
     #[Test]
@@ -176,7 +242,7 @@ class SecurityValidatorTest extends TestCase
         $errors = $this->validator->validate('GET', '/pets', $spec, $operation, [], [], []);
 
         $this->assertCount(1, $errors);
-        $this->assertStringContainsString('must be a list of requirement objects', $errors[0]);
+        $this->assertStringContainsString('must be a list of requirement objects', $errors[0]->message);
     }
 
     #[Test]
@@ -187,7 +253,7 @@ class SecurityValidatorTest extends TestCase
         $errors = $this->validator->validate('GET', '/pets', [], $operation, [], [], []);
 
         $this->assertCount(1, $errors);
-        $this->assertStringContainsString('must be a list of requirement objects', $errors[0]);
+        $this->assertStringContainsString('must be a list of requirement objects', $errors[0]->message);
     }
 
     #[Test]
@@ -208,7 +274,7 @@ class SecurityValidatorTest extends TestCase
         $errors = $this->validator->validate('GET', '/pets', [], $operation, [], [], []);
 
         $this->assertCount(1, $errors);
-        $this->assertStringContainsString('security requirement at index 0 must be an object', $errors[0]);
+        $this->assertStringContainsString('security requirement at index 0 must be an object', $errors[0]->message);
     }
 
     #[Test]
@@ -219,7 +285,7 @@ class SecurityValidatorTest extends TestCase
         $errors = $this->validator->validate('GET', '/pets', [], $operation, [], [], []);
 
         $this->assertCount(1, $errors);
-        $this->assertStringContainsString('security scheme name must be a string', $errors[0]);
+        $this->assertStringContainsString('security scheme name must be a string', $errors[0]->message);
     }
 
     #[Test]
@@ -245,7 +311,7 @@ class SecurityValidatorTest extends TestCase
         );
 
         $this->assertCount(1, $errors);
-        $this->assertStringContainsString("requirement 'BearerAuth' scopes must be a list of strings", $errors[0]);
+        $this->assertStringContainsString("requirement 'BearerAuth' scopes must be a list of strings", $errors[0]->message);
     }
 
     #[Test]
@@ -263,7 +329,7 @@ class SecurityValidatorTest extends TestCase
         [$errors, $warnings] = $this->validateCapturingWarnings('GET', '/pets', $spec, $operation);
 
         $this->assertCount(1, $errors);
-        $this->assertStringContainsString("requirement 'OAuth' scopes must be a list of strings", $errors[0]);
+        $this->assertStringContainsString("requirement 'OAuth' scopes must be a list of strings", $errors[0]->message);
         $this->assertSame([], $warnings);
     }
 
@@ -282,7 +348,7 @@ class SecurityValidatorTest extends TestCase
         [$errors, $warnings] = $this->validateCapturingWarnings('GET', '/pets', $spec, $operation);
 
         $this->assertCount(1, $errors);
-        $this->assertStringContainsString("requirement 'OAuth' scope at index 1 must be a string", $errors[0]);
+        $this->assertStringContainsString("requirement 'OAuth' scope at index 1 must be a string", $errors[0]->message);
         $this->assertSame([], $warnings);
     }
 
@@ -638,8 +704,8 @@ class SecurityValidatorTest extends TestCase
         );
 
         $this->assertCount(1, $errors);
-        $this->assertStringContainsString('is malformed', $errors[0]);
-        $this->assertStringContainsString("'scheme' field", $errors[0]);
+        $this->assertStringContainsString('is malformed', $errors[0]->message);
+        $this->assertStringContainsString("'scheme' field", $errors[0]->message);
         $this->assertSame([], $warnings, 'malformed must take precedence over Unsupported warning');
     }
 
@@ -667,7 +733,7 @@ class SecurityValidatorTest extends TestCase
         );
 
         $this->assertCount(1, $errors);
-        $this->assertStringContainsString('is malformed', $errors[0]);
+        $this->assertStringContainsString('is malformed', $errors[0]->message);
         $this->assertSame([], $warnings, 'empty `scheme` is malformed, not silent-pass');
     }
 
@@ -731,7 +797,7 @@ class SecurityValidatorTest extends TestCase
         );
 
         $this->assertCount(1, $errors);
-        $this->assertStringContainsString('is malformed', $errors[0]);
+        $this->assertStringContainsString('is malformed', $errors[0]->message);
         $this->assertCount(1, $warnings);
         $this->assertStringContainsString("'OAuth'", $warnings[0]);
     }
@@ -790,7 +856,7 @@ class SecurityValidatorTest extends TestCase
      * @param array<string, mixed> $operation
      * @param array<array-key, mixed> $headers
      *
-     * @return array{0: string[], 1: string[]} [errors, warnings]
+     * @return array{0: list<NamedError>, 1: string[]} [errors, warnings]
      */
     private function validateCapturingWarnings(
         string $method,

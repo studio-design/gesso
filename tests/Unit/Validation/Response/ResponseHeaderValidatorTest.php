@@ -8,7 +8,10 @@ use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Studio\Gesso\OpenApiVersion;
 use Studio\Gesso\Validation\Response\ResponseHeaderValidator;
+use Studio\Gesso\Validation\Support\NamedError;
 use Studio\Gesso\Validation\Support\SchemaValidatorRunner;
+
+use function array_map;
 
 class ResponseHeaderValidatorTest extends TestCase
 {
@@ -51,7 +54,7 @@ class ResponseHeaderValidatorTest extends TestCase
 
         $errors = $this->validator()->validate($headersSpec, [], OpenApiVersion::V3_0);
 
-        $this->assertSame(['[response-header.Location] required header is missing.'], $errors);
+        $this->assertSame(['[response-header.Location] required header is missing.'], self::messages($errors));
     }
 
     #[Test]
@@ -103,7 +106,7 @@ class ResponseHeaderValidatorTest extends TestCase
         );
 
         $this->assertNotSame([], $errors);
-        $this->assertStringStartsWith('[response-header.X-RateLimit-Remaining]', $errors[0]);
+        $this->assertStringStartsWith('[response-header.X-RateLimit-Remaining]', $errors[0]->message);
     }
 
     #[Test]
@@ -142,7 +145,7 @@ class ResponseHeaderValidatorTest extends TestCase
         );
 
         $this->assertNotSame([], $errors);
-        $this->assertStringStartsWith('[response-header.X-Issued-At]', $errors[0]);
+        $this->assertStringStartsWith('[response-header.X-Issued-At]', $errors[0]->message);
     }
 
     #[Test]
@@ -219,8 +222,8 @@ class ResponseHeaderValidatorTest extends TestCase
         );
 
         $this->assertNotSame([], $errors);
-        $this->assertStringContainsString('multiple values', $errors[0]);
-        $this->assertStringStartsWith('[response-header.X-Foo]', $errors[0]);
+        $this->assertStringContainsString('multiple values', $errors[0]->message);
+        $this->assertStringStartsWith('[response-header.X-Foo]', $errors[0]->message);
     }
 
     #[Test]
@@ -257,8 +260,8 @@ class ResponseHeaderValidatorTest extends TestCase
         );
 
         $this->assertNotSame([], $errors);
-        $this->assertStringContainsString('no schema', $errors[0]);
-        $this->assertStringStartsWith('[response-header.X-Token]', $errors[0]);
+        $this->assertStringContainsString('no schema', $errors[0]->message);
+        $this->assertStringStartsWith('[response-header.X-Token]', $errors[0]->message);
     }
 
     #[Test]
@@ -276,8 +279,8 @@ class ResponseHeaderValidatorTest extends TestCase
         );
 
         $this->assertNotSame([], $errors);
-        $this->assertStringStartsWith('[response-header.X-Misdefined]', $errors[0]);
-        $this->assertStringContainsString('must be an object', $errors[0]);
+        $this->assertStringStartsWith('[response-header.X-Misdefined]', $errors[0]->message);
+        $this->assertStringContainsString('must be an object', $errors[0]->message);
     }
 
     #[Test]
@@ -387,7 +390,7 @@ class ResponseHeaderValidatorTest extends TestCase
         );
 
         $this->assertNotSame([], $errors);
-        $this->assertStringStartsWith('[response-header.X-Tags', $errors[0]);
+        $this->assertStringStartsWith('[response-header.X-Tags', $errors[0]->message);
     }
 
     #[Test]
@@ -404,8 +407,18 @@ class ResponseHeaderValidatorTest extends TestCase
 
         $this->assertSame(
             ['[response-header.X-RateLimit-Remaining] required header is missing.'],
-            $errors,
+            self::messages($errors),
         );
+    }
+
+    /**
+     * @param list<NamedError> $errors
+     *
+     * @return string[]
+     */
+    private static function messages(array $errors): array
+    {
+        return array_map(static fn(NamedError $error): string => $error->message, $errors);
     }
 
     private function validator(): ResponseHeaderValidator

@@ -38,6 +38,7 @@ class JsonValidationResultRendererTest extends TestCase
                     'query error',
                     method: 'POST',
                     path: '/v1/pets',
+                    parameter: 'limit',
                 ),
             ],
         );
@@ -61,6 +62,7 @@ class JsonValidationResultRendererTest extends TestCase
                     'message' => '[/name] The data (integer) must match the type: string',
                     'instance_path' => '/name',
                     'keyword' => 'type',
+                    'parameter' => null,
                     'method' => 'POST',
                     'path' => '/v1/pets',
                     'status_code' => null,
@@ -71,6 +73,7 @@ class JsonValidationResultRendererTest extends TestCase
                     'message' => 'query error',
                     'instance_path' => null,
                     'keyword' => null,
+                    'parameter' => 'limit',
                     'method' => 'POST',
                     'path' => '/v1/pets',
                     'status_code' => null,

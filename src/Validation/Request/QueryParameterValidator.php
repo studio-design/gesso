@@ -10,6 +10,7 @@ use Studio\Gesso\OpenApiVersion;
 use Studio\Gesso\SchemaContext;
 use Studio\Gesso\Spec\OpenApiSchemaConverter;
 use Studio\Gesso\Validation\Support\MalformedSpecNode;
+use Studio\Gesso\Validation\Support\NamedError;
 use Studio\Gesso\Validation\Support\ObjectConverter;
 use Studio\Gesso\Validation\Support\SchemaValidatorRunner;
 use Studio\Gesso\Validation\Support\TypeCoercer;
@@ -54,7 +55,7 @@ final class QueryParameterValidator
      * @param list<array<string, mixed>> $parameters pre-collected merged parameters (path + operation level)
      * @param array<string, mixed> $queryParams
      *
-     * @return string[]
+     * @return list<NamedError>
      */
     public function validate(
         string $method,
@@ -89,7 +90,7 @@ final class QueryParameterValidator
             // have nothing to validate, so we let them through (matches {@see RequestBodyValidator}).
             if (!isset($param['schema']) || !is_array($param['schema'])) {
                 if ($required) {
-                    $errors[] = "[query.{$name}] required parameter has no schema for {$method} {$matchedPath} — cannot validate.";
+                    $errors[] = new NamedError($name, "[query.{$name}] required parameter has no schema for {$method} {$matchedPath} — cannot validate.");
                 }
 
                 continue;
@@ -101,7 +102,7 @@ final class QueryParameterValidator
             $present = array_key_exists($name, $queryParams) && $queryParams[$name] !== null;
             if (!$present) {
                 if ($required) {
-                    $errors[] = "[query.{$name}] required query parameter is missing.";
+                    $errors[] = new NamedError($name, "[query.{$name}] required query parameter is missing.", keyword: 'required');
                 }
 
                 continue;
@@ -113,12 +114,9 @@ final class QueryParameterValidator
             $schemaObject = ObjectConverter::convert($jsonSchema);
             $dataObject = ObjectConverter::convert($coerced);
 
-            $formatted = $this->runner->validate($schemaObject, $dataObject);
-            foreach ($formatted as $path => $messages) {
-                $suffix = $path === '/' ? '' : $path;
-                foreach ($messages as $message) {
-                    $errors[] = "[query.{$name}{$suffix}] {$message}";
-                }
+            foreach ($this->runner->validateStructured($schemaObject, $dataObject) as $violation) {
+                $suffix = $violation->displayPath() === '/' ? '' : $violation->displayPath();
+                $errors[] = new NamedError($name, "[query.{$name}{$suffix}] {$violation->message}", $violation->instancePath, $violation->keyword);
             }
         }
 
@@ -129,7 +127,7 @@ final class QueryParameterValidator
      * @param array<string, mixed> $parameter
      * @param array<string, mixed> $queryParams
      *
-     * @return string[]
+     * @return list<NamedError>
      */
     private function validateWholeQueryString(
         string $method,
@@ -139,15 +137,20 @@ final class QueryParameterValidator
         OpenApiVersion $version,
         ?string $jsonSchemaDialect,
     ): array {
+        // OpenAPI 3.2 `in: querystring` parameters are named objects too;
+        // carry the name so baseline fingerprints can distinguish them.
+        $qsName = $parameter['name'] ?? null;
+        $qsName = is_string($qsName) ? $qsName : null;
+
         $content = $parameter['content'] ?? null;
         if (MalformedSpecNode::isMalformed($content) || $content === []) {
-            return ["[querystring] parameter has no content map for {$method} {$matchedPath} — cannot validate."];
+            return [new NamedError($qsName, "[querystring] parameter has no content map for {$method} {$matchedPath} — cannot validate.")];
         }
         if (array_key_exists('schema', $parameter)) {
-            return ["[querystring] parameter must use content instead of schema for {$method} {$matchedPath}."];
+            return [new NamedError($qsName, "[querystring] parameter must use content instead of schema for {$method} {$matchedPath}.")];
         }
         if (count($content) !== 1) {
-            return ["[querystring] content must contain exactly one media type for {$method} {$matchedPath}."];
+            return [new NamedError($qsName, "[querystring] content must contain exactly one media type for {$method} {$matchedPath}.")];
         }
 
         $mediaType = null;
@@ -182,17 +185,17 @@ final class QueryParameterValidator
         }
 
         if (MalformedSpecNode::isMalformed($mediaTypeSpec)) {
-            return ["[querystring] content '{$mediaType}' must be an object for {$method} {$matchedPath}."];
+            return [new NamedError($qsName, "[querystring] content '{$mediaType}' must be an object for {$method} {$matchedPath}.")];
         }
 
         $schema = $mediaTypeSpec['schema'] ?? null;
         if (MalformedSpecNode::isMalformed($schema)) {
-            return ["[querystring] content '{$mediaType}' has no schema for {$method} {$matchedPath} — cannot validate."];
+            return [new NamedError($qsName, "[querystring] content '{$mediaType}' has no schema for {$method} {$matchedPath} — cannot validate.")];
         }
 
         if ($queryParams === []) {
             return ($parameter['required'] ?? false) === true
-                ? ["[querystring] required URL query string is missing for {$method} {$matchedPath}."]
+                ? [new NamedError($qsName, "[querystring] required URL query string is missing for {$method} {$matchedPath}.", keyword: 'required')]
                 : [];
         }
 
@@ -208,17 +211,14 @@ final class QueryParameterValidator
         }
 
         $jsonSchema = OpenApiSchemaConverter::convert($schema, $version, SchemaContext::Request, null, $jsonSchemaDialect);
-        $formatted = $this->runner->validate(
-            ObjectConverter::convert($jsonSchema),
-            ObjectConverter::convert($coerced),
-        );
 
         $errors = [];
-        foreach ($formatted as $path => $messages) {
-            $suffix = $path === '/' ? '' : $path;
-            foreach ($messages as $message) {
-                $errors[] = "[querystring{$suffix}] {$message}";
-            }
+        foreach ($this->runner->validateStructured(
+            ObjectConverter::convert($jsonSchema),
+            ObjectConverter::convert($coerced),
+        ) as $violation) {
+            $suffix = $violation->displayPath() === '/' ? '' : $violation->displayPath();
+            $errors[] = new NamedError($qsName, "[querystring{$suffix}] {$violation->message}", $violation->instancePath, $violation->keyword);
         }
 
         return $errors;

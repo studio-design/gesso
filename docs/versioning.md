@@ -24,9 +24,13 @@ This library follows [Semantic Versioning 2.0](https://semver.org/). v1.0.0 is t
   `response.status`, `response.body`, `response.header`, and the legacy
   fallback `unknown`). New categories may be added in minor releases;
   renaming or removing one is major. `instancePath` / `keyword` are populated
-  on body-schema violations and `null` for every other error source; new
-  `keyword` values may appear in minor releases. `message` remains
-  explicitly outside the contract (see below).
+  on schema violations — for body issues the pointer is into the validated
+  body, for parameter / response-header issues into the named value — and
+  `keyword` additionally carries synthetic violation kinds (`required` for a
+  missing required parameter / header / credential, `format` for a present
+  but unusable credential); both are `null` for structural and
+  spec-malformation errors. New `keyword` values may appear in minor
+  releases. `message` remains explicitly outside the contract (see below).
 - The validation JSON document rendered by `JsonValidationResultRenderer`
   (`schema_version` 1) — see
   [validation-json-schema.md](validation-json-schema.md) for the field-level
@@ -38,6 +42,19 @@ This library follows [Semantic Versioning 2.0](https://semver.org/). v1.0.0 is t
   json-mode failure shape (one header line followed by the versioned JSON
   document; for the PSR-7 exchange assertion, one `[request]` / `[response]`
   labelled document per failing side).
+- The violation baseline file (`baseline_version` 1): the entry fields
+  (`spec`, `method`, `path`, `status_code`, `content_type`, `category`,
+  `parameter`, `instance_path`, `keyword`), the fingerprint composition those
+  fields encode (the human-readable message is deliberately excluded; numeric
+  `instance_path` segments are canonicalized to `*`; non-body issues are
+  distinguished by the parameter / response-header / security-scheme name in
+  `parameter`, and parameter / response-header schema violations additionally
+  by `keyword` and `instance_path` — missing required parameters and headers
+  carry `keyword: required`, and security-scheme satisfaction failures carry
+  `keyword: required` (credentials absent) or `keyword: format` (present but
+  unusable)), the `OPENAPI_BASELINE_GENERATE` environment variable, and the
+  `baseline_file` extension parameter. Unknown `baseline_version` values are
+  rejected.
 - CLI surfaces by major (commands, flags, exit codes, and versioned inputs and
   output where applicable):
   - v1.x: `bin/openapi-contract`, `bin/openapi-coverage-merge`, and the v1.10
@@ -45,7 +62,7 @@ This library follows [Semantic Versioning 2.0](https://semver.org/). v1.0.0 is t
   - v2.x: the `doctor` and `coverage:merge` subcommands of `bin/gesso`; the
     legacy standalone binaries are not shipped
 - The Laravel `openapi:routes` command surface (flags, exit codes, and versioned JSON output)
-- The `OpenApiCoverageExtension` PHPUnit configuration parameters (`spec_base_path`, `strip_prefixes`, `specs`, `output_file`, `console_output`, `validation_output`, …)
+- The `OpenApiCoverageExtension` PHPUnit configuration parameters (`spec_base_path`, `strip_prefixes`, `specs`, `output_file`, `console_output`, `validation_output`, `baseline_file`, …)
 - The Laravel `ValidatesOpenApiSchema` trait's public methods
 - The category prefixes used in `E_USER_WARNING` messages (`[security]`, `[OpenAPI Schema]`, and the `[OpenAPI 3.2 ...]` categories)
 

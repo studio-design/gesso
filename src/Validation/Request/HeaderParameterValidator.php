@@ -8,6 +8,7 @@ use Studio\Gesso\OpenApiVersion;
 use Studio\Gesso\SchemaContext;
 use Studio\Gesso\Spec\OpenApiSchemaConverter;
 use Studio\Gesso\Validation\Support\HeaderNormalizer;
+use Studio\Gesso\Validation\Support\NamedError;
 use Studio\Gesso\Validation\Support\ObjectConverter;
 use Studio\Gesso\Validation\Support\SchemaValidatorRunner;
 use Studio\Gesso\Validation\Support\TypeCoercer;
@@ -55,7 +56,7 @@ final class HeaderParameterValidator
      * @param list<array<string, mixed>> $parameters pre-collected merged parameters
      * @param array<array-key, mixed> $headers caller-supplied request headers
      *
-     * @return string[]
+     * @return list<NamedError>
      */
     public function validate(
         string $method,
@@ -85,7 +86,7 @@ final class HeaderParameterValidator
             // nothing to validate — let them through.
             if (!isset($param['schema']) || !is_array($param['schema'])) {
                 if ($required) {
-                    $errors[] = "[header.{$name}] required parameter has no schema for {$method} {$matchedPath} — cannot validate.";
+                    $errors[] = new NamedError($name, "[header.{$name}] required parameter has no schema for {$method} {$matchedPath} — cannot validate.");
                 }
 
                 continue;
@@ -100,7 +101,7 @@ final class HeaderParameterValidator
             // A repeated header that was sent zero times is semantically absent.
             if ($rawValue === null || $rawValue === []) {
                 if ($required) {
-                    $errors[] = "[header.{$name}] required header is missing.";
+                    $errors[] = new NamedError($name, "[header.{$name}] required header is missing.", keyword: 'required');
                 }
 
                 continue;
@@ -114,11 +115,11 @@ final class HeaderParameterValidator
                 // one would mask drift. Surface it so the spec author / client fixes
                 // the duplicate.
                 if (count($rawValue) > 1) {
-                    $errors[] = sprintf(
+                    $errors[] = new NamedError($name, sprintf(
                         '[header.%s] multiple values received (count=%d) but schema expects a single value; refusing to pick one silently.',
                         $name,
                         count($rawValue),
-                    );
+                    ));
 
                     continue;
                 }
@@ -133,7 +134,7 @@ final class HeaderParameterValidator
             // hide the root cause.
             if ($rawValue === null) {
                 if ($required) {
-                    $errors[] = "[header.{$name}] required header is missing.";
+                    $errors[] = new NamedError($name, "[header.{$name}] required header is missing.", keyword: 'required');
                 }
 
                 continue;
@@ -144,11 +145,11 @@ final class HeaderParameterValidator
             // JSON-Pointer type mismatch that hides the real cause — that the caller
             // never produced a header-shaped value in the first place.
             if (!is_scalar($rawValue)) {
-                $errors[] = sprintf(
+                $errors[] = new NamedError($name, sprintf(
                     '[header.%s] value must be a scalar (string|int|bool|float); got %s.',
                     $name,
                     get_debug_type($rawValue),
-                );
+                ));
 
                 continue;
             }
@@ -159,12 +160,9 @@ final class HeaderParameterValidator
             $schemaObject = ObjectConverter::convert($jsonSchema);
             $dataObject = ObjectConverter::convert($coerced);
 
-            $formatted = $this->runner->validate($schemaObject, $dataObject);
-            foreach ($formatted as $path => $messages) {
-                $suffix = $path === '/' ? '' : $path;
-                foreach ($messages as $message) {
-                    $errors[] = "[header.{$name}{$suffix}] {$message}";
-                }
+            foreach ($this->runner->validateStructured($schemaObject, $dataObject) as $violation) {
+                $suffix = $violation->displayPath() === '/' ? '' : $violation->displayPath();
+                $errors[] = new NamedError($name, "[header.{$name}{$suffix}] {$violation->message}", $violation->instancePath, $violation->keyword);
             }
         }
 

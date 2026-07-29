@@ -18,6 +18,8 @@ use PHPUnit\Framework\Assert;
 use PHPUnit\Framework\AssertionFailedError;
 use RuntimeException;
 use Studio\Gesso\Attribute\SkipOpenApi;
+use Studio\Gesso\Baseline\ViolationBaselineCollector;
+use Studio\Gesso\Baseline\ViolationFingerprint;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\DecodedBody;
 use Studio\Gesso\HttpMethod;
@@ -543,12 +545,22 @@ trait ValidatesOpenApiSchema
         $validator = $extraSkipResponseCodes !== []
             ? $this->buildOneOffValidator($extraSkipResponseCodes)
             : $this->getOrCreateValidator();
+        $decodeFailureDemoted = false;
+        $decodedBody = $this->extractOrRecordBaselineViolation(
+            fn(): DecodedBody => $this->extractJsonBody($content, $contentType),
+            $specName,
+            $resolvedMethod,
+            $resolvedPath,
+            'response.body',
+            $decodeFailureDemoted,
+        );
+
         $result = $validator->validate(
             $specName,
             $resolvedMethod,
             $resolvedPath,
             $response->getStatusCode(),
-            $this->extractJsonBody($content, $contentType),
+            $decodedBody,
             $contentType !== '' ? $contentType : null,
             // HeaderNormalizer is idempotent; HeaderBag's already-lower-cased
             // keys pass through unchanged.
@@ -583,8 +595,12 @@ trait ValidatesOpenApiSchema
 
         $this->assertLaravelOpenApiResult(
             $result,
+            $specName,
+            $resolvedMethod,
+            $resolvedPath,
             "OpenAPI schema validation failed for {$resolvedMethod} {$resolvedPath} (spec: {$specName})",
             fn(): string => $this->responseReproduceCommand($resolvedMethod, $resolvedPath),
+            $decodeFailureDemoted ? 'response.body' : null,
         );
     }
 
@@ -691,7 +707,15 @@ trait ValidatesOpenApiSchema
         $rawContentType = $request->headers->get('Content-Type');
         $contentType = is_string($rawContentType) ? $rawContentType : '';
 
-        $body = $this->extractRequestBody($request, $contentType);
+        $decodeFailureDemoted = false;
+        $body = $this->extractOrRecordBaselineViolation(
+            fn(): DecodedBody => $this->extractRequestBody($request, $contentType),
+            $specName,
+            $resolvedMethod,
+            $resolvedPath,
+            'request.body',
+            $decodeFailureDemoted,
+        );
 
         foreach ($this->resolveAutoInjectCredentials($specName, $resolvedMethod, $resolvedPath, $headers, $cookies, $queryParams) as $credential) {
             if ($credential['kind'] === 'bearer') {
@@ -751,8 +775,12 @@ trait ValidatesOpenApiSchema
 
         $this->assertLaravelOpenApiResult(
             $result,
+            $specName,
+            $resolvedMethod,
+            $resolvedPath,
             "OpenAPI request validation failed for {$resolvedMethod} {$resolvedPath} (spec: {$specName})",
             fn(): string => $this->requestReproduceCommand($request),
+            $decodeFailureDemoted ? 'request.body' : null,
         );
     }
 
@@ -1036,11 +1064,70 @@ trait ValidatesOpenApiSchema
         DiscriminatorEnforcement::configure($this->resolveBoolConfig('enforce_discriminator', true));
     }
 
+    /**
+     * Run a body-decode step; during a baseline generation run (issue #402)
+     * a decode failure (the `AssertionFailedError` raised by the extract
+     * helper) is recorded as a body-category fingerprint and demoted, and an
+     * absent body is returned so the rest of the validation pipeline still
+     * runs — mirroring how the PSR-7 adapter folds adapter-level body errors
+     * into the validation result while validating everything else. Any
+     * further violations are then demoted and recorded by the normal assert
+     * path, except same-side body issues: the validator saw an absent
+     * placeholder, not the real (undecodable) body, so its body verdicts are
+     * artifacts — `$decodeFailureDemoted` tells the caller to exclude that
+     * category when recording. The fingerprint deliberately carries no
+     * matched status / content-type context: the failure happens before path
+     * matching, so enforcement must be able to rebuild the identical
+     * fingerprint from the raw request context alone. Normal runs re-throw
+     * untouched.
+     *
+     * @param Closure(): DecodedBody $extract
+     *
+     * @param-out bool $decodeFailureDemoted
+     */
+    private function extractOrRecordBaselineViolation(
+        Closure $extract,
+        string $specName,
+        string $method,
+        string $path,
+        string $category,
+        bool &$decodeFailureDemoted,
+    ): DecodedBody {
+        $decodeFailureDemoted = false;
+        $collector = ViolationBaselineCollector::current();
+        if ($collector === null) {
+            return $extract();
+        }
+
+        try {
+            return $extract();
+        } catch (AssertionFailedError) {
+            $collector->record(new ViolationFingerprint(
+                $specName,
+                strtoupper($method),
+                $path,
+                null,
+                null,
+                $category,
+                null,
+                null,
+            ));
+            $decodeFailureDemoted = true;
+
+            return DecodedBody::absent();
+        }
+    }
+
     private function resolveMaxErrors(): int
     {
         $maxErrors = config('gesso.max_errors', 20);
 
-        return is_numeric($maxErrors) ? (int) $maxErrors : 20;
+        // A baseline generation run (issue #402) lifts the cap: a truncated
+        // error list would drop violations from the generated baseline. The
+        // cached validators key on this resolved value, so the uncapped
+        // resolution also invalidates a validator built before the collector
+        // was installed.
+        return ViolationBaselineCollector::uncap(is_numeric($maxErrors) ? (int) $maxErrors : 20);
     }
 
     /** @return string[] */
@@ -1166,15 +1253,31 @@ trait ValidatesOpenApiSchema
      * "Failed asserting that false is true." suffix; text mode keeps the
      * historical assertTrue() message byte-for-byte.
      *
+     * During a baseline generation run (issue #402) the failure is demoted
+     * instead: fingerprints are recorded and the assertion passes so the
+     * whole suite completes in one run.
+     *
      * @param Closure(): string $reproduceCommand built lazily so the curl
      *                                            command is only rendered when the assertion actually fails
      */
     private function assertLaravelOpenApiResult(
         OpenApiValidationResult $result,
+        string $specName,
+        string $method,
+        string $path,
         string $header,
         Closure $reproduceCommand,
+        ?string $recordExcludeCategory = null,
     ): void {
         if ($result->isValid()) {
+            $this->assertOpenApi(true, '');
+
+            return;
+        }
+
+        $collector = ViolationBaselineCollector::current();
+        if ($collector !== null) {
+            $collector->recordResult($specName, $result, $method, $path, $recordExcludeCategory);
             $this->assertOpenApi(true, '');
 
             return;

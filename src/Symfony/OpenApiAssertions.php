@@ -10,6 +10,8 @@ use Closure;
 use JsonException;
 use PHPUnit\Framework\Assert;
 use PHPUnit\Framework\AssertionFailedError;
+use Studio\Gesso\Baseline\ViolationBaselineCollector;
+use Studio\Gesso\Baseline\ViolationFingerprint;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\DecodedBody;
 use Studio\Gesso\HttpMethod;
@@ -132,19 +134,29 @@ trait OpenApiAssertions
             ? $this->symfonyResponseValidator()
             : new OpenApiResponseValidator(
                 strictRequiredTracker: StrictRequiredTracker::current(),
-                maxErrors: $this->openApiMaxErrors(),
+                maxErrors: ViolationBaselineCollector::uncap($this->openApiMaxErrors()),
                 skipResponseCodes: array_merge(
                     OpenApiResponseValidator::DEFAULT_SKIP_RESPONSE_CODES,
                     $extraSkipResponseCodes,
                 ),
             );
 
+        $decodeFailureDemoted = false;
+        $decodedBody = $this->extractOrRecordBaselineViolation(
+            fn(): DecodedBody => $this->extractSymfonyJsonBody($content, $contentType, 'Response'),
+            $specName,
+            $method->value,
+            $path,
+            'response.body',
+            $decodeFailureDemoted,
+        );
+
         $result = $validator->validate(
             $specName,
             $method->value,
             $path,
             $response->getStatusCode(),
-            $this->extractSymfonyJsonBody($content, $contentType, 'Response'),
+            $decodedBody,
             $contentType !== '' ? $contentType : null,
             $response->headers->all(),
         );
@@ -163,8 +175,12 @@ trait OpenApiAssertions
 
         $this->assertSymfonyOpenApiResult(
             $result,
+            $specName,
+            $method->value,
+            $path,
             sprintf('OpenAPI schema validation failed for %s %s (spec: %s)', $method->value, $path, $specName),
             fn(): string => $this->symfonyReproduceCommand($request),
+            $decodeFailureDemoted ? 'response.body' : null,
         );
     }
 
@@ -189,13 +205,23 @@ trait OpenApiAssertions
 
         $contentType = $request->headers->get('Content-Type') ?? '';
 
+        $decodeFailureDemoted = false;
+        $decodedBody = $this->extractOrRecordBaselineViolation(
+            fn(): DecodedBody => $this->extractSymfonyJsonBody($request->getContent(), $contentType, 'Request'),
+            $specName,
+            $method->value,
+            $path,
+            'request.body',
+            $decodeFailureDemoted,
+        );
+
         $result = $this->symfonyRequestValidator()->validate(
             $specName,
             $method->value,
             $path,
             $request->query->all(),
             $request->headers->all(),
-            $this->extractSymfonyJsonBody($request->getContent(), $contentType, 'Request'),
+            $decodedBody,
             $contentType !== '' ? $contentType : null,
             $request->cookies->all(),
             $responseStatusCode,
@@ -212,8 +238,12 @@ trait OpenApiAssertions
 
         $this->assertSymfonyOpenApiResult(
             $result,
+            $specName,
+            $method->value,
+            $path,
             sprintf('OpenAPI request validation failed for %s %s (spec: %s)', $method->value, $path, $specName),
             fn(): string => $this->symfonyReproduceCommand($request),
+            $decodeFailureDemoted ? 'request.body' : null,
         );
     }
 
@@ -336,11 +366,65 @@ trait OpenApiAssertions
         return $specName;
     }
 
+    /**
+     * Run a body-decode step; during a baseline generation run (issue #402)
+     * a decode failure (the `AssertionFailedError` raised by the extract
+     * helper) is recorded as a body-category fingerprint and demoted, and an
+     * absent body is returned so the rest of the validation pipeline still
+     * runs — mirroring how the PSR-7 adapter folds adapter-level body errors
+     * into the validation result while validating everything else. Any
+     * further violations are then demoted and recorded by the normal assert
+     * path, except same-side body issues: the validator saw an absent
+     * placeholder, not the real (undecodable) body, so its body verdicts are
+     * artifacts — `$decodeFailureDemoted` tells the caller to exclude that
+     * category when recording. The fingerprint deliberately carries no
+     * matched status / content-type context: the failure happens before path
+     * matching, so enforcement must be able to rebuild the identical
+     * fingerprint from the raw request context alone. Normal runs re-throw
+     * untouched.
+     *
+     * @param Closure(): DecodedBody $extract
+     *
+     * @param-out bool $decodeFailureDemoted
+     */
+    private function extractOrRecordBaselineViolation(
+        Closure $extract,
+        string $specName,
+        string $method,
+        string $path,
+        string $category,
+        bool &$decodeFailureDemoted,
+    ): DecodedBody {
+        $decodeFailureDemoted = false;
+        $collector = ViolationBaselineCollector::current();
+        if ($collector === null) {
+            return $extract();
+        }
+
+        try {
+            return $extract();
+        } catch (AssertionFailedError) {
+            $collector->record(new ViolationFingerprint(
+                $specName,
+                strtoupper($method),
+                $path,
+                null,
+                null,
+                $category,
+                null,
+                null,
+            ));
+            $decodeFailureDemoted = true;
+
+            return DecodedBody::absent();
+        }
+    }
+
     private function symfonyResponseValidator(): OpenApiResponseValidator
     {
         return $this->cachedSymfonyResponseValidator ??= new OpenApiResponseValidator(
             strictRequiredTracker: StrictRequiredTracker::current(),
-            maxErrors: $this->openApiMaxErrors(),
+            maxErrors: ViolationBaselineCollector::uncap($this->openApiMaxErrors()),
         );
     }
 
@@ -349,7 +433,7 @@ trait OpenApiAssertions
         // The documented-4xx downgrade is on by default here, matching the
         // Laravel adapter's `skip_request_validation_response_codes` default.
         return $this->cachedSymfonyRequestValidator ??= new OpenApiRequestValidator(
-            maxErrors: $this->openApiMaxErrors(),
+            maxErrors: ViolationBaselineCollector::uncap($this->openApiMaxErrors()),
             skipRequestValidationResponseCodes: OpenApiRequestValidator::DEFAULT_SKIP_REQUEST_VALIDATION_RESPONSE_CODES,
         );
     }
@@ -412,15 +496,31 @@ trait OpenApiAssertions
      * "Failed asserting that false is true." suffix; text mode keeps the
      * historical assertTrue() message byte-for-byte.
      *
+     * During a baseline generation run (issue #402) the failure is demoted
+     * instead: fingerprints are recorded and the assertion passes so the
+     * whole suite completes in one run.
+     *
      * @param Closure(): string $reproduceCommand built lazily so the curl
      *                                            command is only rendered when the assertion actually fails
      */
     private function assertSymfonyOpenApiResult(
         OpenApiValidationResult $result,
+        string $specName,
+        string $method,
+        string $path,
         string $header,
         Closure $reproduceCommand,
+        ?string $recordExcludeCategory = null,
     ): void {
         if ($result->isValid()) {
+            $this->assertOpenApi(true, '');
+
+            return;
+        }
+
+        $collector = ViolationBaselineCollector::current();
+        if ($collector !== null) {
+            $collector->recordResult($specName, $result, $method, $path, $recordExcludeCategory);
             $this->assertOpenApi(true, '');
 
             return;

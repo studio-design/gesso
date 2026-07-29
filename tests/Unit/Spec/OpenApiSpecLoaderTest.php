@@ -987,7 +987,7 @@ class OpenApiSpecLoaderTest extends TestCase
                     [],
                 );
                 $this->assertCount(1, $errors);
-                $this->assertStringContainsString('must be a list of requirement objects', $errors[0]);
+                $this->assertStringContainsString('must be a list of requirement objects', $errors[0]->message);
             }
         } finally {
             @unlink($scratchDir . '/security-shapes-json.json');

@@ -9,6 +9,7 @@ use PHPUnit\Framework\Assert;
 use PHPUnit\Framework\AssertionFailedError;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
+use Studio\Gesso\Baseline\ViolationBaselineCollector;
 use Studio\Gesso\Internal\CurlCommandFormatter;
 use Studio\Gesso\Internal\FailureOutput;
 use Studio\Gesso\Internal\StackTraceFilter;
@@ -42,6 +43,8 @@ trait OpenApiAssertions
 
         $this->assertPsr7Result(
             $result,
+            $request->getMethod(),
+            $request->getUri()->getPath() ?: '/',
             sprintf(
                 'OpenAPI PSR-7 request validation failed for %s %s',
                 $request->getMethod(),
@@ -59,6 +62,8 @@ trait OpenApiAssertions
 
         $this->assertPsr7Result(
             $result,
+            $request->getMethod(),
+            $request->getUri()->getPath() ?: '/',
             sprintf(
                 'OpenAPI PSR-7 response validation failed for %s %s',
                 $request->getMethod(),
@@ -77,6 +82,8 @@ trait OpenApiAssertions
 
         $this->assertPsr7Result(
             $result,
+            $method,
+            $requestPath,
             sprintf('OpenAPI PSR-7 response validation failed for %s %s', $method, $requestPath),
             static fn(): string => CurlCommandFormatter::format($method, $requestPath, [], null, null),
         );
@@ -89,6 +96,20 @@ trait OpenApiAssertions
         $result = $this->psr7Validator()->validateExchange($request, $response);
 
         if ($result->isValid()) {
+            $this->assertPsr7(true, '');
+
+            return;
+        }
+
+        $collector = ViolationBaselineCollector::current();
+        if ($collector !== null) {
+            $method = $request->getMethod();
+            $path = $request->getUri()->getPath() ?: '/';
+            foreach ([$result->requestResult(), $result->responseResult()] as $sideResult) {
+                if (!$sideResult->isValid()) {
+                    $collector->recordResult((string) $this->cachedPsr7SpecName, $sideResult, $method, $path);
+                }
+            }
             $this->assertPsr7(true, '');
 
             return;
@@ -154,7 +175,7 @@ trait OpenApiAssertions
         if ($this->cachedPsr7Validator === null || $this->cachedPsr7SpecName !== $specName) {
             $this->cachedPsr7Validator = new OpenApiPsr7Validator(
                 $specName,
-                maxErrors: $this->openApiMaxErrors(),
+                maxErrors: ViolationBaselineCollector::uncap($this->openApiMaxErrors()),
                 skipResponseCodes: $this->openApiSkipResponseCodes(),
                 skipRequestValidationResponseCodes: $this->openApiSkipRequestValidationResponseCodes(),
             );
@@ -169,11 +190,28 @@ trait OpenApiAssertions
      * touched when the assertion actually fails; a passing assertion must not
      * observe or move the caller's stream cursor.
      *
+     * During a baseline generation run (issue #402) the failure is demoted
+     * instead: fingerprints are recorded and the assertion passes so the
+     * whole suite completes in one run.
+     *
      * @param Closure(): string $reproduceCommand
      */
-    private function assertPsr7Result(OpenApiValidationResult $result, string $prefix, Closure $reproduceCommand): void
-    {
+    private function assertPsr7Result(
+        OpenApiValidationResult $result,
+        string $method,
+        string $path,
+        string $prefix,
+        Closure $reproduceCommand,
+    ): void {
         if ($result->isValid()) {
+            $this->assertPsr7(true, '');
+
+            return;
+        }
+
+        $collector = ViolationBaselineCollector::current();
+        if ($collector !== null) {
+            $collector->recordResult((string) $this->cachedPsr7SpecName, $result, $method, $path);
             $this->assertPsr7(true, '');
 
             return;

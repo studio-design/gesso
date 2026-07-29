@@ -20,6 +20,7 @@ use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 use Studio\Gesso\Validation\Support\DiscriminatorContext;
 use Studio\Gesso\Validation\Support\DiscriminatorEnforcement;
 use Studio\Gesso\Validation\Support\MalformedSpecNode;
+use Studio\Gesso\Validation\Support\NamedError;
 use Studio\Gesso\Validation\Support\PathDiagnosticsFormatter;
 use Studio\Gesso\Validation\Support\SchemaValidatorRunner;
 use Studio\Gesso\Validation\Support\SpecResponseKeyResolver;
@@ -28,6 +29,7 @@ use Studio\Gesso\Validation\Support\ValidatorErrorBoundary;
 
 use function array_key_exists;
 use function array_keys;
+use function array_map;
 use function array_merge;
 use function array_values;
 use function count;
@@ -428,13 +430,18 @@ final class OpenApiResponseValidator
                 contentType: $bodyResult->matchedContentType,
             );
         }
-        foreach ($headerErrors as $message) {
+        foreach ($headerErrors as $headerError) {
             // No contentType: header validation is independent of the response
             // media type, and the documented contract reserves that context
-            // field for body issues.
-            $issues[] = new ValidationIssue('response.header', $message, method: $method, path: $matchedPath, statusCode: $statusCodeStr);
+            // field for body issues. The header name rides along as
+            // `parameter` so baseline fingerprints can tell two header
+            // violations on one operation apart (#402).
+            $issues[] = new ValidationIssue('response.header', $headerError->message, instancePath: $headerError->instancePath, keyword: $headerError->keyword, method: $method, path: $matchedPath, statusCode: $statusCodeStr, parameter: $headerError->name);
         }
-        $errors = array_merge($bodyResult->errors, $headerErrors);
+        $errors = array_merge(
+            $bodyResult->errors,
+            array_map(static fn(NamedError $headerError): string => $headerError->message, $headerErrors),
+        );
 
         if ($errors === []) {
             // Strict-required recording happens on the validated success path
@@ -662,7 +669,7 @@ final class OpenApiResponseValidator
      * @param array<string, mixed> $responseSpec
      * @param null|array<array-key, mixed> $responseHeaders
      *
-     * @return string[]
+     * @return list<NamedError>
      */
     private function validateHeaders(
         string $specName,
@@ -693,12 +700,12 @@ final class OpenApiResponseValidator
         // it as an error so the spec author notices instead of getting
         // a silent pass that hides every header from validation.
         if (!is_array($headersSpec)) {
-            return [sprintf(
+            return [new NamedError(null, sprintf(
                 "[response-header] spec 'headers' must be an object for %s %s; got %s.",
                 $method,
                 $matchedPath,
                 get_debug_type($headersSpec),
-            )];
+            ))];
         }
 
         if ($headersSpec === []) {
@@ -706,7 +713,7 @@ final class OpenApiResponseValidator
         }
 
         /** @var array<string, mixed> $headersSpec */
-        return ValidatorErrorBoundary::safely(
+        return ValidatorErrorBoundary::safelyNamed(
             'response-header',
             $specName,
             $method,

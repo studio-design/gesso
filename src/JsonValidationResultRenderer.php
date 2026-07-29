@@ -63,6 +63,7 @@ final class JsonValidationResultRenderer
                 'message' => $issue->message,
                 'instance_path' => $issue->instancePath,
                 'keyword' => $issue->keyword,
+                'parameter' => $issue->parameter,
                 'method' => $issue->method,
                 'path' => $issue->path,
                 'status_code' => $issue->statusCode,

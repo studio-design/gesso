@@ -8,6 +8,7 @@ use Studio\Gesso\OpenApiVersion;
 use Studio\Gesso\SchemaContext;
 use Studio\Gesso\Spec\OpenApiSchemaConverter;
 use Studio\Gesso\Validation\Support\HeaderNormalizer;
+use Studio\Gesso\Validation\Support\NamedError;
 use Studio\Gesso\Validation\Support\ObjectConverter;
 use Studio\Gesso\Validation\Support\SchemaValidatorRunner;
 use Studio\Gesso\Validation\Support\TypeCoercer;
@@ -69,7 +70,7 @@ final class ResponseHeaderValidator
      * @param HeadersSpec $headersSpec the `responses.<code>.headers` map
      * @param array<array-key, mixed> $actualHeaders the response's actual headers, as returned by HeaderBag::all()
      *
-     * @return string[]
+     * @return list<NamedError>
      */
     public function validate(
         array $headersSpec,
@@ -89,11 +90,11 @@ final class ResponseHeaderValidator
             // authoring slip) must surface — silent skip would hide
             // every header from validation.
             if (!is_array($headerObject)) {
-                $errors[] = sprintf(
+                $errors[] = new NamedError((string) $name, sprintf(
                     '[response-header.%s] header definition must be an object; got %s.',
                     $name,
                     get_debug_type($headerObject),
-                );
+                ));
 
                 continue;
             }
@@ -117,10 +118,10 @@ final class ResponseHeaderValidator
             // unconstrained even if a value is present.
             if (!isset($headerObject['schema']) || !is_array($headerObject['schema'])) {
                 if ($required) {
-                    $errors[] = sprintf(
+                    $errors[] = new NamedError((string) $name, sprintf(
                         '[response-header.%s] required header has no schema — cannot validate.',
                         $name,
-                    );
+                    ));
                 }
 
                 continue;
@@ -136,7 +137,7 @@ final class ResponseHeaderValidator
             // semantically absent.
             if ($rawValue === null || $rawValue === []) {
                 if ($required) {
-                    $errors[] = sprintf('[response-header.%s] required header is missing.', $name);
+                    $errors[] = new NamedError((string) $name, sprintf('[response-header.%s] required header is missing.', $name), keyword: 'required');
                 }
 
                 continue;
@@ -144,11 +145,11 @@ final class ResponseHeaderValidator
 
             if (is_array($rawValue)) {
                 if (count($rawValue) > 1) {
-                    $errors[] = sprintf(
+                    $errors[] = new NamedError((string) $name, sprintf(
                         '[response-header.%s] multiple values received (count=%d) but schema expects a single value; refusing to pick one silently.',
                         $name,
                         count($rawValue),
-                    );
+                    ));
 
                     continue;
                 }
@@ -162,18 +163,18 @@ final class ResponseHeaderValidator
             // a `nullable` schema or surface as a `/` type mismatch from opis.
             if ($rawValue === null) {
                 if ($required) {
-                    $errors[] = sprintf('[response-header.%s] required header is missing.', $name);
+                    $errors[] = new NamedError((string) $name, sprintf('[response-header.%s] required header is missing.', $name), keyword: 'required');
                 }
 
                 continue;
             }
 
             if (!is_scalar($rawValue)) {
-                $errors[] = sprintf(
+                $errors[] = new NamedError((string) $name, sprintf(
                     '[response-header.%s] value must be a scalar (string|int|bool|float); got %s.',
                     $name,
                     get_debug_type($rawValue),
-                );
+                ));
 
                 continue;
             }
@@ -184,12 +185,9 @@ final class ResponseHeaderValidator
             $schemaObject = ObjectConverter::convert($jsonSchema);
             $dataObject = ObjectConverter::convert($coerced);
 
-            $formatted = $this->runner->validate($schemaObject, $dataObject);
-            foreach ($formatted as $path => $messages) {
-                $suffix = $path === '/' ? '' : $path;
-                foreach ($messages as $message) {
-                    $errors[] = sprintf('[response-header.%s%s] %s', $name, $suffix, $message);
-                }
+            foreach ($this->runner->validateStructured($schemaObject, $dataObject) as $violation) {
+                $suffix = $violation->displayPath() === '/' ? '' : $violation->displayPath();
+                $errors[] = new NamedError((string) $name, sprintf('[response-header.%s%s] %s', $name, $suffix, $violation->message), $violation->instancePath, $violation->keyword);
             }
         }
 

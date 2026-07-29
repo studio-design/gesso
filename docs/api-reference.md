@@ -49,14 +49,18 @@ context the validator resolved (`method`, `path`, `statusCode`,
 or was not resolved — request-side issues never carry a `statusCode`, and
 `contentType` is set only on body issues (the resolved spec media-type key).
 Assert on `category` and context instead of message wording —
-the prose is not a compatibility surface. On body-schema violations
-(`request.body` / `response.body` issues produced by schema validation),
-`instancePath` carries the RFC 6901 JSON Pointer into the validated body
-(`''` = document root — the `message` prefix renders it as `[/]` for
-historical reasons) and `keyword` the failing JSON Schema keyword (`type`,
-`required`, …); both stay `null` for every other error source, including
-non-schema body errors such as a missing required body. Results built by code that predates the structured API derive
-issues with category `unknown`.
+the prose is not a compatibility surface. On schema violations,
+`instancePath` carries the RFC 6901 JSON Pointer (`''` = document root —
+the `message` prefix renders it as `[/]` for historical reasons) and
+`keyword` the failing JSON Schema keyword (`type`, `required`, …): for
+`request.body` / `response.body` issues the pointer is into the validated
+body, for parameter / response-header issues into the named value.
+`keyword` also carries synthetic violation kinds — `required` when a
+required parameter, header, or security credential is missing, and `format`
+when a credential is present but not usable. Both stay `null` for
+structural and spec-malformation errors, including non-schema body errors
+such as a missing required body. Results built by code that predates the
+structured API derive issues with category `unknown`.
 
 To hand the full result to machine consumers (CI ingestion, IDE annotations),
 render it as a versioned JSON document:

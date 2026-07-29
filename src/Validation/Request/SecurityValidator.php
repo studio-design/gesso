@@ -8,6 +8,7 @@ use const E_USER_WARNING;
 
 use stdClass;
 use Studio\Gesso\Validation\Support\HeaderNormalizer;
+use Studio\Gesso\Validation\Support\NamedError;
 
 use function array_is_list;
 use function array_key_exists;
@@ -138,7 +139,7 @@ final class SecurityValidator
      * @param array<string, mixed> $queryParams parsed query string
      * @param array<string, mixed> $cookies request cookies (for `apiKey` with `in: cookie`)
      *
-     * @return string[]
+     * @return list<NamedError>
      */
     public function validate(
         string $method,
@@ -159,14 +160,14 @@ final class SecurityValidator
 
         if (!is_array($security) || !array_is_list($security)) {
             return [
-                self::formatError(
+                new NamedError(null, self::formatError(
                     $method,
                     $matchedPath,
                     sprintf(
                         'operation/root-level `security` must be a list of requirement objects, got %s.',
                         get_debug_type($security),
                     ),
-                ),
+                )),
             ];
         }
 
@@ -181,12 +182,12 @@ final class SecurityValidator
         // misdirects the spec author away from the real cause.
         if (!is_array($schemes)) {
             return [
-                sprintf(
+                new NamedError(null, sprintf(
                     '[security] %s %s: components.securitySchemes must be an object mapping scheme names to definitions, got %s.',
                     $method,
                     $matchedPath,
                     get_debug_type($schemes),
-                ),
+                )),
             ];
         }
 
@@ -204,13 +205,13 @@ final class SecurityValidator
             }
 
             if (!is_array($entry) || $entry === []) {
-                $hardErrors[] = sprintf(
+                $hardErrors[] = new NamedError(null, sprintf(
                     '[security] %s %s: security requirement at index %d must be an object mapping scheme names to scope arrays, got %s.',
                     $method,
                     $matchedPath,
                     $entryIndex,
                     get_debug_type($entry),
-                );
+                ));
 
                 continue;
             }
@@ -222,19 +223,19 @@ final class SecurityValidator
 
             foreach ($entry as $schemeName => $scopes) {
                 if (!is_string($schemeName)) {
-                    $hardErrors[] = sprintf(
+                    $hardErrors[] = new NamedError(null, sprintf(
                         '[security] %s %s: security scheme name must be a string, got %s.',
                         $method,
                         $matchedPath,
                         get_debug_type($schemeName),
-                    );
+                    ));
                     $entryHasHardError = true;
 
                     continue;
                 }
 
                 if (!is_array($scopes) || !array_is_list($scopes)) {
-                    $hardErrors[] = self::formatError(
+                    $hardErrors[] = new NamedError($schemeName, self::formatError(
                         $method,
                         $matchedPath,
                         sprintf(
@@ -242,7 +243,7 @@ final class SecurityValidator
                             $schemeName,
                             get_debug_type($scopes),
                         ),
-                    );
+                    ));
                     $entryHasHardError = true;
 
                     continue;
@@ -254,7 +255,7 @@ final class SecurityValidator
                         continue;
                     }
 
-                    $hardErrors[] = self::formatError(
+                    $hardErrors[] = new NamedError($schemeName, self::formatError(
                         $method,
                         $matchedPath,
                         sprintf(
@@ -263,7 +264,7 @@ final class SecurityValidator
                             $scopeIndex,
                             get_debug_type($scope),
                         ),
-                    );
+                    ));
                     $entryHasHardError = true;
                     $scopeHasHardError = true;
                 }
@@ -274,12 +275,12 @@ final class SecurityValidator
 
                 $schemeDef = $schemes[$schemeName] ?? null;
                 if (!is_array($schemeDef)) {
-                    $hardErrors[] = sprintf(
+                    $hardErrors[] = new NamedError($schemeName, sprintf(
                         "[security] %s %s: security requirement references undefined scheme '%s' — add it under components.securitySchemes.",
                         $method,
                         $matchedPath,
                         $schemeName,
-                    );
+                    ));
                     $entryHasHardError = true;
 
                     continue;
@@ -288,13 +289,13 @@ final class SecurityValidator
                 $classification = self::classifyScheme($schemeDef);
 
                 if ($classification->kind === SchemeKind::Malformed) {
-                    $hardErrors[] = sprintf(
+                    $hardErrors[] = new NamedError($schemeName, sprintf(
                         "[security] %s %s: security scheme '%s' is malformed: %s",
                         $method,
                         $matchedPath,
                         $schemeName,
                         $classification->reason,
-                    );
+                    ));
                     $entryHasHardError = true;
 
                     continue;
@@ -330,13 +331,13 @@ final class SecurityValidator
                     $cookies,
                 );
                 foreach ($schemeErrors as $schemeError) {
-                    $entryFailures[] = sprintf(
+                    $entryFailures[] = new NamedError($schemeName, sprintf(
                         "[security] %s %s: requirement '%s' not satisfied: %s",
                         $method,
                         $matchedPath,
                         $schemeName,
-                        $schemeError,
-                    );
+                        $schemeError['message'],
+                    ), keyword: $schemeError['keyword']);
                 }
             }
 
@@ -412,7 +413,10 @@ final class SecurityValidator
     /**
      * Check whether a single (already-classified, well-formed) security scheme
      * is satisfied by the request. Returns an empty list when satisfied, or
-     * one or more error strings explaining why not.
+     * one or more failures explaining why not. Each failure carries a stable
+     * violation-kind `keyword` (`required` = credentials absent, `format` =
+     * present but not a usable credential) so baseline fingerprints
+     * (issue #402) can tell the two kinds apart on one scheme.
      *
      * Only `Bearer` and `ApiKey` reach this method — `Malformed` and
      * `Unsupported` classifications are short-circuited by the caller in
@@ -424,7 +428,7 @@ final class SecurityValidator
      * @param array<string, mixed> $queryParams
      * @param array<string, mixed> $cookies
      *
-     * @return string[]
+     * @return list<array{keyword: string, message: string}>
      */
     private function checkSchemeSatisfaction(
         SchemeKind $kind,
@@ -443,14 +447,14 @@ final class SecurityValidator
     /**
      * @param array<string, mixed> $normalizedHeaders
      *
-     * @return string[]
+     * @return list<array{keyword: string, message: string}>
      */
     private function checkBearerSatisfied(array $normalizedHeaders): array
     {
         $raw = $normalizedHeaders['authorization'] ?? null;
         $value = $this->extractSingleStringValue($raw);
         if ($value === null || $value === '') {
-            return ['Authorization header is missing.'];
+            return [['keyword' => 'required', 'message' => 'Authorization header is missing.']];
         }
 
         // RFC 6750 §2.1: `Bearer <token>`. Scheme name is case-insensitive
@@ -458,7 +462,7 @@ final class SecurityValidator
         // Require a non-empty token portion; "Bearer" alone or "Bearer " is
         // not a valid credential.
         if (preg_match('/^bearer\s+(\S+)/i', $value) !== 1) {
-            return ["Authorization header does not contain a 'Bearer <token>' credential."];
+            return [['keyword' => 'format', 'message' => "Authorization header does not contain a 'Bearer <token>' credential."]];
         }
 
         return [];
@@ -470,7 +474,7 @@ final class SecurityValidator
      * @param array<string, mixed> $queryParams
      * @param array<string, mixed> $cookies
      *
-     * @return string[]
+     * @return list<array{keyword: string, message: string}>
      */
     private function checkApiKeySatisfied(
         array $schemeDef,
@@ -492,7 +496,7 @@ final class SecurityValidator
 
         $value = $this->extractSingleStringValue($raw);
         if ($value === null || $value === '') {
-            return [sprintf("api key '%s' is missing from the %s.", $name, $in)];
+            return [['keyword' => 'required', 'message' => sprintf("api key '%s' is missing from the %s.", $name, $in)]];
         }
 
         return [];

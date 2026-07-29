@@ -55,21 +55,54 @@ final class ValidatorErrorBoundary
         try {
             return $fn();
         } catch (RuntimeException $e) {
-            $previous = $e->getPrevious();
-            $previousSuffix = $previous !== null
-                ? sprintf(' (caused by %s: %s)', $previous::class, $previous->getMessage())
-                : '';
-
-            return [sprintf(
-                "[%s] %s %s in '%s' spec: %s threw: %s%s",
-                $stage,
-                $method,
-                $matchedPath,
-                $specName,
-                $e::class,
-                $e->getMessage(),
-                $previousSuffix,
-            )];
+            return [self::captureMessage($stage, $specName, $method, $matchedPath, $e)];
         }
+    }
+
+    /**
+     * Same boundary for sub-validators that return named errors. The capture
+     * entry carries no name — a thrown exception is not attributable to a
+     * single parameter.
+     *
+     * @param callable(): list<NamedError> $fn
+     *
+     * @return list<NamedError>
+     */
+    public static function safelyNamed(
+        string $stage,
+        string $specName,
+        string $method,
+        string $matchedPath,
+        callable $fn,
+    ): array {
+        try {
+            return $fn();
+        } catch (RuntimeException $e) {
+            return [new NamedError(null, self::captureMessage($stage, $specName, $method, $matchedPath, $e))];
+        }
+    }
+
+    private static function captureMessage(
+        string $stage,
+        string $specName,
+        string $method,
+        string $matchedPath,
+        RuntimeException $e,
+    ): string {
+        $previous = $e->getPrevious();
+        $previousSuffix = $previous !== null
+            ? sprintf(' (caused by %s: %s)', $previous::class, $previous->getMessage())
+            : '';
+
+        return sprintf(
+            "[%s] %s %s in '%s' spec: %s threw: %s%s",
+            $stage,
+            $method,
+            $matchedPath,
+            $specName,
+            $e::class,
+            $e->getMessage(),
+            $previousSuffix,
+        );
     }
 }

@@ -20,6 +20,7 @@ use Studio\Gesso\Validation\Support\ContentTypeMatcher;
 use Studio\Gesso\Validation\Support\DiscriminatorContext;
 use Studio\Gesso\Validation\Support\DiscriminatorEnforcement;
 use Studio\Gesso\Validation\Support\MalformedSpecNode;
+use Studio\Gesso\Validation\Support\NamedError;
 use Studio\Gesso\Validation\Support\PathDiagnosticsFormatter;
 use Studio\Gesso\Validation\Support\SchemaValidatorRunner;
 use Studio\Gesso\Validation\Support\SpecResponseKeyResolver;
@@ -29,7 +30,6 @@ use Studio\Gesso\Validation\Support\ValidatorErrorBoundary;
 use function array_key_exists;
 use function array_keys;
 use function array_map;
-use function array_values;
 use function count;
 use function is_array;
 use function sprintf;
@@ -278,31 +278,35 @@ final class OpenApiRequestValidator
         // issues() can expose a structured view without touching the
         // sub-validators themselves (#282, stage 1). Only body issues have a
         // resolved spec media-type key and (on the schema-error path) a
-        // structured violation twin; parameter/security issues carry null.
+        // structured violation twin; parameter/security errors instead carry
+        // the name of the parameter / scheme they are about (#402), so
+        // baseline fingerprints can tell two violations on one operation
+        // apart without relying on message wording.
         $issueGroups = [
-            ['request.spec', $collected->specErrors, null, []],
-            ['request.parameter.path', ValidatorErrorBoundary::safely('path', $specName, $method, $matchedPath, fn(): array => $this->pathValidator->validate($method, $matchedPath, $collected->parameters, $pathVariables, $version, $jsonSchemaDialect)), null, []],
-            ['request.parameter.query', ValidatorErrorBoundary::safely('query', $specName, $method, $matchedPath, fn(): array => $this->queryValidator->validate($method, $matchedPath, $collected->parameters, $queryParams, $version, $jsonSchemaDialect)), null, []],
-            ['request.parameter.header', ValidatorErrorBoundary::safely('header', $specName, $method, $matchedPath, fn(): array => $this->headerValidator->validate($method, $matchedPath, $collected->parameters, $headers, $version, $jsonSchemaDialect)), null, []],
-            ['request.security', ValidatorErrorBoundary::safely('security', $specName, $method, $matchedPath, fn(): array => $this->securityValidator->validate($method, $matchedPath, $spec, $operation, $headers, $queryParams, $cookies)), null, []],
-            ['request.body', $bodyResult->errors, $bodyResult->matchedContentType, $bodyResult->violations],
+            ['request.spec', self::withoutNames($collected->specErrors), null, []],
+            ['request.parameter.path', ValidatorErrorBoundary::safelyNamed('path', $specName, $method, $matchedPath, fn(): array => $this->pathValidator->validate($method, $matchedPath, $collected->parameters, $pathVariables, $version, $jsonSchemaDialect)), null, []],
+            ['request.parameter.query', ValidatorErrorBoundary::safelyNamed('query', $specName, $method, $matchedPath, fn(): array => $this->queryValidator->validate($method, $matchedPath, $collected->parameters, $queryParams, $version, $jsonSchemaDialect)), null, []],
+            ['request.parameter.header', ValidatorErrorBoundary::safelyNamed('header', $specName, $method, $matchedPath, fn(): array => $this->headerValidator->validate($method, $matchedPath, $collected->parameters, $headers, $version, $jsonSchemaDialect)), null, []],
+            ['request.security', ValidatorErrorBoundary::safelyNamed('security', $specName, $method, $matchedPath, fn(): array => $this->securityValidator->validate($method, $matchedPath, $spec, $operation, $headers, $queryParams, $cookies)), null, []],
+            ['request.body', self::withoutNames($bodyResult->errors), $bodyResult->matchedContentType, $bodyResult->violations],
         ];
 
         $issues = [];
-        foreach ($issueGroups as [$category, $messages, $issueContentType, $violations]) {
+        foreach ($issueGroups as [$category, $namedErrors, $issueContentType, $violations]) {
             // The violation list mirrors the messages index-for-index only on
             // the schema-error path; non-schema body errors ship an empty
             // list, so gate on the counts before pairing the two.
-            $aligned = $violations !== [] && count($violations) === count($messages);
-            foreach (array_values($messages) as $index => $message) {
+            $aligned = $violations !== [] && count($violations) === count($namedErrors);
+            foreach ($namedErrors as $index => $namedError) {
                 $issues[] = new ValidationIssue(
                     $category,
-                    $message,
-                    instancePath: $aligned ? $violations[$index]->instancePath : null,
-                    keyword: $aligned ? $violations[$index]->keyword : null,
+                    $namedError->message,
+                    instancePath: $aligned ? $violations[$index]->instancePath : $namedError->instancePath,
+                    keyword: $aligned ? $violations[$index]->keyword : $namedError->keyword,
                     method: $method,
                     path: $matchedPath,
                     contentType: $issueContentType,
+                    parameter: $namedError->name,
                 );
             }
         }
@@ -392,6 +396,26 @@ final class OpenApiRequestValidator
             matchedContentType: $bodyResult->matchedContentType,
             issues: $issues,
         );
+    }
+
+    /**
+     * Lift plain message strings into the named-error shape the issue loop
+     * consumes, with no name attached — spec-level and body errors are not
+     * about a single named parameter (body issues carry `instancePath`
+     * instead).
+     *
+     * @param string[] $messages
+     *
+     * @return list<NamedError>
+     */
+    private static function withoutNames(array $messages): array
+    {
+        $named = [];
+        foreach ($messages as $message) {
+            $named[] = new NamedError(null, $message);
+        }
+
+        return $named;
     }
 
     /**
