@@ -135,14 +135,15 @@ class CoverageReportSubscriberBaselineTest extends TestCase
     }
 
     #[Test]
-    public function a_paratest_worker_warns_and_writes_no_baseline(): void
+    public function a_paratest_worker_warns_and_exits_non_zero_without_writing_a_baseline(): void
     {
         $this->installCollectorWithOneViolation();
         putenv('TEST_TOKEN=3');
         $baselinePath = $this->tmpDir . '/gesso-baseline.json';
 
         $stderr = '';
-        $subscriber = $this->subscriber($baselinePath, $stderr);
+        $exitCode = null;
+        $subscriber = $this->subscriber($baselinePath, $stderr, exitCode: $exitCode);
 
         ob_start();
         $subscriber->notify($this->fakeExecutionFinished());
@@ -156,6 +157,7 @@ class CoverageReportSubscriberBaselineTest extends TestCase
             glob($this->tmpDir . '/part-3-*.json') ?: [],
             'the coverage sidecar must still be written in worker mode',
         );
+        $this->assertSame(1, $exitCode, 'a refused parallel generation run must not look successful');
     }
 
     #[Test]

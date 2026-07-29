@@ -14,6 +14,7 @@ use Studio\Gesso\Spec\OpenApiSpecLoader;
 
 use function fclose;
 use function fopen;
+use function getenv;
 use function putenv;
 use function rewind;
 use function stream_get_contents;
@@ -22,6 +23,7 @@ class OpenApiCoverageExtensionBaselineTest extends TestCase
 {
     /** @var null|resource */
     private $stderrBuffer;
+    private ?string $previousTestToken = null;
 
     protected function setUp(): void
     {
@@ -29,6 +31,10 @@ class OpenApiCoverageExtensionBaselineTest extends TestCase
         OpenApiSpecLoader::reset();
         putenv('OPENAPI_BASELINE_GENERATE');
         ViolationBaselineCollector::resetCurrent();
+
+        $currentToken = getenv('TEST_TOKEN');
+        $this->previousTestToken = $currentToken === false ? null : $currentToken;
+        putenv('TEST_TOKEN');
 
         $buffer = fopen('php://memory', 'w+');
         if ($buffer === false) {
@@ -48,6 +54,11 @@ class OpenApiCoverageExtensionBaselineTest extends TestCase
         OpenApiSpecLoader::reset();
         putenv('OPENAPI_BASELINE_GENERATE');
         ViolationBaselineCollector::resetCurrent();
+        if ($this->previousTestToken === null) {
+            putenv('TEST_TOKEN');
+        } else {
+            putenv('TEST_TOKEN=' . $this->previousTestToken);
+        }
         parent::tearDown();
     }
 
@@ -91,6 +102,24 @@ class OpenApiCoverageExtensionBaselineTest extends TestCase
             $this->assertStringContainsString('[Gesso] FATAL', $this->capturedStderr());
             $this->assertStringContainsString('baseline_file', $this->capturedStderr());
             $this->assertNull(ViolationBaselineCollector::current());
+        }
+    }
+
+    #[Test]
+    public function generation_under_a_parallel_worker_is_fatal_at_bootstrap(): void
+    {
+        putenv('OPENAPI_BASELINE_GENERATE=1');
+        putenv('TEST_TOKEN=3');
+
+        try {
+            $this->setupExtension(['baseline_file' => 'gesso-baseline.json']);
+            $this->fail('Expected an InvalidBaselineConfigurationException.');
+        } catch (InvalidBaselineConfigurationException) {
+            $this->assertStringContainsString('[Gesso] FATAL', $this->capturedStderr());
+            $this->assertStringContainsString('parallel', $this->capturedStderr());
+            $this->assertNull(ViolationBaselineCollector::current());
+        } finally {
+            putenv('TEST_TOKEN');
         }
     }
 

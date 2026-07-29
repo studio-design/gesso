@@ -124,9 +124,11 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
     {
         $workerToken = self::resolveWorkerToken();
         if ($workerToken !== null) {
-            // Issue #402: worker collectors demote failures like the
-            // sequential run does, but no per-worker file merge exists yet —
-            // surface the gap instead of silently writing nothing.
+            // Issue #402: normally unreachable — the extension refuses
+            // generation at bootstrap when TEST_TOKEN is set — but a token
+            // appearing only after bootstrap must not let a generation run
+            // demote every failure and still exit green. Warn, keep the
+            // coverage sidecar for debuggability, and exit non-zero.
             if ($this->baselineGeneratePath !== null) {
                 $this->writeStderr(
                     '[Gesso] WARNING: baseline generation is not supported under parallel test runners yet; no baseline file was written. '
@@ -138,6 +140,10 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
 
             // Free cached spec data; the merge CLI re-loads on its own.
             OpenApiSpecLoader::clearCache();
+
+            if ($this->baselineGeneratePath !== null) {
+                $this->exitNonZero();
+            }
 
             return;
         }

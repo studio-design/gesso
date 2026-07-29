@@ -310,6 +310,24 @@ final class OpenApiCoverageExtension implements Extension
         ViolationBaselineCollector::resetCurrent();
         $baselineGeneratePath = null;
         if (self::baselineGenerationRequested()) {
+            // Refuse generation in paratest workers up front: every worker
+            // would demote its failures and none would write a baseline, so
+            // the run would end green while hiding every violation. Failing
+            // each worker's bootstrap makes the parallel runner exit
+            // non-zero before any test is silently demoted (issue #402;
+            // per-worker merge support is tracked in #417).
+            $workerToken = getenv('TEST_TOKEN');
+            if ($workerToken !== false && trim($workerToken) !== '') {
+                self::writeStderr(
+                    '[Gesso] FATAL: OPENAPI_BASELINE_GENERATE is not supported under parallel test runners yet (TEST_TOKEN is set). '
+                    . "Run the suite without parallelism to generate the baseline.\n",
+                );
+
+                throw new InvalidBaselineConfigurationException(
+                    'OPENAPI_BASELINE_GENERATE is not supported under parallel test runners.',
+                );
+            }
+
             if ($baselineFile === null) {
                 // A generation run with nowhere to write would complete
                 // "green" (all failures demoted) and then drop every
