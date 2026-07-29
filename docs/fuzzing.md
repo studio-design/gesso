@@ -232,6 +232,60 @@ members only while the callback returns the original non-empty classification.
 Use a stable value such as `status:500` or an exception class. Reduction is
 deliberately classification-preserving; it never equates every failure.
 
+## Named contract checks
+
+Schema validation cannot see protocol-level contract holes. Named checks probe
+them directly, mirroring [Schemathesis check names][schemathesis-checks] where
+behavior matches. The pipeline is opt-in per check, deterministic under
+`seed`, and collects every result before you assert — one run reports all
+holes, not just the first:
+
+```php
+use Studio\Gesso\Fuzz\ContractCheck;
+use Studio\Gesso\Fuzz\ExploredCase;
+use Studio\Gesso\Fuzz\OpenApiContractChecks;
+
+$summary = OpenApiContractChecks::run('petstore', seed: 7)
+    ->checks([ContractCheck::UnsupportedMethod])
+    ->dispatchUsing(fn (ExploredCase $case): int => $this->send($case)->getStatusCode())
+    ->report();
+
+self::assertSame([], $summary->failures, $summary->describeFailures());
+```
+
+| Check | Probe | Default pass statuses |
+|---|---|---|
+| `unsupported_method` | one deterministically chosen undocumented method per documented path | `405` |
+
+`dispatchUsing()` may return an `int` status, a PSR-7 response, or any object
+exposing `getStatusCode(): int` (Symfony `Response`, Laravel `TestResponse`).
+The same `includeTags()`/`excludePaths()`/… filters and
+`setUpUsing()`/`authenticateUsing()`/`tearDownUsing()` hooks as whole-spec
+exploration apply; a path is probed when at least one of its documented
+operations passes the filters. Override the pass statuses per check with
+`expectedStatuses(ContractCheck::UnsupportedMethod, [405, 404])` for
+frameworks that answer unknown methods with 404.
+
+Probe construction: candidates are the explorer-supported methods (`GET`,
+`POST`, `PUT`, `PATCH`, `DELETE`, `QUERY`) minus every method the path
+documents — fixed fields and `additionalOperations` keys, matched
+case-sensitively, so a (spec-invalid but runtime-honored) `"PUT"` entry
+under `additionalOperations` removes `PUT` from the candidates while a
+custom `"copy"` entry removes nothing. OpenAPI 3.2 `additionalOperations`
+are never probed themselves (case-sensitive custom methods). Concrete path
+parameters are generated from a documented
+operation of the same path. Paths where every explorable method is documented,
+or where no documented operation's values can be generated, appear in
+`$summary->skips` with a reason. `ContractCheckFailure::describe()` names the
+check, operation, expected/actual status, and a replayable curl command.
+
+Two caveats: `HEAD`/`OPTIONS`/`TRACE` are outside the explorer's method set
+and are not probed, and a probe response cannot pass normal response
+validation (its method is undocumented by definition) — disable Laravel's
+`auto_assert` in contract-check tests or dispatch outside the trait's helpers.
+
+[schemathesis-checks]: https://schemathesis.readthedocs.io/en/stable/reference/checks/
+
 ## Remaining gaps
 
 - Arbitrary ECMA-262 regex synthesis and recursive/reference-cycle generation.

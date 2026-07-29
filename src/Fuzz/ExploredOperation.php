@@ -4,7 +4,13 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Fuzz;
 
+use Studio\Gesso\Spec\OpenApiOperationResolver;
+
+use function array_filter;
+use function array_values;
 use function implode;
+use function is_array;
+use function is_string;
 use function sprintf;
 use function var_export;
 
@@ -25,6 +31,36 @@ final readonly class ExploredOperation
         public bool $deprecated,
         public int $seed,
     ) {}
+
+    /**
+     * Build the operation DTO from a raw Path Item declaration.
+     *
+     * @internal shared factory for the exploration and contract-check plans.
+     */
+    public static function fromDeclaration(
+        string $specName,
+        string $path,
+        string $method,
+        mixed $rawOperation,
+        int $derivedSeed,
+    ): self {
+        $normalizedMethod = OpenApiOperationResolver::normalizeMethodForKey($method);
+        $operation = is_array($rawOperation) ? $rawOperation : [];
+        $operationId = is_string($operation['operationId'] ?? null) ? $operation['operationId'] : null;
+        $tags = is_array($operation['tags'] ?? null)
+            ? array_values(array_filter($operation['tags'], is_string(...)))
+            : [];
+
+        return new self(
+            $specName,
+            $normalizedMethod,
+            $path,
+            $operationId,
+            $tags,
+            ($operation['deprecated'] ?? false) === true,
+            $derivedSeed,
+        );
+    }
 
     /**
      * Return a minimal expression that regenerates the exact input case.
