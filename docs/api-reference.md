@@ -57,8 +57,9 @@ the `message` prefix renders it as `[/]` for historical reasons) and
 `request.body` / `response.body` issues the pointer is into the validated
 body, for parameter / response-header issues into the named value.
 `keyword` also carries synthetic violation kinds — `required` when a
-required parameter, header, or security credential is missing, and `format`
-when a credential is present but not usable. Both stay `null` for
+required parameter, header, or security credential is missing, `format`
+when a credential is present but not usable, and `parse` when the PSR-7
+adapter could not read or JSON-decode a body. Both stay `null` for
 structural and spec-malformation errors, including non-schema body errors
 such as a missing required body. Results built by code that predates the
 structured API derive issues with category `unknown`.

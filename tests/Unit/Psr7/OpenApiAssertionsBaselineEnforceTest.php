@@ -137,6 +137,46 @@ final class OpenApiAssertionsBaselineEnforceTest extends TestCase
         }
     }
 
+    #[Test]
+    public function a_baselined_decode_failure_is_suppressed_despite_placeholder_artifacts(): void
+    {
+        $request = new Request('GET', 'https://example.test/body/scalar');
+        $response = new Response(200, ['Content-Type' => 'application/json'], '{invalid');
+
+        $enforcer = $this->generateBaselineFrom(
+            fn() => $this->assertPsr7ResponseMatchesOpenApiSchema($request, $response),
+        );
+        $this->assertSame(1, $enforcer->baseline()->count());
+
+        $this->assertPsr7ResponseMatchesOpenApiSchema($request, $response);
+
+        $this->assertSame(1, $enforcer->hitCount());
+        $this->assertSame([], $enforcer->staleEntries());
+    }
+
+    #[Test]
+    public function a_baselined_decode_failure_does_not_absorb_a_genuinely_empty_body(): void
+    {
+        $request = new Request('GET', 'https://example.test/body/scalar');
+
+        $this->generateBaselineFrom(
+            fn() => $this->assertPsr7ResponseMatchesOpenApiSchema(
+                $request,
+                new Response(200, ['Content-Type' => 'application/json'], '{invalid'),
+            ),
+        );
+
+        try {
+            $this->assertPsr7ResponseMatchesOpenApiSchema(
+                $request,
+                new Response(200, ['Content-Type' => 'application/json'], ''),
+            );
+            $this->fail('Expected the genuinely empty body to fail as a new violation.');
+        } catch (AssertionFailedError $e) {
+            $this->assertStringContainsString('Response body is empty', $e->getMessage());
+        }
+    }
+
     protected function openApiSpec(): string
     {
         return 'psr7';

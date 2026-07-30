@@ -78,6 +78,12 @@ final class ViolationBaselineCollector
      * against an absent placeholder body, so same-side body issues are
      * artifacts of the decode failure — recording them would let the
      * baseline absorb a future genuinely-empty body.
+     *
+     * The PSR-7 adapter folds decode failures into the result itself as
+     * `parse`-keyword issues instead of recording them up front, so the
+     * same artifact exclusion is derived from the issue list here: only the
+     * `parse` issue of an affected category is recorded, its placeholder
+     * siblings are not ({@see ViolationFingerprint::decodeFailureCategories()}).
      */
     public function recordResult(
         string $specName,
@@ -86,8 +92,15 @@ final class ViolationBaselineCollector
         string $fallbackPath,
         ?string $excludeCategory = null,
     ): void {
+        $artifactCategories = ViolationFingerprint::decodeFailureCategories($result->issues());
         foreach ($result->issues() as $issue) {
             if ($issue->category === $excludeCategory) {
+                continue;
+            }
+            if (
+                $issue->keyword !== ViolationFingerprint::KEYWORD_PARSE &&
+                isset($artifactCategories[$issue->category])
+            ) {
                 continue;
             }
             $this->record(ViolationFingerprint::fromIssue($specName, $issue, $fallbackMethod, $fallbackPath));

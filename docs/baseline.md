@@ -65,6 +65,11 @@ future "`limit` has the wrong type". Violations with neither a name nor a
 keyword (structural spec errors, error-boundary captures) collapse per
 operation and category — a documented trade-off.
 
+Body-decode failures (unparseable JSON, an unreadable or non-seekable PSR-7
+stream) carry the synthetic `parse` keyword, so a baselined decode failure
+never absorbs a genuinely empty body on the same operation — and vice
+versa.
+
 ## Enforcement semantics
 
 - A failing assertion is suppressed only when **every** one of its violations
@@ -76,10 +81,15 @@ operation and category — a documented trade-off.
 - A missing or malformed `baseline_file` is FATAL at bootstrap. A typo'd path
   must not silently disable suppression.
 - A body that fails to decode as JSON is baselined as a body-category entry
-  without matched status/content-type context (the failure happens before
-  path matching). When that entry is baselined, validation still continues
-  against an absent body so violations elsewhere in the request/response are
-  not masked.
+  with the synthetic `parse` keyword. In the Laravel and Symfony adapters it
+  carries no matched status/content-type context (the failure happens before
+  path matching); the PSR-7 adapter folds the failure into the validation
+  result as a `parse`-keyword issue with its matched context. Either way,
+  validation still continues against a placeholder body so violations
+  elsewhere in the request/response are not masked — and the placeholder's
+  own body verdicts are treated as artifacts of the decode failure: they are
+  neither recorded at generation time nor required to be baselined at
+  enforcement time.
 - While a baseline is active the `max_errors` cap is lifted: a truncated
   error list could hide a new violation behind baselined ones. Failure output
   may therefore list more errors than the configured cap.
@@ -134,10 +144,6 @@ in two cases:
   summary is not aggregated across workers. Sidecar-based parallel
   generation is tracked in
   [#417](https://github.com/studio-design/gesso/issues/417).
-- **PSR-7 decode failures:** the PSR-7 adapter folds body-decode failures
-  into the validation result itself; its generation-time interaction with
-  the absent-body placeholder is tracked in
-  [#418](https://github.com/studio-design/gesso/issues/418).
 - Suppression is per assertion, not per test: an assertion mixing baselined
   and new violations fails as a whole (by design — see enforcement
   semantics).

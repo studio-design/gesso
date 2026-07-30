@@ -165,7 +165,7 @@ final class OpenApiAssertionsBaselineEnforceTest extends TestCase
             null,
             'response.body',
             null,
-            null,
+            'parse',
         ));
 
         $request = Request::create('/v1/pets', 'GET');
@@ -190,7 +190,7 @@ final class OpenApiAssertionsBaselineEnforceTest extends TestCase
             null,
             'response.body',
             null,
-            null,
+            'parse',
         ));
 
         $request = Request::create('/v1/unknown', 'GET');

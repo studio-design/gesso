@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Studio\Gesso\Baseline;
 
 use Studio\Gesso\OpenApiValidationResult;
-use Studio\Gesso\Spec\OpenApiOperationResolver;
 
 use function array_key_exists;
 use function count;
@@ -64,6 +63,12 @@ final class ViolationBaselineEnforcer
      * absent placeholder body, so same-side body issues are artifacts of
      * the decode failure, not violations the baseline needs to cover
      * (mirroring the collector's generation-time exclusion).
+     *
+     * The PSR-7 adapter folds decode failures into the result itself as
+     * `parse`-keyword issues, so the same artifact exclusion is derived
+     * from the issue list here: only the `parse` issue of an affected
+     * category needs baseline coverage, its placeholder siblings do not
+     * ({@see ViolationFingerprint::decodeFailureCategories()}).
      */
     public function suppressesResult(
         string $specName,
@@ -72,9 +77,16 @@ final class ViolationBaselineEnforcer
         string $fallbackPath,
         ?string $excludeCategory = null,
     ): bool {
+        $artifactCategories = ViolationFingerprint::decodeFailureCategories($result->issues());
         $allBaselined = true;
         foreach ($result->issues() as $issue) {
             if ($issue->category === $excludeCategory) {
+                continue;
+            }
+            if (
+                $issue->keyword !== ViolationFingerprint::KEYWORD_PARSE &&
+                isset($artifactCategories[$issue->category])
+            ) {
                 continue;
             }
 
@@ -91,11 +103,10 @@ final class ViolationBaselineEnforcer
 
     /**
      * Whether a body-decode failure is baselined. The fingerprint must be
-     * rebuilt exactly as the adapters record it at generation time: raw
-     * request method / path with no matched status, content-type, or
-     * pointer context, because the failure happens before path matching.
-     * Method normalization matches {@see ViolationFingerprint::fromIssue()}
-     * — fixed HTTP methods uppercase, custom methods case-sensitive.
+     * rebuilt exactly as the adapters record it at generation time
+     * ({@see ViolationFingerprint::forDecodeFailure()}): raw request
+     * method / path with no matched status, content-type, or pointer
+     * context, because the failure happens before path matching.
      */
     public function suppressesDecodeFailure(
         string $specName,
@@ -103,16 +114,7 @@ final class ViolationBaselineEnforcer
         string $path,
         string $category,
     ): bool {
-        $fingerprint = new ViolationFingerprint(
-            $specName,
-            OpenApiOperationResolver::normalizeMethodForKey($method),
-            $path,
-            null,
-            null,
-            $category,
-            null,
-            null,
-        );
+        $fingerprint = ViolationFingerprint::forDecodeFailure($specName, $method, $path, $category);
 
         if (!$this->baseline->contains($fingerprint)) {
             return false;

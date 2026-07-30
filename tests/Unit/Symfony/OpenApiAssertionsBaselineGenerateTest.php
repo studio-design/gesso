@@ -164,7 +164,7 @@ final class OpenApiAssertionsBaselineGenerateTest extends TestCase
             null,
             'response.body',
             null,
-            null,
+            'parse',
         )));
     }
 
@@ -189,7 +189,7 @@ final class OpenApiAssertionsBaselineGenerateTest extends TestCase
             null,
             'response.body',
             null,
-            null,
+            'parse',
         )));
         $this->assertTrue($this->collector->baseline()->contains(new ViolationFingerprint(
             'petstore-3.0',
@@ -224,7 +224,7 @@ final class OpenApiAssertionsBaselineGenerateTest extends TestCase
             null,
             'request.body',
             null,
-            null,
+            'parse',
         )));
     }
 

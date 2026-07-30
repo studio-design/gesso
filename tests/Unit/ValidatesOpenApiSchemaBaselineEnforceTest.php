@@ -101,7 +101,7 @@ class ValidatesOpenApiSchemaBaselineEnforceTest extends TestCase
             null,
             'response.body',
             null,
-            null,
+            'parse',
         ));
 
         $this->assertResponseMatchesOpenApiSchema($this->makeTestResponse('{invalid', 200), HttpMethod::GET, '/v1/pets');
@@ -120,7 +120,7 @@ class ValidatesOpenApiSchemaBaselineEnforceTest extends TestCase
             null,
             'response.body',
             null,
-            null,
+            'parse',
         ));
 
         $this->expectException(AssertionFailedError::class);
