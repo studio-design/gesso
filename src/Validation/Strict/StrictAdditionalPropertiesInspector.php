@@ -9,6 +9,7 @@ use Studio\Gesso\Spec\OpenApiSchemaDialect;
 
 use function array_is_list;
 use function array_key_exists;
+use function count;
 use function is_array;
 use function is_string;
 use function ksort;
@@ -89,11 +90,16 @@ final class StrictAdditionalPropertiesInspector
         }
 
         if ($value !== [] && array_is_list($value)) {
-            $items = self::collectItemsSchema($schema);
-            if ($items === null) {
-                return;
-            }
-            foreach ($value as $element) {
+            foreach ($value as $index => $element) {
+                $items = self::collectItemSchemaForIndex(
+                    $schema,
+                    $index,
+                    $dialect,
+                    $honorSchemaDialectOverride,
+                );
+                if ($items === null) {
+                    continue;
+                }
                 self::walk(
                     $element,
                     $items,
@@ -180,8 +186,19 @@ final class StrictAdditionalPropertiesInspector
      */
     private static function hasDisjunction(array $schema): bool
     {
-        return (isset($schema['anyOf']) && is_array($schema['anyOf'])) ||
-            (isset($schema['oneOf']) && is_array($schema['oneOf']));
+        if (
+            (isset($schema['anyOf']) && is_array($schema['anyOf'])) ||
+            (isset($schema['oneOf']) && is_array($schema['oneOf']))
+        ) {
+            return true;
+        }
+        foreach (self::allOfBranches($schema) as $branch) {
+            if (self::hasDisjunction($branch)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -393,20 +410,60 @@ final class StrictAdditionalPropertiesInspector
      *
      * @return null|array<string, mixed>
      */
-    private static function collectItemsSchema(array $schema): ?array
-    {
+    private static function collectItemSchemaForIndex(
+        array $schema,
+        int $index,
+        string $inheritedDialect,
+        bool $honorSchemaDialectOverride,
+    ): ?array {
         $schemas = [];
-        if (isset($schema['items']) && is_array($schema['items'])) {
-            $schemas[] = $schema['items'];
+        $dialect = self::effectiveDialect($schema, $inheritedDialect, $honorSchemaDialectOverride);
+        $items = $schema['items'] ?? null;
+
+        if (self::supportsPrefixItems($dialect)) {
+            $prefixItems = $schema['prefixItems'] ?? null;
+            $prefixCount = is_array($prefixItems) && array_is_list($prefixItems)
+                ? count($prefixItems)
+                : 0;
+            $itemSchema = $index < $prefixCount
+                ? $prefixItems[$index]
+                : $items;
+            if (is_array($itemSchema)) {
+                $schemas[] = $itemSchema;
+            }
+        } elseif (is_array($items) && array_is_list($items) && $items !== []) {
+            $itemSchema = $items[$index] ?? ($schema['additionalItems'] ?? null);
+            if (is_array($itemSchema)) {
+                $schemas[] = $itemSchema;
+            }
+        } elseif (is_array($items)) {
+            $schemas[] = $items;
         }
         foreach (self::allOfBranches($schema) as $branch) {
-            $child = self::collectItemsSchema($branch);
+            $child = self::collectItemSchemaForIndex(
+                $branch,
+                $index,
+                $dialect,
+                $honorSchemaDialectOverride,
+            );
             if ($child !== null) {
                 $schemas[] = $child;
             }
         }
 
         return $schemas === [] ? null : self::combineSchemas($schemas);
+    }
+
+    private static function supportsPrefixItems(string $dialect): bool
+    {
+        if ($dialect === OpenApiSchemaDialect::OAS_3_1) {
+            return true;
+        }
+
+        return preg_match(
+            '~json-schema\.org/draft(?:/|-)2020-12/schema#?$~i',
+            $dialect,
+        ) === 1;
     }
 
     /**

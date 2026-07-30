@@ -127,6 +127,73 @@ final class StrictAdditionalPropertiesInspectorTest extends TestCase
     }
 
     #[Test]
+    public function disjunctions_nested_in_all_of_are_conservatively_skipped(): void
+    {
+        foreach (['oneOf', 'anyOf'] as $keyword) {
+            $schema = [
+                'allOf' => [
+                    [
+                        $keyword => [
+                            [
+                                'type' => 'object',
+                                'properties' => ['vat_id' => ['type' => 'string']],
+                            ],
+                            [
+                                'type' => 'object',
+                                'properties' => ['tax_id' => ['type' => 'string']],
+                            ],
+                        ],
+                    ],
+                    [
+                        'type' => 'object',
+                        'properties' => ['country' => ['type' => 'string']],
+                    ],
+                ],
+            ];
+
+            $this->assertSame(
+                [],
+                StrictAdditionalPropertiesInspector::inspect(
+                    ['country' => 'DE', 'vat_id' => 'DE123'],
+                    $schema,
+                ),
+                $keyword,
+            );
+        }
+    }
+
+    #[Test]
+    public function prefix_items_and_items_apply_to_their_own_2020_12_indices(): void
+    {
+        $schema = [
+            'type' => 'array',
+            'prefixItems' => [
+                [
+                    'type' => 'object',
+                    'properties' => ['prefix' => ['type' => 'string']],
+                ],
+            ],
+            'items' => [
+                'type' => 'object',
+                'properties' => ['remainder' => ['type' => 'string']],
+            ],
+        ];
+
+        $this->assertSame([], StrictAdditionalPropertiesInspector::inspect(
+            [
+                ['prefix' => 'first'],
+                ['remainder' => 'second'],
+            ],
+            $schema,
+        ));
+        $this->assertSame([], StrictAdditionalPropertiesInspector::inspect(
+            [['remainder' => 'first']],
+            $schema,
+            jsonSchemaDialect: OpenApiSchemaDialect::DRAFT_07,
+        ));
+    }
+
+    #[Test]
     public function conditional_and_dependent_schema_nodes_are_conservatively_skipped(): void
     {
         $conditional = [

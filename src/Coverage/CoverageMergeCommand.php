@@ -414,6 +414,12 @@ final class CoverageMergeCommand
         $results = $this->computeResults($specs, $coverageTracker);
         if ($results === []) {
             $strictGated = $minStrict && ($minEndpointPct !== null || $minResponsePct !== null);
+            $strictAdditionalPropertiesFailure = $this->evaluateStrictAdditionalPropertiesGate(
+                $strictAdditionalPropertiesMode,
+                $githubSummaryPath,
+                $strictAdditionalPropertiesTracker,
+                $sidecarsWithoutStrictAdditionalProperties,
+            );
             $this->writeStderr(sprintf(
                 "[OpenAPI Coverage] %s: no contract test coverage was recorded; %s\n",
                 $strictGated ? 'FATAL' : 'WARNING',
@@ -426,7 +432,7 @@ final class CoverageMergeCommand
                 return 1;
             }
 
-            return $strictGated ? 1 : 0;
+            return $strictGated || $strictAdditionalPropertiesFailure ? 1 : 0;
         }
 
         $this->writeStdout(ConsoleCoverageRenderer::render($results, $consoleOutput));

@@ -80,8 +80,15 @@ property.
 
 `anyOf`, `oneOf`, `if`/`then`/`else`, and `dependentSchemas` nodes are skipped
 conservatively when those keywords are active in the selected dialect.
+Disjunctions nested inside `allOf` branches trigger the same conservative
+skip.
 Selecting the effective runtime branch would require retaining branch-level
 validator output; guessing could produce false positives.
+
+For arrays, Draft 2020-12 and the OpenAPI base dialect apply each
+`prefixItems` schema only to its matching index and apply `items` only after
+that prefix. Draft 06/07 and 2019-09 use their dialect-specific `items` tuple
+semantics.
 
 ## Per-call mode
 
@@ -133,7 +140,8 @@ vendor/bin/gesso coverage:merge \
 ```
 
 Fail mode exits non-zero when no worker sidecars exist because the gate cannot
-be evaluated.
+be evaluated. When sidecars do exist, the strict gate is evaluated independently
+of whether the requested `--specs` produce any coverage-report rows.
 
 The extension parameter controls sequential PHPUnit. The merge CLI flag
 controls the merged parallel gate, so changing warn/fail does not require

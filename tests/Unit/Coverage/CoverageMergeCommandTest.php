@@ -1288,6 +1288,31 @@ class CoverageMergeCommandTest extends TestCase
     }
 
     #[Test]
+    public function strict_additional_properties_fail_runs_when_requested_specs_have_no_coverage_results(): void
+    {
+        $this->writeStrictAdditionalPropertiesWorkerSidecar('1', ['/trace_id' => 'trace_id']);
+
+        $stderr = '';
+        $command = new CoverageMergeCommand(
+            stdoutWriter: static fn(string $message): null => null,
+            stderrWriter: static function (string $message) use (&$stderr): void {
+                $stderr .= $message;
+            },
+        );
+        $exit = $command->run([
+            'sidecar_dir' => $this->sidecarDir,
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => ['petstore-3.0'],
+            'strict_additional_properties' => 'fail',
+            'cleanup' => true,
+        ]);
+
+        $this->assertSame(1, $exit);
+        $this->assertStringContainsString('[OpenAPI Strict Additional Properties] FATAL', $stderr);
+        $this->assertStringContainsString('/trace_id', $stderr);
+    }
+
+    #[Test]
     public function strict_additional_properties_fail_rejects_a_mixed_old_worker_fleet(): void
     {
         $this->writeStrictAdditionalPropertiesWorkerSidecar('1', []);
