@@ -31,6 +31,7 @@ when upgrading from `studio-design/openapi-contract-testing` v1.10.
 - **Endpoint coverage tracking** — Unique PHPUnit extension that reports which spec endpoints are covered by tests, at `(method, path, status, content-type)` granularity
 - **Laravel route/spec parity** — `openapi:routes` finds documented operations without routes and registered routes without OpenAPI operations, with filters, stable JSON, and independent CI gates
 - **Schema-driven request fuzzing** — Valid boundaries, composition branches, targeted negative cases with explicit expected status classes, deterministic replay/reduction, whole-spec filters, lifecycle/auth hooks, and explicit skip reasons
+- **Named negative contract checks** — Opt-in `unsupported_method` probes that dispatch an undocumented HTTP method per documented path and expect 405, with deterministic replay and collect-then-assert reporting. See [`docs/fuzzing.md`](docs/fuzzing.md#named-contract-checks).
 - **Enum drift detection** — Static comparison between PHP backed enums and their `enum:` spec arrays, with PHPUnit-extension auto-discovery
 - **Schema under-description detection** — Optional strict mode that flags response fields the implementation always returns but the spec marks as optional, catching the spec gaps that conformance checks alone can't. See [`docs/strict-required.md`](docs/strict-required.md) for current scope and limitations.
 - **Skip-by-status-code** — Configurable regex list of status codes whose bodies are not validated (default: every `5xx`); per-request via `skipResponseCode()`
@@ -59,7 +60,7 @@ Choose based on the workflow you need rather than on a single yes/no feature cou
 | Parallel coverage merge | [Sidecar + merge CLI](docs/parallel.md) | Not documented | — | — | — |
 | Route/spec parity | [`openapi:routes`](docs/laravel-route-parity.md) with text/JSON and CI gates | [`spectator:routes`][spectator-cli] | — | — | — |
 | CLI diagnostics / scaffolding | [`doctor`](docs/doctor.md), [`openapi:routes`](docs/laravel-route-parity.md), coverage merge; no scaffolding | [`validate`, `coverage`, `routes`, `stubs`][spectator-cli] | — | — | — |
-| Structured validation failures | Text messages; JSON planned ([#282](https://github.com/studio-design/gesso/issues/282)) | [JSON `{errors: [...]}`][spectator-errors] | [PHP exception hierarchy][league-errors] | [Wrapper exception][osteel-readme] | [PHPUnit failure text][kirschbaum-failure-source] |
+| Structured validation failures | [`issues()` + versioned JSON failure output](docs/validation-json-schema.md) | [JSON `{errors: [...]}`][spectator-errors] | [PHP exception hierarchy][league-errors] | [Wrapper exception][osteel-readme] | [PHPUnit failure text][kirschbaum-failure-source] |
 | Schema-driven exploration | [Deterministic endpoint + whole-spec generation](docs/fuzzing.md) | — | — | — | — |
 | Drift / under-description checks | [Enum drift](docs/enum-drift.md), [strict required](docs/strict-required.md) | — | — | — | — |
 | First-class integration | [PSR-7](docs/psr7.md), [Laravel, Symfony, Pest](docs/setup.md) | [Laravel][spectator] | [PSR-7, PSR-15 middleware][league-middleware] | [HttpFoundation, PSR-7][osteel-readme] | [Laravel auto-validation][kirschbaum-readme] |
@@ -227,7 +228,7 @@ To validate every response automatically, set `'auto_assert' => true` and drop t
 | Pre-test compatibility diagnostics (`gesso doctor`) | [`docs/doctor.md`](docs/doctor.md) |
 | Laravel route/spec parity (`openapi:routes`) | [`docs/laravel-route-parity.md`](docs/laravel-route-parity.md) |
 | Pest plugin: `expect()->toMatchOpenApiResponseSchema()` and friends | [`docs/pest-plugin.md`](docs/pest-plugin.md) |
-| Schema-driven request fuzzing | [`docs/fuzzing.md`](docs/fuzzing.md) |
+| Schema-driven request fuzzing & named contract checks | [`docs/fuzzing.md`](docs/fuzzing.md) |
 | Enum drift detection | [`docs/enum-drift.md`](docs/enum-drift.md) |
 | Schema under-description detection (`strict_required`) | [`docs/strict-required.md`](docs/strict-required.md) |
 | Violation baseline: adopt on a legacy API, fail only on new violations | [`docs/baseline.md`](docs/baseline.md) |

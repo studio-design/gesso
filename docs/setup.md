@@ -353,6 +353,44 @@ $validator = new OpenApiResponseValidator($tracker, maxErrors: 1);
 
 For Laravel, set the `max_errors` key in `config/gesso.php`.
 
+## Reproduction commands in failure output
+
+Every adapter assertion failure (Laravel, Symfony, Pest, PSR-7) ends with a
+one-line curl command that reproduces the validated request:
+
+```text
+OpenAPI schema validation failed for POST /v1/pets (spec: front):
+[/name] The data (integer) must match the type: string
+Reproduce: curl -X POST 'https://api.example.test/v1/pets' -H 'Authorization: <redacted>' -H 'Content-Type: application/json' --data '{"name":42}'
+```
+
+The PSR-7 exchange assertion prefixes each error line with its `[request]` /
+`[response]` side label and ends with one `Reproduce:` line for the whole
+exchange. In the JSON failure output mode the same command is carried in the
+document's `reproduce_command` field instead of a trailing line — see
+[validation-json-schema.md](validation-json-schema.md).
+
+Header and query values that look sensitive are redacted before the command
+is rendered:
+
+- `Authorization`, `Proxy-Authorization`, and `Cookie` header values, plus
+  any header whose name contains `api-key` / `api_key` / `apikey`, `token`,
+  or `secret` (case-insensitive), become `<redacted>`.
+- Query-string values whose parameter name matches the same pattern are
+  redacted too (OpenAPI supports `apiKey` security in query parameters).
+- The request body is rendered only for JSON content types and is **not**
+  redacted. A body can itself carry credentials (a login password, a token
+  refresh payload), so treat the failure output as sensitive as a whole —
+  the redaction keeps header and query secrets out of CI logs, it does not
+  make the output safe to share.
+
+Redaction in adapter failure output cannot be disabled. Only the fuzzing
+API's `ExploredCase::curlSnippet(redactSensitiveHeaders: false)` opts out,
+for local debugging ([fuzzing.md](fuzzing.md)). The command is rendered only
+when an assertion actually fails, so a passing PSR-7 assertion never
+re-reads the body stream for output — validation itself still decodes
+seekable streams (and restores the cursor) either way.
+
 ## Skipping responses by status code
 
 Production error responses (typically `5xx`) are often deliberately left out of the OpenAPI spec. Without special handling, a test that hits a `500` would fail twice: once from the underlying bug, and again from "Status code 500 not defined". To avoid that noise, every `5xx` response is **skipped by default** — body validation is not performed, the assertion passes, and the endpoint is still recorded as covered.

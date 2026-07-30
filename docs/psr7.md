@@ -87,6 +87,13 @@ $this->assertPsr7ResponseMatchesOpenApiSchema($request, $response);
 $this->assertPsr7ResponseForOperationMatchesOpenApiSchema('POST', '/v1/pets', $response);
 ```
 
+Assertion failures end with a redacted `Reproduce: curl …` line (for the
+exchange assertion, one line for the whole exchange, with each error prefixed
+by its `[request]` / `[response]` side). In the JSON failure output mode the
+exchange failure instead emits one labelled JSON document per failing side.
+See [reproduction commands](setup.md#reproduction-commands-in-failure-output)
+and [validation-json-schema.md](validation-json-schema.md).
+
 ## PSR-15 test integration
 
 Keep contract validation in tests rather than placing validation middleware on

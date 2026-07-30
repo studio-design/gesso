@@ -116,6 +116,10 @@ written by `json_output` has its own `schema_version` contract documented in
 
 - Anything marked `@internal` — including the `Internal\` and `Validation\Support\` namespaces, the per-validator helpers under `Validation\Request\` / `Validation\Response\`, `Spec\OpenApiSchemaConverter` / `Spec\OpenApiPathMatcher` / `Spec\OpenApiRefResolver` / `Spec\OpenApiPathSuggester`, the PHPUnit `CoverageReportSubscriber`, `Cli\DoctorCommand`, `Coverage\CoverageMergeCommand` (the `gesso doctor` and `gesso coverage:merge` CLI surfaces remain covered — these classes are their implementation details), and test seams (`*::resetWarningStateForTesting()`, `OpenApiSpecLoader::reset()`, `OpenApiCoverageTracker::reset()` / `exportState()` / `importState()`).
 - Validator error message wording (we may improve them; assert on presence/category, not on exact strings).
+- The text-mode assertion failure layout — the header line, the error list,
+  and the trailing `Reproduce:` curl line (including its redaction details).
+  Machine consumers should select the json output mode, whose failure shape
+  and document schema are covered above.
 - The set of `format` keywords delegated to opis — we follow opis upstream, so a new format is added when opis adds it.
 - Behaviour of bug-fix releases that close a documented silent-pass case. A test that passed only because of the silent pass may start failing — that's the fix doing its job, not a SemVer break.
 

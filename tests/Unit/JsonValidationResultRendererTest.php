@@ -8,10 +8,14 @@ use const JSON_THROW_ON_ERROR;
 
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+use Studio\Gesso\DecodedBody;
 use Studio\Gesso\JsonValidationResultRenderer;
+use Studio\Gesso\OpenApiRequestValidator;
 use Studio\Gesso\OpenApiValidationResult;
+use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\ValidationIssue;
 
+use function file_get_contents;
 use function json_decode;
 
 class JsonValidationResultRendererTest extends TestCase
@@ -150,6 +154,49 @@ class JsonValidationResultRendererTest extends TestCase
         $this->assertStringNotContainsString('\\/', $document);
     }
 
+    #[Test]
+    public function the_documented_sample_is_real_renderer_output(): void
+    {
+        // docs/samples/validation.json is the only committed example of the
+        // schema_version 1 document; regenerate it from this exact scenario
+        // when the renderer or validator output changes.
+        OpenApiSpecLoader::reset();
+        OpenApiSpecLoader::configure(__DIR__ . '/../fixtures/specs');
+
+        try {
+            $result = (new OpenApiRequestValidator())->validate(
+                'petstore-3.0',
+                'POST',
+                '/v1/pets',
+                ['dryRun' => 'maybe'],
+                ['Content-Type' => ['application/json']],
+                DecodedBody::present(['name' => 42]),
+                'application/json',
+            );
+            $document = JsonValidationResultRenderer::render(
+                $result,
+                "curl -X POST 'https://api.example.test/v1/pets?dryRun=maybe' -H 'Authorization: <redacted>' -H 'Content-Type: application/json' --data '{\"name\":42}'",
+            );
+        } finally {
+            OpenApiSpecLoader::reset();
+        }
+
+        $expected = self::decode((string) file_get_contents(__DIR__ . '/../../docs/samples/validation.json'));
+        $actual = self::decode($document);
+        // The running tool version depends on the checkout (branch, tag);
+        // the committed sample pins the main-branch rendering.
+        $actual['tool']['version'] = $expected['tool']['version'];
+
+        // Validator message prose is explicitly outside the compatibility
+        // surface (docs/versioning.md), so an allowed opis wording change
+        // must not fail this pin — compare the stable structure and context
+        // and only require that every message is a non-empty string.
+        $this->assertSame(
+            $this->withNormalizedMessages($expected),
+            $this->withNormalizedMessages($actual),
+        );
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -157,5 +204,25 @@ class JsonValidationResultRendererTest extends TestCase
     {
         /** @var array<string, mixed> */
         return json_decode($document, true, flags: JSON_THROW_ON_ERROR);
+    }
+
+    /**
+     * @param array<string, mixed> $document
+     *
+     * @return array<string, mixed>
+     */
+    private function withNormalizedMessages(array $document): array
+    {
+        $this->assertIsArray($document['issues']);
+        foreach ($document['issues'] as $index => $issue) {
+            $this->assertIsArray($issue);
+            $this->assertArrayHasKey('message', $issue);
+            $this->assertIsString($issue['message']);
+            $this->assertNotSame('', $issue['message']);
+            $issue['message'] = '<any non-empty string>';
+            $document['issues'][$index] = $issue;
+        }
+
+        return $document;
     }
 }
