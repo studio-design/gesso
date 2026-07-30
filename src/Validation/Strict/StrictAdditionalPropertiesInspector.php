@@ -161,6 +161,9 @@ final class StrictAdditionalPropertiesInspector
                 }
             }
             foreach ($patterns as $pattern => $patternSchemas) {
+                if (!is_string($pattern)) {
+                    $pattern = (string) $pattern;
+                }
                 if (self::patternMatches($pattern, $propertyName)) {
                     $declared = true;
                     foreach ($patternSchemas as $patternSchema) {
@@ -258,7 +261,7 @@ final class StrictAdditionalPropertiesInspector
     /**
      * @param InspectedSchema $inspectedSchema
      *
-     * @return array<string, list<InspectedSchema>>
+     * @return array<array-key, list<InspectedSchema>>
      */
     private static function collectProperties(
         array $inspectedSchema,
@@ -271,7 +274,7 @@ final class StrictAdditionalPropertiesInspector
         if (is_array($properties)) {
             foreach ($properties as $name => $child) {
                 if (!is_string($name)) {
-                    continue;
+                    $name = (string) $name;
                 }
                 $out[$name] ??= [];
                 if (is_array($child)) {
@@ -299,7 +302,7 @@ final class StrictAdditionalPropertiesInspector
     /**
      * @param InspectedSchema $inspectedSchema
      *
-     * @return array<string, list<InspectedSchema>>
+     * @return array<array-key, list<InspectedSchema>>
      */
     private static function collectPatternProperties(
         array $inspectedSchema,
@@ -312,7 +315,7 @@ final class StrictAdditionalPropertiesInspector
         if (is_array($patterns)) {
             foreach ($patterns as $pattern => $child) {
                 if (!is_string($pattern)) {
-                    continue;
+                    $pattern = (string) $pattern;
                 }
                 $out[$pattern] ??= [];
                 if (is_array($child)) {

@@ -67,6 +67,32 @@ final class StrictAdditionalPropertiesInspectorTest extends TestCase
     }
 
     #[Test]
+    public function numeric_string_property_declarations_are_not_discarded(): void
+    {
+        $body = json_decode('{"1":"declared"}', true, flags: JSON_THROW_ON_ERROR);
+        $schema = json_decode(
+            '{"type":"object","properties":{"1":{"type":"string"}}}',
+            true,
+            flags: JSON_THROW_ON_ERROR,
+        );
+
+        $this->assertSame([], StrictAdditionalPropertiesInspector::inspect($body, $schema));
+    }
+
+    #[Test]
+    public function numeric_string_pattern_declarations_are_not_discarded(): void
+    {
+        $body = json_decode('{"1":"matched"}', true, flags: JSON_THROW_ON_ERROR);
+        $schema = json_decode(
+            '{"type":"object","patternProperties":{"1":{"type":"string"}}}',
+            true,
+            flags: JSON_THROW_ON_ERROR,
+        );
+
+        $this->assertSame([], StrictAdditionalPropertiesInspector::inspect($body, $schema));
+    }
+
+    #[Test]
     public function respects_exact_pattern_and_all_of_declarations(): void
     {
         $schema = [
