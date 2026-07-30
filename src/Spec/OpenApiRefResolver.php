@@ -11,6 +11,7 @@ use Studio\Gesso\Exception\InvalidOpenApiSpecException;
 use Studio\Gesso\Exception\InvalidOpenApiSpecReason;
 use Studio\Gesso\Internal\ExternalRefLoader;
 use Studio\Gesso\Internal\HttpRefLoader;
+use Studio\Gesso\Internal\RemoteAuthorization;
 
 use function array_is_list;
 use function array_key_exists;
@@ -151,6 +152,7 @@ final class OpenApiRefResolver
         array $allowedRemoteRefHosts = [],
         int $maxRemoteRefBytes = OpenApiSpecLoader::DEFAULT_MAX_REMOTE_REF_BYTES,
         array $allowedLocalRefRoots = [],
+        ?RemoteAuthorization $remoteAuthorization = null,
     ): array {
         // OpenApiSpecLoader::configure() catches this earlier with an
         // InvalidArgumentException; this guard is for callers that
@@ -190,6 +192,7 @@ final class OpenApiRefResolver
                 $sourceFile,
                 $maxRemoteRefBytes,
                 $allowedLocalRefRoots,
+                $remoteAuthorization,
             )
             : RefResolutionContext::filesystemOnly($sourceFile, $allowedLocalRefRoots);
 
@@ -805,6 +808,7 @@ final class OpenApiRefResolver
                 $documentCache,
                 $context->allowedRemoteRefHosts,
                 $context->maxRemoteRefBytes,
+                $context->remoteAuthorization,
             );
         } catch (InvalidOpenApiSpecException $e) {
             // Re-wrap remote-fetch failures with the resolution chain so

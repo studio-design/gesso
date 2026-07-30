@@ -46,7 +46,7 @@ when upgrading from `studio-design/openapi-contract-testing` v1.10.
 Choose based on the workflow you need rather than on a single yes/no feature count:
 
 - Choose **this library** when you need response-level coverage at `(method, path, status, content-type)` granularity, several CI report formats, OpenAPI 3.1/3.2 JSON Schema semantics, schema-driven exploration, or drift detection across a framework-agnostic core and Laravel, Symfony, and Pest adapters.
-- Choose **[Spectator][spectator]** for a Laravel 12 application when generated test stubs, JSON assertion failures, or remote/private-GitHub spec sources matter more than response-level coverage granularity and broader framework support.
+- Choose **[Spectator][spectator]** for a Laravel 12 application when generated test stubs or JSON assertion failures matter more than response-level coverage granularity and broader framework support. (Remote and private-GitHub spec sources are supported here too via [`remoteSpecs`](docs/setup.md#remote-spec-sources-opt-in).)
 - Choose **[league/openapi-psr7-validator][league]** when you want a low-level PSR-7 validator or PSR-15 middleware and will build the test/reporting integration yourself.
 - Choose **[osteel/openapi-httpfoundation-testing][osteel]** when you want a small HttpFoundation-to-PSR-7 validation bridge, or **[laravel-openapi-validator][kirschbaum]** when automatic validation around Laravel HTTP tests is the main requirement.
 

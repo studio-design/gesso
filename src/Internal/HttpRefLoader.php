@@ -15,6 +15,7 @@ use Studio\Gesso\Exception\InvalidOpenApiSpecException;
 use Studio\Gesso\Exception\InvalidOpenApiSpecReason;
 
 use function ctype_digit;
+use function hash;
 use function ltrim;
 use function pathinfo;
 use function preg_replace;
@@ -66,6 +67,10 @@ final class HttpRefLoader
      *
      * @param array<string, array<string, mixed>> $documentCache by-ref cache keyed by canonical URL
      * @param list<string> $allowedRemoteRefHosts exact normalized or user-provided host allowlist
+     * @param null|RemoteAuthorization $authorization host-scoped `Authorization` header; only sent
+     *                                                when the request host matches its scope
+     * @param null|string $expectedSha256 lowercase hex SHA-256 pin verified against the raw
+     *                                    response body before decoding
      *
      * @throws InvalidOpenApiSpecException when the URL cannot be fetched, decoded, or has no detectable format
      */
@@ -76,6 +81,8 @@ final class HttpRefLoader
         array &$documentCache,
         array $allowedRemoteRefHosts,
         int $maxResponseBytes = self::DEFAULT_MAX_RESPONSE_BYTES,
+        ?RemoteAuthorization $authorization = null,
+        ?string $expectedSha256 = null,
     ): LoadedDocument {
         $canonicalUri = self::canonicalizeUri($url);
         $safeUrl = self::redactSensitiveUrlData($url);
@@ -90,6 +97,10 @@ final class HttpRefLoader
 
         if (isset($documentCache[$canonicalUri])) {
             return new LoadedDocument($canonicalUri, $documentCache[$canonicalUri]);
+        }
+
+        if ($authorization !== null && $authorization->appliesToHost($request->getUri()->getHost())) {
+            $request = $request->withHeader('Authorization', $authorization->headerValue);
         }
 
         try {
@@ -169,6 +180,24 @@ final class HttpRefLoader
                 // nested causes. Do not reconnect the raw chain to a public
                 // exception that is commonly rendered in CI logs.
             );
+        }
+
+        if ($expectedSha256 !== null) {
+            $actualSha256 = hash('sha256', $body);
+            if ($actualSha256 !== $expectedSha256) {
+                throw new InvalidOpenApiSpecException(
+                    InvalidOpenApiSpecReason::RemoteSpecHashMismatch,
+                    sprintf(
+                        'Remote spec document does not match its expectedSha256 pin: %s '
+                        . '(expected %s, got %s). Update the pin if the upstream document '
+                        . 'changed intentionally.',
+                        $safeUrl,
+                        $expectedSha256,
+                        $actualSha256,
+                    ),
+                    ref: $safeUrl,
+                );
+            }
         }
 
         $format = self::detectFormat($canonicalUri, $response->getHeaderLine('Content-Type'));

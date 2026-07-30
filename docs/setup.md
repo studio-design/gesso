@@ -17,6 +17,7 @@ This guide walks through end-to-end setup, including the configuration knobs, op
 - [Skip request validation when the response is a documented 4xx](#skip-request-validation-when-the-response-is-a-documented-4xx)
 - [Auto-inject dummy bearer](#auto-inject-dummy-bearer)
 - [HTTP `$ref` resolution (opt-in)](#http-ref-resolution-opt-in)
+- [Remote spec sources (opt-in)](#remote-spec-sources-opt-in)
 
 ## 1. Provide your OpenAPI spec
 
@@ -711,3 +712,88 @@ Misconfiguration is caught early:
 Format detection prefers the URL's filename extension (`.json` / `.yaml` / `.yml`) and falls back to the response's `Content-Type` (`application/json`, `application/*+json`, `application/yaml`, `text/yaml`, etc.). URLs without a recognisable extension still work as long as the server sets a usable `Content-Type`.
 
 Inside an HTTP-loaded document, relative `$refs` resolve against the URL per RFC 3986: a `$ref: './pet.yaml'` inside `https://example.com/openapi.json` fetches `https://example.com/pet.yaml`.
+
+## Remote spec sources (opt-in)
+
+Normally a named spec resolves to a file under `basePath`. When the contract
+lives in a central registry or a separate spec repository (spec-first orgs,
+API gateways), `remoteSpecs` lets a name resolve to an HTTP(S) entry document
+instead — including a private GitHub repository — without vendoring the file
+into every service repo:
+
+```php
+use GuzzleHttp\Client;
+use GuzzleHttp\Psr7\HttpFactory;
+use Studio\Gesso\Spec\OpenApiSpecLoader;
+use Studio\Gesso\Spec\RemoteSpecSource;
+
+OpenApiSpecLoader::configure(
+    basePath: 'openapi/',                    // still used for filesystem specs
+    httpClient: new Client(['allow_redirects' => false]),
+    requestFactory: new HttpFactory(),
+    allowRemoteRefs: true,
+    allowedRemoteRefHosts: ['raw.githubusercontent.com'],
+    remoteSpecs: [
+        // Private GitHub repo via a fine-grained PAT with contents:read.
+        'front' => new RemoteSpecSource(
+            'https://raw.githubusercontent.com/acme/api-specs/main/bundled/front.json',
+            authorizationEnv: 'GESSO_SPEC_TOKEN',
+        ),
+        // Unauthenticated internal registry: a plain URL works too.
+        'admin' => 'https://specs.internal.example.com/admin/openapi.yaml',
+    ],
+);
+```
+
+```bash
+# GitHub raw content accepts a PAT as a bearer token.
+export GESSO_SPEC_TOKEN='Bearer github_pat_…'
+```
+
+After that, `front` and `admin` behave like any other spec name — in
+`specs=` for coverage, in `#[OpenApiSpec(...)]` attributes, and in the direct
+validators. Call `configure()` from your PHPUnit bootstrap file and omit the
+extension's `spec_base_path` parameter (the extension would otherwise
+re-configure the loader without your HTTP client); keep `specs=` so remote
+documents are eagerly fetched and structurally validated at bootstrap.
+
+Rules and behavior:
+
+- **Same opt-in as HTTP `$ref`s.** `remoteSpecs` requires `allowRemoteRefs:
+  true`, the PSR-18/PSR-17 pair, and every URL's host in
+  `allowedRemoteRefHosts` — all enforced at `configure()` time. Redirect
+  rejection, the response-size limit, format detection, and URL redaction
+  apply exactly as described in the previous section.
+- **`authorizationEnv` is provider-agnostic.** The environment variable's
+  value is sent verbatim as the `Authorization` header (`Bearer …`,
+  `token …`, `Basic …` — whatever the registry expects). A missing or empty
+  variable fails loudly with reason `RemoteSpecAuthEnvMissing` before any
+  request is sent. The value itself never appears in diagnostics.
+- **Credentials are host-scoped.** The header is sent to the entry document's
+  host only: relative `$ref`s (which resolve against the entry URL per RFC
+  3986) and same-host absolute `$ref`s carry it; a cross-host `$ref` — even
+  to another allowlisted host — never does.
+- **A mapped name never touches the filesystem.** If `front` is in
+  `remoteSpecs`, `openapi/front.json` is ignored for that name.
+- **Fetched once per process.** The resolved document is cached under its
+  spec name like a local spec; parallel workers fetch once each.
+
+For CI predictability, pin the document to the exact bytes you reviewed:
+
+```php
+'front' => new RemoteSpecSource(
+    'https://raw.githubusercontent.com/acme/api-specs/main/bundled/front.json',
+    authorizationEnv: 'GESSO_SPEC_TOKEN',
+    expectedSha256: '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08',
+),
+```
+
+A mismatch fails with reason `RemoteSpecHashMismatch` (showing expected and
+actual digests) before the document is parsed, so an upstream edit — or a
+compromised registry — cannot silently change what your tests enforce.
+Compute the pin with `curl -s … | shasum -a 256` and commit it; update it
+deliberately when the upstream contract changes. If you prefer freshness over
+pinning, point the URL at an immutable ref (a commit SHA instead of a branch)
+or add ETag caching middleware to the injected PSR-18 client — Gesso
+deliberately performs plain conditional-free GETs and leaves transport
+caching to the client.
