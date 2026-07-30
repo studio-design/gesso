@@ -370,8 +370,8 @@ exchange. In the JSON failure output mode the same command is carried in the
 document's `reproduce_command` field instead of a trailing line — see
 [validation-json-schema.md](validation-json-schema.md).
 
-Sensitive values are redacted before the command is rendered, so it is safe
-to print into CI logs:
+Header and query values that look sensitive are redacted before the command
+is rendered:
 
 - `Authorization`, `Proxy-Authorization`, and `Cookie` header values, plus
   any header whose name contains `api-key` / `api_key` / `apikey`, `token`,
@@ -379,12 +379,17 @@ to print into CI logs:
 - Query-string values whose parameter name matches the same pattern are
   redacted too (OpenAPI supports `apiKey` security in query parameters).
 - The request body is rendered only for JSON content types and is **not**
-  redacted — the body is test data the failing test constructed.
+  redacted. A body can itself carry credentials (a login password, a token
+  refresh payload), so treat the failure output as sensitive as a whole —
+  the redaction keeps header and query secrets out of CI logs, it does not
+  make the output safe to share.
 
 Redaction in adapter failure output cannot be disabled. Only the fuzzing
 API's `ExploredCase::curlSnippet(redactSensitiveHeaders: false)` opts out,
-for local debugging ([fuzzing.md](fuzzing.md)). The command is built lazily:
-a passing assertion never reads the request body stream.
+for local debugging ([fuzzing.md](fuzzing.md)). The command is rendered only
+when an assertion actually fails, so a passing PSR-7 assertion never
+re-reads the body stream for output — validation itself still decodes
+seekable streams (and restores the cursor) either way.
 
 ## Skipping responses by status code
 

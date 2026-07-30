@@ -187,7 +187,14 @@ class JsonValidationResultRendererTest extends TestCase
         // the committed sample pins the main-branch rendering.
         $actual['tool']['version'] = $expected['tool']['version'];
 
-        $this->assertSame($expected, $actual);
+        // Validator message prose is explicitly outside the compatibility
+        // surface (docs/versioning.md), so an allowed opis wording change
+        // must not fail this pin — compare the stable structure and context
+        // and only require that every message is a non-empty string.
+        $this->assertSame(
+            $this->withNormalizedMessages($expected),
+            $this->withNormalizedMessages($actual),
+        );
     }
 
     /**
@@ -197,5 +204,25 @@ class JsonValidationResultRendererTest extends TestCase
     {
         /** @var array<string, mixed> */
         return json_decode($document, true, flags: JSON_THROW_ON_ERROR);
+    }
+
+    /**
+     * @param array<string, mixed> $document
+     *
+     * @return array<string, mixed>
+     */
+    private function withNormalizedMessages(array $document): array
+    {
+        $this->assertIsArray($document['issues']);
+        foreach ($document['issues'] as $index => $issue) {
+            $this->assertIsArray($issue);
+            $this->assertArrayHasKey('message', $issue);
+            $this->assertIsString($issue['message']);
+            $this->assertNotSame('', $issue['message']);
+            $issue['message'] = '<any non-empty string>';
+            $document['issues'][$index] = $issue;
+        }
+
+        return $document;
     }
 }
