@@ -71,7 +71,8 @@ final class StrictAdditionalPropertiesInspector
         array &$findings,
         bool $honorSchemaDialectOverride,
     ): void {
-        if ($value instanceof stdClass) {
+        $isObject = $value instanceof stdClass;
+        if ($isObject) {
             $value = (array) $value;
         }
         if (!is_array($value)) {
@@ -96,7 +97,7 @@ final class StrictAdditionalPropertiesInspector
             }
         }
 
-        if ($value !== [] && array_is_list($value)) {
+        if (!$isObject && $value !== [] && array_is_list($value)) {
             foreach ($value as $index => $element) {
                 $items = self::collectItemSchemasForIndex(
                     $schemas,

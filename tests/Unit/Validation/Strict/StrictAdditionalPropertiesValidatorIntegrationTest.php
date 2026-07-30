@@ -8,6 +8,7 @@ use const E_USER_WARNING;
 
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+use stdClass;
 use Studio\Gesso\OpenApiResponseValidator;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Validation\Strict\StrictAdditionalPropertiesAsserter;
@@ -69,6 +70,28 @@ final class StrictAdditionalPropertiesValidatorIntegrationTest extends TestCase
         $this->assertSame('/users', $reports[0]->path);
         $this->assertSame(2, $reports[0]->hits);
         $this->assertSame(2, $this->tracker->evaluationsOn());
+    }
+
+    #[Test]
+    public function stdclass_with_numeric_property_name_remains_an_object(): void
+    {
+        $body = new stdClass();
+        $body->{'0'} = 'extra';
+
+        $result = $this->validator->validate(
+            'strict-additional-properties',
+            'GET',
+            '/patterns',
+            200,
+            $body,
+            'application/json',
+        );
+
+        $this->assertTrue($result->isValid());
+        $reports = StrictAdditionalPropertiesAsserter::detectAll($this->tracker);
+        $this->assertCount(1, $reports);
+        $this->assertSame('/0', $reports[0]->instancePointer);
+        $this->assertSame(1, $this->tracker->evaluationsOn());
     }
 
     #[Test]
