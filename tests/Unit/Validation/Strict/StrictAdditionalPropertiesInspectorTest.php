@@ -4,10 +4,14 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Tests\Unit\Validation\Strict;
 
+use const JSON_THROW_ON_ERROR;
+
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Studio\Gesso\Spec\OpenApiSchemaDialect;
 use Studio\Gesso\Validation\Strict\StrictAdditionalPropertiesInspector;
+
+use function json_decode;
 
 final class StrictAdditionalPropertiesInspectorTest extends TestCase
 {
@@ -44,6 +48,22 @@ final class StrictAdditionalPropertiesInspectorTest extends TestCase
             '/root~1extra' => 'root/extra',
             '/tilde~0key' => 'tilde~key',
         ], $findings);
+    }
+
+    #[Test]
+    public function finds_numeric_string_property_names_decoded_as_integer_keys(): void
+    {
+        $body = json_decode('{"id":"ok","1":"extra"}', true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(
+            ['/1' => '1'],
+            StrictAdditionalPropertiesInspector::inspect($body, [
+                'type' => 'object',
+                'properties' => [
+                    'id' => ['type' => 'string'],
+                ],
+            ]),
+        );
     }
 
     #[Test]

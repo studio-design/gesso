@@ -149,7 +149,7 @@ final class StrictAdditionalPropertiesInspector
 
         foreach ($value as $propertyName => $child) {
             if (!is_string($propertyName)) {
-                continue;
+                $propertyName = (string) $propertyName;
             }
             $propertyPointer = self::appendProperty($pointer, $propertyName);
 
