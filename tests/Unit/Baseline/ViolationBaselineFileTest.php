@@ -58,6 +58,32 @@ class ViolationBaselineFileTest extends TestCase
     }
 
     #[Test]
+    public function to_document_round_trips_through_parse_document(): void
+    {
+        // Issue #417: the v3 sidecar envelope embeds toDocument() verbatim
+        // and the merge CLI re-validates it via parseDocument() — the pair
+        // must round-trip without loss, including entry normalization.
+        $baseline = new ViolationBaseline();
+        $baseline->add(new ViolationFingerprint('front', 'GET', '/v1/pets', '200', 'application/json', 'response.body', '/data/*/id', 'type'));
+        $baseline->add(new ViolationFingerprint('front', 'POST', '/v1/pets', null, null, 'request.body', '/name', 'type'));
+
+        $document = ViolationBaselineFile::toDocument($baseline);
+        $reparsed = ViolationBaselineFile::parseDocument($document);
+
+        $this->assertSame(2, $reparsed->count());
+        $this->assertSame($document, ViolationBaselineFile::toDocument($reparsed));
+    }
+
+    #[Test]
+    public function parse_document_rejects_unknown_baseline_version(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('baseline_version');
+
+        ViolationBaselineFile::parseDocument(['baseline_version' => 99, 'violations' => []]);
+    }
+
+    #[Test]
     public function render_is_deterministic_regardless_of_insertion_order(): void
     {
         $a = new ViolationBaseline();

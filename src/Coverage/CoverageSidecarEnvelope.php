@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace Studio\Gesso\Coverage;
 
 use InvalidArgumentException;
+use Studio\Gesso\Baseline\ViolationBaselineFile;
 use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 
 use function array_key_exists;
 use function get_debug_type;
+use function in_array;
 use function is_array;
 use function is_int;
 use function sprintf;
@@ -30,6 +32,23 @@ use function sprintf;
  *   "strictRequired": { "version": 2, "observations": { ... } }
  * }
  * ```
+ *
+ * Wire shape (v3, issue #417) adds the violation-baseline half collected
+ * during a parallel generation run (`OPENAPI_BASELINE_GENERATE` under
+ * paratest). Its value is the baseline-file document verbatim
+ * ({@see ViolationBaselineFile}), so the inner
+ * `baseline_version` stays owned by the baseline format:
+ * ```json
+ * {
+ *   "envelopeVersion": 3,
+ *   "coverage":       { "version": 1, "specs":        { ... } },
+ *   "strictRequired": { "version": 2, "observations": { ... } },
+ *   "baseline":       { "baseline_version": 1, "violations": [ ... ] }
+ * }
+ * ```
+ * v3 is emitted only when a generation run has a baseline to hand off;
+ * plain runs keep writing v2 so an older merge CLI stays compatible with
+ * coverage-only fleets during an upgrade.
  *
  * Backwards compatibility: workers running an older library version write
  * a bare v1 coverage payload (`{ "version": 1, "specs": { ... } }`) with no
@@ -54,39 +73,67 @@ use function sprintf;
  *     envelopeVersion: int,
  *     coverage: CoverageStatePayload,
  *     strictRequired: StrictRequiredStatePayload,
+ *     baseline?: array<string, mixed>,
  * }
  * @phpstan-type ParsedEnvelope array{
  *     coverage: array<string, mixed>,
  *     strictRequired: array<string, mixed>|null,
+ *     baseline: array<string, mixed>|null,
  * }
  */
 final class CoverageSidecarEnvelope
 {
     /**
      * Envelope wire-format version. Importers reject unknown values rather
-     * than guessing — a future v3 worker writing into an older merge CLI
-     * must fail loudly so partial-upgrade silos surface immediately.
+     * than guessing — a future writer's version landing in an older merge
+     * CLI must fail loudly so partial-upgrade silos surface immediately.
      */
     public const ENVELOPE_VERSION = 2;
+
+    /**
+     * Envelope version carrying the violation-baseline half (issue #417).
+     * Written only by generation-mode workers; see the class doc for why
+     * plain runs stay on {@see self::ENVELOPE_VERSION}.
+     */
+    public const ENVELOPE_VERSION_WITH_BASELINE = 3;
 
     private function __construct() {}
 
     /**
-     * Compose a v2 envelope from the two tracker `exportState()` payloads.
+     * Compose an envelope from the two tracker `exportState()` payloads.
      * Typed `@phpstan-param`s flow the tracker shapes through so PHPStan
      * catches a tracker-side `exportState()` regression at this boundary.
+     *
+     * `$baselineDocument` (the baseline-file document from
+     * {@see ViolationBaselineFile::toDocument()})
+     * upgrades the envelope to v3; `null` keeps the v2 shape byte-compatible
+     * with pre-#417 writers.
+     *
+     * @param null|array<string, mixed> $baselineDocument
      *
      * @phpstan-param CoverageStatePayload $coverageState
      * @phpstan-param StrictRequiredStatePayload $strictRequiredState
      *
      * @return SidecarEnvelopePayload
      */
-    public static function build(array $coverageState, array $strictRequiredState): array
-    {
+    public static function build(
+        array $coverageState,
+        array $strictRequiredState,
+        ?array $baselineDocument = null,
+    ): array {
+        if ($baselineDocument === null) {
+            return [
+                'envelopeVersion' => self::ENVELOPE_VERSION,
+                'coverage' => $coverageState,
+                'strictRequired' => $strictRequiredState,
+            ];
+        }
+
         return [
-            'envelopeVersion' => self::ENVELOPE_VERSION,
+            'envelopeVersion' => self::ENVELOPE_VERSION_WITH_BASELINE,
             'coverage' => $coverageState,
             'strictRequired' => $strictRequiredState,
+            'baseline' => $baselineDocument,
         ];
     }
 
@@ -94,7 +141,7 @@ final class CoverageSidecarEnvelope
      * Route a sidecar payload into its tracker-shaped parts.
      *
      * Discriminator priority:
-     *  1. `envelopeVersion` present → v2 path. Unknown values are rejected.
+     *  1. `envelopeVersion` present → v2/v3 path. Unknown values are rejected.
      *  2. `version` + `specs` keys → legacy v1 bare coverage payload;
      *     returns `strictRequired => null`.
      *  3. Otherwise reject (unrecognised shape).
@@ -133,6 +180,7 @@ final class CoverageSidecarEnvelope
             return [
                 'coverage' => $payload,
                 'strictRequired' => null,
+                'baseline' => null,
             ];
         }
 
@@ -149,11 +197,15 @@ final class CoverageSidecarEnvelope
     private static function parseEnvelope(array $payload): array
     {
         $version = $payload['envelopeVersion'] ?? null;
-        if (!is_int($version) || $version !== self::ENVELOPE_VERSION) {
+        if (
+            !is_int($version) ||
+            !in_array($version, [self::ENVELOPE_VERSION, self::ENVELOPE_VERSION_WITH_BASELINE], true)
+        ) {
             throw new InvalidArgumentException(sprintf(
-                'Unsupported sidecar envelope version: got %s, expected %d.',
+                'Unsupported sidecar envelope version: got %s, expected %d or %d.',
                 is_int($version) ? (string) $version : get_debug_type($version),
                 self::ENVELOPE_VERSION,
+                self::ENVELOPE_VERSION_WITH_BASELINE,
             ));
         }
 
@@ -173,9 +225,31 @@ final class CoverageSidecarEnvelope
             ));
         }
 
+        $baseline = $payload['baseline'] ?? null;
+        if ($version === self::ENVELOPE_VERSION) {
+            // A v2 envelope must not smuggle a baseline half: accepting it
+            // would silently drop generation data whenever a future writer
+            // (or a hand-edited sidecar) forgets the version bump — mirror
+            // the v1 `strictRequired` guard in parse().
+            if (array_key_exists('baseline', $payload)) {
+                throw new InvalidArgumentException(
+                    'Sidecar envelope v2 must not contain a "baseline" key; '
+                    . 'expected envelopeVersion=3 when baseline data is present.',
+                );
+            }
+        } elseif (!is_array($baseline)) {
+            // v3 exists solely to carry the baseline half — a v3 envelope
+            // without it is malformed, not "generation off".
+            throw new InvalidArgumentException(sprintf(
+                'Sidecar envelope v3 "baseline" must be an array; got %s.',
+                get_debug_type($baseline),
+            ));
+        }
+
         return [
             'coverage' => $coverage,
             'strictRequired' => $strictRequired,
+            'baseline' => $baseline,
         ];
     }
 }

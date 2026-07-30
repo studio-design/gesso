@@ -6,6 +6,7 @@ namespace Studio\Gesso\Tests\Integration;
 
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+use Studio\Gesso\Coverage\CoverageMergeCommand;
 use Studio\Gesso\Coverage\CoverageSidecarEnvelope;
 use Studio\Gesso\Coverage\CoverageSidecarWriter;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
@@ -14,6 +15,7 @@ use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 
 use function dirname;
 use function escapeshellarg;
+use function explode;
 use function fclose;
 use function file_exists;
 use function file_get_contents;
@@ -29,6 +31,7 @@ use function sprintf;
 use function str_replace;
 use function stream_get_contents;
 use function sys_get_temp_dir;
+use function trim;
 use function uniqid;
 use function unlink;
 
@@ -140,14 +143,22 @@ class CoverageMergeCliIntegrationTest extends TestCase
 
         $this->assertSame(0, $exit);
         $this->assertSame('', $stderr);
-        $this->assertSame(
-            str_replace(
-                'openapi-coverage-merge',
-                'gesso coverage:merge',
-                (string) file_get_contents($this->repoRoot . '/tests/fixtures/compatibility/v1.9-openapi-coverage-merge-help.txt'),
-            ),
-            $stdout,
+        // The bin shim must route --help to the canonical usage text …
+        $this->assertSame(CoverageMergeCommand::usage(), $stdout);
+        // … and the v1.x CLI compatibility policy requires every v1.9 help
+        // line (flags, wording) to survive. New flags may be appended, so
+        // this is containment, not equality, against the frozen capture.
+        $v19Help = str_replace(
+            'openapi-coverage-merge',
+            'gesso coverage:merge',
+            (string) file_get_contents($this->repoRoot . '/tests/fixtures/compatibility/v1.9-openapi-coverage-merge-help.txt'),
         );
+        foreach (explode("\n", $v19Help) as $line) {
+            if (trim($line) === '') {
+                continue;
+            }
+            $this->assertStringContainsString($line, $stdout, 'v1.9 help line must be retained');
+        }
     }
 
     #[Test]

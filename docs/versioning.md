@@ -92,6 +92,16 @@ coverage state `version: 1` and strict-required state `version: 2`. The v1.9
 reader accepts that envelope and the legacy bare coverage state `version: 1`.
 It recognises `part-*.json` sidecars and `failed-*.json` failure markers.
 
+The v2.2 writer additionally emits `envelopeVersion: 3` — the v2 shape plus a
+`baseline` key holding the violation-baseline document (`baseline_version: 1`)
+— but only when the worker ran under `OPENAPI_BASELINE_GENERATE`; plain runs
+keep writing `envelopeVersion: 2` so an older merge reader stays usable for
+coverage-only fleets. The v2.2 reader accepts `envelopeVersion` 2 and 3 plus
+the legacy bare coverage state; a v2 envelope carrying a `baseline` key and a
+v3 envelope missing one are rejected as malformed, and `coverage:merge
+--baseline-file` refuses to write a union when any sidecar lacks the baseline
+half.
+
 The compatibility rules are:
 
 - A newer merge reader keeps support for the explicitly documented older

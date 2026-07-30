@@ -79,8 +79,9 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
      * @param null|string $baselineGeneratePath Issue #402: destination of a violation-baseline generation run
      *                                          (`OPENAPI_BASELINE_GENERATE`). When non-null the subscriber writes the
      *                                          collected fingerprints here at run end; partial runs refuse the write
-     *                                          (an incomplete baseline would hide violations) and worker mode warns
-     *                                          (parallel generation is not supported yet).
+     *                                          (an incomplete baseline would hide violations). Worker mode instead
+     *                                          stages the fingerprints in the sidecar envelope for
+     *                                          `gesso coverage:merge --baseline-file` to union (issue #417).
      * @param null|TestRunCompletionTracer $baselineCompletionTracer Issue #402: registered by the extension for
      *                                                               enforcement runs. Unless it can prove every
      *                                                               planned test finished with no defects, stale
@@ -133,26 +134,10 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
     {
         $workerToken = self::resolveWorkerToken();
         if ($workerToken !== null) {
-            // Issue #402: normally unreachable — the extension refuses
-            // generation at bootstrap when TEST_TOKEN is set — but a token
-            // appearing only after bootstrap must not let a generation run
-            // demote every failure and still exit green. Warn, keep the
-            // coverage sidecar for debuggability, and exit non-zero.
-            if ($this->baselineGeneratePath !== null) {
-                $this->writeStderr(
-                    '[Gesso] WARNING: baseline generation is not supported under parallel test runners yet; no baseline file was written. '
-                    . "Run the suite without parallelism to generate the baseline.\n",
-                );
-            }
-
             $this->writeWorkerSidecar($workerToken);
 
             // Free cached spec data; the merge CLI re-loads on its own.
             OpenApiSpecLoader::clearCache();
-
-            if ($this->baselineGeneratePath !== null) {
-                $this->exitNonZero();
-            }
 
             return;
         }
@@ -391,14 +376,32 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
     {
         $dir = $this->sidecarDir ?? OpenApiCoverageExtension::defaultSidecarDir();
 
-        // Sidecar envelope (v2) carries both coverage and strict_required
-        // observations so the merge CLI can aggregate the gate across all
-        // paratest workers. The strict_required half is always exported,
-        // independent of the worker's `strict_required` mode — the merge
-        // CLI decides whether to assert (Issue #226).
+        // Issue #417: a generation-mode worker hands its collected
+        // fingerprints to the merge CLI through the envelope's baseline
+        // half — the per-worker view is a subset, so only the merged union
+        // may reach ViolationBaselineFile::write(). One guidance line per
+        // worker keeps a forgotten merge step from silently discarding the
+        // demoted failures.
+        $baselineDocument = null;
+        $collector = $this->baselineGeneratePath === null ? null : ViolationBaselineCollector::current();
+        if ($collector !== null) {
+            $baselineDocument = ViolationBaselineFile::toDocument($collector->baseline());
+            $this->writeStderr(sprintf(
+                "[Gesso] baseline: %d violation(s) staged in this worker's sidecar. Run `gesso coverage:merge --baseline-file=%s` after the parallel run to write the merged baseline.\n",
+                $collector->baseline()->count(),
+                $this->baselineGeneratePath,
+            ));
+        }
+
+        // Sidecar envelope carries coverage and strict_required observations
+        // so the merge CLI can aggregate the gate across all paratest
+        // workers. The strict_required half is always exported, independent
+        // of the worker's `strict_required` mode — the merge CLI decides
+        // whether to assert (Issue #226).
         $envelope = CoverageSidecarEnvelope::build(
             $this->coverageTracker->exportStateOn(),
             $this->strictRequiredTracker->exportStateOn(),
+            $baselineDocument,
         );
 
         try {
@@ -412,6 +415,21 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
             // worker's worth of data.
             $this->writeStderr("[OpenAPI Coverage] WARNING: failed to write sidecar (token={$token}): {$e->getMessage()}\n");
             CoverageSidecarWriter::writeFailureMarker($dir, $token, $e->getMessage());
+
+            // Issue #417: a generation worker demoted its failures on the
+            // promise that the merge unions this sidecar; a lost sidecar
+            // cannot be recovered by the marker alone — the marker write is
+            // itself best-effort, and when it also fails (full disk,
+            // revoked permissions) the merge would see N-1 complete
+            // baseline halves and write an incomplete baseline. Fail the
+            // worker so the parallel run cannot end green with staged
+            // violations silently dropped.
+            if ($baselineDocument !== null) {
+                $this->writeStderr(
+                    "[Gesso] FATAL: baseline generation could not stage this worker's violations in the sidecar; failing the worker so the parallel run does not produce an incomplete baseline.\n",
+                );
+                $this->exitNonZero();
+            }
         }
     }
 

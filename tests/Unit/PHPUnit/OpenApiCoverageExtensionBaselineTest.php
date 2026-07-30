@@ -123,18 +123,18 @@ class OpenApiCoverageExtensionBaselineTest extends TestCase
     }
 
     #[Test]
-    public function generation_under_a_parallel_worker_is_fatal_at_bootstrap(): void
+    public function generation_under_a_parallel_worker_installs_the_collector(): void
     {
+        // Issue #417: paratest workers bootstrap generation exactly like a
+        // sequential run — the subscriber's worker branch stages the
+        // collected fingerprints in the sidecar envelope for
+        // `gesso coverage:merge --baseline-file` instead of writing a file.
         putenv('OPENAPI_BASELINE_GENERATE=1');
         putenv('TEST_TOKEN=3');
 
         try {
             $this->setupExtension(['baseline_file' => 'gesso-baseline.json']);
-            $this->fail('Expected an InvalidBaselineConfigurationException.');
-        } catch (InvalidBaselineConfigurationException) {
-            $this->assertStringContainsString('[Gesso] FATAL', $this->capturedStderr());
-            $this->assertStringContainsString('parallel', $this->capturedStderr());
-            $this->assertNull(ViolationBaselineCollector::current());
+            $this->assertNotNull(ViolationBaselineCollector::current());
         } finally {
             putenv('TEST_TOKEN');
         }
