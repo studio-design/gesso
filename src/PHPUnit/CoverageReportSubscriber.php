@@ -415,6 +415,21 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
             // worker's worth of data.
             $this->writeStderr("[OpenAPI Coverage] WARNING: failed to write sidecar (token={$token}): {$e->getMessage()}\n");
             CoverageSidecarWriter::writeFailureMarker($dir, $token, $e->getMessage());
+
+            // Issue #417: a generation worker demoted its failures on the
+            // promise that the merge unions this sidecar; a lost sidecar
+            // cannot be recovered by the marker alone — the marker write is
+            // itself best-effort, and when it also fails (full disk,
+            // revoked permissions) the merge would see N-1 complete
+            // baseline halves and write an incomplete baseline. Fail the
+            // worker so the parallel run cannot end green with staged
+            // violations silently dropped.
+            if ($baselineDocument !== null) {
+                $this->writeStderr(
+                    "[Gesso] FATAL: baseline generation could not stage this worker's violations in the sidecar; failing the worker so the parallel run does not produce an incomplete baseline.\n",
+                );
+                $this->exitNonZero();
+            }
         }
     }
 

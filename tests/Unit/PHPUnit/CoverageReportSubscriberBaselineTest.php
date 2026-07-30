@@ -18,6 +18,7 @@ use Studio\Gesso\PHPUnit\CoverageReportSubscriber;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 
 use function file_get_contents;
+use function file_put_contents;
 use function getenv;
 use function glob;
 use function is_dir;
@@ -167,6 +168,50 @@ class CoverageReportSubscriberBaselineTest extends TestCase
         $this->assertSame(ViolationBaselineFile::BASELINE_VERSION, $envelope['baseline']['baseline_version']);
         $this->assertCount(1, $envelope['baseline']['violations']);
         $this->assertSame('/data/*/id', $envelope['baseline']['violations'][0]['instance_path']);
+    }
+
+    #[Test]
+    public function a_generation_worker_exits_non_zero_when_the_sidecar_write_fails(): void
+    {
+        // Worst case of issue #417: the sidecar write fails AND the failure
+        // marker cannot be dropped either (here: the sidecar dir path is an
+        // existing file, so ensureDir fails for both). The merge would then
+        // see only the other workers' complete baseline halves and write an
+        // incomplete baseline — the worker itself must fail the parallel
+        // run. Contrast with coverage-only workers, which stay green on
+        // sidecar I/O errors (pinned in CoverageReportSubscriberWorkerModeTest).
+        $this->installCollectorWithOneViolation();
+        putenv('TEST_TOKEN=5');
+        $baselinePath = $this->tmpDir . '/gesso-baseline.json';
+
+        $blocker = $this->tmpDir . '/not-a-dir';
+        file_put_contents($blocker, 'blocks the sidecar dir');
+
+        $stderr = '';
+        $exitCode = null;
+        $subscriber = new CoverageReportSubscriber(
+            specs: ['petstore-3.0'],
+            outputFile: null,
+            consoleOutput: ConsoleOutput::DEFAULT,
+            githubSummaryPath: null,
+            stderrWriter: static function (string $msg) use (&$stderr): void {
+                $stderr .= $msg;
+            },
+            sidecarDir: $blocker,
+            exitHandler: static function (int $code) use (&$exitCode): void {
+                $exitCode = $code;
+            },
+            baselineGeneratePath: $baselinePath,
+        );
+
+        ob_start();
+        $subscriber->notify($this->fakeExecutionFinished());
+        ob_get_clean();
+
+        $this->assertFileDoesNotExist($baselinePath);
+        $this->assertStringContainsString('[Gesso] FATAL', $stderr);
+        $this->assertStringContainsString('incomplete baseline', $stderr);
+        $this->assertSame(1, $exitCode, 'a generation worker that lost its sidecar must fail the run');
     }
 
     #[Test]

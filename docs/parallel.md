@@ -118,7 +118,11 @@ changing a sidecar shape or filename pattern.
   want to inspect the per-worker JSON for debugging.
 - **A failed sidecar write does not fail the test run.** Workers log a
   warning to `STDERR` and let the suite finish — your contract assertions
-  already passed; sidecar I/O is a CI artifact concern.
+  already passed; sidecar I/O is a CI artifact concern. The exception is a
+  baseline-generation run (`OPENAPI_BASELINE_GENERATE=1`): the worker
+  demoted its failures on the promise that the merge unions its sidecar, so
+  losing the sidecar fails the worker — otherwise the merge could write an
+  incomplete baseline from the remaining workers.
 - **Stale sidecars across runs.** Cleanup-on-success removes sidecars after
   every successful merge. If a previous run crashed before the merge step,
   any leftover sidecars in the dir will be picked up by the next merge —
