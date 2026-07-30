@@ -16,6 +16,9 @@ use Studio\Gesso\PHPUnit\ConsoleOutput;
 use Studio\Gesso\PHPUnit\CoverageReportSubscriber;
 use Studio\Gesso\PHPUnit\OpenApiCoverageExtension;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
+use Studio\Gesso\Validation\Strict\StrictAdditionalPropertiesAsserter;
+use Studio\Gesso\Validation\Strict\StrictAdditionalPropertiesMode;
+use Studio\Gesso\Validation\Strict\StrictAdditionalPropertiesTracker;
 use Studio\Gesso\Validation\Strict\StrictRequiredAsserter;
 use Studio\Gesso\Validation\Strict\StrictRequiredMode;
 use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
@@ -70,6 +73,7 @@ use function unlink;
  *     min_response_coverage?: float|string,
  *     min_coverage_strict?: bool,
  *     strict_required?: string,
+ *     strict_additional_properties?: string,
  *     baseline_file?: string,
  *     help?: bool,
  * }
@@ -192,6 +196,9 @@ final class CoverageMergeCommand
               --strict-required=<mode>      off | warn | fail. Aggregate worker observations
                                             and assert no schema under-description drift
                                             (Issue #224 / #226). Defaults to off.
+              --strict-additional-properties=<mode>
+                                            off | warn | fail. Report response properties
+                                            absent from schema declarations. Defaults to off.
               --baseline-file=<path>        Union the violation-baseline halves staged by a
                                             parallel `OPENAPI_BASELINE_GENERATE=1` run and
                                             write the merged baseline here (Issue #417).
@@ -266,6 +273,16 @@ final class CoverageMergeCommand
             return 2;
         }
 
+        try {
+            $strictAdditionalPropertiesMode = StrictAdditionalPropertiesMode::fromConfigValue(
+                $options['strict_additional_properties'] ?? null,
+            );
+        } catch (InvalidArgumentException $e) {
+            $this->writeStderr(sprintf("[OpenAPI Strict Additional Properties] FATAL: %s\n", $e->getMessage()));
+
+            return 2;
+        }
+
         $baselineFile = isset($options['baseline_file']) && $options['baseline_file'] !== ''
             ? $this->absolutise($options['baseline_file'])
             : null;
@@ -312,6 +329,15 @@ final class CoverageMergeCommand
                 return 1;
             }
 
+            if ($strictAdditionalPropertiesMode === StrictAdditionalPropertiesMode::Fail) {
+                $this->writeStderr(sprintf(
+                    "[OpenAPI Strict Additional Properties] FATAL: no sidecars were found in %s; strict additional-properties evaluation cannot be completed.\n",
+                    $sidecarDir,
+                ));
+
+                return 1;
+            }
+
             // Strict-mode gate must fail-fast even before sidecars exist —
             // otherwise a misconfigured paratest dir or zero workers would
             // silently pass an opt-in CI gate (issue #135 review C2).
@@ -342,18 +368,27 @@ final class CoverageMergeCommand
         // times per process).
         $coverageTracker = new OpenApiCoverageTracker();
         $strictRequiredTracker = new StrictRequiredTracker();
+        $strictAdditionalPropertiesTracker = new StrictAdditionalPropertiesTracker();
         OpenApiCoverageTracker::resetCurrent();
         StrictRequiredTracker::resetCurrent();
+        StrictAdditionalPropertiesTracker::resetCurrent();
         OpenApiCoverageTracker::setCurrent($coverageTracker);
         StrictRequiredTracker::setCurrent($strictRequiredTracker);
+        StrictAdditionalPropertiesTracker::setCurrent($strictAdditionalPropertiesTracker);
         $mergedBaseline = new ViolationBaseline();
         $sidecarsWithoutBaseline = 0;
+        $sidecarsWithoutStrictAdditionalProperties = 0;
         foreach ($payloads as $payload) {
             try {
                 $parsed = CoverageSidecarEnvelope::parse($payload);
                 $coverageTracker->importStateOn($parsed['coverage']);
                 if ($parsed['strictRequired'] !== null) {
                     $strictRequiredTracker->importStateOn($parsed['strictRequired']);
+                }
+                if ($parsed['strictAdditionalProperties'] !== null) {
+                    $strictAdditionalPropertiesTracker->importStateOn($parsed['strictAdditionalProperties']);
+                } else {
+                    $sidecarsWithoutStrictAdditionalProperties++;
                 }
                 if ($parsed['baseline'] !== null) {
                     // parseDocument re-validates the embedded document
@@ -379,6 +414,12 @@ final class CoverageMergeCommand
         $results = $this->computeResults($specs, $coverageTracker);
         if ($results === []) {
             $strictGated = $minStrict && ($minEndpointPct !== null || $minResponsePct !== null);
+            $strictAdditionalPropertiesFailure = $this->evaluateStrictAdditionalPropertiesGate(
+                $strictAdditionalPropertiesMode,
+                $githubSummaryPath,
+                $strictAdditionalPropertiesTracker,
+                $sidecarsWithoutStrictAdditionalProperties,
+            );
             $this->writeStderr(sprintf(
                 "[OpenAPI Coverage] %s: no contract test coverage was recorded; %s\n",
                 $strictGated ? 'FATAL' : 'WARNING',
@@ -391,7 +432,7 @@ final class CoverageMergeCommand
                 return 1;
             }
 
-            return $strictGated ? 1 : 0;
+            return $strictGated || $strictAdditionalPropertiesFailure ? 1 : 0;
         }
 
         $this->writeStdout(ConsoleCoverageRenderer::render($results, $consoleOutput));
@@ -405,10 +446,22 @@ final class CoverageMergeCommand
         // gate after the report is rendered so a fatal drift doesn't suppress
         // the coverage output users rely on for triage.
         $strictFailure = $this->evaluateStrictRequiredGate($strictRequiredMode, $githubSummaryPath, $strictRequiredTracker);
+        $strictAdditionalPropertiesFailure = $this->evaluateStrictAdditionalPropertiesGate(
+            $strictAdditionalPropertiesMode,
+            $githubSummaryPath,
+            $strictAdditionalPropertiesTracker,
+            $sidecarsWithoutStrictAdditionalProperties,
+        );
 
         $cleanupFailure = $cleanup && !$this->cleanupSafely($sidecarDir);
 
-        return $writeFailures > 0 || $thresholdFailure || $strictFailure || $cleanupFailure ? 1 : 0;
+        return $writeFailures > 0 ||
+            $thresholdFailure ||
+            $strictFailure ||
+            $strictAdditionalPropertiesFailure ||
+            $cleanupFailure
+            ? 1
+            : 0;
     }
 
     /**
@@ -694,6 +747,50 @@ final class CoverageMergeCommand
         $message = StrictRequiredAsserter::renderMessage($reports, $isFatal);
         $this->writeStderr($message . "\n");
         OpenApiCoverageExtension::appendGithubStepSummaryStrictRequiredBlock(
+            $githubSummaryPath,
+            $message,
+            $isFatal,
+        );
+
+        return $isFatal;
+    }
+
+    private function evaluateStrictAdditionalPropertiesGate(
+        StrictAdditionalPropertiesMode $mode,
+        ?string $githubSummaryPath,
+        StrictAdditionalPropertiesTracker $tracker,
+        int $sidecarsWithoutTracker,
+    ): bool {
+        if ($mode === StrictAdditionalPropertiesMode::Off) {
+            return false;
+        }
+        if ($mode === StrictAdditionalPropertiesMode::Fail && $sidecarsWithoutTracker > 0) {
+            $this->writeStderr(sprintf(
+                '[OpenAPI Strict Additional Properties] FATAL: %d worker sidecar(s) have no strict additional-properties state; '
+                . "the merged gate would be incomplete. Upgrade every worker to the v4/v5 sidecar envelope.\n",
+                $sidecarsWithoutTracker,
+            ));
+
+            return true;
+        }
+        if ($mode === StrictAdditionalPropertiesMode::Fail && $tracker->evaluationsOn() === 0) {
+            $this->writeStderr(
+                '[OpenAPI Strict Additional Properties] FATAL: --strict-additional-properties=fail requested but '
+                . "no worker exported strict additional-properties evaluations. Verify all workers use the v4/v5 sidecar envelope.\n",
+            );
+
+            return true;
+        }
+
+        $reports = StrictAdditionalPropertiesAsserter::detectAll($tracker);
+        if ($reports === []) {
+            return false;
+        }
+
+        $isFatal = $mode === StrictAdditionalPropertiesMode::Fail;
+        $message = StrictAdditionalPropertiesAsserter::renderMessage($reports, $isFatal);
+        $this->writeStderr($message . "\n");
+        OpenApiCoverageExtension::appendGithubStepSummaryStrictAdditionalPropertiesBlock(
             $githubSummaryPath,
             $message,
             $isFatal,

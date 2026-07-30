@@ -50,6 +50,7 @@ vendor/bin/gesso coverage:merge \
 | `--min-response-coverage=<pct>` | — | Threshold gate at `(method, path, status, content-type)` granularity |
 | `--min-coverage-strict` | `false` (warn-only) | Treat threshold misses as exit non-zero |
 | `--strict-required=<mode>` | `off` | `off` / `warn` / `fail`. Assert no schema under-description drift across worker observations. See [`strict-required.md`](strict-required.md#paratest) |
+| `--strict-additional-properties=<mode>` | `off` | `off` / `warn` / `fail`. Report returned response properties absent from schema declarations. See [`strict-additional-properties.md`](strict-additional-properties.md#parallel-test-runners) |
 | `--baseline-file=<path>` | — | Union the violation-baseline halves staged by an `OPENAPI_BASELINE_GENERATE=1` parallel run and write the merged baseline. See [`baseline.md`](baseline.md#generating-under-parallel-runners) |
 | `--no-cleanup` | (cleanup is on by default) | Keep sidecar files after merge |
 
@@ -73,16 +74,18 @@ itself; the default already does this.
 
 Sidecars are a versioned worker-to-merge protocol, separate from the coverage
 report produced by `json_output`. The current writer emits an
-`envelopeVersion: 2` envelope containing coverage state `version: 1` and
-strict-required state `version: 2`; a baseline-generation run
-(`OPENAPI_BASELINE_GENERATE=1`) upgrades the envelope to `envelopeVersion: 3`,
-adding the violation-baseline document (`baseline_version: 1`). The merge
-reader also accepts the older bare coverage state `version: 1`, so coverage
-can still be combined while a worker fleet is being upgraded. That legacy
-payload has no strict-required observations, so a strict-required gate cannot
-be evaluated from it — and neither the legacy payload nor a v2 envelope
-carries baseline data, so `--baseline-file` requires every worker on the
-v3-capable version.
+`envelopeVersion: 4` envelope containing coverage state `version: 1`,
+strict-required state `version: 2`, and strict-additional-properties state
+`version: 1`. A baseline-generation run (`OPENAPI_BASELINE_GENERATE=1`) emits
+`envelopeVersion: 5` and adds the violation-baseline document
+(`baseline_version: 1`).
+
+The merge reader also accepts envelopes 2/3 and the older bare coverage state
+`version: 1`, so coverage can still be combined while a worker fleet is being
+upgraded. Those older payloads have no strict-additional-properties state;
+`--strict-additional-properties=fail` therefore requires every worker on the
+v4/v5 format. Likewise, the legacy payload and v2/v4 envelopes carry no
+baseline data, so `--baseline-file` requires every worker to emit v3 or v5.
 
 Unknown envelope or tracker versions fail the merge rather than being guessed.
 Strict-required state `version: 1` is also rejected because merging it with the

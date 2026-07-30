@@ -14,6 +14,9 @@ use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Validation\Response\ResponseBodyValidationResult;
 use Studio\Gesso\Validation\Response\ResponseBodyValidator;
 use Studio\Gesso\Validation\Response\ResponseHeaderValidator;
+use Studio\Gesso\Validation\Strict\StrictAdditionalPropertiesInspector;
+use Studio\Gesso\Validation\Strict\StrictAdditionalPropertiesPerCallChecker;
+use Studio\Gesso\Validation\Strict\StrictAdditionalPropertiesTracker;
 use Studio\Gesso\Validation\Strict\StrictRequiredBodyWalker;
 use Studio\Gesso\Validation\Strict\StrictRequiredPerCallChecker;
 use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
@@ -52,6 +55,7 @@ final class OpenApiResponseValidator
     private readonly ResponseBodyValidator $bodyValidator;
     private readonly ResponseHeaderValidator $headerValidator;
     private readonly StatusCodePatternSet $skipPatterns;
+    private readonly StrictAdditionalPropertiesTracker $strictAdditionalPropertiesTracker;
     private readonly StrictRequiredTracker $strictRequiredTracker;
 
     /**
@@ -75,6 +79,7 @@ final class OpenApiResponseValidator
         $this->bodyValidator = new ResponseBodyValidator($runner);
         $this->headerValidator = new ResponseHeaderValidator($runner);
         $this->strictRequiredTracker = $strictRequiredTracker;
+        $this->strictAdditionalPropertiesTracker = StrictAdditionalPropertiesTracker::current();
     }
 
     /**
@@ -460,6 +465,17 @@ final class OpenApiResponseValidator
                 // an absent body carries `null` (issues #246 / #248).
                 $body->value,
             );
+            $this->maybeRecordStrictAdditionalProperties(
+                $responseSpec,
+                $specName,
+                $method,
+                $matchedPath,
+                $statusCodeStr,
+                $bodyResult->matchedContentType,
+                $body->value,
+                $version,
+                $jsonSchemaDialect,
+            );
 
             return OpenApiValidationResult::success(
                 $matchedPath,
@@ -577,6 +593,66 @@ final class OpenApiResponseValidator
             $statusKey,
             $contentTypeKey,
             $pointers,
+        );
+    }
+
+    /**
+     * @param array<string, mixed> $responseSpec
+     */
+    private function maybeRecordStrictAdditionalProperties(
+        array $responseSpec,
+        string $specName,
+        string $method,
+        string $matchedPath,
+        string $statusKey,
+        ?string $matchedContentType,
+        mixed $responseBody,
+        OpenApiVersion $version,
+        string $jsonSchemaDialect,
+    ): void {
+        $contentTypeKey = $matchedContentType ?? StrictAdditionalPropertiesTracker::ANY_CONTENT_TYPE;
+        $schema = $matchedContentType === null
+            ? null
+            : ($responseSpec['content'][$matchedContentType]['schema'] ?? null);
+        if (!is_array($schema)) {
+            return;
+        }
+
+        $findings = StrictAdditionalPropertiesInspector::inspect(
+            $responseBody,
+            $schema,
+            jsonSchemaDialect: $jsonSchemaDialect,
+            honorSchemaDialectOverride: $version !== OpenApiVersion::V3_0,
+        );
+
+        try {
+            $this->strictAdditionalPropertiesTracker->recordOn(
+                $specName,
+                $method,
+                $matchedPath,
+                $statusKey,
+                $contentTypeKey,
+                $findings,
+            );
+        } catch (InvalidArgumentException $e) {
+            OpenApiCoverageExtension::writeStderr(sprintf(
+                '[OpenAPI Strict Additional Properties] LIBRARY BUG: malformed findings for %s %s %s; '
+                . "recording skipped. Cause: %s\n",
+                strtoupper($method),
+                $matchedPath,
+                $statusKey,
+                $e->getMessage(),
+            ));
+
+            return;
+        }
+
+        StrictAdditionalPropertiesPerCallChecker::maybeWarn(
+            OpenApiOperationResolver::normalizeMethodForKey($method),
+            $matchedPath,
+            $statusKey,
+            $contentTypeKey,
+            $findings,
         );
     }
 

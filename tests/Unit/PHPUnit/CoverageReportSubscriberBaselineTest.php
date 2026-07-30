@@ -11,6 +11,7 @@ use ReflectionClass;
 use Studio\Gesso\Baseline\ViolationBaselineCollector;
 use Studio\Gesso\Baseline\ViolationBaselineFile;
 use Studio\Gesso\Baseline\ViolationFingerprint;
+use Studio\Gesso\Coverage\CoverageSidecarEnvelope;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\Internal\PartialRunDecision;
 use Studio\Gesso\PHPUnit\ConsoleOutput;
@@ -164,7 +165,10 @@ class CoverageReportSubscriberBaselineTest extends TestCase
         $sidecars = glob($this->tmpDir . '/part-3-*.json') ?: [];
         $this->assertCount(1, $sidecars, 'the sidecar must still be written in worker mode');
         $envelope = json_decode((string) file_get_contents($sidecars[0]), true);
-        $this->assertSame(3, $envelope['envelopeVersion']);
+        $this->assertSame(
+            CoverageSidecarEnvelope::ENVELOPE_VERSION_WITH_STRICT_ADDITIONAL_PROPERTIES_AND_BASELINE,
+            $envelope['envelopeVersion'],
+        );
         $this->assertSame(ViolationBaselineFile::BASELINE_VERSION, $envelope['baseline']['baseline_version']);
         $this->assertCount(1, $envelope['baseline']['violations']);
         $this->assertSame('/data/*/id', $envelope['baseline']['violations'][0]['instance_path']);

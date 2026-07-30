@@ -28,6 +28,9 @@ use Studio\Gesso\Exception\InvalidOpenApiSpecException;
 use Studio\Gesso\Exception\SpecFileNotFoundException;
 use Studio\Gesso\Internal\PartialRunDecision;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
+use Studio\Gesso\Validation\Strict\StrictAdditionalPropertiesAsserter;
+use Studio\Gesso\Validation\Strict\StrictAdditionalPropertiesMode;
+use Studio\Gesso\Validation\Strict\StrictAdditionalPropertiesTracker;
 use Studio\Gesso\Validation\Strict\StrictRequiredAsserter;
 use Studio\Gesso\Validation\Strict\StrictRequiredMode;
 use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
@@ -52,6 +55,7 @@ use function trim;
 final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscriber
 {
     private OpenApiCoverageTracker $coverageTracker;
+    private StrictAdditionalPropertiesTracker $strictAdditionalPropertiesTracker;
     private StrictRequiredTracker $strictRequiredTracker;
 
     /**
@@ -117,6 +121,8 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
         private ?string $baselineGeneratePath = null,
         private BaselineStaleMode $baselineStaleMode = BaselineStaleMode::Note,
         private ?TestRunCompletionTracer $baselineCompletionTracer = null,
+        ?StrictAdditionalPropertiesTracker $strictAdditionalPropertiesTracker = null,
+        private StrictAdditionalPropertiesMode $strictAdditionalPropertiesMode = StrictAdditionalPropertiesMode::Off,
     ) {
         // Eager resolution at construction time keeps the readonly invariant
         // honest: by the time any other method runs, $coverageTracker and
@@ -127,6 +133,7 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
         // ref and a live `current()` lookup.
         $this->coverageTracker = $coverageTracker ?? OpenApiCoverageTracker::current();
         $this->strictRequiredTracker = $strictRequiredTracker ?? StrictRequiredTracker::current();
+        $this->strictAdditionalPropertiesTracker = $strictAdditionalPropertiesTracker ?? StrictAdditionalPropertiesTracker::current();
     }
 
     /** @phpcsSuppress SlevomatCodingStandard.Functions.UnusedParameter.UnusedParameter */
@@ -155,6 +162,7 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
             $this->writeBaselineFile();
             $this->reportBaselineEnforcement();
             $this->evaluateStrictRequiredGate();
+            $this->evaluateStrictAdditionalPropertiesGate();
 
             return;
         }
@@ -173,6 +181,7 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
         // rendering so a strict-mode fail does not suppress the coverage
         // report users rely on for triaging the failure.
         $this->evaluateStrictRequiredGate();
+        $this->evaluateStrictAdditionalPropertiesGate();
     }
 
     /**
@@ -273,6 +282,42 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
         // Mirror evaluateThresholdGate() fail-fast pattern: PHPUnit does not
         // propagate subscriber failures to the exit code, so the asserter
         // has to terminate the process itself to be visible to CI.
+        if ($this->stderrWriter === null) {
+            fflush(STDERR);
+        }
+        $exit = $this->exitHandler;
+        if (is_callable($exit)) {
+            $exit(1);
+
+            return;
+        }
+
+        exit(1);
+    }
+
+    private function evaluateStrictAdditionalPropertiesGate(): void
+    {
+        if ($this->strictAdditionalPropertiesMode === StrictAdditionalPropertiesMode::Off) {
+            return;
+        }
+
+        $reports = StrictAdditionalPropertiesAsserter::detectAll($this->strictAdditionalPropertiesTracker);
+        if ($reports === []) {
+            return;
+        }
+
+        $isFatal = $this->strictAdditionalPropertiesMode === StrictAdditionalPropertiesMode::Fail;
+        $message = StrictAdditionalPropertiesAsserter::renderMessage($reports, $isFatal);
+        $this->writeStderr($message . "\n");
+        OpenApiCoverageExtension::appendGithubStepSummaryStrictAdditionalPropertiesBlock(
+            $this->partialRun === null ? $this->githubSummaryPath : null,
+            $message,
+            $isFatal,
+        );
+
+        if (!$isFatal) {
+            return;
+        }
         if ($this->stderrWriter === null) {
             fflush(STDERR);
         }
@@ -399,9 +444,10 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
         // of the worker's `strict_required` mode — the merge CLI decides
         // whether to assert (Issue #226).
         $envelope = CoverageSidecarEnvelope::build(
-            $this->coverageTracker->exportStateOn(),
-            $this->strictRequiredTracker->exportStateOn(),
-            $baselineDocument,
+            coverageState: $this->coverageTracker->exportStateOn(),
+            strictRequiredState: $this->strictRequiredTracker->exportStateOn(),
+            baselineDocument: $baselineDocument,
+            strictAdditionalPropertiesState: $this->strictAdditionalPropertiesTracker->exportStateOn(),
         );
 
         try {

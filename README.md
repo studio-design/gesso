@@ -34,6 +34,7 @@ when upgrading from `studio-design/openapi-contract-testing` v1.10.
 - **Named negative contract checks** — Opt-in `unsupported_method` probes that dispatch an undocumented HTTP method per documented path and expect 405, with deterministic replay and collect-then-assert reporting. See [`docs/fuzzing.md`](docs/fuzzing.md#named-contract-checks).
 - **Enum drift detection** — Static comparison between PHP backed enums and their `enum:` spec arrays, with PHPUnit-extension auto-discovery
 - **Schema under-description detection** — Optional strict mode that flags response fields the implementation always returns but the spec marks as optional, catching the spec gaps that conformance checks alone can't. See [`docs/strict-required.md`](docs/strict-required.md) for current scope and limitations.
+- **Undocumented response-property detection** — Optional strict mode that names returned fields absent from `properties` / `patternProperties` when a schema silently defaults open. See [`docs/strict-additional-properties.md`](docs/strict-additional-properties.md).
 - **Skip-by-status-code** — Configurable regex list of status codes whose bodies are not validated (default: every `5xx`); per-request via `skipResponseCode()`
 - **PSR-7, Laravel, Symfony & Pest adapters** — First-class PSR-7 request/response/exchange validation, auto-assert / auto-validate-request integration for Laravel, HttpFoundation assertions for Symfony, and Pest expectations
 - **Parallel-runner safe** — Coordinated sidecar+merge workflow for paratest / `pest --parallel`
@@ -231,6 +232,7 @@ To validate every response automatically, set `'auto_assert' => true` and drop t
 | Schema-driven request fuzzing & named contract checks | [`docs/fuzzing.md`](docs/fuzzing.md) |
 | Enum drift detection | [`docs/enum-drift.md`](docs/enum-drift.md) |
 | Schema under-description detection (`strict_required`) | [`docs/strict-required.md`](docs/strict-required.md) |
+| Undocumented response-property detection (`strict_additional_properties`) | [`docs/strict-additional-properties.md`](docs/strict-additional-properties.md) |
 | Violation baseline: adopt on a legacy API, fail only on new violations | [`docs/baseline.md`](docs/baseline.md) |
 | Coverage report modes & threshold gate | [`docs/coverage.md`](docs/coverage.md) |
 | HTML coverage output | [`docs/coverage-html-output.md`](docs/coverage-html-output.md) |
