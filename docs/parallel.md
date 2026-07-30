@@ -50,6 +50,7 @@ vendor/bin/gesso coverage:merge \
 | `--min-response-coverage=<pct>` | — | Threshold gate at `(method, path, status, content-type)` granularity |
 | `--min-coverage-strict` | `false` (warn-only) | Treat threshold misses as exit non-zero |
 | `--strict-required=<mode>` | `off` | `off` / `warn` / `fail`. Assert no schema under-description drift across worker observations. See [`strict-required.md`](strict-required.md#paratest) |
+| `--baseline-file=<path>` | — | Union the violation-baseline halves staged by an `OPENAPI_BASELINE_GENERATE=1` parallel run and write the merged baseline. See [`baseline.md`](baseline.md#generating-under-parallel-runners) |
 | `--no-cleanup` | (cleanup is on by default) | Keep sidecar files after merge |
 
 Sidecar dir defaults are deliberately stable — workers and the merge CLI
@@ -73,10 +74,15 @@ itself; the default already does this.
 Sidecars are a versioned worker-to-merge protocol, separate from the coverage
 report produced by `json_output`. The current writer emits an
 `envelopeVersion: 2` envelope containing coverage state `version: 1` and
-strict-required state `version: 2`. The merge reader also accepts the older
-bare coverage state `version: 1`, so coverage can still be combined while a
-worker fleet is being upgraded. That legacy payload has no strict-required
-observations, so a strict-required gate cannot be evaluated from it.
+strict-required state `version: 2`; a baseline-generation run
+(`OPENAPI_BASELINE_GENERATE=1`) upgrades the envelope to `envelopeVersion: 3`,
+adding the violation-baseline document (`baseline_version: 1`). The merge
+reader also accepts the older bare coverage state `version: 1`, so coverage
+can still be combined while a worker fleet is being upgraded. That legacy
+payload has no strict-required observations, so a strict-required gate cannot
+be evaluated from it — and neither the legacy payload nor a v2 envelope
+carries baseline data, so `--baseline-file` requires every worker on the
+v3-capable version.
 
 Unknown envelope or tracker versions fail the merge rather than being guessed.
 Strict-required state `version: 1` is also rejected because merging it with the
@@ -100,6 +106,10 @@ changing a sidecar shape or filename pattern.
   `--strict-required` flag decides whether to assert the gate; the
   `strict_required` parameter on the PHPUnit extension does not propagate
   to the merge step. See [`strict-required.md`](strict-required.md#paratest).
+- **Baseline generation aggregates across workers too.** An
+  `OPENAPI_BASELINE_GENERATE=1` parallel run stages fingerprints in the
+  sidecars; pass `--baseline-file=<path>` to the merge to write the union.
+  See [`baseline.md`](baseline.md#generating-under-parallel-runners).
 - **Worker counts are not exposed by paratest.** A child cannot reliably
   tell how many siblings it has, so the merge has to run as a separate
   step rather than auto-firing from "the last worker." This matches how

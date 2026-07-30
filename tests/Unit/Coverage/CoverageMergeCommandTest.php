@@ -8,6 +8,9 @@ use const DIRECTORY_SEPARATOR;
 
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+use Studio\Gesso\Baseline\ViolationBaseline;
+use Studio\Gesso\Baseline\ViolationBaselineFile;
+use Studio\Gesso\Baseline\ViolationFingerprint;
 use Studio\Gesso\Coverage\CoverageMergeCommand;
 use Studio\Gesso\Coverage\CoverageSidecarEnvelope;
 use Studio\Gesso\Coverage\CoverageSidecarWriter;
@@ -1598,6 +1601,218 @@ class CoverageMergeCommandTest extends TestCase
     }
 
     #[Test]
+    public function parse_argv_accepts_baseline_file_flag(): void
+    {
+        $opts = CoverageMergeCommand::parseArgv(['--baseline-file=gesso-baseline.json']);
+        $this->assertSame('gesso-baseline.json', $opts['baseline_file'] ?? null);
+    }
+
+    #[Test]
+    public function merges_baseline_halves_across_workers_and_writes_the_union(): void
+    {
+        // Issue #417: two generation-mode workers stage overlapping
+        // fingerprint sets; the merge must write their union exactly once,
+        // deterministically (presence-only collapse + sorted render).
+        $shared = $this->baselineFingerprint('POST', '/v1/pets', '/name');
+        $this->writeBaselineWorkerSidecar('1', [
+            $this->baselineFingerprint('GET', '/v1/pets', '/data/*/id'),
+            $shared,
+        ]);
+        $this->writeBaselineWorkerSidecar('2', [
+            $shared,
+            $this->baselineFingerprint('GET', '/v1/pets/{petId}', '/tag'),
+        ]);
+
+        $baselinePath = dirname($this->sidecarDir) . '/gesso-baseline.json';
+        $stderr = '';
+        $command = new CoverageMergeCommand(
+            stdoutWriter: static fn(string $msg): null => null,
+            stderrWriter: static function (string $msg) use (&$stderr): void {
+                $stderr .= $msg;
+            },
+        );
+
+        $exit = $command->run([
+            'sidecar_dir' => $this->sidecarDir,
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => ['petstore-3.0'],
+            'baseline_file' => $baselinePath,
+            'cleanup' => true,
+        ]);
+
+        $this->assertSame(0, $exit);
+        $this->assertStringContainsString('Baseline written: 3 violation(s)', $stderr);
+        $merged = ViolationBaselineFile::read($baselinePath);
+        $this->assertSame(3, $merged->count());
+        $this->assertTrue($merged->contains($shared));
+        $this->assertSame([], $this->sidecars(), 'successful merge must still clean up sidecars');
+
+        @unlink($baselinePath);
+    }
+
+    #[Test]
+    public function empty_baseline_union_still_writes_a_baseline_file(): void
+    {
+        // A clean contract legitimately produces zero fingerprints; the
+        // merge must still write the (empty) file so enforcement config
+        // pointing at baseline_file keeps loading.
+        $this->writeBaselineWorkerSidecar('1', []);
+
+        $baselinePath = dirname($this->sidecarDir) . '/gesso-baseline.json';
+        $command = new CoverageMergeCommand(
+            stdoutWriter: static fn(string $msg): null => null,
+            stderrWriter: static fn(string $msg): null => null,
+        );
+
+        $exit = $command->run([
+            'sidecar_dir' => $this->sidecarDir,
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => ['petstore-3.0'],
+            'baseline_file' => $baselinePath,
+            'cleanup' => true,
+        ]);
+
+        $this->assertSame(0, $exit);
+        $this->assertSame(0, ViolationBaselineFile::read($baselinePath)->count());
+
+        @unlink($baselinePath);
+    }
+
+    #[Test]
+    public function exits_one_when_baseline_file_requested_but_a_sidecar_lacks_baseline_data(): void
+    {
+        // Worker 1 staged baseline data, worker 2 did not (non-generation
+        // or pre-#417 library). The union would be an incomplete baseline —
+        // exactly the hazard the sequential path refuses partial runs for —
+        // so the merge must fail loudly and keep the sidecars for a retry.
+        $this->writeBaselineWorkerSidecar('1', [
+            $this->baselineFingerprint('GET', '/v1/pets', '/data/*/id'),
+        ]);
+        OpenApiCoverageTracker::recordResponse(
+            'petstore-3.0',
+            'POST',
+            '/v1/pets',
+            '201',
+            'application/json',
+            schemaValidated: true,
+        );
+        CoverageSidecarWriter::write($this->sidecarDir, '2', OpenApiCoverageTracker::exportState());
+        OpenApiCoverageTracker::reset();
+
+        $baselinePath = dirname($this->sidecarDir) . '/gesso-baseline.json';
+        $stderr = '';
+        $command = new CoverageMergeCommand(
+            stdoutWriter: static fn(string $msg): null => null,
+            stderrWriter: static function (string $msg) use (&$stderr): void {
+                $stderr .= $msg;
+            },
+        );
+
+        $exit = $command->run([
+            'sidecar_dir' => $this->sidecarDir,
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => ['petstore-3.0'],
+            'baseline_file' => $baselinePath,
+            'cleanup' => true,
+        ]);
+
+        $this->assertSame(1, $exit);
+        $this->assertStringContainsString('[Gesso] FATAL', $stderr);
+        $this->assertStringContainsString('1 of 2 sidecar(s) carry no baseline data', $stderr);
+        $this->assertFileDoesNotExist($baselinePath, 'an incomplete union must never be written');
+        $this->assertCount(2, $this->sidecars(), 'failure must preserve sidecars for a corrected retry');
+    }
+
+    #[Test]
+    public function exits_one_when_baseline_data_present_but_baseline_file_flag_missing(): void
+    {
+        // The workers demoted their failures on the promise that the merge
+        // writes the baseline; dropping the staged data because the flag
+        // was forgotten would hide every violation silently.
+        $this->writeBaselineWorkerSidecar('1', [
+            $this->baselineFingerprint('GET', '/v1/pets', '/data/*/id'),
+        ]);
+
+        $stderr = '';
+        $command = new CoverageMergeCommand(
+            stdoutWriter: static fn(string $msg): null => null,
+            stderrWriter: static function (string $msg) use (&$stderr): void {
+                $stderr .= $msg;
+            },
+        );
+
+        $exit = $command->run([
+            'sidecar_dir' => $this->sidecarDir,
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => ['petstore-3.0'],
+            'cleanup' => true,
+        ]);
+
+        $this->assertSame(1, $exit);
+        $this->assertStringContainsString('--baseline-file was not given', $stderr);
+        $this->assertCount(1, $this->sidecars(), 'failure must preserve sidecars for a corrected retry');
+    }
+
+    #[Test]
+    public function exits_one_when_baseline_file_requested_but_no_sidecars_exist(): void
+    {
+        $baselinePath = dirname($this->sidecarDir) . '/gesso-baseline.json';
+        $stderr = '';
+        $command = new CoverageMergeCommand(
+            stdoutWriter: static fn(string $msg): null => null,
+            stderrWriter: static function (string $msg) use (&$stderr): void {
+                $stderr .= $msg;
+            },
+        );
+
+        $exit = $command->run([
+            'sidecar_dir' => $this->sidecarDir,
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => ['petstore-3.0'],
+            'baseline_file' => $baselinePath,
+        ]);
+
+        $this->assertSame(1, $exit);
+        $this->assertStringContainsString('no sidecars were found', $stderr);
+        $this->assertFileDoesNotExist($baselinePath);
+    }
+
+    #[Test]
+    public function exits_one_when_merged_baseline_write_fails(): void
+    {
+        $this->writeBaselineWorkerSidecar('1', [
+            $this->baselineFingerprint('GET', '/v1/pets', '/data/*/id'),
+        ]);
+
+        // A directory at the destination path makes the write fail.
+        $baselinePath = dirname($this->sidecarDir) . '/baseline-as-dir';
+        mkdir($baselinePath, 0o755, recursive: true);
+
+        $stderr = '';
+        $command = new CoverageMergeCommand(
+            stdoutWriter: static fn(string $msg): null => null,
+            stderrWriter: static function (string $msg) use (&$stderr): void {
+                $stderr .= $msg;
+            },
+        );
+
+        $exit = $command->run([
+            'sidecar_dir' => $this->sidecarDir,
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => ['petstore-3.0'],
+            'baseline_file' => $baselinePath,
+            'cleanup' => true,
+        ]);
+
+        @rmdir($baselinePath);
+
+        $this->assertSame(1, $exit);
+        $this->assertStringContainsString('[Gesso] FATAL', $stderr);
+        $this->assertStringContainsString('Could not write baseline file', $stderr);
+        $this->assertCount(1, $this->sidecars(), 'failure must preserve sidecars for a corrected retry');
+    }
+
+    #[Test]
     public function run_isolates_from_a_pre_installed_locator_instance(): void
     {
         // Issue #229: the merge command constructs its own tracker
@@ -1708,6 +1923,55 @@ class CoverageMergeCommandTest extends TestCase
         CoverageSidecarWriter::write($this->sidecarDir, $token, $envelope);
         OpenApiCoverageTracker::reset();
         StrictRequiredTracker::reset();
+    }
+
+    /**
+     * Write a v3 worker sidecar staging baseline fingerprints (issue #417),
+     * with a minimal coverage recording so the merged report stays
+     * representative of a real generation-mode worker.
+     *
+     * @param list<ViolationFingerprint> $fingerprints
+     */
+    private function writeBaselineWorkerSidecar(string $token, array $fingerprints): void
+    {
+        OpenApiCoverageTracker::reset();
+        StrictRequiredTracker::reset();
+        OpenApiCoverageTracker::recordResponse(
+            'petstore-3.0',
+            'GET',
+            '/v1/pets',
+            '200',
+            'application/json',
+            schemaValidated: true,
+        );
+
+        $baseline = new ViolationBaseline();
+        foreach ($fingerprints as $fingerprint) {
+            $baseline->add($fingerprint);
+        }
+
+        $envelope = CoverageSidecarEnvelope::build(
+            OpenApiCoverageTracker::exportState(),
+            StrictRequiredTracker::exportState(),
+            ViolationBaselineFile::toDocument($baseline),
+        );
+        CoverageSidecarWriter::write($this->sidecarDir, $token, $envelope);
+        OpenApiCoverageTracker::reset();
+        StrictRequiredTracker::reset();
+    }
+
+    private function baselineFingerprint(string $method, string $path, ?string $instancePath): ViolationFingerprint
+    {
+        return new ViolationFingerprint(
+            'petstore-3.0',
+            $method,
+            $path,
+            '200',
+            'application/json',
+            'response.body',
+            $instancePath,
+            'type',
+        );
     }
 
     /** @return list<string> */

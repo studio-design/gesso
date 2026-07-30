@@ -8,6 +8,8 @@ use const FILE_APPEND;
 
 use InvalidArgumentException;
 use RuntimeException;
+use Studio\Gesso\Baseline\ViolationBaseline;
+use Studio\Gesso\Baseline\ViolationBaselineFile;
 use Studio\Gesso\Exception\InvalidOpenApiSpecException;
 use Studio\Gesso\Exception\SpecFileNotFoundException;
 use Studio\Gesso\PHPUnit\ConsoleOutput;
@@ -68,6 +70,7 @@ use function unlink;
  *     min_response_coverage?: float|string,
  *     min_coverage_strict?: bool,
  *     strict_required?: string,
+ *     baseline_file?: string,
  *     help?: bool,
  * }
  *
@@ -189,6 +192,9 @@ final class CoverageMergeCommand
               --strict-required=<mode>      off | warn | fail. Aggregate worker observations
                                             and assert no schema under-description drift
                                             (Issue #224 / #226). Defaults to off.
+              --baseline-file=<path>        Union the violation-baseline halves staged by a
+                                            parallel `OPENAPI_BASELINE_GENERATE=1` run and
+                                            write the merged baseline here (Issue #417).
               --no-cleanup                  Keep sidecar files after merge (default: cleanup).
               --help                        Show this message.
 
@@ -260,6 +266,10 @@ final class CoverageMergeCommand
             return 2;
         }
 
+        $baselineFile = isset($options['baseline_file']) && $options['baseline_file'] !== ''
+            ? $this->absolutise($options['baseline_file'])
+            : null;
+
         if ($specBasePath === null) {
             $this->writeStderr("[OpenAPI Coverage] FATAL: --spec-base-path is required\n");
 
@@ -290,6 +300,18 @@ final class CoverageMergeCommand
         }
 
         if ($payloads === []) {
+            // Issue #417: a generation run that produced no sidecars cannot
+            // yield a baseline — but the workers already demoted every
+            // failure, so returning 0 without a file would hide all of them.
+            if ($baselineFile !== null) {
+                $this->writeStderr(sprintf(
+                    "[Gesso] FATAL: --baseline-file requested but no sidecars were found in %s; no baseline was written. Run the parallel suite with OPENAPI_BASELINE_GENERATE=1 first.\n",
+                    $sidecarDir,
+                ));
+
+                return 1;
+            }
+
             // Strict-mode gate must fail-fast even before sidecars exist —
             // otherwise a misconfigured paratest dir or zero workers would
             // silently pass an opt-in CI gate (issue #135 review C2).
@@ -324,6 +346,8 @@ final class CoverageMergeCommand
         StrictRequiredTracker::resetCurrent();
         OpenApiCoverageTracker::setCurrent($coverageTracker);
         StrictRequiredTracker::setCurrent($strictRequiredTracker);
+        $mergedBaseline = new ViolationBaseline();
+        $sidecarsWithoutBaseline = 0;
         foreach ($payloads as $payload) {
             try {
                 $parsed = CoverageSidecarEnvelope::parse($payload);
@@ -331,11 +355,25 @@ final class CoverageMergeCommand
                 if ($parsed['strictRequired'] !== null) {
                     $strictRequiredTracker->importStateOn($parsed['strictRequired']);
                 }
+                if ($parsed['baseline'] !== null) {
+                    // parseDocument re-validates the embedded document
+                    // (unknown baseline_version fails loudly — the
+                    // mixed-fleet contract of issue #417).
+                    foreach (ViolationBaselineFile::parseDocument($parsed['baseline'])->sorted() as $fingerprint) {
+                        $mergedBaseline->add($fingerprint);
+                    }
+                } else {
+                    $sidecarsWithoutBaseline++;
+                }
             } catch (InvalidArgumentException $e) {
                 $this->writeStderr(sprintf("[OpenAPI Coverage] FATAL: invalid sidecar payload: %s\n", $e->getMessage()));
 
                 return 1;
             }
+        }
+
+        if (!$this->handleBaseline($baselineFile, $mergedBaseline, $sidecarsWithoutBaseline, count($payloads))) {
+            return 1;
         }
 
         $results = $this->computeResults($specs, $coverageTracker);
@@ -371,6 +409,69 @@ final class CoverageMergeCommand
         $cleanupFailure = $cleanup && !$this->cleanupSafely($sidecarDir);
 
         return $writeFailures > 0 || $thresholdFailure || $strictFailure || $cleanupFailure ? 1 : 0;
+    }
+
+    /**
+     * Issue #417: union the violation-baseline halves staged by
+     * generation-mode workers and write the merged file. Returns `false`
+     * when the merge must exit non-zero; every failure path runs before
+     * sidecar cleanup so the staged data survives for a corrected retry.
+     *
+     * Fail-loud cases mirror the sequential generation contract:
+     *  - baseline data present but no `--baseline-file`: discarding it
+     *    would silently hide the violations the workers demoted.
+     *  - `--baseline-file` given but some sidecar carries no baseline half
+     *    (a non-generation or pre-#417 worker): the union would be a
+     *    partial baseline — the exact incomplete-file hazard the
+     *    sequential path refuses partial runs for.
+     */
+    private function handleBaseline(
+        ?string $baselineFile,
+        ViolationBaseline $merged,
+        int $sidecarsWithoutBaseline,
+        int $sidecarCount,
+    ): bool {
+        $sidecarsWithBaseline = $sidecarCount - $sidecarsWithoutBaseline;
+
+        if ($baselineFile === null) {
+            if ($sidecarsWithBaseline === 0) {
+                return true;
+            }
+
+            $this->writeStderr(sprintf(
+                "[Gesso] FATAL: %d of %d sidecar(s) carry violation-baseline data from an OPENAPI_BASELINE_GENERATE run, but --baseline-file was not given; discarding it would silently hide the demoted violations. Re-run the merge with --baseline-file=<path>.\n",
+                $sidecarsWithBaseline,
+                $sidecarCount,
+            ));
+
+            return false;
+        }
+
+        if ($sidecarsWithoutBaseline > 0) {
+            $this->writeStderr(sprintf(
+                "[Gesso] FATAL: --baseline-file requested but %d of %d sidecar(s) carry no baseline data; the union would be an incomplete baseline. Ensure every worker ran with OPENAPI_BASELINE_GENERATE=1 on a library version that stages baseline sidecars. No baseline was written.\n",
+                $sidecarsWithoutBaseline,
+                $sidecarCount,
+            ));
+
+            return false;
+        }
+
+        try {
+            ViolationBaselineFile::write($baselineFile, $merged);
+        } catch (RuntimeException $e) {
+            $this->writeStderr("[Gesso] FATAL: {$e->getMessage()}\n");
+
+            return false;
+        }
+
+        $this->writeStderr(sprintf(
+            "[Gesso] Baseline written: %d violation(s) → %s\n",
+            $merged->count(),
+            $baselineFile,
+        ));
+
+        return true;
     }
 
     /**

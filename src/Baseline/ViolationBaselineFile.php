@@ -58,18 +58,28 @@ final class ViolationBaselineFile
 
     private function __construct() {}
 
-    public static function render(ViolationBaseline $baseline): string
+    /**
+     * The baseline document as a plain array — the shape {@see render()}
+     * serializes and the shape the v3 sidecar envelope embeds verbatim
+     * (issue #417), so both carriers share one versioned format.
+     *
+     * @return array{baseline_version: int, violations: list<array<string, null|string>>}
+     */
+    public static function toDocument(ViolationBaseline $baseline): array
     {
-        $document = [
+        return [
             'baseline_version' => self::BASELINE_VERSION,
             'violations' => array_map(
                 static fn(ViolationFingerprint $fingerprint): array => $fingerprint->toArray(),
                 $baseline->sorted(),
             ),
         ];
+    }
 
+    public static function render(ViolationBaseline $baseline): string
+    {
         return json_encode(
-            $document,
+            self::toDocument($baseline),
             JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE,
         ) . "\n";
     }
@@ -93,6 +103,21 @@ final class ViolationBaselineFile
             throw new InvalidArgumentException('Baseline file must decode to a JSON object.');
         }
 
+        return self::parseDocument($decoded);
+    }
+
+    /**
+     * Validate an already-decoded baseline document — the merge CLI parses
+     * documents embedded in sidecar envelopes (issue #417), where the JSON
+     * decode already happened at the envelope layer.
+     *
+     * @param array<mixed, mixed> $decoded
+     *
+     * @throws InvalidArgumentException on an unknown baseline_version or an
+     *                                  invalid entry
+     */
+    public static function parseDocument(array $decoded): ViolationBaseline
+    {
         $version = $decoded['baseline_version'] ?? null;
         if (!is_int($version) || $version !== self::BASELINE_VERSION) {
             throw new InvalidArgumentException(sprintf(

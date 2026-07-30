@@ -7,9 +7,11 @@ namespace Studio\Gesso\Tests\Integration;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+use Studio\Gesso\Coverage\CoverageMergeCommand;
 
 use function dirname;
 use function escapeshellarg;
+use function explode;
 use function fclose;
 use function file_get_contents;
 use function is_resource;
@@ -19,6 +21,7 @@ use function realpath;
 use function sprintf;
 use function str_replace;
 use function stream_get_contents;
+use function trim;
 
 final class GessoCliIntegrationTest extends TestCase
 {
@@ -85,14 +88,23 @@ final class GessoCliIntegrationTest extends TestCase
 
         $this->assertSame(0, $helpExit);
         $this->assertSame('', $helpStderr);
-        $this->assertSame(
-            str_replace(
-                'openapi-coverage-merge',
-                'gesso coverage:merge',
-                (string) file_get_contents($this->repoRoot . '/tests/fixtures/compatibility/v1.9-openapi-coverage-merge-help.txt'),
-            ),
-            $helpStdout,
+        // The subcommand must route --help to the canonical usage text under
+        // the `gesso coverage:merge` invocation …
+        $this->assertSame(CoverageMergeCommand::usage(), $helpStdout);
+        // … and every v1.9 help line must survive per the v1.x CLI
+        // compatibility policy. New flags may be appended, so this is
+        // containment, not equality, against the frozen capture.
+        $v19Help = str_replace(
+            'openapi-coverage-merge',
+            'gesso coverage:merge',
+            (string) file_get_contents($this->repoRoot . '/tests/fixtures/compatibility/v1.9-openapi-coverage-merge-help.txt'),
         );
+        foreach (explode("\n", $v19Help) as $line) {
+            if (trim($line) === '') {
+                continue;
+            }
+            $this->assertStringContainsString($line, $helpStdout, 'v1.9 help line must be retained');
+        }
         $this->assertSame(2, $errorExit);
         $this->assertSame('', $errorStdout);
         $this->assertSame(
