@@ -1887,9 +1887,7 @@
         },
         "parent": null,
         "interfaces": [],
-        "traits": [
-            "Studio\\Gesso\\Fuzz\\SelectsExploredOperations"
-        ],
+        "traits": [],
         "attributes": [],
         "backing_type": null,
         "cases": [],
@@ -3683,9 +3681,7 @@
         },
         "parent": null,
         "interfaces": [],
-        "traits": [
-            "Studio\\Gesso\\Fuzz\\SelectsExploredOperations"
-        ],
+        "traits": [],
         "attributes": [],
         "backing_type": null,
         "cases": [],
@@ -4415,9 +4411,7 @@
         "constructor": null,
         "parent": null,
         "interfaces": [],
-        "traits": [
-            "Studio\\Gesso\\Laravel\\ResolvesOpenApiSpec"
-        ],
+        "traits": [],
         "attributes": [],
         "backing_type": null,
         "cases": [],
@@ -4822,10 +4816,7 @@
         "constructor": null,
         "parent": null,
         "interfaces": [],
-        "traits": [
-            "Studio\\Gesso\\Laravel\\ResolvesOpenApiSpec",
-            "Studio\\Gesso\\SkipOpenApiResolver"
-        ],
+        "traits": [],
         "attributes": [],
         "backing_type": null,
         "cases": [],
