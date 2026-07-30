@@ -6,6 +6,7 @@ namespace Studio\Gesso\Coverage;
 
 use InvalidArgumentException;
 use Studio\Gesso\Baseline\ViolationBaselineFile;
+use Studio\Gesso\Validation\Strict\StrictAdditionalPropertiesTracker;
 use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 
 use function array_key_exists;
@@ -46,15 +47,18 @@ use function sprintf;
  *   "baseline":       { "baseline_version": 1, "violations": [ ... ] }
  * }
  * ```
- * v3 is emitted only when a generation run has a baseline to hand off;
- * plain runs keep writing v2 so an older merge CLI stays compatible with
- * coverage-only fleets during an upgrade.
+ *
+ * Wire shapes v4/v5 add `strictAdditionalProperties` state. v4 is the
+ * current plain-worker format; v5 is v4 plus the v3 baseline half.
+ * Older v2/v3 envelopes remain readable and contribute no strict
+ * additional-properties observations.
  *
  * Backwards compatibility: workers running an older library version write
  * a bare v1 coverage payload (`{ "version": 1, "specs": { ... } }`) with no
  * `envelopeVersion` key. {@see self::parse()} detects this shape and
- * returns the legacy payload as `coverage` with `strictRequired => null`,
- * so a mixed-version fleet can still merge coverage cleanly.
+ * returns the legacy payload as `coverage` with `strictRequired => null`
+ * and `strictAdditionalProperties => null`, so a mixed-version fleet can
+ * still merge coverage cleanly.
  *
  * The envelope intentionally does NOT flatten the inner tracker payloads —
  * each `version` field remains owned by its respective tracker and can
@@ -68,16 +72,19 @@ use function sprintf;
  *
  * @phpstan-import-type CoverageStatePayload from OpenApiCoverageTracker
  * @phpstan-import-type StrictRequiredStatePayload from StrictRequiredTracker
+ * @phpstan-import-type StrictAdditionalPropertiesState from StrictAdditionalPropertiesTracker
  *
  * @phpstan-type SidecarEnvelopePayload array{
  *     envelopeVersion: int,
  *     coverage: CoverageStatePayload,
  *     strictRequired: StrictRequiredStatePayload,
+ *     strictAdditionalProperties?: StrictAdditionalPropertiesState,
  *     baseline?: array<string, mixed>,
  * }
  * @phpstan-type ParsedEnvelope array{
  *     coverage: array<string, mixed>,
  *     strictRequired: array<string, mixed>|null,
+ *     strictAdditionalProperties: array<string, mixed>|null,
  *     baseline: array<string, mixed>|null,
  * }
  */
@@ -91,11 +98,14 @@ final class CoverageSidecarEnvelope
     public const ENVELOPE_VERSION = 2;
 
     /**
-     * Envelope version carrying the violation-baseline half (issue #417).
-     * Written only by generation-mode workers; see the class doc for why
-     * plain runs stay on {@see self::ENVELOPE_VERSION}.
+     * Legacy envelope version carrying the violation-baseline half
+     * (issue #417). Current workers use v5 because they also export strict
+     * additional-properties state; v3 remains a supported input.
      */
     public const ENVELOPE_VERSION_WITH_BASELINE = 3;
+
+    public const ENVELOPE_VERSION_WITH_STRICT_ADDITIONAL_PROPERTIES = 4;
+    public const ENVELOPE_VERSION_WITH_STRICT_ADDITIONAL_PROPERTIES_AND_BASELINE = 5;
 
     private function __construct() {}
 
@@ -106,13 +116,16 @@ final class CoverageSidecarEnvelope
      *
      * `$baselineDocument` (the baseline-file document from
      * {@see ViolationBaselineFile::toDocument()})
-     * upgrades the envelope to v3; `null` keeps the v2 shape byte-compatible
-     * with pre-#417 writers.
+     * upgrades a legacy v2 envelope to v3. When strict additional-properties
+     * state is supplied, the corresponding pair is v4 (plain) / v5
+     * (baseline).
      *
      * @param null|array<string, mixed> $baselineDocument
+     * @param null|array<string, mixed> $strictAdditionalPropertiesState
      *
      * @phpstan-param CoverageStatePayload $coverageState
      * @phpstan-param StrictRequiredStatePayload $strictRequiredState
+     * @phpstan-param null|StrictAdditionalPropertiesState $strictAdditionalPropertiesState
      *
      * @return SidecarEnvelopePayload
      */
@@ -120,7 +133,24 @@ final class CoverageSidecarEnvelope
         array $coverageState,
         array $strictRequiredState,
         ?array $baselineDocument = null,
+        ?array $strictAdditionalPropertiesState = null,
     ): array {
+        if ($strictAdditionalPropertiesState !== null) {
+            $payload = [
+                'envelopeVersion' => $baselineDocument === null
+                    ? self::ENVELOPE_VERSION_WITH_STRICT_ADDITIONAL_PROPERTIES
+                    : self::ENVELOPE_VERSION_WITH_STRICT_ADDITIONAL_PROPERTIES_AND_BASELINE,
+                'coverage' => $coverageState,
+                'strictRequired' => $strictRequiredState,
+                'strictAdditionalProperties' => $strictAdditionalPropertiesState,
+            ];
+            if ($baselineDocument !== null) {
+                $payload['baseline'] = $baselineDocument;
+            }
+
+            return $payload;
+        }
+
         if ($baselineDocument === null) {
             return [
                 'envelopeVersion' => self::ENVELOPE_VERSION,
@@ -141,7 +171,7 @@ final class CoverageSidecarEnvelope
      * Route a sidecar payload into its tracker-shaped parts.
      *
      * Discriminator priority:
-     *  1. `envelopeVersion` present → v2/v3 path. Unknown values are rejected.
+     *  1. `envelopeVersion` present → v2–v5 path. Unknown values are rejected.
      *  2. `version` + `specs` keys → legacy v1 bare coverage payload;
      *     returns `strictRequired => null`.
      *  3. Otherwise reject (unrecognised shape).
@@ -167,10 +197,11 @@ final class CoverageSidecarEnvelope
             // land in the v1 fast-path. Mirror the strict version check
             // {@see StrictRequiredTracker::importState()} performs on its
             // own payload.
-            if (array_key_exists('strictRequired', $payload)) {
+            if (array_key_exists('strictRequired', $payload) || array_key_exists('strictAdditionalProperties', $payload)) {
                 throw new InvalidArgumentException(
-                    'Legacy v1 sidecar payload must not contain a top-level "strictRequired" key; '
-                    . 'expected an envelopeVersion=2 envelope when strict_required data is present.',
+                    'Legacy v1 sidecar payload must not contain top-level "strictRequired" '
+                    . 'or "strictAdditionalProperties" keys; '
+                    . 'expected a versioned envelope when strict data is present.',
                 );
             }
 
@@ -180,6 +211,7 @@ final class CoverageSidecarEnvelope
             return [
                 'coverage' => $payload,
                 'strictRequired' => null,
+                'strictAdditionalProperties' => null,
                 'baseline' => null,
             ];
         }
@@ -199,13 +231,20 @@ final class CoverageSidecarEnvelope
         $version = $payload['envelopeVersion'] ?? null;
         if (
             !is_int($version) ||
-            !in_array($version, [self::ENVELOPE_VERSION, self::ENVELOPE_VERSION_WITH_BASELINE], true)
+            !in_array($version, [
+                self::ENVELOPE_VERSION,
+                self::ENVELOPE_VERSION_WITH_BASELINE,
+                self::ENVELOPE_VERSION_WITH_STRICT_ADDITIONAL_PROPERTIES,
+                self::ENVELOPE_VERSION_WITH_STRICT_ADDITIONAL_PROPERTIES_AND_BASELINE,
+            ], true)
         ) {
             throw new InvalidArgumentException(sprintf(
-                'Unsupported sidecar envelope version: got %s, expected %d or %d.',
+                'Unsupported sidecar envelope version: got %s, expected %d, %d, %d, or %d.',
                 is_int($version) ? (string) $version : get_debug_type($version),
                 self::ENVELOPE_VERSION,
                 self::ENVELOPE_VERSION_WITH_BASELINE,
+                self::ENVELOPE_VERSION_WITH_STRICT_ADDITIONAL_PROPERTIES,
+                self::ENVELOPE_VERSION_WITH_STRICT_ADDITIONAL_PROPERTIES_AND_BASELINE,
             ));
         }
 
@@ -225,23 +264,48 @@ final class CoverageSidecarEnvelope
             ));
         }
 
+        $strictAdditionalProperties = $payload['strictAdditionalProperties'] ?? null;
+        $hasStrictAdditionalProperties = in_array($version, [
+            self::ENVELOPE_VERSION_WITH_STRICT_ADDITIONAL_PROPERTIES,
+            self::ENVELOPE_VERSION_WITH_STRICT_ADDITIONAL_PROPERTIES_AND_BASELINE,
+        ], true);
+        if ($hasStrictAdditionalProperties && !is_array($strictAdditionalProperties)) {
+            throw new InvalidArgumentException(sprintf(
+                'Sidecar envelope v%d "strictAdditionalProperties" must be an array; got %s.',
+                $version,
+                get_debug_type($strictAdditionalProperties),
+            ));
+        }
+        if (!$hasStrictAdditionalProperties && array_key_exists('strictAdditionalProperties', $payload)) {
+            throw new InvalidArgumentException(sprintf(
+                'Sidecar envelope v%d must not contain "strictAdditionalProperties"; expected envelopeVersion=4 or 5.',
+                $version,
+            ));
+        }
+
         $baseline = $payload['baseline'] ?? null;
-        if ($version === self::ENVELOPE_VERSION) {
-            // A v2 envelope must not smuggle a baseline half: accepting it
+        if (in_array($version, [self::ENVELOPE_VERSION, self::ENVELOPE_VERSION_WITH_STRICT_ADDITIONAL_PROPERTIES], true)) {
+            // A plain envelope must not smuggle a baseline half: accepting it
             // would silently drop generation data whenever a future writer
             // (or a hand-edited sidecar) forgets the version bump — mirror
             // the v1 `strictRequired` guard in parse().
             if (array_key_exists('baseline', $payload)) {
-                throw new InvalidArgumentException(
-                    'Sidecar envelope v2 must not contain a "baseline" key; '
-                    . 'expected envelopeVersion=3 when baseline data is present.',
-                );
+                $expectedVersion = $version === self::ENVELOPE_VERSION
+                    ? self::ENVELOPE_VERSION_WITH_BASELINE
+                    : self::ENVELOPE_VERSION_WITH_STRICT_ADDITIONAL_PROPERTIES_AND_BASELINE;
+
+                throw new InvalidArgumentException(sprintf(
+                    'Sidecar envelope v%d must not contain a "baseline" key; expected envelopeVersion=%d when baseline data is present.',
+                    $version,
+                    $expectedVersion,
+                ));
             }
         } elseif (!is_array($baseline)) {
-            // v3 exists solely to carry the baseline half — a v3 envelope
-            // without it is malformed, not "generation off".
+            // v3/v5 exist to carry the baseline half — omitting it is
+            // malformed, not "generation off".
             throw new InvalidArgumentException(sprintf(
-                'Sidecar envelope v3 "baseline" must be an array; got %s.',
+                'Sidecar envelope v%d "baseline" must be an array; got %s.',
+                $version,
                 get_debug_type($baseline),
             ));
         }
@@ -249,6 +313,7 @@ final class CoverageSidecarEnvelope
         return [
             'coverage' => $coverage,
             'strictRequired' => $strictRequired,
+            'strictAdditionalProperties' => $strictAdditionalProperties,
             'baseline' => $baseline,
         ];
     }

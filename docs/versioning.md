@@ -75,7 +75,7 @@ This library follows [Semantic Versioning 2.0](https://semver.org/). v1.0.0 is t
   - v2.x: the `doctor` and `coverage:merge` subcommands of `bin/gesso`; the
     legacy standalone binaries are not shipped
 - The Laravel `openapi:routes` command surface (flags, exit codes, and versioned JSON output)
-- The `OpenApiCoverageExtension` PHPUnit configuration parameters (`spec_base_path`, `strip_prefixes`, `specs`, `output_file`, `console_output`, `validation_output`, `baseline_file`, …)
+- The `OpenApiCoverageExtension` PHPUnit configuration parameters (`spec_base_path`, `strip_prefixes`, `specs`, `output_file`, `console_output`, `validation_output`, `baseline_file`, `strict_required`, `strict_additional_properties`, `strict_additional_properties_per_call`, …)
 - The Laravel `ValidatesOpenApiSchema` trait's public methods
 - The category prefixes used in `E_USER_WARNING` messages (`[security]`, `[OpenAPI Schema]`, and the `[OpenAPI 3.2 ...]` categories)
 
@@ -92,22 +92,31 @@ coverage state `version: 1` and strict-required state `version: 2`. The v1.9
 reader accepts that envelope and the legacy bare coverage state `version: 1`.
 It recognises `part-*.json` sidecars and `failed-*.json` failure markers.
 
-The v2.2 writer additionally emits `envelopeVersion: 3` — the v2 shape plus a
-`baseline` key holding the violation-baseline document (`baseline_version: 1`)
-— but only when the worker ran under `OPENAPI_BASELINE_GENERATE`; plain runs
-keep writing `envelopeVersion: 2` so an older merge reader stays usable for
-coverage-only fleets. The v2.2 reader accepts `envelopeVersion` 2 and 3 plus
-the legacy bare coverage state; a v2 envelope carrying a `baseline` key and a
-v3 envelope missing one are rejected as malformed, and `coverage:merge
---baseline-file` refuses to write a union when any sidecar lacks the baseline
-half.
+The baseline-generation protocol introduced `envelopeVersion: 3` — the v2
+shape plus a `baseline` key holding the violation-baseline document
+(`baseline_version: 1`). It remains an accepted compatibility input.
+
+The current strict-additional-properties writer emits `envelopeVersion: 4` for
+plain worker runs. It adds `strictAdditionalProperties` state `version: 1`,
+including a total evaluation count and findings grouped by operation,
+response, and property pointer. A baseline-generation worker emits
+`envelopeVersion: 5`, which combines the v4 strict tracker halves with the v3
+`baseline` half. The reader accepts envelopes 2–5 and the legacy bare coverage
+state. A v2/v4 envelope carrying a `baseline` key and a v3/v5 envelope missing
+one are rejected as malformed; `coverage:merge --baseline-file` refuses to
+write a union when any sidecar lacks the baseline half. Versions 2/3 return no
+strict-additional-properties contribution;
+`--strict-additional-properties=fail` fails loudly when any worker lacks that
+state, or when no worker exported an evaluation, instead of treating an
+incomplete/old-fleet merge as clean.
 
 The compatibility rules are:
 
 - A newer merge reader keeps support for the explicitly documented older
   payloads within the same major line.
 - A format owner bumps its version for an incompatible shape change. Envelope,
-  coverage state, and strict-required state versions evolve independently.
+  coverage state, strict-required state, and strict-additional-properties
+  state versions evolve independently.
 - An older reader is not required to accept payloads written by a future
   version. Unknown versions and unrecognised shapes fail loudly instead of
   being guessed or partially merged.

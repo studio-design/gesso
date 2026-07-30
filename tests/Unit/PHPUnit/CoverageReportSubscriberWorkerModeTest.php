@@ -8,6 +8,7 @@ use PHPUnit\Event\TestRunner\ExecutionFinished;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use ReflectionClass;
+use Studio\Gesso\Coverage\CoverageSidecarEnvelope;
 use Studio\Gesso\Coverage\CoverageSidecarReader;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\PHPUnit\ConsoleOutput;
@@ -125,8 +126,11 @@ class CoverageReportSubscriberWorkerModeTest extends TestCase
 
         $loaded = CoverageSidecarReader::readDir($this->tmpDir);
         $this->assertCount(1, $loaded);
-        // v2 envelope: coverage payload nested under "coverage" key.
-        $this->assertSame(2, $loaded[0]['envelopeVersion']);
+        // v4 envelope: coverage and both strict tracker payloads are nested.
+        $this->assertSame(
+            CoverageSidecarEnvelope::ENVELOPE_VERSION_WITH_STRICT_ADDITIONAL_PROPERTIES,
+            $loaded[0]['envelopeVersion'],
+        );
         $this->assertSame(1, $loaded[0]['coverage']['version']);
         $this->assertArrayHasKey('petstore-3.0', $loaded[0]['coverage']['specs']);
     }

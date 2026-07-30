@@ -1,0 +1,29 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Strict additional properties OpenAPI 3.0 fixture",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/unsupported-unevaluated": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "OpenAPI 3.0 ignores unevaluatedProperties",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {"type": "string"}
+                  },
+                  "unevaluatedProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

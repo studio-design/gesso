@@ -31,6 +31,10 @@ use Studio\Gesso\Internal\PartialRunDecision;
 use Studio\Gesso\Schema\EnumDriftAsserter;
 use Studio\Gesso\Schema\EnumDriftReport;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
+use Studio\Gesso\Validation\Strict\StrictAdditionalPropertiesMode;
+use Studio\Gesso\Validation\Strict\StrictAdditionalPropertiesPerCallChecker;
+use Studio\Gesso\Validation\Strict\StrictAdditionalPropertiesPerCallMode;
+use Studio\Gesso\Validation\Strict\StrictAdditionalPropertiesTracker;
 use Studio\Gesso\Validation\Strict\StrictRequiredMode;
 use Studio\Gesso\Validation\Strict\StrictRequiredPerCallChecker;
 use Studio\Gesso\Validation\Strict\StrictRequiredPerCallMode;
@@ -144,6 +148,37 @@ final class OpenApiCoverageExtension implements Extension
         $written = file_put_contents($path, $block, FILE_APPEND);
         if ($written === false) {
             self::writeStderr("[OpenAPI Strict Required] WARNING: Failed to append block to GITHUB_STEP_SUMMARY ({$path})\n");
+        }
+    }
+
+    /**
+     * @internal Exposed for the execution-finished subscriber.
+     */
+    public static function appendGithubStepSummaryStrictAdditionalPropertiesBlock(
+        ?string $path,
+        string $body,
+        bool $isFatal,
+    ): void {
+        if ($path === null) {
+            return;
+        }
+
+        $title = $isFatal
+            ? '## :rotating_light: FATAL OpenAPI undocumented response properties'
+            : '## :warning: OpenAPI undocumented response properties';
+        $block = $title . PHP_EOL
+            . PHP_EOL
+            . ($isFatal
+                ? 'strict_additional_properties found undocumented response fields and the test run was aborted.'
+                : 'strict_additional_properties found undocumented response fields (warn-only).') . PHP_EOL
+            . PHP_EOL
+            . '```' . PHP_EOL
+            . $body . PHP_EOL
+            . '```' . PHP_EOL
+            . PHP_EOL;
+
+        if (file_put_contents($path, $block, FILE_APPEND) === false) {
+            self::writeStderr("[OpenAPI Strict Additional Properties] WARNING: Failed to append block to GITHUB_STEP_SUMMARY ({$path})\n");
         }
     }
 
@@ -419,10 +454,13 @@ final class OpenApiCoverageExtension implements Extension
         // what the merge CLI's tracker reconstructs from those sidecars.
         $coverageTracker = new OpenApiCoverageTracker();
         $strictRequiredTracker = new StrictRequiredTracker();
+        $strictAdditionalPropertiesTracker = new StrictAdditionalPropertiesTracker();
         OpenApiCoverageTracker::resetCurrent();
         StrictRequiredTracker::resetCurrent();
+        StrictAdditionalPropertiesTracker::resetCurrent();
         OpenApiCoverageTracker::setCurrent($coverageTracker);
         StrictRequiredTracker::setCurrent($strictRequiredTracker);
+        StrictAdditionalPropertiesTracker::setCurrent($strictAdditionalPropertiesTracker);
 
         // Issue #224: schema under-description detection mode is read from
         // phpunit.xml here so a misspelled `strict_required=` value
@@ -441,6 +479,11 @@ final class OpenApiCoverageExtension implements Extension
         $strictRequiredPerCallMode = self::resolveStrictRequiredPerCallMode($parameters, $githubSummaryPath);
         StrictRequiredPerCallChecker::reset();
         StrictRequiredPerCallChecker::configure($strictRequiredPerCallMode);
+
+        $strictAdditionalPropertiesMode = self::resolveStrictAdditionalPropertiesMode($parameters, $githubSummaryPath);
+        $strictAdditionalPropertiesPerCallMode = self::resolveStrictAdditionalPropertiesPerCallMode($parameters, $githubSummaryPath);
+        StrictAdditionalPropertiesPerCallChecker::reset();
+        StrictAdditionalPropertiesPerCallChecker::configure($strictAdditionalPropertiesPerCallMode);
 
         // Issue #262: discriminator.mapping enforcement gate. Default ON —
         // enforcement is the correct contract-testing behaviour; `value="false"`
@@ -483,6 +526,8 @@ final class OpenApiCoverageExtension implements Extension
             htmlOutput: $htmlOutput,
             partialRun: $partialRun,
             strictRequiredMode: $strictRequiredMode,
+            strictAdditionalPropertiesTracker: $strictAdditionalPropertiesTracker,
+            strictAdditionalPropertiesMode: $strictAdditionalPropertiesMode,
             baselineGeneratePath: $baselineGeneratePath,
             baselineStaleMode: $baselineStaleMode,
             baselineCompletionTracer: $baselineCompletionTracer,
@@ -949,6 +994,54 @@ final class OpenApiCoverageExtension implements Extension
             );
             self::writeStderr("[OpenAPI Strict Required per-call] FATAL: {$reason}\n");
             self::appendGithubStepSummaryStrictRequiredBlock($githubSummaryPath, $reason, isFatal: true);
+
+            throw new InvalidStrictRequiredConfigurationException($reason, $e);
+        }
+    }
+
+    private static function resolveStrictAdditionalPropertiesMode(
+        ParameterCollection $parameters,
+        ?string $githubSummaryPath,
+    ): StrictAdditionalPropertiesMode {
+        if (!$parameters->has('strict_additional_properties')) {
+            return StrictAdditionalPropertiesMode::Off;
+        }
+
+        $raw = $parameters->get('strict_additional_properties');
+
+        try {
+            return StrictAdditionalPropertiesMode::fromConfigValue($raw);
+        } catch (InvalidArgumentException $e) {
+            $reason = sprintf(
+                'strict_additional_properties=%s is not recognised. Accepted: off, warn, fail.',
+                trim($raw) === '' ? '<empty>' : $raw,
+            );
+            self::writeStderr("[OpenAPI Strict Additional Properties] FATAL: {$reason}\n");
+            self::appendGithubStepSummaryStrictAdditionalPropertiesBlock($githubSummaryPath, $reason, isFatal: true);
+
+            throw new InvalidStrictRequiredConfigurationException($reason, $e);
+        }
+    }
+
+    private static function resolveStrictAdditionalPropertiesPerCallMode(
+        ParameterCollection $parameters,
+        ?string $githubSummaryPath,
+    ): StrictAdditionalPropertiesPerCallMode {
+        if (!$parameters->has('strict_additional_properties_per_call')) {
+            return StrictAdditionalPropertiesPerCallMode::Off;
+        }
+
+        $raw = $parameters->get('strict_additional_properties_per_call');
+
+        try {
+            return StrictAdditionalPropertiesPerCallMode::fromConfigValue($raw);
+        } catch (InvalidArgumentException $e) {
+            $reason = sprintf(
+                'strict_additional_properties_per_call=%s is not recognised. Accepted: off, warn.',
+                trim($raw) === '' ? '<empty>' : $raw,
+            );
+            self::writeStderr("[OpenAPI Strict Additional Properties per-call] FATAL: {$reason}\n");
+            self::appendGithubStepSummaryStrictAdditionalPropertiesBlock($githubSummaryPath, $reason, isFatal: true);
 
             throw new InvalidStrictRequiredConfigurationException($reason, $e);
         }

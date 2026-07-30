@@ -21,6 +21,8 @@ use Studio\Gesso\Internal\EnumScanner;
 use Studio\Gesso\PHPUnit\InvalidStrictRequiredConfigurationException;
 use Studio\Gesso\PHPUnit\OpenApiCoverageExtension;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
+use Studio\Gesso\Validation\Strict\StrictAdditionalPropertiesPerCallChecker;
+use Studio\Gesso\Validation\Strict\StrictAdditionalPropertiesTracker;
 use Studio\Gesso\Validation\Strict\StrictRequiredPerCallChecker;
 use Studio\Gesso\Validation\Strict\StrictRequiredPerCallMode;
 use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
@@ -49,6 +51,8 @@ class OpenApiCoverageExtensionTest extends TestCase
         parent::setUp();
         OpenApiSpecLoader::reset();
         EnumScanner::reset();
+        StrictAdditionalPropertiesPerCallChecker::reset();
+        StrictAdditionalPropertiesTracker::resetCurrent();
 
         $buffer = fopen('php://memory', 'w+');
         if ($buffer === false) {
@@ -71,6 +75,8 @@ class OpenApiCoverageExtensionTest extends TestCase
         }
         OpenApiSpecLoader::reset();
         EnumScanner::reset();
+        StrictAdditionalPropertiesPerCallChecker::reset();
+        StrictAdditionalPropertiesTracker::resetCurrent();
         parent::tearDown();
     }
 
@@ -1318,6 +1324,55 @@ class OpenApiCoverageExtensionTest extends TestCase
         } finally {
             StrictRequiredPerCallChecker::reset();
         }
+    }
+
+    #[Test]
+    public function strict_additional_properties_per_call_warn_configures_checker(): void
+    {
+        $extension = new OpenApiCoverageExtension();
+        $parameters = ParameterCollection::fromArray([
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => 'refs-valid',
+            'strict_additional_properties' => 'warn',
+            'strict_additional_properties_per_call' => 'warn',
+        ]);
+
+        $extension->setupExtension(null, $parameters, null);
+
+        $this->assertTrue(StrictAdditionalPropertiesPerCallChecker::isEnabled());
+        $this->assertSame(0, StrictAdditionalPropertiesTracker::current()->evaluationsOn());
+    }
+
+    #[Test]
+    public function strict_additional_properties_rejects_unknown_run_level_value(): void
+    {
+        $extension = new OpenApiCoverageExtension();
+        $parameters = ParameterCollection::fromArray([
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => 'refs-valid',
+            'strict_additional_properties' => 'enforce',
+        ]);
+
+        $this->expectException(InvalidStrictRequiredConfigurationException::class);
+        $this->expectExceptionMessage('strict_additional_properties=enforce');
+
+        $extension->setupExtension(null, $parameters, null);
+    }
+
+    #[Test]
+    public function strict_additional_properties_per_call_rejects_fail(): void
+    {
+        $extension = new OpenApiCoverageExtension();
+        $parameters = ParameterCollection::fromArray([
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => 'refs-valid',
+            'strict_additional_properties_per_call' => 'fail',
+        ]);
+
+        $this->expectException(InvalidStrictRequiredConfigurationException::class);
+        $this->expectExceptionMessage('strict_additional_properties_per_call=fail');
+
+        $extension->setupExtension(null, $parameters, null);
     }
 
     private function readStderr(): string

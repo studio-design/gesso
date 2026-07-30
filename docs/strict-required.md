@@ -205,7 +205,7 @@ A future release may add an opt-out attribute (e.g. `#[StrictRequiredPerCallIgno
 
 - It does **not** flag fields the impl returns *sometimes* but not always. By design — those fields are legitimately optional, and `required` only describes invariant fields.
 - It does **not** check for fields the spec declares required but the impl omits. That is conformance, and the existing validator already catches it.
-- It does **not** flag fields the impl returns that are not declared in `properties`. Use `additionalProperties: false` for that — also already supported by the existing validator.
+- It does **not** flag fields the impl returns that are not declared in `properties`. Use conformance-level `additionalProperties: false`, or opt into [`strict_additional_properties`](strict-additional-properties.md) when existing specs omit an explicit open/closed policy. The two strict gates can run together: `strict_required` finds declared-but-optional invariant fields; `strict_additional_properties` finds returned-but-undeclared fields.
 - It does **not** read the spec for endpoints your tests never touched. Strict required is a runtime-observation gate; coverage-tracking gaps are reported separately by `OpenApiCoverageExtension`'s coverage report.
 
 ## Paratest

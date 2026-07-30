@@ -16,6 +16,7 @@ use Studio\Gesso\Coverage\CoverageSidecarEnvelope;
 use Studio\Gesso\Coverage\CoverageSidecarWriter;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
+use Studio\Gesso\Validation\Strict\StrictAdditionalPropertiesTracker;
 use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 
 use function chmod;
@@ -48,6 +49,7 @@ class CoverageMergeCommandTest extends TestCase
         parent::setUp();
         OpenApiCoverageTracker::reset();
         StrictRequiredTracker::reset();
+        StrictAdditionalPropertiesTracker::resetCurrent();
         OpenApiSpecLoader::reset();
 
         $base = sys_get_temp_dir() . '/openapi-coverage-merge-' . uniqid('', true);
@@ -73,6 +75,7 @@ class CoverageMergeCommandTest extends TestCase
         // tests that introspect ::current() between cases.
         OpenApiCoverageTracker::resetCurrent();
         StrictRequiredTracker::resetCurrent();
+        StrictAdditionalPropertiesTracker::resetCurrent();
         OpenApiSpecLoader::reset();
         parent::tearDown();
     }
@@ -1234,6 +1237,91 @@ class CoverageMergeCommandTest extends TestCase
     }
 
     #[Test]
+    public function merges_strict_additional_properties_findings_in_warn_mode(): void
+    {
+        $this->writeStrictAdditionalPropertiesWorkerSidecar('1', ['/trace_id' => 'trace_id']);
+        $this->writeStrictAdditionalPropertiesWorkerSidecar('2', ['/trace_id' => 'trace_id']);
+
+        $stderr = '';
+        $command = new CoverageMergeCommand(
+            stdoutWriter: static fn(string $message): null => null,
+            stderrWriter: static function (string $message) use (&$stderr): void {
+                $stderr .= $message;
+            },
+        );
+        $exit = $command->run([
+            'sidecar_dir' => $this->sidecarDir,
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => ['strict-additional-properties'],
+            'strict_additional_properties' => 'warn',
+            'cleanup' => true,
+        ]);
+
+        $this->assertSame(0, $exit);
+        $this->assertStringContainsString('[OpenAPI Strict Additional Properties] WARNING', $stderr);
+        $this->assertStringContainsString('/trace_id', $stderr);
+        $this->assertStringContainsString('observed in 2 response(s)', $stderr);
+    }
+
+    #[Test]
+    public function strict_additional_properties_fail_mode_exits_one_on_findings(): void
+    {
+        $this->writeStrictAdditionalPropertiesWorkerSidecar('1', ['/trace_id' => 'trace_id']);
+
+        $stderr = '';
+        $command = new CoverageMergeCommand(
+            stdoutWriter: static fn(string $message): null => null,
+            stderrWriter: static function (string $message) use (&$stderr): void {
+                $stderr .= $message;
+            },
+        );
+        $exit = $command->run([
+            'sidecar_dir' => $this->sidecarDir,
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => ['strict-additional-properties'],
+            'strict_additional_properties' => 'fail',
+            'cleanup' => true,
+        ]);
+
+        $this->assertSame(1, $exit);
+        $this->assertStringContainsString('[OpenAPI Strict Additional Properties] FATAL', $stderr);
+    }
+
+    #[Test]
+    public function strict_additional_properties_fail_rejects_a_mixed_old_worker_fleet(): void
+    {
+        $this->writeStrictAdditionalPropertiesWorkerSidecar('1', []);
+        $legacyCoverage = new OpenApiCoverageTracker();
+        $legacyCoverage->recordResponseOn(
+            'strict-additional-properties',
+            'GET',
+            '/users',
+            '200',
+            'application/json',
+            schemaValidated: true,
+        );
+        CoverageSidecarWriter::write($this->sidecarDir, '2', $legacyCoverage->exportStateOn());
+
+        $stderr = '';
+        $command = new CoverageMergeCommand(
+            stdoutWriter: static fn(string $message): null => null,
+            stderrWriter: static function (string $message) use (&$stderr): void {
+                $stderr .= $message;
+            },
+        );
+        $exit = $command->run([
+            'sidecar_dir' => $this->sidecarDir,
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => ['strict-additional-properties'],
+            'strict_additional_properties' => 'fail',
+            'cleanup' => true,
+        ]);
+
+        $this->assertSame(1, $exit);
+        $this->assertStringContainsString('1 worker sidecar(s) have no strict additional-properties state', $stderr);
+    }
+
+    #[Test]
     public function merge_passes_in_off_mode_even_when_drift_exists(): void
     {
         $this->writeStrictRequiredWorkerSidecar('1', ['expires', 'signed_url', 'url']);
@@ -1601,6 +1689,13 @@ class CoverageMergeCommandTest extends TestCase
     }
 
     #[Test]
+    public function parse_argv_accepts_strict_additional_properties_flag(): void
+    {
+        $options = CoverageMergeCommand::parseArgv(['--strict-additional-properties=fail']);
+        $this->assertSame('fail', $options['strict_additional_properties'] ?? null);
+    }
+
+    #[Test]
     public function parse_argv_accepts_baseline_file_flag(): void
     {
         $opts = CoverageMergeCommand::parseArgv(['--baseline-file=gesso-baseline.json']);
@@ -1923,6 +2018,37 @@ class CoverageMergeCommandTest extends TestCase
         CoverageSidecarWriter::write($this->sidecarDir, $token, $envelope);
         OpenApiCoverageTracker::reset();
         StrictRequiredTracker::reset();
+    }
+
+    /**
+     * @param array<string, string> $findings
+     */
+    private function writeStrictAdditionalPropertiesWorkerSidecar(string $token, array $findings): void
+    {
+        $coverage = new OpenApiCoverageTracker();
+        $coverage->recordResponseOn(
+            'strict-additional-properties',
+            'GET',
+            '/users',
+            '200',
+            'application/json',
+            schemaValidated: true,
+        );
+        $strictAdditional = new StrictAdditionalPropertiesTracker();
+        $strictAdditional->recordOn(
+            'strict-additional-properties',
+            'GET',
+            '/users',
+            '200',
+            'application/json',
+            $findings,
+        );
+        $envelope = CoverageSidecarEnvelope::build(
+            coverageState: $coverage->exportStateOn(),
+            strictRequiredState: (new StrictRequiredTracker())->exportStateOn(),
+            strictAdditionalPropertiesState: $strictAdditional->exportStateOn(),
+        );
+        CoverageSidecarWriter::write($this->sidecarDir, $token, $envelope);
     }
 
     /**

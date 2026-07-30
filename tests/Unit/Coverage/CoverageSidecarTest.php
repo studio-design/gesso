@@ -14,6 +14,7 @@ use Studio\Gesso\Coverage\CoverageSidecarEnvelope;
 use Studio\Gesso\Coverage\CoverageSidecarReader;
 use Studio\Gesso\Coverage\CoverageSidecarWriter;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
+use Studio\Gesso\Validation\Strict\StrictAdditionalPropertiesTracker;
 use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 
 use function array_map;
@@ -312,6 +313,33 @@ class CoverageSidecarTest extends TestCase
         $this->assertSame(2, $row['hits']);
         // Intersection: A had [id, name, tag], B had [id, name] → [id, name].
         $this->assertSame(['/' => ['id', 'name']], $row['pointers']);
+    }
+
+    #[Test]
+    public function envelope_v4_round_trips_strict_additional_properties_state(): void
+    {
+        $tracker = new StrictAdditionalPropertiesTracker();
+        $tracker->recordOn('petstore-3.0', 'GET', '/v1/pets', '200', 'application/json', [
+            '/trace_id' => 'trace_id',
+        ]);
+
+        $envelope = CoverageSidecarEnvelope::build(
+            coverageState: OpenApiCoverageTracker::exportState(),
+            strictRequiredState: StrictRequiredTracker::exportState(),
+            strictAdditionalPropertiesState: $tracker->exportStateOn(),
+        );
+        $this->assertSame(
+            CoverageSidecarEnvelope::ENVELOPE_VERSION_WITH_STRICT_ADDITIONAL_PROPERTIES,
+            $envelope['envelopeVersion'],
+        );
+
+        $parsed = CoverageSidecarEnvelope::parse($envelope);
+        $this->assertNotNull($parsed['strictAdditionalProperties']);
+
+        $imported = new StrictAdditionalPropertiesTracker();
+        $imported->importStateOn($parsed['strictAdditionalProperties']);
+        $this->assertSame(1, $imported->evaluationsOn());
+        $this->assertArrayHasKey('GET /v1/pets', $imported->getObservationsOn('petstore-3.0'));
     }
 
     #[Test]
