@@ -25,6 +25,7 @@ use RuntimeException;
 use UnitEnum;
 
 use function array_diff;
+use function array_filter;
 use function array_map;
 use function array_values;
 use function class_exists;
@@ -112,6 +113,13 @@ final class PublicApiInventory
         if ($parent !== false) {
             $traits = array_values(array_diff($traits, $parent->getTraitNames()));
         }
+        // Trait composition is an implementation detail unless the trait is
+        // itself public API: renaming or splitting an @internal trait must not
+        // read as a baseline change (#420).
+        $traits = array_values(array_filter(
+            $traits,
+            static fn(string $trait): bool => !self::isInternal((new ReflectionClass($trait))->getDocComment()),
+        ));
         sort($traits);
 
         $methods = [];

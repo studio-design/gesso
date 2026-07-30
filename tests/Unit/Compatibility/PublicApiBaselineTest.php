@@ -27,9 +27,10 @@ use Studio\Gesso\Fuzz\ContractCheckSkip;
 use Studio\Gesso\Fuzz\ContractCheckSummary;
 use Studio\Gesso\Fuzz\ExploredCase;
 use Studio\Gesso\Fuzz\OpenApiContractChecks;
-use Studio\Gesso\Fuzz\OpenApiSpecExploration;
 use Studio\Gesso\JsonValidationResultRenderer;
 use Studio\Gesso\Laravel\Commands\OpenApiRoutesCommand;
+use Studio\Gesso\Laravel\ExploresOpenApiEndpoint;
+use Studio\Gesso\Laravel\ValidatesOpenApiSchema;
 use Studio\Gesso\OpenApiResponseValidator;
 use Studio\Gesso\OpenApiValidationResult;
 use Studio\Gesso\Pest\Expectations;
@@ -40,6 +41,7 @@ use Studio\Gesso\SkipOpenApiResolver;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Tests\Helpers\PublicApiInventory;
 use Studio\Gesso\Tests\Unit\Compatibility\Fixture\PublicApiImplicitConstructorFixture;
+use Studio\Gesso\Tests\Unit\Compatibility\Fixture\PublicApiInternalTraitConsumerFixture;
 use Studio\Gesso\Tests\Unit\Compatibility\Fixture\PublicApiPrivateConstructorFixture;
 use Studio\Gesso\Tests\Unit\Compatibility\Fixture\PublicApiReturnTypeFixture;
 use Studio\Gesso\Tests\Unit\Compatibility\Fixture\PublicApiTraitSurfaceConsumerFixture;
@@ -93,6 +95,20 @@ final class PublicApiBaselineTest extends TestCase
         $this->assertFalse($privateConstructor['instantiable']);
         $this->assertSame('declared', $privateConstructor['constructor']['kind']);
         $this->assertSame('private', $privateConstructor['constructor']['visibility']);
+    }
+
+    #[Test]
+    public function inventory_omits_internal_traits_from_the_traits_list(): void
+    {
+        $inventory = PublicApiInventory::capture(
+            __DIR__ . '/Fixture',
+            'Studio\\Gesso\\Tests\\Unit\\Compatibility\\Fixture\\',
+        );
+
+        $this->assertSame(
+            [PublicApiTraitSurfaceFixture::class],
+            $inventory[PublicApiInternalTraitConsumerFixture::class]['traits'],
+        );
     }
 
     #[Test]
@@ -555,11 +571,11 @@ final class PublicApiBaselineTest extends TestCase
                 ],
             ],
         ];
-        // Shared operation selection was extracted from OpenApiSpecExploration
-        // into the @internal SelectsExploredOperations trait; the method
-        // surface is unchanged, but the composing class's trait list gains
-        // the trait name.
-        $expected[OpenApiSpecExploration::class]['traits'] = ['Studio\\Gesso\\Fuzz\\SelectsExploredOperations'];
+        // #420: @internal traits are an implementation detail and are no
+        // longer recorded in a consuming class's trait list. The v1.9 baseline
+        // still names them, so drop them from the expectation.
+        $expected[ExploresOpenApiEndpoint::class]['traits'] = [];
+        $expected[ValidatesOpenApiSchema::class]['traits'] = [];
 
         // New public symbols in v2.x (named contract checks): the
         // ContractCheck enum, its ContractCheckFailure/ContractCheckSkip
@@ -853,9 +869,7 @@ final class PublicApiBaselineTest extends TestCase
             ],
             'parent' => null,
             'interfaces' => [],
-            'traits' => [
-                'Studio\\Gesso\\Fuzz\\SelectsExploredOperations',
-            ],
+            'traits' => [],
             'attributes' => [],
             'backing_type' => null,
             'cases' => [],
