@@ -249,6 +249,136 @@ final class OpenApiSpecLoaderRemoteSpecsTest extends TestCase
     }
 
     #[Test]
+    public function load_does_not_send_authorization_on_scheme_downgrade(): void
+    {
+        putenv(self::AUTH_ENV . '=Bearer secret-token');
+
+        $downgradeUrl = 'http://specs.example.com/private.json';
+        $entry = json_encode([
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'Remote API', 'version' => '1'],
+            'paths' => [],
+            'components' => ['schemas' => ['Private' => ['$ref' => $downgradeUrl]]],
+        ], JSON_THROW_ON_ERROR);
+
+        $downgradeAuthorization = null;
+        $client = new FakeHttpClient([
+            self::ENTRY_URL => FakeHttpClient::jsonResponse($entry),
+            $downgradeUrl => static function (RequestInterface $request) use (&$downgradeAuthorization) {
+                $downgradeAuthorization = $request->getHeaderLine('Authorization');
+
+                return FakeHttpClient::jsonResponse('{"type":"object"}');
+            },
+        ]);
+        self::configureRemote($client, [
+            'api' => new RemoteSpecSource(self::ENTRY_URL, authorizationEnv: self::AUTH_ENV),
+        ]);
+
+        OpenApiSpecLoader::load('api');
+
+        $this->assertSame('', $downgradeAuthorization);
+    }
+
+    #[Test]
+    public function load_does_not_send_authorization_to_other_ports(): void
+    {
+        putenv(self::AUTH_ENV . '=Bearer secret-token');
+
+        $otherPortUrl = 'https://specs.example.com:8443/private.json';
+        $entry = json_encode([
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'Remote API', 'version' => '1'],
+            'paths' => [],
+            'components' => ['schemas' => ['Private' => ['$ref' => $otherPortUrl]]],
+        ], JSON_THROW_ON_ERROR);
+
+        $otherPortAuthorization = null;
+        $client = new FakeHttpClient([
+            self::ENTRY_URL => FakeHttpClient::jsonResponse($entry),
+            $otherPortUrl => static function (RequestInterface $request) use (&$otherPortAuthorization) {
+                $otherPortAuthorization = $request->getHeaderLine('Authorization');
+
+                return FakeHttpClient::jsonResponse('{"type":"object"}');
+            },
+        ]);
+        self::configureRemote($client, [
+            'api' => new RemoteSpecSource(self::ENTRY_URL, authorizationEnv: self::AUTH_ENV),
+        ]);
+
+        OpenApiSpecLoader::load('api');
+
+        $this->assertSame('', $otherPortAuthorization);
+    }
+
+    #[Test]
+    public function load_sends_authorization_when_ref_spells_out_the_default_port(): void
+    {
+        putenv(self::AUTH_ENV . '=Bearer secret-token');
+
+        $explicitPortUrl = 'https://specs.example.com:443/pet.json';
+        $entry = json_encode([
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'Remote API', 'version' => '1'],
+            'paths' => [],
+            'components' => ['schemas' => ['Pet' => ['$ref' => $explicitPortUrl]]],
+        ], JSON_THROW_ON_ERROR);
+
+        $explicitPortAuthorization = null;
+        $client = new FakeHttpClient([
+            self::ENTRY_URL => FakeHttpClient::jsonResponse($entry),
+            // PSR-7 URI normalization drops the default port from the wire
+            // request, so the mock is keyed on the normalized form.
+            'https://specs.example.com/pet.json' => static function (RequestInterface $request) use (&$explicitPortAuthorization) {
+                $explicitPortAuthorization = $request->getHeaderLine('Authorization');
+
+                return FakeHttpClient::jsonResponse('{"type":"object"}');
+            },
+        ]);
+        self::configureRemote($client, [
+            'api' => new RemoteSpecSource(self::ENTRY_URL, authorizationEnv: self::AUTH_ENV),
+        ]);
+
+        OpenApiSpecLoader::load('api');
+
+        $this->assertSame('Bearer secret-token', $explicitPortAuthorization);
+    }
+
+    #[Test]
+    public function load_reuses_the_verified_entry_document_for_self_refs(): void
+    {
+        $pinnedBody = (string) json_encode([
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'Pinned API', 'version' => '1'],
+            'paths' => [],
+            'components' => ['schemas' => [
+                'Base' => ['type' => 'object'],
+                'Self' => ['$ref' => self::ENTRY_URL . '#/components/schemas/Base'],
+            ]],
+        ], JSON_THROW_ON_ERROR);
+
+        $fetches = 0;
+        $client = new FakeHttpClient([
+            self::ENTRY_URL => static function () use (&$fetches, $pinnedBody) {
+                $fetches++;
+
+                // A second fetch would bypass the SHA-256 pin: serve
+                // different bytes so a refetch cannot pass unnoticed.
+                return FakeHttpClient::jsonResponse(
+                    $fetches === 1 ? $pinnedBody : '{"type":"string","x-tampered":true}',
+                );
+            },
+        ]);
+        self::configureRemote($client, [
+            'api' => new RemoteSpecSource(self::ENTRY_URL, expectedSha256: hash('sha256', $pinnedBody)),
+        ]);
+
+        $spec = OpenApiSpecLoader::load('api');
+
+        $this->assertSame(1, $fetches);
+        $this->assertSame(['type' => 'object'], $spec['components']['schemas']['Self']);
+    }
+
+    #[Test]
     public function load_throws_when_authorization_env_is_missing(): void
     {
         $client = new FakeHttpClient();

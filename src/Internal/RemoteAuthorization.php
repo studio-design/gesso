@@ -4,14 +4,23 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Internal;
 
+use Psr\Http\Message\UriInterface;
+use Studio\Gesso\Spec\RemoteSpecSource;
+
+use function parse_url;
+use function strtolower;
+
 /**
- * An `Authorization` header value scoped to a single host.
+ * An `Authorization` header value scoped to a single web origin.
  *
  * Created when a remote spec source declares `authorizationEnv`. The scope
- * is the entry document's host: nested `$ref` fetches to the same host
- * (relative refs, same-host absolute refs) carry the credential, while a
- * cross-host `$ref` — even to another allowlisted host — never does. This
- * keeps a registry credential from leaking to unrelated servers.
+ * is the entry document's origin — scheme, host, and effective port per
+ * RFC 6454 — so nested `$ref` fetches back to the same origin (relative
+ * refs, same-origin absolute refs) carry the credential, while any other
+ * target never does: not a cross-host ref (even to an allowlisted host),
+ * not another port on the same host, and not an `http://` downgrade of an
+ * `https://` entry document, which would put the credential on the wire in
+ * plaintext.
  *
  * The header value is never embedded in diagnostics; exception messages
  * carry only URLs (already redacted by {@see HttpRefLoader}).
@@ -20,14 +29,42 @@ namespace Studio\Gesso\Internal;
  */
 final readonly class RemoteAuthorization
 {
-    /** @param string $normalizedHost pre-normalized via {@see HttpRefLoader::normalizeHost()} */
-    public function __construct(
+    private function __construct(
         public string $headerValue,
-        public string $normalizedHost,
+        private string $scheme,
+        private string $normalizedHost,
+        private int $effectivePort,
     ) {}
 
-    public function appliesToHost(string $host): bool
+    /**
+     * `$url` must be an absolute `http://` / `https://` URL with a host —
+     * {@see RemoteSpecSource} validates this before the
+     * loader constructs the scope.
+     */
+    public static function forUrl(string $headerValue, string $url): self
     {
-        return HttpRefLoader::normalizeHost($host) === $this->normalizedHost;
+        $parts = parse_url($url);
+        $scheme = strtolower((string) ($parts['scheme'] ?? ''));
+
+        return new self(
+            $headerValue,
+            $scheme,
+            HttpRefLoader::normalizeHost((string) ($parts['host'] ?? '')),
+            $parts['port'] ?? self::defaultPort($scheme),
+        );
+    }
+
+    public function appliesToUri(UriInterface $uri): bool
+    {
+        $scheme = strtolower($uri->getScheme());
+
+        return $scheme === $this->scheme &&
+            HttpRefLoader::normalizeHost($uri->getHost()) === $this->normalizedHost &&
+            ($uri->getPort() ?? self::defaultPort($scheme)) === $this->effectivePort;
+    }
+
+    private static function defaultPort(string $scheme): int
+    {
+        return $scheme === 'http' ? 80 : 443;
     }
 }

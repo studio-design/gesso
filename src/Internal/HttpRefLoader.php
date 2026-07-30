@@ -67,8 +67,9 @@ final class HttpRefLoader
      *
      * @param array<string, array<string, mixed>> $documentCache by-ref cache keyed by canonical URL
      * @param list<string> $allowedRemoteRefHosts exact normalized or user-provided host allowlist
-     * @param null|RemoteAuthorization $authorization host-scoped `Authorization` header; only sent
-     *                                                when the request host matches its scope
+     * @param null|RemoteAuthorization $authorization origin-scoped `Authorization` header; only sent
+     *                                                when the request's scheme, host, and effective
+     *                                                port all match its scope
      * @param null|string $expectedSha256 lowercase hex SHA-256 pin verified against the raw
      *                                    response body before decoding
      *
@@ -99,7 +100,7 @@ final class HttpRefLoader
             return new LoadedDocument($canonicalUri, $documentCache[$canonicalUri]);
         }
 
-        if ($authorization !== null && $authorization->appliesToHost($request->getUri()->getHost())) {
+        if ($authorization !== null && $authorization->appliesToUri($request->getUri())) {
             $request = $request->withHeader('Authorization', $authorization->headerValue);
         }
 

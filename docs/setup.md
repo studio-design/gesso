@@ -769,10 +769,13 @@ Rules and behavior:
   `token …`, `Basic …` — whatever the registry expects). A missing or empty
   variable fails loudly with reason `RemoteSpecAuthEnvMissing` before any
   request is sent. The value itself never appears in diagnostics.
-- **Credentials are host-scoped.** The header is sent to the entry document's
-  host only: relative `$ref`s (which resolve against the entry URL per RFC
-  3986) and same-host absolute `$ref`s carry it; a cross-host `$ref` — even
-  to another allowlisted host — never does.
+- **Credentials are origin-scoped.** The header is sent to the entry
+  document's origin only — same scheme, host, and effective port (RFC 6454).
+  Relative `$ref`s (which resolve against the entry URL per RFC 3986) and
+  same-origin absolute `$ref`s carry it; anything else never does: not a
+  cross-host `$ref` (even to another allowlisted host), not another port on
+  the same host, and not an `http://` downgrade of an `https://` entry
+  document.
 - **A mapped name never touches the filesystem.** If `front` is in
   `remoteSpecs`, `openapi/front.json` is ignored for that name.
 - **Fetched once per process.** The resolved document is cached under its

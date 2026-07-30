@@ -436,8 +436,7 @@ final class OpenApiSpecLoader
                 );
             }
 
-            $host = (string) parse_url($source->url, PHP_URL_HOST);
-            $authorization = new RemoteAuthorization(trim($headerValue), HttpRefLoader::normalizeHost($host));
+            $authorization = RemoteAuthorization::forUrl(trim($headerValue), $source->url);
         }
 
         $documentCache = [];
@@ -471,6 +470,11 @@ final class OpenApiSpecLoader
                     self::$maxRemoteRefBytes,
                     [self::getBasePath()],
                     $authorization,
+                    // Seed the resolver with the pin-verified entry bytes so a
+                    // $ref back to the entry URL reuses them instead of
+                    // refetching — a second response would bypass the
+                    // expectedSha256 check.
+                    $documentCache,
                 ),
             );
         } catch (InvalidOpenApiSpecException $e) {

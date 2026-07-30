@@ -138,6 +138,9 @@ final class OpenApiRefResolver
      * @param list<string> $allowedRemoteRefHosts exact hosts allowed for HTTP(S) refs
      * @param int $maxRemoteRefBytes maximum response bytes read per remote document; must be positive
      * @param list<string> $allowedLocalRefRoots canonical filesystem roots local refs may read from
+     * @param array<string, array<string, mixed>> $preloadedDocuments already-verified external
+     *                                                                documents keyed by canonical identifier; seeds the
+     *                                                                per-resolution cache so refs to them never refetch
      *
      * @return array<string, mixed>
      *
@@ -153,6 +156,7 @@ final class OpenApiRefResolver
         int $maxRemoteRefBytes = OpenApiSpecLoader::DEFAULT_MAX_REMOTE_REF_BYTES,
         array $allowedLocalRefRoots = [],
         ?RemoteAuthorization $remoteAuthorization = null,
+        array $preloadedDocuments = [],
     ): array {
         // OpenApiSpecLoader::configure() catches this earlier with an
         // InvalidArgumentException; this guard is for callers that
@@ -200,8 +204,11 @@ final class OpenApiRefResolver
         // copy-on-write keeps it untouched as we mutate $spec via $node refs.
         $root = $spec;
         // Per-resolution external file/URL cache, keyed by canonical absolute
-        // path or canonical URL. Sibling refs into the same target decode it once.
-        $documentCache = [];
+        // path or canonical URL. Sibling refs into the same target decode it
+        // once. Callers may seed it with already-verified documents (the
+        // remote entry document and its SHA-256 pin) so a ref back to a
+        // seeded identifier never triggers an unverified refetch.
+        $documentCache = $preloadedDocuments;
         self::walk($spec, $root, [], false, $context, $documentCache);
 
         return $spec;
