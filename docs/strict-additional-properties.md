@@ -46,7 +46,9 @@ schema:
 
 - exact names in `properties` are declared;
 - names matching `patternProperties` are declared;
-- `allOf` branches are merged into the same effective view;
+- `allOf` branches contribute declarations independently. A name matched by
+  `properties` or `patternProperties` in one branch does not suppress a
+  schema-form `additionalProperties` that applies in another branch;
 - an explicit `additionalProperties` keyword means the object intentionally
   documents its open/closed policy, so the dynamic property itself is not
   reported;

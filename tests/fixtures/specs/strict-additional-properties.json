@@ -218,6 +218,38 @@
         }
       }
     },
+    "/all-of-open-schema": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Composed object with a branch-local open schema",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "payload": {"type": "object"}
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "object",
+                        "properties": {
+                          "id": {"type": "string"}
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/closed": {
       "get": {
         "responses": {

@@ -109,6 +109,40 @@ final class StrictAdditionalPropertiesInspectorTest extends TestCase
     }
 
     #[Test]
+    public function all_of_open_schemas_apply_per_branch_when_another_branch_declares_the_property(): void
+    {
+        foreach ([
+            'properties' => ['payload' => ['type' => 'object']],
+            'patternProperties' => ['^payload$' => ['type' => 'object']],
+        ] as $keyword => $declaration) {
+            $this->assertSame(
+                [],
+                StrictAdditionalPropertiesInspector::inspect(
+                    ['payload' => ['id' => '1']],
+                    [
+                        'allOf' => [
+                            [
+                                'type' => 'object',
+                                $keyword => $declaration,
+                            ],
+                            [
+                                'type' => 'object',
+                                'additionalProperties' => [
+                                    'type' => 'object',
+                                    'properties' => [
+                                        'id' => ['type' => 'string'],
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ),
+                $keyword,
+            );
+        }
+    }
+
+    #[Test]
     public function explicit_open_keywords_suppress_the_dynamic_property_but_typed_maps_are_walked(): void
     {
         $schema = [

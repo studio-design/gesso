@@ -148,6 +148,23 @@ final class StrictAdditionalPropertiesValidatorIntegrationTest extends TestCase
     }
 
     #[Test]
+    public function all_of_open_schemas_are_applied_per_branch(): void
+    {
+        $result = $this->validator->validate(
+            'strict-additional-properties',
+            'GET',
+            '/all-of-open-schema',
+            200,
+            ['payload' => ['id' => '1']],
+            'application/json',
+        );
+
+        $this->assertTrue($result->isValid());
+        $this->assertSame([], StrictAdditionalPropertiesAsserter::detectAll($this->tracker));
+        $this->assertSame(1, $this->tracker->evaluationsOn());
+    }
+
+    #[Test]
     public function conformance_failures_do_not_contribute_to_the_tracker(): void
     {
         $result = $this->validator->validate(

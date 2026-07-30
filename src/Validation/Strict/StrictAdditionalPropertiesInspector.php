@@ -29,6 +29,10 @@ use function str_replace;
  *     schema: array<string, mixed>,
  *     dialect: string
  * }
+ * @phpstan-type PropertySelection array{
+ *     documented: bool,
+ *     schemas: list<InspectedSchema>
+ * }
  *
  * @internal Used on the successful response-validation path.
  */
@@ -119,35 +123,6 @@ final class StrictAdditionalPropertiesInspector
             return;
         }
 
-        $properties = [];
-        $patterns = [];
-        $openSchemas = [];
-        $hasExplicitOpenKeyword = false;
-        foreach ($schemas as $inspectedSchema) {
-            foreach (self::collectProperties($inspectedSchema, $honorSchemaDialectOverride) as $name => $children) {
-                $properties[$name] ??= [];
-                foreach ($children as $childSchema) {
-                    $properties[$name][] = $childSchema;
-                }
-            }
-            foreach (self::collectPatternProperties($inspectedSchema, $honorSchemaDialectOverride) as $pattern => $children) {
-                $patterns[$pattern] ??= [];
-                foreach ($children as $childSchema) {
-                    $patterns[$pattern][] = $childSchema;
-                }
-            }
-            foreach (self::collectOpenSchemas($inspectedSchema, $honorSchemaDialectOverride) as $openSchema) {
-                $openSchemas[] = $openSchema;
-            }
-            if (self::hasExplicitOpenKeyword(
-                $inspectedSchema['schema'],
-                $inspectedSchema['dialect'],
-                $honorSchemaDialectOverride,
-            )) {
-                $hasExplicitOpenKeyword = true;
-            }
-        }
-
         foreach ($value as $propertyName => $child) {
             if (!is_string($propertyName)) {
                 $propertyName = (string) $propertyName;
@@ -155,39 +130,23 @@ final class StrictAdditionalPropertiesInspector
             $propertyPointer = self::appendProperty($pointer, $propertyName);
 
             $childSchemas = [];
-            $declared = array_key_exists($propertyName, $properties);
-            if ($declared) {
-                foreach ($properties[$propertyName] as $propertySchema) {
-                    $childSchemas[] = $propertySchema;
+            $documented = false;
+            foreach ($schemas as $inspectedSchema) {
+                $selection = self::selectPropertySchemas(
+                    $inspectedSchema,
+                    $propertyName,
+                    $honorSchemaDialectOverride,
+                );
+                if ($selection['documented']) {
+                    $documented = true;
                 }
-            }
-            foreach ($patterns as $pattern => $patternSchemas) {
-                if (!is_string($pattern)) {
-                    $pattern = (string) $pattern;
-                }
-                if (self::patternMatches($pattern, $propertyName)) {
-                    $declared = true;
-                    foreach ($patternSchemas as $patternSchema) {
-                        $childSchemas[] = $patternSchema;
-                    }
+                foreach ($selection['schemas'] as $childSchema) {
+                    $childSchemas[] = $childSchema;
                 }
             }
 
-            if (!$declared) {
-                if (!$hasExplicitOpenKeyword) {
-                    $findings[$propertyPointer] = $propertyName;
-
-                    continue;
-                }
-                if ($openSchemas !== []) {
-                    self::walk(
-                        $child,
-                        $openSchemas,
-                        $propertyPointer,
-                        $findings,
-                        $honorSchemaDialectOverride,
-                    );
-                }
+            if (!$documented) {
+                $findings[$propertyPointer] = $propertyName;
 
                 continue;
             }
@@ -260,67 +219,47 @@ final class StrictAdditionalPropertiesInspector
     }
 
     /**
+     * Select every child schema that applies to one property at this schema
+     * location and at each allOf branch below it.
+     *
      * @param InspectedSchema $inspectedSchema
      *
-     * @return array<array-key, list<InspectedSchema>>
+     * @return PropertySelection
      */
-    private static function collectProperties(
+    private static function selectPropertySchemas(
         array $inspectedSchema,
+        string $propertyName,
         bool $honorSchemaDialectOverride,
     ): array {
-        $out = [];
+        $schemas = [];
         $schema = $inspectedSchema['schema'];
         $dialect = $inspectedSchema['dialect'];
+        $matchedHere = false;
+
         $properties = $schema['properties'] ?? null;
-        if (is_array($properties)) {
-            foreach ($properties as $name => $child) {
-                if (!is_string($name)) {
-                    $name = (string) $name;
-                }
-                $out[$name] ??= [];
-                if (is_array($child)) {
-                    $out[$name][] = self::schemaContext(
-                        $child,
-                        $dialect,
-                        $honorSchemaDialectOverride,
-                    );
-                }
-            }
-        }
-        foreach (self::allOfBranches($schema) as $branch) {
-            $branchContext = self::schemaContext($branch, $dialect, $honorSchemaDialectOverride);
-            foreach (self::collectProperties($branchContext, $honorSchemaDialectOverride) as $name => $children) {
-                $out[$name] ??= [];
-                foreach ($children as $child) {
-                    $out[$name][] = $child;
-                }
+        if (is_array($properties) && array_key_exists($propertyName, $properties)) {
+            $matchedHere = true;
+            if (is_array($properties[$propertyName])) {
+                $schemas[] = self::schemaContext(
+                    $properties[$propertyName],
+                    $dialect,
+                    $honorSchemaDialectOverride,
+                );
             }
         }
 
-        return $out;
-    }
-
-    /**
-     * @param InspectedSchema $inspectedSchema
-     *
-     * @return array<array-key, list<InspectedSchema>>
-     */
-    private static function collectPatternProperties(
-        array $inspectedSchema,
-        bool $honorSchemaDialectOverride,
-    ): array {
-        $out = [];
-        $schema = $inspectedSchema['schema'];
-        $dialect = $inspectedSchema['dialect'];
         $patterns = $schema['patternProperties'] ?? null;
         if (is_array($patterns)) {
             foreach ($patterns as $pattern => $child) {
                 if (!is_string($pattern)) {
                     $pattern = (string) $pattern;
                 }
-                $out[$pattern] ??= [];
+                if (!self::patternMatches($pattern, $propertyName)) {
+                    continue;
+                }
+                $matchedHere = true;
                 if (is_array($child)) {
-                    $out[$pattern][] = self::schemaContext(
+                    $schemas[] = self::schemaContext(
                         $child,
                         $dialect,
                         $honorSchemaDialectOverride,
@@ -328,64 +267,30 @@ final class StrictAdditionalPropertiesInspector
                 }
             }
         }
+
+        $documentedByBranch = false;
         foreach (self::allOfBranches($schema) as $branch) {
-            $branchContext = self::schemaContext($branch, $dialect, $honorSchemaDialectOverride);
-            foreach (self::collectPatternProperties($branchContext, $honorSchemaDialectOverride) as $pattern => $children) {
-                $out[$pattern] ??= [];
-                foreach ($children as $child) {
-                    $out[$pattern][] = $child;
-                }
+            $selection = self::selectPropertySchemas(
+                self::schemaContext($branch, $dialect, $honorSchemaDialectOverride),
+                $propertyName,
+                $honorSchemaDialectOverride,
+            );
+            if ($selection['documented']) {
+                $documentedByBranch = true;
+            }
+            foreach ($selection['schemas'] as $child) {
+                $schemas[] = $child;
             }
         }
-
-        return $out;
-    }
-
-    /**
-     * @param array<string, mixed> $schema
-     */
-    private static function hasExplicitOpenKeyword(
-        array $schema,
-        string $inheritedDialect,
-        bool $honorSchemaDialectOverride,
-    ): bool {
-        $dialect = self::effectiveDialect($schema, $inheritedDialect, $honorSchemaDialectOverride);
-        if (
-            array_key_exists('additionalProperties', $schema) ||
-            (self::supportsUnevaluatedProperties($dialect) && array_key_exists('unevaluatedProperties', $schema))
-        ) {
-            return true;
-        }
-        foreach (self::allOfBranches($schema) as $branch) {
-            if (self::hasExplicitOpenKeyword($branch, $dialect, $honorSchemaDialectOverride)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * Return schema-form open-property declarations with their dialects.
-     *
-     * @param InspectedSchema $inspectedSchema
-     *
-     * @return list<InspectedSchema>
-     */
-    private static function collectOpenSchemas(
-        array $inspectedSchema,
-        bool $honorSchemaDialectOverride,
-    ): array {
-        $schemas = [];
-        $schema = $inspectedSchema['schema'];
-        $dialect = $inspectedSchema['dialect'];
 
         // additionalProperties evaluates every property that was not matched
         // by properties/patternProperties at this schema location. Therefore
         // unevaluatedProperties at the same location must not be reapplied to
         // that property, regardless of whether additionalProperties is a
         // boolean or schema form.
-        if (array_key_exists('additionalProperties', $schema)) {
+        $documentedByOpenKeyword = false;
+        if (!$matchedHere && array_key_exists('additionalProperties', $schema)) {
+            $documentedByOpenKeyword = true;
             if (is_array($schema['additionalProperties'])) {
                 $schemas[] = self::schemaContext(
                     $schema['additionalProperties'],
@@ -394,24 +299,25 @@ final class StrictAdditionalPropertiesInspector
                 );
             }
         } elseif (
+            !$matchedHere &&
+            !$documentedByBranch &&
             self::supportsUnevaluatedProperties($dialect) &&
-            isset($schema['unevaluatedProperties']) &&
-            is_array($schema['unevaluatedProperties'])
+            array_key_exists('unevaluatedProperties', $schema)
         ) {
-            $schemas[] = self::schemaContext(
-                $schema['unevaluatedProperties'],
-                $dialect,
-                $honorSchemaDialectOverride,
-            );
-        }
-        foreach (self::allOfBranches($schema) as $branch) {
-            $branchContext = self::schemaContext($branch, $dialect, $honorSchemaDialectOverride);
-            foreach (self::collectOpenSchemas($branchContext, $honorSchemaDialectOverride) as $child) {
-                $schemas[] = $child;
+            $documentedByOpenKeyword = true;
+            if (is_array($schema['unevaluatedProperties'])) {
+                $schemas[] = self::schemaContext(
+                    $schema['unevaluatedProperties'],
+                    $dialect,
+                    $honorSchemaDialectOverride,
+                );
             }
         }
 
-        return $schemas;
+        return [
+            'documented' => $matchedHere || $documentedByBranch || $documentedByOpenKeyword,
+            'schemas' => $schemas,
+        ];
     }
 
     /**
