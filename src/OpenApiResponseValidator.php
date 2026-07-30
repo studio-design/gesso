@@ -474,6 +474,7 @@ final class OpenApiResponseValidator
                 $bodyResult->matchedContentType,
                 $body->value,
                 $version,
+                $jsonSchemaDialect,
             );
 
             return OpenApiValidationResult::success(
@@ -607,6 +608,7 @@ final class OpenApiResponseValidator
         ?string $matchedContentType,
         mixed $responseBody,
         OpenApiVersion $version,
+        string $jsonSchemaDialect,
     ): void {
         $contentTypeKey = $matchedContentType ?? StrictAdditionalPropertiesTracker::ANY_CONTENT_TYPE;
         $schema = $matchedContentType === null
@@ -619,7 +621,8 @@ final class OpenApiResponseValidator
         $findings = StrictAdditionalPropertiesInspector::inspect(
             $responseBody,
             $schema,
-            supportsUnevaluatedProperties: $version !== OpenApiVersion::V3_0,
+            jsonSchemaDialect: $jsonSchemaDialect,
+            honorSchemaDialectOverride: $version !== OpenApiVersion::V3_0,
         );
 
         try {

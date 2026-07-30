@@ -1,0 +1,51 @@
+{
+  "openapi": "3.1.0",
+  "jsonSchemaDialect": "http://json-schema.org/draft-07/schema#",
+  "info": {
+    "title": "Strict additional properties Draft 07 fixture",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/document-dialect": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Document-level Draft 07",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {"type": "string"}
+                  },
+                  "unevaluatedProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/local-2020-12": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Local 2020-12 override",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "type": "object",
+                  "properties": {
+                    "id": {"type": "string"}
+                  },
+                  "unevaluatedProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

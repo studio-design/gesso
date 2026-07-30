@@ -115,6 +115,27 @@
         }
       }
     },
+    "/local-draft-07": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Local Draft 07 override",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "http://json-schema.org/draft-07/schema#",
+                  "type": "object",
+                  "properties": {
+                    "id": {"type": "string"}
+                  },
+                  "unevaluatedProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/typed-map": {
       "get": {
         "responses": {

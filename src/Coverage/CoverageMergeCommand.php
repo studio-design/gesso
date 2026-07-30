@@ -329,6 +329,15 @@ final class CoverageMergeCommand
                 return 1;
             }
 
+            if ($strictAdditionalPropertiesMode === StrictAdditionalPropertiesMode::Fail) {
+                $this->writeStderr(sprintf(
+                    "[OpenAPI Strict Additional Properties] FATAL: no sidecars were found in %s; strict additional-properties evaluation cannot be completed.\n",
+                    $sidecarDir,
+                ));
+
+                return 1;
+            }
+
             // Strict-mode gate must fail-fast even before sidecars exist —
             // otherwise a misconfigured paratest dir or zero workers would
             // silently pass an opt-in CI gate (issue #135 review C2).

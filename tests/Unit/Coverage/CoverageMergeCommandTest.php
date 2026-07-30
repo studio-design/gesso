@@ -1873,6 +1873,29 @@ class CoverageMergeCommandTest extends TestCase
     }
 
     #[Test]
+    public function strict_additional_properties_fail_exits_one_when_no_sidecars_exist(): void
+    {
+        $stderr = '';
+        $command = new CoverageMergeCommand(
+            stdoutWriter: static fn(string $message): null => null,
+            stderrWriter: static function (string $message) use (&$stderr): void {
+                $stderr .= $message;
+            },
+        );
+
+        $exit = $command->run([
+            'sidecar_dir' => $this->sidecarDir,
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => ['strict-additional-properties'],
+            'strict_additional_properties' => 'fail',
+        ]);
+
+        $this->assertSame(1, $exit);
+        $this->assertStringContainsString('[OpenAPI Strict Additional Properties] FATAL', $stderr);
+        $this->assertStringContainsString('no sidecars were found', $stderr);
+    }
+
+    #[Test]
     public function exits_one_when_merged_baseline_write_fails(): void
     {
         $this->writeBaselineWorkerSidecar('1', [

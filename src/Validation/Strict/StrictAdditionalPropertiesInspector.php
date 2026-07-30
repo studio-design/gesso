@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Studio\Gesso\Validation\Strict;
 
 use stdClass;
+use Studio\Gesso\Spec\OpenApiSchemaDialect;
 
 use function array_is_list;
 use function array_key_exists;
@@ -37,10 +38,18 @@ final class StrictAdditionalPropertiesInspector
     public static function inspect(
         mixed $body,
         array $schema,
-        bool $supportsUnevaluatedProperties = true,
+        string $jsonSchemaDialect = OpenApiSchemaDialect::OAS_3_1,
+        bool $honorSchemaDialectOverride = true,
     ): array {
         $findings = [];
-        self::walk($body, $schema, '', $findings, $supportsUnevaluatedProperties);
+        self::walk(
+            $body,
+            $schema,
+            '',
+            $findings,
+            $jsonSchemaDialect,
+            $honorSchemaDialectOverride,
+        );
         ksort($findings);
 
         return $findings;
@@ -55,7 +64,8 @@ final class StrictAdditionalPropertiesInspector
         array $schema,
         string $pointer,
         array &$findings,
-        bool $supportsUnevaluatedProperties,
+        string $inheritedDialect,
+        bool $honorSchemaDialectOverride,
     ): void {
         if ($value instanceof stdClass) {
             $value = (array) $value;
@@ -64,10 +74,17 @@ final class StrictAdditionalPropertiesInspector
             return;
         }
 
+        $dialect = self::effectiveDialect($schema, $inheritedDialect, $honorSchemaDialectOverride);
+
         // There is no safe branch-selection rule here without running a
         // second JSON Schema evaluation and retaining its winning branch.
-        // Stay conservative: disjunction-shaped nodes produce no finding.
-        if (self::hasDisjunction($schema)) {
+        // Stay conservative: disjunction-shaped and conditional nodes produce
+        // no finding. The latter includes dependentSchemas because selecting
+        // its active subschemas depends on the current instance.
+        if (
+            self::hasDisjunction($schema) ||
+            self::hasConditionalApplicator($schema, $dialect, $honorSchemaDialectOverride)
+        ) {
             return;
         }
 
@@ -77,7 +94,14 @@ final class StrictAdditionalPropertiesInspector
                 return;
             }
             foreach ($value as $element) {
-                self::walk($element, $items, $pointer . '[*]', $findings, $supportsUnevaluatedProperties);
+                self::walk(
+                    $element,
+                    $items,
+                    $pointer . '[*]',
+                    $findings,
+                    $dialect,
+                    $honorSchemaDialectOverride,
+                );
             }
 
             return;
@@ -85,8 +109,12 @@ final class StrictAdditionalPropertiesInspector
 
         $properties = self::collectProperties($schema);
         $patterns = self::collectPatternProperties($schema);
-        $openSchema = self::collectOpenSchema($schema, $supportsUnevaluatedProperties);
-        $hasExplicitOpenKeyword = self::hasExplicitOpenKeyword($schema, $supportsUnevaluatedProperties);
+        $openSchema = self::collectOpenSchema($schema, $dialect, $honorSchemaDialectOverride);
+        $hasExplicitOpenKeyword = self::hasExplicitOpenKeyword(
+            $schema,
+            $dialect,
+            $honorSchemaDialectOverride,
+        );
 
         foreach ($value as $propertyName => $child) {
             if (!is_string($propertyName)) {
@@ -117,7 +145,14 @@ final class StrictAdditionalPropertiesInspector
                     continue;
                 }
                 if ($openSchema !== null) {
-                    self::walk($child, $openSchema, $propertyPointer, $findings, $supportsUnevaluatedProperties);
+                    self::walk(
+                        $child,
+                        $openSchema,
+                        $propertyPointer,
+                        $findings,
+                        $dialect,
+                        $honorSchemaDialectOverride,
+                    );
                 }
 
                 continue;
@@ -134,7 +169,8 @@ final class StrictAdditionalPropertiesInspector
                 self::combineSchemas($childSchemas),
                 $propertyPointer,
                 $findings,
-                $supportsUnevaluatedProperties,
+                $dialect,
+                $honorSchemaDialectOverride,
             );
         }
     }
@@ -146,6 +182,37 @@ final class StrictAdditionalPropertiesInspector
     {
         return (isset($schema['anyOf']) && is_array($schema['anyOf'])) ||
             (isset($schema['oneOf']) && is_array($schema['oneOf']));
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     */
+    private static function hasConditionalApplicator(
+        array $schema,
+        string $inheritedDialect,
+        bool $honorSchemaDialectOverride,
+    ): bool {
+        $dialect = self::effectiveDialect($schema, $inheritedDialect, $honorSchemaDialectOverride);
+        if (
+            self::supportsIfThenElse($dialect) &&
+            (
+                array_key_exists('if', $schema) ||
+                array_key_exists('then', $schema) ||
+                array_key_exists('else', $schema)
+            )
+        ) {
+            return true;
+        }
+        if (self::supportsUnevaluatedProperties($dialect) && array_key_exists('dependentSchemas', $schema)) {
+            return true;
+        }
+        foreach (self::allOfBranches($schema) as $branch) {
+            if (self::hasConditionalApplicator($branch, $dialect, $honorSchemaDialectOverride)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -217,16 +284,18 @@ final class StrictAdditionalPropertiesInspector
      */
     private static function hasExplicitOpenKeyword(
         array $schema,
-        bool $supportsUnevaluatedProperties,
+        string $inheritedDialect,
+        bool $honorSchemaDialectOverride,
     ): bool {
+        $dialect = self::effectiveDialect($schema, $inheritedDialect, $honorSchemaDialectOverride);
         if (
             array_key_exists('additionalProperties', $schema) ||
-            ($supportsUnevaluatedProperties && array_key_exists('unevaluatedProperties', $schema))
+            (self::supportsUnevaluatedProperties($dialect) && array_key_exists('unevaluatedProperties', $schema))
         ) {
             return true;
         }
         foreach (self::allOfBranches($schema) as $branch) {
-            if (self::hasExplicitOpenKeyword($branch, $supportsUnevaluatedProperties)) {
+            if (self::hasExplicitOpenKeyword($branch, $dialect, $honorSchemaDialectOverride)) {
                 return true;
             }
         }
@@ -243,25 +312,80 @@ final class StrictAdditionalPropertiesInspector
      */
     private static function collectOpenSchema(
         array $schema,
-        bool $supportsUnevaluatedProperties,
+        string $inheritedDialect,
+        bool $honorSchemaDialectOverride,
     ): ?array {
         $schemas = [];
-        $keywords = $supportsUnevaluatedProperties
-            ? ['additionalProperties', 'unevaluatedProperties']
-            : ['additionalProperties'];
-        foreach ($keywords as $keyword) {
-            if (isset($schema[$keyword]) && is_array($schema[$keyword])) {
-                $schemas[] = $schema[$keyword];
+        $dialect = self::effectiveDialect($schema, $inheritedDialect, $honorSchemaDialectOverride);
+
+        // additionalProperties evaluates every property that was not matched
+        // by properties/patternProperties at this schema location. Therefore
+        // unevaluatedProperties at the same location must not be reapplied to
+        // that property, regardless of whether additionalProperties is a
+        // boolean or schema form.
+        if (array_key_exists('additionalProperties', $schema)) {
+            if (is_array($schema['additionalProperties'])) {
+                $schemas[] = $schema['additionalProperties'];
             }
+        } elseif (
+            self::supportsUnevaluatedProperties($dialect) &&
+            isset($schema['unevaluatedProperties']) &&
+            is_array($schema['unevaluatedProperties'])
+        ) {
+            $schemas[] = $schema['unevaluatedProperties'];
         }
         foreach (self::allOfBranches($schema) as $branch) {
-            $child = self::collectOpenSchema($branch, $supportsUnevaluatedProperties);
+            $child = self::collectOpenSchema($branch, $dialect, $honorSchemaDialectOverride);
             if ($child !== null) {
                 $schemas[] = $child;
             }
         }
 
         return $schemas === [] ? null : self::combineSchemas($schemas);
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     */
+    private static function effectiveDialect(
+        array $schema,
+        string $inheritedDialect,
+        bool $honorSchemaDialectOverride,
+    ): string {
+        if (
+            $honorSchemaDialectOverride &&
+            isset($schema['$schema']) &&
+            is_string($schema['$schema']) &&
+            $schema['$schema'] !== ''
+        ) {
+            return $schema['$schema'];
+        }
+
+        return $inheritedDialect;
+    }
+
+    private static function supportsIfThenElse(string $dialect): bool
+    {
+        if ($dialect === OpenApiSchemaDialect::OAS_3_1) {
+            return true;
+        }
+
+        return preg_match(
+            '~json-schema\.org/draft(?:/|-)(?:07|2019-09|2020-12)/schema#?$~i',
+            $dialect,
+        ) === 1;
+    }
+
+    private static function supportsUnevaluatedProperties(string $dialect): bool
+    {
+        if ($dialect === OpenApiSchemaDialect::OAS_3_1) {
+            return true;
+        }
+
+        return preg_match(
+            '~json-schema\.org/draft(?:/|-)(?:2019-09|2020-12)/schema#?$~i',
+            $dialect,
+        ) === 1;
     }
 
     /**

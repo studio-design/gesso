@@ -165,6 +165,49 @@ final class StrictAdditionalPropertiesValidatorIntegrationTest extends TestCase
     }
 
     #[Test]
+    public function selected_document_dialect_and_local_schema_override_control_unevaluated_properties(): void
+    {
+        $documentDraft07 = $this->validator->validate(
+            'strict-additional-properties-draft-07',
+            'GET',
+            '/document-dialect',
+            200,
+            ['id' => '1', 'trace_id' => 't'],
+            'application/json',
+        );
+        $local202012 = $this->validator->validate(
+            'strict-additional-properties-draft-07',
+            'GET',
+            '/local-2020-12',
+            200,
+            ['id' => '1', 'trace_id' => 't'],
+            'application/json',
+        );
+        $localDraft07 = $this->validator->validate(
+            'strict-additional-properties',
+            'GET',
+            '/local-draft-07',
+            200,
+            ['id' => '1', 'trace_id' => 't'],
+            'application/json',
+        );
+
+        $this->assertTrue($documentDraft07->isValid());
+        $this->assertTrue($local202012->isValid());
+        $this->assertTrue($localDraft07->isValid());
+        $reports = StrictAdditionalPropertiesAsserter::detectAll($this->tracker);
+        $this->assertCount(2, $reports);
+        $this->assertSame(['/local-draft-07', '/document-dialect'], [
+            $reports[0]->path,
+            $reports[1]->path,
+        ]);
+        $this->assertSame(['/trace_id', '/trace_id'], [
+            $reports[0]->instancePointer,
+            $reports[1]->instancePointer,
+        ]);
+    }
+
+    #[Test]
     public function openapi_32_additional_operation_method_spelling_is_preserved(): void
     {
         $result = $this->validator->validate(

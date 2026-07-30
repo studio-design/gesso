@@ -50,9 +50,10 @@ schema:
 - an explicit `additionalProperties` keyword means the object intentionally
   documents its open/closed policy, so the dynamic property itself is not
   reported;
-- `unevaluatedProperties` has the same effect under OpenAPI 3.1/3.2. It is not
-  treated as policy under OpenAPI 3.0, whose Draft 07 compatibility dialect
-  does not support that keyword.
+- `unevaluatedProperties` has the same effect only when the selected JSON
+  Schema dialect supports it. The document-level `jsonSchemaDialect` and local
+  `$schema` overrides are honored. Draft 06/07 and OpenAPI 3.0 do not treat it
+  as an open policy.
 
 `additionalProperties: false` remains ordinary conformance enforcement: a
 response with an extra property fails validation before this gate runs.
@@ -72,9 +73,15 @@ Here `user-42` is a documented dynamic key, while
 `/user-42/internal_score` is a finding if its value returns that undeclared
 field.
 
-`anyOf` and `oneOf` nodes are skipped conservatively. Selecting the effective
-runtime branch would require retaining branch-level validator output; guessing
-could produce false positives.
+When `additionalProperties` and `unevaluatedProperties` occur at the same
+schema location, `additionalProperties` evaluates the dynamic property first.
+The inspector therefore does not reapply `unevaluatedProperties` to that
+property.
+
+`anyOf`, `oneOf`, `if`/`then`/`else`, and `dependentSchemas` nodes are skipped
+conservatively when those keywords are active in the selected dialect.
+Selecting the effective runtime branch would require retaining branch-level
+validator output; guessing could produce false positives.
 
 ## Per-call mode
 
@@ -124,6 +131,9 @@ vendor/bin/gesso coverage:merge \
   --specs=front,admin \
   --strict-additional-properties=fail
 ```
+
+Fail mode exits non-zero when no worker sidecars exist because the gate cannot
+be evaluated.
 
 The extension parameter controls sequential PHPUnit. The merge CLI flag
 controls the merged parallel gate, so changing warn/fail does not require
