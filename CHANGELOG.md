@@ -10,6 +10,25 @@ the README for the full surface contract.
 
 ## Unreleased
 
+## [2.1.0](https://github.com/studio-design/gesso/compare/v2.0.0...v2.1.0) (2026-07-30)
+
+
+### Features
+
+* **baseline:** enforce violation baseline and report stale entries ([#419](https://github.com/studio-design/gesso/issues/419)) ([d839cd0](https://github.com/studio-design/gesso/commit/d839cd09c37fd7d2b7140bf98d80e6a6ccc60837))
+* **baseline:** violation fingerprints and baseline generation run ([#416](https://github.com/studio-design/gesso/issues/416)) ([f97d621](https://github.com/studio-design/gesso/commit/f97d62132e7a3f59897459d5d37b99b727eda7d6))
+* **dx:** append curl reproduction commands to validation and exploration failures ([#410](https://github.com/studio-design/gesso/issues/410)) ([aa98a09](https://github.com/studio-design/gesso/commit/aa98a093508ec6354f13495d24563b0c817b1f27))
+* **fuzz:** named contract checks with unsupported_method ([#421](https://github.com/studio-design/gesso/issues/421)) ([57fed13](https://github.com/studio-design/gesso/commit/57fed13f31f93ae60e14b6770a911b12f0724e8e))
+* **output:** let adapters and the phpunit extension select json failure output ([#415](https://github.com/studio-design/gesso/issues/415)) ([80603c3](https://github.com/studio-design/gesso/commit/80603c3fd454ee735533fbff73d287fabd535910))
+* **output:** populate body issue schema context and add versioned json output ([#414](https://github.com/studio-design/gesso/issues/414)) ([9c6b947](https://github.com/studio-design/gesso/commit/9c6b9473f56c01024059e31d033799262fa3cc12))
+* **result:** expose structured validation issues with stable categories ([#413](https://github.com/studio-design/gesso/issues/413)) ([47985a9](https://github.com/studio-design/gesso/commit/47985a90f9df2c7719f8e61c4575ee88c3693957))
+
+
+### Bug Fixes
+
+* **baseline:** mark body-decode failures with a synthetic parse keyword ([#422](https://github.com/studio-design/gesso/issues/422)) ([5fd0b2b](https://github.com/studio-design/gesso/commit/5fd0b2b03a268db4b3616d0f1a3ad4a444090b91))
+* **extension:** keep empty defaultTestSuite guard analyzable on phpunit 13.2.6 ([#411](https://github.com/studio-design/gesso/issues/411)) ([ee72ca2](https://github.com/studio-design/gesso/commit/ee72ca2b7258e06c4e8edcb7c16fc815d4d1f45a))
+
 ## [2.0.0](https://github.com/studio-design/gesso/compare/v2.0.0-beta.5...v2.0.0) (2026-07-24)
 
 
