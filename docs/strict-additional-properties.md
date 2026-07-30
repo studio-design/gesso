@@ -55,6 +55,10 @@ schema:
   `$schema` overrides are honored. Draft 06/07 and OpenAPI 3.0 do not treat it
   as an open policy.
 
+Child schemas collected from an `allOf` embedded schema resource retain that
+resource's effective dialect across `properties`, `patternProperties`, open
+property schemas, and array item schemas.
+
 `additionalProperties: false` remains ordinary conformance enforcement: a
 response with an extra property fails validation before this gate runs.
 `additionalProperties: true` and schema forms document an open object. For a

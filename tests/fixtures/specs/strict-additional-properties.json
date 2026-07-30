@@ -136,6 +136,37 @@
         }
       }
     },
+    "/embedded-draft-07": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Draft 07 embedded schema resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$id": "https://example.test/embedded-draft-07",
+                      "$schema": "http://json-schema.org/draft-07/schema#",
+                      "type": "object",
+                      "properties": {
+                        "payload": {
+                          "type": "object",
+                          "properties": {
+                            "id": {"type": "string"}
+                          },
+                          "unevaluatedProperties": true
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/typed-map": {
       "get": {
         "responses": {

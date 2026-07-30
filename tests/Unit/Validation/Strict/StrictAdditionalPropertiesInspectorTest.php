@@ -260,6 +260,81 @@ final class StrictAdditionalPropertiesInspectorTest extends TestCase
     }
 
     #[Test]
+    public function embedded_all_of_resources_preserve_dialect_for_collected_child_schemas(): void
+    {
+        $draft07Resource = [
+            '$id' => 'https://example.test/draft-07-resource',
+            '$schema' => OpenApiSchemaDialect::DRAFT_07,
+            'type' => 'object',
+        ];
+        $child = [
+            'type' => 'object',
+            'properties' => [
+                'id' => ['type' => 'string'],
+            ],
+            'unevaluatedProperties' => true,
+        ];
+
+        $this->assertSame(
+            ['/payload/trace_id' => 'trace_id'],
+            StrictAdditionalPropertiesInspector::inspect(
+                ['payload' => ['id' => '1', 'trace_id' => 't']],
+                [
+                    'allOf' => [
+                        $draft07Resource + [
+                            'properties' => ['payload' => $child],
+                        ],
+                    ],
+                ],
+            ),
+            'properties',
+        );
+        $this->assertSame(
+            ['/payload/trace_id' => 'trace_id'],
+            StrictAdditionalPropertiesInspector::inspect(
+                ['payload' => ['id' => '1', 'trace_id' => 't']],
+                [
+                    'allOf' => [
+                        $draft07Resource + [
+                            'patternProperties' => ['^payload$' => $child],
+                        ],
+                    ],
+                ],
+            ),
+            'patternProperties',
+        );
+        $this->assertSame(
+            ['/payload/trace_id' => 'trace_id'],
+            StrictAdditionalPropertiesInspector::inspect(
+                ['payload' => ['id' => '1', 'trace_id' => 't']],
+                [
+                    'allOf' => [
+                        $draft07Resource + [
+                            'additionalProperties' => $child,
+                        ],
+                    ],
+                ],
+            ),
+            'additionalProperties',
+        );
+        $this->assertSame(
+            ['[*]/trace_id' => 'trace_id'],
+            StrictAdditionalPropertiesInspector::inspect(
+                [['id' => '1', 'trace_id' => 't']],
+                [
+                    'allOf' => [
+                        $draft07Resource + [
+                            'type' => 'array',
+                            'items' => $child,
+                        ],
+                    ],
+                ],
+            ),
+            'items',
+        );
+    }
+
+    #[Test]
     public function additional_properties_prevents_unevaluated_properties_from_reapplying(): void
     {
         $unevaluatedChildSchema = [

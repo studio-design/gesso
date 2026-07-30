@@ -208,6 +208,25 @@ final class StrictAdditionalPropertiesValidatorIntegrationTest extends TestCase
     }
 
     #[Test]
+    public function embedded_resource_dialect_is_preserved_for_collected_child_schemas(): void
+    {
+        $result = $this->validator->validate(
+            'strict-additional-properties',
+            'GET',
+            '/embedded-draft-07',
+            200,
+            ['payload' => ['id' => '1', 'trace_id' => 't']],
+            'application/json',
+        );
+
+        $this->assertTrue($result->isValid());
+        $reports = StrictAdditionalPropertiesAsserter::detectAll($this->tracker);
+        $this->assertCount(1, $reports);
+        $this->assertSame('/embedded-draft-07', $reports[0]->path);
+        $this->assertSame('/payload/trace_id', $reports[0]->instancePointer);
+    }
+
+    #[Test]
     public function openapi_32_additional_operation_method_spelling_is_preserved(): void
     {
         $result = $this->validator->validate(
