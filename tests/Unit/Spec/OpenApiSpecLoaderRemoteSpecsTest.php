@@ -379,6 +379,47 @@ final class OpenApiSpecLoaderRemoteSpecsTest extends TestCase
     }
 
     #[Test]
+    public function load_reuses_the_verified_entry_document_for_equivalent_url_spellings(): void
+    {
+        // The entry URL spells out the default port; the self-ref omits it.
+        // Both normalize to the same wire URL, so the pin-verified bytes
+        // must be reused — a refetch would bypass the SHA-256 pin.
+        $entryUrl = 'https://specs.example.com:443/openapi.json';
+        $pinnedBody = (string) json_encode([
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'Pinned API', 'version' => '1'],
+            'paths' => [],
+            'components' => ['schemas' => [
+                'Base' => ['type' => 'object'],
+                'Self' => ['$ref' => 'https://specs.example.com/openapi.json#/components/schemas/Base'],
+                'UpperHost' => ['$ref' => 'https://SPECS.EXAMPLE.COM/openapi.json#/components/schemas/Base'],
+            ]],
+        ], JSON_THROW_ON_ERROR);
+
+        $fetches = 0;
+        $client = new FakeHttpClient([
+            // PSR-7 normalizes the wire URI (default port dropped,
+            // lowercase host), so every spelling above hits this one key.
+            'https://specs.example.com/openapi.json' => static function () use (&$fetches, $pinnedBody) {
+                $fetches++;
+
+                return FakeHttpClient::jsonResponse(
+                    $fetches === 1 ? $pinnedBody : '{"type":"string","x-tampered":true}',
+                );
+            },
+        ]);
+        self::configureRemote($client, [
+            'api' => new RemoteSpecSource($entryUrl, expectedSha256: hash('sha256', $pinnedBody)),
+        ]);
+
+        $spec = OpenApiSpecLoader::load('api');
+
+        $this->assertSame(1, $fetches);
+        $this->assertSame(['type' => 'object'], $spec['components']['schemas']['Self']);
+        $this->assertSame(['type' => 'object'], $spec['components']['schemas']['UpperHost']);
+    }
+
+    #[Test]
     public function load_throws_when_authorization_env_is_missing(): void
     {
         $client = new FakeHttpClient();

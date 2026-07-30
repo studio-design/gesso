@@ -85,7 +85,7 @@ final class HttpRefLoader
         ?RemoteAuthorization $authorization = null,
         ?string $expectedSha256 = null,
     ): LoadedDocument {
-        $canonicalUri = self::canonicalizeUri($url);
+        $trimmedUri = trim($url);
         $safeUrl = self::redactSensitiveUrlData($url);
 
         // PHP may include live function arguments when stringifying an
@@ -93,7 +93,15 @@ final class HttpRefLoader
         // already captured for the request and cache key, so replace the
         // parameter slot before any downstream operation can throw.
         $url = $safeUrl;
-        $request = $requestFactory->createRequest('GET', $canonicalUri);
+        $request = $requestFactory->createRequest('GET', $trimmedUri);
+        // The cache / cycle-detection key is the PSR-7 URI's string form,
+        // not the raw ref spelling. UriInterface guarantees lowercase
+        // scheme + host and a null port when it equals the scheme default,
+        // so equivalent spellings (`HOST` vs `host`, explicit `:443` vs
+        // none) collapse to one key. Distinct keys here would let a
+        // differently-spelled ref to an already-verified document trigger
+        // a second, unverified fetch of the same wire URL.
+        $canonicalUri = (string) $request->getUri();
         self::assertHostAllowed($safeUrl, $request->getUri()->getHost(), $allowedRemoteRefHosts);
 
         if (isset($documentCache[$canonicalUri])) {
@@ -328,13 +336,6 @@ final class HttpRefLoader
             ),
             ref: $safeUrl,
         );
-    }
-
-    private static function canonicalizeUri(string $url): string
-    {
-        // Trim only — case-folding scheme/host or removing default ports
-        // could collapse URIs the server treats as distinct.
-        return trim($url);
     }
 
     /**
