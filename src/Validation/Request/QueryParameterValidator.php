@@ -12,6 +12,7 @@ use Studio\Gesso\Spec\OpenApiSchemaConverter;
 use Studio\Gesso\Validation\Support\MalformedSpecNode;
 use Studio\Gesso\Validation\Support\NamedError;
 use Studio\Gesso\Validation\Support\ObjectConverter;
+use Studio\Gesso\Validation\Support\QueryStyleDeserializer;
 use Studio\Gesso\Validation\Support\SchemaValidatorRunner;
 use Studio\Gesso\Validation\Support\TypeCoercer;
 
@@ -47,10 +48,12 @@ final class QueryParameterValidator
      * Validate query parameters declared by the matched operation (or
      * inherited from the path-level `parameters` block).
      *
-     * Only `style: form` + `explode: true` (the OpenAPI default for `in: query`)
-     * is supported. Repeated keys (`?tags=a&tags=b`) are expected to arrive as
-     * PHP arrays from the framework. Other styles (`form`+`explode:false`,
-     * `pipeDelimited`, `spaceDelimited`) are out of scope.
+     * With the OpenAPI default serialization (`style: form` + `explode: true`)
+     * repeated keys (`?tags=a&tags=b`) are expected to arrive as PHP arrays
+     * from the framework. Non-exploded array serializations (`form` +
+     * `explode: false`, `pipeDelimited`, `spaceDelimited`) are split on their
+     * delimiter before validation ({@see QueryStyleDeserializer}). `deepObject`
+     * is out of scope.
      *
      * @param list<array<string, mixed>> $parameters pre-collected merged parameters (path + operation level)
      * @param array<string, mixed> $queryParams
@@ -108,7 +111,8 @@ final class QueryParameterValidator
                 continue;
             }
 
-            $coerced = TypeCoercer::coerceQuery($queryParams[$name], $schema);
+            $deserialized = QueryStyleDeserializer::deserialize($queryParams[$name], $param, $schema);
+            $coerced = TypeCoercer::coerceQuery($deserialized, $schema);
             $jsonSchema = OpenApiSchemaConverter::convert($schema, $version, SchemaContext::Request, null, $jsonSchemaDialect);
 
             $schemaObject = ObjectConverter::convert($jsonSchema);
