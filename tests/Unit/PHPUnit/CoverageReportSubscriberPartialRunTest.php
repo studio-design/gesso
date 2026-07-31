@@ -35,7 +35,8 @@ use function unlink;
  * skip every persistent file write (output_file, junit_output,
  * json_output, html_output, GITHUB_STEP_SUMMARY) and emit a single
  * stderr WARNING enumerating the skipped targets. Console rendering
- * and the threshold gate must remain unaffected.
+ * must remain unaffected; the threshold gate skips with a NOTE
+ * (issue #438).
  */
 class CoverageReportSubscriberPartialRunTest extends TestCase
 {
@@ -202,12 +203,12 @@ class CoverageReportSubscriberPartialRunTest extends TestCase
     }
 
     #[Test]
-    public function partial_run_still_evaluates_threshold_gate(): void
+    public function partial_run_skips_threshold_gate(): void
     {
-        // The threshold gate runs against in-memory results; it does not
-        // touch persistent files. Issue #221 is about persistent docs, so
-        // the gate keeps firing under partial runs (consumers who wanted
-        // gate exemption already opt out via non-strict mode).
+        // Issue #438 (reverses the original issue #221 stance): a subset
+        // cannot prove a suite-wide coverage rate, so the gate skips on
+        // partial runs like strict_required and baseline staleness do,
+        // leaving a NOTE in place of the FAIL/exit.
         $this->recordOneEndpoint();
 
         $exitCode = null;
@@ -233,8 +234,10 @@ class CoverageReportSubscriberPartialRunTest extends TestCase
         $subscriber->notify($this->fakeExecutionFinished());
         ob_get_clean();
 
-        $this->assertSame(1, $exitCode, 'threshold gate must still fire on partial runs');
-        $this->assertStringContainsString('[OpenAPI Coverage] FAIL:', $stderr);
+        $this->assertNull($exitCode, 'threshold gate must not fire on partial runs');
+        $this->assertStringNotContainsString('FAIL:', $stderr);
+        $this->assertStringContainsString('[Gesso] NOTE:', $stderr);
+        $this->assertStringContainsString('skipped on partial runs', $stderr);
     }
 
     #[Test]

@@ -9,6 +9,7 @@ use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use ReflectionClass;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
+use Studio\Gesso\Internal\PartialRunDecision;
 use Studio\Gesso\PHPUnit\ConsoleOutput;
 use Studio\Gesso\PHPUnit\CoverageReportSubscriber;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
@@ -363,6 +364,161 @@ class CoverageReportSubscriberThresholdTest extends TestCase
         $this->assertNull($exitCode);
         $this->assertStringNotContainsString('FAIL:', $stderr);
         $this->assertStringNotContainsString('WARN:', $stderr);
+    }
+
+    #[Test]
+    public function partial_run_skips_strict_threshold_gate_with_note(): void
+    {
+        // Issue #438: a subset run cannot prove a suite-wide coverage rate
+        // any more than it can prove a strict_required intersection. The
+        // gate must skip (with a NOTE naming the selection signal) instead
+        // of failing a correct-but-partial run.
+        OpenApiCoverageTracker::recordResponse(
+            'petstore-3.0',
+            'GET',
+            '/v1/pets',
+            '200',
+            'application/json',
+            schemaValidated: true,
+        );
+
+        $exitCode = null;
+        $stderr = '';
+        $subscriber = new CoverageReportSubscriber(
+            specs: ['petstore-3.0'],
+            outputFile: null,
+            consoleOutput: ConsoleOutput::DEFAULT,
+            githubSummaryPath: null,
+            stderrWriter: static function (string $msg) use (&$stderr): void {
+                $stderr .= $msg;
+            },
+            sidecarDir: $this->tmpDir,
+            minEndpointCoverage: 80.0,
+            minCoverageStrict: true,
+            exitHandler: static function (int $code) use (&$exitCode): void {
+                $exitCode = $code;
+            },
+            partialRun: PartialRunDecision::partial('--testsuite'),
+        );
+
+        ob_start();
+        $subscriber->notify($this->fakeExecutionFinished());
+        ob_get_clean();
+
+        $this->assertNull($exitCode, 'partial run must not trip the strict threshold gate');
+        $this->assertStringNotContainsString('FAIL:', $stderr);
+        $this->assertStringContainsString('[Gesso] NOTE:', $stderr);
+        $this->assertStringContainsString('skipped on partial runs', $stderr);
+        $this->assertStringContainsString('--testsuite', $stderr);
+    }
+
+    #[Test]
+    public function partial_run_with_no_coverage_skips_strict_gate_with_note(): void
+    {
+        // Issue #438 reproduction: `--testsuite=Unit` records zero contract
+        // coverage — correctly — and the empty-results strict gate exited 1.
+        // No recordResponse() call here so computeAllResults() returns [].
+        $exitCode = null;
+        $stderr = '';
+        $subscriber = new CoverageReportSubscriber(
+            specs: ['petstore-3.0'],
+            outputFile: null,
+            consoleOutput: ConsoleOutput::DEFAULT,
+            githubSummaryPath: null,
+            stderrWriter: static function (string $msg) use (&$stderr): void {
+                $stderr .= $msg;
+            },
+            sidecarDir: $this->tmpDir,
+            minEndpointCoverage: 80.0,
+            minCoverageStrict: true,
+            exitHandler: static function (int $code) use (&$exitCode): void {
+                $exitCode = $code;
+            },
+            partialRun: PartialRunDecision::partial('--testsuite'),
+        );
+
+        ob_start();
+        $subscriber->notify($this->fakeExecutionFinished());
+        ob_get_clean();
+
+        $this->assertNull($exitCode, 'a partial run with no coverage must not exit non-zero');
+        $this->assertStringNotContainsString('FATAL', $stderr);
+        $this->assertStringContainsString('[Gesso] NOTE:', $stderr);
+        $this->assertStringContainsString('skipped on partial runs', $stderr);
+    }
+
+    #[Test]
+    public function partial_run_skips_warn_only_threshold_gate_with_note(): void
+    {
+        // The warn-only gate skips too: a subset rate compared against a
+        // whole-suite threshold is noise, not signal. The NOTE replaces it.
+        OpenApiCoverageTracker::recordResponse(
+            'petstore-3.0',
+            'GET',
+            '/v1/pets',
+            '200',
+            'application/json',
+            schemaValidated: true,
+        );
+
+        $exitCode = null;
+        $stderr = '';
+        $subscriber = new CoverageReportSubscriber(
+            specs: ['petstore-3.0'],
+            outputFile: null,
+            consoleOutput: ConsoleOutput::DEFAULT,
+            githubSummaryPath: null,
+            stderrWriter: static function (string $msg) use (&$stderr): void {
+                $stderr .= $msg;
+            },
+            sidecarDir: $this->tmpDir,
+            minEndpointCoverage: 80.0,
+            minCoverageStrict: false,
+            exitHandler: static function (int $code) use (&$exitCode): void {
+                $exitCode = $code;
+            },
+            partialRun: PartialRunDecision::partial('--filter'),
+        );
+
+        ob_start();
+        $subscriber->notify($this->fakeExecutionFinished());
+        ob_get_clean();
+
+        $this->assertNull($exitCode);
+        $this->assertStringNotContainsString('WARN:', $stderr);
+        $this->assertStringContainsString('[Gesso] NOTE:', $stderr);
+        $this->assertStringContainsString('skipped on partial runs', $stderr);
+        $this->assertStringContainsString('--filter', $stderr);
+    }
+
+    #[Test]
+    public function partial_run_without_threshold_emits_no_gate_note(): void
+    {
+        // No threshold configured → the skip NOTE would be noise about a
+        // gate the user never opted into.
+        $exitCode = null;
+        $stderr = '';
+        $subscriber = new CoverageReportSubscriber(
+            specs: ['petstore-3.0'],
+            outputFile: null,
+            consoleOutput: ConsoleOutput::DEFAULT,
+            githubSummaryPath: null,
+            stderrWriter: static function (string $msg) use (&$stderr): void {
+                $stderr .= $msg;
+            },
+            sidecarDir: $this->tmpDir,
+            exitHandler: static function (int $code) use (&$exitCode): void {
+                $exitCode = $code;
+            },
+            partialRun: PartialRunDecision::partial('--testsuite'),
+        );
+
+        ob_start();
+        $subscriber->notify($this->fakeExecutionFinished());
+        ob_get_clean();
+
+        $this->assertNull($exitCode);
+        $this->assertSame('', $stderr);
     }
 
     private function fakeExecutionFinished(): ExecutionFinished
