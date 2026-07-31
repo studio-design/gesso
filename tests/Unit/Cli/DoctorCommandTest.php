@@ -530,6 +530,34 @@ class DoctorCommandTest extends TestCase
     }
 
     #[Test]
+    public function non_object_components_node_is_a_structure_error(): void
+    {
+        // `components: null` / `components: invalid` leaves every referenced
+        // scheme unresolvable — runtime hard-errors with "undefined scheme"
+        // as soon as a security requirement exists. A present-but-non-object
+        // node must not be conflated with an absent `components` key.
+        foreach ([[null, 'null'], ['invalid', 'string']] as [$components, $expectedType]) {
+            $spec = $this->writeSpec("components-{$expectedType}.json", (string) json_encode([
+                'openapi' => '3.1.0',
+                'info' => ['title' => 'Test', 'version' => '1'],
+                'paths' => ['/pets' => ['get' => [
+                    'security' => [['Broken' => []]],
+                    'responses' => ['200' => ['description' => 'ok']],
+                ]]],
+                'components' => $components,
+            ], JSON_THROW_ON_ERROR));
+
+            $report = $this->runJsonDoctor($spec, $exit);
+
+            $this->assertSame(DoctorCommand::EXIT_DIAGNOSTIC_FAILURE, $exit, $expectedType);
+            $this->assertSame(['error'], array_column($report['issues'], 'severity'), $expectedType);
+            $this->assertSame('structure', $report['issues'][0]['category'], $expectedType);
+            $this->assertStringContainsString('`components` must be an object', $report['issues'][0]['message'], $expectedType);
+            $this->assertStringContainsString("got {$expectedType}", $report['issues'][0]['message'], $expectedType);
+        }
+    }
+
+    #[Test]
     public function non_object_security_scheme_definition_is_a_structure_error(): void
     {
         // `Broken: null` / `Str: "invalid"` are resolved as "undefined

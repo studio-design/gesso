@@ -664,8 +664,27 @@ final class DoctorCommand
      */
     private function inspectSkippedFeatures(array $spec, string $label, array $acknowledgedSchemes, array &$issues): void
     {
-        $components = $spec['components'] ?? null;
         $schemes = [];
+        $components = null;
+        if (array_key_exists('components', $spec)) {
+            $components = $spec['components'];
+            if (!is_array($components)) {
+                // A present-but-non-object `components` leaves every
+                // referenced scheme unresolvable — runtime hard-errors with
+                // "undefined scheme" as soon as a security requirement
+                // exists. Distinguish it from an absent key and stop the
+                // scheme inspection on the unusable node.
+                $issues[] = $this->issue(
+                    'error',
+                    'structure',
+                    $label,
+                    sprintf('`components` must be an object, got %s.', get_debug_type($components)),
+                    null,
+                );
+
+                return;
+            }
+        }
         if (is_array($components) && array_key_exists('securitySchemes', $components)) {
             $declared = $components['securitySchemes'];
             if (!is_array($declared)) {
