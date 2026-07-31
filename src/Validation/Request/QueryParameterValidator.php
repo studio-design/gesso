@@ -57,6 +57,7 @@ final class QueryParameterValidator
      *
      * @param list<array<string, mixed>> $parameters pre-collected merged parameters (path + operation level)
      * @param array<string, mixed> $queryParams
+     * @param null|string $rawQueryString the request's percent-encoded query string, when the caller has access to it; lets non-exploded styles split before decoding ({@see QueryStyleDeserializer})
      *
      * @return list<NamedError>
      */
@@ -67,8 +68,10 @@ final class QueryParameterValidator
         array $queryParams,
         OpenApiVersion $version,
         ?string $jsonSchemaDialect = null,
+        ?string $rawQueryString = null,
     ): array {
         $errors = [];
+        $rawValues = $rawQueryString === null ? [] : QueryStyleDeserializer::parseRawValues($rawQueryString);
 
         foreach ($parameters as $param) {
             if (($param['in'] ?? null) === 'querystring') {
@@ -111,7 +114,12 @@ final class QueryParameterValidator
                 continue;
             }
 
-            $deserialized = QueryStyleDeserializer::deserialize($queryParams[$name], $param, $schema);
+            // A single raw pair can be split before percent-decoding; repeated
+            // keys mean the exploded form was used and there is nothing to split.
+            $rawList = $rawValues[$name] ?? null;
+            $rawValue = $rawList !== null && count($rawList) === 1 ? $rawList[0] : null;
+
+            $deserialized = QueryStyleDeserializer::deserialize($queryParams[$name], $param, $schema, $rawValue);
             $coerced = TypeCoercer::coerceQuery($deserialized, $schema);
             $jsonSchema = OpenApiSchemaConverter::convert($schema, $version, SchemaContext::Request, null, $jsonSchemaDialect);
 

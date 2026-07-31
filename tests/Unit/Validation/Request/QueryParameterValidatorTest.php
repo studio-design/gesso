@@ -187,6 +187,111 @@ class QueryParameterValidatorTest extends TestCase
     }
 
     #[Test]
+    public function validate_uses_raw_query_string_to_keep_encoded_delimiters_in_data(): void
+    {
+        // Logical value ["owner,admin", "member"]: the framework decodes the
+        // wire form `role=owner%2Cadmin,member` to `owner,admin,member`, which
+        // is unsplittable after decoding. The raw query string disambiguates.
+        $parameters = [[
+            'name' => 'role',
+            'in' => 'query',
+            'style' => 'form',
+            'explode' => false,
+            'schema' => [
+                'type' => 'array',
+                'items' => ['enum' => ['owner,admin', 'member']],
+            ],
+        ]];
+
+        $errors = $this->validator->validate(
+            'GET',
+            '/members',
+            $parameters,
+            ['role' => 'owner,admin,member'],
+            OpenApiVersion::V3_1,
+            rawQueryString: 'role=owner%2Cadmin,member',
+        );
+
+        $this->assertSame([], $errors);
+    }
+
+    #[Test]
+    public function validate_treats_empty_value_as_single_empty_string_element(): void
+    {
+        // `?role=` is the one-element list [""] (RFC 6570 §2.3: an empty list
+        // is undefined and omitted entirely), so `minItems: 1` must pass.
+        $parameters = [[
+            'name' => 'role',
+            'in' => 'query',
+            'style' => 'form',
+            'explode' => false,
+            'schema' => [
+                'type' => 'array',
+                'minItems' => 1,
+                'items' => ['type' => 'string'],
+            ],
+        ]];
+
+        $errors = $this->validator->validate(
+            'GET',
+            '/members',
+            $parameters,
+            ['role' => ''],
+            OpenApiVersion::V3_1,
+            rawQueryString: 'role=',
+        );
+
+        $this->assertSame([], $errors);
+    }
+
+    #[Test]
+    public function validate_falls_back_to_decoded_split_without_raw_query_string(): void
+    {
+        // Direct callers that don't supply the raw query string keep the
+        // decoded-value split.
+        $parameters = [[
+            'name' => 'role',
+            'in' => 'query',
+            'explode' => false,
+            'schema' => ['type' => 'array', 'items' => ['enum' => ['owner', 'admin']]],
+        ]];
+
+        $errors = $this->validator->validate(
+            'GET',
+            '/members',
+            $parameters,
+            ['role' => 'owner,admin'],
+            OpenApiVersion::V3_1,
+        );
+
+        $this->assertSame([], $errors);
+    }
+
+    #[Test]
+    public function validate_ignores_raw_query_string_for_repeated_keys(): void
+    {
+        // Repeated keys despite `explode: false` arrive as an array from the
+        // framework; there is no single raw value to split.
+        $parameters = [[
+            'name' => 'tag',
+            'in' => 'query',
+            'explode' => false,
+            'schema' => ['type' => 'array', 'items' => ['type' => 'string']],
+        ]];
+
+        $errors = $this->validator->validate(
+            'GET',
+            '/pets',
+            $parameters,
+            ['tag' => ['a', 'b']],
+            OpenApiVersion::V3_1,
+            rawQueryString: 'tag=a&tag=b',
+        );
+
+        $this->assertSame([], $errors);
+    }
+
+    #[Test]
     public function validate_checks_form_encoded_querystring_schema(): void
     {
         $parameters = [[

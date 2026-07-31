@@ -746,6 +746,12 @@ trait ValidatesOpenApiSchema
             }
         }
 
+        // The raw wire form, NOT Request::getQueryString(): Symfony's
+        // normalization re-encodes and sorts pairs, which would corrupt the
+        // literal delimiters non-exploded query styles split on.
+        $rawQueryString = $request->server->get('QUERY_STRING');
+        $rawQueryString = is_string($rawQueryString) && $rawQueryString !== '' ? $rawQueryString : null;
+
         $validator = $this->getOrCreateRequestValidator();
         $result = $validator->validate(
             $specName,
@@ -757,6 +763,7 @@ trait ValidatesOpenApiSchema
             $contentType !== '' ? $contentType : null,
             $cookies,
             $responseStatusCode,
+            $rawQueryString,
         );
 
         // Record coverage when the request matched a spec path, same

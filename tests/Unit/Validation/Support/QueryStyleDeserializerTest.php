@@ -117,15 +117,20 @@ class QueryStyleDeserializerTest extends TestCase
     }
 
     #[Test]
-    public function empty_string_deserializes_to_empty_array(): void
+    public function empty_value_deserializes_to_single_empty_string_element(): void
     {
-        // `?role=` is the non-exploded serialization of an empty list.
+        // RFC 6570 §2.3: a zero-member list is undefined and the parameter is
+        // omitted entirely, so `?role=` can only be the one-element list [""].
         $param = ['name' => 'role', 'in' => 'query', 'style' => 'form', 'explode' => false];
         $schema = ['type' => 'array', 'items' => ['type' => 'string']];
 
         $this->assertSame(
-            [],
+            [''],
             QueryStyleDeserializer::deserialize('', $param, $schema),
+        );
+        $this->assertSame(
+            [''],
+            QueryStyleDeserializer::deserialize('', $param, $schema, rawValue: ''),
         );
     }
 
@@ -163,6 +168,83 @@ class QueryStyleDeserializerTest extends TestCase
         $this->assertSame(
             'a,b',
             QueryStyleDeserializer::deserialize('a,b', $param, $schema),
+        );
+    }
+
+    #[Test]
+    public function raw_value_split_preserves_percent_encoded_delimiters_in_data(): void
+    {
+        // RFC 6570 form-style expansion percent-encodes a comma inside a
+        // value (%2C) and joins elements with a literal comma, so the logical
+        // list ["owner,admin", "member"] is `role=owner%2Cadmin,member` on the
+        // wire. Splitting must happen before percent-decoding.
+        $param = ['name' => 'role', 'in' => 'query', 'style' => 'form', 'explode' => false];
+        $schema = ['type' => 'array', 'items' => ['type' => 'string']];
+
+        $this->assertSame(
+            ['owner,admin', 'member'],
+            QueryStyleDeserializer::deserialize('owner,admin,member', $param, $schema, rawValue: 'owner%2Cadmin,member'),
+        );
+    }
+
+    #[Test]
+    public function raw_pipe_delimited_split_preserves_percent_encoded_pipe_in_data(): void
+    {
+        $param = ['name' => 'v', 'in' => 'query', 'style' => 'pipeDelimited'];
+        $schema = ['type' => 'array', 'items' => ['type' => 'string']];
+
+        $this->assertSame(
+            ['a|b', 'c'],
+            QueryStyleDeserializer::deserialize('a|b|c', $param, $schema, rawValue: 'a%7Cb|c'),
+        );
+    }
+
+    #[Test]
+    public function raw_space_delimited_splits_on_plus_and_percent_encoded_space(): void
+    {
+        // The space delimiter itself can only appear percent-encoded on the
+        // wire — `%20` (RFC 6570 expansion) or `+` (form-urlencoding).
+        $param = ['name' => 'v', 'in' => 'query', 'style' => 'spaceDelimited'];
+        $schema = ['type' => 'array', 'items' => ['type' => 'string']];
+
+        $this->assertSame(
+            ['blue', 'black', 'brown'],
+            QueryStyleDeserializer::deserialize('blue black brown', $param, $schema, rawValue: 'blue+black%20brown'),
+        );
+        // A literal plus in data stays `%2B`-encoded and must survive.
+        $this->assertSame(
+            ['a+b', 'c'],
+            QueryStyleDeserializer::deserialize('a+b c', $param, $schema, rawValue: 'a%2Bb+c'),
+        );
+    }
+
+    #[Test]
+    public function raw_value_is_ignored_when_serialization_is_exploded(): void
+    {
+        $param = ['name' => 'role', 'in' => 'query', 'style' => 'form', 'explode' => true];
+        $schema = ['type' => 'array', 'items' => ['type' => 'string']];
+
+        $this->assertSame(
+            'owner,admin',
+            QueryStyleDeserializer::deserialize('owner,admin', $param, $schema, rawValue: 'owner,admin'),
+        );
+    }
+
+    #[Test]
+    public function parse_raw_values_keeps_values_encoded_and_decodes_names(): void
+    {
+        $this->assertSame(
+            ['role' => ['owner%2Cadmin,member'], 'a b' => ['1'], 'flag' => ['']],
+            QueryStyleDeserializer::parseRawValues('role=owner%2Cadmin,member&a%20b=1&flag'),
+        );
+    }
+
+    #[Test]
+    public function parse_raw_values_collects_repeated_keys_in_wire_order(): void
+    {
+        $this->assertSame(
+            ['tag' => ['a', 'b']],
+            QueryStyleDeserializer::parseRawValues('tag=a&tag=b'),
         );
     }
 

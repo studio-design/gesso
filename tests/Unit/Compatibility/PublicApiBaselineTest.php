@@ -31,6 +31,7 @@ use Studio\Gesso\JsonValidationResultRenderer;
 use Studio\Gesso\Laravel\Commands\OpenApiRoutesCommand;
 use Studio\Gesso\Laravel\ExploresOpenApiEndpoint;
 use Studio\Gesso\Laravel\ValidatesOpenApiSchema;
+use Studio\Gesso\OpenApiRequestValidator;
 use Studio\Gesso\OpenApiResponseValidator;
 use Studio\Gesso\OpenApiValidationResult;
 use Studio\Gesso\Pest\Expectations;
@@ -323,6 +324,18 @@ final class PublicApiBaselineTest extends TestCase
             'parameters' => [],
         ];
         ksort($expected[OpenApiValidationResult::class]['methods']);
+
+        // #436: the raw query string lets non-exploded query styles split
+        // before percent-decoding (minor addition).
+        $expected[OpenApiRequestValidator::class]['methods']['validate']['parameters'][] = [
+            'name' => 'rawQueryString',
+            'type' => '?string',
+            'optional' => true,
+            'variadic' => false,
+            'by_reference' => false,
+            'default' => null,
+            'attributes' => [],
+        ];
 
         // New public class in v2.x (#282 stage 1): structured issue DTO.
         $issueStringProperty = static fn(): array => [

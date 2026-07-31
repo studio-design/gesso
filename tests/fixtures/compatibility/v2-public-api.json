@@ -6284,6 +6284,15 @@
                         "by_reference": false,
                         "default": null,
                         "attributes": []
+                    },
+                    {
+                        "name": "rawQueryString",
+                        "type": "?string",
+                        "optional": true,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": null,
+                        "attributes": []
                     }
                 ]
             }

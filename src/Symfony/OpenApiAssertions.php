@@ -36,6 +36,7 @@ use Symfony\Component\HttpKernel\HttpKernelBrowser;
 use function array_merge;
 use function implode;
 use function is_scalar;
+use function is_string;
 use function json_decode;
 use function sprintf;
 use function strtolower;
@@ -216,6 +217,12 @@ trait OpenApiAssertions
             $decodeFailureDemoted,
         );
 
+        // The raw wire form, NOT Request::getQueryString(): Symfony's
+        // normalization re-encodes and sorts pairs, which would corrupt the
+        // literal delimiters non-exploded query styles split on.
+        $rawQueryString = $request->server->get('QUERY_STRING');
+        $rawQueryString = is_string($rawQueryString) && $rawQueryString !== '' ? $rawQueryString : null;
+
         $result = $this->symfonyRequestValidator()->validate(
             $specName,
             $method->value,
@@ -226,6 +233,7 @@ trait OpenApiAssertions
             $contentType !== '' ? $contentType : null,
             $request->cookies->all(),
             $responseStatusCode,
+            $rawQueryString,
         );
 
         if ($result->matchedPath() !== null) {

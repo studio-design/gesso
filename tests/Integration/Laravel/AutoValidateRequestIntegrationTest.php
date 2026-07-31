@@ -260,6 +260,35 @@ class AutoValidateRequestIntegrationTest extends TestCase
         $response->assertNoContent();
     }
 
+    #[Test]
+    public function auto_validate_request_splits_non_exploded_query_arrays_before_decoding(): void
+    {
+        // https://github.com/studio-design/gesso/issues/436 — the logical
+        // value ["owner,admin", "member"] keeps its %2C-encoded comma
+        // distinguishable from the literal delimiter commas because the raw
+        // QUERY_STRING reaches the validator through the Laravel adapter.
+        config()->set('gesso.default_spec', 'psr7');
+        config()->set('gesso.auto_validate_request', true);
+
+        $response = $this->get('/filter?role=owner%2Cadmin,member');
+        $response->assertNoContent();
+
+        $covered = OpenApiCoverageTracker::getCovered();
+        $this->assertArrayHasKey('GET /filter', $covered['psr7'] ?? []);
+    }
+
+    #[Test]
+    public function auto_validate_request_reports_genuine_non_exploded_query_violations(): void
+    {
+        config()->set('gesso.default_spec', 'psr7');
+        config()->set('gesso.auto_validate_request', true);
+
+        $this->expectException(AssertionFailedError::class);
+        $this->expectExceptionMessage('query.role/1');
+
+        $this->get('/filter?role=owner,bogus');
+    }
+
     /** @return array<int, class-string> */
     protected function getPackageProviders($app): array
     {
@@ -290,5 +319,7 @@ class AutoValidateRequestIntegrationTest extends TestCase
         // auth-free in the test app — the library validates against the
         // *spec*'s security declaration, not Laravel's actual middleware.
         Route::get('/v1/secure/bearer', static fn() => response()->json(null));
+
+        Route::get('/filter', static fn() => response()->noContent());
     }
 }

@@ -116,6 +116,7 @@ final class OpenApiRequestValidator
      *                           assert a literal JSON `null` body must pass
      *                           `DecodedBody::present(null)` explicitly.
      * @param null|int $responseStatusCode optional response status the request produced; enables the documented-4xx downgrade when set
+     * @param null|string $rawQueryString the request's percent-encoded query string as sent on the wire (e.g. `role=owner%2Cadmin,member`). Optional: when supplied, non-exploded query styles (`form` + `explode: false`, `pipeDelimited`, `spaceDelimited`) are split before percent-decoding, so delimiter characters inside values stay data. Without it the decoded value is split as a best effort.
      */
     public function validate(
         string $specName,
@@ -127,6 +128,7 @@ final class OpenApiRequestValidator
         ?string $contentType = null,
         array $cookies = [],
         ?int $responseStatusCode = null,
+        ?string $rawQueryString = null,
     ): OpenApiValidationResult {
         // The `mixed` body parameter is kept for backward compatibility.
         // Framework adapters now pass a DecodedBody envelope directly; legacy
@@ -285,7 +287,7 @@ final class OpenApiRequestValidator
         $issueGroups = [
             ['request.spec', self::withoutNames($collected->specErrors), null, []],
             ['request.parameter.path', ValidatorErrorBoundary::safelyNamed('path', $specName, $method, $matchedPath, fn(): array => $this->pathValidator->validate($method, $matchedPath, $collected->parameters, $pathVariables, $version, $jsonSchemaDialect)), null, []],
-            ['request.parameter.query', ValidatorErrorBoundary::safelyNamed('query', $specName, $method, $matchedPath, fn(): array => $this->queryValidator->validate($method, $matchedPath, $collected->parameters, $queryParams, $version, $jsonSchemaDialect)), null, []],
+            ['request.parameter.query', ValidatorErrorBoundary::safelyNamed('query', $specName, $method, $matchedPath, fn(): array => $this->queryValidator->validate($method, $matchedPath, $collected->parameters, $queryParams, $version, $jsonSchemaDialect, $rawQueryString)), null, []],
             ['request.parameter.header', ValidatorErrorBoundary::safelyNamed('header', $specName, $method, $matchedPath, fn(): array => $this->headerValidator->validate($method, $matchedPath, $collected->parameters, $headers, $version, $jsonSchemaDialect)), null, []],
             ['request.security', ValidatorErrorBoundary::safelyNamed('security', $specName, $method, $matchedPath, fn(): array => $this->securityValidator->validate($method, $matchedPath, $spec, $operation, $headers, $queryParams, $cookies)), null, []],
             ['request.body', self::withoutNames($bodyResult->errors), $bodyResult->matchedContentType, $bodyResult->violations],
