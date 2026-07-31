@@ -60,7 +60,8 @@ class ViolationBaselineFileTest extends TestCase
     #[Test]
     public function to_document_round_trips_through_parse_document(): void
     {
-        // Issue #417: the v3 sidecar envelope embeds toDocument() verbatim
+        // Issue #417: the baseline-carrying sidecar envelope (v5; v3 is the
+        // accepted legacy shape) embeds toDocument() verbatim
         // and the merge CLI re-validates it via parseDocument() — the pair
         // must round-trip without loss, including entry normalization.
         $baseline = new ViolationBaseline();
