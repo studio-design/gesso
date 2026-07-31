@@ -1362,6 +1362,49 @@ class SchemaDataGeneratorTest extends TestCase
     }
 
     #[Test]
+    public function merge_intersects_enum_domains(): void
+    {
+        // Both enums are assertions; plain array_merge would let the right
+        // side displace the left and silently widen the admissible domain.
+        $this->assertSame(
+            ['b'],
+            SchemaDataGenerator::mergeSchemas(['enum' => ['a', 'b']], ['enum' => ['c', 'b']])['enum'],
+        );
+        // Right-side order is preserved so unconflicted merges keep the
+        // historical rotation picks bit-for-bit.
+        $this->assertSame(
+            ['b', 'a'],
+            SchemaDataGenerator::mergeSchemas(['enum' => ['a', 'b']], ['enum' => ['b', 'a']])['enum'],
+        );
+        $this->assertSame(
+            [],
+            SchemaDataGenerator::mergeSchemas(['enum' => ['a']], ['enum' => ['c']])['enum'],
+        );
+    }
+
+    #[Test]
+    public function merge_intersects_type_constraints(): void
+    {
+        $this->assertSame(
+            ['integer'],
+            SchemaDataGenerator::mergeSchemas(
+                ['type' => 'integer'],
+                ['type' => ['string', 'integer']],
+            )['type'],
+        );
+        // An unconflicted merge keeps the right side verbatim, string form
+        // included, so historical output is untouched.
+        $this->assertSame(
+            'string',
+            SchemaDataGenerator::mergeSchemas(['type' => ['string', 'null']], ['type' => 'string'])['type'],
+        );
+        $this->assertSame(
+            [],
+            SchemaDataGenerator::mergeSchemas(['type' => 'integer'], ['type' => 'string'])['type'],
+        );
+    }
+
+    #[Test]
     public function planned_enum_generation_filters_values_excluded_by_not(): void
     {
         // Rotation alone cannot escape a long excluded prefix; the planned

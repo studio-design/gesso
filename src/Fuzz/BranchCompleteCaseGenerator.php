@@ -24,10 +24,14 @@ use function count;
  * reachability is undecidable in general — parent constraints such as
  * `oneOf` exclusivity, `const`, `minProperties`, or folded conditional
  * suppressions can forbid the pinned state on a perfectly valid schema — so
- * a targeted case whose value cannot be generated valid (after the
- * deterministic search machinery: enum-domain filtering, `not` retries,
- * conditional closure) is treated as an unreachable branch and dropped
- * rather than failing the run. If every case is dropped, one rotation-only
+ * a targeted case that cannot realize its branch (after the deterministic
+ * search machinery: enum-domain filtering, `not` retries, conditional
+ * closure) is treated as an unreachable branch and dropped rather than
+ * failing the run. Realizing the branch means both whole-schema validity
+ * and the generation-site observation that the target branch itself was
+ * taken ({@see PinnedBranchObservation}) — whole-schema validity alone
+ * cannot tell the target from a sibling branch that also matches the
+ * value. If every case is dropped, one rotation-only
  * case still runs loudly, so an unsatisfiable schema remains an error.
  * Schemas outside the enumeration subset or beyond its documented bounds
  * throw from the pre-pass before anything is generated.
@@ -73,11 +77,17 @@ final class BranchCompleteCaseGenerator
             // A pinned branch's reachability is undecidable in general:
             // parent constraints — oneOf exclusivity, const, minProperties,
             // folded suppressions — can forbid the pinned state on a
-            // perfectly valid schema. When generation (including its
-            // deterministic search machinery) cannot realize a targeted
-            // case, the branch is treated as unreachable and the case is
-            // dropped; untargeted cases stay loud.
-            if ($plan->targetPointer !== null && !SchemaValueValidator::isValid($value, $schema)) {
+            // perfectly valid schema. A targeted case counts as covering
+            // its branch only when the value is valid for the whole schema
+            // AND generation observed the target branch itself being taken
+            // — whole-schema validity alone cannot tell the target from a
+            // sibling that also matches (`anyOf`, an `if` firing on an
+            // else-targeted value). When generation (including its
+            // deterministic search machinery) cannot realize such a value,
+            // the branch is treated as unreachable and the case is dropped;
+            // untargeted cases stay loud.
+            if ($plan->targetPointer !== null &&
+                (!$plan->observation->targetSatisfied || !SchemaValueValidator::isValid($value, $schema))) {
                 continue;
             }
             SchemaValueValidator::assertValid($value, $schema, $index);

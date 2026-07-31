@@ -819,4 +819,153 @@ class BranchCompleteCaseGeneratorTest extends TestCase
         $this->assertTrue($sawString, 'no case exercised the string items branch');
         $this->assertTrue($sawInteger, 'no case exercised the integer items branch');
     }
+
+    #[Test]
+    public function covers_each_any_of_branch_constrained_by_an_all_of_enum(): void
+    {
+        // The allOf enum narrows each anyOf branch: branch 0 admits only
+        // `b`, branch 1 only `c`. A whole-schema check alone cannot tell a
+        // case that took branch 0 from one that merely passed via branch 1.
+        $cases = BranchCompleteCaseGenerator::generate([
+            'type' => 'string',
+            'anyOf' => [
+                ['enum' => ['a', 'b']],
+                ['const' => 'c'],
+            ],
+            'allOf' => [
+                ['enum' => ['c', 'b']],
+            ],
+        ], seed: 1);
+
+        $byBranch = [];
+        foreach ($cases as $case) {
+            if ($case->plan->targetPointer === '/anyOf') {
+                $byBranch[$case->plan->targetBranch] = $case->value;
+            }
+        }
+
+        $this->assertSame('b', $byBranch[0] ?? null, 'branch 0 never produced its only admissible value');
+        $this->assertSame('c', $byBranch[1] ?? null);
+    }
+
+    #[Test]
+    public function covers_each_any_of_branch_constrained_by_an_all_of_type(): void
+    {
+        // Both branches stay reachable under the allOf type union; each
+        // pinned case must produce a value of its own branch's type.
+        $cases = BranchCompleteCaseGenerator::generate([
+            'anyOf' => [
+                ['type' => 'string'],
+                ['type' => 'integer'],
+            ],
+            'allOf' => [
+                ['type' => ['string', 'integer']],
+            ],
+        ], seed: 1);
+
+        $byBranch = [];
+        foreach ($cases as $case) {
+            if ($case->plan->targetPointer === '/anyOf') {
+                $byBranch[$case->plan->targetBranch] = $case->value;
+            }
+        }
+
+        $this->assertIsString($byBranch[0] ?? null);
+        $this->assertIsInt($byBranch[1] ?? null, 'the integer branch was never actually taken');
+    }
+
+    #[Test]
+    public function drops_an_any_of_case_that_cannot_take_its_target_branch(): void
+    {
+        // The allOf forces strings, so the integer branch is unreachable;
+        // its case must be dropped, not kept mislabeled with a value that
+        // only passes through the string branch.
+        $cases = BranchCompleteCaseGenerator::generate([
+            'anyOf' => [
+                ['type' => 'integer'],
+                ['type' => 'string'],
+            ],
+            'allOf' => [
+                ['type' => 'string'],
+            ],
+        ], seed: 1);
+
+        $this->assertNotSame([], $cases);
+        foreach ($cases as $case) {
+            $this->assertIsString($case->value);
+            if ($case->plan->targetPointer === '/anyOf') {
+                $this->assertSame(1, $case->plan->targetBranch, 'the unreachable integer branch was kept');
+            }
+        }
+    }
+
+    #[Test]
+    public function drops_a_conditional_case_whose_value_matches_a_suppressed_if(): void
+    {
+        // The node const forces `x`, so the none-match state (no `if`
+        // firing) is unreachable — but `x` is valid for the whole schema,
+        // so only a per-branch check can tell the case was mislabeled.
+        $cases = BranchCompleteCaseGenerator::generate([
+            'type' => 'string',
+            'const' => 'x',
+            'allOf' => [
+                ['if' => ['const' => 'x'], 'then' => ['minLength' => 1]],
+            ],
+        ], seed: 1);
+
+        $this->assertNotSame([], $cases);
+        foreach ($cases as $case) {
+            $this->assertSame('x', $case->value);
+            if ($case->plan->targetPointer === '/allOf') {
+                $this->assertSame(0, $case->plan->targetBranch, 'the unreachable none-match state was kept');
+            }
+        }
+    }
+
+    #[Test]
+    public function drops_an_else_case_whose_value_satisfies_the_if(): void
+    {
+        // The node const forces the `if` to fire, so the else side is
+        // unreachable — yet its generated value `x` passes the whole
+        // schema through the then side.
+        $cases = BranchCompleteCaseGenerator::generate([
+            'type' => 'string',
+            'const' => 'x',
+            'if' => ['const' => 'x'],
+            'then' => ['minLength' => 1],
+        ], seed: 1);
+
+        $this->assertNotSame([], $cases);
+        foreach ($cases as $case) {
+            $this->assertSame('x', $case->value);
+            if ($case->plan->targetPointer === '/if') {
+                $this->assertSame(0, $case->plan->targetBranch, 'the unreachable else side was kept');
+            }
+        }
+    }
+
+    #[Test]
+    public function drops_a_present_case_whose_property_was_trimmed(): void
+    {
+        // maxProperties 1 with a required sibling means `b` can never be
+        // present; the trim removes it, so keeping the case would label a
+        // b-less object as covering b's presence.
+        $cases = BranchCompleteCaseGenerator::generate([
+            'type' => 'object',
+            'maxProperties' => 1,
+            'required' => ['a'],
+            'properties' => [
+                'a' => ['type' => 'string'],
+                'b' => ['type' => 'string'],
+            ],
+        ], seed: 1);
+
+        $this->assertNotSame([], $cases);
+        foreach ($cases as $case) {
+            $this->assertIsArray($case->value);
+            if ($case->plan->targetPointer === '/properties/b' && $case->plan->targetBranch === 0) {
+                $this->assertArrayHasKey('b', $case->value, 'a present-targeted case lost its property to the trim');
+            }
+        }
+    }
 }
