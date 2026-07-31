@@ -4996,6 +4996,16 @@
                 }
             },
             "methods": {
+                "applyAcknowledgedUnvalidatableSchemesConfig": {
+                    "visibility": "private",
+                    "static": false,
+                    "final": false,
+                    "abstract": false,
+                    "returns_reference": false,
+                    "return_type": "void",
+                    "attributes": [],
+                    "parameters": []
+                },
                 "applyDiscriminatorEnforcementConfig": {
                     "visibility": "private",
                     "static": false,
@@ -5788,6 +5798,16 @@
                             "attributes": []
                         }
                     ]
+                },
+                "resolveAcknowledgedUnvalidatableSchemes": {
+                    "visibility": "private",
+                    "static": false,
+                    "final": false,
+                    "abstract": false,
+                    "returns_reference": false,
+                    "return_type": "array",
+                    "attributes": [],
+                    "parameters": []
                 },
                 "resolveAutoInjectCredentials": {
                     "visibility": "private",

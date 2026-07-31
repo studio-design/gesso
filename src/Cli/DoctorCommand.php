@@ -31,6 +31,8 @@ use Studio\Gesso\Spec\OpenApiOperationResolver;
 use Studio\Gesso\Spec\OpenApiSchemaConverter;
 use Studio\Gesso\Spec\OpenApiSchemaDialect;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
+use Studio\Gesso\Validation\Request\SchemeKind;
+use Studio\Gesso\Validation\Request\SecurityValidator;
 use Studio\Gesso\Validation\Support\DiscriminatorContext;
 use Studio\Gesso\Validation\Support\MalformedSpecNode;
 use Symfony\Component\HttpClient\Psr18Client;
@@ -75,7 +77,7 @@ use function trim;
 /**
  * Pre-test compatibility diagnostics for one or more OpenAPI documents.
  *
- * @phpstan-type DoctorOptions array{specs?: list<string>, strip_prefixes?: list<string>, remote_ref_hosts?: list<string>, remote_ref_max_bytes?: int|string, local_ref_root?: string, format?: string, allow_remote_refs?: bool, phpunit_snippet?: bool, help?: bool, invalid_options?: list<string>}
+ * @phpstan-type DoctorOptions array{specs?: list<string>, strip_prefixes?: list<string>, remote_ref_hosts?: list<string>, acknowledged_unvalidatable_schemes?: list<string>, remote_ref_max_bytes?: int|string, local_ref_root?: string, format?: string, allow_remote_refs?: bool, phpunit_snippet?: bool, help?: bool, invalid_options?: list<string>}
  * @phpstan-type DoctorIssue array{severity: 'error'|'warning'|'skipped', category: string, spec: ?string, message: string, suggestion: ?string}
  * @phpstan-type SpecResult array{path: string, name: string, openapi: string, dialect: string, operations: int, responses: int}
  *
@@ -103,7 +105,7 @@ final class DoctorCommand
      */
     public static function parseArgv(array $argv): array
     {
-        $options = ['specs' => [], 'strip_prefixes' => [], 'remote_ref_hosts' => [], 'invalid_options' => []];
+        $options = ['specs' => [], 'strip_prefixes' => [], 'remote_ref_hosts' => [], 'acknowledged_unvalidatable_schemes' => [], 'invalid_options' => []];
 
         foreach ($argv as $arg) {
             if ($arg === 'doctor') {
@@ -158,6 +160,13 @@ final class DoctorCommand
                     $options['remote_ref_max_bytes'] = $value;
 
                     break;
+                case 'acknowledge_unvalidatable_scheme':
+                    $options['acknowledged_unvalidatable_schemes'] = [
+                        ...$options['acknowledged_unvalidatable_schemes'],
+                        ...array_values(array_filter(array_map('trim', explode(',', $value)), static fn(string $item): bool => $item !== '')),
+                    ];
+
+                    break;
                 case 'local_ref_root':
                     $options['local_ref_root'] = $value;
 
@@ -194,6 +203,11 @@ final class DoctorCommand
                                          --allow-remote-refs; repeat as needed.
               --remote-ref-max-bytes=<n> Maximum bytes read per remote document
                                          (default: 10485760).
+              --acknowledge-unvalidatable-scheme=<name[,name]>
+                                         Security scheme name (components.securitySchemes
+                                         key) acknowledged as unvalidatable. Repeat as
+                                         needed. Mirrors the acknowledged_unvalidatable_schemes
+                                         PHPUnit / Laravel setting.
               --phpunit-snippet          Include the equivalent PHPUnit extension XML.
               --help                     Show this message.
 
@@ -286,6 +300,7 @@ final class DoctorCommand
                 $maxRemoteRefBytes,
                 $options['local_ref_root'] ?? null,
                 $transport,
+                $options['acknowledged_unvalidatable_schemes'] ?? [],
                 $specResults,
                 $issues,
             );
@@ -316,6 +331,7 @@ final class DoctorCommand
      * @param positive-int $maxRemoteRefBytes
      * @param null|string $localRefRoot canonical configured local-ref boundary
      * @param null|array{0: ClientInterface, 1: RequestFactoryInterface} $transport
+     * @param list<string> $acknowledgedSchemes scheme names acknowledged as unvalidatable
      * @param list<SpecResult> $specResults
      * @param list<DoctorIssue> $issues
      */
@@ -327,6 +343,7 @@ final class DoctorCommand
         int $maxRemoteRefBytes,
         ?string $localRefRoot,
         ?array $transport,
+        array $acknowledgedSchemes,
         array &$specResults,
         array &$issues,
     ): void {
@@ -408,7 +425,7 @@ final class DoctorCommand
             $dialect = OpenApiSchemaDialect::fromSpec($spec, $version);
             [$operations, $responses] = $this->inspectStructure($spec, $label, $issues);
             $this->inspectSchemas($spec, $version, $dialect, new DiscriminatorContext($spec, true));
-            $this->inspectSkippedFeatures($spec, $label, $issues);
+            $this->inspectSkippedFeatures($spec, $label, $acknowledgedSchemes, $issues);
 
             $specResults[] = [
                 'path' => $path,
@@ -641,13 +658,14 @@ final class DoctorCommand
 
     /**
      * @param array<string, mixed> $spec
+     * @param list<string> $acknowledgedSchemes scheme names acknowledged as unvalidatable (issue #445)
      * @param list<DoctorIssue> $issues
      */
-    private function inspectSkippedFeatures(array $spec, string $label, array &$issues): void
+    private function inspectSkippedFeatures(array $spec, string $label, array $acknowledgedSchemes, array &$issues): void
     {
         $schemes = $spec['components']['securitySchemes'] ?? null;
         if (!is_array($schemes)) {
-            return;
+            $schemes = [];
         }
 
         foreach ($schemes as $name => $scheme) {
@@ -659,6 +677,17 @@ final class DoctorCommand
             if (!in_array($type, ['oauth2', 'openIdConnect', 'mutualTLS'], true) && !$isUnsupportedHttp) {
                 continue;
             }
+            if (in_array((string) $name, $acknowledgedSchemes, true)) {
+                $issues[] = $this->issue(
+                    'skipped',
+                    'feature',
+                    $label,
+                    sprintf('Security scheme `%s` (%s) is recognized but not enforced — acknowledged as unvalidatable.', (string) $name, $type),
+                    null,
+                );
+
+                continue;
+            }
             $issues[] = $this->issue(
                 'skipped',
                 'feature',
@@ -666,6 +695,35 @@ final class DoctorCommand
                 sprintf('Security scheme `%s` (%s) is recognized but not enforced.', (string) $name, $type),
                 'Keep a separate authentication test until this scheme is supported.',
             );
+        }
+
+        // Rot checks mirroring SecurityValidator::warnAcknowledgementRot():
+        // an acknowledged name that is absent from the spec, or that names a
+        // scheme the validator can enforce, is a configuration warning so the
+        // acknowledged list cannot rot silently.
+        foreach ($acknowledgedSchemes as $acknowledgedName) {
+            $definition = $schemes[$acknowledgedName] ?? null;
+            if (!is_array($definition)) {
+                $issues[] = $this->issue(
+                    'warning',
+                    'configuration',
+                    $label,
+                    sprintf('Acknowledged security scheme `%s` is not defined in components.securitySchemes.', $acknowledgedName),
+                    'Fix the name or remove the entry from the acknowledged list.',
+                );
+
+                continue;
+            }
+            $kind = SecurityValidator::classifyScheme($definition)->kind;
+            if ($kind === SchemeKind::Bearer || $kind === SchemeKind::ApiKey) {
+                $issues[] = $this->issue(
+                    'warning',
+                    'configuration',
+                    $label,
+                    sprintf('Acknowledged security scheme `%s` is a scheme the validator can enforce; the acknowledgement has no effect.', $acknowledgedName),
+                    'Remove the entry from the acknowledged list so the scheme stays validated.',
+                );
+            }
         }
     }
 

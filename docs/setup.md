@@ -85,6 +85,7 @@ Add the coverage extension to your `phpunit.xml`:
 | `strict_additional_properties_per_call` | No | `off` | Immediate undocumented response-property warning: `off` or `warn`. Pair with PHPUnit `failOnWarning="true"` for per-test failure. |
 | `default_testsuite_as_full` | No | `false` | Opt-in. When `true` and PHPUnit's `includeTestSuites` resolves exactly to the configured `defaultTestSuite`, treat the run as full instead of partial (so `strict_required` and coverage outputs aren't suppressed). See [default_testsuite_as_full opt-in](ci.md#default_testsuite_as_full-opt-in) for trade-offs |
 | `enforce_discriminator` | No | `true` | When `true` (default), `discriminator` + `mapping` is enforced via `if`/`then` lowering so a body that lies about its type fails. Set to `false` (or `0` / `no`) to strip `discriminator` without enforcing (no warning either). See [Schema features → discriminator](supported-features.md#schema-features) |
+| `acknowledged_unvalidatable_schemes` | No | — | Comma-separated `components.securitySchemes` names acknowledged as unvalidatable. Suppresses the one-shot `[security]` silent-pass warning for exactly those schemes; every other unvalidatable scheme keeps warning. See [Acknowledging an unvalidatable security scheme](#acknowledging-an-unvalidatable-security-scheme) |
 
 *Not required if you call `OpenApiSpecLoader::configure()` manually.
 
@@ -634,6 +635,36 @@ Notes:
 - **Bearer only**: `apiKey` and `oauth2` endpoints are not affected (the header name for `apiKey` is arbitrary per spec; `oauth2` is classified as unsupported anyway).
 - **Never overrides user values**: if the test already set an `Authorization` header (in any case), the user's value wins.
 - **Requires `auto_validate_request=true`** — the inject is a sub-feature of request validation. Setting the inject flag alone has no effect.
+
+## Acknowledging an unvalidatable security scheme
+
+The validator cannot enforce `oauth2`, `openIdConnect`, `mutualTLS`, or `http` schemes other than `bearer` (basic, digest, …). Requests secured only by such a scheme silently pass the security check, and the first encounter per scheme emits a one-shot `E_USER_WARNING` so the silent pass does not stay invisible (see the [warning channel](supported-features.md#warning-channel-e_user_warning-contract)).
+
+Under Laravel that warning is converted into a test failure by the framework's error handler — and because it is one-shot, *which* test fails depends on execution order. When the scheme genuinely cannot be avoided (e.g. RFC 7009 / RFC 7662 mandate HTTP Basic client authentication for token revocation / introspection endpoints) and the authentication is covered by a dedicated test, acknowledge the scheme **by name** instead of filtering `E_USER_WARNING` globally:
+
+```php
+// config/gesso.php (Laravel)
+return [
+    'auto_validate_request' => true,
+    // components.securitySchemes keys covered by a dedicated auth test.
+    'acknowledged_unvalidatable_schemes' => ['ClientBasicAuth'],
+];
+```
+
+```xml
+<!-- phpunit.xml (framework-agnostic suites) -->
+<bootstrap class="Studio\Gesso\PHPUnit\OpenApiCoverageExtension">
+    <parameter name="spec_base_path" value="openapi"/>
+    <parameter name="acknowledged_unvalidatable_schemes" value="ClientBasicAuth"/>
+</bootstrap>
+```
+
+Notes:
+
+- **Scheme-scoped, not global**: only the listed scheme names stop warning. Any other unvalidatable scheme — including one added to the spec later — still warns.
+- **The list cannot rot**: acknowledging a name that is not defined in `components.securitySchemes`, or one the validator *can* enforce (`http` + `bearer`, `apiKey`), itself emits a one-shot `[security]` warning.
+- **Validation behavior is unchanged**: acknowledged schemes were already silently passed; the acknowledgement only silences the warning.
+- `gesso doctor` reflects the acknowledgement via `--acknowledge-unvalidatable-scheme` — see [the doctor guide](doctor.md#acknowledged-unvalidatable-security-schemes).
 
 ## HTTP `$ref` resolution (opt-in)
 

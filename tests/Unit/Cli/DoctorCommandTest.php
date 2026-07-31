@@ -51,6 +51,7 @@ class DoctorCommandTest extends TestCase
                 'specs' => ['front.json', 'admin.yaml'],
                 'strip_prefixes' => ['/api', '/internal'],
                 'remote_ref_hosts' => ['specs.example.com', 'schemas.example.com'],
+                'acknowledged_unvalidatable_schemes' => ['ClientBasicAuth', 'LegacyOAuth', 'mTLS'],
                 'invalid_options' => [],
                 'format' => 'json',
                 'allow_remote_refs' => true,
@@ -69,6 +70,8 @@ class DoctorCommandTest extends TestCase
                 '--remote-ref-host=schemas.example.com',
                 '--remote-ref-max-bytes=4096',
                 '--local-ref-root=/trusted/openapi',
+                '--acknowledge-unvalidatable-scheme=ClientBasicAuth,LegacyOAuth',
+                '--acknowledge-unvalidatable-scheme=mTLS',
                 '--phpunit-snippet',
             ]),
         );
@@ -312,6 +315,101 @@ class DoctorCommandTest extends TestCase
         $this->assertSame(1, $report['summary']['warnings']);
         $this->assertSame(1, $report['summary']['skipped']);
         $this->assertSame(['skipped', 'warning'], array_column($report['issues'], 'severity'));
+    }
+
+    #[Test]
+    public function acknowledged_unvalidatable_scheme_is_marked_in_skipped_feature_output(): void
+    {
+        // Issue #445: the doctor reflects a scheme-scoped acknowledgement —
+        // the scheme is still listed as a skipped feature, but marked as
+        // acknowledged instead of prompting for a separate auth test.
+        $spec = $this->writeSpec('acknowledged.json', (string) json_encode([
+            'openapi' => '3.0.3',
+            'info' => ['title' => 'Test', 'version' => '1'],
+            'paths' => ['/pets' => ['get' => ['responses' => ['200' => ['description' => 'ok']]]]],
+            'components' => ['securitySchemes' => [
+                'ClientBasicAuth' => ['type' => 'http', 'scheme' => 'basic'],
+                'oauth' => ['type' => 'oauth2'],
+            ]],
+        ], JSON_THROW_ON_ERROR));
+        $output = '';
+        $command = new DoctorCommand(stdoutWriter: static function (string $message) use (&$output): void {
+            $output .= $message;
+        });
+
+        $exit = $command->run([
+            'specs' => [$spec],
+            'format' => 'json',
+            'acknowledged_unvalidatable_schemes' => ['ClientBasicAuth'],
+        ]);
+        $report = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(DoctorCommand::EXIT_OK, $exit);
+        $this->assertSame(['skipped', 'skipped'], array_column($report['issues'], 'severity'));
+
+        $acknowledged = $report['issues'][0];
+        $this->assertStringContainsString('ClientBasicAuth', $acknowledged['message']);
+        $this->assertStringContainsString('acknowledged', $acknowledged['message']);
+        $this->assertNull($acknowledged['suggestion']);
+
+        $unacknowledged = $report['issues'][1];
+        $this->assertStringContainsString('oauth', $unacknowledged['message']);
+        $this->assertStringNotContainsString('acknowledged', $unacknowledged['message']);
+        $this->assertNotNull($unacknowledged['suggestion']);
+    }
+
+    #[Test]
+    public function acknowledging_a_scheme_missing_from_the_spec_is_a_configuration_warning(): void
+    {
+        $spec = $this->writeSpec('ack-missing.json', $this->validSpec('/pets'));
+        $output = '';
+        $command = new DoctorCommand(stdoutWriter: static function (string $message) use (&$output): void {
+            $output .= $message;
+        });
+
+        $exit = $command->run([
+            'specs' => [$spec],
+            'format' => 'json',
+            'acknowledged_unvalidatable_schemes' => ['Ghost'],
+        ]);
+        $report = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(DoctorCommand::EXIT_OK, $exit);
+        $this->assertSame('warning', $report['status']);
+        $this->assertSame('warning', $report['issues'][0]['severity']);
+        $this->assertSame('configuration', $report['issues'][0]['category']);
+        $this->assertStringContainsString('Ghost', $report['issues'][0]['message']);
+        $this->assertStringContainsString('not defined in components.securitySchemes', $report['issues'][0]['message']);
+    }
+
+    #[Test]
+    public function acknowledging_a_validatable_scheme_is_a_configuration_warning(): void
+    {
+        $spec = $this->writeSpec('ack-validatable.json', (string) json_encode([
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'Test', 'version' => '1'],
+            'paths' => ['/pets' => ['get' => ['responses' => ['200' => ['description' => 'ok']]]]],
+            'components' => ['securitySchemes' => [
+                'BearerAuth' => ['type' => 'http', 'scheme' => 'bearer'],
+            ]],
+        ], JSON_THROW_ON_ERROR));
+        $output = '';
+        $command = new DoctorCommand(stdoutWriter: static function (string $message) use (&$output): void {
+            $output .= $message;
+        });
+
+        $exit = $command->run([
+            'specs' => [$spec],
+            'format' => 'json',
+            'acknowledged_unvalidatable_schemes' => ['BearerAuth'],
+        ]);
+        $report = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(DoctorCommand::EXIT_OK, $exit);
+        $this->assertSame('warning', $report['issues'][0]['severity']);
+        $this->assertSame('configuration', $report['issues'][0]['category']);
+        $this->assertStringContainsString('BearerAuth', $report['issues'][0]['message']);
+        $this->assertStringContainsString('can enforce', $report['issues'][0]['message']);
     }
 
     #[Test]
