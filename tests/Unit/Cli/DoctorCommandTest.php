@@ -470,6 +470,69 @@ class DoctorCommandTest extends TestCase
     }
 
     #[Test]
+    public function malformed_security_schemes_are_reported_as_errors(): void
+    {
+        // Runtime validation hard-errors on a request secured by a malformed
+        // scheme; the doctor must not report the same spec as fully
+        // compatible. Covers both a missing required field (`type: http`
+        // without `scheme`) and a non-string `type`.
+        $spec = $this->writeSpec('malformed-schemes.json', (string) json_encode([
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'Test', 'version' => '1'],
+            'paths' => ['/pets' => ['get' => [
+                'security' => [['Broken' => []]],
+                'responses' => ['200' => ['description' => 'ok']],
+            ]]],
+            'components' => ['securitySchemes' => [
+                'Broken' => ['type' => 'http'],
+                'NoType' => ['type' => 123],
+            ]],
+        ], JSON_THROW_ON_ERROR));
+
+        $report = $this->runJsonDoctor($spec, $exit);
+
+        $this->assertSame(DoctorCommand::EXIT_DIAGNOSTIC_FAILURE, $exit);
+        $this->assertSame('error', $report['status']);
+        $this->assertSame(['error', 'error'], array_column($report['issues'], 'severity'));
+        $this->assertSame(['structure', 'structure'], array_column($report['issues'], 'category'));
+        $this->assertStringContainsString('`Broken` is malformed', $report['issues'][0]['message']);
+        $this->assertStringContainsString("'scheme' field", $report['issues'][0]['message']);
+        $this->assertStringContainsString('`NoType` is malformed', $report['issues'][1]['message']);
+        $this->assertStringContainsString("'type' field", $report['issues'][1]['message']);
+    }
+
+    #[Test]
+    public function acknowledging_a_malformed_scheme_does_not_mask_the_error(): void
+    {
+        // The runtime ignores acknowledgements for malformed definitions (the
+        // hard error is the signal); the doctor must do the same instead of
+        // marking the scheme as an acknowledged skipped feature.
+        $spec = $this->writeSpec('ack-malformed.json', (string) json_encode([
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'Test', 'version' => '1'],
+            'paths' => ['/pets' => ['get' => ['responses' => ['200' => ['description' => 'ok']]]]],
+            'components' => ['securitySchemes' => [
+                'Broken' => ['type' => 'http'],
+            ]],
+        ], JSON_THROW_ON_ERROR));
+        $output = '';
+        $command = new DoctorCommand(stdoutWriter: static function (string $message) use (&$output): void {
+            $output .= $message;
+        });
+
+        $exit = $command->run([
+            'specs' => [$spec],
+            'format' => 'json',
+            'acknowledged_unvalidatable_schemes' => ['Broken'],
+        ]);
+        $report = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(DoctorCommand::EXIT_DIAGNOSTIC_FAILURE, $exit);
+        $this->assertSame(['error'], array_column($report['issues'], 'severity'));
+        $this->assertStringContainsString('`Broken` is malformed', $report['issues'][0]['message']);
+    }
+
+    #[Test]
     public function phpunit_snippet_includes_acknowledged_schemes_parameter(): void
     {
         // The "Equivalent PHPUnit configuration" must reproduce the doctor

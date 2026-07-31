@@ -49,6 +49,7 @@ use function dirname;
 use function explode;
 use function filter_var;
 use function fwrite;
+use function get_debug_type;
 use function getcwd;
 use function htmlspecialchars;
 use function implode;
@@ -672,18 +673,31 @@ final class DoctorCommand
             if (!is_array($scheme)) {
                 continue;
             }
-            $type = $scheme['type'] ?? null;
-            if (!is_string($type)) {
-                continue;
-            }
             // Partition via the runtime classifier so the doctor and the
             // validator cannot disagree — e.g. `scheme: Bearer` is enforced
-            // bearer auth (RFC 7235 case-insensitive), not a skipped feature,
-            // and malformed definitions surface as runtime hard errors rather
-            // than skipped features.
-            if (SecurityValidator::classifyScheme($scheme)->kind !== SchemeKind::Unsupported) {
+            // bearer auth (RFC 7235 case-insensitive), and a malformed
+            // definition (missing/non-string `type`, `http` without `scheme`,
+            // …) is the same hard error runtime validation raises for a
+            // request secured by it — not a silently accepted definition.
+            $classification = SecurityValidator::classifyScheme($scheme);
+            if ($classification->kind === SchemeKind::Malformed) {
+                $issues[] = $this->issue(
+                    'error',
+                    'structure',
+                    $label,
+                    sprintf('Security scheme `%s` is malformed: %s', (string) $name, $classification->reason ?? ''),
+                    'Fix the definition under components.securitySchemes — requests secured by this scheme fail validation with a hard error.',
+                );
+
                 continue;
             }
+            if ($classification->kind !== SchemeKind::Unsupported) {
+                continue;
+            }
+            $rawType = $scheme['type'] ?? null;
+            // Unsupported classifications always carry a string `type`; the
+            // fallback only guards the static type.
+            $type = is_string($rawType) ? $rawType : get_debug_type($rawType);
             if (in_array((string) $name, $acknowledgedSchemes, true)) {
                 $issues[] = $this->issue(
                     'skipped',
