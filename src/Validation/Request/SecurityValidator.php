@@ -32,17 +32,22 @@ final class SecurityValidator
     /** @var array<string, true> */
     private static array $warnedSchemeNames = [];
 
+    /** @var array<string, true> */
+    private static array $checkedAcknowledgedNames = [];
+
     /**
-     * Reset the per-process "already-warned" set used by
-     * {@see warnIfFirstEncounter()}. Test seam — production code never needs
-     * this. The convention mirrors {@see OpenApiSchemaConverter}'s same-named
-     * method so test setUp/tearDown patterns stay symmetric across the codebase.
+     * Reset the per-process "already-warned" sets used by
+     * {@see warnIfFirstEncounter()} and {@see warnAcknowledgementRot()}.
+     * Test seam — production code never needs this. The convention mirrors
+     * {@see OpenApiSchemaConverter}'s same-named method so test
+     * setUp/tearDown patterns stay symmetric across the codebase.
      *
      * @internal
      */
     public static function resetWarningStateForTesting(): void
     {
         self::$warnedSchemeNames = [];
+        self::$checkedAcknowledgedNames = [];
     }
 
     /**
@@ -150,6 +155,17 @@ final class SecurityValidator
         array $queryParams,
         array $cookies,
     ): array {
+        // Rot checks for the acknowledged-scheme list run before every early
+        // return below: a spec that dropped both the scheme and its
+        // `security` declarations must still report the stale acknowledgement
+        // (issue #445 — "the list cannot rot"). A present-but-malformed
+        // securitySchemes node is skipped here; its hard error below is the
+        // loud signal for that defect.
+        $declaredSchemes = $spec['components']['securitySchemes'] ?? [];
+        if (is_array($declaredSchemes)) {
+            self::warnAcknowledgementRot($declaredSchemes, $method, $matchedPath);
+        }
+
         $security = array_key_exists('security', $operation)
             ? $operation['security']
             : ($spec['security'] ?? null);
@@ -302,9 +318,14 @@ final class SecurityValidator
                 }
 
                 if ($classification->kind === SchemeKind::Unsupported) {
-                    /** @var string $typeLabel */
-                    $typeLabel = $classification->unsupportedTypeLabel;
-                    self::warnIfFirstEncounter($schemeName, $typeLabel, $method, $matchedPath);
+                    // An acknowledged scheme (issue #445) skips the warning
+                    // but keeps the silent-pass semantics: the entry is still
+                    // skipped, contributing neither pass nor fail.
+                    if (!AcknowledgedSecuritySchemes::isAcknowledged($schemeName)) {
+                        /** @var string $typeLabel */
+                        $typeLabel = $classification->unsupportedTypeLabel;
+                        self::warnIfFirstEncounter($schemeName, $typeLabel, $method, $matchedPath);
+                    }
                     $entryHasUnsupported = true;
 
                     continue;
@@ -400,7 +421,9 @@ final class SecurityValidator
                     . 'The opis/json-schema-based validator cannot verify oauth2 / openIdConnect / '
                     . 'mutualTLS / http-basic / http-digest credentials. Your test will not detect '
                     . 'a missing or invalid token. Workaround: split the bearer-token surface into '
-                    . 'a separate test, or assert the Authorization header presence manually.',
+                    . 'a separate test, or assert the Authorization header presence manually. Once '
+                    . 'the scheme is covered elsewhere, acknowledge it by name via the '
+                    . '`acknowledged_unvalidatable_schemes` setting to silence this warning.',
                 $typeLabel,
                 $schemeName,
                 $method,
@@ -408,6 +431,78 @@ final class SecurityValidator
             ),
             E_USER_WARNING,
         );
+    }
+
+    /**
+     * Rot prevention for the acknowledged-scheme list (issue #445): an entry
+     * naming a scheme that is absent from the spec, or one this validator CAN
+     * enforce, is reported with a one-shot E_USER_WARNING instead of being
+     * silently accepted — otherwise a typo'd entry would suppress nothing
+     * (looking like it works) and a stale entry would survive a scheme's
+     * upgrade to a validatable type.
+     *
+     * Checks run against the spec of every validate() call — including calls
+     * where the operation declares no `security` at all — and are dedup'd per
+     * (acknowledged name, check outcome) for the process. Keying the dedup by
+     * outcome rather than by name alone keeps multi-spec suites
+     * order-independent: a name that is legitimately acknowledged in the
+     * first spec but validatable (or absent) in another still warns whichever
+     * spec is validated first. Malformed definitions are deliberately not
+     * reported here — the hard error from the reference site is the loud
+     * signal for those.
+     *
+     * These diagnostics are new in 2.x and therefore use the branded
+     * `[Gesso]` prefix: the identity-neutral `[security]` counts are frozen
+     * at v1.9 parity by the migration baseline (ADR 0001).
+     *
+     * @param array<array-key, mixed> $schemes decoded `components.securitySchemes`
+     */
+    private static function warnAcknowledgementRot(array $schemes, string $method, string $matchedPath): void
+    {
+        foreach (AcknowledgedSecuritySchemes::names() as $acknowledgedName) {
+            $schemeDef = $schemes[$acknowledgedName] ?? null;
+
+            if (!is_array($schemeDef)) {
+                if (isset(self::$checkedAcknowledgedNames['absent:' . $acknowledgedName])) {
+                    continue;
+                }
+                self::$checkedAcknowledgedNames['absent:' . $acknowledgedName] = true;
+                trigger_error(
+                    sprintf(
+                        "[Gesso] acknowledged security scheme '%s' is not defined in components.securitySchemes — %s %s. "
+                            . 'The acknowledgement has no effect. Fix the name or remove the entry from the acknowledged list.',
+                        $acknowledgedName,
+                        $method,
+                        $matchedPath,
+                    ),
+                    E_USER_WARNING,
+                );
+
+                continue;
+            }
+
+            $kind = self::classifyScheme($schemeDef)->kind;
+            $outcome = ($kind === SchemeKind::Bearer || $kind === SchemeKind::ApiKey)
+                ? 'validatable:'
+                : 'ok:';
+            if (isset(self::$checkedAcknowledgedNames[$outcome . $acknowledgedName])) {
+                continue;
+            }
+            self::$checkedAcknowledgedNames[$outcome . $acknowledgedName] = true;
+
+            if ($outcome === 'validatable:') {
+                trigger_error(
+                    sprintf(
+                        "[Gesso] acknowledged security scheme '%s' is a scheme this validator can enforce — %s %s. "
+                            . 'The scheme stays validated and the acknowledgement has no effect; remove the entry from the acknowledged list.',
+                        $acknowledgedName,
+                        $method,
+                        $matchedPath,
+                    ),
+                    E_USER_WARNING,
+                );
+            }
+        }
     }
 
     /**

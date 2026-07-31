@@ -9,11 +9,15 @@ use const E_USER_WARNING;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use stdClass;
+use Studio\Gesso\Validation\Request\AcknowledgedSecuritySchemes;
 use Studio\Gesso\Validation\Request\SecurityValidator;
 use Studio\Gesso\Validation\Support\NamedError;
 
+use function array_filter;
+use function array_values;
 use function restore_error_handler;
 use function set_error_handler;
+use function str_contains;
 use function str_starts_with;
 
 class SecurityValidatorTest extends TestCase
@@ -28,11 +32,13 @@ class SecurityValidatorTest extends TestCase
         // regardless of run order or filter selection. Same convention as
         // OpenApiSchemaConverterTest.
         SecurityValidator::resetWarningStateForTesting();
+        AcknowledgedSecuritySchemes::reset();
     }
 
     protected function tearDown(): void
     {
         SecurityValidator::resetWarningStateForTesting();
+        AcknowledgedSecuritySchemes::reset();
         parent::tearDown();
     }
 
@@ -851,6 +857,193 @@ class SecurityValidatorTest extends TestCase
         $this->assertStringContainsString('split the bearer-token surface', $warnings[0]);
     }
 
+    // ========================================
+    // Scheme-scoped acknowledgement of unvalidatable schemes (issue #445).
+    // ========================================
+
+    #[Test]
+    public function acknowledged_unvalidatable_scheme_does_not_warn(): void
+    {
+        AcknowledgedSecuritySchemes::configure(['Basic']);
+
+        $spec = [
+            'components' => [
+                'securitySchemes' => [
+                    'Basic' => ['type' => 'http', 'scheme' => 'basic'],
+                ],
+            ],
+        ];
+        $operation = ['security' => [['Basic' => []]]];
+
+        [$errors, $warnings] = $this->validateCapturingWarnings(
+            'POST',
+            '/oauth/introspect',
+            $spec,
+            $operation,
+        );
+
+        $this->assertSame([], $errors, 'silent-pass behaviour must be preserved');
+        $this->assertSame([], $warnings, 'acknowledged scheme must not warn');
+    }
+
+    #[Test]
+    public function acknowledgement_is_scheme_scoped_so_other_unvalidatable_schemes_still_warn(): void
+    {
+        // The key property from issue #445: acknowledging one scheme must not
+        // become global suppression. A different (newly introduced) scheme
+        // keeps warning.
+        AcknowledgedSecuritySchemes::configure(['Basic']);
+
+        $spec = [
+            'components' => [
+                'securitySchemes' => [
+                    'Basic' => ['type' => 'http', 'scheme' => 'basic'],
+                    'OAuth' => ['type' => 'oauth2', 'flows' => []],
+                ],
+            ],
+        ];
+        $operation = ['security' => [['Basic' => []], ['OAuth' => []]]];
+
+        [$errors, $warnings] = $this->validateCapturingWarnings(
+            'GET',
+            '/v1/x',
+            $spec,
+            $operation,
+        );
+
+        $this->assertSame([], $errors);
+        $this->assertCount(1, $warnings);
+        $this->assertStringContainsString("'OAuth'", $warnings[0]);
+    }
+
+    #[Test]
+    public function acknowledging_a_scheme_missing_from_the_spec_warns_once(): void
+    {
+        // Rot prevention: a typo'd or stale entry must be reported rather
+        // than silently accepted, and dedup'd like every [security] warning.
+        AcknowledgedSecuritySchemes::configure(['ClientBasicAuth']);
+
+        $spec = [
+            'components' => [
+                'securitySchemes' => [
+                    'Basic' => ['type' => 'http', 'scheme' => 'basic'],
+                ],
+            ],
+        ];
+        $operation = ['security' => [['Basic' => []]]];
+
+        [, $first] = $this->validateCapturingWarnings('GET', '/v1/a', $spec, $operation);
+        [, $second] = $this->validateCapturingWarnings('GET', '/v1/b', $spec, $operation);
+
+        $acknowledgementWarnings = array_values(array_filter(
+            $first,
+            static fn(string $warning): bool => str_contains($warning, 'ClientBasicAuth'),
+        ));
+        $this->assertCount(1, $acknowledgementWarnings);
+        $this->assertStringContainsString("acknowledged security scheme 'ClientBasicAuth'", $acknowledgementWarnings[0]);
+        $this->assertStringContainsString('not defined in components.securitySchemes', $acknowledgementWarnings[0]);
+        $this->assertSame([], $second, 'rot warning must be one-shot per scheme name');
+    }
+
+    #[Test]
+    public function acknowledging_a_validatable_scheme_warns_once_and_keeps_enforcement(): void
+    {
+        // Acknowledging a scheme the validator CAN enforce is itself rot —
+        // report it, and keep enforcing the scheme as if unacknowledged.
+        AcknowledgedSecuritySchemes::configure(['BearerAuth']);
+
+        $spec = [
+            'components' => [
+                'securitySchemes' => [
+                    'BearerAuth' => ['type' => 'http', 'scheme' => 'bearer'],
+                ],
+            ],
+        ];
+        $operation = ['security' => [['BearerAuth' => []]]];
+
+        [$errors, $warnings] = $this->validateCapturingWarnings('GET', '/v1/a', $spec, $operation);
+
+        $this->assertCount(1, $warnings);
+        $this->assertStringContainsString("acknowledged security scheme 'BearerAuth'", $warnings[0]);
+        $this->assertCount(1, $errors, 'validatable scheme must stay enforced despite the acknowledgement');
+        $this->assertStringContainsString('Authorization header is missing', $errors[0]->message);
+
+        [, $repeat] = $this->validateCapturingWarnings('GET', '/v1/b', $spec, $operation);
+        $this->assertSame([], $repeat, 'rot warning must be one-shot per scheme name');
+    }
+
+    #[Test]
+    public function rot_is_checked_even_when_spec_has_no_security_left(): void
+    {
+        // Removing a scheme together with every `security` declaration must
+        // not silence the rot check — otherwise a stale acknowledgement
+        // survives exactly the cleanup that made it stale.
+        AcknowledgedSecuritySchemes::configure(['Ghost']);
+
+        [$errors, $warnings] = $this->validateCapturingWarnings('GET', '/pets', [], []);
+
+        $this->assertSame([], $errors);
+        $this->assertCount(1, $warnings);
+        $this->assertStringContainsString("acknowledged security scheme 'Ghost'", $warnings[0]);
+        $this->assertStringContainsString('not defined in components.securitySchemes', $warnings[0]);
+    }
+
+    #[Test]
+    public function rot_checks_are_order_independent_across_specs(): void
+    {
+        // A suite validating multiple specs with a shared acknowledged list
+        // must report rot no matter which spec reaches security validation
+        // first: a name that is legitimately acknowledged in one spec can
+        // still be validatable (or absent) in another.
+        AcknowledgedSecuritySchemes::configure(['Auth']);
+
+        $specUnsupported = [
+            'components' => [
+                'securitySchemes' => [
+                    'Auth' => ['type' => 'oauth2', 'flows' => []],
+                ],
+            ],
+        ];
+        $specBearer = [
+            'components' => [
+                'securitySchemes' => [
+                    'Auth' => ['type' => 'http', 'scheme' => 'bearer'],
+                ],
+            ],
+        ];
+        $operation = ['security' => [['Auth' => []]]];
+
+        [, $first] = $this->validateCapturingWarnings('GET', '/v1/a', $specUnsupported, $operation);
+        $this->assertSame([], $first, 'legitimately acknowledged scheme must stay silent');
+
+        [, $second] = $this->validateCapturingWarnings('GET', '/v1/b', $specBearer, $operation);
+        $this->assertCount(1, $second);
+        $this->assertStringContainsString("acknowledged security scheme 'Auth'", $second[0]);
+        $this->assertStringContainsString('can enforce', $second[0]);
+    }
+
+    #[Test]
+    public function reset_warning_state_also_resets_acknowledgement_rot_dedup(): void
+    {
+        AcknowledgedSecuritySchemes::configure(['Ghost']);
+
+        $spec = [
+            'components' => [
+                'securitySchemes' => [
+                    'Basic' => ['type' => 'http', 'scheme' => 'basic'],
+                ],
+            ],
+        ];
+        $operation = ['security' => [['Basic' => []]]];
+
+        [, $first] = $this->validateCapturingWarnings('GET', '/v1/a', $spec, $operation);
+        SecurityValidator::resetWarningStateForTesting();
+        [, $second] = $this->validateCapturingWarnings('GET', '/v1/b', $spec, $operation);
+
+        $this->assertCount(1, array_filter($first, static fn(string $w): bool => str_contains($w, 'Ghost')));
+        $this->assertCount(1, array_filter($second, static fn(string $w): bool => str_contains($w, 'Ghost')));
+    }
+
     /**
      * @param array<string, mixed> $spec
      * @param array<string, mixed> $operation
@@ -867,7 +1060,10 @@ class SecurityValidatorTest extends TestCase
     ): array {
         $captured = [];
         set_error_handler(static function (int $errno, string $errstr) use (&$captured): bool {
-            if ($errno === E_USER_WARNING && str_starts_with($errstr, '[security]')) {
+            // `[security]` is the silent-pass channel; `[Gesso]` carries the
+            // acknowledged-list rot diagnostics (issue #445) — new 2.x
+            // diagnostics stay off the v1.9-parity-frozen prefixes.
+            if ($errno === E_USER_WARNING && (str_starts_with($errstr, '[security]') || str_starts_with($errstr, '[Gesso]'))) {
                 $captured[] = $errstr;
 
                 return true;

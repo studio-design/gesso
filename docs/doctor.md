@@ -49,6 +49,18 @@ spec name `bundled/front`. Targets that escape the canonical root through
 `../`, an absolute path, or a symlink are rejected; those forms remain valid
 when their canonical targets stay inside the root.
 
+## Acknowledged unvalidatable security schemes
+
+When the test suite acknowledges an unvalidatable security scheme by name (see [Acknowledging an unvalidatable security scheme](setup.md#acknowledging-an-unvalidatable-security-scheme)), pass the same names so the doctor report reflects the acknowledgement:
+
+```bash
+vendor/bin/gesso doctor \
+  --spec=openapi/front.yaml \
+  --acknowledge-unvalidatable-scheme=ClientBasicAuth
+```
+
+The scheme is still listed as a skipped feature, marked as acknowledged instead of prompting for a separate authentication test. A name that is not defined in `components.securitySchemes`, or that names a scheme the validator can enforce, is reported as a `configuration` warning so the acknowledged list cannot rot.
+
 ## HTTP references
 
 Remote references remain opt-in because diagnostics must not access the network unexpectedly:

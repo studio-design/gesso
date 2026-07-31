@@ -21,6 +21,7 @@ use Studio\Gesso\Internal\EnumScanner;
 use Studio\Gesso\PHPUnit\InvalidStrictRequiredConfigurationException;
 use Studio\Gesso\PHPUnit\OpenApiCoverageExtension;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
+use Studio\Gesso\Validation\Request\AcknowledgedSecuritySchemes;
 use Studio\Gesso\Validation\Strict\StrictAdditionalPropertiesPerCallChecker;
 use Studio\Gesso\Validation\Strict\StrictAdditionalPropertiesTracker;
 use Studio\Gesso\Validation\Strict\StrictRequiredPerCallChecker;
@@ -1176,6 +1177,52 @@ class OpenApiCoverageExtensionTest extends TestCase
             $this->assertTrue(DiscriminatorEnforcement::isEnabled());
         } finally {
             DiscriminatorEnforcement::reset();
+        }
+    }
+
+    #[Test]
+    public function acknowledged_unvalidatable_schemes_parameter_configures_registry_at_bootstrap(): void
+    {
+        // Issue #445: comma-separated scheme names reach the process-global
+        // registry so non-Laravel suites can acknowledge unvalidatable
+        // schemes from phpunit.xml. Whitespace around names is trimmed and
+        // empty segments (trailing comma) are dropped.
+        AcknowledgedSecuritySchemes::reset();
+
+        $extension = new OpenApiCoverageExtension();
+        $parameters = ParameterCollection::fromArray([
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => 'refs-valid',
+            'acknowledged_unvalidatable_schemes' => 'ClientBasicAuth, LegacyOAuth,',
+        ]);
+
+        try {
+            $extension->setupExtension(null, $parameters, null);
+            $this->assertSame(['ClientBasicAuth', 'LegacyOAuth'], AcknowledgedSecuritySchemes::names());
+        } finally {
+            AcknowledgedSecuritySchemes::reset();
+        }
+    }
+
+    #[Test]
+    public function acknowledged_unvalidatable_schemes_absent_resets_registry(): void
+    {
+        // A process reused across bootstraps must reflect the current run:
+        // seed a stale acknowledgement and prove bootstrap clears it when the
+        // parameter is omitted.
+        AcknowledgedSecuritySchemes::configure(['Stale']);
+
+        $extension = new OpenApiCoverageExtension();
+        $parameters = ParameterCollection::fromArray([
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => 'refs-valid',
+        ]);
+
+        try {
+            $extension->setupExtension(null, $parameters, null);
+            $this->assertSame([], AcknowledgedSecuritySchemes::names());
+        } finally {
+            AcknowledgedSecuritySchemes::reset();
         }
     }
 

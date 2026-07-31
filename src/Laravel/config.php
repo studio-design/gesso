@@ -71,6 +71,16 @@ return [
     // above is true.
     'auto_inject_dummy_bearer' => false,
 
+    // Security scheme names (components.securitySchemes keys) the suite
+    // acknowledges as unvalidatable. Schemes the validator cannot enforce
+    // (oauth2, openIdConnect, mutualTLS, http basic/digest) normally emit a
+    // one-shot E_USER_WARNING — which Laravel's test error handler turns into
+    // a test failure. Listing a scheme here suppresses the warning for that
+    // scheme only; every other unvalidatable scheme (including newly added
+    // ones) keeps warning. Listing a scheme that is absent from the spec, or
+    // one the validator CAN enforce, itself warns so the list cannot rot.
+    'acknowledged_unvalidatable_schemes' => [],
+
     // Regex patterns (without delimiters or anchors) matched against the
     // response status code. Matching codes short-circuit body validation and
     // return a "skipped" result — the test is not failed, and the endpoint is

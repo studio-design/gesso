@@ -31,6 +31,7 @@ use Studio\Gesso\Internal\PartialRunDecision;
 use Studio\Gesso\Schema\EnumDriftAsserter;
 use Studio\Gesso\Schema\EnumDriftReport;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
+use Studio\Gesso\Validation\Request\AcknowledgedSecuritySchemes;
 use Studio\Gesso\Validation\Strict\StrictAdditionalPropertiesMode;
 use Studio\Gesso\Validation\Strict\StrictAdditionalPropertiesPerCallChecker;
 use Studio\Gesso\Validation\Strict\StrictAdditionalPropertiesPerCallMode;
@@ -495,6 +496,20 @@ final class OpenApiCoverageExtension implements Extension
         DiscriminatorEnforcement::configure(
             self::resolveBooleanFlag($parameters, 'enforce_discriminator', true),
         );
+
+        // Issue #445: scheme-scoped acknowledgement of unvalidatable security
+        // schemes. Comma-separated `components.securitySchemes` names; absent
+        // parameter resets the registry so a process reused across bootstraps
+        // reflects the current run. Rot checks (unknown / validatable names)
+        // live in SecurityValidator, next to the warning they guard.
+        $acknowledgedSchemes = [];
+        if ($parameters->has('acknowledged_unvalidatable_schemes')) {
+            $acknowledgedSchemes = array_values(array_filter(
+                array_map('trim', explode(',', $parameters->get('acknowledged_unvalidatable_schemes'))),
+                static fn(string $name): bool => $name !== '',
+            ));
+        }
+        AcknowledgedSecuritySchemes::configure($acknowledgedSchemes);
 
         if ($facade === null) {
             return;

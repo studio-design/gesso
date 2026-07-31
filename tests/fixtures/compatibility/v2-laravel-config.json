@@ -12,6 +12,7 @@
     "auto_validate_request": false,
     "auto_inject_dummy_credentials": false,
     "auto_inject_dummy_bearer": false,
+    "acknowledged_unvalidatable_schemes": [],
     "skip_response_codes": [
         "5\\d\\d"
     ],

@@ -51,6 +51,7 @@ class DoctorCommandTest extends TestCase
                 'specs' => ['front.json', 'admin.yaml'],
                 'strip_prefixes' => ['/api', '/internal'],
                 'remote_ref_hosts' => ['specs.example.com', 'schemas.example.com'],
+                'acknowledged_unvalidatable_schemes' => ['ClientBasicAuth', 'LegacyOAuth', 'mTLS'],
                 'invalid_options' => [],
                 'format' => 'json',
                 'allow_remote_refs' => true,
@@ -69,6 +70,8 @@ class DoctorCommandTest extends TestCase
                 '--remote-ref-host=schemas.example.com',
                 '--remote-ref-max-bytes=4096',
                 '--local-ref-root=/trusted/openapi',
+                '--acknowledge-unvalidatable-scheme=ClientBasicAuth,LegacyOAuth',
+                '--acknowledge-unvalidatable-scheme=mTLS',
                 '--phpunit-snippet',
             ]),
         );
@@ -312,6 +315,333 @@ class DoctorCommandTest extends TestCase
         $this->assertSame(1, $report['summary']['warnings']);
         $this->assertSame(1, $report['summary']['skipped']);
         $this->assertSame(['skipped', 'warning'], array_column($report['issues'], 'severity'));
+    }
+
+    #[Test]
+    public function acknowledged_unvalidatable_scheme_is_marked_in_skipped_feature_output(): void
+    {
+        // Issue #445: the doctor reflects a scheme-scoped acknowledgement —
+        // the scheme is still listed as a skipped feature, but marked as
+        // acknowledged instead of prompting for a separate auth test.
+        $spec = $this->writeSpec('acknowledged.json', (string) json_encode([
+            'openapi' => '3.0.3',
+            'info' => ['title' => 'Test', 'version' => '1'],
+            'paths' => ['/pets' => ['get' => ['responses' => ['200' => ['description' => 'ok']]]]],
+            'components' => ['securitySchemes' => [
+                'ClientBasicAuth' => ['type' => 'http', 'scheme' => 'basic'],
+                'oauth' => ['type' => 'oauth2'],
+            ]],
+        ], JSON_THROW_ON_ERROR));
+        $output = '';
+        $command = new DoctorCommand(stdoutWriter: static function (string $message) use (&$output): void {
+            $output .= $message;
+        });
+
+        $exit = $command->run([
+            'specs' => [$spec],
+            'format' => 'json',
+            'acknowledged_unvalidatable_schemes' => ['ClientBasicAuth'],
+        ]);
+        $report = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(DoctorCommand::EXIT_OK, $exit);
+        $this->assertSame(['skipped', 'skipped'], array_column($report['issues'], 'severity'));
+
+        $acknowledged = $report['issues'][0];
+        $this->assertStringContainsString('ClientBasicAuth', $acknowledged['message']);
+        $this->assertStringContainsString('acknowledged', $acknowledged['message']);
+        $this->assertNull($acknowledged['suggestion']);
+
+        $unacknowledged = $report['issues'][1];
+        $this->assertStringContainsString('oauth', $unacknowledged['message']);
+        $this->assertStringNotContainsString('acknowledged', $unacknowledged['message']);
+        $this->assertNotNull($unacknowledged['suggestion']);
+    }
+
+    #[Test]
+    public function acknowledging_a_scheme_missing_from_the_spec_is_a_configuration_warning(): void
+    {
+        $spec = $this->writeSpec('ack-missing.json', $this->validSpec('/pets'));
+        $output = '';
+        $command = new DoctorCommand(stdoutWriter: static function (string $message) use (&$output): void {
+            $output .= $message;
+        });
+
+        $exit = $command->run([
+            'specs' => [$spec],
+            'format' => 'json',
+            'acknowledged_unvalidatable_schemes' => ['Ghost'],
+        ]);
+        $report = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(DoctorCommand::EXIT_OK, $exit);
+        $this->assertSame('warning', $report['status']);
+        $this->assertSame('warning', $report['issues'][0]['severity']);
+        $this->assertSame('configuration', $report['issues'][0]['category']);
+        $this->assertStringContainsString('Ghost', $report['issues'][0]['message']);
+        $this->assertStringContainsString('not defined in components.securitySchemes', $report['issues'][0]['message']);
+    }
+
+    #[Test]
+    public function acknowledging_a_validatable_scheme_is_a_configuration_warning(): void
+    {
+        $spec = $this->writeSpec('ack-validatable.json', (string) json_encode([
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'Test', 'version' => '1'],
+            'paths' => ['/pets' => ['get' => ['responses' => ['200' => ['description' => 'ok']]]]],
+            'components' => ['securitySchemes' => [
+                'BearerAuth' => ['type' => 'http', 'scheme' => 'bearer'],
+            ]],
+        ], JSON_THROW_ON_ERROR));
+        $output = '';
+        $command = new DoctorCommand(stdoutWriter: static function (string $message) use (&$output): void {
+            $output .= $message;
+        });
+
+        $exit = $command->run([
+            'specs' => [$spec],
+            'format' => 'json',
+            'acknowledged_unvalidatable_schemes' => ['BearerAuth'],
+        ]);
+        $report = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(DoctorCommand::EXIT_OK, $exit);
+        $this->assertSame('warning', $report['issues'][0]['severity']);
+        $this->assertSame('configuration', $report['issues'][0]['category']);
+        $this->assertStringContainsString('BearerAuth', $report['issues'][0]['message']);
+        $this->assertStringContainsString('can enforce', $report['issues'][0]['message']);
+    }
+
+    #[Test]
+    public function http_bearer_with_uppercase_scheme_is_not_reported_as_skipped(): void
+    {
+        // RFC 7235 §2.1: HTTP auth scheme names are case-insensitive, and the
+        // runtime classifies `scheme: Bearer` as enforceable bearer auth. The
+        // doctor must use the same classification — a case-sensitive compare
+        // would report an enforced scheme as a skipped feature.
+        $spec = $this->writeSpec('caps-bearer.json', (string) json_encode([
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'Test', 'version' => '1'],
+            'paths' => ['/pets' => ['get' => ['responses' => ['200' => ['description' => 'ok']]]]],
+            'components' => ['securitySchemes' => [
+                'CapsBearer' => ['type' => 'http', 'scheme' => 'Bearer'],
+            ]],
+        ], JSON_THROW_ON_ERROR));
+
+        $report = $this->runJsonDoctor($spec, $exit);
+
+        $this->assertSame(DoctorCommand::EXIT_OK, $exit);
+        $this->assertSame('ok', $report['status']);
+        $this->assertSame([], $report['issues']);
+    }
+
+    #[Test]
+    public function acknowledging_an_uppercase_bearer_scheme_warns_without_contradicting_skipped_output(): void
+    {
+        // The acknowledged rot check already classifies via the runtime rules,
+        // so an acknowledged `scheme: Bearer` must produce exactly one signal:
+        // the "can enforce" configuration warning — not an additional
+        // "not enforced — acknowledged" skipped entry for the same scheme.
+        $spec = $this->writeSpec('ack-caps-bearer.json', (string) json_encode([
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'Test', 'version' => '1'],
+            'paths' => ['/pets' => ['get' => ['responses' => ['200' => ['description' => 'ok']]]]],
+            'components' => ['securitySchemes' => [
+                'CapsBearer' => ['type' => 'http', 'scheme' => 'Bearer'],
+            ]],
+        ], JSON_THROW_ON_ERROR));
+        $output = '';
+        $command = new DoctorCommand(stdoutWriter: static function (string $message) use (&$output): void {
+            $output .= $message;
+        });
+
+        $exit = $command->run([
+            'specs' => [$spec],
+            'format' => 'json',
+            'acknowledged_unvalidatable_schemes' => ['CapsBearer'],
+        ]);
+        $report = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(DoctorCommand::EXIT_OK, $exit);
+        $this->assertCount(1, $report['issues']);
+        $this->assertSame('warning', $report['issues'][0]['severity']);
+        $this->assertSame('configuration', $report['issues'][0]['category']);
+        $this->assertStringContainsString('can enforce', $report['issues'][0]['message']);
+    }
+
+    #[Test]
+    public function malformed_security_schemes_are_reported_as_errors(): void
+    {
+        // Runtime validation hard-errors on a request secured by a malformed
+        // scheme; the doctor must not report the same spec as fully
+        // compatible. Covers both a missing required field (`type: http`
+        // without `scheme`) and a non-string `type`.
+        $spec = $this->writeSpec('malformed-schemes.json', (string) json_encode([
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'Test', 'version' => '1'],
+            'paths' => ['/pets' => ['get' => [
+                'security' => [['Broken' => []]],
+                'responses' => ['200' => ['description' => 'ok']],
+            ]]],
+            'components' => ['securitySchemes' => [
+                'Broken' => ['type' => 'http'],
+                'NoType' => ['type' => 123],
+            ]],
+        ], JSON_THROW_ON_ERROR));
+
+        $report = $this->runJsonDoctor($spec, $exit);
+
+        $this->assertSame(DoctorCommand::EXIT_DIAGNOSTIC_FAILURE, $exit);
+        $this->assertSame('error', $report['status']);
+        $this->assertSame(['error', 'error'], array_column($report['issues'], 'severity'));
+        $this->assertSame(['structure', 'structure'], array_column($report['issues'], 'category'));
+        $this->assertStringContainsString('`Broken` is malformed', $report['issues'][0]['message']);
+        $this->assertStringContainsString("'scheme' field", $report['issues'][0]['message']);
+        $this->assertStringContainsString('`NoType` is malformed', $report['issues'][1]['message']);
+        $this->assertStringContainsString("'type' field", $report['issues'][1]['message']);
+    }
+
+    #[Test]
+    public function non_object_security_schemes_container_is_a_structure_error(): void
+    {
+        // Runtime validation hard-errors when `components.securitySchemes`
+        // decodes to a non-object and any security requirement exists; the
+        // doctor must not report such a spec as fully compatible. An absent
+        // key stays silent — only a present-but-wrong node is a defect.
+        foreach ([[null, 'null'], ['invalid', 'string']] as [$container, $expectedType]) {
+            $spec = $this->writeSpec("container-{$expectedType}.json", (string) json_encode([
+                'openapi' => '3.1.0',
+                'info' => ['title' => 'Test', 'version' => '1'],
+                'paths' => ['/pets' => ['get' => [
+                    'security' => [['Broken' => []]],
+                    'responses' => ['200' => ['description' => 'ok']],
+                ]]],
+                'components' => ['securitySchemes' => $container],
+            ], JSON_THROW_ON_ERROR));
+
+            $report = $this->runJsonDoctor($spec, $exit);
+
+            $this->assertSame(DoctorCommand::EXIT_DIAGNOSTIC_FAILURE, $exit, $expectedType);
+            $this->assertSame(['error'], array_column($report['issues'], 'severity'), $expectedType);
+            $this->assertSame('structure', $report['issues'][0]['category'], $expectedType);
+            $this->assertStringContainsString('components.securitySchemes must be an object', $report['issues'][0]['message'], $expectedType);
+            $this->assertStringContainsString("got {$expectedType}", $report['issues'][0]['message'], $expectedType);
+        }
+    }
+
+    #[Test]
+    public function non_object_components_node_is_a_structure_error(): void
+    {
+        // `components: null` / `components: invalid` leaves every referenced
+        // scheme unresolvable — runtime hard-errors with "undefined scheme"
+        // as soon as a security requirement exists. A present-but-non-object
+        // node must not be conflated with an absent `components` key.
+        foreach ([[null, 'null'], ['invalid', 'string']] as [$components, $expectedType]) {
+            $spec = $this->writeSpec("components-{$expectedType}.json", (string) json_encode([
+                'openapi' => '3.1.0',
+                'info' => ['title' => 'Test', 'version' => '1'],
+                'paths' => ['/pets' => ['get' => [
+                    'security' => [['Broken' => []]],
+                    'responses' => ['200' => ['description' => 'ok']],
+                ]]],
+                'components' => $components,
+            ], JSON_THROW_ON_ERROR));
+
+            $report = $this->runJsonDoctor($spec, $exit);
+
+            $this->assertSame(DoctorCommand::EXIT_DIAGNOSTIC_FAILURE, $exit, $expectedType);
+            $this->assertSame(['error'], array_column($report['issues'], 'severity'), $expectedType);
+            $this->assertSame('structure', $report['issues'][0]['category'], $expectedType);
+            $this->assertStringContainsString('`components` must be an object', $report['issues'][0]['message'], $expectedType);
+            $this->assertStringContainsString("got {$expectedType}", $report['issues'][0]['message'], $expectedType);
+        }
+    }
+
+    #[Test]
+    public function non_object_security_scheme_definition_is_a_structure_error(): void
+    {
+        // `Broken: null` / `Str: "invalid"` are resolved as "undefined
+        // scheme" hard errors at runtime when referenced; the doctor reports
+        // them as structure errors at the definition site.
+        $spec = $this->writeSpec('non-object-defs.json', (string) json_encode([
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'Test', 'version' => '1'],
+            'paths' => ['/pets' => ['get' => [
+                'security' => [['Broken' => []]],
+                'responses' => ['200' => ['description' => 'ok']],
+            ]]],
+            'components' => ['securitySchemes' => [
+                'Broken' => null,
+                'Str' => 'invalid',
+            ]],
+        ], JSON_THROW_ON_ERROR));
+
+        $report = $this->runJsonDoctor($spec, $exit);
+
+        $this->assertSame(DoctorCommand::EXIT_DIAGNOSTIC_FAILURE, $exit);
+        $this->assertSame(['error', 'error'], array_column($report['issues'], 'severity'));
+        $this->assertSame(['structure', 'structure'], array_column($report['issues'], 'category'));
+        $this->assertStringContainsString('`Broken` must be an object, got null', $report['issues'][0]['message']);
+        $this->assertStringContainsString('`Str` must be an object, got string', $report['issues'][1]['message']);
+    }
+
+    #[Test]
+    public function acknowledging_a_malformed_scheme_does_not_mask_the_error(): void
+    {
+        // The runtime ignores acknowledgements for malformed definitions (the
+        // hard error is the signal); the doctor must do the same instead of
+        // marking the scheme as an acknowledged skipped feature.
+        $spec = $this->writeSpec('ack-malformed.json', (string) json_encode([
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'Test', 'version' => '1'],
+            'paths' => ['/pets' => ['get' => ['responses' => ['200' => ['description' => 'ok']]]]],
+            'components' => ['securitySchemes' => [
+                'Broken' => ['type' => 'http'],
+            ]],
+        ], JSON_THROW_ON_ERROR));
+        $output = '';
+        $command = new DoctorCommand(stdoutWriter: static function (string $message) use (&$output): void {
+            $output .= $message;
+        });
+
+        $exit = $command->run([
+            'specs' => [$spec],
+            'format' => 'json',
+            'acknowledged_unvalidatable_schemes' => ['Broken'],
+        ]);
+        $report = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(DoctorCommand::EXIT_DIAGNOSTIC_FAILURE, $exit);
+        $this->assertSame(['error'], array_column($report['issues'], 'severity'));
+        $this->assertStringContainsString('`Broken` is malformed', $report['issues'][0]['message']);
+    }
+
+    #[Test]
+    public function phpunit_snippet_includes_acknowledged_schemes_parameter(): void
+    {
+        // The "Equivalent PHPUnit configuration" must reproduce the doctor
+        // invocation: dropping the acknowledgement from the snippet would
+        // silently re-enable the warnings the user just scoped out. The `&`
+        // in the name pins XML escaping.
+        $spec = $this->writeSpec('snippet.json', $this->validSpec('/pets'));
+        $output = '';
+        $command = new DoctorCommand(stdoutWriter: static function (string $message) use (&$output): void {
+            $output .= $message;
+        });
+
+        $exit = $command->run([
+            'specs' => [$spec],
+            'format' => 'json',
+            'phpunit_snippet' => true,
+            'acknowledged_unvalidatable_schemes' => ['ClientBasicAuth', 'A&B'],
+        ]);
+        $report = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(DoctorCommand::EXIT_OK, $exit);
+        $this->assertStringContainsString(
+            '<parameter name="acknowledged_unvalidatable_schemes" value="ClientBasicAuth,A&amp;B"/>',
+            $report['phpunit'],
+        );
     }
 
     #[Test]

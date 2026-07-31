@@ -31,6 +31,8 @@ use Studio\Gesso\Spec\OpenApiOperationResolver;
 use Studio\Gesso\Spec\OpenApiSchemaConverter;
 use Studio\Gesso\Spec\OpenApiSchemaDialect;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
+use Studio\Gesso\Validation\Request\SchemeKind;
+use Studio\Gesso\Validation\Request\SecurityValidator;
 use Studio\Gesso\Validation\Support\DiscriminatorContext;
 use Studio\Gesso\Validation\Support\MalformedSpecNode;
 use Symfony\Component\HttpClient\Psr18Client;
@@ -47,6 +49,7 @@ use function dirname;
 use function explode;
 use function filter_var;
 use function fwrite;
+use function get_debug_type;
 use function getcwd;
 use function htmlspecialchars;
 use function implode;
@@ -75,7 +78,7 @@ use function trim;
 /**
  * Pre-test compatibility diagnostics for one or more OpenAPI documents.
  *
- * @phpstan-type DoctorOptions array{specs?: list<string>, strip_prefixes?: list<string>, remote_ref_hosts?: list<string>, remote_ref_max_bytes?: int|string, local_ref_root?: string, format?: string, allow_remote_refs?: bool, phpunit_snippet?: bool, help?: bool, invalid_options?: list<string>}
+ * @phpstan-type DoctorOptions array{specs?: list<string>, strip_prefixes?: list<string>, remote_ref_hosts?: list<string>, acknowledged_unvalidatable_schemes?: list<string>, remote_ref_max_bytes?: int|string, local_ref_root?: string, format?: string, allow_remote_refs?: bool, phpunit_snippet?: bool, help?: bool, invalid_options?: list<string>}
  * @phpstan-type DoctorIssue array{severity: 'error'|'warning'|'skipped', category: string, spec: ?string, message: string, suggestion: ?string}
  * @phpstan-type SpecResult array{path: string, name: string, openapi: string, dialect: string, operations: int, responses: int}
  *
@@ -103,7 +106,7 @@ final class DoctorCommand
      */
     public static function parseArgv(array $argv): array
     {
-        $options = ['specs' => [], 'strip_prefixes' => [], 'remote_ref_hosts' => [], 'invalid_options' => []];
+        $options = ['specs' => [], 'strip_prefixes' => [], 'remote_ref_hosts' => [], 'acknowledged_unvalidatable_schemes' => [], 'invalid_options' => []];
 
         foreach ($argv as $arg) {
             if ($arg === 'doctor') {
@@ -158,6 +161,13 @@ final class DoctorCommand
                     $options['remote_ref_max_bytes'] = $value;
 
                     break;
+                case 'acknowledge_unvalidatable_scheme':
+                    $options['acknowledged_unvalidatable_schemes'] = [
+                        ...$options['acknowledged_unvalidatable_schemes'],
+                        ...array_values(array_filter(array_map('trim', explode(',', $value)), static fn(string $item): bool => $item !== '')),
+                    ];
+
+                    break;
                 case 'local_ref_root':
                     $options['local_ref_root'] = $value;
 
@@ -194,6 +204,11 @@ final class DoctorCommand
                                          --allow-remote-refs; repeat as needed.
               --remote-ref-max-bytes=<n> Maximum bytes read per remote document
                                          (default: 10485760).
+              --acknowledge-unvalidatable-scheme=<name[,name]>
+                                         Security scheme name (components.securitySchemes
+                                         key) acknowledged as unvalidatable. Repeat as
+                                         needed. Mirrors the acknowledged_unvalidatable_schemes
+                                         PHPUnit / Laravel setting.
               --phpunit-snippet          Include the equivalent PHPUnit extension XML.
               --help                     Show this message.
 
@@ -286,6 +301,7 @@ final class DoctorCommand
                 $maxRemoteRefBytes,
                 $options['local_ref_root'] ?? null,
                 $transport,
+                $options['acknowledged_unvalidatable_schemes'] ?? [],
                 $specResults,
                 $issues,
             );
@@ -316,6 +332,7 @@ final class DoctorCommand
      * @param positive-int $maxRemoteRefBytes
      * @param null|string $localRefRoot canonical configured local-ref boundary
      * @param null|array{0: ClientInterface, 1: RequestFactoryInterface} $transport
+     * @param list<string> $acknowledgedSchemes scheme names acknowledged as unvalidatable
      * @param list<SpecResult> $specResults
      * @param list<DoctorIssue> $issues
      */
@@ -327,6 +344,7 @@ final class DoctorCommand
         int $maxRemoteRefBytes,
         ?string $localRefRoot,
         ?array $transport,
+        array $acknowledgedSchemes,
         array &$specResults,
         array &$issues,
     ): void {
@@ -408,7 +426,7 @@ final class DoctorCommand
             $dialect = OpenApiSchemaDialect::fromSpec($spec, $version);
             [$operations, $responses] = $this->inspectStructure($spec, $label, $issues);
             $this->inspectSchemas($spec, $version, $dialect, new DiscriminatorContext($spec, true));
-            $this->inspectSkippedFeatures($spec, $label, $issues);
+            $this->inspectSkippedFeatures($spec, $label, $acknowledgedSchemes, $issues);
 
             $specResults[] = [
                 'path' => $path,
@@ -641,22 +659,102 @@ final class DoctorCommand
 
     /**
      * @param array<string, mixed> $spec
+     * @param list<string> $acknowledgedSchemes scheme names acknowledged as unvalidatable (issue #445)
      * @param list<DoctorIssue> $issues
      */
-    private function inspectSkippedFeatures(array $spec, string $label, array &$issues): void
+    private function inspectSkippedFeatures(array $spec, string $label, array $acknowledgedSchemes, array &$issues): void
     {
-        $schemes = $spec['components']['securitySchemes'] ?? null;
-        if (!is_array($schemes)) {
-            return;
+        $schemes = [];
+        $components = null;
+        if (array_key_exists('components', $spec)) {
+            $components = $spec['components'];
+            if (!is_array($components)) {
+                // A present-but-non-object `components` leaves every
+                // referenced scheme unresolvable — runtime hard-errors with
+                // "undefined scheme" as soon as a security requirement
+                // exists. Distinguish it from an absent key and stop the
+                // scheme inspection on the unusable node.
+                $issues[] = $this->issue(
+                    'error',
+                    'structure',
+                    $label,
+                    sprintf('`components` must be an object, got %s.', get_debug_type($components)),
+                    null,
+                );
+
+                return;
+            }
+        }
+        if (is_array($components) && array_key_exists('securitySchemes', $components)) {
+            $declared = $components['securitySchemes'];
+            if (!is_array($declared)) {
+                // Runtime validation hard-errors on this node whenever a
+                // security requirement exists. The container is unusable, and
+                // the acknowledged rot checks below would misreport every
+                // name as "not defined" — stop here, mirroring the runtime
+                // is_array guard around its own rot check.
+                $issues[] = $this->issue(
+                    'error',
+                    'structure',
+                    $label,
+                    sprintf('components.securitySchemes must be an object mapping scheme names to definitions, got %s.', get_debug_type($declared)),
+                    null,
+                );
+
+                return;
+            }
+            $schemes = $declared;
         }
 
         foreach ($schemes as $name => $scheme) {
             if (!is_array($scheme)) {
+                // Runtime validation resolves a non-object definition as an
+                // undefined scheme (hard error) when referenced; report the
+                // defect at its definition site.
+                $issues[] = $this->issue(
+                    'error',
+                    'structure',
+                    $label,
+                    sprintf('Security scheme `%s` must be an object, got %s.', (string) $name, get_debug_type($scheme)),
+                    'Fix the definition under components.securitySchemes — a request referencing this scheme fails validation with a hard error.',
+                );
+
                 continue;
             }
-            $type = $scheme['type'] ?? null;
-            $isUnsupportedHttp = $type === 'http' && ($scheme['scheme'] ?? null) !== 'bearer';
-            if (!in_array($type, ['oauth2', 'openIdConnect', 'mutualTLS'], true) && !$isUnsupportedHttp) {
+            // Partition via the runtime classifier so the doctor and the
+            // validator cannot disagree — e.g. `scheme: Bearer` is enforced
+            // bearer auth (RFC 7235 case-insensitive), and a malformed
+            // definition (missing/non-string `type`, `http` without `scheme`,
+            // …) is the same hard error runtime validation raises for a
+            // request secured by it — not a silently accepted definition.
+            $classification = SecurityValidator::classifyScheme($scheme);
+            if ($classification->kind === SchemeKind::Malformed) {
+                $issues[] = $this->issue(
+                    'error',
+                    'structure',
+                    $label,
+                    sprintf('Security scheme `%s` is malformed: %s', (string) $name, $classification->reason ?? ''),
+                    'Fix the definition under components.securitySchemes — requests secured by this scheme fail validation with a hard error.',
+                );
+
+                continue;
+            }
+            if ($classification->kind !== SchemeKind::Unsupported) {
+                continue;
+            }
+            $rawType = $scheme['type'] ?? null;
+            // Unsupported classifications always carry a string `type`; the
+            // fallback only guards the static type.
+            $type = is_string($rawType) ? $rawType : get_debug_type($rawType);
+            if (in_array((string) $name, $acknowledgedSchemes, true)) {
+                $issues[] = $this->issue(
+                    'skipped',
+                    'feature',
+                    $label,
+                    sprintf('Security scheme `%s` (%s) is recognized but not enforced — acknowledged as unvalidatable.', (string) $name, $type),
+                    null,
+                );
+
                 continue;
             }
             $issues[] = $this->issue(
@@ -666,6 +764,35 @@ final class DoctorCommand
                 sprintf('Security scheme `%s` (%s) is recognized but not enforced.', (string) $name, $type),
                 'Keep a separate authentication test until this scheme is supported.',
             );
+        }
+
+        // Rot checks mirroring SecurityValidator::warnAcknowledgementRot():
+        // an acknowledged name that is absent from the spec, or that names a
+        // scheme the validator can enforce, is a configuration warning so the
+        // acknowledged list cannot rot silently.
+        foreach ($acknowledgedSchemes as $acknowledgedName) {
+            $definition = $schemes[$acknowledgedName] ?? null;
+            if (!is_array($definition)) {
+                $issues[] = $this->issue(
+                    'warning',
+                    'configuration',
+                    $label,
+                    sprintf('Acknowledged security scheme `%s` is not defined in components.securitySchemes.', $acknowledgedName),
+                    'Fix the name or remove the entry from the acknowledged list.',
+                );
+
+                continue;
+            }
+            $kind = SecurityValidator::classifyScheme($definition)->kind;
+            if ($kind === SchemeKind::Bearer || $kind === SchemeKind::ApiKey) {
+                $issues[] = $this->issue(
+                    'warning',
+                    'configuration',
+                    $label,
+                    sprintf('Acknowledged security scheme `%s` is a scheme the validator can enforce; the acknowledgement has no effect.', $acknowledgedName),
+                    'Remove the entry from the acknowledged list so the scheme stays validated.',
+                );
+            }
         }
     }
 
@@ -702,7 +829,12 @@ final class DoctorCommand
             'specs' => $specs,
             'issues' => $issues,
             'phpunit' => ($options['phpunit_snippet'] ?? false)
-                ? $this->phpunitSnippet($specs, $options['strip_prefixes'] ?? [], $options['local_ref_root'] ?? null)
+                ? $this->phpunitSnippet(
+                    $specs,
+                    $options['strip_prefixes'] ?? [],
+                    $options['local_ref_root'] ?? null,
+                    $options['acknowledged_unvalidatable_schemes'] ?? [],
+                )
                 : null,
         ];
     }
@@ -741,8 +873,9 @@ final class DoctorCommand
     /**
      * @param list<SpecResult> $specs
      * @param list<string> $stripPrefixes
+     * @param list<string> $acknowledgedSchemes
      */
-    private function phpunitSnippet(array $specs, array $stripPrefixes, ?string $localRefRoot): ?string
+    private function phpunitSnippet(array $specs, array $stripPrefixes, ?string $localRefRoot, array $acknowledgedSchemes): ?string
     {
         if ($specs === []) {
             return null;
@@ -764,12 +897,15 @@ final class DoctorCommand
         $basePath = htmlspecialchars($basePath, ENT_XML1 | ENT_QUOTES, 'UTF-8');
         $names = htmlspecialchars($names, ENT_XML1 | ENT_QUOTES, 'UTF-8');
         $prefixLine = $prefixes === '' ? '' : "\n        <parameter name=\"strip_prefixes\" value=\"" . htmlspecialchars($prefixes, ENT_XML1 | ENT_QUOTES, 'UTF-8') . '"/>';
+        $acknowledgedLine = $acknowledgedSchemes === []
+            ? ''
+            : "\n        <parameter name=\"acknowledged_unvalidatable_schemes\" value=\"" . htmlspecialchars(implode(',', $acknowledgedSchemes), ENT_XML1 | ENT_QUOTES, 'UTF-8') . '"/>';
 
         return <<<XML
             <extensions>
                 <bootstrap class="Studio\Gesso\PHPUnit\OpenApiCoverageExtension">
                     <parameter name="spec_base_path" value="{$basePath}"/>
-                    <parameter name="specs" value="{$names}"/>{$prefixLine}
+                    <parameter name="specs" value="{$names}"/>{$prefixLine}{$acknowledgedLine}
                 </bootstrap>
             </extensions>
             XML;

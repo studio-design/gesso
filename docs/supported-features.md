@@ -125,7 +125,8 @@ The library uses PHP's native `trigger_error(..., E_USER_WARNING)` as the loud-s
       return false; // bubble
   });
   ```
-- **Suppress one category** (e.g. acknowledged limitation): match on the category prefix in your error handler. Do not blanket-suppress all `E_USER_WARNING`s — unrelated warnings would silently disappear.
+- **Acknowledge a specific unvalidatable security scheme**: for the `[security]` category, prefer the scheme-scoped `acknowledged_unvalidatable_schemes` setting (Laravel config key, PHPUnit extension parameter, `gesso doctor --acknowledge-unvalidatable-scheme`) over an error handler — see [Acknowledging an unvalidatable security scheme](setup.md#acknowledging-an-unvalidatable-security-scheme). Only the named schemes stop warning; an acknowledged name that is absent from the spec, or that the validator can actually enforce, itself warns so the list cannot rot (those rot warnings carry the `[Gesso]` prefix).
+- **Suppress one category** (e.g. acknowledged limitation in another category): match on the category prefix in your error handler. Do not blanket-suppress all `E_USER_WARNING`s — unrelated warnings would silently disappear.
 
 **Why not exceptions / PSR-3 logger / structured payload on `OpenApiValidationResult`?** The simple channel is zero-dep, integrates with every PHP framework's existing error handler, and stays out of the v1.0 SemVer surface. A structured channel (`WarningCollector`, PSR-3 sink, or `result->warnings()`) can be added in v1.x as additive without breaking — we are deliberately deferring until real-world usage demands it. See [issue #149](https://github.com/studio-design/gesso/issues/149) for the design discussion.
 

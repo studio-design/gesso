@@ -34,6 +34,7 @@ use Studio\Gesso\SkipOpenApiResolver;
 use Studio\Gesso\Spec\OpenApiOperationResolver;
 use Studio\Gesso\Spec\OpenApiPathMatcher;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
+use Studio\Gesso\Validation\Request\AcknowledgedSecuritySchemes;
 use Studio\Gesso\Validation\Request\SecuritySchemeIntrospector;
 use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 use Studio\Gesso\Validation\Support\ContentTypeMatcher;
@@ -836,6 +837,7 @@ trait ValidatesOpenApiSchema
     private function getOrCreateRequestValidator(): OpenApiRequestValidator
     {
         $this->applyDiscriminatorEnforcementConfig();
+        $this->applyAcknowledgedUnvalidatableSchemesConfig();
         $resolvedMaxErrors = $this->resolveMaxErrors();
         $resolvedSkipCodes = $this->resolveSkipRequestValidationResponseCodes();
 
@@ -1063,6 +1065,52 @@ trait ValidatesOpenApiSchema
     private function applyDiscriminatorEnforcementConfig(): void
     {
         DiscriminatorEnforcement::configure($this->resolveBoolConfig('enforce_discriminator', true));
+    }
+
+    /**
+     * Push the `acknowledged_unvalidatable_schemes` config list (issue #445)
+     * into the process-global {@see AcknowledgedSecuritySchemes} registry the
+     * security validator reads. Called from the request-validator build path
+     * — the only path where security validation runs — so the current test's
+     * config is reflected even when the cached validator instance is reused.
+     */
+    private function applyAcknowledgedUnvalidatableSchemesConfig(): void
+    {
+        AcknowledgedSecuritySchemes::configure($this->resolveAcknowledgedUnvalidatableSchemes());
+    }
+
+    /** @return list<string> */
+    private function resolveAcknowledgedUnvalidatableSchemes(): array
+    {
+        $raw = config('gesso.acknowledged_unvalidatable_schemes', []);
+
+        if (!is_array($raw)) {
+            $this->failOpenApi(sprintf(
+                'gesso.acknowledged_unvalidatable_schemes must be an array of security scheme names, got %s: %s.',
+                get_debug_type($raw),
+                var_export($raw, true),
+            ));
+        }
+
+        $names = [];
+        foreach ($raw as $index => $name) {
+            if (!is_string($name)) {
+                $this->failOpenApi(sprintf(
+                    'gesso.acknowledged_unvalidatable_schemes[%s] must be a string security scheme name, got %s.',
+                    (string) $index,
+                    get_debug_type($name),
+                ));
+            }
+            if ($name === '') {
+                $this->failOpenApi(sprintf(
+                    'gesso.acknowledged_unvalidatable_schemes[%s] must not be an empty string.',
+                    (string) $index,
+                ));
+            }
+            $names[] = $name;
+        }
+
+        return $names;
     }
 
     /**

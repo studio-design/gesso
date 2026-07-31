@@ -17,6 +17,11 @@ Options:
                              --allow-remote-refs; repeat as needed.
   --remote-ref-max-bytes=<n> Maximum bytes read per remote document
                              (default: 10485760).
+  --acknowledge-unvalidatable-scheme=<name[,name]>
+                             Security scheme name (components.securitySchemes
+                             key) acknowledged as unvalidatable. Repeat as
+                             needed. Mirrors the acknowledged_unvalidatable_schemes
+                             PHPUnit / Laravel setting.
   --phpunit-snippet          Include the equivalent PHPUnit extension XML.
   --help                     Show this message.
 
