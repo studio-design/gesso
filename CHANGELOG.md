@@ -10,6 +10,27 @@ the README for the full surface contract.
 
 ## Unreleased
 
+## [2.2.0](https://github.com/studio-design/gesso/compare/v2.1.0...v2.2.0) (2026-07-31)
+
+
+### Features
+
+* **baseline:** support baseline generation under parallel test runners ([#426](https://github.com/studio-design/gesso/issues/426)) ([b0b5256](https://github.com/studio-design/gesso/commit/b0b5256c04b71a23f2e080ffe6835f785d6948aa))
+* **coverage:** create the parent directory for coverage output paths instead of hard-failing ([#452](https://github.com/studio-design/gesso/issues/452)) ([ec0c7fc](https://github.com/studio-design/gesso/commit/ec0c7fcb99adee5ab8cf3871fee7f383e6bd2361))
+* **schema:** support YAML files in #[BoundToOpenApiEnum] bindings ([#456](https://github.com/studio-design/gesso/issues/456)) ([7ee9f4a](https://github.com/studio-design/gesso/commit/7ee9f4a1c0399798f72f745145ce8428e83a7e5c))
+* **security:** let consumers acknowledge unvalidatable security schemes ([#450](https://github.com/studio-design/gesso/issues/450)) ([703bafb](https://github.com/studio-design/gesso/commit/703bafbc23870d102a0f70490116aff23a1dabb6))
+* **spec:** authenticated remote spec sources ([#432](https://github.com/studio-design/gesso/issues/432)) ([ab569ee](https://github.com/studio-design/gesso/commit/ab569ee11f1a9433debd57d6f255d8d63e846e38))
+* **strict:** detect undocumented response properties ([#431](https://github.com/studio-design/gesso/issues/431)) ([dd3548d](https://github.com/studio-design/gesso/commit/dd3548db7ab8e0400139c70b2b4526550c1e2df4))
+* **validation:** parse non-exploded query parameter serializations ([#451](https://github.com/studio-design/gesso/issues/451)) ([19f04ef](https://github.com/studio-design/gesso/commit/19f04ef9c72e2be5451e858463b550d5b1519e7d))
+
+
+### Bug Fixes
+
+* **compat:** omit [@internal](https://github.com/internal) traits from the public-api baseline ([#424](https://github.com/studio-design/gesso/issues/424)) ([11949ae](https://github.com/studio-design/gesso/commit/11949ae84ace9cc6102dc89448bc021e6626ddb0))
+* **coverage:** skip the threshold gate on partial runs ([#453](https://github.com/studio-design/gesso/issues/453)) ([86e1d1a](https://github.com/studio-design/gesso/commit/86e1d1ab8d0eb0a5e01b57f0d657333ff0b631e9))
+* **fuzz:** build unsupported_method probes from path parameters only ([#455](https://github.com/studio-design/gesso/issues/455)) ([fdeba94](https://github.com/studio-design/gesso/commit/fdeba94802a43d86bf89ffda22dd10c126a37bb7))
+* **fuzz:** exclude methods documented by colliding path templates from unsupported_method probes ([#454](https://github.com/studio-design/gesso/issues/454)) ([c38bd66](https://github.com/studio-design/gesso/commit/c38bd66dfa39d47cabb9248a534edbe149afb40c))
+
 ## [2.1.0](https://github.com/studio-design/gesso/compare/v2.0.0...v2.1.0) (2026-07-30)
 
 
