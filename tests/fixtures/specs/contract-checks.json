@@ -152,6 +152,108 @@
                     }
                 }
             }
+        },
+        "/members/me": {
+            "get": {
+                "operationId": "getMyMember",
+                "responses": {
+                    "200": {
+                        "description": "ok"
+                    }
+                }
+            }
+        },
+        "/members/{member_id}": {
+            "parameters": [
+                {
+                    "name": "member_id",
+                    "in": "path",
+                    "required": true,
+                    "schema": {
+                        "type": "string",
+                        "minLength": 1
+                    }
+                }
+            ],
+            "patch": {
+                "operationId": "updateMember",
+                "responses": {
+                    "200": {
+                        "description": "ok"
+                    }
+                }
+            },
+            "delete": {
+                "operationId": "removeMember",
+                "responses": {
+                    "204": {
+                        "description": "gone"
+                    }
+                }
+            }
+        },
+        "/things/mine": {
+            "get": {
+                "operationId": "getMyThing",
+                "responses": {
+                    "200": {
+                        "description": "ok"
+                    }
+                }
+            }
+        },
+        "/things/{thing_id}": {
+            "parameters": [
+                {
+                    "name": "thing_id",
+                    "in": "path",
+                    "required": true,
+                    "schema": {
+                        "type": "string",
+                        "minLength": 1
+                    }
+                }
+            ],
+            "post": {
+                "operationId": "createThing",
+                "responses": {
+                    "201": {
+                        "description": "created"
+                    }
+                }
+            },
+            "put": {
+                "operationId": "replaceThing",
+                "responses": {
+                    "200": {
+                        "description": "ok"
+                    }
+                }
+            },
+            "patch": {
+                "operationId": "updateThing",
+                "responses": {
+                    "200": {
+                        "description": "ok"
+                    }
+                }
+            },
+            "delete": {
+                "operationId": "removeThing",
+                "responses": {
+                    "204": {
+                        "description": "gone"
+                    }
+                }
+            },
+            "query": {
+                "operationId": "queryThing",
+                "responses": {
+                    "200": {
+                        "description": "ok"
+                    }
+                }
+            }
         }
     }
 }

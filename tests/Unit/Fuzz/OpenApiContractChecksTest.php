@@ -263,6 +263,60 @@ class OpenApiContractChecksTest extends TestCase
     }
 
     #[Test]
+    public function probe_avoids_methods_documented_by_a_colliding_path_template(): void
+    {
+        $methods = [];
+        foreach (range(1, 10) as $seed) {
+            OpenApiContractChecks::run('contract-checks', seed: $seed)
+                ->checks([ContractCheck::UnsupportedMethod])
+                ->includePaths(['/members/me'])
+                ->dispatchUsing(static function (ExploredCase $case) use (&$methods): int {
+                    $methods[] = $case->method->value;
+
+                    return 405;
+                })
+                ->report();
+        }
+
+        // '/members/me' documents only GET, but the concrete probe URI is an
+        // instance of '/members/{member_id}' (member_id = "me"), which
+        // documents PATCH and DELETE. Probing those methods would be routed
+        // to the documented operations and prove nothing (issue #440).
+        $this->assertNotSame([], $methods);
+        $this->assertNotContains('GET', $methods);
+        $this->assertNotContains('PATCH', $methods);
+        $this->assertNotContains('DELETE', $methods);
+    }
+
+    #[Test]
+    public function skips_when_every_undocumented_method_is_documented_by_a_colliding_template(): void
+    {
+        $dispatched = 0;
+
+        $summary = OpenApiContractChecks::run('contract-checks', seed: 7)
+            ->checks([ContractCheck::UnsupportedMethod])
+            ->includePaths(['/things/mine'])
+            ->dispatchUsing(static function (ExploredCase $case) use (&$dispatched): int {
+                $dispatched++;
+
+                return 405;
+            })
+            ->report();
+
+        // '/things/{thing_id}' documents every method '/things/mine' leaves
+        // undocumented, and '/things/mine' is an instance of that template,
+        // so no probe method can prove anything.
+        $this->assertSame(0, $dispatched);
+        $this->assertSame(0, $summary->dispatchedProbes);
+        $this->assertCount(1, $summary->skips);
+        $skip = $summary->skips[0];
+        $this->assertSame('/things/mine', $skip->path);
+        $this->assertNull($skip->method);
+        $this->assertStringContainsString('/things/mine', $skip->reason);
+        $this->assertStringContainsString('/things/{thing_id}', $skip->reason);
+    }
+
+    #[Test]
     public function probe_method_is_deterministic_for_a_seed_and_undocumented(): void
     {
         $probeFor = static function (int $seed): string {
