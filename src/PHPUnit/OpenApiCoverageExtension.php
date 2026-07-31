@@ -63,6 +63,7 @@ use function is_string;
 use function is_writable;
 use function mb_strtolower;
 use function method_exists;
+use function mkdir;
 use function sprintf;
 use function str_starts_with;
 use function sys_get_temp_dir;
@@ -813,6 +814,13 @@ final class OpenApiCoverageExtension implements Extension
      * directory writability is checked here so misconfigurations surface at
      * bootstrap rather than as a runtime WARN after tests ran.
      *
+     * A missing parent directory is not treated as a misconfiguration (issue
+     * #448): the conventional target is a gitignored build directory that
+     * does not exist on a fresh clone or CI runner, so bootstrap creates it
+     * recursively. Only a failed creation (permissions, a file occupying the
+     * path, a read-only mount) or an existing-but-unwritable directory stays
+     * FATAL.
+     *
      * Note the bootstrap-vs-runtime severity asymmetry: the parent-dir check
      * here hard-fails the run, but a `dirname()` that disappears mid-run will
      * trip the dispatch loop's existing `file_put_contents() === false` branch,
@@ -846,14 +854,31 @@ final class OpenApiCoverageExtension implements Extension
             $raw = getcwd() . '/' . $raw;
         }
 
+        // Single emission site on purpose: the identity-neutral
+        // "[OpenAPI Coverage]" diagnostic category is frozen at its v1.9
+        // shape (see DiagnosticPrefixesBaselineTest), so both failure
+        // branches share one prefixed literal.
         $parentDir = dirname($raw);
-        if (!is_dir($parentDir) || !is_writable($parentDir)) {
+        $reason = null;
+        if (!is_dir($parentDir) && !@mkdir($parentDir, 0o777, true) && !is_dir($parentDir)) {
             $reason = sprintf(
-                '%s=%s: parent directory %s does not exist or is not writable.',
+                '%s=%s: parent directory %s does not exist and could not be created. '
+                . 'Create it manually or point the parameter at a writable location.',
                 $name,
                 $raw,
                 $parentDir,
             );
+        } elseif (!is_writable($parentDir)) {
+            $reason = sprintf(
+                '%s=%s: parent directory %s is not writable. '
+                . 'Fix its permissions or point the parameter at a writable location.',
+                $name,
+                $raw,
+                $parentDir,
+            );
+        }
+
+        if ($reason !== null) {
             self::writeStderr("[OpenAPI Coverage] FATAL: {$reason}\n");
             self::appendGithubStepSummaryFatalBlock($githubSummaryPath, $name, $reason);
 

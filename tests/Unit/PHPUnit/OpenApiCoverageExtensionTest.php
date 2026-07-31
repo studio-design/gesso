@@ -29,16 +29,21 @@ use Studio\Gesso\Validation\Strict\StrictRequiredPerCallMode;
 use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 use Studio\Gesso\Validation\Support\DiscriminatorEnforcement;
 
+use function chmod;
 use function fclose;
 use function file_get_contents;
 use function fopen;
 use function getcwd;
+use function is_writable;
+use function mkdir;
 use function restore_error_handler;
 use function rewind;
+use function rmdir;
 use function set_error_handler;
 use function stream_get_contents;
 use function sys_get_temp_dir;
 use function tempnam;
+use function uniqid;
 use function unlink;
 
 class OpenApiCoverageExtensionTest extends TestCase
@@ -948,11 +953,12 @@ class OpenApiCoverageExtensionTest extends TestCase
     }
 
     #[Test]
-    public function bootstrap_fatal_when_junit_output_parent_dir_not_writable(): void
+    public function bootstrap_fatal_when_junit_output_parent_dir_cannot_be_created(): void
     {
         // Surface the misconfiguration at bootstrap rather than as a runtime
         // file_put_contents() WARN after every test ran. /proc/0 does not
-        // exist on macOS and is unwritable on Linux — fails closed either way.
+        // exist on macOS and is unwritable on Linux, so the issue #448
+        // auto-creation attempt fails closed either way.
         $extension = new OpenApiCoverageExtension();
         $parameters = ParameterCollection::fromArray([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
@@ -965,7 +971,7 @@ class OpenApiCoverageExtensionTest extends TestCase
             $this->fail('expected InvalidCoverageOutputPathException');
         } catch (InvalidCoverageOutputPathException $e) {
             $this->assertSame('junit_output', $e->parameterName);
-            $this->assertStringContainsString('not writable', $e->getMessage());
+            $this->assertStringContainsString('could not be created', $e->getMessage());
         }
 
         $this->assertStringContainsString('FATAL', $this->readStderr());
@@ -996,7 +1002,7 @@ class OpenApiCoverageExtensionTest extends TestCase
     }
 
     #[Test]
-    public function bootstrap_fatal_when_html_output_parent_dir_not_writable(): void
+    public function bootstrap_fatal_when_html_output_parent_dir_cannot_be_created(): void
     {
         // Parity with the junit_output / json_output checks — the shared
         // resolveOutputPathParameter() helper should fail closed for
@@ -1013,14 +1019,14 @@ class OpenApiCoverageExtensionTest extends TestCase
             $this->fail('expected InvalidCoverageOutputPathException');
         } catch (InvalidCoverageOutputPathException $e) {
             $this->assertSame('html_output', $e->parameterName);
-            $this->assertStringContainsString('not writable', $e->getMessage());
+            $this->assertStringContainsString('could not be created', $e->getMessage());
         }
 
         $this->assertStringContainsString('FATAL', $this->readStderr());
     }
 
     #[Test]
-    public function bootstrap_fatal_when_json_output_parent_dir_not_writable(): void
+    public function bootstrap_fatal_when_json_output_parent_dir_cannot_be_created(): void
     {
         // Parity with the junit_output check — the shared
         // resolveOutputPathParameter() helper should fail closed for
@@ -1038,7 +1044,143 @@ class OpenApiCoverageExtensionTest extends TestCase
             $this->fail('expected InvalidCoverageOutputPathException');
         } catch (InvalidCoverageOutputPathException $e) {
             $this->assertSame('json_output', $e->parameterName);
+            $this->assertStringContainsString('could not be created', $e->getMessage());
+        }
+
+        $this->assertStringContainsString('FATAL', $this->readStderr());
+    }
+
+    #[Test]
+    public function bootstrap_creates_missing_parent_directory_for_json_output(): void
+    {
+        // Issue #448: json_output pointing into a gitignored build directory
+        // must work on a fresh clone. The parent chain does not exist yet —
+        // bootstrap should mkdir it recursively instead of hard-failing.
+        $base = sys_get_temp_dir() . '/gesso-448-' . uniqid();
+        $extension = new OpenApiCoverageExtension();
+        $parameters = ParameterCollection::fromArray([
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => 'refs-valid',
+            'json_output' => $base . '/build/openapi-coverage.json',
+        ]);
+
+        try {
+            $extension->setupExtension(null, $parameters, null);
+
+            $this->assertDirectoryExists($base . '/build');
+            $this->assertSame('', $this->readStderr());
+        } finally {
+            @rmdir($base . '/build');
+            @rmdir($base);
+        }
+    }
+
+    #[Test]
+    public function bootstrap_creates_missing_parent_directory_for_junit_output(): void
+    {
+        // Issue #448 parity: the shared resolveOutputPathParameter() helper
+        // should auto-create for junit_output too.
+        $base = sys_get_temp_dir() . '/gesso-448-' . uniqid();
+        $extension = new OpenApiCoverageExtension();
+        $parameters = ParameterCollection::fromArray([
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => 'refs-valid',
+            'junit_output' => $base . '/build/coverage.junit.xml',
+        ]);
+
+        try {
+            $extension->setupExtension(null, $parameters, null);
+
+            $this->assertDirectoryExists($base . '/build');
+            $this->assertSame('', $this->readStderr());
+        } finally {
+            @rmdir($base . '/build');
+            @rmdir($base);
+        }
+    }
+
+    #[Test]
+    public function bootstrap_creates_missing_parent_directory_for_html_output(): void
+    {
+        // Issue #448 parity: the shared resolveOutputPathParameter() helper
+        // should auto-create for html_output too.
+        $base = sys_get_temp_dir() . '/gesso-448-' . uniqid();
+        $extension = new OpenApiCoverageExtension();
+        $parameters = ParameterCollection::fromArray([
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => 'refs-valid',
+            'html_output' => $base . '/build/coverage.html',
+        ]);
+
+        try {
+            $extension->setupExtension(null, $parameters, null);
+
+            $this->assertDirectoryExists($base . '/build');
+            $this->assertSame('', $this->readStderr());
+        } finally {
+            @rmdir($base . '/build');
+            @rmdir($base);
+        }
+    }
+
+    #[Test]
+    public function bootstrap_fatal_when_json_output_parent_path_is_occupied_by_a_file(): void
+    {
+        // A file sitting where the parent directory should be is a genuine
+        // misconfiguration: mkdir() cannot succeed, so the issue #448
+        // auto-creation must fail closed with a message that names the fix.
+        $file = tempnam(sys_get_temp_dir(), 'gesso-448-occupied-');
+        $this->assertNotFalse($file);
+
+        $extension = new OpenApiCoverageExtension();
+        $parameters = ParameterCollection::fromArray([
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => 'refs-valid',
+            'json_output' => $file . '/openapi-coverage.json',
+        ]);
+
+        try {
+            $extension->setupExtension(null, $parameters, null);
+            $this->fail('expected InvalidCoverageOutputPathException');
+        } catch (InvalidCoverageOutputPathException $e) {
+            $this->assertSame('json_output', $e->parameterName);
+            $this->assertStringContainsString('could not be created', $e->getMessage());
+            $this->assertStringContainsString('point the parameter at a writable location', $e->getMessage());
+        } finally {
+            @unlink($file);
+        }
+
+        $this->assertStringContainsString('FATAL', $this->readStderr());
+    }
+
+    #[Test]
+    public function bootstrap_fatal_when_json_output_parent_dir_exists_but_not_writable(): void
+    {
+        // The pre-#448 fail-loud policy must survive auto-creation: an
+        // existing directory without write permission is still FATAL.
+        $base = sys_get_temp_dir() . '/gesso-448-readonly-' . uniqid();
+        $this->assertTrue(mkdir($base, 0o555, true));
+        if (is_writable($base)) {
+            @rmdir($base);
+            $this->markTestSkipped('running as a user that ignores directory permissions (root)');
+        }
+
+        $extension = new OpenApiCoverageExtension();
+        $parameters = ParameterCollection::fromArray([
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => 'refs-valid',
+            'json_output' => $base . '/openapi-coverage.json',
+        ]);
+
+        try {
+            $extension->setupExtension(null, $parameters, null);
+            $this->fail('expected InvalidCoverageOutputPathException');
+        } catch (InvalidCoverageOutputPathException $e) {
+            $this->assertSame('json_output', $e->parameterName);
             $this->assertStringContainsString('not writable', $e->getMessage());
+        } finally {
+            @chmod($base, 0o755);
+            @rmdir($base);
         }
 
         $this->assertStringContainsString('FATAL', $this->readStderr());
