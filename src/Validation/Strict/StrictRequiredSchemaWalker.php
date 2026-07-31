@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Validation\Strict;
 
+use function array_keys;
 use function array_unique;
 use function array_values;
 use function is_array;
@@ -404,11 +405,42 @@ final class StrictRequiredSchemaWalker
      */
     private static function isMapShaped(array $schema): bool
     {
-        if (self::collectPropertyBranches($schema) !== []) {
+        if (self::declaresAnyProperty($schema)) {
             return false;
         }
 
         return self::declaresOpenAdditionalProperties($schema);
+    }
+
+    /**
+     * True when the node (or an `allOf` branch) declares at least one
+     * property name under `properties`. Deliberately independent of
+     * {@see self::collectPropertyBranches()}, which yields only walkable
+     * (array-form) subschemas: JSON Schema 2020-12 / OAS 3.1+ boolean
+     * subschemas (`properties: {fixed: true}`) still declare the name and
+     * give the node a fixed shape.
+     *
+     * @param array<string, mixed> $schema
+     */
+    private static function declaresAnyProperty(array $schema): bool
+    {
+        $properties = $schema['properties'] ?? null;
+        if (is_array($properties)) {
+            foreach (array_keys($properties) as $name) {
+                if (is_string($name)) {
+                    return true;
+                }
+            }
+        }
+        if (isset($schema['allOf']) && is_array($schema['allOf'])) {
+            foreach ($schema['allOf'] as $branch) {
+                if (is_array($branch) && self::declaresAnyProperty($branch)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     /**

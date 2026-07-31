@@ -384,6 +384,25 @@ final class StrictRequiredSchemaWalkerTest extends TestCase
     }
 
     #[Test]
+    public function collect_required_by_pointer_treats_boolean_property_schema_as_declared_property(): void
+    {
+        // JSON Schema 2020-12 (OAS 3.1/3.2) allows boolean subschemas:
+        // `fixed: true` declares the property name even though there is
+        // nothing to walk beneath it. The node therefore has a (partially)
+        // fixed shape and must not be classified as a map.
+        $schema = [
+            'type' => 'object',
+            'properties' => ['fixed' => true],
+            'additionalProperties' => ['type' => 'string'],
+        ];
+
+        $result = StrictRequiredSchemaWalker::collectRequiredByPointer($schema);
+
+        $this->assertSame(['/' => []], $result['walked']);
+        $this->assertSame([], $result['maps']);
+    }
+
+    #[Test]
     public function collect_required_by_pointer_does_not_mark_additional_properties_false_as_map(): void
     {
         // `false` closes the object — it is not a map declaration, so the
