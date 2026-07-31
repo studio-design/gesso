@@ -543,6 +543,55 @@ final class SchemaDataGenerator
     }
 
     /**
+     * The generatable sides of an array-schema `if` under a plan: side 0
+     * satisfies the `if` (plus `then`), side 1 violates it (plus `else`). A
+     * boolean `false` consequent makes its side unsatisfiable — nothing
+     * matches `false` — so it is excluded; `true` and absent consequents
+     * assert nothing and stay generatable.
+     *
+     * @param array<string, mixed> $schema
+     *
+     * @return list<int>
+     */
+    public static function ifBranchSides(array $schema): array
+    {
+        $sides = [];
+        if (($schema['then'] ?? null) !== false) {
+            $sides[] = 0;
+        }
+        if (($schema['else'] ?? null) !== false) {
+            $sides[] = 1;
+        }
+
+        return $sides;
+    }
+
+    /**
+     * Materialise one side of an array-schema `if`: the condition (or its
+     * negation) merged with the matching consequent. Shared with the
+     * enumerator so descent and pinned generation see identical views.
+     *
+     * @param array<string, mixed> $schema node still carrying if/then/else
+     *
+     * @return array<string, mixed>
+     */
+    public static function applyIfSide(array $schema, int $side): array
+    {
+        $conditional = $side === 0
+            ? self::mergeSchemas(
+                is_array($schema['if']) ? $schema['if'] : [],
+                is_array($schema['then'] ?? null) ? $schema['then'] : [],
+            )
+            : self::mergeSchemas(
+                ['not' => $schema['if']],
+                is_array($schema['else'] ?? null) ? $schema['else'] : [],
+            );
+        unset($schema['if'], $schema['then'], $schema['else']);
+
+        return self::mergeSchemas($schema, $conditional);
+    }
+
+    /**
      * Recognise an `if` of the shape `{properties: {p: s}, required: [p]}`
      * with no other assertions, and return `[p, s]`; null otherwise.
      *
@@ -598,7 +647,14 @@ final class SchemaDataGenerator
 
         $result = [];
         foreach ($properties as $name => $propSchema) {
-            if (!is_string($name) || !is_array($propSchema)) {
+            if (!is_string($name)) {
+                continue;
+            }
+            // Boolean property schemas (OpenAPI 3.1 / JSON Schema 2020-12)
+            // participate under a plan: `true` admits any value, `false`
+            // admits none, so its presence is unreachable and the property
+            // is always omitted. Plan-less rotation keeps skipping them.
+            if (!is_array($propSchema) && !($plan !== null && $propSchema === true)) {
                 continue;
             }
 
@@ -619,7 +675,13 @@ final class SchemaDataGenerator
                 }
             }
 
-            $result[$name] = self::generateOne($propSchema, $faker, $iteration, $plan, $childPointer);
+            $result[$name] = self::generateOne(
+                $propSchema === true ? [] : $propSchema,
+                $faker,
+                $iteration,
+                $plan,
+                $childPointer,
+            );
         }
 
         $minProperties = isset($schema['minProperties']) && is_int($schema['minProperties'])
@@ -1132,16 +1194,26 @@ final class SchemaDataGenerator
                 $schema = self::mergeSchemas($schema, $branchSchema);
             }
         } elseif (isset($schema['if']) && is_array($schema['if'])) {
-            $pinned = $plan?->branchFor($pointer . '/if');
-            $useThen = (($pinned ?? $iteration) % 2) === 0;
-            $conditional = $useThen
-                ? self::mergeSchemas($schema['if'], is_array($schema['then'] ?? null) ? $schema['then'] : [])
-                : self::mergeSchemas(
-                    ['not' => $schema['if']],
-                    is_array($schema['else'] ?? null) ? $schema['else'] : [],
-                );
-            unset($schema['if'], $schema['then'], $schema['else']);
-            $schema = self::mergeSchemas($schema, $conditional);
+            if ($plan !== null) {
+                $sides = self::ifBranchSides($schema);
+                // No generatable side means both consequents are `false`;
+                // leave the keyword unresolved for the loud self-check.
+                if ($sides !== []) {
+                    $pinned = $plan->branchFor($pointer . '/if');
+                    $side = $sides[($pinned ?? $iteration) % count($sides)];
+                    $schema = self::applyIfSide($schema, $side);
+                }
+            } else {
+                $useThen = ($iteration % 2) === 0;
+                $conditional = $useThen
+                    ? self::mergeSchemas($schema['if'], is_array($schema['then'] ?? null) ? $schema['then'] : [])
+                    : self::mergeSchemas(
+                        ['not' => $schema['if']],
+                        is_array($schema['else'] ?? null) ? $schema['else'] : [],
+                    );
+                unset($schema['if'], $schema['then'], $schema['else']);
+                $schema = self::mergeSchemas($schema, $conditional);
+            }
         }
 
         return $schema;

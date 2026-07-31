@@ -11,6 +11,7 @@ use Studio\Gesso\Fuzz\BranchCompleteCaseGenerator;
 use Studio\Gesso\Fuzz\PlannedSchemaCase;
 use Studio\Gesso\Fuzz\SchemaValueValidator;
 
+use function array_key_exists;
 use function array_map;
 use function is_array;
 use function is_int;
@@ -498,6 +499,63 @@ class BranchCompleteCaseGeneratorTest extends TestCase
 
         $this->assertTrue($sawString, 'no case pinned the string branch under the unconditional then');
         $this->assertTrue($sawInteger, 'no case pinned the integer branch under the unconditional then');
+    }
+
+    #[Test]
+    public function skips_an_unsatisfiable_boolean_then_and_covers_the_else(): void
+    {
+        // `then: false` makes the if-holds side unsatisfiable (2020-12
+        // boolean schema); only the else branch is generatable. Pinning the
+        // then side would crash the run before the reachable else case.
+        $cases = BranchCompleteCaseGenerator::generate([
+            'type' => 'string',
+            'if' => ['const' => 'x'],
+            'then' => false,
+            'else' => ['const' => 'y'],
+        ], seed: 1);
+
+        $this->assertNotSame([], $cases);
+        foreach ($cases as $case) {
+            $this->assertSame('y', $case->value);
+        }
+    }
+
+    #[Test]
+    public function covers_presence_of_a_boolean_true_property(): void
+    {
+        // `properties: {x: true}` admits any value for x; both presence
+        // states are reachable and must each appear in a case.
+        $sawPresent = false;
+        $sawOmitted = false;
+        foreach (BranchCompleteCaseGenerator::generate([
+            'type' => 'object',
+            'properties' => ['x' => true],
+        ], seed: 1) as $case) {
+            $this->assertIsArray($case->value);
+            if (array_key_exists('x', $case->value)) {
+                $sawPresent = true;
+            } else {
+                $sawOmitted = true;
+            }
+        }
+
+        $this->assertTrue($sawPresent, 'no case included the boolean-true property');
+        $this->assertTrue($sawOmitted, 'no case omitted the boolean-true property');
+    }
+
+    #[Test]
+    public function never_includes_a_boolean_false_property(): void
+    {
+        // Nothing matches `false`, so presence is unreachable; the only
+        // valid shape omits x.
+        foreach (BranchCompleteCaseGenerator::generate([
+            'type' => 'object',
+            'required' => ['id'],
+            'properties' => ['id' => ['type' => 'integer'], 'x' => false],
+        ], seed: 1) as $case) {
+            $this->assertIsArray($case->value);
+            $this->assertArrayNotHasKey('x', $case->value);
+        }
     }
 
     #[Test]

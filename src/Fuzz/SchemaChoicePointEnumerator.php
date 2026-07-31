@@ -286,29 +286,28 @@ final class SchemaChoicePointEnumerator
             return;
         }
 
+        $sides = SchemaDataGenerator::ifBranchSides($schema);
+        if ($sides === []) {
+            // Both consequents are `false`: neither side is satisfiable.
+            // Generation leaves the keyword unresolved and fails its
+            // self-check loudly; mirror by not descending the consequents.
+            $this->visitLeaf($schema, $pointer, $ancestors, $depth, $probe);
+
+            return;
+        }
+
         $choicePointer = $pointer . '/if';
         $this->record(
             SchemaChoicePointKind::IfThenElse,
             $choicePointer,
-            2,
+            count($sides),
             $ancestors,
             [$schema['if'], $schema['then'] ?? null, $schema['else'] ?? null],
             $probe,
         );
 
-        $base = $schema;
-        unset($base['if'], $base['then'], $base['else']);
-        $views = [
-            SchemaDataGenerator::mergeSchemas($base, SchemaDataGenerator::mergeSchemas(
-                $schema['if'],
-                is_array($schema['then'] ?? null) ? $schema['then'] : [],
-            )),
-            SchemaDataGenerator::mergeSchemas($base, SchemaDataGenerator::mergeSchemas(
-                ['not' => $schema['if']],
-                is_array($schema['else'] ?? null) ? $schema['else'] : [],
-            )),
-        ];
-        foreach ($views as $branch => $view) {
+        foreach ($sides as $branch => $side) {
+            $view = SchemaDataGenerator::applyIfSide($schema, $side);
             $this->rejectReintroduced($view, ['oneOf', 'anyOf', 'allOf', 'if'], $pointer);
             $this->visitLeaf($view, $pointer, [...$ancestors, $choicePointer => $branch], $depth, $probe);
         }
@@ -365,7 +364,13 @@ final class SchemaChoicePointEnumerator
         }
 
         foreach ($properties as $name => $propertySchema) {
-            if (!is_string($name) || !is_array($propertySchema)) {
+            if (!is_string($name)) {
+                continue;
+            }
+            // Boolean property schemas: `true` admits any value, so only its
+            // presence is a choice; `false` admits none, so presence is
+            // unreachable and there is no choice at all.
+            if (!is_array($propertySchema) && $propertySchema !== true) {
                 continue;
             }
 
@@ -376,7 +381,9 @@ final class SchemaChoicePointEnumerator
                 $childAncestors = [...$childAncestors, $childPointer => SchemaChoicePoint::PRESENT];
             }
 
-            $this->visitNode($propertySchema, $childPointer, $childAncestors, $depth + 1, $probe);
+            if (is_array($propertySchema)) {
+                $this->visitNode($propertySchema, $childPointer, $childAncestors, $depth + 1, $probe);
+            }
         }
     }
 

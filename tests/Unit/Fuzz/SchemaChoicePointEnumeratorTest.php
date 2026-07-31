@@ -196,6 +196,35 @@ class SchemaChoicePointEnumeratorTest extends TestCase
     }
 
     #[Test]
+    public function excludes_an_unsatisfiable_boolean_consequent_from_the_if_space(): void
+    {
+        $points = $this->indexByPointer(SchemaChoicePointEnumerator::enumerate([
+            'type' => 'string',
+            'if' => ['const' => 'x'],
+            'then' => false,
+            'else' => ['const' => 'y'],
+        ]));
+
+        $this->assertArrayHasKey('/if', $points);
+        // Only the else side is generatable: nothing satisfies `then: false`.
+        $this->assertSame(1, $points['/if']->branchCount);
+    }
+
+    #[Test]
+    public function records_presence_for_boolean_true_properties_and_skips_false_ones(): void
+    {
+        $points = $this->indexByPointer(SchemaChoicePointEnumerator::enumerate([
+            'type' => 'object',
+            'properties' => ['x' => true, 'y' => false],
+        ]));
+
+        $this->assertArrayHasKey('/properties/x', $points);
+        $this->assertSame(SchemaChoicePointKind::OptionalProperty, $points['/properties/x']->kind);
+        // Presence of a `false` property is unreachable — no choice.
+        $this->assertArrayNotHasKey('/properties/y', $points);
+    }
+
+    #[Test]
     public function records_rediscoveries_with_different_content_as_separate_choice_points(): void
     {
         $schema = [
