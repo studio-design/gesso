@@ -142,7 +142,7 @@ class CoverageReportSubscriberBaselineTest extends TestCase
     public function a_paratest_worker_stages_the_baseline_in_the_sidecar_envelope(): void
     {
         // Issue #417: worker mode does NOT write the baseline file — the
-        // per-worker view is a subset. Instead the fingerprints ride the v3
+        // per-worker view is a subset. Instead the fingerprints ride the v5
         // sidecar envelope for `gesso coverage:merge --baseline-file` to
         // union, and the worker exits normally.
         $this->installCollectorWithOneViolation();
