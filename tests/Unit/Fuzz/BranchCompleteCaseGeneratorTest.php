@@ -8,6 +8,7 @@ use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Studio\Gesso\Fuzz\BranchCompleteCaseGenerator;
+use Studio\Gesso\Fuzz\FuzzGenerationException;
 use Studio\Gesso\Fuzz\PlannedSchemaCase;
 use Studio\Gesso\Fuzz\SchemaValueValidator;
 
@@ -620,6 +621,107 @@ class BranchCompleteCaseGeneratorTest extends TestCase
         $this->assertNotSame([], $cases);
         foreach ($cases as $case) {
             $this->assertSame([], $case->value);
+        }
+    }
+
+    #[Test]
+    public function drops_a_one_of_branch_made_unreachable_by_exclusivity(): void
+    {
+        // `x` matches both branches, so the const branch can never be the
+        // sole match; its case is dropped, not a crash.
+        $cases = BranchCompleteCaseGenerator::generate([
+            'oneOf' => [['type' => 'string'], ['const' => 'x']],
+        ], seed: 1);
+
+        $this->assertNotSame([], $cases);
+        foreach ($cases as $case) {
+            $this->assertIsString($case->value);
+            $this->assertNotSame('x', $case->value);
+        }
+    }
+
+    #[Test]
+    public function drops_an_else_branch_made_unreachable_by_a_const(): void
+    {
+        $cases = BranchCompleteCaseGenerator::generate([
+            'const' => 'x',
+            'if' => ['const' => 'x'],
+            'then' => true,
+            'else' => ['const' => 'y'],
+        ], seed: 1);
+
+        $this->assertNotSame([], $cases);
+        foreach ($cases as $case) {
+            $this->assertSame('x', $case->value);
+        }
+    }
+
+    #[Test]
+    public function drops_an_omission_branch_made_unreachable_by_min_properties(): void
+    {
+        // minProperties: 1 with additionalProperties: false means the only
+        // optional property can never be omitted.
+        $cases = BranchCompleteCaseGenerator::generate([
+            'type' => 'object',
+            'minProperties' => 1,
+            'additionalProperties' => false,
+            'properties' => ['a' => ['type' => 'string']],
+        ], seed: 1);
+
+        $this->assertNotSame([], $cases);
+        foreach ($cases as $case) {
+            $this->assertIsArray($case->value);
+            $this->assertArrayHasKey('a', $case->value);
+        }
+    }
+
+    #[Test]
+    public function drops_a_conditional_branch_made_unreachable_by_a_folded_suppression(): void
+    {
+        // The first conditional's then: false permanently forbids x; the
+        // second conditional's satisfied side needs x and is unreachable.
+        $cases = BranchCompleteCaseGenerator::generate([
+            'type' => 'string',
+            'allOf' => [
+                ['if' => ['const' => 'x'], 'then' => false],
+                ['if' => ['const' => 'x'], 'then' => ['minLength' => 1]],
+            ],
+        ], seed: 1);
+
+        $this->assertNotSame([], $cases);
+        foreach ($cases as $case) {
+            $this->assertIsString($case->value);
+            $this->assertNotSame('x', $case->value);
+        }
+    }
+
+    #[Test]
+    public function stays_loud_when_the_schema_itself_is_unsatisfiable(): void
+    {
+        // Dropping unreachable-branch cases must not swallow a schema no
+        // value can satisfy: the fallback case still fails loudly.
+        $this->expectException(FuzzGenerationException::class);
+
+        BranchCompleteCaseGenerator::generate([
+            'type' => 'string',
+            'oneOf' => [['const' => 'x'], ['const' => 'x']],
+        ], seed: 1);
+    }
+
+    #[Test]
+    public function generates_items_when_the_items_keyword_is_omitted(): void
+    {
+        // Omitted items is the empty schema (2020-12 §10.3.1.2): elements
+        // are unconstrained, not forbidden.
+        $cases = BranchCompleteCaseGenerator::generate([
+            'type' => 'array',
+            'minItems' => 1,
+        ], seed: 1);
+
+        $this->assertNotSame([], $cases);
+        foreach ($cases as $case) {
+            $this->assertIsArray($case->value);
+            $this->assertNotSame([], $case->value);
         }
     }
 

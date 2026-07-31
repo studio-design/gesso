@@ -18,19 +18,11 @@ namespace Studio\Gesso\Fuzz;
  */
 final readonly class CaseSelectionPlan
 {
-    /**
-     * `probe` marks a case that pins a branch whose reachability cannot be
-     * determined from the schema alone (see {@see SchemaChoicePoint}); its
-     * generated value is dropped instead of failing loudly when the schema
-     * forbids that state.
-     *
-     * @param array<string, int> $selections
-     */
+    /** @param array<string, int> $selections */
     public function __construct(
         public array $selections,
         public ?string $targetPointer = null,
         public ?int $targetBranch = null,
-        public bool $probe = false,
     ) {}
 
     public function branchFor(string $pointer): ?int

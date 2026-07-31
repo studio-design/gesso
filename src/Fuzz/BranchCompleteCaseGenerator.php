@@ -6,6 +6,8 @@ namespace Studio\Gesso\Fuzz;
 
 use InvalidArgumentException;
 
+use function count;
+
 /**
  * Deterministic branch-complete case generation over a converted JSON Schema.
  *
@@ -17,17 +19,18 @@ use InvalidArgumentException;
  * For a fixed (schema, seed) every branch of every reachable choice point
  * therefore appears in at least one generated case.
  *
- * Every case keeps the existing self-check against the converted schema, so a
- * generator defect fails loudly here instead of reaching user code. The one
- * exception is probe cases — branches whose reachability the schema alone
- * cannot decide, i.e. the none-match state of conditional `allOf` and choice
- * points discovered inside it: when generation cannot produce a valid value,
- * the probe case is dropped instead of failing the run. For enum-driven
- * discriminators that decision is exact — the admissible domain is filtered
- * exhaustively, so the drop means a closed set genuinely forbids the state;
- * for other shapes it rests on the bounded deterministic retry search and
- * remains best-effort. Schemas outside the enumeration subset or beyond its
- * documented bounds throw from the pre-pass before anything is generated.
+ * Every untargeted case keeps the existing loud self-check against the
+ * converted schema. Targeted cases are different: a pinned branch's
+ * reachability is undecidable in general — parent constraints such as
+ * `oneOf` exclusivity, `const`, `minProperties`, or folded conditional
+ * suppressions can forbid the pinned state on a perfectly valid schema — so
+ * a targeted case whose value cannot be generated valid (after the
+ * deterministic search machinery: enum-domain filtering, `not` retries,
+ * conditional closure) is treated as an unreachable branch and dropped
+ * rather than failing the run. If every case is dropped, one rotation-only
+ * case still runs loudly, so an unsatisfiable schema remains an error.
+ * Schemas outside the enumeration subset or beyond its documented bounds
+ * throw from the pre-pass before anything is generated.
  *
  * @internal Not part of the package's public API. Do not use from user code.
  */
@@ -53,7 +56,6 @@ final class BranchCompleteCaseGenerator
                     [...$point->ancestors, $point->pointer => $branch],
                     $point->pointer,
                     $branch,
-                    $point->probeContext || $branch === $point->probeBranch,
                 );
             }
         }
@@ -68,16 +70,28 @@ final class BranchCompleteCaseGenerator
         $cases = [];
         foreach ($plans as $index => $plan) {
             $value = SchemaDataGenerator::generateOne($schema, $faker, $index, $plan);
-            // A probe pins a state whose reachability the schema alone cannot
-            // decide (the none-match side of conditional allOf — unreachable
-            // for closed discriminator sets). Its case is dropped only after
-            // generation's bounded retry search failed to produce a valid
-            // value; every other case stays loud.
-            if ($plan->probe && !SchemaValueValidator::isValid($value, $schema)) {
+            // A pinned branch's reachability is undecidable in general:
+            // parent constraints — oneOf exclusivity, const, minProperties,
+            // folded suppressions — can forbid the pinned state on a
+            // perfectly valid schema. When generation (including its
+            // deterministic search machinery) cannot realize a targeted
+            // case, the branch is treated as unreachable and the case is
+            // dropped; untargeted cases stay loud.
+            if ($plan->targetPointer !== null && !SchemaValueValidator::isValid($value, $schema)) {
                 continue;
             }
             SchemaValueValidator::assertValid($value, $schema, $index);
             $cases[] = new PlannedSchemaCase($index, $value, $plan);
+        }
+
+        // Dropping must never swallow a schema no value satisfies: if every
+        // targeted case was dropped, one rotation-only case still runs and
+        // fails loudly on an unsatisfiable schema.
+        if ($cases === []) {
+            $index = count($plans);
+            $value = SchemaDataGenerator::generateOne($schema, $faker, $index, new CaseSelectionPlan([]));
+            SchemaValueValidator::assertValid($value, $schema, $index);
+            $cases[] = new PlannedSchemaCase($index, $value, new CaseSelectionPlan([]));
         }
 
         return $cases;

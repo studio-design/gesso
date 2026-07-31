@@ -30,21 +30,11 @@ final readonly class SchemaChoicePoint
     /** Branch index that emits null for a nullable node. */
     public const NULL_VALUE = 1;
 
-    /**
-     * `probeBranch` names a branch whose reachability cannot be determined
-     * from the schema alone (the none-match state of conditional `allOf`);
-     * `probeContext` marks a choice point discovered inside such a state.
-     * Cases pinning either are reachability probes: they are dropped instead
-     * of failing loudly when the schema forbids that state.
-     *
-     * @param array<string, int> $ancestors
-     */
+    /** @param array<string, int> $ancestors */
     public function __construct(
         public SchemaChoicePointKind $kind,
         public string $pointer,
         public int $branchCount,
         public array $ancestors,
-        public ?int $probeBranch = null,
-        public bool $probeContext = false,
     ) {}
 }

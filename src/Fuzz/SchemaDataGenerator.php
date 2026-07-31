@@ -888,10 +888,11 @@ final class SchemaDataGenerator
         }
 
         $items = $schema['items'] ?? null;
-        if ($plan !== null && $items === true) {
-            // A boolean-true items schema admits any value; generate from
-            // the empty schema instead of degrading to an empty array that
-            // would violate minItems.
+        if ($plan !== null && ($items === true || $items === null)) {
+            // A boolean-true items schema admits any value, and an omitted
+            // items keyword is the empty schema (2020-12 §10.3.1.2) — same
+            // assertion behaviour. Generate from the empty schema instead of
+            // degrading to an empty array that would violate minItems.
             $items = [];
         }
         if (!is_array($items)) {

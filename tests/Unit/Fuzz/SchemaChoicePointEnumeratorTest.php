@@ -131,13 +131,12 @@ class SchemaChoicePointEnumeratorTest extends TestCase
         $conditional = $points['/allOf'];
         $this->assertSame(SchemaChoicePointKind::AllOfConditional, $conditional->kind);
         // One branch per conditional (if+then, all others suppressed) plus
-        // the trailing none-match branch, which is a reachability probe.
+        // the trailing none-match branch.
         $this->assertSame(3, $conditional->branchCount);
-        $this->assertSame(2, $conditional->probeBranch);
     }
 
     #[Test]
-    public function flags_choice_points_discovered_under_the_none_match_view_as_probes(): void
+    public function enumerates_choice_points_under_the_none_match_view(): void
     {
         $schema = [
             'type' => 'object',
@@ -153,12 +152,8 @@ class SchemaChoicePointEnumeratorTest extends TestCase
         $points = $this->indexByPointer(SchemaChoicePointEnumerator::enumerate($schema));
 
         $this->assertArrayHasKey('/properties/fallback', $points);
-        $fallback = $points['/properties/fallback'];
-        $this->assertSame(['/allOf' => 1], $fallback->ancestors);
-        // Reachable only when no conditional matches, which cannot be
-        // pre-determined — its cases are dropped, not failed, when the
-        // schema forbids that state.
-        $this->assertTrue($fallback->probeContext);
+        // Reachable only when no conditional matches.
+        $this->assertSame(['/allOf' => 1], $points['/properties/fallback']->ancestors);
     }
 
     #[Test]
