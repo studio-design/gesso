@@ -114,10 +114,23 @@ stage selections that bypass the `TestSuite\Filtered` event):
 
 Skipped artifacts: `output_file`, `junit_output`, `json_output`,
 `html_output`, and `GITHUB_STEP_SUMMARY`. Console rendering still prints
-(it's transient, scoped to your terminal), and the optional coverage
-threshold gate (`min_endpoint_coverage` / `min_response_coverage`) still
-evaluates against the in-memory subset — re-run the full suite to refresh
-the persistent doc.
+(it's transient, scoped to your terminal). The optional coverage threshold
+gate (`min_endpoint_coverage` / `min_response_coverage`) is also skipped —
+a subset cannot prove a suite-wide coverage rate, so evaluating it would
+fail every suite-selecting run (issue #438). A one-line NOTE names the
+selection signal, mirroring the `strict_required` skip:
+
+```text
+[Gesso] NOTE: the coverage threshold gate is skipped on partial runs
+(--testsuite) because a subset cannot prove a suite-wide coverage rate.
+Run the full suite to evaluate the gate.
+```
+
+This means a CI matrix that shards by `--testsuite` can keep the gate
+configured in the shared `phpunit.xml`: shard jobs skip it, and only a
+full-suite run (or the `coverage:merge` step for parallel runs) evaluates
+it. If a `--testsuite` selection *is* your canonical full run, see the
+`default_testsuite_as_full` opt-in below.
 
 ```text
 $ vendor/bin/phpunit --filter UserTest

@@ -94,11 +94,12 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
      * @param null|PartialRunDecision $partialRun Issue #221: when non-null (the run is partial), the subscriber
      *                                            skips every persistent file write (output_file, junit_output,
      *                                            json_output, html_output, GITHUB_STEP_SUMMARY) and emits one
-     *                                            stderr WARNING listing the skipped targets. Console rendering
-     *                                            and the threshold gate are unaffected — they read in-memory
-     *                                            state and don't risk overwriting a committed doc with subset
-     *                                            data. `null` (the backwards-compat default) means full-run
-     *                                            behavior.
+     *                                            stderr WARNING listing the skipped targets. Issue #438: the
+     *                                            threshold gate is skipped too (with a one-line NOTE) — a subset
+     *                                            cannot prove a suite-wide coverage rate, so evaluating it would
+     *                                            fail every suite-selecting CI shard. Console rendering is
+     *                                            unaffected — it reads in-memory state and is transient. `null`
+     *                                            (the backwards-compat default) means full-run behavior.
      */
     public function __construct(
         private array $specs,
@@ -345,6 +346,16 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
             return;
         }
 
+        // Issue #438 alignment with the other partial-aware gates: a subset
+        // run cannot prove a suite-wide coverage rate — `--testsuite=Feature`
+        // reports the Feature-only rate against a threshold set for the whole
+        // suite. Skip and say why, matching strict_required's shape.
+        if ($this->partialRun !== null) {
+            $this->emitThresholdGatePartialRunNote();
+
+            return;
+        }
+
         $evaluation = CoverageThresholdEvaluator::evaluate(
             $results,
             $this->minEndpointCoverage,
@@ -393,6 +404,16 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
             return;
         }
 
+        // Issue #438: `--testsuite=Unit` records zero contract coverage —
+        // correctly. There is nothing wrong with the run; the gate simply
+        // cannot be evaluated from it, so failing (or even warning) here
+        // would punish every suite-selecting CI shard.
+        if ($this->partialRun !== null) {
+            $this->emitThresholdGatePartialRunNote();
+
+            return;
+        }
+
         $severity = $this->minCoverageStrict ? 'FATAL' : 'WARNING';
         $this->writeStderr(sprintf(
             "[OpenAPI Coverage] %s: no contract test coverage was recorded; configured threshold cannot be evaluated.\n",
@@ -415,6 +436,28 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
         }
 
         exit(1);
+    }
+
+    /**
+     * One-line NOTE mirroring the strict_required partial-run skip, so a
+     * user who configured the gate can see why no FAIL/WARN/FATAL line
+     * appeared. Callers guarantee a threshold is configured and
+     * `$partialRun` is non-null. Uses the branded `[Gesso]` prefix per the
+     * v2 identity policy: identity-neutral categories (here
+     * `[OpenAPI Coverage]`) are frozen at their v1.9 shape.
+     */
+    private function emitThresholdGatePartialRunNote(): void
+    {
+        $partialRun = $this->partialRun;
+        if ($partialRun === null) {
+            return;
+        }
+
+        $this->writeStderr(sprintf(
+            '[Gesso] NOTE: the coverage threshold gate is skipped on partial runs (%s) '
+            . "because a subset cannot prove a suite-wide coverage rate. Run the full suite to evaluate the gate.\n",
+            $partialRun->reason,
+        ));
     }
 
     private function writeWorkerSidecar(string $token): void
