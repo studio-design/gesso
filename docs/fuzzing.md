@@ -274,9 +274,14 @@ under `additionalOperations` removes `PUT` from the candidates while a
 custom `"copy"` entry removes nothing. OpenAPI 3.2 `additionalOperations`
 are never probed themselves (case-sensitive custom methods). Concrete path
 parameters are generated from a documented
-operation of the same path. Paths where every explorable method is documented,
-or where no documented operation's values can be generated, appear in
-`$summary->skips` with a reason. `ContractCheckFailure::describe()` names the
+operation of the same path. When the concrete probe URI is also an instance
+of a different documented template (`/members/me` alongside
+`/members/{member_id}`), methods documented by that colliding template are
+excluded too — the application would route the probe to the documented
+operation, so a failure there would be a false positive. Paths where every
+explorable method is documented, where every remaining candidate collides
+with another template, or where no documented operation's values can be
+generated, appear in `$summary->skips` with a reason. `ContractCheckFailure::describe()` names the
 check, operation, expected/actual status, and a replayable curl command.
 
 Two caveats: `HEAD`/`OPTIONS`/`TRACE` are outside the explorer's method set

@@ -8,9 +8,11 @@ use InvalidArgumentException;
 use RuntimeException;
 use Studio\Gesso\HttpMethod;
 use Studio\Gesso\Spec\OpenApiOperationResolver;
+use Studio\Gesso\Spec\OpenApiPathMatcher;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Throwable;
 
+use function array_key_exists;
 use function array_values;
 use function count;
 use function crc32;
@@ -44,6 +46,9 @@ final class ContractCheckPlan
 
     /** @var null|callable(ExploredCase): mixed */
     private $dispatch;
+
+    /** @var array<string, ?OpenApiPathMatcher> single-template matchers for collision scans, null when uncompilable */
+    private array $templateMatchers = [];
 
     public function __construct(
         private readonly string $specName,
@@ -160,7 +165,7 @@ final class ContractCheckPlan
                 $selected += count($matching);
 
                 $probe = match ($check) {
-                    ContractCheck::UnsupportedMethod => $this->buildUnsupportedMethodProbe($check, $path, $pathItem, $matching, $derivedSeed, $skips),
+                    ContractCheck::UnsupportedMethod => $this->buildUnsupportedMethodProbe($check, $path, $pathItem, $matching, $derivedSeed, $skips, $paths),
                 };
                 if ($probe === null) {
                     continue;
@@ -208,9 +213,17 @@ final class ContractCheckPlan
      * custom methods), but every declared name counts as documented and is
      * excluded from the candidates.
      *
+     * The concrete probe URI can also be an instance of a different documented
+     * template (`/members/me` alongside `/members/{member_id}`), and the
+     * application would route the probe to that template's operation. Methods
+     * documented by any colliding template are therefore excluded too; when
+     * none survive, the path is skipped instead of reporting a failure the
+     * spec does not contain.
+     *
      * @param array<string, mixed> $pathItem
      * @param non-empty-list<ExploredOperation> $matching
      * @param list<ContractCheckSkip> $skips
+     * @param array<string, array<string, mixed>> $paths every documented path item, unfiltered
      *
      * @return null|array{ExploredCase, ExploredOperation}
      */
@@ -221,6 +234,7 @@ final class ContractCheckPlan
         array $matching,
         int $derivedSeed,
         array &$skips,
+        array $paths,
     ): ?array {
         // Every declared method name counts as documented: fixed fields under
         // their canonical uppercase key, additionalOperations entries verbatim.
@@ -250,8 +264,6 @@ final class ContractCheckPlan
             return null;
         }
 
-        $probeMethod = $candidates[$derivedSeed % count($candidates)];
-
         $lastReason = null;
         foreach ($matching as $operation) {
             if (HttpMethod::tryFrom($operation->method) === null) {
@@ -274,13 +286,36 @@ final class ContractCheckPlan
             }
 
             foreach ($cases as $sourceCase) {
+                $concretePath = $sourceCase->withQuery([])->uri();
+                $collisions = $this->collidingDocumentedMethods($path, $concretePath, $paths);
+
+                $safeCandidates = [];
+                foreach ($candidates as $candidate) {
+                    if (!isset($collisions[$candidate->value])) {
+                        $safeCandidates[] = $candidate;
+                    }
+                }
+                if ($safeCandidates === []) {
+                    $collisionDetails = [];
+                    foreach ($candidates as $candidate) {
+                        $collisionDetails[] = sprintf("%s is documented by '%s'", $candidate->value, $collisions[$candidate->value]);
+                    }
+                    $skips[] = new ContractCheckSkip($check, $path, null, sprintf(
+                        "The concrete probe URI '%s' is also an instance of other documented path templates that declare every undocumented method for this path (%s); a probe would be routed to a documented operation and proves nothing.",
+                        $concretePath,
+                        implode(', ', $collisionDetails),
+                    ));
+
+                    return null;
+                }
+
                 return [
                     new ExploredCase(
                         null,
                         [],
                         [],
                         $sourceCase->pathParams,
-                        $probeMethod,
+                        $safeCandidates[$derivedSeed % count($safeCandidates)],
                         $path,
                         seed: $derivedSeed,
                         caseIndex: 0,
@@ -293,6 +328,52 @@ final class ContractCheckPlan
         $skips[] = new ContractCheckSkip($check, $path, null, $lastReason ?? 'No documented operation could generate concrete request values.');
 
         return null;
+    }
+
+    /**
+     * Methods that a probe against `$concretePath` cannot disprove: every
+     * method documented by a path template other than `$probedPath` that the
+     * concrete URI also matches.
+     *
+     * @param array<string, array<string, mixed>> $paths
+     *
+     * @return array<string, string> documented method name => first colliding template declaring it
+     */
+    private function collidingDocumentedMethods(string $probedPath, string $concretePath, array $paths): array
+    {
+        $collisions = [];
+        foreach ($paths as $template => $pathItem) {
+            if ($template === $probedPath) {
+                continue;
+            }
+
+            $matcher = $this->templateMatcher($template);
+            if ($matcher === null || $matcher->match($concretePath) === null) {
+                continue;
+            }
+
+            foreach (OpenApiOperationResolver::declaredOperations($pathItem) as $declared) {
+                $collisions[$declared['method']] ??= $template;
+            }
+        }
+
+        return $collisions;
+    }
+
+    private function templateMatcher(string $template): ?OpenApiPathMatcher
+    {
+        if (!array_key_exists($template, $this->templateMatchers)) {
+            try {
+                $this->templateMatchers[$template] = new OpenApiPathMatcher([$template]);
+            } catch (InvalidArgumentException) {
+                // A template the runtime matcher refuses to compile (e.g.
+                // duplicate placeholder names) cannot route a request, so it
+                // cannot collide with a probe URI either.
+                $this->templateMatchers[$template] = null;
+            }
+        }
+
+        return $this->templateMatchers[$template];
     }
 
     private function generationFailureMessage(
