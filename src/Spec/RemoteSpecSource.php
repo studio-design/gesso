@@ -7,6 +7,7 @@ namespace Studio\Gesso\Spec;
 use const PHP_URL_HOST;
 
 use InvalidArgumentException;
+use Studio\Gesso\Internal\HttpRefLoader;
 
 use function parse_url;
 use function preg_match;
@@ -51,22 +52,32 @@ final readonly class RemoteSpecSource
         public ?string $authorizationEnv = null,
         ?string $expectedSha256 = null,
     ) {
-        if (!str_starts_with($url, 'http://') && !str_starts_with($url, 'https://')) {
+        // Configure-time rejections surface in CI logs, and a spec URL may
+        // carry signed-URL query tokens or userinfo. Diagnostics use the
+        // redacted form only; the raw URL also replaces the parameter slot
+        // so traces stay clean under zend.exception_ignore_args=Off. The
+        // promoted property keeps the raw value — the fetch needs it.
+        $isHttp = str_starts_with($url, 'http://') || str_starts_with($url, 'https://');
+        $host = parse_url($url, PHP_URL_HOST);
+        $hasFragment = str_contains($url, '#');
+        $safeUrl = HttpRefLoader::redactSensitiveUrlData($url);
+        $url = $safeUrl;
+
+        if (!$isHttp) {
             throw new InvalidArgumentException(sprintf(
                 'RemoteSpecSource: URL must start with http:// or https://, got `%s`.',
-                $url,
+                $safeUrl,
             ));
         }
 
-        $host = parse_url($url, PHP_URL_HOST);
         if ($host === false || $host === null || $host === '') {
             throw new InvalidArgumentException(sprintf(
                 'RemoteSpecSource: URL has no parseable host: `%s`.',
-                $url,
+                $safeUrl,
             ));
         }
 
-        if (str_contains($url, '#')) {
+        if ($hasFragment) {
             // A fragment is client-side only and never part of the wire
             // request, so it cannot select a different entry document —
             // but it would make the URL spelling diverge from the fetched
@@ -74,7 +85,7 @@ final readonly class RemoteSpecSource
             throw new InvalidArgumentException(sprintf(
                 'RemoteSpecSource: URL must not contain a fragment: `%s`. '
                 . 'The entry document is always loaded whole; remove the `#...` part.',
-                $url,
+                $safeUrl,
             ));
         }
 
