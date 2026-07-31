@@ -1299,6 +1299,55 @@ class SchemaDataGeneratorTest extends TestCase
     }
 
     #[Test]
+    public function pinned_conditional_branch_keeps_overlapping_conditionals_satisfiable(): void
+    {
+        // Two conditionals fire on the same `if`; the only valid state with
+        // flag=true satisfies BOTH thens. Pinning one branch must not force
+        // the other conditional out of existence.
+        $schema = [
+            'type' => 'object',
+            'required' => ['flag'],
+            'properties' => ['flag' => ['type' => 'boolean']],
+            'allOf' => [
+                [
+                    'if' => ['properties' => ['flag' => ['const' => true]], 'required' => ['flag']],
+                    'then' => ['required' => ['a'], 'properties' => ['a' => ['type' => 'string']]],
+                ],
+                [
+                    'if' => ['properties' => ['flag' => ['const' => true]], 'required' => ['flag']],
+                    'then' => ['required' => ['b'], 'properties' => ['b' => ['type' => 'string']]],
+                ],
+            ],
+        ];
+
+        $value = SchemaDataGenerator::generateOne($schema, null, 0, new CaseSelectionPlan(['/allOf' => 0]));
+
+        $this->assertIsArray($value);
+        $this->assertArrayHasKey('a', $value);
+        $this->assertArrayHasKey('b', $value);
+        $this->assertTrue(SchemaValueValidator::isValid($value, $schema));
+    }
+
+    #[Test]
+    public function planned_not_generation_retries_nearby_iterations_before_falling_back(): void
+    {
+        // Iteration 1 rotates the enum onto the excluded value; the planned
+        // path must probe nearby iterations instead of giving up on the
+        // first miss.
+        $schema = [
+            'type' => 'object',
+            'required' => ['kind'],
+            'properties' => ['kind' => ['type' => 'string', 'enum' => ['other', 'cat']]],
+            'not' => ['properties' => ['kind' => ['const' => 'cat']], 'required' => ['kind']],
+        ];
+
+        $value = SchemaDataGenerator::generateOne($schema, null, 1, new CaseSelectionPlan([]));
+
+        $this->assertIsArray($value);
+        $this->assertSame('other', $value['kind']);
+    }
+
+    #[Test]
     public function pinned_none_match_branch_avoids_every_conditional(): void
     {
         $schema = [

@@ -228,6 +228,65 @@ class BranchCompleteCaseGeneratorTest extends TestCase
     }
 
     #[Test]
+    public function covers_overlapping_conditionals_without_forcing_exclusivity(): void
+    {
+        $schema = [
+            'type' => 'object',
+            'required' => ['flag'],
+            'properties' => ['flag' => ['type' => 'boolean']],
+            'allOf' => [
+                [
+                    'if' => ['properties' => ['flag' => ['const' => true]], 'required' => ['flag']],
+                    'then' => ['required' => ['a'], 'properties' => ['a' => ['type' => 'string']]],
+                ],
+                [
+                    'if' => ['properties' => ['flag' => ['const' => true]], 'required' => ['flag']],
+                    'then' => ['required' => ['b'], 'properties' => ['b' => ['type' => 'string']]],
+                ],
+            ],
+        ];
+
+        $sawBothThens = false;
+        $sawNoneMatch = false;
+        foreach (BranchCompleteCaseGenerator::generate($schema, seed: 1) as $case) {
+            $this->assertIsArray($case->value);
+            $sawBothThens = $sawBothThens ||
+                (isset($case->value['a'], $case->value['b']));
+            $sawNoneMatch = $sawNoneMatch || $case->value['flag'] === false;
+        }
+
+        $this->assertTrue($sawBothThens, 'no case satisfied the jointly-firing conditionals');
+        $this->assertTrue($sawNoneMatch, 'no case exercised the none-match state');
+    }
+
+    #[Test]
+    public function keeps_a_reachable_none_match_probe_despite_rotation_misalignment(): void
+    {
+        // The probe case's iteration rotates the enum onto the excluded
+        // discriminator value; one failed generation must not be read as
+        // "the none-match state is unreachable".
+        $schema = [
+            'type' => 'object',
+            'required' => ['kind'],
+            'properties' => ['kind' => ['type' => 'string', 'enum' => ['other', 'cat']]],
+            'allOf' => [
+                [
+                    'if' => ['properties' => ['kind' => ['const' => 'cat']], 'required' => ['kind']],
+                    'then' => ['required' => ['meow'], 'properties' => ['meow' => ['type' => 'string']]],
+                ],
+            ],
+        ];
+
+        $kinds = [];
+        foreach (BranchCompleteCaseGenerator::generate($schema, seed: 1) as $case) {
+            $this->assertIsArray($case->value);
+            $kinds[$case->value['kind']] = true;
+        }
+
+        $this->assertArrayHasKey('other', $kinds, 'the reachable none-match probe was dropped');
+    }
+
+    #[Test]
     public function covers_the_none_match_state_when_it_is_reachable(): void
     {
         $schema = [

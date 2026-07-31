@@ -72,6 +72,16 @@ final class SchemaDataGenerator
     private const MAX_SYNTHESIZED_PATTERN_LENGTH = 10_000;
 
     /**
+     * How many nearby iterations planned `not` generation probes before
+     * falling back to scalar alternatives. Bounds the search that keeps a
+     * rotation-misaligned enum (e.g. the excluded discriminator value) from
+     * being mistaken for an unsatisfiable constraint; deliberately larger
+     * than the 2/3-cycle rotation periods so every scalar rotation state is
+     * revisited.
+     */
+    private const NOT_GENERATION_RETRIES = 8;
+
+    /**
      * Per-process record of formats already announced as "faker missing".
      * Keyed by format name; we only warn once per format to avoid spamming
      * a long fuzz run that touches many `email` properties.
@@ -124,6 +134,23 @@ final class SchemaDataGenerator
         ?CaseSelectionPlan $plan = null,
         string $pointer = '',
     ): mixed {
+        if ($plan !== null && ($pinnedConditional = $plan->branchFor($pointer . '/allOf')) !== null) {
+            $resolved = self::resolveBranchChoice($schema, $iteration, $plan, $pointer);
+            [$base, $conditionals] = self::splitConditionals($resolved);
+            if ($conditionals !== []) {
+                return self::generateConditionalNode(
+                    $resolved,
+                    $base,
+                    $conditionals,
+                    $pinnedConditional,
+                    $faker,
+                    $iteration,
+                    $plan,
+                    $pointer,
+                );
+            }
+        }
+
         $schema = self::resolveComposition($schema, $faker, $iteration, $plan, $pointer);
 
         if (array_key_exists('const', $schema)) {
@@ -151,6 +178,20 @@ final class SchemaDataGenerator
             unset($withoutNot['not']);
             $candidate = self::generateOne($withoutNot, $faker, $iteration, $plan, $pointer);
             if (!SchemaValueValidator::isValid($candidate, $schema)) {
+                if ($plan !== null) {
+                    // The `not` often excludes exactly the rotation pick — a
+                    // suppressed discriminator value landing on this case's
+                    // iteration. Nearby iterations re-rotate enums and
+                    // scalars before giving up, so one unlucky index is not
+                    // read as "unsatisfiable". Plan-less rotation keeps the
+                    // historical single-shot behaviour and output.
+                    for ($offset = 1; $offset <= self::NOT_GENERATION_RETRIES; $offset++) {
+                        $retried = self::generateOne($withoutNot, $faker, $iteration + $offset, $plan, $pointer);
+                        if (SchemaValueValidator::isValid($retried, $schema)) {
+                            return $retried;
+                        }
+                    }
+                }
                 foreach ([null, false, 0, 1, '', 'value', [], ['value' => true]] as $alternative) {
                     if (SchemaValueValidator::isValid($alternative, $schema)) {
                         return $alternative;
@@ -251,15 +292,14 @@ final class SchemaDataGenerator
     }
 
     /**
-     * Materialise one branch of the conditional-`allOf` choice space.
-     *
-     * Branches `0..n-1` satisfy that conditional's `if`+`then` while
-     * suppressing every other conditional — their `if`s are excluded through
-     * a single synthesized `not`/`anyOf` and their `else`s applied — so the
-     * generated value satisfies the complete schema rather than just the
-     * selected slice. Branch `n` is the none-match state: no `if` holds and
-     * every `else` applies. Public within the internal fuzz family so
-     * {@see SchemaChoicePointEnumerator} descends exactly these views.
+     * Materialise the starting view of one branch of the conditional-`allOf`
+     * choice space: branches `0..n-1` satisfy that conditional's `if`+`then`,
+     * branch `n` is the none-match state where no `if` holds and every
+     * `else` applies. Generation may grow the satisfied set beyond this
+     * starting point when suppressed conditionals fire anyway — see
+     * {@see self::generateConditionalNode()}. Public within the internal
+     * fuzz family so {@see SchemaChoicePointEnumerator} descends exactly
+     * these views.
      *
      * @param array<string, mixed> $schema node with `allOf` removed and its non-conditional branches merged
      * @param list<array<string, mixed>> $conditionals
@@ -268,8 +308,27 @@ final class SchemaDataGenerator
      */
     public static function conditionalBranchView(array $schema, array $conditionals, int $branch): array
     {
-        if ($branch < count($conditionals)) {
-            $selected = $conditionals[$branch];
+        return self::conditionalSetView($schema, $conditionals, $branch < count($conditionals) ? [$branch] : []);
+    }
+
+    /**
+     * Materialise the conditional-`allOf` state where exactly the
+     * conditionals in `$satisfied` hold: their `if`+`then` merged, every
+     * other conditional suppressed through a single synthesized `not`/`anyOf`
+     * with its `else` applied. {@see self::generateConditionalNode()} starts
+     * from a singleton (or empty) set and grows it when a suppressed `if`
+     * turns out to fire anyway, so overlapping conditionals stay satisfiable.
+     *
+     * @param array<string, mixed> $schema node with `allOf` removed and its non-conditional branches merged
+     * @param list<array<string, mixed>> $conditionals
+     * @param list<int> $satisfied
+     *
+     * @return array<string, mixed>
+     */
+    public static function conditionalSetView(array $schema, array $conditionals, array $satisfied): array
+    {
+        foreach ($satisfied as $index) {
+            $selected = $conditionals[$index];
             $schema = self::mergeSchemas($schema, $selected['if']);
             if (isset($selected['then']) && is_array($selected['then'])) {
                 $schema = self::mergeSchemas($schema, $selected['then']);
@@ -278,7 +337,7 @@ final class SchemaDataGenerator
 
         $suppressedIfs = [];
         foreach ($conditionals as $index => $conditional) {
-            if ($index === $branch) {
+            if (in_array($index, $satisfied, true)) {
                 continue;
             }
             $suppressedIfs[] = $conditional['if'];
@@ -890,50 +949,19 @@ final class SchemaDataGenerator
         ?CaseSelectionPlan $plan = null,
         string $pointer = '',
     ): array {
-        foreach (['oneOf', 'anyOf'] as $keyword) {
-            if (!isset($schema[$keyword]) || !is_array($schema[$keyword]) || $schema[$keyword] === []) {
-                continue;
-            }
-            $branches = array_values(array_filter($schema[$keyword], is_array(...)));
-            if ($branches === []) {
-                continue;
-            }
-            unset($schema[$keyword]);
-            $pinned = $plan?->branchFor($pointer . '/' . $keyword);
-            $index = ($pinned ?? $iteration) % count($branches);
-            $schema = self::mergeSchemas($schema, $branches[$index]);
-            break;
-        }
+        $schema = self::resolveBranchChoice($schema, $iteration, $plan, $pointer);
 
         if (isset($schema['allOf']) && is_array($schema['allOf'])) {
-            $branches = $schema['allOf'];
-            unset($schema['allOf']);
-            $conditionals = [];
-            foreach ($branches as $branch) {
-                if (!is_array($branch)) {
-                    continue;
-                }
-                if (isset($branch['if']) && is_array($branch['if'])) {
-                    $conditionals[] = $branch;
-                } else {
-                    $schema = self::mergeSchemas($schema, $branch);
-                }
-            }
+            [$schema, $conditionals] = self::splitConditionals($schema);
             if ($conditionals !== []) {
-                // Rotation only ever satisfies a conditional's `if`+`then`.
-                // Pinned plans use the conditionalBranchView() branch space
-                // instead, which suppresses the unselected conditionals so
-                // the value satisfies the complete schema, and adds a
-                // trailing none-match branch.
-                $pinned = $plan?->branchFor($pointer . '/allOf');
-                if ($pinned !== null) {
-                    $schema = self::conditionalBranchView($schema, $conditionals, $pinned % (count($conditionals) + 1));
-                } else {
-                    $selected = $conditionals[$iteration % count($conditionals)];
-                    $schema = self::mergeSchemas($schema, $selected['if']);
-                    if (isset($selected['then']) && is_array($selected['then'])) {
-                        $schema = self::mergeSchemas($schema, $selected['then']);
-                    }
+                // Rotation only ever satisfies a conditional's `if`+`then`;
+                // pinned conditional branches never reach this point — they
+                // are resolved by generateConditionalNode() before the
+                // composition phases run.
+                $selected = $conditionals[$iteration % count($conditionals)];
+                $schema = self::mergeSchemas($schema, $selected['if']);
+                if (isset($selected['then']) && is_array($selected['then'])) {
+                    $schema = self::mergeSchemas($schema, $selected['then']);
                 }
             }
         }
@@ -952,6 +980,126 @@ final class SchemaDataGenerator
         }
 
         return $schema;
+    }
+
+    /**
+     * Resolve the first `oneOf`/`anyOf` on the node — composition phase one.
+     * Idempotent: the resolved keyword is consumed, so a second call is a
+     * no-op, which lets the pinned-conditional path pre-resolve it before
+     * splitting conditionals out of `allOf`.
+     *
+     * @param array<string, mixed> $schema
+     *
+     * @return array<string, mixed>
+     */
+    private static function resolveBranchChoice(
+        array $schema,
+        int $iteration,
+        ?CaseSelectionPlan $plan,
+        string $pointer,
+    ): array {
+        foreach (['oneOf', 'anyOf'] as $keyword) {
+            if (!isset($schema[$keyword]) || !is_array($schema[$keyword]) || $schema[$keyword] === []) {
+                continue;
+            }
+            $branches = array_values(array_filter($schema[$keyword], is_array(...)));
+            if ($branches === []) {
+                continue;
+            }
+            unset($schema[$keyword]);
+            $pinned = $plan?->branchFor($pointer . '/' . $keyword);
+            $index = ($pinned ?? $iteration) % count($branches);
+            $schema = self::mergeSchemas($schema, $branches[$index]);
+            break;
+        }
+
+        return $schema;
+    }
+
+    /**
+     * Split a node's `allOf` into the node with every non-conditional branch
+     * merged in, and the list of conditional (`if`-carrying) branches —
+     * mirrored by the enumerator's traversal.
+     *
+     * @param array<string, mixed> $schema
+     *
+     * @return array{array<string, mixed>, list<array<string, mixed>>}
+     */
+    private static function splitConditionals(array $schema): array
+    {
+        if (!isset($schema['allOf']) || !is_array($schema['allOf'])) {
+            return [$schema, []];
+        }
+
+        $base = $schema;
+        unset($base['allOf']);
+        $conditionals = [];
+        foreach ($schema['allOf'] as $branch) {
+            if (!is_array($branch)) {
+                continue;
+            }
+            if (isset($branch['if']) && is_array($branch['if'])) {
+                $conditionals[] = $branch;
+            } else {
+                $base = self::mergeSchemas($base, $branch);
+            }
+        }
+
+        return [$base, $conditionals];
+    }
+
+    /**
+     * Generate a node whose conditional-`allOf` choice is pinned by the plan.
+     *
+     * Starts from the pinned branch's view — the selected conditional (or
+     * none) satisfied, all others suppressed — and validates the produced
+     * value against the complete node schema. Suppression is a starting
+     * point, not an assumption of exclusivity: when a suppressed `if` fires
+     * on the value anyway (overlapping conditionals), that conditional joins
+     * the satisfied set and the node regenerates, up to once per
+     * conditional. The none-match branch never grows the set — reaching a
+     * state where no `if` fires is exactly its target.
+     *
+     * @param array<string, mixed> $node phase-one-resolved node, conditionals still in `allOf`
+     * @param array<string, mixed> $base node with `allOf` removed and non-conditional branches merged
+     * @param list<array<string, mixed>> $conditionals
+     */
+    private static function generateConditionalNode(
+        array $node,
+        array $base,
+        array $conditionals,
+        int $pinned,
+        ?Generator $faker,
+        int $iteration,
+        CaseSelectionPlan $plan,
+        string $pointer,
+    ): mixed {
+        $count = count($conditionals);
+        $branch = $pinned % ($count + 1);
+        $satisfied = $branch < $count ? [$branch] : [];
+
+        $value = null;
+        for ($attempt = 0; $attempt <= $count; $attempt++) {
+            $view = self::conditionalSetView($base, $conditionals, $satisfied);
+            $value = self::generateOne($view, $faker, $iteration, $plan, $pointer);
+            if ($branch === $count || SchemaValueValidator::isValid($value, $node)) {
+                return $value;
+            }
+
+            $fired = false;
+            foreach ($conditionals as $index => $conditional) {
+                if (!in_array($index, $satisfied, true) &&
+                    SchemaValueValidator::isValid($value, $conditional['if'])) {
+                    $satisfied[] = $index;
+                    $fired = true;
+                }
+            }
+            if (!$fired) {
+                break;
+            }
+        }
+
+        return $value;
     }
 
     /**
