@@ -51,6 +51,15 @@ final class RemoteSpecSourceTest extends TestCase
     }
 
     #[Test]
+    public function rejects_url_with_fragment(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('fragment');
+
+        new RemoteSpecSource('https://specs.example.com/openapi.json#entry');
+    }
+
+    #[Test]
     public function rejects_empty_authorization_env_name(): void
     {
         $this->expectException(InvalidArgumentException::class);

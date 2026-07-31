@@ -11,6 +11,7 @@ use InvalidArgumentException;
 use function parse_url;
 use function preg_match;
 use function sprintf;
+use function str_contains;
 use function str_starts_with;
 use function strtolower;
 use function trim;
@@ -61,6 +62,18 @@ final readonly class RemoteSpecSource
         if ($host === false || $host === null || $host === '') {
             throw new InvalidArgumentException(sprintf(
                 'RemoteSpecSource: URL has no parseable host: `%s`.',
+                $url,
+            ));
+        }
+
+        if (str_contains($url, '#')) {
+            // A fragment is client-side only and never part of the wire
+            // request, so it cannot select a different entry document —
+            // but it would make the URL spelling diverge from the fetched
+            // resource's identity. Reject loudly instead of stripping.
+            throw new InvalidArgumentException(sprintf(
+                'RemoteSpecSource: URL must not contain a fragment: `%s`. '
+                . 'The entry document is always loaded whole; remove the `#...` part.',
                 $url,
             ));
         }

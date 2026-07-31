@@ -94,6 +94,13 @@ final class HttpRefLoader
         // parameter slot before any downstream operation can throw.
         $url = $safeUrl;
         $request = $requestFactory->createRequest('GET', $trimmedUri);
+        // A fragment is client-side only (RFC 9110): it is never part of
+        // the wire request, so it must not distinguish cache entries either.
+        // Refs have their fragment split off before reaching this loader,
+        // but callers passing an entry URL directly must get the same key.
+        if ($request->getUri()->getFragment() !== '') {
+            $request = $request->withUri($request->getUri()->withFragment(''));
+        }
         // The cache / cycle-detection key is the PSR-7 URI's string form,
         // not the raw ref spelling. UriInterface guarantees lowercase
         // scheme + host and a null port when it equals the scheme default,
