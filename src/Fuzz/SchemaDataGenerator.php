@@ -374,12 +374,15 @@ final class SchemaDataGenerator
             }
         }
         foreach ($negatedByProperty as $property => $negated) {
+            $existing = is_array($schema['properties'] ?? null) && is_array($schema['properties'][$property] ?? null)
+                ? ($schema['properties'][$property]['not'] ?? null)
+                : null;
             $schema = self::mergeSchemas($schema, ['properties' => [
-                $property => ['not' => count($negated) === 1 ? $negated[0] : ['anyOf' => $negated]],
+                $property => ['not' => self::negation($existing, $negated)],
             ]]);
         }
         if ($suppressedIfs !== []) {
-            $schema = self::mergeSchemas($schema, ['not' => ['anyOf' => $suppressedIfs]]);
+            $schema = self::mergeSchemas($schema, ['not' => self::negation($schema['not'] ?? null, $suppressedIfs)]);
         }
 
         return $schema;
@@ -446,6 +449,27 @@ final class SchemaDataGenerator
         }
 
         return $merged;
+    }
+
+    /**
+     * Build a `not` value that adds the synthesized exclusions to whatever
+     * exclusion already sits on the target: `¬A ∧ ¬B ⟺ ¬(anyOf [A, B])`.
+     * Merging would overwrite the pre-existing `not` and silently widen the
+     * admissible domain.
+     *
+     * @param list<mixed> $disjuncts
+     *
+     * @return array<string, mixed>
+     */
+    private static function negation(mixed $existingNot, array $disjuncts): array
+    {
+        if ($existingNot !== null) {
+            $disjuncts = [$existingNot, ...$disjuncts];
+        }
+
+        return count($disjuncts) === 1 && is_array($disjuncts[0])
+            ? $disjuncts[0]
+            : ['anyOf' => $disjuncts];
     }
 
     /**

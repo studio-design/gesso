@@ -354,6 +354,39 @@ class BranchCompleteCaseGeneratorTest extends TestCase
     }
 
     #[Test]
+    public function preserves_an_existing_property_not_when_suppressing_conditionals(): void
+    {
+        // The property already excludes `forbidden`; suppressing the cat
+        // conditional must add to that exclusion, not replace it — otherwise
+        // the none-match probe generates `forbidden`, fails validation, and
+        // is dropped even though `other` is admissible.
+        $schema = [
+            'type' => 'object',
+            'required' => ['kind'],
+            'properties' => ['kind' => [
+                'type' => 'string',
+                'enum' => ['other', 'forbidden', 'cat'],
+                'not' => ['const' => 'forbidden'],
+            ]],
+            'allOf' => [
+                [
+                    'if' => ['properties' => ['kind' => ['const' => 'cat']], 'required' => ['kind']],
+                    'then' => ['required' => ['meow'], 'properties' => ['meow' => ['type' => 'string']]],
+                ],
+            ],
+        ];
+
+        $kinds = [];
+        foreach (BranchCompleteCaseGenerator::generate($schema, seed: 1) as $case) {
+            $this->assertIsArray($case->value);
+            $kinds[$case->value['kind']] = true;
+        }
+
+        $this->assertArrayHasKey('other', $kinds, 'the none-match state lost the pre-existing not exclusion');
+        $this->assertArrayNotHasKey('forbidden', $kinds);
+    }
+
+    #[Test]
     public function covers_the_none_match_state_when_it_is_reachable(): void
     {
         $schema = [
