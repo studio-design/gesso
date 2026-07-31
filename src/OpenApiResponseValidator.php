@@ -5,33 +5,27 @@ declare(strict_types=1);
 namespace Studio\Gesso;
 
 use InvalidArgumentException;
+use LogicException;
 use RuntimeException;
 use Studio\Gesso\PHPUnit\OpenApiCoverageExtension;
 use Studio\Gesso\Spec\OpenApiOperationResolver;
-use Studio\Gesso\Spec\OpenApiPathMatcher;
-use Studio\Gesso\Spec\OpenApiSchemaDialect;
-use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Validation\Response\ResponseBodyValidationResult;
 use Studio\Gesso\Validation\Response\ResponseBodyValidator;
 use Studio\Gesso\Validation\Response\ResponseHeaderValidator;
+use Studio\Gesso\Validation\Response\ResponseSchemaResolution;
+use Studio\Gesso\Validation\Response\ResponseSchemaResolutionOutcome;
+use Studio\Gesso\Validation\Response\ResponseSchemaResolver;
 use Studio\Gesso\Validation\Strict\StrictAdditionalPropertiesInspector;
 use Studio\Gesso\Validation\Strict\StrictAdditionalPropertiesPerCallChecker;
 use Studio\Gesso\Validation\Strict\StrictAdditionalPropertiesTracker;
 use Studio\Gesso\Validation\Strict\StrictRequiredBodyWalker;
 use Studio\Gesso\Validation\Strict\StrictRequiredPerCallChecker;
 use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
-use Studio\Gesso\Validation\Support\DiscriminatorContext;
-use Studio\Gesso\Validation\Support\DiscriminatorEnforcement;
-use Studio\Gesso\Validation\Support\MalformedSpecNode;
 use Studio\Gesso\Validation\Support\NamedError;
-use Studio\Gesso\Validation\Support\PathDiagnosticsFormatter;
 use Studio\Gesso\Validation\Support\SchemaValidatorRunner;
-use Studio\Gesso\Validation\Support\SpecResponseKeyResolver;
 use Studio\Gesso\Validation\Support\StatusCodePatternSet;
 use Studio\Gesso\Validation\Support\ValidatorErrorBoundary;
 
-use function array_key_exists;
-use function array_keys;
 use function array_map;
 use function array_merge;
 use function array_values;
@@ -49,9 +43,7 @@ final class OpenApiResponseValidator
      * the common convention of not documenting production 5xx in specs.
      */
     public const DEFAULT_SKIP_RESPONSE_CODES = ['5\d\d'];
-
-    /** @var array<string, OpenApiPathMatcher> */
-    private array $pathMatchers = [];
+    private readonly ResponseSchemaResolver $schemaResolver;
     private readonly ResponseBodyValidator $bodyValidator;
     private readonly ResponseHeaderValidator $headerValidator;
     private readonly StatusCodePatternSet $skipPatterns;
@@ -75,6 +67,7 @@ final class OpenApiResponseValidator
         array $skipResponseCodes = self::DEFAULT_SKIP_RESPONSE_CODES,
     ) {
         $this->skipPatterns = new StatusCodePatternSet($skipResponseCodes, 'skipResponseCodes');
+        $this->schemaResolver = new ResponseSchemaResolver();
         $runner = new SchemaValidatorRunner($maxErrors);
         $this->bodyValidator = new ResponseBodyValidator($runner);
         $this->headerValidator = new ResponseHeaderValidator($runner);
@@ -111,164 +104,56 @@ final class OpenApiResponseValidator
         // (a plain `null` becomes an absent body — see {@see DecodedBody}).
         $body = DecodedBody::fromLegacy($responseBody);
 
-        $spec = OpenApiSpecLoader::load($specName);
+        // Spec traversal — the `paths` guard, path matching, operation
+        // lookup, and the `responses`-map guard — is shared with every other
+        // response-schema consumer through {@see ResponseSchemaResolver}
+        // (issue #442). The resolver formats the failure diagnostics; this
+        // validator only maps each outcome onto its historical result shape.
+        $operationResolution = $this->schemaResolver->resolveOperation($specName, $method, $requestPath);
 
-        $version = OpenApiVersion::fromSpec($spec);
-        $jsonSchemaDialect = OpenApiSchemaDialect::fromSpec($spec, $version);
-
-        // The root `paths` must decode to a JSON object; a scalar, `null`, or
-        // a JSON list is a malformed spec ({@see MalformedSpecNode}).
-        // Unguarded, a non-array reaches the `array_keys()` call below
-        // (uncaught TypeError) and a list mis-resolves silently. The presence
-        // test uses `array_key_exists` (not `isset`) so a present-but-`null`
-        // `paths` is caught here rather than coalesced to an empty map by
-        // `?? []`. Surface it as a loud spec error instead — the
-        // traversal-level sibling of the per-response content/schema guards
-        // (issue #259).
-        if (array_key_exists('paths', $spec) && MalformedSpecNode::isMalformed($spec['paths'])) {
-            $message = sprintf(
-                "Malformed 'paths' for %s %s in '%s' spec: expected object, got %s.",
-                $method,
-                $requestPath,
-                $specName,
-                MalformedSpecNode::describe($spec['paths']),
-            );
+        if ($operationResolution->outcome !== ResponseSchemaResolutionOutcome::Resolved) {
+            $message = (string) $operationResolution->message;
+            // Structural spec defects and request-context mismatches keep
+            // their historical issue categories: malformed nodes are spec
+            // errors, an unmatched path/method is a request-context error.
+            $category = $operationResolution->outcome === ResponseSchemaResolutionOutcome::MalformedSpec
+                ? 'response.spec'
+                : 'response.request_context';
 
             return OpenApiValidationResult::failure(
                 [$message],
-                issues: [new ValidationIssue('response.spec', $message, method: $method)],
+                $operationResolution->matchedPath,
+                issues: [new ValidationIssue($category, $message, method: $method, path: $operationResolution->matchedPath)],
             );
         }
 
-        /** @var string[] $specPaths */
-        $specPaths = array_keys($spec['paths'] ?? []);
-        $matcher = $this->getPathMatcher($specName, $specPaths);
-        $matchedPath = $matcher->match($requestPath);
-
-        if ($matchedPath === null) {
-            $message = PathDiagnosticsFormatter::pathNotFound($specName, $method, $requestPath, $matcher, $spec);
-
-            return OpenApiValidationResult::failure(
-                [$message],
-                issues: [new ValidationIssue('response.request_context', $message, method: $method)],
-            );
+        $matchedPath = $operationResolution->matchedPath;
+        $version = $operationResolution->version;
+        $jsonSchemaDialect = $operationResolution->jsonSchemaDialect;
+        if ($matchedPath === null || $version === null || $jsonSchemaDialect === null) {
+            throw new LogicException('Resolved operation resolution must carry matchedPath, version, and dialect.');
         }
 
-        // `$matchedPath` is always a key of `$spec['paths']` (the matcher was
-        // built from its `array_keys()`), so `?? null` here only fires for an
-        // explicit `null` *value* — which the guard below then treats as
-        // malformed, exactly like a scalar path item.
-        $pathSpec = $spec['paths'][$matchedPath] ?? null;
-
-        // A path item must decode to a JSON object; a scalar, `null`, or a
-        // JSON list is malformed ({@see MalformedSpecNode}). Unguarded, a
-        // non-array reaches the `array_key_exists()` method lookup below
-        // (uncaught TypeError) and a list mis-resolves silently. Surface it
-        // loudly instead (issue #259).
-        if (MalformedSpecNode::isMalformed($pathSpec)) {
-            $message = sprintf(
-                "Malformed 'paths[\"%s\"]' for %s %s in '%s' spec: expected object, got %s.",
-                $matchedPath,
-                $method,
-                $matchedPath,
-                $specName,
-                MalformedSpecNode::describe($pathSpec),
-            );
-
-            return OpenApiValidationResult::failure(
-                [$message],
-                $matchedPath,
-                issues: [new ValidationIssue('response.spec', $message, method: $method, path: $matchedPath)],
-            );
-        }
-
-        $resolvedOperation = OpenApiOperationResolver::resolve($pathSpec, $method);
-        if (!$resolvedOperation['found']) {
-            $message = PathDiagnosticsFormatter::methodNotDefined($specName, $method, $matchedPath, $spec);
-
-            return OpenApiValidationResult::failure(
-                [$message],
-                $matchedPath,
-                issues: [new ValidationIssue('response.request_context', $message, method: $method, path: $matchedPath)],
-            );
-        }
-
-        $operation = $resolvedOperation['operation'];
-        $operationLocation = $resolvedOperation['location'];
-
-        // An operation must decode to a JSON object; a scalar, `null`, or a
-        // JSON list is malformed ({@see MalformedSpecNode}). Unguarded, a
-        // non-array reaches the `array_key_exists()` `responses` lookup below
-        // (uncaught TypeError) and a list mis-resolves silently (issue #259).
-        if (MalformedSpecNode::isMalformed($operation)) {
-            $message = sprintf(
-                "Malformed 'paths[\"%s\"].%s' for %s %s in '%s' spec: expected object, got %s.",
-                $matchedPath,
-                $operationLocation,
-                $method,
-                $matchedPath,
-                $specName,
-                MalformedSpecNode::describe($operation),
-            );
-
-            return OpenApiValidationResult::failure(
-                [$message],
-                $matchedPath,
-                issues: [new ValidationIssue('response.spec', $message, method: $method, path: $matchedPath)],
-            );
-        }
-
-        /** @var array<string, mixed> $operation */
         $statusCodeStr = (string) $statusCode;
-        // `array_key_exists` (not `?? []`) so a present-but-`null` `responses`
-        // is caught by the guard below as malformed, while a genuinely absent
-        // `responses` key still falls back to an empty map (resolved later as
-        // "status code not defined").
-        $responses = array_key_exists('responses', $operation) ? $operation['responses'] : [];
 
-        // The `responses` map must decode to a JSON object; a scalar, `null`,
-        // or a JSON list is malformed ({@see MalformedSpecNode}). Unguarded,
-        // a non-array reaches `SpecResponseKeyResolver::resolve()`'s `array
-        // $responses` parameter (uncaught TypeError) and a list mis-resolves
-        // silently. The guard runs BEFORE the skip-by-status-code check
-        // below: a malformed `responses` map is a structural spec error, not
-        // a status-code-level failure mode, so a configured skip pattern must
-        // not hide it. This is the traversal-level sibling of the #258
-        // `responses[$status]` per-entry guard (issue #259).
-        if (MalformedSpecNode::isMalformed($responses)) {
-            $message = sprintf(
-                "Malformed 'paths[\"%s\"].%s.responses' for %s %s in '%s' spec: expected object, got %s.",
-                $matchedPath,
-                $operationLocation,
-                $method,
-                $matchedPath,
-                $specName,
-                MalformedSpecNode::describe($responses),
-            );
-
-            return OpenApiValidationResult::failure(
-                [$message],
-                $matchedPath,
-                issues: [new ValidationIssue('response.spec', $message, method: $method, path: $matchedPath)],
-            );
-        }
-
-        // Skip-by-status-code: applied before the "Status code not defined"
-        // branch so a configured skip suppresses both status-code-level failure
-        // modes — "this code isn't in the spec's responses map" AND "this code
-        // IS documented but the body doesn't match its schema". Earlier checks
-        // (path / method not in spec) still fail loudly so typos stay visible.
+        // Skip-by-status-code: applied after the resolver's structural
+        // guards (a malformed `responses` map is a spec error a skip pattern
+        // must not hide — issue #259) but before status-key resolution, so a
+        // configured skip suppresses both status-code-level failure modes —
+        // "this code isn't in the spec's responses map" AND "this code IS
+        // documented but the body doesn't match its schema". Earlier checks
+        // (path / method not in spec) still fail loudly so typos stay
+        // visible. This interleaved policy is why the validator consumes the
+        // resolver's staged API rather than its composed resolve().
         $matchingPattern = $this->skipPatterns->match($statusCodeStr);
         if ($matchingPattern !== null) {
             // matchedStatusCode here is the literal HTTP status string, not a
-            // spec key. Skip happens BEFORE key resolution
-            // ({@see SpecResponseKeyResolver::resolve()} runs further
-            // down), so we don't yet know which spec key would have
-            // matched — and even when the spec only declares `default`
-            // or a `5XX` range, callers that gate on isSkipped() expect
-            // the wire status, not the resolved spec key. The coverage
-            // tracker's statusKeyMatches() reconciles literal-vs-range
-            // at compute time.
+            // spec key. Skip happens BEFORE key resolution, so we don't yet
+            // know which spec key would have matched — and even when the
+            // spec only declares `default` or a `5XX` range, callers that
+            // gate on isSkipped() expect the wire status, not the resolved
+            // spec key. The coverage tracker's statusKeyMatches() reconciles
+            // literal-vs-range at compute time.
             return OpenApiValidationResult::skipped(
                 $matchedPath,
                 sprintf('status %s matched skip pattern %s', $statusCodeStr, $matchingPattern),
@@ -276,18 +161,10 @@ final class OpenApiResponseValidator
             );
         }
 
-        // Spec lookup priority per OpenAPI 3.0/3.1:
-        //   1. Exact code match (e.g. spec declares "503", response is 503)
-        //   2. Range key match (e.g. spec declares "5XX", response is 503)
-        //   3. `default` catch-all
-        // Explicit codes take precedence over range keys; range keys take
-        // precedence over `default`. Without this fallback, a spec that
-        // documents only `default` (or only `5XX`) would fail every real
-        // status — both patterns are common (Problem Details responses
-        // typically use `default` for the error envelope).
-        $matchedResponseKey = SpecResponseKeyResolver::resolve($statusCodeStr, $responses);
-        if ($matchedResponseKey === null) {
-            $message = "Status code {$statusCode} not defined for {$method} {$matchedPath} in '{$specName}' spec.";
+        $resolution = $this->schemaResolver->resolveResponseSchema($operationResolution, $statusCode, $responseContentType);
+
+        if ($resolution->outcome === ResponseSchemaResolutionOutcome::StatusNotDeclared) {
+            $message = (string) $resolution->message;
 
             return OpenApiValidationResult::failure(
                 [$message],
@@ -295,44 +172,19 @@ final class OpenApiResponseValidator
                 issues: [new ValidationIssue('response.status', $message, method: $method, path: $matchedPath, statusCode: $statusCodeStr)],
             );
         }
-        // Before silently surfacing a `default` fallback, surface any keys
-        // that LOOK like attempted spec keys but don't satisfy the exact /
-        // range / default form. `$statusCodeStr` is always a wire status
-        // here (numeric string from `(string) $statusCode`), never the
-        // literal `default`, so falling-through to `default` always means
-        // a real fallback. Both the request-side downgrade
-        // ({@see OpenApiRequestValidator::validate()}) and this
-        // response-side path call the same helper so a test class with
-        // only one hook enabled still sees the diagnostic — duplicate
-        // warnings under both hooks are accepted noise.
-        if ($matchedResponseKey === 'default') {
-            SpecResponseKeyResolver::warnSuspiciousKeys($specName, $method, $matchedPath, $responses);
+
+        $statusKey = $resolution->statusKey;
+        if ($statusKey === null) {
+            throw new LogicException('Response schema resolution past status lookup must carry the matched status key.');
         }
 
         // Coverage tracking records under the spec key actually matched
         // (e.g. "5XX" or "default"), not the literal status — that lets
         // the renderer surface the spec's intent rather than the wire value.
-        $statusCodeStr = $matchedResponseKey;
-        $responseSpec = $responses[$matchedResponseKey];
+        $statusCodeStr = $statusKey;
 
-        // A response entry must decode to a JSON object; a scalar, `null`, or
-        // a JSON list is a malformed spec ({@see MalformedSpecNode}) — e.g.
-        // an unresolved $ref. Surface it as a loud spec error (issue #258).
-        // Without this guard the bad value reaches the `array $responseSpec`
-        // parameters of validateBody() / validateHeaders() and raises an
-        // uncaught TypeError (TypeError extends Error, not RuntimeException,
-        // so validateBody()'s catch would not see it). This mirrors the
-        // content-level guards in validateBody() and RequestBodyValidator's
-        // `requestBody` guard.
-        if (MalformedSpecNode::isMalformed($responseSpec)) {
-            $message = sprintf(
-                "Malformed 'responses[%s]' for %s %s in '%s' spec: expected object, got %s.",
-                $matchedResponseKey,
-                $method,
-                $matchedPath,
-                $specName,
-                MalformedSpecNode::describe($responseSpec),
-            );
+        if ($resolution->outcome === ResponseSchemaResolutionOutcome::MalformedResponse) {
+            $message = (string) $resolution->message;
 
             return OpenApiValidationResult::failure(
                 [$message],
@@ -342,24 +194,18 @@ final class OpenApiResponseValidator
             );
         }
 
-        // Carry the resolved root + enforce gate so the body validator can
-        // lower `discriminator.mapping` into enforceable conditionals (#262).
-        // The mapping pointers reference subtype schemas elsewhere in the
-        // document, which only the root can resolve.
-        $discriminatorContext = new DiscriminatorContext($spec, DiscriminatorEnforcement::isEnabled());
+        $responseSpec = $resolution->responseSpec;
+        if ($responseSpec === null) {
+            throw new LogicException('Response schema resolution past the entry guard must carry the response spec node.');
+        }
 
-        /** @var array<string, mixed> $responseSpec */
         $bodyResult = $this->validateBody(
             $specName,
             $method,
             $matchedPath,
             $statusCode,
-            $responseSpec,
+            $resolution,
             $body,
-            $responseContentType,
-            $version,
-            $discriminatorContext,
-            $jsonSchemaDialect,
         );
 
         $headerErrors = $this->validateHeaders(
@@ -657,67 +503,90 @@ final class OpenApiResponseValidator
     }
 
     /**
-     * @param array<string, mixed> $responseSpec
+     * Map a post-entry response-schema resolution onto the historical body
+     * result shape. Content negotiation, media-type guards, and schema
+     * selection already ran in {@see ResponseSchemaResolver}; only the
+     * `Resolved` outcome still validates the actual body. Pre-body outcomes
+     * (operation failures, `StatusNotDeclared`, `MalformedResponse`) are
+     * handled by {@see validate()} before this method and throw here.
      */
     private function validateBody(
         string $specName,
         string $method,
         string $matchedPath,
         int $statusCode,
-        array $responseSpec,
+        ResponseSchemaResolution $resolution,
         DecodedBody $responseBody,
-        ?string $responseContentType,
-        OpenApiVersion $version,
-        DiscriminatorContext $discriminatorContext,
-        string $jsonSchemaDialect,
     ): ResponseBodyValidationResult {
-        // 204 No Content (and similar) declare no `content` block. Nothing
-        // to validate — return empty so the result aggregates cleanly.
-        if (!isset($responseSpec['content'])) {
-            return new ResponseBodyValidationResult([], null);
-        }
+        return match ($resolution->outcome) {
+            // 204-style responses without a `content` block, and content
+            // blocks with no JSON-compatible media type: nothing this engine
+            // can validate — return empty so the result aggregates cleanly
+            // (the orchestrator decides between Success and the non-JSON
+            // skip using the spec's content block).
+            ResponseSchemaResolutionOutcome::NoContent,
+            ResponseSchemaResolutionOutcome::NoJsonContent => new ResponseBodyValidationResult([], null),
+            // Malformed content-level spec nodes and an actual Content-Type
+            // the spec never declared surface as loud body errors.
+            ResponseSchemaResolutionOutcome::MalformedContent,
+            ResponseSchemaResolutionOutcome::ContentTypeNotDeclared => new ResponseBodyValidationResult(
+                [(string) $resolution->message],
+                null,
+            ),
+            // A matched media type without a `schema` has nothing to
+            // validate; record the matched key for coverage.
+            ResponseSchemaResolutionOutcome::MissingSchema => new ResponseBodyValidationResult(
+                [],
+                $resolution->contentType,
+            ),
+            // Deliberately unvalidated bodies (non-JSON schema, OAS 3.2
+            // itemSchema streaming) carry the skip reason so the
+            // orchestrator surfaces a Skipped result, not a clean pass.
+            ResponseSchemaResolutionOutcome::NonJsonSchema,
+            ResponseSchemaResolutionOutcome::ItemSchemaStreaming => new ResponseBodyValidationResult(
+                [],
+                $resolution->contentType,
+                $resolution->skipReason,
+            ),
+            ResponseSchemaResolutionOutcome::Resolved => $this->validateResolvedBody(
+                $specName,
+                $method,
+                $matchedPath,
+                $statusCode,
+                $resolution,
+                $responseBody,
+            ),
+            default => throw new LogicException(sprintf(
+                'validateBody() received a pre-body resolution outcome %s; validate() must handle it first.',
+                $resolution->outcome->name,
+            )),
+        };
+    }
 
-        // A `content` block must decode to a JSON object; a scalar or a JSON
-        // list is a malformed spec ({@see MalformedSpecNode}) — e.g. an
-        // unresolved $ref. Surface it before it reaches
-        // ResponseBodyValidator::validate()'s `array $content` parameter,
-        // where a non-array would raise an uncaught TypeError (TypeError
-        // extends Error, not RuntimeException, so the catch below would not
-        // see it). Mirrors RequestBodyValidator's `requestBody.content` guard
-        // (issue #256).
-        if (MalformedSpecNode::isMalformed($responseSpec['content'])) {
-            return new ResponseBodyValidationResult([
-                sprintf(
-                    "Malformed 'responses[%s].content' for %s %s in '%s' spec: expected object, got %s.",
-                    $statusCode,
-                    $method,
-                    $matchedPath,
-                    $specName,
-                    MalformedSpecNode::describe($responseSpec['content']),
-                ),
-            ], null);
-        }
-
-        /** @var array<string, mixed> $content */
-        $content = $responseSpec['content'];
-
+    private function validateResolvedBody(
+        string $specName,
+        string $method,
+        string $matchedPath,
+        int $statusCode,
+        ResponseSchemaResolution $resolution,
+        DecodedBody $responseBody,
+    ): ResponseBodyValidationResult {
         // Inlined try/catch mirrors ValidatorErrorBoundary::safely() for the
         // body validator: same narrow `RuntimeException` catch, same error
-        // formatting. The boundary returns string[]; the body validator now
+        // formatting. The boundary returns string[]; the body validator
         // returns a richer DTO carrying matchedContentType, so we can't reuse
-        // the helper as-is. \LogicException and \Error still bubble.
+        // the helper as-is. Schema conversion happens lazily inside this
+        // boundary ({@see ResponseSchemaResolution::convertedSchema()}), so
+        // converter rejections keep their historical error shape.
+        // \LogicException and \Error still bubble.
         try {
             return $this->bodyValidator->validate(
                 $specName,
                 $method,
                 $matchedPath,
                 $statusCode,
-                $content,
+                $resolution,
                 $responseBody,
-                $responseContentType,
-                $version,
-                $discriminatorContext,
-                $jsonSchemaDialect,
             );
         } catch (RuntimeException $e) {
             $previous = $e->getPrevious();
@@ -796,13 +665,5 @@ final class OpenApiResponseValidator
             $matchedPath,
             fn(): array => $this->headerValidator->validate($headersSpec, $responseHeaders, $version, $jsonSchemaDialect),
         );
-    }
-
-    /**
-     * @param string[] $specPaths
-     */
-    private function getPathMatcher(string $specName, array $specPaths): OpenApiPathMatcher
-    {
-        return $this->pathMatchers[$specName] ??= new OpenApiPathMatcher($specPaths, OpenApiSpecLoader::getStripPrefixes());
     }
 }

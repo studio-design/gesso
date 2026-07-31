@@ -1,0 +1,114 @@
+{
+    "openapi": "3.0.3",
+    "info": {
+        "title": "Response content negotiation edge cases (issue #442)",
+        "version": "1.0.0"
+    },
+    "paths": {
+        "/wildcard-schema": {
+            "get": {
+                "summary": "non-JSON Content-Type matched via a wildcard range key that declares a schema",
+                "operationId": "wildcardSchema",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "application/*": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/casing": {
+            "get": {
+                "summary": "media-type key with the spec author's mixed casing",
+                "operationId": "mixedCasing",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "Application/Problem+JSON": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/list-media-entry": {
+            "get": {
+                "summary": "content[mediaType] is a JSON list (not an object)",
+                "operationId": "listMediaEntry",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "application/json": [
+                                "this should have been an object"
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/list-media-schema": {
+            "get": {
+                "summary": "content[mediaType].schema is a JSON list (not an object)",
+                "operationId": "listMediaSchema",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "application/json": {
+                                "schema": [
+                                    "this should have been an object"
+                                ]
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/null-schema-non-json": {
+            "get": {
+                "summary": "non-JSON media type with an explicit schema: null",
+                "operationId": "nullSchemaNonJson",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "text/plain": {
+                                "schema": null
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/guard-order": {
+            "get": {
+                "summary": "malformed non-negotiated entry next to a well-formed JSON entry",
+                "operationId": "guardOrder",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            },
+                            "text/plain": "this should have been an object"
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

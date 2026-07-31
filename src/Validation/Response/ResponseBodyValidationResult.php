@@ -5,11 +5,15 @@ declare(strict_types=1);
 namespace Studio\Gesso\Validation\Response;
 
 use InvalidArgumentException;
+use Studio\Gesso\OpenApiResponseValidator;
 use Studio\Gesso\OpenApiValidationResult;
 use Studio\Gesso\Validation\Support\SchemaViolation;
 
 /**
- * Outcome of {@see ResponseBodyValidator::validate()}.
+ * Outcome of response-body validation: produced by
+ * {@see ResponseBodyValidator::validate()} for `Resolved` schema resolutions
+ * and by {@see OpenApiResponseValidator}'s mapping of every
+ * other {@see ResponseSchemaResolution} outcome.
  *
  * `errors` carries the same string payload the validator previously returned
  * (empty list = body acceptable). `matchedContentType` is the spec key (with

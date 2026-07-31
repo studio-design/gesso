@@ -142,9 +142,9 @@ class ContentTypeMatcherTest extends TestCase
     {
         // `*&#47;*` covers everything (binary, image, html). Returning it from a
         // method whose contract is "find a JSON-validatable spec key" would let
-        // ResponseBodyValidator validate non-JSON bodies as JSON when the response
-        // omits Content-Type. Conservative: skip JSON validation rather than
-        // pretend `*&#47;*` means JSON.
+        // ResponseSchemaResolver select non-JSON bodies for JSON validation when
+        // the response omits Content-Type. Conservative: skip JSON validation
+        // rather than pretend `*&#47;*` means JSON.
         $content = ['*/*' => ['schema' => ['type' => 'object']]];
 
         $this->assertNull(ContentTypeMatcher::findJsonContentType($content));
