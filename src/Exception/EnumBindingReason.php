@@ -21,6 +21,8 @@ enum EnumBindingReason
     case EnumSpecBasePathOrphaned;
     case SpecFileNotFound;
     case MalformedJson;
+    case MalformedYaml;
+    case YamlLibraryMissing;
     case NonMappingRoot;
     case EnumKeyMissing;
     case EnumKeyNotArray;

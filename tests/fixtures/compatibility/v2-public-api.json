@@ -1167,6 +1167,8 @@
             "EnumSpecBasePathOrphaned": null,
             "SpecFileNotFound": null,
             "MalformedJson": null,
+            "MalformedYaml": null,
+            "YamlLibraryMissing": null,
             "NonMappingRoot": null,
             "EnumKeyMissing": null,
             "EnumKeyNotArray": null,
