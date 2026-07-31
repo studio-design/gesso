@@ -109,11 +109,22 @@ final class SchemaDataGenerator
      * {@see OpenApiEndpointExplorer} can share a faker instance across
      * multiple schemas (body + parameters) within a single case.
      *
+     * When a {@see CaseSelectionPlan} is supplied, choice points whose
+     * pointer (relative to `$pointer`) carries a pinned selection take that
+     * branch instead of rotating with the iteration index; everything else
+     * keeps the documented rotation strategy, so a null plan reproduces the
+     * historical output bit-for-bit.
+     *
      * @param array<string, mixed> $schema
      */
-    public static function generateOne(array $schema, ?Generator $faker, int $iteration): mixed
-    {
-        $schema = self::resolveComposition($schema, $faker, $iteration);
+    public static function generateOne(
+        array $schema,
+        ?Generator $faker,
+        int $iteration,
+        ?CaseSelectionPlan $plan = null,
+        string $pointer = '',
+    ): mixed {
+        $schema = self::resolveComposition($schema, $faker, $iteration, $plan, $pointer);
 
         if (array_key_exists('const', $schema)) {
             return $schema['const'];
@@ -125,14 +136,20 @@ final class SchemaDataGenerator
             return $values[$iteration % count($values)];
         }
 
-        if (is_array($schema['type'] ?? null) && in_array('null', $schema['type'], true) && ($iteration % 3) === 2) {
-            return null;
+        if (is_array($schema['type'] ?? null) && in_array('null', $schema['type'], true)) {
+            $pinnedNull = $plan?->branchFor($pointer . '/type');
+            $emitNull = $pinnedNull !== null
+                ? $pinnedNull === SchemaChoicePoint::NULL_VALUE
+                : ($iteration % 3) === 2;
+            if ($emitNull) {
+                return null;
+            }
         }
 
         if (isset($schema['not']) && is_array($schema['not'])) {
             $withoutNot = $schema;
             unset($withoutNot['not']);
-            $candidate = self::generateOne($withoutNot, $faker, $iteration);
+            $candidate = self::generateOne($withoutNot, $faker, $iteration, $plan, $pointer);
             if (!SchemaValueValidator::isValid($candidate, $schema)) {
                 foreach ([null, false, 0, 1, '', 'value', [], ['value' => true]] as $alternative) {
                     if (SchemaValueValidator::isValid($alternative, $schema)) {
@@ -147,8 +164,8 @@ final class SchemaDataGenerator
         $type = self::resolveType($schema);
 
         return match ($type) {
-            'object' => self::generateObject($schema, $faker, $iteration),
-            'array' => self::generateArray($schema, $faker, $iteration),
+            'object' => self::generateObject($schema, $faker, $iteration, $plan, $pointer),
+            'array' => self::generateArray($schema, $faker, $iteration, $plan, $pointer),
             'string' => self::generateString($schema, $faker, $iteration),
             'integer' => self::generateInteger($schema, $faker, $iteration),
             'number' => self::generateNumber($schema, $faker, $iteration),
@@ -195,9 +212,13 @@ final class SchemaDataGenerator
      * which case we infer from `properties`/`items` and finally default to
      * `string` so a permissive untyped schema still produces a value.
      *
+     * Public within the internal fuzz family so
+     * {@see SchemaChoicePointEnumerator} descends exactly the nodes this
+     * generator would materialise.
+     *
      * @param array<string, mixed> $schema
      */
-    private static function resolveType(array $schema): string
+    public static function resolveType(array $schema): string
     {
         $type = $schema['type'] ?? null;
         if (is_string($type)) {
@@ -230,12 +251,80 @@ final class SchemaDataGenerator
     }
 
     /**
+     * Merge the assertion keywords needed for deterministic allOf generation.
+     *
+     * Public within the internal fuzz family so
+     * {@see SchemaChoicePointEnumerator} merges branch views with exactly the
+     * semantics generation applies.
+     *
+     * @param array<string, mixed> $left
+     * @param array<string, mixed> $right
+     *
+     * @return array<string, mixed>
+     */
+    public static function mergeSchemas(array $left, array $right): array
+    {
+        $merged = array_merge($left, $right);
+        if (is_array($left['properties'] ?? null) || is_array($right['properties'] ?? null)) {
+            $merged['properties'] = self::mergePropertySchemas(
+                is_array($left['properties'] ?? null) ? $left['properties'] : [],
+                is_array($right['properties'] ?? null) ? $right['properties'] : [],
+            );
+        }
+        if (is_array($left['required'] ?? null) || is_array($right['required'] ?? null)) {
+            $merged['required'] = array_values(array_unique(array_merge(
+                is_array($left['required'] ?? null) ? $left['required'] : [],
+                is_array($right['required'] ?? null) ? $right['required'] : [],
+            )));
+        }
+        if (isset($left['minimum'], $right['minimum'])) {
+            $merged['minimum'] = max($left['minimum'], $right['minimum']);
+        }
+        if (isset($left['maximum'], $right['maximum'])) {
+            $merged['maximum'] = min($left['maximum'], $right['maximum']);
+        }
+        if (isset($left['minLength'], $right['minLength'])) {
+            $merged['minLength'] = max($left['minLength'], $right['minLength']);
+        }
+        if (isset($left['maxLength'], $right['maxLength'])) {
+            $merged['maxLength'] = min($left['maxLength'], $right['maxLength']);
+        }
+        foreach (['minItems', 'minProperties'] as $minimumKeyword) {
+            if (isset($left[$minimumKeyword], $right[$minimumKeyword])) {
+                $merged[$minimumKeyword] = max($left[$minimumKeyword], $right[$minimumKeyword]);
+            }
+        }
+        foreach (['maxItems', 'maxProperties'] as $maximumKeyword) {
+            if (isset($left[$maximumKeyword], $right[$maximumKeyword])) {
+                $merged[$maximumKeyword] = min($left[$maximumKeyword], $right[$maximumKeyword]);
+            }
+        }
+        if ((is_int($left['multipleOf'] ?? null) || is_float($left['multipleOf'] ?? null)) &&
+            (is_int($right['multipleOf'] ?? null) || is_float($right['multipleOf'] ?? null))) {
+            $multipleOf = DecimalMultiple::leastCommonMultiple($left['multipleOf'], $right['multipleOf']);
+            if ($multipleOf === null) {
+                throw new InvalidArgumentException(
+                    'Cannot compose allOf multipleOf constraints within the platform numeric range.',
+                );
+            }
+            $merged['multipleOf'] = $multipleOf;
+        }
+
+        return $merged;
+    }
+
+    /**
      * @param array<string, mixed> $schema
      *
      * @return array<string, mixed>|stdClass
      */
-    private static function generateObject(array $schema, ?Generator $faker, int $iteration): array|stdClass
-    {
+    private static function generateObject(
+        array $schema,
+        ?Generator $faker,
+        int $iteration,
+        ?CaseSelectionPlan $plan = null,
+        string $pointer = '',
+    ): array|stdClass {
         $properties = $schema['properties'] ?? [];
         if (!is_array($properties)) {
             return [];
@@ -256,16 +345,24 @@ final class SchemaDataGenerator
                 continue;
             }
 
+            $childPointer = $pointer . '/properties/' . SchemaChoicePointEnumerator::escapePointerSegment($name);
             $isRequired = in_array($name, $required, true);
             // Optional properties alternate inclusion across cases so the
             // suite exercises both "required-only" and "required+optional"
             // shapes — mirrors Schemathesis' explore-omit toggle on a small
-            // budget. Required keys are always emitted.
-            if (!$isRequired && ($iteration % 2) === 0) {
-                continue;
+            // budget. Required keys are always emitted; a pinned plan entry
+            // overrides the parity in either direction.
+            if (!$isRequired) {
+                $pinnedPresence = $plan?->branchFor($childPointer);
+                $omit = $pinnedPresence !== null
+                    ? $pinnedPresence === SchemaChoicePoint::OMITTED
+                    : ($iteration % 2) === 0;
+                if ($omit) {
+                    continue;
+                }
             }
 
-            $result[$name] = self::generateOne($propSchema, $faker, $iteration);
+            $result[$name] = self::generateOne($propSchema, $faker, $iteration, $plan, $childPointer);
         }
 
         $minProperties = isset($schema['minProperties']) && is_int($schema['minProperties'])
@@ -277,7 +374,13 @@ final class SchemaDataGenerator
                 $additionalSchema = is_array($schema['additionalProperties'] ?? null)
                     ? $schema['additionalProperties']
                     : ['type' => 'string'];
-                $result[$name] = self::generateOne($additionalSchema, $faker, $iteration + count($result));
+                $result[$name] = self::generateOne(
+                    $additionalSchema,
+                    $faker,
+                    $iteration + count($result),
+                    $plan,
+                    $pointer . '/additionalProperties',
+                );
             }
         }
         $maxProperties = isset($schema['maxProperties']) && is_int($schema['maxProperties'])
@@ -289,7 +392,13 @@ final class SchemaDataGenerator
                 $additionalSchema = is_array($schema['additionalProperties'] ?? null)
                     ? $schema['additionalProperties']
                     : ['type' => 'string'];
-                $result[$name] = self::generateOne($additionalSchema, $faker, $iteration + count($result));
+                $result[$name] = self::generateOne(
+                    $additionalSchema,
+                    $faker,
+                    $iteration + count($result),
+                    $plan,
+                    $pointer . '/additionalProperties',
+                );
             }
         }
         if ($maxProperties !== null && count($result) > $maxProperties) {
@@ -317,8 +426,18 @@ final class SchemaDataGenerator
      *
      * @return list<mixed>
      */
-    private static function generateArray(array $schema, ?Generator $faker, int $iteration): array
-    {
+    private static function generateArray(
+        array $schema,
+        ?Generator $faker,
+        int $iteration,
+        ?CaseSelectionPlan $plan = null,
+        string $pointer = '',
+    ): array {
+        // A pinned plan entry at `<pointer>/items` is a forced minimum size:
+        // it makes items reachable in the pinned case (mirroring how optional
+        // ancestors are forced present) without becoming a rotation strategy.
+        $forcedMinimum = $plan?->branchFor($pointer . '/items');
+
         $prefixItems = $schema['prefixItems'] ?? null;
         if (is_array($prefixItems)) {
             $prefixCount = count($prefixItems);
@@ -329,6 +448,9 @@ final class SchemaDataGenerator
                 1 => $maximum ?? $prefixCount,
                 default => $prefixCount,
             };
+            if ($forcedMinimum !== null) {
+                $size = max($size, $forcedMinimum);
+            }
             if ($maximum !== null) {
                 $size = min($size, $maximum);
             }
@@ -338,8 +460,11 @@ final class SchemaDataGenerator
             $result = [];
             for ($index = 0; $index < $size; $index++) {
                 $item = $prefixItems[$index] ?? ($schema['items'] ?? []);
+                $itemPointer = isset($prefixItems[$index])
+                    ? $pointer . '/prefixItems/' . $index
+                    : $pointer . '/items';
                 if (is_array($item)) {
-                    $result[] = self::generateOne($item, $faker, $iteration + $index);
+                    $result[] = self::generateOne($item, $faker, $iteration + $index, $plan, $itemPointer);
                 } else {
                     $result[] = 'item-' . $index;
                 }
@@ -360,17 +485,21 @@ final class SchemaDataGenerator
             1 => $maximum ?? max(1, $minimum),
             default => max(1, $minimum),
         };
+        if ($forcedMinimum !== null) {
+            $size = max($size, $forcedMinimum);
+        }
         if ($maximum !== null) {
             $size = min($size, $maximum);
         }
+        $itemPointer = $pointer . '/items';
         $result = [];
         for ($i = 0; $i < $size; $i++) {
-            $item = self::generateOne($items, $faker, $iteration + $i);
+            $item = self::generateOne($items, $faker, $iteration + $i, $plan, $itemPointer);
             if (($schema['uniqueItems'] ?? false) === true) {
                 $attempt = 0;
                 while (in_array($item, $result, true) && $attempt < 100) {
                     $attempt++;
-                    $item = self::generateOne($items, $faker, $iteration + $i + $attempt);
+                    $item = self::generateOne($items, $faker, $iteration + $i + $attempt, $plan, $itemPointer);
                 }
             }
             $result[] = $item;
@@ -700,8 +829,13 @@ final class SchemaDataGenerator
      *
      * @return array<string, mixed>
      */
-    private static function resolveComposition(array $schema, ?Generator $faker, int $iteration): array
-    {
+    private static function resolveComposition(
+        array $schema,
+        ?Generator $faker,
+        int $iteration,
+        ?CaseSelectionPlan $plan = null,
+        string $pointer = '',
+    ): array {
         foreach (['oneOf', 'anyOf'] as $keyword) {
             if (!isset($schema[$keyword]) || !is_array($schema[$keyword]) || $schema[$keyword] === []) {
                 continue;
@@ -711,7 +845,9 @@ final class SchemaDataGenerator
                 continue;
             }
             unset($schema[$keyword]);
-            $schema = self::mergeSchemas($schema, $branches[$iteration % count($branches)]);
+            $pinned = $plan?->branchFor($pointer . '/' . $keyword);
+            $index = ($pinned ?? $iteration) % count($branches);
+            $schema = self::mergeSchemas($schema, $branches[$index]);
             break;
         }
 
@@ -730,7 +866,8 @@ final class SchemaDataGenerator
                 }
             }
             if ($conditionals !== []) {
-                $selected = $conditionals[$iteration % count($conditionals)];
+                $pinned = $plan?->branchFor($pointer . '/allOf');
+                $selected = $conditionals[($pinned ?? $iteration) % count($conditionals)];
                 $schema = self::mergeSchemas($schema, $selected['if']);
                 if (isset($selected['then']) && is_array($selected['then'])) {
                     $schema = self::mergeSchemas($schema, $selected['then']);
@@ -739,7 +876,8 @@ final class SchemaDataGenerator
         }
 
         if (isset($schema['if']) && is_array($schema['if'])) {
-            $useThen = ($iteration % 2) === 0;
+            $pinned = $plan?->branchFor($pointer . '/if');
+            $useThen = (($pinned ?? $iteration) % 2) === 0;
             $conditional = $useThen
                 ? self::mergeSchemas($schema['if'], is_array($schema['then'] ?? null) ? $schema['then'] : [])
                 : self::mergeSchemas(
@@ -751,65 +889,6 @@ final class SchemaDataGenerator
         }
 
         return $schema;
-    }
-
-    /**
-     * Merge the assertion keywords needed for deterministic allOf generation.
-     *
-     * @param array<string, mixed> $left
-     * @param array<string, mixed> $right
-     *
-     * @return array<string, mixed>
-     */
-    private static function mergeSchemas(array $left, array $right): array
-    {
-        $merged = array_merge($left, $right);
-        if (is_array($left['properties'] ?? null) || is_array($right['properties'] ?? null)) {
-            $merged['properties'] = self::mergePropertySchemas(
-                is_array($left['properties'] ?? null) ? $left['properties'] : [],
-                is_array($right['properties'] ?? null) ? $right['properties'] : [],
-            );
-        }
-        if (is_array($left['required'] ?? null) || is_array($right['required'] ?? null)) {
-            $merged['required'] = array_values(array_unique(array_merge(
-                is_array($left['required'] ?? null) ? $left['required'] : [],
-                is_array($right['required'] ?? null) ? $right['required'] : [],
-            )));
-        }
-        if (isset($left['minimum'], $right['minimum'])) {
-            $merged['minimum'] = max($left['minimum'], $right['minimum']);
-        }
-        if (isset($left['maximum'], $right['maximum'])) {
-            $merged['maximum'] = min($left['maximum'], $right['maximum']);
-        }
-        if (isset($left['minLength'], $right['minLength'])) {
-            $merged['minLength'] = max($left['minLength'], $right['minLength']);
-        }
-        if (isset($left['maxLength'], $right['maxLength'])) {
-            $merged['maxLength'] = min($left['maxLength'], $right['maxLength']);
-        }
-        foreach (['minItems', 'minProperties'] as $minimumKeyword) {
-            if (isset($left[$minimumKeyword], $right[$minimumKeyword])) {
-                $merged[$minimumKeyword] = max($left[$minimumKeyword], $right[$minimumKeyword]);
-            }
-        }
-        foreach (['maxItems', 'maxProperties'] as $maximumKeyword) {
-            if (isset($left[$maximumKeyword], $right[$maximumKeyword])) {
-                $merged[$maximumKeyword] = min($left[$maximumKeyword], $right[$maximumKeyword]);
-            }
-        }
-        if ((is_int($left['multipleOf'] ?? null) || is_float($left['multipleOf'] ?? null)) &&
-            (is_int($right['multipleOf'] ?? null) || is_float($right['multipleOf'] ?? null))) {
-            $multipleOf = DecimalMultiple::leastCommonMultiple($left['multipleOf'], $right['multipleOf']);
-            if ($multipleOf === null) {
-                throw new InvalidArgumentException(
-                    'Cannot compose allOf multipleOf constraints within the platform numeric range.',
-                );
-            }
-            $merged['multipleOf'] = $multipleOf;
-        }
-
-        return $merged;
     }
 
     /**

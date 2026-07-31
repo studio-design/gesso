@@ -11,6 +11,8 @@ use Opis\JsonSchema\Validator;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use stdClass;
+use Studio\Gesso\Fuzz\CaseSelectionPlan;
+use Studio\Gesso\Fuzz\SchemaChoicePoint;
 use Studio\Gesso\Fuzz\SchemaDataGenerator;
 use Studio\Gesso\Fuzz\SchemaMutationGenerator;
 use Studio\Gesso\Fuzz\SchemaValueValidator;
@@ -1097,5 +1099,148 @@ class SchemaDataGeneratorTest extends TestCase
         foreach ($values as $value) {
             $this->assertLessThanOrEqual(1, count($value));
         }
+    }
+
+    #[Test]
+    public function pinned_plan_overrides_one_of_branch_rotation(): void
+    {
+        $schema = ['oneOf' => [['type' => 'string'], ['type' => 'integer']]];
+        $plan = new CaseSelectionPlan(['/oneOf' => 1]);
+
+        // Iteration 0 rotation would pick branch 0 (string).
+        $value = SchemaDataGenerator::generateOne($schema, null, 0, $plan);
+
+        $this->assertIsInt($value);
+    }
+
+    #[Test]
+    public function pinned_plan_forces_optional_property_presence_and_absence(): void
+    {
+        $schema = [
+            'type' => 'object',
+            'required' => ['id'],
+            'properties' => [
+                'id' => ['type' => 'integer'],
+                'aud' => ['type' => 'string'],
+            ],
+        ];
+
+        // Iteration 0 parity would omit optional properties.
+        $present = SchemaDataGenerator::generateOne(
+            $schema,
+            null,
+            0,
+            new CaseSelectionPlan(['/properties/aud' => SchemaChoicePoint::PRESENT]),
+        );
+        $this->assertIsArray($present);
+        $this->assertArrayHasKey('aud', $present);
+
+        // Iteration 1 parity would include optional properties.
+        $absent = SchemaDataGenerator::generateOne(
+            $schema,
+            null,
+            1,
+            new CaseSelectionPlan(['/properties/aud' => SchemaChoicePoint::OMITTED]),
+        );
+        $this->assertIsArray($absent);
+        $this->assertArrayNotHasKey('aud', $absent);
+    }
+
+    #[Test]
+    public function pinned_plan_selects_nullable_branches(): void
+    {
+        $schema = ['type' => ['string', 'null']];
+
+        // Iteration 0 rotation would produce a string.
+        $null = SchemaDataGenerator::generateOne(
+            $schema,
+            null,
+            0,
+            new CaseSelectionPlan(['/type' => SchemaChoicePoint::NULL_VALUE]),
+        );
+        $this->assertNull($null);
+
+        // Iteration 2 rotation would produce null.
+        $value = SchemaDataGenerator::generateOne(
+            $schema,
+            null,
+            2,
+            new CaseSelectionPlan(['/type' => SchemaChoicePoint::VALUE]),
+        );
+        $this->assertIsString($value);
+    }
+
+    #[Test]
+    public function pinned_plan_selects_the_else_branch_of_a_conditional(): void
+    {
+        $schema = [
+            'type' => 'object',
+            'required' => ['kind'],
+            'properties' => ['kind' => ['type' => 'string']],
+            'if' => ['properties' => ['kind' => ['const' => 'a']], 'required' => ['kind']],
+            'then' => ['properties' => ['kind' => ['const' => 'a']]],
+            'else' => ['properties' => ['kind' => ['const' => 'b']]],
+        ];
+
+        // Iteration 0 parity would take the `then` branch.
+        $value = SchemaDataGenerator::generateOne(
+            $schema,
+            null,
+            0,
+            new CaseSelectionPlan(['/if' => 1]),
+        );
+
+        $this->assertIsArray($value);
+        $this->assertSame('b', $value['kind']);
+    }
+
+    #[Test]
+    public function pinned_plan_forces_minimum_array_sizes(): void
+    {
+        $schema = [
+            'type' => 'array',
+            'minItems' => 0,
+            'items' => ['type' => 'string'],
+        ];
+
+        // Iteration 0 rotation would produce the minItems=0 empty array.
+        $value = SchemaDataGenerator::generateOne(
+            $schema,
+            null,
+            0,
+            new CaseSelectionPlan(['/items' => 1]),
+        );
+
+        $this->assertIsArray($value);
+        $this->assertNotSame([], $value);
+    }
+
+    #[Test]
+    public function pinned_plan_reaches_a_nested_choice_point_through_pointers(): void
+    {
+        $schema = [
+            'type' => 'object',
+            'properties' => [
+                'aud' => [
+                    'oneOf' => [
+                        ['type' => 'string'],
+                        ['type' => 'array', 'items' => ['type' => 'string']],
+                    ],
+                ],
+            ],
+        ];
+
+        $value = SchemaDataGenerator::generateOne(
+            $schema,
+            null,
+            0,
+            new CaseSelectionPlan([
+                '/properties/aud' => SchemaChoicePoint::PRESENT,
+                '/properties/aud/oneOf' => 1,
+            ]),
+        );
+
+        $this->assertIsArray($value);
+        $this->assertIsArray($value['aud']);
     }
 }
