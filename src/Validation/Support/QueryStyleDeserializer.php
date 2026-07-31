@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Validation\Support;
 
+use function array_key_exists;
 use function array_map;
 use function array_pad;
 use function explode;
@@ -53,7 +54,11 @@ final class QueryStyleDeserializer
             return $value;
         }
 
-        $style = $parameter['style'] ?? 'form';
+        // An explicit `style: null` / `explode: null` is a malformed
+        // declaration, not an unspecified one — distinguish it from an absent
+        // key so it falls through untouched instead of collapsing to the
+        // defaults.
+        $style = array_key_exists('style', $parameter) ? $parameter['style'] : 'form';
         if (!is_string($style)) {
             return $value;
         }
@@ -66,7 +71,7 @@ final class QueryStyleDeserializer
         // `explode` defaults to true for `form` and false for every other
         // style (OAS 3.x, Parameter Object). Only a non-exploded declaration
         // means the delimiter-joined form was used on the wire.
-        $explode = $parameter['explode'] ?? ($style === 'form');
+        $explode = array_key_exists('explode', $parameter) ? $parameter['explode'] : $style === 'form';
         if ($explode !== false) {
             return $value;
         }

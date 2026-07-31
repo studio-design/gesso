@@ -116,7 +116,7 @@ final class OpenApiRequestValidator
      *                           assert a literal JSON `null` body must pass
      *                           `DecodedBody::present(null)` explicitly.
      * @param null|int $responseStatusCode optional response status the request produced; enables the documented-4xx downgrade when set
-     * @param null|string $rawQueryString the request's percent-encoded query string as sent on the wire (e.g. `role=owner%2Cadmin,member`). Optional: when supplied, non-exploded query styles (`form` + `explode: false`, `pipeDelimited`, `spaceDelimited`) are split before percent-decoding, so delimiter characters inside values stay data. Without it the decoded value is split as a best effort.
+     * @param null|string $rawQueryString the request's percent-encoded query string as sent on the wire (e.g. `role=owner%2Cadmin,member`). Optional: when supplied, non-exploded query styles (`form` + `explode: false`, `pipeDelimited`, `spaceDelimited`) are split before percent-decoding. For `form` this keeps a `%2C` inside a value data; the `pipeDelimited` / `spaceDelimited` delimiters cannot be represented inside a value (OAS Appendix E leaves that undefined) — both their encoded and literal forms split. The raw value is only consulted when it decodes to the parsed value in `$queryParams`. Without it the decoded value is split as a best effort.
      */
     public function validate(
         string $specName,

@@ -288,5 +288,15 @@ class QueryStyleDeserializerTest extends TestCase
             'a,b',
             QueryStyleDeserializer::deserialize('a,b', ['name' => 'r', 'style' => 'form', 'explode' => 'false'], $schema),
         );
+        // An explicit null is a malformed declaration too, not an unspecified
+        // one — it must not collapse to the defaults.
+        $this->assertSame(
+            'a,b',
+            QueryStyleDeserializer::deserialize('a,b', ['name' => 'r', 'style' => null, 'explode' => false], $schema),
+        );
+        $this->assertSame(
+            'a,b',
+            QueryStyleDeserializer::deserialize('a,b', ['name' => 'r', 'style' => 'pipeDelimited', 'explode' => null], $schema),
+        );
     }
 }
