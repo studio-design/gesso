@@ -27,8 +27,11 @@ use function substr;
  * no safe AND-semantic for "required" across them. The collected `required`
  * at such a node is therefore `[]`, and the descent stop is recorded as a
  * disjunction entry so callers can emit a NOTE rather than misleading drift
- * advice. See `docs/strict-required.md` "Known limitations" before relying on
- * those constructs.
+ * advice. Map-shaped nodes — `additionalProperties` (schema form or `true`)
+ * with no declared `properties` — also stop descent, recorded as map
+ * entries so callers skip their dynamically-keyed observations silently
+ * (issue #437). See `docs/strict-required.md` "Known limitations" before
+ * relying on those constructs.
  *
  * @internal Consumed by the strict-required asserter / per-call checker only.
  */
@@ -145,17 +148,22 @@ final class StrictRequiredSchemaWalker
     {
         $raw = self::collectRequiredByPointer($schema);
 
-        return new StrictRequiredSchemaAnalysis($raw['walked'], $raw['disjunctions']);
+        return new StrictRequiredSchemaAnalysis($raw['walked'], $raw['disjunctions'], $raw['maps']);
     }
 
     /**
-     * Descend the response schema producing two parallel maps:
+     * Descend the response schema producing three parallel maps:
      *  - `walked`: `pointer => required-keys` for each object node reached.
      *    `allOf` branches are unioned at every level.
      *  - `disjunctions`: pointers where descent stopped because the node is
      *    `anyOf` / `oneOf` (no safe AND-semantic for `required` across
      *    disjunctions). Callers use this to surface observations under
      *    these pointers as NOTE rather than misleading drift advice.
+     *  - `maps`: pointers where descent stopped because the node is
+     *    map-shaped — `additionalProperties` (schema form or boolean
+     *    `true`) with no declared `properties` (issue #437). Observed keys
+     *    at or beneath these pointers are data, not shape; callers skip
+     *    them silently.
      *
      * If the root schema itself is unwalkable, the disjunction list carries
      * an empty-pointer entry meaning "every observation is unwalkable."
@@ -168,12 +176,13 @@ final class StrictRequiredSchemaWalker
      *
      * @param array<string, mixed> $schema
      *
-     * @return array{walked: array<string, list<string>>, disjunctions: list<array{pointer: string, reason: string}>}
+     * @return array{walked: array<string, list<string>>, disjunctions: list<array{pointer: string, reason: string}>, maps: list<string>}
      */
     public static function collectRequiredByPointer(array $schema): array
     {
         $walked = [];
         $disjunctions = [];
+        $maps = [];
         $rootShape = self::inferShape($schema);
         if ($rootShape === null) {
             // Root schema is itself unwalkable (anyOf/oneOf/scalar/empty).
@@ -194,15 +203,15 @@ final class StrictRequiredSchemaWalker
                 'reason' => self::disjunctionReason($schema) ?? 'unwalkable',
             ];
 
-            return ['walked' => $walked, 'disjunctions' => $disjunctions];
+            return ['walked' => $walked, 'disjunctions' => $disjunctions, 'maps' => $maps];
         }
         // Root-array schemas use bare `[*]` for their element pointer
         // (matching the walker's root-list convention); object roots start
         // at `/`.
         $rootPointer = $rootShape === 'array' ? '' : '/';
-        self::descendSchema($schema, $rootPointer, $walked, $disjunctions);
+        self::descendSchema($schema, $rootPointer, $walked, $disjunctions, $maps);
 
-        return ['walked' => $walked, 'disjunctions' => $disjunctions];
+        return ['walked' => $walked, 'disjunctions' => $disjunctions, 'maps' => $maps];
     }
 
     /**
@@ -235,18 +244,61 @@ final class StrictRequiredSchemaWalker
     }
 
     /**
+     * Return the map pointer covering an observed pointer, or `null` if
+     * none. Coverage follows the same boundary rules as
+     * {@see self::findCoveringDisjunction()} — the observed pointer equals
+     * the map pointer or descends from it via a `/` or `[` separator —
+     * plus a root special case: a map at `/` (the response root itself is
+     * a map) covers every object-root pointer, all of which start with `/`.
+     *
+     * @param list<string> $maps
+     */
+    public static function findCoveringMapPointer(string $pointer, array $maps): ?string
+    {
+        foreach ($maps as $mapPointer) {
+            if ($pointer === $mapPointer) {
+                return $mapPointer;
+            }
+            if ($mapPointer === '/') {
+                if (str_starts_with($pointer, '/')) {
+                    return $mapPointer;
+                }
+
+                continue;
+            }
+            if (str_starts_with($pointer, $mapPointer . '/') || str_starts_with($pointer, $mapPointer . '[')) {
+                return $mapPointer;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * @param array<string, mixed> $schema
      * @param array<string, list<string>> $walked
      * @param list<array{pointer: string, reason: string}> $disjunctions
+     * @param list<string> $maps
      */
-    private static function descendSchema(array $schema, string $pointer, array &$walked, array &$disjunctions): void
+    private static function descendSchema(array $schema, string $pointer, array &$walked, array &$disjunctions, array &$maps): void
     {
         $type = self::inferShape($schema);
         if ($type === 'object') {
+            if (self::isMapShaped($schema)) {
+                // The author declared "this object is a map" —
+                // `additionalProperties` (schema form or `true`) with no
+                // `properties` (issue #437). Its observed keys are data,
+                // not shape: do not record a `walked` row (which would
+                // diff dynamic keys against `required`), and do not
+                // descend (values under dynamic keys stay out of scope).
+                $maps[] = $pointer;
+
+                return;
+            }
             $walked[$pointer] = self::collectRequiredFromSchema($schema);
             foreach (self::collectPropertyBranches($schema) as $propName => $propSchema) {
                 $childPointer = self::appendProperty($pointer, $propName);
-                self::descendSchema($propSchema, $childPointer, $walked, $disjunctions);
+                self::descendSchema($propSchema, $childPointer, $walked, $disjunctions, $maps);
             }
 
             return;
@@ -254,7 +306,7 @@ final class StrictRequiredSchemaWalker
         if ($type === 'array') {
             $items = self::collectItemsSchema($schema);
             if ($items !== null) {
-                self::descendSchema($items, $pointer . '[*]', $walked, $disjunctions);
+                self::descendSchema($items, $pointer . '[*]', $walked, $disjunctions, $maps);
             }
 
             return;
@@ -318,7 +370,8 @@ final class StrictRequiredSchemaWalker
                 if (is_array($branch) && (
                     ($branch['type'] ?? null) === 'object' ||
                     isset($branch['properties']) ||
-                    isset($branch['required'])
+                    isset($branch['required']) ||
+                    isset($branch['additionalProperties'])
                 )) {
                     return 'object';
                 }
@@ -329,8 +382,82 @@ final class StrictRequiredSchemaWalker
                 }
             }
         }
+        // An `additionalProperties` keyword alone still identifies an
+        // object-shaped node (typically a map with `type` omitted).
+        // Checked after the array branch so a (malformed) node combining
+        // `items` with `additionalProperties` keeps its array reading.
+        if (isset($schema['additionalProperties'])) {
+            return 'object';
+        }
 
         return null;
+    }
+
+    /**
+     * True when the node describes a dynamically-keyed map: it declares
+     * openness via `additionalProperties` (schema form or boolean `true`,
+     * directly or in an `allOf` branch) and declares no `properties`
+     * anywhere. `additionalProperties: false` closes the object instead —
+     * that is a fixed (empty-extension) shape, not a map.
+     *
+     * @param array<string, mixed> $schema
+     */
+    private static function isMapShaped(array $schema): bool
+    {
+        if (self::declaresAnyProperty($schema)) {
+            return false;
+        }
+
+        return self::declaresOpenAdditionalProperties($schema);
+    }
+
+    /**
+     * True when the node (or an `allOf` branch) declares at least one
+     * property name under `properties`. Deliberately independent of
+     * {@see self::collectPropertyBranches()}, which yields only walkable
+     * (array-form) subschemas with string keys: JSON Schema 2020-12 /
+     * OAS 3.1+ boolean subschemas (`properties: {fixed: true}`) still
+     * declare the name, and PHP's decoder coerces valid JSON names like
+     * `"0"` to integer keys — both still give the node a fixed shape, so
+     * a bare non-empty check is the correct existence test.
+     *
+     * @param array<string, mixed> $schema
+     */
+    private static function declaresAnyProperty(array $schema): bool
+    {
+        $properties = $schema['properties'] ?? null;
+        if (is_array($properties) && $properties !== []) {
+            return true;
+        }
+        if (isset($schema['allOf']) && is_array($schema['allOf'])) {
+            foreach ($schema['allOf'] as $branch) {
+                if (is_array($branch) && self::declaresAnyProperty($branch)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     */
+    private static function declaresOpenAdditionalProperties(array $schema): bool
+    {
+        $additional = $schema['additionalProperties'] ?? null;
+        if ($additional === true || is_array($additional)) {
+            return true;
+        }
+        if (isset($schema['allOf']) && is_array($schema['allOf'])) {
+            foreach ($schema['allOf'] as $branch) {
+                if (is_array($branch) && self::declaresOpenAdditionalProperties($branch)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     /**

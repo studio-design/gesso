@@ -392,16 +392,16 @@ final class StrictRequiredAsserterTest extends TestCase
     }
 
     #[Test]
-    public function additional_properties_schema_is_not_walked(): void
+    public function map_shaped_additional_properties_node_is_not_reported_as_drift(): void
     {
-        // /dict declares `entries` with additionalProperties carrying a
-        // schema requiring `id`. Observations under any dynamic key
-        // (e.g. /entries/foo) must NOT find a `walked` entry — the
-        // asserter deliberately treats additionalProperties as out-of-
-        // scope. The observed pointer then either lands in drift (when
-        // ancestor is walked but the property itself is undeclared) or in
-        // unresolved. This pins that no false "matches required" path
-        // accidentally walks additionalProperties.
+        // Issue #437: /dict declares `entries` with `additionalProperties:
+        // <schema>` and no `properties` — the author has said "this is a
+        // map". Its observed keys are data, not shape: adding them to
+        // `required` would be factually wrong, so neither the map node nor
+        // anything beneath it may surface as drift. (Descending into the
+        // additionalProperties schema for the *values* is still out of
+        // scope — /entries/foo is suppressed as map-covered, not diffed
+        // against the additionalProperties' required: ["id"].)
         StrictRequiredTracker::record(self::SPEC_NAME, 'GET', '/dict', '200', 'application/json', [
             '/' => ['entries'],
             '/entries' => ['foo'],
@@ -410,27 +410,29 @@ final class StrictRequiredAsserterTest extends TestCase
 
         $reports = StrictRequiredAsserter::detectAll(StrictRequiredMode::Warn);
 
-        // /entries observes the dynamic key `foo`. spec's /entries node
-        // requires nothing (no required, no declared properties), so
-        // `foo` surfaces as drift. /entries/foo is not in `walked` (we do
-        // not descend additionalProperties), so all observed keys at that
-        // pointer also surface as drift. Verify neither `id` nor `label`
-        // are silently absolved by the additionalProperties' required: ["id"].
-        $pointers = array_map(static fn($r) => $r->schemaPointer, $reports);
-        $this->assertContains('/entries', $pointers);
-        $this->assertContains('/entries/foo', $pointers);
+        $this->assertSame([], $reports);
 
-        // The /entries/foo report must list BOTH id and label as missing
-        // — if the asserter had walked additionalProperties, only `label`
-        // would surface (because additionalProperties.required has "id").
-        foreach ($reports as $r) {
-            if ($r->schemaPointer === '/entries/foo') {
-                $this->assertSame(['id', 'label'], $r->missingFromRequired);
+        // Map-covered observations are silent by design — they are the
+        // documented "this is a map" case, not an unwalkable diagnostic.
+        $this->assertSame([], StrictRequiredAsserter::detectUnwalkableNodes(StrictRequiredMode::Warn));
+    }
 
-                return;
-            }
-        }
-        $this->fail('expected a drift report at /entries/foo');
+    #[Test]
+    public function map_shaped_node_does_not_suppress_sibling_drift(): void
+    {
+        // Drift outside the map subtree must keep reporting: here the
+        // root object of /dict is observed with an undeclared sibling key
+        // alongside the map-covered /entries observation.
+        StrictRequiredTracker::record(self::SPEC_NAME, 'GET', '/dict', '200', 'application/json', [
+            '/' => ['entries', 'extra'],
+            '/entries' => ['foo'],
+        ]);
+
+        $reports = StrictRequiredAsserter::detectAll(StrictRequiredMode::Warn);
+
+        $this->assertCount(1, $reports);
+        $this->assertSame('/', $reports[0]->schemaPointer);
+        $this->assertSame(['extra'], $reports[0]->missingFromRequired);
     }
 
     #[Test]

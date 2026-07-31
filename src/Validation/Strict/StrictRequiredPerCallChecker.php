@@ -208,6 +208,13 @@ final class StrictRequiredPerCallChecker
         $missingByPointer = [];
         foreach ($pointers as $pointer => $observedKeys) {
             $lookup = $analysis->lookup($pointer);
+            if ($lookup instanceof StrictRequiredMapMatch) {
+                // Map-shaped node (`additionalProperties` schema form or
+                // `true`, no `properties`): observed keys are data, not
+                // shape (issue #437). Unlike the disjunction case there is
+                // nothing for the author to fix, so no NOTE either.
+                continue;
+            }
             if ($lookup instanceof StrictRequiredDisjunctionMatch) {
                 // Same rule as the asserter: `required` has no AND-semantic
                 // across `anyOf` / `oneOf`, so "add to required" advice

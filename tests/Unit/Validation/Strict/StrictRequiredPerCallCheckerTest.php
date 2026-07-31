@@ -237,6 +237,35 @@ final class StrictRequiredPerCallCheckerTest extends TestCase
     }
 
     #[Test]
+    public function warn_mode_does_not_warn_for_map_shaped_additional_properties_node(): void
+    {
+        StrictRequiredPerCallChecker::configure(StrictRequiredPerCallMode::Warn);
+
+        // Issue #437: /dict's `entries` declares `additionalProperties:
+        // <schema>` with no `properties` — a map. Observed dynamic keys
+        // (and anything beneath them) are data, not drift. Unlike the
+        // disjunction case there is nothing for the author to fix, so no
+        // NOTE is emitted either.
+        $captured = $this->captureFirstWarning(static function (): void {
+            StrictRequiredPerCallChecker::maybeWarn(
+                self::SPEC_NAME,
+                'GET',
+                '/dict',
+                '200',
+                'application/json',
+                [
+                    '/' => ['entries'],
+                    '/entries' => ['foo'],
+                    '/entries/foo' => ['id', 'label'],
+                ],
+            );
+        });
+
+        $this->assertNull($captured);
+        $this->assertSame('', $this->readStderr());
+    }
+
+    #[Test]
     public function warn_mode_does_not_warn_for_unknown_endpoint_but_emits_note(): void
     {
         StrictRequiredPerCallChecker::configure(StrictRequiredPerCallMode::Warn);
