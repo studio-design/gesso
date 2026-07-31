@@ -140,16 +140,22 @@ final class SchemaDataGenerator
             $resolved = self::resolveBranchChoice($schema, $iteration, $plan, $pointer);
             [$base, $conditionals] = self::splitConditionals($resolved);
             if ($conditionals !== []) {
-                return self::generateConditionalNode(
-                    $resolved,
-                    $base,
-                    $conditionals,
-                    $pinnedConditional,
-                    $faker,
-                    $iteration,
-                    $plan,
-                    $pointer,
-                );
+                [$base, $choices, $unsatisfiable] = self::partitionConditionals($base, $conditionals);
+                if (!$unsatisfiable && $choices !== []) {
+                    return self::generateConditionalNode(
+                        $resolved,
+                        $base,
+                        $choices,
+                        $pinnedConditional,
+                        $faker,
+                        $iteration,
+                        $plan,
+                        $pointer,
+                    );
+                }
+                // No genuine choice remains (all folded, or the node is
+                // unsatisfiable): fall through to the normal pipeline, which
+                // re-partitions identically.
             }
         }
 
@@ -592,6 +598,73 @@ final class SchemaDataGenerator
     }
 
     /**
+     * Partition conditional `allOf` branches by their boolean consequents
+     * (valid Schema Objects in OpenAPI 3.1 / JSON Schema 2020-12):
+     * `then: false` means the if side is unsatisfiable, so the conditional
+     * is permanently suppressed (¬if and its else folded into the base);
+     * `else: false` means the if must always hold (if+then folded in). Both
+     * false makes the node unsatisfiable. Only the remaining conditionals
+     * are genuine choices. Shared with the enumerator so both sides fold
+     * identically.
+     *
+     * @param array<string, mixed> $base
+     * @param list<array<string, mixed>> $conditionals
+     *
+     * @return array{array<string, mixed>, list<array<string, mixed>>, bool} folded base, choice conditionals, unsatisfiable
+     */
+    public static function partitionConditionals(array $base, array $conditionals): array
+    {
+        $choices = [];
+        foreach ($conditionals as $conditional) {
+            $then = $conditional['then'] ?? null;
+            $else = $conditional['else'] ?? null;
+            if ($then === false && $else === false) {
+                return [$base, $choices, true];
+            }
+            if ($else === false) {
+                $base = self::mergeSchemas($base, $conditional['if']);
+                if (is_array($then)) {
+                    $base = self::mergeSchemas($base, $then);
+                }
+
+                continue;
+            }
+            if ($then === false) {
+                $base = self::suppressConditional($base, $conditional);
+
+                continue;
+            }
+            $choices[] = $conditional;
+        }
+
+        return [$base, $choices, false];
+    }
+
+    /**
+     * Fold the suppressed side of one conditional into a schema: its else
+     * applies and its if must fail — negated at the property itself for the
+     * single-property shape, at the node otherwise. mergeSchemas() combines
+     * `not` assertions conjunctively, so stacked suppressions accumulate.
+     *
+     * @param array<string, mixed> $schema
+     * @param array<string, mixed> $conditional
+     *
+     * @return array<string, mixed>
+     */
+    private static function suppressConditional(array $schema, array $conditional): array
+    {
+        if (isset($conditional['else']) && is_array($conditional['else'])) {
+            $schema = self::mergeSchemas($schema, $conditional['else']);
+        }
+        $condition = self::singlePropertyCondition($conditional['if']);
+        if ($condition !== null) {
+            return self::mergeSchemas($schema, ['properties' => [$condition[0] => ['not' => $condition[1]]]]);
+        }
+
+        return self::mergeSchemas($schema, ['not' => $conditional['if']]);
+    }
+
+    /**
      * Recognise an `if` of the shape `{properties: {p: s}, required: [p]}`
      * with no other assertions, and return `[p, s]`; null otherwise.
      *
@@ -787,6 +860,17 @@ final class SchemaDataGenerator
             if (($schema['items'] ?? true) === false) {
                 $size = min($size, $prefixCount);
             }
+            if ($plan !== null) {
+                // A `false` prefix item admits no value, so every array long
+                // enough to contain it is invalid: the first one is an
+                // effective maxItems, overriding even a forced size.
+                foreach (array_values($prefixItems) as $prefixIndex => $prefixItem) {
+                    if ($prefixItem === false) {
+                        $size = min($size, $prefixIndex);
+                        break;
+                    }
+                }
+            }
             $result = [];
             for ($index = 0; $index < $size; $index++) {
                 $item = $prefixItems[$index] ?? ($schema['items'] ?? []);
@@ -804,6 +888,12 @@ final class SchemaDataGenerator
         }
 
         $items = $schema['items'] ?? null;
+        if ($plan !== null && $items === true) {
+            // A boolean-true items schema admits any value; generate from
+            // the empty schema instead of degrading to an empty array that
+            // would violate minItems.
+            $items = [];
+        }
         if (!is_array($items)) {
             return [];
         }
@@ -1170,6 +1260,15 @@ final class SchemaDataGenerator
 
         if (isset($schema['allOf']) && is_array($schema['allOf'])) {
             [$schema, $conditionals] = self::splitConditionals($schema);
+            if ($conditionals !== [] && $plan !== null) {
+                // Boolean consequents leave no choice; fold them into the
+                // node first. An unsatisfiable node generates from the base
+                // and fails the self-check loudly.
+                [$schema, $conditionals, $unsatisfiable] = self::partitionConditionals($schema, $conditionals);
+                if ($unsatisfiable) {
+                    $conditionals = [];
+                }
+            }
             if ($conditionals !== []) {
                 // Rotation only ever satisfies a conditional's `if`+`then`;
                 // pinned conditional branches never reach this point — they

@@ -559,6 +559,71 @@ class BranchCompleteCaseGeneratorTest extends TestCase
     }
 
     #[Test]
+    public function folds_a_conditional_with_a_false_then_into_permanent_suppression(): void
+    {
+        // `then: false` means the if side is unsatisfiable: the conditional
+        // is not a choice at all — every valid value violates the if and
+        // satisfies the else.
+        $cases = BranchCompleteCaseGenerator::generate([
+            'type' => 'string',
+            'allOf' => [['if' => ['const' => 'x'], 'then' => false, 'else' => ['const' => 'y']]],
+        ], seed: 1);
+
+        $this->assertNotSame([], $cases);
+        foreach ($cases as $case) {
+            $this->assertSame('y', $case->value);
+        }
+    }
+
+    #[Test]
+    public function folds_a_conditional_with_a_false_else_into_a_mandatory_condition(): void
+    {
+        // `else: false` means the if must always hold — again no choice.
+        $cases = BranchCompleteCaseGenerator::generate([
+            'type' => 'string',
+            'allOf' => [['if' => ['const' => 'a'], 'then' => true, 'else' => false]],
+        ], seed: 1);
+
+        $this->assertNotSame([], $cases);
+        foreach ($cases as $case) {
+            $this->assertSame('a', $case->value);
+        }
+    }
+
+    #[Test]
+    public function generates_items_for_a_boolean_true_items_schema(): void
+    {
+        $cases = BranchCompleteCaseGenerator::generate([
+            'type' => 'array',
+            'minItems' => 1,
+            'items' => true,
+        ], seed: 1);
+
+        $this->assertNotSame([], $cases);
+        foreach ($cases as $case) {
+            $this->assertIsArray($case->value);
+            $this->assertNotSame([], $case->value);
+        }
+    }
+
+    #[Test]
+    public function does_not_reach_past_a_boolean_false_prefix_item(): void
+    {
+        // prefixItems[0] is false, so any array with one or more elements is
+        // invalid: the oneOf behind it is unreachable and must not produce a
+        // forced-size plan.
+        $cases = BranchCompleteCaseGenerator::generate([
+            'type' => 'array',
+            'prefixItems' => [false, ['oneOf' => [['const' => 'x'], ['const' => 'y']]]],
+        ], seed: 1);
+
+        $this->assertNotSame([], $cases);
+        foreach ($cases as $case) {
+            $this->assertSame([], $case->value);
+        }
+    }
+
+    #[Test]
     public function covers_the_none_match_state_when_it_is_reachable(): void
     {
         $schema = [

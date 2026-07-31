@@ -226,6 +226,16 @@ final class SchemaChoicePointEnumerator
             }
         }
 
+        if ($conditionals !== []) {
+            // Boolean consequents leave no choice; fold them exactly like
+            // generation does. An unsatisfiable node keeps only the base —
+            // its cases fail the self-check loudly.
+            [$base, $conditionals, $unsatisfiable] = SchemaDataGenerator::partitionConditionals($base, $conditionals);
+            if ($unsatisfiable) {
+                $conditionals = [];
+            }
+        }
+
         if ($conditionals === []) {
             $this->rejectReintroduced($base, ['oneOf', 'anyOf', 'allOf'], $pointer);
             $this->visitIfPhase($base, $pointer, $ancestors, $depth, $probe);
@@ -400,6 +410,12 @@ final class SchemaChoicePointEnumerator
         if (is_array($prefixItems)) {
             $prefixCount = count($prefixItems);
             foreach (array_values($prefixItems) as $index => $item) {
+                if ($item === false) {
+                    // Nothing matches a false prefix item, so any array long
+                    // enough to contain it — or anything behind it — is
+                    // invalid: it is an effective maxItems.
+                    return;
+                }
                 if (!is_array($item) || ($maxItems !== null && $maxItems <= $index)) {
                     continue;
                 }

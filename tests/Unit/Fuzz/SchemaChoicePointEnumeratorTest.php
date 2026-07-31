@@ -225,6 +225,32 @@ class SchemaChoicePointEnumeratorTest extends TestCase
     }
 
     #[Test]
+    public function records_no_choice_for_conditionals_with_boolean_consequents(): void
+    {
+        // then: false → always suppressed; else: false → always satisfied.
+        // Neither leaves a branch to choose.
+        $this->assertSame([], SchemaChoicePointEnumerator::enumerate([
+            'type' => 'string',
+            'allOf' => [['if' => ['const' => 'x'], 'then' => false, 'else' => ['const' => 'y']]],
+        ]));
+        $this->assertSame([], SchemaChoicePointEnumerator::enumerate([
+            'type' => 'string',
+            'allOf' => [['if' => ['const' => 'a'], 'then' => true, 'else' => false]],
+        ]));
+    }
+
+    #[Test]
+    public function does_not_enumerate_past_a_boolean_false_prefix_item(): void
+    {
+        // Any array with elements is invalid once prefixItems[0] is false;
+        // choice points behind it are unreachable.
+        $this->assertSame([], SchemaChoicePointEnumerator::enumerate([
+            'type' => 'array',
+            'prefixItems' => [false, ['oneOf' => [['const' => 'x'], ['const' => 'y']]]],
+        ]));
+    }
+
+    #[Test]
     public function records_rediscoveries_with_different_content_as_separate_choice_points(): void
     {
         $schema = [
