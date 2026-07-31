@@ -41,7 +41,7 @@ final class BranchCompleteCaseGenerator
 
         $plans = [];
         foreach (SchemaChoicePointEnumerator::enumerate($schema) as $point) {
-            for ($branch = 0; $branch < $point->branchCount; $branch++) {
+            for ($branch = $point->firstBranch; $branch < $point->branchCount; $branch++) {
                 $plans[] = new CaseSelectionPlan(
                     [...$point->ancestors, $point->pointer => $branch],
                     $point->pointer,

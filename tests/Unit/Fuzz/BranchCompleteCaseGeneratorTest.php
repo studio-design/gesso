@@ -167,6 +167,53 @@ class BranchCompleteCaseGeneratorTest extends TestCase
     }
 
     #[Test]
+    public function covers_the_else_branch_of_an_all_of_conditional(): void
+    {
+        $schema = [
+            'type' => 'object',
+            'required' => ['kind'],
+            'properties' => ['kind' => ['type' => 'string']],
+            'allOf' => [
+                [
+                    'if' => ['properties' => ['kind' => ['const' => 'a']], 'required' => ['kind']],
+                    'then' => ['properties' => ['kind' => ['const' => 'a']]],
+                    'else' => ['properties' => ['kind' => ['const' => 'b']]],
+                ],
+            ],
+        ];
+
+        $kinds = [];
+        foreach (BranchCompleteCaseGenerator::generate($schema, seed: 1) as $case) {
+            $this->assertIsArray($case->value);
+            $kinds[$case->value['kind']] = true;
+        }
+
+        $this->assertArrayHasKey('a', $kinds, 'no case took the then branch');
+        $this->assertArrayHasKey('b', $kinds, 'no case took the else branch');
+    }
+
+    #[Test]
+    public function covers_branches_that_only_exist_under_a_later_composition_branch(): void
+    {
+        $schema = [
+            'type' => 'object',
+            'required' => ['v'],
+            'anyOf' => [
+                ['properties' => ['v' => ['oneOf' => [['const' => 'x'], ['const' => 'y']]]]],
+                ['properties' => ['v' => ['oneOf' => [['const' => 'x'], ['const' => 'y'], ['const' => 'z']]]]],
+            ],
+        ];
+
+        $values = [];
+        foreach (BranchCompleteCaseGenerator::generate($schema, seed: 1) as $case) {
+            $this->assertIsArray($case->value);
+            $values[$case->value['v']] = true;
+        }
+
+        $this->assertArrayHasKey('z', $values, 'the third branch of the wider rediscovery was never generated');
+    }
+
+    #[Test]
     public function covers_a_choice_point_inside_an_empty_by_default_array(): void
     {
         // The pinned case must force at least one item so the branch under

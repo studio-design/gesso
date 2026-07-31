@@ -30,11 +30,19 @@ final readonly class SchemaChoicePoint
     /** Branch index that emits null for a nullable node. */
     public const NULL_VALUE = 1;
 
-    /** @param array<string, int> $ancestors */
+    /**
+     * `firstBranch` is the first branch index this entry still needs to
+     * cover: 0 for a first discovery; the previously covered count when the
+     * same pointer reappears under another branch context with more branches,
+     * so only the uncovered tail gains cases.
+     *
+     * @param array<string, int> $ancestors
+     */
     public function __construct(
         public SchemaChoicePointKind $kind,
         public string $pointer,
         public int $branchCount,
         public array $ancestors,
+        public int $firstBranch = 0,
     ) {}
 }

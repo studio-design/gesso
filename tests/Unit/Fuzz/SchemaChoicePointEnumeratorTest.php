@@ -133,7 +133,38 @@ class SchemaChoicePointEnumeratorTest extends TestCase
         $this->assertArrayHasKey('/allOf', $points);
         $conditional = $points['/allOf'];
         $this->assertSame(SchemaChoicePointKind::AllOfConditional, $conditional->kind);
-        $this->assertSame(2, $conditional->branchCount);
+        // Two branches per conditional: even takes if+then, odd takes else.
+        $this->assertSame(4, $conditional->branchCount);
+    }
+
+    #[Test]
+    public function records_supplemental_branches_when_a_pointer_reappears_with_more_branches(): void
+    {
+        $schema = [
+            'type' => 'object',
+            'required' => ['v'],
+            'anyOf' => [
+                ['properties' => ['v' => ['oneOf' => [['const' => 'x'], ['const' => 'y']]]]],
+                ['properties' => ['v' => ['oneOf' => [['const' => 'x'], ['const' => 'y'], ['const' => 'z']]]]],
+            ],
+        ];
+
+        $entries = [];
+        foreach (SchemaChoicePointEnumerator::enumerate($schema) as $point) {
+            if ($point->pointer === '/properties/v/oneOf') {
+                $entries[] = $point;
+            }
+        }
+
+        $this->assertCount(2, $entries);
+        $this->assertSame(0, $entries[0]->firstBranch);
+        $this->assertSame(2, $entries[0]->branchCount);
+        $this->assertSame(['/anyOf' => 0], $entries[0]->ancestors);
+        // The wider rediscovery keeps only its uncovered branches, under the
+        // ancestors that actually make the third branch reachable.
+        $this->assertSame(2, $entries[1]->firstBranch);
+        $this->assertSame(3, $entries[1]->branchCount);
+        $this->assertSame(['/anyOf' => 1], $entries[1]->ancestors);
     }
 
     #[Test]

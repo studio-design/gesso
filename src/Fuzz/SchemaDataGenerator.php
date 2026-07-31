@@ -402,11 +402,22 @@ final class SchemaDataGenerator
             }
         }
         if ($maxProperties !== null && count($result) > $maxProperties) {
-            foreach (array_keys($result) as $name) {
-                if (count($result) <= $maxProperties) {
-                    break;
-                }
-                if (!in_array($name, $required, true)) {
+            // Trim unpinned optional properties first so a plan that forces
+            // a property present keeps it through the maxProperties budget;
+            // pinned ones go only when nothing else is left to drop.
+            foreach ([true, false] as $sparePinned) {
+                foreach (array_keys($result) as $name) {
+                    if (count($result) <= $maxProperties) {
+                        break 2;
+                    }
+                    if (in_array($name, $required, true)) {
+                        continue;
+                    }
+                    if ($sparePinned && $plan?->branchFor(
+                        $pointer . '/properties/' . SchemaChoicePointEnumerator::escapePointerSegment($name),
+                    ) === SchemaChoicePoint::PRESENT) {
+                        continue;
+                    }
                     unset($result[$name]);
                 }
             }
@@ -866,11 +877,23 @@ final class SchemaDataGenerator
                 }
             }
             if ($conditionals !== []) {
+                // Rotation only ever satisfies a conditional's `if`+`then`.
+                // Pinned plans encode two branches per conditional — even
+                // takes if+then, odd takes not-if+else, mirroring the
+                // standalone if/then/else resolution below — so the `else`
+                // side of every conditional is reachable.
                 $pinned = $plan?->branchFor($pointer . '/allOf');
-                $selected = $conditionals[($pinned ?? $iteration) % count($conditionals)];
-                $schema = self::mergeSchemas($schema, $selected['if']);
-                if (isset($selected['then']) && is_array($selected['then'])) {
-                    $schema = self::mergeSchemas($schema, $selected['then']);
+                $selected = $conditionals[($pinned !== null ? intdiv($pinned, 2) : $iteration) % count($conditionals)];
+                if ($pinned !== null && ($pinned % 2) === 1) {
+                    $schema = self::mergeSchemas($schema, self::mergeSchemas(
+                        ['not' => $selected['if']],
+                        is_array($selected['else'] ?? null) ? $selected['else'] : [],
+                    ));
+                } else {
+                    $schema = self::mergeSchemas($schema, $selected['if']);
+                    if (isset($selected['then']) && is_array($selected['then'])) {
+                        $schema = self::mergeSchemas($schema, $selected['then']);
+                    }
                 }
             }
         }

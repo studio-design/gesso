@@ -1216,6 +1216,58 @@ class SchemaDataGeneratorTest extends TestCase
     }
 
     #[Test]
+    public function max_properties_trimming_spares_pinned_present_properties(): void
+    {
+        $schema = [
+            'type' => 'object',
+            'required' => ['kind'],
+            'maxProperties' => 2,
+            'properties' => [
+                'kind' => ['type' => 'string'],
+                'a' => ['type' => 'integer'],
+                'b' => ['type' => 'string'],
+            ],
+        ];
+
+        // Odd parity includes both optionals; the maxProperties trim must
+        // drop the unpinned one, not the pinned target.
+        $value = SchemaDataGenerator::generateOne(
+            $schema,
+            null,
+            3,
+            new CaseSelectionPlan(['/properties/a' => SchemaChoicePoint::PRESENT]),
+        );
+
+        $this->assertIsArray($value);
+        $this->assertArrayHasKey('a', $value);
+        $this->assertLessThanOrEqual(2, count($value));
+    }
+
+    #[Test]
+    public function pinned_plan_selects_the_else_branch_of_an_all_of_conditional(): void
+    {
+        $schema = [
+            'type' => 'object',
+            'required' => ['kind'],
+            'properties' => ['kind' => ['type' => 'string']],
+            'allOf' => [
+                [
+                    'if' => ['properties' => ['kind' => ['const' => 'a']], 'required' => ['kind']],
+                    'then' => ['properties' => ['kind' => ['const' => 'a']]],
+                    'else' => ['properties' => ['kind' => ['const' => 'b']]],
+                ],
+            ],
+        ];
+
+        // Rotation only ever takes the if+then side of an allOf conditional;
+        // odd pinned branches select the not-if+else side.
+        $value = SchemaDataGenerator::generateOne($schema, null, 0, new CaseSelectionPlan(['/allOf' => 1]));
+
+        $this->assertIsArray($value);
+        $this->assertSame('b', $value['kind']);
+    }
+
+    #[Test]
     public function pinned_plan_reaches_a_nested_choice_point_through_pointers(): void
     {
         $schema = [
