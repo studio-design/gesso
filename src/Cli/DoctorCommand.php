@@ -664,13 +664,42 @@ final class DoctorCommand
      */
     private function inspectSkippedFeatures(array $spec, string $label, array $acknowledgedSchemes, array &$issues): void
     {
-        $schemes = $spec['components']['securitySchemes'] ?? null;
-        if (!is_array($schemes)) {
-            $schemes = [];
+        $components = $spec['components'] ?? null;
+        $schemes = [];
+        if (is_array($components) && array_key_exists('securitySchemes', $components)) {
+            $declared = $components['securitySchemes'];
+            if (!is_array($declared)) {
+                // Runtime validation hard-errors on this node whenever a
+                // security requirement exists. The container is unusable, and
+                // the acknowledged rot checks below would misreport every
+                // name as "not defined" — stop here, mirroring the runtime
+                // is_array guard around its own rot check.
+                $issues[] = $this->issue(
+                    'error',
+                    'structure',
+                    $label,
+                    sprintf('components.securitySchemes must be an object mapping scheme names to definitions, got %s.', get_debug_type($declared)),
+                    null,
+                );
+
+                return;
+            }
+            $schemes = $declared;
         }
 
         foreach ($schemes as $name => $scheme) {
             if (!is_array($scheme)) {
+                // Runtime validation resolves a non-object definition as an
+                // undefined scheme (hard error) when referenced; report the
+                // defect at its definition site.
+                $issues[] = $this->issue(
+                    'error',
+                    'structure',
+                    $label,
+                    sprintf('Security scheme `%s` must be an object, got %s.', (string) $name, get_debug_type($scheme)),
+                    'Fix the definition under components.securitySchemes — a request referencing this scheme fails validation with a hard error.',
+                );
+
                 continue;
             }
             // Partition via the runtime classifier so the doctor and the

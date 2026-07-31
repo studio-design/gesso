@@ -502,6 +502,62 @@ class DoctorCommandTest extends TestCase
     }
 
     #[Test]
+    public function non_object_security_schemes_container_is_a_structure_error(): void
+    {
+        // Runtime validation hard-errors when `components.securitySchemes`
+        // decodes to a non-object and any security requirement exists; the
+        // doctor must not report such a spec as fully compatible. An absent
+        // key stays silent — only a present-but-wrong node is a defect.
+        foreach ([[null, 'null'], ['invalid', 'string']] as [$container, $expectedType]) {
+            $spec = $this->writeSpec("container-{$expectedType}.json", (string) json_encode([
+                'openapi' => '3.1.0',
+                'info' => ['title' => 'Test', 'version' => '1'],
+                'paths' => ['/pets' => ['get' => [
+                    'security' => [['Broken' => []]],
+                    'responses' => ['200' => ['description' => 'ok']],
+                ]]],
+                'components' => ['securitySchemes' => $container],
+            ], JSON_THROW_ON_ERROR));
+
+            $report = $this->runJsonDoctor($spec, $exit);
+
+            $this->assertSame(DoctorCommand::EXIT_DIAGNOSTIC_FAILURE, $exit, $expectedType);
+            $this->assertSame(['error'], array_column($report['issues'], 'severity'), $expectedType);
+            $this->assertSame('structure', $report['issues'][0]['category'], $expectedType);
+            $this->assertStringContainsString('components.securitySchemes must be an object', $report['issues'][0]['message'], $expectedType);
+            $this->assertStringContainsString("got {$expectedType}", $report['issues'][0]['message'], $expectedType);
+        }
+    }
+
+    #[Test]
+    public function non_object_security_scheme_definition_is_a_structure_error(): void
+    {
+        // `Broken: null` / `Str: "invalid"` are resolved as "undefined
+        // scheme" hard errors at runtime when referenced; the doctor reports
+        // them as structure errors at the definition site.
+        $spec = $this->writeSpec('non-object-defs.json', (string) json_encode([
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'Test', 'version' => '1'],
+            'paths' => ['/pets' => ['get' => [
+                'security' => [['Broken' => []]],
+                'responses' => ['200' => ['description' => 'ok']],
+            ]]],
+            'components' => ['securitySchemes' => [
+                'Broken' => null,
+                'Str' => 'invalid',
+            ]],
+        ], JSON_THROW_ON_ERROR));
+
+        $report = $this->runJsonDoctor($spec, $exit);
+
+        $this->assertSame(DoctorCommand::EXIT_DIAGNOSTIC_FAILURE, $exit);
+        $this->assertSame(['error', 'error'], array_column($report['issues'], 'severity'));
+        $this->assertSame(['structure', 'structure'], array_column($report['issues'], 'category'));
+        $this->assertStringContainsString('`Broken` must be an object, got null', $report['issues'][0]['message']);
+        $this->assertStringContainsString('`Str` must be an object, got string', $report['issues'][1]['message']);
+    }
+
+    #[Test]
     public function acknowledging_a_malformed_scheme_does_not_mask_the_error(): void
     {
         // The runtime ignores acknowledgements for malformed definitions (the
