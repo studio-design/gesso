@@ -317,6 +317,97 @@ class OpenApiContractChecksTest extends TestCase
     }
 
     #[Test]
+    public function probes_a_path_whose_only_operation_requires_a_non_json_body(): void
+    {
+        $dispatched = [];
+
+        $summary = OpenApiContractChecks::run('contract-checks', seed: 7)
+            ->checks([ContractCheck::UnsupportedMethod])
+            ->includePaths(['/oauth/token'])
+            ->dispatchUsing(static function (ExploredCase $case) use (&$dispatched): int {
+                $dispatched[] = $case;
+
+                return 405;
+            })
+            ->report();
+
+        // Issue #439: the probe never sends a body, so a documented operation
+        // whose required body is form-encoded (not JSON) must not gate it.
+        $this->assertSame([], $summary->skips);
+        $this->assertCount(1, $dispatched);
+        $this->assertNull($dispatched[0]->body);
+        $this->assertSame([], $dispatched[0]->query);
+        $this->assertSame([], $dispatched[0]->headers);
+        $this->assertNotSame('POST', $dispatched[0]->method->value);
+        $this->assertSame(1, $summary->dispatchedProbes);
+    }
+
+    #[Test]
+    public function generates_path_parameters_even_when_the_documented_body_is_not_json(): void
+    {
+        $uris = [];
+
+        $summary = OpenApiContractChecks::run('contract-checks', seed: 7)
+            ->checks([ContractCheck::UnsupportedMethod])
+            ->includePaths(['/uploads/{uploadId}'])
+            ->dispatchUsing(static function (ExploredCase $case) use (&$uris): int {
+                $uris[] = $case->uri();
+
+                return 405;
+            })
+            ->report();
+
+        $this->assertSame([], $summary->skips);
+        $this->assertCount(1, $uris);
+        $this->assertStringNotContainsString('{uploadId}', $uris[0]);
+    }
+
+    #[Test]
+    public function an_ungeneratable_query_parameter_does_not_gate_the_probe(): void
+    {
+        $dispatched = [];
+
+        $summary = OpenApiContractChecks::run('contract-checks', seed: 7)
+            ->checks([ContractCheck::UnsupportedMethod])
+            ->includePaths(['/search'])
+            ->dispatchUsing(static function (ExploredCase $case) use (&$dispatched): int {
+                $dispatched[] = $case;
+
+                return 405;
+            })
+            ->report();
+
+        // The probe sends no query string, so a required `content`-form query
+        // parameter must not gate probe construction either.
+        $this->assertSame([], $summary->skips);
+        $this->assertCount(1, $dispatched);
+        $this->assertSame([], $dispatched[0]->query);
+    }
+
+    #[Test]
+    public function skips_when_a_path_parameter_cannot_be_generated(): void
+    {
+        $dispatched = 0;
+
+        $summary = OpenApiContractChecks::run('contract-checks', seed: 7)
+            ->checks([ContractCheck::UnsupportedMethod])
+            ->includePaths(['/callbacks/{payload}'])
+            ->dispatchUsing(static function (ExploredCase $case) use (&$dispatched): int {
+                $dispatched++;
+
+                return 405;
+            })
+            ->report();
+
+        // A path parameter the explorer cannot generate is a real inability
+        // to construct the probe URI — the skip must remain.
+        $this->assertSame(0, $dispatched);
+        $this->assertCount(1, $summary->skips);
+        $this->assertSame('/callbacks/{payload}', $summary->skips[0]->path);
+        $this->assertStringContainsString("path parameter 'payload'", $summary->skips[0]->reason);
+    }
+
+    #[Test]
     public function probe_method_is_deterministic_for_a_seed_and_undocumented(): void
     {
         $probeFor = static function (int $seed): string {
