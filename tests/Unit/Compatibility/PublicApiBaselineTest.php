@@ -19,6 +19,7 @@ use Studio\Gesso\Coverage\InvalidThresholdConfigurationException;
 use Studio\Gesso\Coverage\JsonCoverageRenderer;
 use Studio\Gesso\Coverage\JUnitCoverageRenderer;
 use Studio\Gesso\Coverage\MarkdownCoverageRenderer;
+use Studio\Gesso\Exception\EnumBindingReason;
 use Studio\Gesso\Exception\InvalidOpenApiSpecReason;
 use Studio\Gesso\Fuzz\ContractCheck;
 use Studio\Gesso\Fuzz\ContractCheckFailure;
@@ -218,6 +219,16 @@ final class PublicApiBaselineTest extends TestCase
             }
         }
         $expected[InvalidOpenApiSpecReason::class]['cases'] = $reasonCases;
+        $bindingReasonCases = [];
+        foreach ($expected[EnumBindingReason::class]['cases'] as $name => $value) {
+            $bindingReasonCases[$name] = $value;
+            if ($name === 'MalformedJson') {
+                // #433: YAML bound enum files (minor additions).
+                $bindingReasonCases['MalformedYaml'] = null;
+                $bindingReasonCases['YamlLibraryMissing'] = null;
+            }
+        }
+        $expected[EnumBindingReason::class]['cases'] = $bindingReasonCases;
         $expected[OpenApiSpecLoader::class]['constants']['DEFAULT_MAX_REMOTE_REF_BYTES'] = 10_485_760;
         $expected[OpenApiSpecLoader::class]['methods']['configure']['parameters'][] = [
             'name' => 'allowedRemoteRefHosts',

@@ -7,6 +7,7 @@ namespace Studio\Gesso\Schema;
 use const DIRECTORY_SEPARATOR;
 use const E_USER_WARNING;
 use const JSON_THROW_ON_ERROR;
+use const PATHINFO_EXTENSION;
 
 use BackedEnum;
 use JsonException;
@@ -18,7 +19,10 @@ use Studio\Gesso\Exception\EnumBindingReason;
 use Studio\Gesso\Exception\EnumDriftException;
 use Studio\Gesso\Exception\InvalidOpenApiSpecException;
 use Studio\Gesso\Exception\InvalidOpenApiSpecReason;
+use Studio\Gesso\Internal\YamlAvailability;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
+use Symfony\Component\Yaml\Yaml;
+use Throwable;
 
 use function array_filter;
 use function array_map;
@@ -37,6 +41,7 @@ use function is_dir;
 use function is_int;
 use function is_string;
 use function json_decode;
+use function pathinfo;
 use function preg_match;
 use function realpath;
 use function rtrim;
@@ -84,7 +89,7 @@ final class EnumDriftAsserter
      * fire `E_USER_WARNING` (when false) if any drift is detected.
      *
      * Misconfigured bindings (missing attribute, missing file, malformed
-     * JSON, etc.) always throw `EnumBindingException` regardless of
+     * JSON/YAML, etc.) always throw `EnumBindingException` regardless of
      * `$failOnDrift` — those are setup errors, not drift signals.
      *
      * `$enumFqcns` are validated at runtime via `enum_exists()`; the type
@@ -238,7 +243,7 @@ final class EnumDriftAsserter
             throw new EnumBindingException(
                 EnumBindingReason::AttributeMissing,
                 sprintf(
-                    '%s is missing the #[BoundToOpenApiEnum] attribute. Add it with the spec-relative path of the JSON file containing the bound enum array.',
+                    '%s is missing the #[BoundToOpenApiEnum] attribute. Add it with the spec-relative path of the JSON or YAML file containing the bound enum array.',
                     $fqcn,
                 ),
                 enumFqcn: $fqcn,
@@ -396,26 +401,12 @@ final class EnumDriftAsserter
             );
         }
 
-        try {
-            $decoded = json_decode($content, true, 512, JSON_THROW_ON_ERROR);
-        } catch (JsonException $e) {
-            throw new EnumBindingException(
-                EnumBindingReason::MalformedJson,
-                sprintf(
-                    'Failed to parse bound spec file %s: %s',
-                    $absolute,
-                    $e->getMessage(),
-                ),
-                enumFqcn: $fqcn,
-                specPath: $specPath,
-                previous: $e,
-            );
-        }
+        $decoded = self::decodeSpecContent($fqcn, $specPath, $absolute, $content);
 
         if (!is_array($decoded)) {
             throw new EnumBindingException(
                 EnumBindingReason::NonMappingRoot,
-                sprintf('Bound spec file %s must decode to a JSON object', $absolute),
+                sprintf('Bound spec file %s must decode to a mapping (JSON object / YAML mapping)', $absolute),
                 enumFqcn: $fqcn,
                 specPath: $specPath,
             );
@@ -471,6 +462,78 @@ final class EnumDriftAsserter
         }
 
         return $values;
+    }
+
+    /**
+     * Decode the raw bound-file body, picking the parser from the file
+     * extension the way `OpenApiSpecLoader::load()` does for spec documents:
+     * `.yaml` / `.yml` (case-insensitive) decode as YAML through the same
+     * optional `symfony/yaml` dependency, everything else — including
+     * extension-less paths — keeps the historical JSON parse.
+     *
+     * The extension is read from the binding path as written in the
+     * attribute, not from `$absolute`: realpath() resolves within-root
+     * symlinks, so an `alias.json -> target.yaml` link would otherwise
+     * silently switch parsers (or dodge the symfony/yaml gate) based on
+     * the link target. `$absolute` is only for reading and diagnostics.
+     */
+    private static function decodeSpecContent(
+        string $fqcn,
+        string $specPath,
+        string $absolute,
+        string $content,
+    ): mixed {
+        $extension = strtolower(pathinfo($specPath, PATHINFO_EXTENSION));
+        if (!in_array($extension, ['yaml', 'yml'], true)) {
+            try {
+                return json_decode($content, true, 512, JSON_THROW_ON_ERROR);
+            } catch (JsonException $e) {
+                throw new EnumBindingException(
+                    EnumBindingReason::MalformedJson,
+                    sprintf(
+                        'Failed to parse bound spec file %s: %s',
+                        $absolute,
+                        $e->getMessage(),
+                    ),
+                    enumFqcn: $fqcn,
+                    specPath: $specPath,
+                    previous: $e,
+                );
+            }
+        }
+
+        if (!YamlAvailability::isAvailable()) {
+            throw new EnumBindingException(
+                EnumBindingReason::YamlLibraryMissing,
+                sprintf(
+                    'Reading YAML bound spec file %s requires symfony/yaml. '
+                    . 'Install it via: composer require --dev symfony/yaml',
+                    $absolute,
+                ),
+                enumFqcn: $fqcn,
+                specPath: $specPath,
+            );
+        }
+
+        try {
+            return Yaml::parse($content);
+        } catch (Throwable $e) {
+            // Symfony's parser raises non-ParseException classes for some
+            // inputs (e.g. \InvalidArgumentException on malformed Unicode),
+            // so catch broadly — every decode failure of the bound file is
+            // the same misconfiguration category to the caller.
+            throw new EnumBindingException(
+                EnumBindingReason::MalformedYaml,
+                sprintf(
+                    'Failed to parse bound spec file %s: %s',
+                    $absolute,
+                    $e->getMessage(),
+                ),
+                enumFqcn: $fqcn,
+                specPath: $specPath,
+                previous: $e,
+            );
+        }
     }
 
     private static function joinBasePath(string $basePath, string $relativePath): string

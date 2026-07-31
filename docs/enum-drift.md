@@ -30,13 +30,20 @@ enum NotificationCodeEnum: string
 }
 ```
 
-The path is resolved relative to the configured enum root (`OpenApiSpecLoader::getEnumBasePath()`), falling back to the spec root (`OpenApiSpecLoader::getBasePath()`) when the enum-specific root is unset. The bound JSON file must contain an `enum:` array, e.g.:
+The path is resolved relative to the configured enum root (`OpenApiSpecLoader::getEnumBasePath()`), falling back to the spec root (`OpenApiSpecLoader::getBasePath()`) when the enum-specific root is unset. The bound file must contain an `enum:` array, e.g.:
 
 ```json
 {
   "type": "string",
   "enum": ["studioPaymentOld", "studioPaymentNew"]
 }
+```
+
+Both JSON and YAML bound files are supported. The binding path's extension — as written in the attribute — picks the parser: `.yaml` / `.yml` (case-insensitive) decode as YAML — through the same optional `symfony/yaml` dependency the spec loader uses — and every other path, including extension-less ones, is parsed as JSON. Binding a YAML file without `symfony/yaml` installed throws `EnumBindingException` with reason `YamlLibraryMissing`.
+
+```php
+#[BoundToOpenApiEnum('components/schemas/GrantType.yaml')]
+enum GrantType: string { /* ... */ }
 ```
 
 ### Bundled-external enum sources (`enum_spec_base_path`)
@@ -156,7 +163,7 @@ class EnumDriftTest extends TestCase
 
 Failures throw `PHPUnit\Framework\AssertionFailedError` with the same `[OpenAPI Enum Drift] FATAL` block as the static asserter, routed through `Assert::fail()` so PHPUnit's diff-aware reporter picks it up. Stack frames inside this library are filtered out so the failure points at the consumer's test line.
 
-Misconfiguration (`EnumBindingException` — missing `#[BoundToOpenApiEnum]`, spec file not found, malformed JSON, etc.) is **not** wrapped — it bubbles unchanged so the structured `$reason`/`$enumFqcn`/`$specPath` properties stay accessible to downstream tooling.
+Misconfiguration (`EnumBindingException` — missing `#[BoundToOpenApiEnum]`, spec file not found, malformed JSON/YAML, etc.) is **not** wrapped — it bubbles unchanged so the structured `$reason`/`$enumFqcn`/`$specPath` properties stay accessible to downstream tooling.
 
 The static `EnumDriftAsserter::assertNoDrift()` is unchanged. Non-PHPUnit consumers (dedicated drift CI scripts that catch `EnumDriftException` directly) keep working as before.
 
@@ -175,7 +182,7 @@ Each `EnumDriftReport` carries `enumFqcn`, `specPath`, `phpOnly`, and `specOnly`
 
 ## Misconfiguration vs drift
 
-`EnumBindingException` is thrown when the comparison cannot be performed at all — missing `#[BoundToOpenApiEnum]`, target is not a backed enum, spec file not found, malformed JSON, `enum` key missing or not an array, or an `enum` array entry is non-scalar (`null` / `bool` / nested arrays — backed PHP enums can only carry `string` or `int`). `$reason` carries an `EnumBindingReason` enum so you can branch programmatically. These errors fire regardless of `failOnDrift` — they are setup mistakes, not drift signals.
+`EnumBindingException` is thrown when the comparison cannot be performed at all — missing `#[BoundToOpenApiEnum]`, target is not a backed enum, spec file not found, malformed JSON/YAML, YAML binding without `symfony/yaml` installed, `enum` key missing or not an array, or an `enum` array entry is non-scalar (`null` / `bool` / nested arrays — backed PHP enums can only carry `string` or `int`). `$reason` carries an `EnumBindingReason` enum so you can branch programmatically. These errors fire regardless of `failOnDrift` — they are setup mistakes, not drift signals.
 
 ## Auto-discovery via the PHPUnit extension
 
@@ -234,7 +241,6 @@ If `enum_drift_scan_namespaces` resolves but no `#[BoundToOpenApiEnum]`-attribut
 
 ## Known limitations
 
-- **JSON only.** The asserter currently reads the bound enum file with `file_get_contents` + `json_decode`. YAML enum files are not supported in v1; convert them to JSON or extract the enum into a `.json` sidecar.
-- **No `$ref` traversal on the bound file.** Unlike `OpenApiSpecLoader::load()`, the asserter does not resolve `$ref` inside the bound JSON. Bind to the leaf file containing the literal `enum:` array.
-- **`oneOf` enum unions** (e.g., `code: oneOf: [CommonCode, AdminCode]`) are not yet auto-resolved. Bind each PHP enum to its leaf JSON file directly.
+- **No `$ref` traversal on the bound file.** Unlike `OpenApiSpecLoader::load()`, the asserter does not resolve `$ref` inside the bound file. Bind to the leaf file containing the literal `enum:` array.
+- **`oneOf` enum unions** (e.g., `code: oneOf: [CommonCode, AdminCode]`) are not yet auto-resolved. Bind each PHP enum to its leaf file directly.
 - **`x-enum-varnames` / `x-enum-descriptions`** are not validated. Only the `enum` value array is compared.

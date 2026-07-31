@@ -11,6 +11,7 @@ use PHPUnit\Framework\TestCase;
 use Studio\Gesso\Exception\EnumBindingException;
 use Studio\Gesso\Exception\EnumBindingReason;
 use Studio\Gesso\Exception\EnumDriftException;
+use Studio\Gesso\Internal\YamlAvailability;
 use Studio\Gesso\Schema\EnumDriftAsserter;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\EmptySpecEnum;
@@ -21,6 +22,7 @@ use Studio\Gesso\Tests\Unit\Schema\Fixture\IntegerBackedEnum;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\MalformedSpecEnum;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\MatchingEnum;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\NoEnumKeySpecEnum;
+use Studio\Gesso\Tests\Unit\Schema\Fixture\NoExtensionSpecEnum;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\NonScalarSpecValueEnum;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\NotAnEnum;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\PhpExtraEnum;
@@ -28,6 +30,12 @@ use Studio\Gesso\Tests\Unit\Schema\Fixture\PureEnum;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\SpecExtraEnum;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\SpecFileMissingEnum;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\UnattributedEnum;
+use Studio\Gesso\Tests\Unit\Schema\Fixture\UppercaseYamlExtensionEnum;
+use Studio\Gesso\Tests\Unit\Schema\Fixture\YamlMalformedSpecEnum;
+use Studio\Gesso\Tests\Unit\Schema\Fixture\YamlMatchingEnum;
+use Studio\Gesso\Tests\Unit\Schema\Fixture\YamlScalarRootEnum;
+use Studio\Gesso\Tests\Unit\Schema\Fixture\YamlSpecExtraEnum;
+use Studio\Gesso\Tests\Unit\Schema\Fixture\YmlMatchingEnum;
 
 use function file_exists;
 use function file_put_contents;
@@ -53,6 +61,7 @@ class EnumDriftAsserterTest extends TestCase
 
     protected function tearDown(): void
     {
+        YamlAvailability::reset();
         OpenApiSpecLoader::reset();
         parent::tearDown();
     }
@@ -573,6 +582,151 @@ class EnumDriftAsserterTest extends TestCase
             rmdir($enumRoot);
             rmdir($scratchDir);
         }
+    }
+
+    #[Test]
+    public function yaml_bound_file_passes_for_matching_pair(): void
+    {
+        EnumDriftAsserter::assertNoDrift([YamlMatchingEnum::class]);
+
+        $reports = EnumDriftAsserter::detectAll([YamlMatchingEnum::class]);
+        $this->assertCount(1, $reports);
+        $this->assertFalse($reports[0]->hasDrift());
+    }
+
+    #[Test]
+    public function yml_extension_is_parsed_as_yaml(): void
+    {
+        EnumDriftAsserter::assertNoDrift([YmlMatchingEnum::class]);
+
+        $reports = EnumDriftAsserter::detectAll([YmlMatchingEnum::class]);
+        $this->assertFalse($reports[0]->hasDrift());
+    }
+
+    #[Test]
+    public function uppercase_yaml_extension_is_parsed_as_yaml(): void
+    {
+        EnumDriftAsserter::assertNoDrift([UppercaseYamlExtensionEnum::class]);
+
+        $reports = EnumDriftAsserter::detectAll([UppercaseYamlExtensionEnum::class]);
+        $this->assertFalse($reports[0]->hasDrift());
+    }
+
+    #[Test]
+    public function yaml_bound_file_surfaces_spec_only_drift(): void
+    {
+        try {
+            EnumDriftAsserter::assertNoDrift([YamlSpecExtraEnum::class]);
+            $this->fail('expected EnumDriftException');
+        } catch (EnumDriftException $e) {
+            $this->assertSame([], $e->reports[0]->phpOnly);
+            $this->assertSame(['yellow'], $e->reports[0]->specOnly);
+        }
+    }
+
+    #[Test]
+    public function malformed_yaml_throws_binding_exception_with_malformed_yaml_reason(): void
+    {
+        try {
+            EnumDriftAsserter::assertNoDrift([YamlMalformedSpecEnum::class]);
+            $this->fail('expected EnumBindingException');
+        } catch (EnumBindingException $e) {
+            $this->assertSame(EnumBindingReason::MalformedYaml, $e->reason);
+            $this->assertSame('enum-drift/yaml-malformed.yaml', $e->specPath);
+        }
+    }
+
+    #[Test]
+    public function yaml_scalar_root_throws_non_mapping_root(): void
+    {
+        try {
+            EnumDriftAsserter::assertNoDrift([YamlScalarRootEnum::class]);
+            $this->fail('expected EnumBindingException');
+        } catch (EnumBindingException $e) {
+            $this->assertSame(EnumBindingReason::NonMappingRoot, $e->reason);
+        }
+    }
+
+    #[Test]
+    public function yaml_binding_without_symfony_yaml_throws_yaml_library_missing(): void
+    {
+        YamlAvailability::overrideForTesting(false);
+
+        try {
+            EnumDriftAsserter::assertNoDrift([YamlMatchingEnum::class]);
+            $this->fail('expected EnumBindingException');
+        } catch (EnumBindingException $e) {
+            $this->assertSame(EnumBindingReason::YamlLibraryMissing, $e->reason);
+            $this->assertStringContainsString('symfony/yaml', $e->getMessage());
+        } finally {
+            YamlAvailability::reset();
+        }
+    }
+
+    #[Test]
+    public function json_binding_still_resolves_when_symfony_yaml_is_absent(): void
+    {
+        // The optional dependency must stay optional for JSON-only projects:
+        // only bindings that actually point at a YAML file may demand it.
+        YamlAvailability::overrideForTesting(false);
+
+        try {
+            EnumDriftAsserter::assertNoDrift([MatchingEnum::class]);
+        } finally {
+            YamlAvailability::reset();
+        }
+
+        $reports = EnumDriftAsserter::detectAll([MatchingEnum::class]);
+        $this->assertFalse($reports[0]->hasDrift());
+    }
+
+    #[Test]
+    public function parser_follows_the_binding_path_extension_not_the_symlink_target(): void
+    {
+        // A within-root symlink is allowed, but the binding path's extension
+        // — not the realpath()-resolved target's — must pick the parser.
+        // Here matching.json links to a YAML-content .yaml file inside the
+        // root: the .json binding must keep the JSON parser and fail loudly
+        // instead of silently switching to YAML because of the link target.
+        $scratchDir = sys_get_temp_dir() . '/gesso-enum-alias-' . uniqid('', true);
+        $enumDir = $scratchDir . '/enum-drift';
+        $target = $enumDir . '/target.yaml';
+        $link = $enumDir . '/matching.json';
+        mkdir($scratchDir);
+        mkdir($enumDir);
+        file_put_contents($target, "type: string\nenum:\n  - red\n  - green\n  - blue\n");
+        if (!@symlink('target.yaml', $link)) {
+            unlink($target);
+            rmdir($enumDir);
+            rmdir($scratchDir);
+            $this->markTestSkipped('symlinks are unavailable on this platform');
+        }
+
+        try {
+            OpenApiSpecLoader::reset();
+            OpenApiSpecLoader::configure(basePath: $scratchDir, enumBasePath: $scratchDir);
+
+            try {
+                EnumDriftAsserter::assertNoDrift([MatchingEnum::class]);
+                $this->fail('expected EnumBindingException');
+            } catch (EnumBindingException $e) {
+                $this->assertSame(EnumBindingReason::MalformedJson, $e->reason);
+            }
+        } finally {
+            unlink($link);
+            unlink($target);
+            rmdir($enumDir);
+            rmdir($scratchDir);
+        }
+    }
+
+    #[Test]
+    public function extensionless_bound_file_is_still_parsed_as_json(): void
+    {
+        EnumDriftAsserter::assertNoDrift([NoExtensionSpecEnum::class]);
+
+        $reports = EnumDriftAsserter::detectAll([NoExtensionSpecEnum::class]);
+        $this->assertFalse($reports[0]->hasDrift());
     }
 
     #[Test]
