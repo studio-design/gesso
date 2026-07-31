@@ -192,6 +192,114 @@
                 }
             }
         },
+        "/oauth/token": {
+            "post": {
+                "operationId": "issueToken",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "type": "object",
+                                "required": [
+                                    "grant_type"
+                                ],
+                                "properties": {
+                                    "grant_type": {
+                                        "type": "string"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "ok"
+                    }
+                }
+            }
+        },
+        "/uploads/{uploadId}": {
+            "put": {
+                "operationId": "replaceUpload",
+                "parameters": [
+                    {
+                        "name": "uploadId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "minimum": 1
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/octet-stream": {
+                            "schema": {
+                                "type": "string",
+                                "format": "binary"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "ok"
+                    }
+                }
+            }
+        },
+        "/search": {
+            "get": {
+                "operationId": "search",
+                "parameters": [
+                    {
+                        "name": "filter",
+                        "in": "query",
+                        "required": true,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "ok"
+                    }
+                }
+            }
+        },
+        "/callbacks/{payload}": {
+            "get": {
+                "operationId": "showCallback",
+                "parameters": [
+                    {
+                        "name": "payload",
+                        "in": "path",
+                        "required": true,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "ok"
+                    }
+                }
+            }
+        },
         "/things/mine": {
             "get": {
                 "operationId": "getMyThing",

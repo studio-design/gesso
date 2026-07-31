@@ -212,7 +212,10 @@ final class ContractCheckPlan
 
     /**
      * Choose one undocumented explorable method for the path and build the
-     * probe case from a generatable documented operation's concrete values.
+     * probe case from a documented operation's concrete path parameters. The
+     * probe sends no body, query, or headers, so only path-parameter
+     * generatability gates it — a documented operation whose request body or
+     * other inputs cannot be synthesized must not cause a skip (issue #439).
      * `additionalOperations` names are never probed themselves (case-sensitive
      * custom methods), but every declared name counts as documented and is
      * excluded from the candidates.
@@ -272,7 +275,7 @@ final class ContractCheckPlan
         foreach ($matching as $operation) {
             if (HttpMethod::tryFrom($operation->method) === null) {
                 $lastReason ??= sprintf(
-                    'No documented operation with an explorer-supported method (%s) is available to generate concrete request values.',
+                    'No documented operation with an explorer-supported method (%s) is available to generate concrete path parameters.',
                     HttpMethod::listOfValues(),
                 );
 
@@ -280,7 +283,7 @@ final class ContractCheckPlan
             }
 
             try {
-                $cases = OpenApiEndpointExplorer::explore($this->specName, $operation->method, $operation->path, 1, $derivedSeed);
+                $cases = OpenApiEndpointExplorer::exploreUriOnly($this->specName, $operation->method, $operation->path, 1, $derivedSeed);
             } catch (InvalidArgumentException $e) {
                 $lastReason = $e->getMessage();
 
@@ -290,7 +293,7 @@ final class ContractCheckPlan
             }
 
             foreach ($cases as $sourceCase) {
-                $concretePath = $sourceCase->withQuery([])->uri();
+                $concretePath = $sourceCase->uri();
                 $collisions = $this->collidingDocumentedMethods($concretePath, $paths, $candidates);
 
                 $safeCandidates = [];
@@ -329,7 +332,7 @@ final class ContractCheckPlan
             }
         }
 
-        $skips[] = new ContractCheckSkip($check, $path, null, $lastReason ?? 'No documented operation could generate concrete request values.');
+        $skips[] = new ContractCheckSkip($check, $path, null, $lastReason ?? 'No documented operation could generate concrete path parameters.');
 
         return null;
     }

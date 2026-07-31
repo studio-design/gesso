@@ -21,6 +21,7 @@ use ValueError;
 use function array_filter;
 use function array_keys;
 use function array_map;
+use function array_values;
 use function count;
 use function implode;
 use function is_array;
@@ -176,6 +177,55 @@ final class OpenApiEndpointExplorer
         return new ExplorationCases($built);
     }
 
+    /**
+     * Generate cases that carry only concrete path-parameter values — no
+     * body, query, or headers. Contract probes that dispatch a different
+     * method against the path (issue #439) only need a concrete URI, so the
+     * generatability of a documented operation's body, query, and header
+     * inputs must not gate them. Fails loudly only when a required path
+     * parameter cannot be generated — a real inability to construct a URI.
+     *
+     * @internal probe-construction primitive for {@see ContractCheckPlan}, not public API
+     *
+     * @throws InvalidArgumentException when $cases < 1, the spec path is not
+     *                                  found, the operation is not declared,
+     *                                  or a path parameter is not generatable.
+     */
+    public static function exploreUriOnly(
+        string $specName,
+        string $method,
+        string $path,
+        int $cases = 1,
+        ?int $seed = null,
+    ): ExplorationCases {
+        [$spec, $methodEnum, $matchedPath, $pathSpec, $operation] = self::resolveOperationContext($specName, $method, $path, $cases);
+
+        $version = OpenApiVersion::fromSpec($spec);
+        $jsonSchemaDialect = OpenApiSchemaDialect::fromSpec($spec, $version);
+        $pathParameters = array_values(array_filter(
+            ParameterCollector::collect($methodEnum->value, $matchedPath, $pathSpec, $operation)->parameters,
+            static fn(array $p): bool => ($p['in'] ?? null) === 'path',
+        ));
+        self::assertParametersGeneratable($pathParameters, $methodEnum->value, $matchedPath, $specName);
+
+        $faker = SchemaDataGenerator::createFaker($seed);
+        $built = [];
+        for ($i = 0; $i < $cases; $i++) {
+            $built[] = new ExploredCase(
+                body: null,
+                query: [],
+                headers: [],
+                pathParams: self::generateParameterValues($pathParameters, 'path', $version, $jsonSchemaDialect, $faker, $i),
+                method: $methodEnum,
+                matchedPath: $matchedPath,
+                seed: $seed,
+                caseIndex: $i,
+            );
+        }
+
+        return new ExplorationCases($built);
+    }
+
     private static function buildValidCases(
         string $specName,
         string $method,
@@ -183,6 +233,55 @@ final class OpenApiEndpointExplorer
         int $cases,
         ?int $seed,
     ): ExplorationCases {
+        [$spec, $methodEnum, $matchedPath, $pathSpec, $operation] = self::resolveOperationContext($specName, $method, $path, $cases);
+        $methodUpper = $methodEnum->value;
+
+        $version = OpenApiVersion::fromSpec($spec);
+        $jsonSchemaDialect = OpenApiSchemaDialect::fromSpec($spec, $version);
+        $bodySchema = self::extractRequestBodySchema($operation, $version, $methodUpper, $matchedPath, $specName, $jsonSchemaDialect, $spec);
+        /** @var list<array<string, mixed>> $parameters */
+        $parameters = ParameterCollector::collect($methodUpper, $matchedPath, $pathSpec, $operation)->parameters;
+        self::assertParametersGeneratable($parameters, $methodUpper, $matchedPath, $specName);
+
+        $faker = SchemaDataGenerator::createFaker($seed);
+        $built = [];
+        for ($i = 0; $i < $cases; $i++) {
+            $body = $bodySchema !== null ? SchemaDataGenerator::generateOne($bodySchema, $faker, $i) : null;
+            if ($bodySchema !== null) {
+                SchemaValueValidator::assertValid($body, $bodySchema, $i);
+            }
+            $query = self::generateParameterValues($parameters, 'query', $version, $jsonSchemaDialect, $faker, $i);
+            $headers = self::generateParameterValues($parameters, 'header', $version, $jsonSchemaDialect, $faker, $i);
+            $pathParams = self::generateParameterValues($parameters, 'path', $version, $jsonSchemaDialect, $faker, $i);
+            $built[] = new ExploredCase(
+                body: $body,
+                query: $query,
+                headers: $headers,
+                pathParams: $pathParams,
+                method: $methodEnum,
+                matchedPath: $matchedPath,
+                seed: $seed,
+                caseIndex: $i,
+            );
+        }
+
+        return new ExplorationCases($built);
+    }
+
+    /**
+     * Resolve the shared generation context: loaded spec, method enum, spec
+     * path template, path item, and operation node — failing loudly on an
+     * invalid case count, unsupported method, unknown path, or undeclared
+     * operation.
+     *
+     * @return array{0: array<string, mixed>, 1: HttpMethod, 2: string, 3: array<string, mixed>, 4: array<string, mixed>}
+     */
+    private static function resolveOperationContext(
+        string $specName,
+        string $method,
+        string $path,
+        int $cases,
+    ): array {
         if ($cases < 1) {
             throw new InvalidArgumentException(sprintf(
                 'OpenApiEndpointExplorer::explore() requires cases >= 1, got %d.',
@@ -228,36 +327,7 @@ final class OpenApiEndpointExplorer
             ));
         }
 
-        $version = OpenApiVersion::fromSpec($spec);
-        $jsonSchemaDialect = OpenApiSchemaDialect::fromSpec($spec, $version);
-        $bodySchema = self::extractRequestBodySchema($operation, $version, $methodUpper, $matchedPath, $specName, $jsonSchemaDialect, $spec);
-        /** @var list<array<string, mixed>> $parameters */
-        $parameters = ParameterCollector::collect($methodUpper, $matchedPath, $pathSpec, $operation)->parameters;
-        self::assertParametersGeneratable($parameters, $methodUpper, $matchedPath, $specName);
-
-        $faker = SchemaDataGenerator::createFaker($seed);
-        $built = [];
-        for ($i = 0; $i < $cases; $i++) {
-            $body = $bodySchema !== null ? SchemaDataGenerator::generateOne($bodySchema, $faker, $i) : null;
-            if ($bodySchema !== null) {
-                SchemaValueValidator::assertValid($body, $bodySchema, $i);
-            }
-            $query = self::generateParameterValues($parameters, 'query', $version, $jsonSchemaDialect, $faker, $i);
-            $headers = self::generateParameterValues($parameters, 'header', $version, $jsonSchemaDialect, $faker, $i);
-            $pathParams = self::generateParameterValues($parameters, 'path', $version, $jsonSchemaDialect, $faker, $i);
-            $built[] = new ExploredCase(
-                body: $body,
-                query: $query,
-                headers: $headers,
-                pathParams: $pathParams,
-                method: $methodEnum,
-                matchedPath: $matchedPath,
-                seed: $seed,
-                caseIndex: $i,
-            );
-        }
-
-        return new ExplorationCases($built);
+        return [$spec, $methodEnum, $matchedPath, $pathSpec, $operation];
     }
 
     /**
