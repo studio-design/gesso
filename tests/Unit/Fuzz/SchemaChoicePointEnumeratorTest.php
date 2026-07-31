@@ -162,6 +162,40 @@ class SchemaChoicePointEnumeratorTest extends TestCase
     }
 
     #[Test]
+    public function excludes_statically_unreachable_boolean_branches_from_the_one_of_space(): void
+    {
+        $points = SchemaChoicePointEnumerator::enumerate([
+            'type' => 'string',
+            'oneOf' => [true, ['const' => 'x']],
+        ]);
+
+        $this->assertCount(1, $points);
+        $this->assertSame('/oneOf', $points[0]->pointer);
+        // With a `true` sibling no other branch can be the sole match; only
+        // the `true` branch is generatable.
+        $this->assertSame(1, $points[0]->branchCount);
+    }
+
+    #[Test]
+    public function resolves_a_boolean_if_without_recording_a_choice_point(): void
+    {
+        $points = $this->indexByPointer(SchemaChoicePointEnumerator::enumerate([
+            'type' => 'object',
+            'if' => true,
+            'then' => [
+                'required' => ['choice'],
+                'properties' => ['choice' => ['oneOf' => [['type' => 'string'], ['type' => 'integer']]]],
+            ],
+        ]));
+
+        // `if: true` has no else side to choose — the then is unconditional,
+        // and its content is enumerated without an /if ancestor.
+        $this->assertArrayNotHasKey('/if', $points);
+        $this->assertArrayHasKey('/properties/choice/oneOf', $points);
+        $this->assertSame([], $points['/properties/choice/oneOf']->ancestors);
+    }
+
+    #[Test]
     public function records_rediscoveries_with_different_content_as_separate_choice_points(): void
     {
         $schema = [

@@ -13,6 +13,7 @@ use function count;
 use function implode;
 use function in_array;
 use function is_array;
+use function is_bool;
 use function is_int;
 use function is_string;
 use function json_encode;
@@ -104,7 +105,7 @@ final class SchemaChoicePointEnumerator
                 continue;
             }
             if ($keyword === 'if' || $keyword === 'allOf' ||
-                array_filter($value, is_array(...)) !== []) {
+                array_filter($value, static fn(mixed $branch): bool => is_array($branch) || is_bool($branch)) !== []) {
                 $found[] = $keyword;
             }
         }
@@ -162,13 +163,24 @@ final class SchemaChoicePointEnumerator
 
         if ($keywords !== []) {
             $keyword = $keywords[0];
-            /** @var list<array<string, mixed>> $branches */
-            $branches = array_values(array_filter($schema[$keyword], is_array(...)));
+            [$branches, $enumerable] = SchemaDataGenerator::compositionBranchSpace(
+                array_values($schema[$keyword]),
+                $keyword,
+            );
+            if ($enumerable === []) {
+                // No branch is generatable (e.g. every branch is `false`);
+                // the keyword stays unresolved and generation fails its
+                // self-check loudly, mirrored here by not descending.
+                $this->visitAllOfPhase($schema, $pointer, $ancestors, $depth, $probe);
+
+                return;
+            }
+
             $choicePointer = $pointer . '/' . $keyword;
             $this->record(
                 $keyword === 'oneOf' ? SchemaChoicePointKind::OneOf : SchemaChoicePointKind::AnyOf,
                 $choicePointer,
-                count($branches),
+                count($enumerable),
                 $ancestors,
                 $branches,
                 $probe,
@@ -176,10 +188,10 @@ final class SchemaChoicePointEnumerator
 
             $base = $schema;
             unset($base[$keyword]);
-            foreach ($branches as $index => $branch) {
-                $merged = SchemaDataGenerator::mergeSchemas($base, $branch);
+            foreach ($enumerable as $branch => $selected) {
+                $merged = SchemaDataGenerator::applyCompositionBranch($base, $branches, $selected, $keyword);
                 $this->rejectReintroduced($merged, ['oneOf', 'anyOf'], $pointer);
-                $this->visitAllOfPhase($merged, $pointer, [...$ancestors, $choicePointer => $index], $depth, $probe);
+                $this->visitAllOfPhase($merged, $pointer, [...$ancestors, $choicePointer => $branch], $depth, $probe);
             }
 
             return;
@@ -254,6 +266,20 @@ final class SchemaChoicePointEnumerator
      */
     private function visitIfPhase(array $schema, string $pointer, array $ancestors, int $depth, bool $probe): void
     {
+        if (is_bool($schema['if'] ?? null)) {
+            // A boolean if has no branch to choose: `if: true` makes the
+            // then unconditional, `if: false` the else. No choice point.
+            $branchSchema = $schema['if'] === true ? ($schema['then'] ?? null) : ($schema['else'] ?? null);
+            unset($schema['if'], $schema['then'], $schema['else']);
+            if (is_array($branchSchema)) {
+                $schema = SchemaDataGenerator::mergeSchemas($schema, $branchSchema);
+            }
+            $this->rejectReintroduced($schema, ['oneOf', 'anyOf', 'allOf', 'if'], $pointer);
+            $this->visitLeaf($schema, $pointer, $ancestors, $depth, $probe);
+
+            return;
+        }
+
         if (!isset($schema['if']) || !is_array($schema['if'])) {
             $this->visitLeaf($schema, $pointer, $ancestors, $depth, $probe);
 

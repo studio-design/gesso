@@ -472,6 +472,77 @@ final class SchemaDataGenerator
     }
 
     /**
+     * The generatable branch space of a `oneOf`/`anyOf` under a plan. Array
+     * branches and boolean schemas both participate (booleans are valid
+     * Schema Objects in OpenAPI 3.1 / JSON Schema 2020-12); branches that
+     * are statically unreachable do not: `false` never matches a value, and
+     * inside `oneOf` a `true` sibling means no other branch can ever be the
+     * sole match. Excluded branches still take part in exclusivity
+     * suppression via {@see self::applyCompositionBranch()}.
+     *
+     * @param list<mixed> $raw
+     *
+     * @return array{list<mixed>, list<int>} kept branches, enumerable indexes into them
+     */
+    public static function compositionBranchSpace(array $raw, string $keyword): array
+    {
+        $branches = array_values(array_filter(
+            $raw,
+            static fn(mixed $branch): bool => is_array($branch) || is_bool($branch),
+        ));
+
+        $hasTrue = in_array(true, $branches, true);
+        $enumerable = [];
+        foreach ($branches as $index => $branch) {
+            if ($branch === false) {
+                continue;
+            }
+            if ($keyword === 'oneOf' && $hasTrue && $branch !== true) {
+                continue;
+            }
+            $enumerable[] = $index;
+        }
+
+        return [$branches, $enumerable];
+    }
+
+    /**
+     * Materialise one branch of a planned `oneOf`/`anyOf` choice: the
+     * selected branch's assertions merged in and, for `oneOf`, every sibling
+     * suppressed through a single `not`/`anyOf` so the value matches exactly
+     * one branch by construction. Shared with the enumerator so descent and
+     * generation see identical views.
+     *
+     * @param array<string, mixed> $schema node with the composition keyword removed
+     * @param list<mixed> $branches
+     *
+     * @return array<string, mixed>
+     */
+    public static function applyCompositionBranch(array $schema, array $branches, int $selected, string $keyword): array
+    {
+        $branch = $branches[$selected];
+        if (is_array($branch)) {
+            $schema = self::mergeSchemas($schema, $branch);
+        }
+
+        if ($keyword !== 'oneOf') {
+            return $schema;
+        }
+
+        $siblings = [];
+        foreach ($branches as $index => $sibling) {
+            if ($index !== $selected && $sibling !== false) {
+                $siblings[] = $sibling;
+            }
+        }
+        if ($siblings !== []) {
+            $schema = self::mergeSchemas($schema, ['not' => ['anyOf' => $siblings]]);
+        }
+
+        return $schema;
+    }
+
+    /**
      * Recognise an `if` of the shape `{properties: {p: s}, required: [p]}`
      * with no other assertions, and return `[p, s]`; null otherwise.
      *
@@ -1050,7 +1121,17 @@ final class SchemaDataGenerator
             }
         }
 
-        if (isset($schema['if']) && is_array($schema['if'])) {
+        if ($plan !== null && is_bool($schema['if'] ?? null)) {
+            // Boolean Schema Objects (OpenAPI 3.1 / JSON Schema 2020-12):
+            // `if: true` makes the then unconditional, `if: false` the else
+            // — there is no branch to choose. Plan-less rotation keeps its
+            // historical output and ignores boolean ifs.
+            $branchSchema = $schema['if'] === true ? ($schema['then'] ?? null) : ($schema['else'] ?? null);
+            unset($schema['if'], $schema['then'], $schema['else']);
+            if (is_array($branchSchema)) {
+                $schema = self::mergeSchemas($schema, $branchSchema);
+            }
+        } elseif (isset($schema['if']) && is_array($schema['if'])) {
             $pinned = $plan?->branchFor($pointer . '/if');
             $useThen = (($pinned ?? $iteration) % 2) === 0;
             $conditional = $useThen
@@ -1086,14 +1167,27 @@ final class SchemaDataGenerator
             if (!isset($schema[$keyword]) || !is_array($schema[$keyword]) || $schema[$keyword] === []) {
                 continue;
             }
-            $branches = array_values(array_filter($schema[$keyword], is_array(...)));
-            if ($branches === []) {
+
+            if ($plan === null) {
+                // Documented rotation: array branches only, no exclusivity
+                // suppression, historical output bit-for-bit.
+                $branches = array_values(array_filter($schema[$keyword], is_array(...)));
+                if ($branches === []) {
+                    continue;
+                }
+                unset($schema[$keyword]);
+                $schema = self::mergeSchemas($schema, $branches[$iteration % count($branches)]);
+                break;
+            }
+
+            [$branches, $enumerable] = self::compositionBranchSpace(array_values($schema[$keyword]), $keyword);
+            if ($enumerable === []) {
                 continue;
             }
             unset($schema[$keyword]);
-            $pinned = $plan?->branchFor($pointer . '/' . $keyword);
-            $index = ($pinned ?? $iteration) % count($branches);
-            $schema = self::mergeSchemas($schema, $branches[$index]);
+            $pinned = $plan->branchFor($pointer . '/' . $keyword);
+            $selected = $enumerable[($pinned ?? $iteration) % count($enumerable)];
+            $schema = self::applyCompositionBranch($schema, $branches, $selected, $keyword);
             break;
         }
 

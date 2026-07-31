@@ -454,6 +454,53 @@ class BranchCompleteCaseGeneratorTest extends TestCase
     }
 
     #[Test]
+    public function generates_valid_values_for_a_one_of_with_a_boolean_true_branch(): void
+    {
+        // OpenAPI 3.1 admits boolean Schema Objects. With a `true` sibling,
+        // no other oneOf branch can ever be the sole match, so the valid
+        // values are exactly those matching nothing else — here, any string
+        // except `x`.
+        $cases = BranchCompleteCaseGenerator::generate([
+            'type' => 'string',
+            'oneOf' => [true, ['const' => 'x']],
+        ], seed: 1);
+
+        $this->assertNotSame([], $cases);
+        foreach ($cases as $case) {
+            $this->assertIsString($case->value);
+            $this->assertNotSame('x', $case->value);
+        }
+    }
+
+    #[Test]
+    public function applies_a_boolean_true_if_and_covers_its_then_choice_points(): void
+    {
+        // `if: true` makes the `then` unconditional; ignoring it generates an
+        // empty object that fails the self-check, and the choice point inside
+        // the `then` would never be covered.
+        $schema = [
+            'type' => 'object',
+            'if' => true,
+            'then' => [
+                'required' => ['choice'],
+                'properties' => ['choice' => ['oneOf' => [['type' => 'string'], ['type' => 'integer']]]],
+            ],
+        ];
+
+        $sawString = false;
+        $sawInteger = false;
+        foreach (BranchCompleteCaseGenerator::generate($schema, seed: 1) as $case) {
+            $this->assertIsArray($case->value);
+            $this->assertArrayHasKey('choice', $case->value);
+            $sawString = $sawString || is_string($case->value['choice']);
+            $sawInteger = $sawInteger || is_int($case->value['choice']);
+        }
+
+        $this->assertTrue($sawString, 'no case pinned the string branch under the unconditional then');
+        $this->assertTrue($sawInteger, 'no case pinned the integer branch under the unconditional then');
+    }
+
+    #[Test]
     public function covers_the_none_match_state_when_it_is_reachable(): void
     {
         $schema = [
