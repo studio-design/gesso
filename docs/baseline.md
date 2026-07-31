@@ -75,7 +75,7 @@ versa.
 Under paratest or Pest `--parallel`, each worker sees only its slice of the
 suite, so no single worker may write the baseline file. Generation instead
 follows the same two-step workflow as [parallel coverage](parallel.md): each
-worker stages its collected fingerprints in its sidecar (envelope v3), and
+worker stages its collected fingerprints in its sidecar (envelope v5), and
 the merge step unions them into the committed file:
 
 ```bash
