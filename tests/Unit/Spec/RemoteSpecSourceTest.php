@@ -83,6 +83,29 @@ final class RemoteSpecSourceTest extends TestCase
     }
 
     #[Test]
+    public function redacts_fragment_contents_in_rejection_messages(): void
+    {
+        try {
+            new RemoteSpecSource('https://specs.example.com/openapi.json#access_token=top-secret');
+            $this->fail('expected InvalidArgumentException');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringNotContainsString('top-secret', $e->getMessage());
+            $this->assertStringContainsString('https://specs.example.com/openapi.json#[redacted]', $e->getMessage());
+        }
+    }
+
+    #[Test]
+    public function redacts_fragment_contents_in_non_http_rejection_messages(): void
+    {
+        try {
+            new RemoteSpecSource('ftp://specs.example.com/openapi.json#access_token=top-secret');
+            $this->fail('expected InvalidArgumentException');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringNotContainsString('top-secret', $e->getMessage());
+        }
+    }
+
+    #[Test]
     public function rejects_empty_authorization_env_name(): void
     {
         $this->expectException(InvalidArgumentException::class);

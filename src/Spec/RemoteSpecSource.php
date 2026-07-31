@@ -14,7 +14,9 @@ use function preg_match;
 use function sprintf;
 use function str_contains;
 use function str_starts_with;
+use function strpos;
 use function strtolower;
+use function substr;
 use function trim;
 
 /**
@@ -61,6 +63,14 @@ final readonly class RemoteSpecSource
         $host = parse_url($url, PHP_URL_HOST);
         $hasFragment = str_contains($url, '#');
         $safeUrl = HttpRefLoader::redactSensitiveUrlData($url);
+        // The shared redaction keeps fragments because $ref diagnostics
+        // need their JSON pointers, but an entry URL's fragment is rejected
+        // wholesale and may carry an OAuth-style token — hide its content
+        // and show only that one was present.
+        $fragmentStart = strpos($safeUrl, '#');
+        if ($fragmentStart !== false) {
+            $safeUrl = substr($safeUrl, 0, $fragmentStart) . '#[redacted]';
+        }
         $url = $safeUrl;
 
         if (!$isHttp) {
