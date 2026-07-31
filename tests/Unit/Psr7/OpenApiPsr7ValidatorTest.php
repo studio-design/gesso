@@ -153,6 +153,21 @@ final class OpenApiPsr7ValidatorTest extends TestCase
     }
 
     #[Test]
+    public function validates_the_parsed_query_map_when_it_diverges_from_the_uri(): void
+    {
+        // PSR-7 allows withQueryParams() to diverge from the URI; the parsed
+        // map is what the application saw, so the URI's valid value must not
+        // mask the parsed map's invalid one.
+        $request = (new ServerRequest('GET', 'https://example.test/filter?role=owner'))
+            ->withQueryParams(['role' => 'bogus']);
+
+        $result = $this->validator->validateRequest($request);
+
+        $this->assertFalse($result->isValid());
+        $this->assertStringContainsString('query.role/0', $result->errorMessage());
+    }
+
+    #[Test]
     public function reports_genuine_violations_in_non_exploded_query_arrays(): void
     {
         $request = new Request('GET', 'https://example.test/filter?role=owner,bogus');

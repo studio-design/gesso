@@ -188,14 +188,39 @@ class QueryStyleDeserializerTest extends TestCase
     }
 
     #[Test]
-    public function raw_pipe_delimited_split_preserves_percent_encoded_pipe_in_data(): void
+    public function raw_pipe_delimited_splits_on_encoded_and_literal_pipe(): void
     {
+        // The OAS Style Examples (3.0.4+/3.1.2+/3.2.0) serialize the
+        // pipeDelimited delimiter percent-encoded — `color=blue%7Cblack%7Cbrown`
+        // — because `|` is not a legal query character, though clients also
+        // send it literally. Both must split; a pipe *inside* a value is
+        // consequently unrepresentable (undefined per OAS Appendix E).
         $param = ['name' => 'v', 'in' => 'query', 'style' => 'pipeDelimited'];
         $schema = ['type' => 'array', 'items' => ['type' => 'string']];
 
         $this->assertSame(
-            ['a|b', 'c'],
-            QueryStyleDeserializer::deserialize('a|b|c', $param, $schema, rawValue: 'a%7Cb|c'),
+            ['blue', 'black', 'brown'],
+            QueryStyleDeserializer::deserialize('blue|black|brown', $param, $schema, rawValue: 'blue%7Cblack%7Cbrown'),
+        );
+        $this->assertSame(
+            ['a', 'b', 'c'],
+            QueryStyleDeserializer::deserialize('a|b|c', $param, $schema, rawValue: 'a%7cb|c'),
+        );
+    }
+
+    #[Test]
+    public function raw_value_is_ignored_when_it_diverges_from_the_parsed_value(): void
+    {
+        // PSR-7 explicitly allows getQueryParams() to be out of sync with the
+        // URI (withQueryParams() does not update it). The parsed map is what
+        // the application saw, so a raw value that does not decode to the
+        // parsed value must not override it.
+        $param = ['name' => 'role', 'in' => 'query', 'style' => 'form', 'explode' => false];
+        $schema = ['type' => 'array', 'items' => ['type' => 'string']];
+
+        $this->assertSame(
+            ['bogus', 'x'],
+            QueryStyleDeserializer::deserialize('bogus,x', $param, $schema, rawValue: 'owner%2Cadmin,member'),
         );
     }
 

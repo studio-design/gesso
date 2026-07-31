@@ -245,6 +245,54 @@ class QueryParameterValidatorTest extends TestCase
     }
 
     #[Test]
+    public function validate_splits_standard_percent_encoded_pipe_delimiters(): void
+    {
+        // OAS Style Examples serialize the pipeDelimited delimiter as %7C.
+        $parameters = [[
+            'name' => 'ids',
+            'in' => 'query',
+            'style' => 'pipeDelimited',
+            'schema' => ['type' => 'array', 'items' => ['type' => 'integer']],
+        ]];
+
+        $errors = $this->validator->validate(
+            'GET',
+            '/pets',
+            $parameters,
+            ['ids' => '3|5|7'],
+            OpenApiVersion::V3_1,
+            rawQueryString: 'ids=3%7C5%7C7',
+        );
+
+        $this->assertSame([], $errors);
+    }
+
+    #[Test]
+    public function validate_uses_parsed_value_when_raw_query_string_diverges(): void
+    {
+        // PSR-7 allows the parsed query map to diverge from the URI; the
+        // parsed map is what the application saw and must win.
+        $parameters = [[
+            'name' => 'role',
+            'in' => 'query',
+            'explode' => false,
+            'schema' => ['type' => 'array', 'items' => ['enum' => ['owner', 'admin']]],
+        ]];
+
+        $errors = $this->validator->validate(
+            'GET',
+            '/members',
+            $parameters,
+            ['role' => 'bogus'],
+            OpenApiVersion::V3_1,
+            rawQueryString: 'role=owner',
+        );
+
+        $this->assertCount(1, $errors);
+        $this->assertStringContainsString('[query.role/0]', $errors[0]->message);
+    }
+
+    #[Test]
     public function validate_falls_back_to_decoded_split_without_raw_query_string(): void
     {
         // Direct callers that don't supply the raw query string keep the
