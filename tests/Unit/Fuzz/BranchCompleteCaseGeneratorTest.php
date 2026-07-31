@@ -422,6 +422,38 @@ class BranchCompleteCaseGeneratorTest extends TestCase
     }
 
     #[Test]
+    public function preserves_a_base_not_across_a_boolean_not_merge(): void
+    {
+        // `not: false` in the else is a semantic no-op (2020-12 boolean
+        // schema); it must not displace the base exclusion of `forbidden`.
+        $schema = [
+            'type' => 'object',
+            'required' => ['kind'],
+            'properties' => ['kind' => [
+                'type' => 'string',
+                'enum' => ['other', 'forbidden', 'cat'],
+                'not' => ['const' => 'forbidden'],
+            ]],
+            'allOf' => [
+                [
+                    'if' => ['properties' => ['kind' => ['const' => 'cat']], 'required' => ['kind']],
+                    'then' => ['required' => ['meow'], 'properties' => ['meow' => ['type' => 'string']]],
+                    'else' => ['properties' => ['kind' => ['not' => false]]],
+                ],
+            ],
+        ];
+
+        $kinds = [];
+        foreach (BranchCompleteCaseGenerator::generate($schema, seed: 1) as $case) {
+            $this->assertIsArray($case->value);
+            $kinds[$case->value['kind']] = true;
+        }
+
+        $this->assertArrayHasKey('other', $kinds, 'the none-match state lost the base not to a boolean no-op');
+        $this->assertArrayNotHasKey('forbidden', $kinds);
+    }
+
+    #[Test]
     public function covers_the_none_match_state_when_it_is_reachable(): void
     {
         $schema = [

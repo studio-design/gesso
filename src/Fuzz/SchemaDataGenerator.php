@@ -29,6 +29,7 @@ use function implode;
 use function in_array;
 use function intdiv;
 use function is_array;
+use function is_bool;
 use function is_float;
 use function is_int;
 use function is_string;
@@ -420,9 +421,19 @@ final class SchemaDataGenerator
         // `not` is an assertion like the bound keywords below: both sides
         // must keep holding after a merge — ¬A ∧ ¬B ⟺ ¬(anyOf [A, B]).
         // Plain array_merge would let the right side displace the left and
-        // silently widen the admissible domain.
-        if (is_array($left['not'] ?? null) && is_array($right['not'] ?? null) && $left['not'] !== $right['not']) {
-            $merged['not'] = ['anyOf' => [$left['not'], $right['not']]];
+        // silently widen the admissible domain. Operands may be JSON Schema
+        // 2020-12 booleans, which conjoin by identity: `not: false` matches
+        // everything (neutral), `not: true` matches nothing (absorbing).
+        $leftNot = $left['not'] ?? null;
+        $rightNot = $right['not'] ?? null;
+        if ((is_array($leftNot) || is_bool($leftNot)) && (is_array($rightNot) || is_bool($rightNot))) {
+            $merged['not'] = match (true) {
+                $leftNot === false => $rightNot,
+                $rightNot === false => $leftNot,
+                $leftNot === true || $rightNot === true => true,
+                $leftNot === $rightNot => $leftNot,
+                default => ['anyOf' => [$leftNot, $rightNot]],
+            };
         }
         if (isset($left['minimum'], $right['minimum'])) {
             $merged['minimum'] = max($left['minimum'], $right['minimum']);

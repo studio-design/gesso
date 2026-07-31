@@ -1342,6 +1342,26 @@ class SchemaDataGeneratorTest extends TestCase
     }
 
     #[Test]
+    public function merge_treats_boolean_not_schemas_as_conjunction_operands(): void
+    {
+        // JSON Schema 2020-12 booleans: `not: false` is a no-op (nothing
+        // matches false), `not: true` rejects everything. Neither may
+        // displace or be displaced by a real exclusion.
+        $exclusion = ['const' => 'forbidden'];
+
+        $this->assertSame(
+            $exclusion,
+            SchemaDataGenerator::mergeSchemas(['not' => $exclusion], ['not' => false])['not'],
+        );
+        $this->assertSame(
+            $exclusion,
+            SchemaDataGenerator::mergeSchemas(['not' => false], ['not' => $exclusion])['not'],
+        );
+        $this->assertTrue(SchemaDataGenerator::mergeSchemas(['not' => $exclusion], ['not' => true])['not']);
+        $this->assertFalse(SchemaDataGenerator::mergeSchemas(['not' => false], ['not' => false])['not']);
+    }
+
+    #[Test]
     public function planned_enum_generation_filters_values_excluded_by_not(): void
     {
         // Rotation alone cannot escape a long excluded prefix; the planned
