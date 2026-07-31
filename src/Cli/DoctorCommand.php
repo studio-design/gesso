@@ -673,8 +673,15 @@ final class DoctorCommand
                 continue;
             }
             $type = $scheme['type'] ?? null;
-            $isUnsupportedHttp = $type === 'http' && ($scheme['scheme'] ?? null) !== 'bearer';
-            if (!in_array($type, ['oauth2', 'openIdConnect', 'mutualTLS'], true) && !$isUnsupportedHttp) {
+            if (!is_string($type)) {
+                continue;
+            }
+            // Partition via the runtime classifier so the doctor and the
+            // validator cannot disagree — e.g. `scheme: Bearer` is enforced
+            // bearer auth (RFC 7235 case-insensitive), not a skipped feature,
+            // and malformed definitions surface as runtime hard errors rather
+            // than skipped features.
+            if (SecurityValidator::classifyScheme($scheme)->kind !== SchemeKind::Unsupported) {
                 continue;
             }
             if (in_array((string) $name, $acknowledgedSchemes, true)) {
@@ -760,7 +767,12 @@ final class DoctorCommand
             'specs' => $specs,
             'issues' => $issues,
             'phpunit' => ($options['phpunit_snippet'] ?? false)
-                ? $this->phpunitSnippet($specs, $options['strip_prefixes'] ?? [], $options['local_ref_root'] ?? null)
+                ? $this->phpunitSnippet(
+                    $specs,
+                    $options['strip_prefixes'] ?? [],
+                    $options['local_ref_root'] ?? null,
+                    $options['acknowledged_unvalidatable_schemes'] ?? [],
+                )
                 : null,
         ];
     }
@@ -799,8 +811,9 @@ final class DoctorCommand
     /**
      * @param list<SpecResult> $specs
      * @param list<string> $stripPrefixes
+     * @param list<string> $acknowledgedSchemes
      */
-    private function phpunitSnippet(array $specs, array $stripPrefixes, ?string $localRefRoot): ?string
+    private function phpunitSnippet(array $specs, array $stripPrefixes, ?string $localRefRoot, array $acknowledgedSchemes): ?string
     {
         if ($specs === []) {
             return null;
@@ -822,12 +835,15 @@ final class DoctorCommand
         $basePath = htmlspecialchars($basePath, ENT_XML1 | ENT_QUOTES, 'UTF-8');
         $names = htmlspecialchars($names, ENT_XML1 | ENT_QUOTES, 'UTF-8');
         $prefixLine = $prefixes === '' ? '' : "\n        <parameter name=\"strip_prefixes\" value=\"" . htmlspecialchars($prefixes, ENT_XML1 | ENT_QUOTES, 'UTF-8') . '"/>';
+        $acknowledgedLine = $acknowledgedSchemes === []
+            ? ''
+            : "\n        <parameter name=\"acknowledged_unvalidatable_schemes\" value=\"" . htmlspecialchars(implode(',', $acknowledgedSchemes), ENT_XML1 | ENT_QUOTES, 'UTF-8') . '"/>';
 
         return <<<XML
             <extensions>
                 <bootstrap class="Studio\Gesso\PHPUnit\OpenApiCoverageExtension">
                     <parameter name="spec_base_path" value="{$basePath}"/>
-                    <parameter name="specs" value="{$names}"/>{$prefixLine}
+                    <parameter name="specs" value="{$names}"/>{$prefixLine}{$acknowledgedLine}
                 </bootstrap>
             </extensions>
             XML;

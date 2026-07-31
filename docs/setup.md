@@ -662,7 +662,7 @@ return [
 Notes:
 
 - **Scheme-scoped, not global**: only the listed scheme names stop warning. Any other unvalidatable scheme — including one added to the spec later — still warns.
-- **The list cannot rot**: acknowledging a name that is not defined in `components.securitySchemes`, or one the validator *can* enforce (`http` + `bearer`, `apiKey`), itself emits a one-shot `[security]` warning.
+- **The list cannot rot**: acknowledging a name that is not defined in `components.securitySchemes`, or one the validator *can* enforce (`http` + `bearer`, `apiKey`), itself emits a one-shot warning. These rot warnings carry the `[Gesso]` prefix (not `[security]`) — route them accordingly in a prefix-matching error handler.
 - **Validation behavior is unchanged**: acknowledged schemes were already silently passed; the acknowledgement only silences the warning.
 - `gesso doctor` reflects the acknowledgement via `--acknowledge-unvalidatable-scheme` — see [the doctor guide](doctor.md#acknowledged-unvalidatable-security-schemes).
 

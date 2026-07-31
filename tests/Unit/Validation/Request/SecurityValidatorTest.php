@@ -973,6 +973,56 @@ class SecurityValidatorTest extends TestCase
     }
 
     #[Test]
+    public function rot_is_checked_even_when_spec_has_no_security_left(): void
+    {
+        // Removing a scheme together with every `security` declaration must
+        // not silence the rot check — otherwise a stale acknowledgement
+        // survives exactly the cleanup that made it stale.
+        AcknowledgedSecuritySchemes::configure(['Ghost']);
+
+        [$errors, $warnings] = $this->validateCapturingWarnings('GET', '/pets', [], []);
+
+        $this->assertSame([], $errors);
+        $this->assertCount(1, $warnings);
+        $this->assertStringContainsString("acknowledged security scheme 'Ghost'", $warnings[0]);
+        $this->assertStringContainsString('not defined in components.securitySchemes', $warnings[0]);
+    }
+
+    #[Test]
+    public function rot_checks_are_order_independent_across_specs(): void
+    {
+        // A suite validating multiple specs with a shared acknowledged list
+        // must report rot no matter which spec reaches security validation
+        // first: a name that is legitimately acknowledged in one spec can
+        // still be validatable (or absent) in another.
+        AcknowledgedSecuritySchemes::configure(['Auth']);
+
+        $specUnsupported = [
+            'components' => [
+                'securitySchemes' => [
+                    'Auth' => ['type' => 'oauth2', 'flows' => []],
+                ],
+            ],
+        ];
+        $specBearer = [
+            'components' => [
+                'securitySchemes' => [
+                    'Auth' => ['type' => 'http', 'scheme' => 'bearer'],
+                ],
+            ],
+        ];
+        $operation = ['security' => [['Auth' => []]]];
+
+        [, $first] = $this->validateCapturingWarnings('GET', '/v1/a', $specUnsupported, $operation);
+        $this->assertSame([], $first, 'legitimately acknowledged scheme must stay silent');
+
+        [, $second] = $this->validateCapturingWarnings('GET', '/v1/b', $specBearer, $operation);
+        $this->assertCount(1, $second);
+        $this->assertStringContainsString("acknowledged security scheme 'Auth'", $second[0]);
+        $this->assertStringContainsString('can enforce', $second[0]);
+    }
+
+    #[Test]
     public function reset_warning_state_also_resets_acknowledgement_rot_dedup(): void
     {
         AcknowledgedSecuritySchemes::configure(['Ghost']);

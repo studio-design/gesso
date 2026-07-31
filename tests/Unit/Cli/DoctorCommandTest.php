@@ -413,6 +413,91 @@ class DoctorCommandTest extends TestCase
     }
 
     #[Test]
+    public function http_bearer_with_uppercase_scheme_is_not_reported_as_skipped(): void
+    {
+        // RFC 7235 §2.1: HTTP auth scheme names are case-insensitive, and the
+        // runtime classifies `scheme: Bearer` as enforceable bearer auth. The
+        // doctor must use the same classification — a case-sensitive compare
+        // would report an enforced scheme as a skipped feature.
+        $spec = $this->writeSpec('caps-bearer.json', (string) json_encode([
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'Test', 'version' => '1'],
+            'paths' => ['/pets' => ['get' => ['responses' => ['200' => ['description' => 'ok']]]]],
+            'components' => ['securitySchemes' => [
+                'CapsBearer' => ['type' => 'http', 'scheme' => 'Bearer'],
+            ]],
+        ], JSON_THROW_ON_ERROR));
+
+        $report = $this->runJsonDoctor($spec, $exit);
+
+        $this->assertSame(DoctorCommand::EXIT_OK, $exit);
+        $this->assertSame('ok', $report['status']);
+        $this->assertSame([], $report['issues']);
+    }
+
+    #[Test]
+    public function acknowledging_an_uppercase_bearer_scheme_warns_without_contradicting_skipped_output(): void
+    {
+        // The acknowledged rot check already classifies via the runtime rules,
+        // so an acknowledged `scheme: Bearer` must produce exactly one signal:
+        // the "can enforce" configuration warning — not an additional
+        // "not enforced — acknowledged" skipped entry for the same scheme.
+        $spec = $this->writeSpec('ack-caps-bearer.json', (string) json_encode([
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'Test', 'version' => '1'],
+            'paths' => ['/pets' => ['get' => ['responses' => ['200' => ['description' => 'ok']]]]],
+            'components' => ['securitySchemes' => [
+                'CapsBearer' => ['type' => 'http', 'scheme' => 'Bearer'],
+            ]],
+        ], JSON_THROW_ON_ERROR));
+        $output = '';
+        $command = new DoctorCommand(stdoutWriter: static function (string $message) use (&$output): void {
+            $output .= $message;
+        });
+
+        $exit = $command->run([
+            'specs' => [$spec],
+            'format' => 'json',
+            'acknowledged_unvalidatable_schemes' => ['CapsBearer'],
+        ]);
+        $report = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(DoctorCommand::EXIT_OK, $exit);
+        $this->assertCount(1, $report['issues']);
+        $this->assertSame('warning', $report['issues'][0]['severity']);
+        $this->assertSame('configuration', $report['issues'][0]['category']);
+        $this->assertStringContainsString('can enforce', $report['issues'][0]['message']);
+    }
+
+    #[Test]
+    public function phpunit_snippet_includes_acknowledged_schemes_parameter(): void
+    {
+        // The "Equivalent PHPUnit configuration" must reproduce the doctor
+        // invocation: dropping the acknowledgement from the snippet would
+        // silently re-enable the warnings the user just scoped out. The `&`
+        // in the name pins XML escaping.
+        $spec = $this->writeSpec('snippet.json', $this->validSpec('/pets'));
+        $output = '';
+        $command = new DoctorCommand(stdoutWriter: static function (string $message) use (&$output): void {
+            $output .= $message;
+        });
+
+        $exit = $command->run([
+            'specs' => [$spec],
+            'format' => 'json',
+            'phpunit_snippet' => true,
+            'acknowledged_unvalidatable_schemes' => ['ClientBasicAuth', 'A&B'],
+        ]);
+        $report = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(DoctorCommand::EXIT_OK, $exit);
+        $this->assertStringContainsString(
+            '<parameter name="acknowledged_unvalidatable_schemes" value="ClientBasicAuth,A&amp;B"/>',
+            $report['phpunit'],
+        );
+    }
+
+    #[Test]
     public function rejects_malformed_response_objects_instead_of_counting_them(): void
     {
         $spec = $this->writeSpec('response-null.json', $this->specWithResponse(null));

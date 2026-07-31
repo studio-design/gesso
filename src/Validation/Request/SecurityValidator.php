@@ -155,6 +155,17 @@ final class SecurityValidator
         array $queryParams,
         array $cookies,
     ): array {
+        // Rot checks for the acknowledged-scheme list run before every early
+        // return below: a spec that dropped both the scheme and its
+        // `security` declarations must still report the stale acknowledgement
+        // (issue #445 — "the list cannot rot"). A present-but-malformed
+        // securitySchemes node is skipped here; its hard error below is the
+        // loud signal for that defect.
+        $declaredSchemes = $spec['components']['securitySchemes'] ?? [];
+        if (is_array($declaredSchemes)) {
+            self::warnAcknowledgementRot($declaredSchemes, $method, $matchedPath);
+        }
+
         $security = array_key_exists('security', $operation)
             ? $operation['security']
             : ($spec['security'] ?? null);
@@ -195,8 +206,6 @@ final class SecurityValidator
                 )),
             ];
         }
-
-        self::warnAcknowledgementRot($schemes, $method, $matchedPath);
 
         $normalizedHeaders = HeaderNormalizer::normalize($headers);
 
@@ -432,10 +441,13 @@ final class SecurityValidator
      * (looking like it works) and a stale entry would survive a scheme's
      * upgrade to a validatable type.
      *
-     * Checks run against the spec of the current validate() call and are
-     * dedup'd per acknowledged name for the process, so a suite validating
-     * multiple specs checks each name against the first spec that reaches
-     * security validation. Malformed definitions are deliberately not
+     * Checks run against the spec of every validate() call — including calls
+     * where the operation declares no `security` at all — and are dedup'd per
+     * (acknowledged name, check outcome) for the process. Keying the dedup by
+     * outcome rather than by name alone keeps multi-spec suites
+     * order-independent: a name that is legitimately acknowledged in the
+     * first spec but validatable (or absent) in another still warns whichever
+     * spec is validated first. Malformed definitions are deliberately not
      * reported here — the hard error from the reference site is the loud
      * signal for those.
      *
@@ -448,13 +460,13 @@ final class SecurityValidator
     private static function warnAcknowledgementRot(array $schemes, string $method, string $matchedPath): void
     {
         foreach (AcknowledgedSecuritySchemes::names() as $acknowledgedName) {
-            if (isset(self::$checkedAcknowledgedNames[$acknowledgedName])) {
-                continue;
-            }
-            self::$checkedAcknowledgedNames[$acknowledgedName] = true;
-
             $schemeDef = $schemes[$acknowledgedName] ?? null;
+
             if (!is_array($schemeDef)) {
+                if (isset(self::$checkedAcknowledgedNames['absent:' . $acknowledgedName])) {
+                    continue;
+                }
+                self::$checkedAcknowledgedNames['absent:' . $acknowledgedName] = true;
                 trigger_error(
                     sprintf(
                         "[Gesso] acknowledged security scheme '%s' is not defined in components.securitySchemes — %s %s. "
@@ -470,7 +482,15 @@ final class SecurityValidator
             }
 
             $kind = self::classifyScheme($schemeDef)->kind;
-            if ($kind === SchemeKind::Bearer || $kind === SchemeKind::ApiKey) {
+            $outcome = ($kind === SchemeKind::Bearer || $kind === SchemeKind::ApiKey)
+                ? 'validatable:'
+                : 'ok:';
+            if (isset(self::$checkedAcknowledgedNames[$outcome . $acknowledgedName])) {
+                continue;
+            }
+            self::$checkedAcknowledgedNames[$outcome . $acknowledgedName] = true;
+
+            if ($outcome === 'validatable:') {
                 trigger_error(
                     sprintf(
                         "[Gesso] acknowledged security scheme '%s' is a scheme this validator can enforce — %s %s. "
