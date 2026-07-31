@@ -129,6 +129,56 @@ final class OpenApiPsr7ValidatorTest extends TestCase
     }
 
     #[Test]
+    public function splits_non_exploded_query_arrays_before_percent_decoding(): void
+    {
+        // Logical value ["owner,admin", "member"]: the comma inside the first
+        // element is %2C on the wire, the element delimiter is a literal
+        // comma. Splitting after decoding could not tell them apart.
+        $request = new Request('GET', 'https://example.test/filter?role=owner%2Cadmin,member');
+
+        $result = $this->validator->validateRequest($request);
+
+        $this->assertTrue($result->isValid(), $result->errorMessage());
+    }
+
+    #[Test]
+    public function splits_non_exploded_query_arrays_from_a_server_request_uri(): void
+    {
+        $request = (new ServerRequest('GET', 'https://example.test/filter?role=owner%2Cadmin,member'))
+            ->withQueryParams(['role' => 'owner,admin,member']);
+
+        $result = $this->validator->validateRequest($request);
+
+        $this->assertTrue($result->isValid(), $result->errorMessage());
+    }
+
+    #[Test]
+    public function validates_the_parsed_query_map_when_it_diverges_from_the_uri(): void
+    {
+        // PSR-7 allows withQueryParams() to diverge from the URI; the parsed
+        // map is what the application saw, so the URI's valid value must not
+        // mask the parsed map's invalid one.
+        $request = (new ServerRequest('GET', 'https://example.test/filter?role=owner'))
+            ->withQueryParams(['role' => 'bogus']);
+
+        $result = $this->validator->validateRequest($request);
+
+        $this->assertFalse($result->isValid());
+        $this->assertStringContainsString('query.role/0', $result->errorMessage());
+    }
+
+    #[Test]
+    public function reports_genuine_violations_in_non_exploded_query_arrays(): void
+    {
+        $request = new Request('GET', 'https://example.test/filter?role=owner,bogus');
+
+        $result = $this->validator->validateRequest($request);
+
+        $this->assertFalse($result->isValid());
+        $this->assertStringContainsString('query.role/1', $result->errorMessage());
+    }
+
+    #[Test]
     public function retains_an_invalid_value_before_a_repeated_query_key(): void
     {
         $request = new Request('GET', 'https://example.test/search?tags=invalid&tags=b');

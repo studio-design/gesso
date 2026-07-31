@@ -135,6 +135,18 @@ final class OpenApiAssertionsTest extends TestCase
     }
 
     #[Test]
+    #[OpenApiSpec('psr7')]
+    public function non_exploded_query_array_splits_before_percent_decoding(): void
+    {
+        // Logical value ["owner,admin", "member"]: Request::create() keeps the
+        // URI's raw query in QUERY_STRING, so the %2C inside the first element
+        // stays distinguishable from the literal delimiter commas.
+        $request = Request::create('/filter?role=owner%2Cadmin,member', 'GET');
+
+        $this->assertRequestMatchesOpenApiSchema($request);
+    }
+
+    #[Test]
     public function invalid_request_body_fails_validation(): void
     {
         $request = Request::create(

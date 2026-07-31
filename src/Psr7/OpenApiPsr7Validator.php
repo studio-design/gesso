@@ -92,6 +92,8 @@ final class OpenApiPsr7Validator
             $cookies = self::parseCookieHeader($request);
         }
 
+        $rawQueryString = $request->getUri()->getQuery();
+
         $result = $this->requestValidator->validate(
             $this->specName,
             $method,
@@ -102,6 +104,7 @@ final class OpenApiPsr7Validator
             $contentType,
             $cookies,
             $responseStatusCode,
+            $rawQueryString === '' ? null : $rawQueryString,
         );
         $result = self::withAdapterErrors(
             $result,

@@ -172,6 +172,30 @@
         }
       }
     },
+    "/filter": {
+      "get": {
+        "parameters": [
+          {
+            "name": "role",
+            "in": "query",
+            "required": true,
+            "style": "form",
+            "explode": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "enum": ["owner,admin", "member", "owner"]
+              }
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content"
+          }
+        }
+      }
+    },
     "/search": {
       "get": {
         "parameters": [

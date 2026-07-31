@@ -72,6 +72,274 @@ class QueryParameterValidatorTest extends TestCase
     }
 
     #[Test]
+    public function validate_splits_form_explode_false_array_before_validation(): void
+    {
+        // https://github.com/studio-design/gesso/issues/436
+        $parameters = [[
+            'name' => 'role',
+            'in' => 'query',
+            'style' => 'form',
+            'explode' => false,
+            'schema' => [
+                'type' => 'array',
+                'uniqueItems' => true,
+                'items' => ['enum' => ['owner', 'admin', 'member']],
+            ],
+        ]];
+
+        $errors = $this->validator->validate(
+            'GET',
+            '/organizations/{organization_id}/members',
+            $parameters,
+            ['role' => 'owner,admin'],
+            OpenApiVersion::V3_1,
+        );
+
+        $this->assertSame([], $errors);
+    }
+
+    #[Test]
+    public function validate_still_reports_genuine_enum_violation_in_split_array(): void
+    {
+        $parameters = [[
+            'name' => 'role',
+            'in' => 'query',
+            'style' => 'form',
+            'explode' => false,
+            'schema' => [
+                'type' => 'array',
+                'items' => ['enum' => ['owner', 'admin']],
+            ],
+        ]];
+
+        $errors = $this->validator->validate(
+            'GET',
+            '/members',
+            $parameters,
+            ['role' => 'owner,bogus'],
+            OpenApiVersion::V3_1,
+        );
+
+        $this->assertCount(1, $errors);
+        $this->assertStringContainsString('[query.role/1]', $errors[0]->message);
+    }
+
+    #[Test]
+    public function validate_splits_pipe_delimited_and_coerces_items(): void
+    {
+        $parameters = [[
+            'name' => 'ids',
+            'in' => 'query',
+            'style' => 'pipeDelimited',
+            'schema' => [
+                'type' => 'array',
+                'items' => ['type' => 'integer', 'minimum' => 1],
+            ],
+        ]];
+
+        $valid = $this->validator->validate('GET', '/pets', $parameters, ['ids' => '3|5|7'], OpenApiVersion::V3_0);
+        $invalid = $this->validator->validate('GET', '/pets', $parameters, ['ids' => '3|0'], OpenApiVersion::V3_0);
+
+        $this->assertSame([], $valid);
+        $this->assertCount(1, $invalid);
+        $this->assertStringContainsString('[query.ids/1]', $invalid[0]->message);
+    }
+
+    #[Test]
+    public function validate_splits_space_delimited_array(): void
+    {
+        $parameters = [[
+            'name' => 'tag',
+            'in' => 'query',
+            'style' => 'spaceDelimited',
+            'schema' => [
+                'type' => 'array',
+                'items' => ['type' => 'string', 'maxLength' => 5],
+            ],
+        ]];
+
+        $errors = $this->validator->validate('GET', '/pets', $parameters, ['tag' => 'red green'], OpenApiVersion::V3_0);
+
+        $this->assertSame([], $errors);
+    }
+
+    #[Test]
+    public function validate_keeps_default_exploded_arrays_unsplit(): void
+    {
+        // The OAS default (`form` + `explode: true`) arrives as repeated keys,
+        // already parsed into an array by the framework. A literal comma inside
+        // a value must survive.
+        $parameters = [[
+            'name' => 'q',
+            'in' => 'query',
+            'schema' => ['type' => 'array', 'items' => ['type' => 'string']],
+        ]];
+
+        $errors = $this->validator->validate(
+            'GET',
+            '/pets',
+            $parameters,
+            ['q' => ['a,b', 'c']],
+            OpenApiVersion::V3_1,
+        );
+
+        $this->assertSame([], $errors);
+    }
+
+    #[Test]
+    public function validate_uses_raw_query_string_to_keep_encoded_delimiters_in_data(): void
+    {
+        // Logical value ["owner,admin", "member"]: the framework decodes the
+        // wire form `role=owner%2Cadmin,member` to `owner,admin,member`, which
+        // is unsplittable after decoding. The raw query string disambiguates.
+        $parameters = [[
+            'name' => 'role',
+            'in' => 'query',
+            'style' => 'form',
+            'explode' => false,
+            'schema' => [
+                'type' => 'array',
+                'items' => ['enum' => ['owner,admin', 'member']],
+            ],
+        ]];
+
+        $errors = $this->validator->validate(
+            'GET',
+            '/members',
+            $parameters,
+            ['role' => 'owner,admin,member'],
+            OpenApiVersion::V3_1,
+            rawQueryString: 'role=owner%2Cadmin,member',
+        );
+
+        $this->assertSame([], $errors);
+    }
+
+    #[Test]
+    public function validate_treats_empty_value_as_single_empty_string_element(): void
+    {
+        // `?role=` is the one-element list [""] (RFC 6570 §2.3: an empty list
+        // is undefined and omitted entirely), so `minItems: 1` must pass.
+        $parameters = [[
+            'name' => 'role',
+            'in' => 'query',
+            'style' => 'form',
+            'explode' => false,
+            'schema' => [
+                'type' => 'array',
+                'minItems' => 1,
+                'items' => ['type' => 'string'],
+            ],
+        ]];
+
+        $errors = $this->validator->validate(
+            'GET',
+            '/members',
+            $parameters,
+            ['role' => ''],
+            OpenApiVersion::V3_1,
+            rawQueryString: 'role=',
+        );
+
+        $this->assertSame([], $errors);
+    }
+
+    #[Test]
+    public function validate_splits_standard_percent_encoded_pipe_delimiters(): void
+    {
+        // OAS Style Examples serialize the pipeDelimited delimiter as %7C.
+        $parameters = [[
+            'name' => 'ids',
+            'in' => 'query',
+            'style' => 'pipeDelimited',
+            'schema' => ['type' => 'array', 'items' => ['type' => 'integer']],
+        ]];
+
+        $errors = $this->validator->validate(
+            'GET',
+            '/pets',
+            $parameters,
+            ['ids' => '3|5|7'],
+            OpenApiVersion::V3_1,
+            rawQueryString: 'ids=3%7C5%7C7',
+        );
+
+        $this->assertSame([], $errors);
+    }
+
+    #[Test]
+    public function validate_uses_parsed_value_when_raw_query_string_diverges(): void
+    {
+        // PSR-7 allows the parsed query map to diverge from the URI; the
+        // parsed map is what the application saw and must win.
+        $parameters = [[
+            'name' => 'role',
+            'in' => 'query',
+            'explode' => false,
+            'schema' => ['type' => 'array', 'items' => ['enum' => ['owner', 'admin']]],
+        ]];
+
+        $errors = $this->validator->validate(
+            'GET',
+            '/members',
+            $parameters,
+            ['role' => 'bogus'],
+            OpenApiVersion::V3_1,
+            rawQueryString: 'role=owner',
+        );
+
+        $this->assertCount(1, $errors);
+        $this->assertStringContainsString('[query.role/0]', $errors[0]->message);
+    }
+
+    #[Test]
+    public function validate_falls_back_to_decoded_split_without_raw_query_string(): void
+    {
+        // Direct callers that don't supply the raw query string keep the
+        // decoded-value split.
+        $parameters = [[
+            'name' => 'role',
+            'in' => 'query',
+            'explode' => false,
+            'schema' => ['type' => 'array', 'items' => ['enum' => ['owner', 'admin']]],
+        ]];
+
+        $errors = $this->validator->validate(
+            'GET',
+            '/members',
+            $parameters,
+            ['role' => 'owner,admin'],
+            OpenApiVersion::V3_1,
+        );
+
+        $this->assertSame([], $errors);
+    }
+
+    #[Test]
+    public function validate_ignores_raw_query_string_for_repeated_keys(): void
+    {
+        // Repeated keys despite `explode: false` arrive as an array from the
+        // framework; there is no single raw value to split.
+        $parameters = [[
+            'name' => 'tag',
+            'in' => 'query',
+            'explode' => false,
+            'schema' => ['type' => 'array', 'items' => ['type' => 'string']],
+        ]];
+
+        $errors = $this->validator->validate(
+            'GET',
+            '/pets',
+            $parameters,
+            ['tag' => ['a', 'b']],
+            OpenApiVersion::V3_1,
+            rawQueryString: 'tag=a&tag=b',
+        );
+
+        $this->assertSame([], $errors);
+    }
+
+    #[Test]
     public function validate_checks_form_encoded_querystring_schema(): void
     {
         $parameters = [[

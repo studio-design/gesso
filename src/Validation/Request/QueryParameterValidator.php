@@ -12,6 +12,7 @@ use Studio\Gesso\Spec\OpenApiSchemaConverter;
 use Studio\Gesso\Validation\Support\MalformedSpecNode;
 use Studio\Gesso\Validation\Support\NamedError;
 use Studio\Gesso\Validation\Support\ObjectConverter;
+use Studio\Gesso\Validation\Support\QueryStyleDeserializer;
 use Studio\Gesso\Validation\Support\SchemaValidatorRunner;
 use Studio\Gesso\Validation\Support\TypeCoercer;
 
@@ -47,13 +48,16 @@ final class QueryParameterValidator
      * Validate query parameters declared by the matched operation (or
      * inherited from the path-level `parameters` block).
      *
-     * Only `style: form` + `explode: true` (the OpenAPI default for `in: query`)
-     * is supported. Repeated keys (`?tags=a&tags=b`) are expected to arrive as
-     * PHP arrays from the framework. Other styles (`form`+`explode:false`,
-     * `pipeDelimited`, `spaceDelimited`) are out of scope.
+     * With the OpenAPI default serialization (`style: form` + `explode: true`)
+     * repeated keys (`?tags=a&tags=b`) are expected to arrive as PHP arrays
+     * from the framework. Non-exploded array serializations (`form` +
+     * `explode: false`, `pipeDelimited`, `spaceDelimited`) are split on their
+     * delimiter before validation ({@see QueryStyleDeserializer}). `deepObject`
+     * is out of scope.
      *
      * @param list<array<string, mixed>> $parameters pre-collected merged parameters (path + operation level)
      * @param array<string, mixed> $queryParams
+     * @param null|string $rawQueryString the request's percent-encoded query string, when the caller has access to it; lets non-exploded styles split before decoding ({@see QueryStyleDeserializer})
      *
      * @return list<NamedError>
      */
@@ -64,8 +68,10 @@ final class QueryParameterValidator
         array $queryParams,
         OpenApiVersion $version,
         ?string $jsonSchemaDialect = null,
+        ?string $rawQueryString = null,
     ): array {
         $errors = [];
+        $rawValues = $rawQueryString === null ? [] : QueryStyleDeserializer::parseRawValues($rawQueryString);
 
         foreach ($parameters as $param) {
             if (($param['in'] ?? null) === 'querystring') {
@@ -108,7 +114,13 @@ final class QueryParameterValidator
                 continue;
             }
 
-            $coerced = TypeCoercer::coerceQuery($queryParams[$name], $schema);
+            // A single raw pair can be split before percent-decoding; repeated
+            // keys mean the exploded form was used and there is nothing to split.
+            $rawList = $rawValues[$name] ?? null;
+            $rawValue = $rawList !== null && count($rawList) === 1 ? $rawList[0] : null;
+
+            $deserialized = QueryStyleDeserializer::deserialize($queryParams[$name], $param, $schema, $rawValue);
+            $coerced = TypeCoercer::coerceQuery($deserialized, $schema);
             $jsonSchema = OpenApiSchemaConverter::convert($schema, $version, SchemaContext::Request, null, $jsonSchemaDialect);
 
             $schemaObject = ObjectConverter::convert($jsonSchema);
