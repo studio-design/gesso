@@ -7,6 +7,7 @@ namespace Studio\Gesso\Spec;
 use const DIRECTORY_SEPARATOR;
 use const E_USER_WARNING;
 use const JSON_THROW_ON_ERROR;
+use const PHP_URL_HOST;
 
 use InvalidArgumentException;
 use JsonException;
@@ -17,6 +18,7 @@ use Studio\Gesso\Exception\InvalidOpenApiSpecReason;
 use Studio\Gesso\Exception\SpecFileNotFoundException;
 use Studio\Gesso\Internal\HttpRefLoader;
 use Studio\Gesso\Internal\OpenApiDocumentShapeNormalizer;
+use Studio\Gesso\Internal\RemoteAuthorization;
 use Studio\Gesso\Internal\SpecDocumentDecoder;
 use Studio\Gesso\Internal\YamlAvailability;
 use Studio\Gesso\OpenApiVersion;
@@ -28,10 +30,13 @@ use function explode;
 use function file_exists;
 use function file_get_contents;
 use function get_debug_type;
+use function getenv;
 use function implode;
 use function in_array;
 use function is_array;
+use function is_string;
 use function json_decode;
+use function parse_url;
 use function preg_match;
 use function realpath;
 use function rtrim;
@@ -78,6 +83,9 @@ final class OpenApiSpecLoader
     private static array $allowedRemoteRefHosts = [];
     private static int $maxRemoteRefBytes = self::DEFAULT_MAX_REMOTE_REF_BYTES;
 
+    /** @var array<string, RemoteSpecSource> */
+    private static array $remoteSpecs = [];
+
     /**
      * Configure the spec loader.
      *
@@ -107,6 +115,12 @@ final class OpenApiSpecLoader
      *                                            are not accepted. Matching is case-insensitive.
      * @param int $maxRemoteRefBytes Maximum HTTP response-body bytes read for each remote
      *                               document. Must be positive; the default is 10 MiB.
+     * @param array<string, RemoteSpecSource|string> $remoteSpecs Map of spec name to an HTTP(S)
+     *                                                            entry-document source (issue #407). A plain string is
+     *                                                            shorthand for `new RemoteSpecSource($url)`. A mapped
+     *                                                            name always loads from its URL and never consults the
+     *                                                            filesystem. Requires `$allowRemoteRefs: true`, and every
+     *                                                            URL's host must appear in `$allowedRemoteRefHosts`.
      *
      * @throws InvalidArgumentException for any misconfigured pair: `$allowRemoteRefs` true
      *                                  without client/factory, OR client provided without
@@ -122,6 +136,7 @@ final class OpenApiSpecLoader
         ?string $enumBasePath = null,
         array $allowedRemoteRefHosts = [],
         int $maxRemoteRefBytes = self::DEFAULT_MAX_REMOTE_REF_BYTES,
+        array $remoteSpecs = [],
     ): void {
         if ($allowRemoteRefs && ($httpClient === null || $requestFactory === null)) {
             throw new InvalidArgumentException(
@@ -164,7 +179,17 @@ final class OpenApiSpecLoader
             );
         }
 
+        if (!$allowRemoteRefs && $remoteSpecs !== []) {
+            throw new InvalidArgumentException(
+                'OpenApiSpecLoader::configure(): $remoteSpecs was provided but allowRemoteRefs '
+                . 'is false. Remote entry documents share the HTTP $ref opt-in; pass '
+                . 'allowRemoteRefs: true together with an HTTP client, request factory, and '
+                . 'host allowlist.',
+            );
+        }
+
         $allowedRemoteRefHosts = self::normalizeAllowedRemoteRefHosts($allowedRemoteRefHosts);
+        $remoteSpecs = self::normalizeRemoteSpecs($remoteSpecs, $allowedRemoteRefHosts);
 
         if ($enumBasePath !== null && trim($enumBasePath) === '') {
             // Empty / whitespace-only `enumBasePath` would otherwise survive
@@ -188,6 +213,7 @@ final class OpenApiSpecLoader
         self::$allowRemoteRefs = $allowRemoteRefs;
         self::$allowedRemoteRefHosts = $allowedRemoteRefHosts;
         self::$maxRemoteRefBytes = $maxRemoteRefBytes;
+        self::$remoteSpecs = $remoteSpecs;
         // A previous configure() call may have cached specs under a
         // different remote-refs policy. Evict so the next load() runs
         // with the new client/flag combination.
@@ -233,6 +259,10 @@ final class OpenApiSpecLoader
             return self::$cache[$specName];
         }
 
+        if (isset(self::$remoteSpecs[$specName])) {
+            return self::$cache[$specName] = self::loadRemoteSpec($specName, self::$remoteSpecs[$specName]);
+        }
+
         ['path' => $path, 'extension' => $extension] = self::resolveSpecFile($specName);
 
         $decoded = match ($extension) {
@@ -245,28 +275,7 @@ final class OpenApiSpecLoader
             ),
         };
 
-        // Version selection changes schema semantics, so reject an absent,
-        // malformed, or unsupported `openapi` value before resolving refs or
-        // running any endpoint assertions. This also makes PHPUnit extension
-        // bootstrap fail while eagerly loading its configured specs.
-        try {
-            $version = OpenApiVersion::fromSpec($decoded);
-            OpenApiSchemaDialect::fromSpec($decoded, $version);
-        } catch (InvalidOpenApiSpecException $e) {
-            throw $e->withSpecName($specName);
-        }
-
-        if ($version === OpenApiVersion::V3_2 && array_key_exists('$self', $decoded)) {
-            trigger_error(
-                sprintf(
-                    "[OpenAPI 3.2 \$self] spec '%s' declares a \$self base URI, but this loader still resolves "
-                    . 'relative references from the retrieved file path. Remove $self or pre-bundle the document '
-                    . 'until $self-aware resolution is implemented.',
-                    $specName,
-                ),
-                E_USER_WARNING,
-            );
-        }
+        self::assertSupportedDocument($decoded, $specName);
 
         // Canonicalize the source path so the resolver's cycle detection
         // sees the same key for this file whether it's reached as the
@@ -346,7 +355,179 @@ final class OpenApiSpecLoader
         self::$allowRemoteRefs = false;
         self::$allowedRemoteRefHosts = [];
         self::$maxRemoteRefBytes = self::DEFAULT_MAX_REMOTE_REF_BYTES;
+        self::$remoteSpecs = [];
         YamlAvailability::reset();
+    }
+
+    /**
+     * Reject an absent, malformed, or unsupported `openapi` value before
+     * resolving refs or running any endpoint assertions — version selection
+     * changes schema semantics. This also makes PHPUnit extension bootstrap
+     * fail while eagerly loading its configured specs. Shared by the
+     * filesystem and remote entry-document paths so both stay consistent.
+     *
+     * @param array<string, mixed> $decoded
+     */
+    private static function assertSupportedDocument(array $decoded, string $specName): void
+    {
+        try {
+            $version = OpenApiVersion::fromSpec($decoded);
+            OpenApiSchemaDialect::fromSpec($decoded, $version);
+        } catch (InvalidOpenApiSpecException $e) {
+            throw $e->withSpecName($specName);
+        }
+
+        if ($version === OpenApiVersion::V3_2 && array_key_exists('$self', $decoded)) {
+            trigger_error(
+                sprintf(
+                    "[OpenAPI 3.2 \$self] spec '%s' declares a \$self base URI, but this loader still resolves "
+                    . 'relative references from the retrieved file path. Remove $self or pre-bundle the document '
+                    . 'until $self-aware resolution is implemented.',
+                    $specName,
+                ),
+                E_USER_WARNING,
+            );
+        }
+    }
+
+    /**
+     * Load a spec whose entry document lives at an HTTP(S) URL (issue #407).
+     *
+     * The fetch goes through the same {@see HttpRefLoader} boundary as HTTP
+     * `$ref` targets: host allowlist, no redirects, response-size limit, and
+     * URL redaction all apply. Ref resolution then runs with the canonical
+     * URL as the base, so relative `$ref`s inside the document resolve
+     * against it per RFC 3986.
+     *
+     * @return array<string, mixed>
+     */
+    private static function loadRemoteSpec(string $specName, RemoteSpecSource $source): array
+    {
+        $client = self::$httpClient;
+        $requestFactory = self::$requestFactory;
+        if ($client === null || $requestFactory === null) {
+            // configure() guarantees the pairing; this guard keeps the
+            // invariant explicit for static analysis and direct state abuse.
+            throw new InvalidOpenApiSpecException(
+                InvalidOpenApiSpecReason::HttpClientNotConfigured,
+                sprintf(
+                    'Remote spec `%s` requires a PSR-18 ClientInterface and PSR-17 '
+                    . 'RequestFactoryInterface. Pass them to OpenApiSpecLoader::configure().',
+                    $specName,
+                ),
+                specName: $specName,
+            );
+        }
+
+        $authorization = null;
+        if ($source->authorizationEnv !== null) {
+            $headerValue = self::readEnvValue($source->authorizationEnv);
+            if ($headerValue === null || trim($headerValue) === '') {
+                throw new InvalidOpenApiSpecException(
+                    InvalidOpenApiSpecReason::RemoteSpecAuthEnvMissing,
+                    sprintf(
+                        'Remote spec `%s` sources its Authorization header from the environment '
+                        . 'variable %s, which is not set (or empty). Export it before running '
+                        . 'tests; its value is sent verbatim as the Authorization header.',
+                        $specName,
+                        $source->authorizationEnv,
+                    ),
+                    specName: $specName,
+                );
+            }
+
+            $authorization = RemoteAuthorization::forUrl(trim($headerValue), $source->url);
+        }
+
+        $documentCache = [];
+
+        try {
+            $document = HttpRefLoader::loadDocument(
+                $source->url,
+                $client,
+                $requestFactory,
+                $documentCache,
+                self::$allowedRemoteRefHosts,
+                self::$maxRemoteRefBytes,
+                $authorization,
+                $source->expectedSha256,
+            );
+        } catch (InvalidOpenApiSpecException $e) {
+            throw $e->withSpecName($specName);
+        }
+
+        self::assertSupportedDocument($document->decoded, $specName);
+
+        try {
+            return OpenApiDocumentShapeNormalizer::normalizeResolvedDocument(
+                OpenApiRefResolver::resolve(
+                    $document->decoded,
+                    $document->canonicalIdentifier,
+                    $client,
+                    $requestFactory,
+                    true,
+                    self::$allowedRemoteRefHosts,
+                    self::$maxRemoteRefBytes,
+                    [self::getBasePath()],
+                    $authorization,
+                    // Seed the resolver with the pin-verified entry bytes so a
+                    // $ref back to the entry URL reuses them instead of
+                    // refetching — a second response would bypass the
+                    // expectedSha256 check.
+                    $documentCache,
+                ),
+            );
+        } catch (InvalidOpenApiSpecException $e) {
+            throw $e->withSpecName($specName);
+        }
+    }
+
+    private static function readEnvValue(string $name): ?string
+    {
+        $value = $_SERVER[$name] ?? $_ENV[$name] ?? getenv($name);
+        if ($value === false || !is_string($value)) {
+            return null;
+        }
+
+        return $value;
+    }
+
+    /**
+     * @param array<string, RemoteSpecSource|string> $remoteSpecs
+     * @param list<string> $normalizedAllowedHosts already-normalized host allowlist
+     *
+     * @return array<string, RemoteSpecSource>
+     */
+    private static function normalizeRemoteSpecs(array $remoteSpecs, array $normalizedAllowedHosts): array
+    {
+        $normalized = [];
+        foreach ($remoteSpecs as $specName => $source) {
+            if (trim((string) $specName) === '') {
+                throw new InvalidArgumentException(
+                    'OpenApiSpecLoader::configure(): $remoteSpecs contains an empty spec name.',
+                );
+            }
+
+            if (is_string($source)) {
+                $source = new RemoteSpecSource($source);
+            }
+
+            $host = HttpRefLoader::normalizeHost((string) parse_url($source->url, PHP_URL_HOST));
+            if (!in_array($host, $normalizedAllowedHosts, true)) {
+                throw new InvalidArgumentException(
+                    sprintf(
+                        'OpenApiSpecLoader::configure(): remote spec `%s` targets host `%s`, '
+                        . 'which is not in $allowedRemoteRefHosts. Add the exact host to the allowlist.',
+                        $specName,
+                        $host,
+                    ),
+                );
+            }
+
+            $normalized[(string) $specName] = $source;
+        }
+
+        return $normalized;
     }
 
     /**

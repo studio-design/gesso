@@ -39,6 +39,7 @@ use Studio\Gesso\PHPUnit\InvalidStrictRequiredConfigurationException;
 use Studio\Gesso\SchemaContext;
 use Studio\Gesso\SkipOpenApiResolver;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
+use Studio\Gesso\Spec\RemoteSpecSource;
 use Studio\Gesso\Tests\Helpers\PublicApiInventory;
 use Studio\Gesso\Tests\Unit\Compatibility\Fixture\PublicApiImplicitConstructorFixture;
 use Studio\Gesso\Tests\Unit\Compatibility\Fixture\PublicApiInternalTraitConsumerFixture;
@@ -209,6 +210,11 @@ final class PublicApiBaselineTest extends TestCase
             if ($name === 'RemoteRefDisallowed') {
                 $reasonCases['RemoteRefHostDisallowed'] = null;
             }
+            if ($name === 'RemoteRefFetchFailed') {
+                // #407: authenticated remote spec sources (minor additions).
+                $reasonCases['RemoteSpecAuthEnvMissing'] = null;
+                $reasonCases['RemoteSpecHashMismatch'] = null;
+            }
         }
         $expected[InvalidOpenApiSpecReason::class]['cases'] = $reasonCases;
         $expected[OpenApiSpecLoader::class]['constants']['DEFAULT_MAX_REMOTE_REF_BYTES'] = 10_485_760;
@@ -231,6 +237,16 @@ final class PublicApiBaselineTest extends TestCase
                 'constant' => 'self::DEFAULT_MAX_REMOTE_REF_BYTES',
                 'value' => 10_485_760,
             ],
+            'attributes' => [],
+        ];
+        // #407: named specs may resolve to HTTP(S) entry documents.
+        $expected[OpenApiSpecLoader::class]['methods']['configure']['parameters'][] = [
+            'name' => 'remoteSpecs',
+            'type' => 'array',
+            'optional' => true,
+            'variadic' => false,
+            'by_reference' => false,
+            'default' => [],
             'attributes' => [],
         ];
         $expected[JsonCoverageRenderer::class]['constants']['SCHEMA_VERSION'] = 2;
@@ -1534,6 +1550,77 @@ final class PublicApiBaselineTest extends TestCase
                             'variadic' => false,
                             'by_reference' => false,
                             'default' => 1,
+                            'attributes' => [],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+        // New public class in v2.x (#407): remote entry-document source.
+        $remoteSpecNullableProperty = static fn(): array => [
+            'type' => '?string',
+            'static' => false,
+            'readonly' => true,
+            'default' => ['unavailable' => true],
+        ];
+        $expected[RemoteSpecSource::class] = [
+            'kind' => 'class',
+            'final' => true,
+            'abstract' => false,
+            'readonly' => true,
+            'instantiable' => true,
+            'constructor' => ['kind' => 'declared', 'visibility' => 'public'],
+            'parent' => null,
+            'interfaces' => [],
+            'traits' => [],
+            'attributes' => [],
+            'backing_type' => null,
+            'cases' => [],
+            'constants' => [],
+            'properties' => [
+                'authorizationEnv' => $remoteSpecNullableProperty(),
+                'expectedSha256' => $remoteSpecNullableProperty(),
+                'url' => [
+                    'type' => 'string',
+                    'static' => false,
+                    'readonly' => true,
+                    'default' => ['unavailable' => true],
+                ],
+            ],
+            'methods' => [
+                '__construct' => [
+                    'static' => false,
+                    'final' => false,
+                    'abstract' => false,
+                    'returns_reference' => false,
+                    'return_type' => null,
+                    'attributes' => [],
+                    'parameters' => [
+                        [
+                            'name' => 'url',
+                            'type' => 'string',
+                            'optional' => false,
+                            'variadic' => false,
+                            'by_reference' => false,
+                            'default' => ['unavailable' => true],
+                            'attributes' => [],
+                        ],
+                        [
+                            'name' => 'authorizationEnv',
+                            'type' => '?string',
+                            'optional' => true,
+                            'variadic' => false,
+                            'by_reference' => false,
+                            'default' => null,
+                            'attributes' => [],
+                        ],
+                        [
+                            'name' => 'expectedSha256',
+                            'type' => '?string',
+                            'optional' => true,
+                            'variadic' => false,
+                            'by_reference' => false,
+                            'default' => null,
                             'attributes' => [],
                         ],
                     ],

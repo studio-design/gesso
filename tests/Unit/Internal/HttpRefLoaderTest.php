@@ -47,6 +47,43 @@ class HttpRefLoaderTest extends TestCase
     }
 
     #[Test]
+    public function strips_the_fragment_from_the_request_and_cache_key(): void
+    {
+        // The fragment is client-side only (RFC 9110): it is never part of
+        // the wire request, so a fragment spelling must share the cache
+        // entry of the fragment-free URL — distinct keys would allow a
+        // second, unverified fetch of an already-verified document.
+        $fetches = 0;
+        $client = new FakeHttpClient([
+            'https://example.com/schemas/pet.json' => static function () use (&$fetches) {
+                $fetches++;
+
+                return FakeHttpClient::jsonResponse('{"type":"object"}');
+            },
+        ]);
+
+        $cache = [];
+        $withFragment = HttpRefLoader::loadDocument(
+            'https://example.com/schemas/pet.json#entry',
+            $client,
+            $this->factory,
+            $cache,
+            ['example.com'],
+        );
+        $withoutFragment = HttpRefLoader::loadDocument(
+            'https://example.com/schemas/pet.json',
+            $client,
+            $this->factory,
+            $cache,
+            ['example.com'],
+        );
+
+        $this->assertSame(1, $fetches);
+        $this->assertSame('https://example.com/schemas/pet.json', $withFragment->canonicalIdentifier);
+        $this->assertSame($withFragment->canonicalIdentifier, $withoutFragment->canonicalIdentifier);
+    }
+
+    #[Test]
     public function fetches_and_decodes_yaml_via_url_extension(): void
     {
         $url = 'https://example.com/schemas/pet.yaml';

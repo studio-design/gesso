@@ -15,6 +15,7 @@ use Studio\Gesso\Exception\InvalidOpenApiSpecException;
 use Studio\Gesso\Exception\InvalidOpenApiSpecReason;
 
 use function ctype_digit;
+use function hash;
 use function ltrim;
 use function pathinfo;
 use function preg_replace;
@@ -66,6 +67,11 @@ final class HttpRefLoader
      *
      * @param array<string, array<string, mixed>> $documentCache by-ref cache keyed by canonical URL
      * @param list<string> $allowedRemoteRefHosts exact normalized or user-provided host allowlist
+     * @param null|RemoteAuthorization $authorization origin-scoped `Authorization` header; only sent
+     *                                                when the request's scheme, host, and effective
+     *                                                port all match its scope
+     * @param null|string $expectedSha256 lowercase hex SHA-256 pin verified against the raw
+     *                                    response body before decoding
      *
      * @throws InvalidOpenApiSpecException when the URL cannot be fetched, decoded, or has no detectable format
      */
@@ -76,8 +82,10 @@ final class HttpRefLoader
         array &$documentCache,
         array $allowedRemoteRefHosts,
         int $maxResponseBytes = self::DEFAULT_MAX_RESPONSE_BYTES,
+        ?RemoteAuthorization $authorization = null,
+        ?string $expectedSha256 = null,
     ): LoadedDocument {
-        $canonicalUri = self::canonicalizeUri($url);
+        $trimmedUri = trim($url);
         $safeUrl = self::redactSensitiveUrlData($url);
 
         // PHP may include live function arguments when stringifying an
@@ -85,11 +93,30 @@ final class HttpRefLoader
         // already captured for the request and cache key, so replace the
         // parameter slot before any downstream operation can throw.
         $url = $safeUrl;
-        $request = $requestFactory->createRequest('GET', $canonicalUri);
+        $request = $requestFactory->createRequest('GET', $trimmedUri);
+        // A fragment is client-side only (RFC 9110): it is never part of
+        // the wire request, so it must not distinguish cache entries either.
+        // Refs have their fragment split off before reaching this loader,
+        // but callers passing an entry URL directly must get the same key.
+        if ($request->getUri()->getFragment() !== '') {
+            $request = $request->withUri($request->getUri()->withFragment(''));
+        }
+        // The cache / cycle-detection key is the PSR-7 URI's string form,
+        // not the raw ref spelling. UriInterface guarantees lowercase
+        // scheme + host and a null port when it equals the scheme default,
+        // so equivalent spellings (`HOST` vs `host`, explicit `:443` vs
+        // none) collapse to one key. Distinct keys here would let a
+        // differently-spelled ref to an already-verified document trigger
+        // a second, unverified fetch of the same wire URL.
+        $canonicalUri = (string) $request->getUri();
         self::assertHostAllowed($safeUrl, $request->getUri()->getHost(), $allowedRemoteRefHosts);
 
         if (isset($documentCache[$canonicalUri])) {
             return new LoadedDocument($canonicalUri, $documentCache[$canonicalUri]);
+        }
+
+        if ($authorization !== null && $authorization->appliesToUri($request->getUri())) {
+            $request = $request->withHeader('Authorization', $authorization->headerValue);
         }
 
         try {
@@ -169,6 +196,24 @@ final class HttpRefLoader
                 // nested causes. Do not reconnect the raw chain to a public
                 // exception that is commonly rendered in CI logs.
             );
+        }
+
+        if ($expectedSha256 !== null) {
+            $actualSha256 = hash('sha256', $body);
+            if ($actualSha256 !== $expectedSha256) {
+                throw new InvalidOpenApiSpecException(
+                    InvalidOpenApiSpecReason::RemoteSpecHashMismatch,
+                    sprintf(
+                        'Remote spec document does not match its expectedSha256 pin: %s '
+                        . '(expected %s, got %s). Update the pin if the upstream document '
+                        . 'changed intentionally.',
+                        $safeUrl,
+                        $expectedSha256,
+                        $actualSha256,
+                    ),
+                    ref: $safeUrl,
+                );
+            }
         }
 
         $format = self::detectFormat($canonicalUri, $response->getHeaderLine('Content-Type'));
@@ -298,13 +343,6 @@ final class HttpRefLoader
             ),
             ref: $safeUrl,
         );
-    }
-
-    private static function canonicalizeUri(string $url): string
-    {
-        // Trim only — case-folding scheme/host or removing default ports
-        // could collapse URIs the server treats as distinct.
-        return trim($url);
     }
 
     /**

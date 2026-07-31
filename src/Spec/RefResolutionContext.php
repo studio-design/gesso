@@ -7,6 +7,7 @@ namespace Studio\Gesso\Spec;
 use Psr\Http\Client\ClientInterface;
 use Psr\Http\Message\RequestFactoryInterface;
 use Studio\Gesso\Internal\HttpRefLoader;
+use Studio\Gesso\Internal\RemoteAuthorization;
 
 /**
  * Carries the per-resolution state that `OpenApiRefResolver::walk()` needs
@@ -41,6 +42,7 @@ final class RefResolutionContext
         public readonly int $maxRemoteRefBytes,
         /** @var list<string> */
         public readonly array $allowedLocalRefRoots,
+        public readonly ?RemoteAuthorization $remoteAuthorization = null,
     ) {}
 
     /**
@@ -69,6 +71,7 @@ final class RefResolutionContext
         ?string $sourceFile = null,
         int $maxRemoteRefBytes = HttpRefLoader::DEFAULT_MAX_RESPONSE_BYTES,
         array $allowedLocalRefRoots = [],
+        ?RemoteAuthorization $remoteAuthorization = null,
     ): self {
         return new self(
             $sourceFile,
@@ -78,6 +81,7 @@ final class RefResolutionContext
             $allowedRemoteRefHosts,
             $maxRemoteRefBytes,
             $allowedLocalRefRoots,
+            $remoteAuthorization,
         );
     }
 
@@ -98,6 +102,7 @@ final class RefResolutionContext
             $this->allowedRemoteRefHosts,
             $this->maxRemoteRefBytes,
             $this->allowedLocalRefRoots,
+            $this->remoteAuthorization,
         );
     }
 }

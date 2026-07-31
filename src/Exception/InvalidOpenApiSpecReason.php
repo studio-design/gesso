@@ -18,6 +18,8 @@ enum InvalidOpenApiSpecReason
     case RemoteRefDisallowed;
     case RemoteRefHostDisallowed;
     case RemoteRefFetchFailed;
+    case RemoteSpecAuthEnvMissing;
+    case RemoteSpecHashMismatch;
     case HttpClientNotConfigured;
     case FileSchemeNotSupported;
     case EmptyRef;
