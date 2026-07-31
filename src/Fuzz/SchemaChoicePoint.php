@@ -31,10 +31,11 @@ final readonly class SchemaChoicePoint
     public const NULL_VALUE = 1;
 
     /**
-     * `firstBranch` is the first branch index this entry still needs to
-     * cover: 0 for a first discovery; the previously covered count when the
-     * same pointer reappears under another branch context with more branches,
-     * so only the uncovered tail gains cases.
+     * `probeBranch` names a branch whose reachability cannot be determined
+     * from the schema alone (the none-match state of conditional `allOf`);
+     * `probeContext` marks a choice point discovered inside such a state.
+     * Cases pinning either are reachability probes: they are dropped instead
+     * of failing loudly when the schema forbids that state.
      *
      * @param array<string, int> $ancestors
      */
@@ -43,6 +44,7 @@ final readonly class SchemaChoicePoint
         public string $pointer,
         public int $branchCount,
         public array $ancestors,
-        public int $firstBranch = 0,
+        public ?int $probeBranch = null,
+        public bool $probeContext = false,
     ) {}
 }

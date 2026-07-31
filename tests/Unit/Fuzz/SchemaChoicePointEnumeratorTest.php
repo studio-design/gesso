@@ -133,19 +133,46 @@ class SchemaChoicePointEnumeratorTest extends TestCase
         $this->assertArrayHasKey('/allOf', $points);
         $conditional = $points['/allOf'];
         $this->assertSame(SchemaChoicePointKind::AllOfConditional, $conditional->kind);
-        // Two branches per conditional: even takes if+then, odd takes else.
-        $this->assertSame(4, $conditional->branchCount);
+        // One branch per conditional (if+then, all others suppressed) plus
+        // the trailing none-match branch, which is a reachability probe.
+        $this->assertSame(3, $conditional->branchCount);
+        $this->assertSame(2, $conditional->probeBranch);
     }
 
     #[Test]
-    public function records_supplemental_branches_when_a_pointer_reappears_with_more_branches(): void
+    public function flags_choice_points_discovered_under_the_none_match_view_as_probes(): void
+    {
+        $schema = [
+            'type' => 'object',
+            'allOf' => [
+                [
+                    'if' => ['required' => ['kind']],
+                    'then' => ['properties' => ['kind' => ['const' => 'a']]],
+                    'else' => ['properties' => ['fallback' => ['type' => 'string']]],
+                ],
+            ],
+        ];
+
+        $points = $this->indexByPointer(SchemaChoicePointEnumerator::enumerate($schema));
+
+        $this->assertArrayHasKey('/properties/fallback', $points);
+        $fallback = $points['/properties/fallback'];
+        $this->assertSame(['/allOf' => 1], $fallback->ancestors);
+        // Reachable only when no conditional matches, which cannot be
+        // pre-determined — its cases are dropped, not failed, when the
+        // schema forbids that state.
+        $this->assertTrue($fallback->probeContext);
+    }
+
+    #[Test]
+    public function records_rediscoveries_with_different_content_as_separate_choice_points(): void
     {
         $schema = [
             'type' => 'object',
             'required' => ['v'],
             'anyOf' => [
                 ['properties' => ['v' => ['oneOf' => [['const' => 'x'], ['const' => 'y']]]]],
-                ['properties' => ['v' => ['oneOf' => [['const' => 'x'], ['const' => 'y'], ['const' => 'z']]]]],
+                ['properties' => ['v' => ['oneOf' => [['const' => 1], ['const' => 2]]]]],
             ],
         ];
 
@@ -156,15 +183,35 @@ class SchemaChoicePointEnumeratorTest extends TestCase
             }
         }
 
+        // Same pointer and branch count, but different branch content: both
+        // contexts keep their own full coverage under their own ancestors.
         $this->assertCount(2, $entries);
-        $this->assertSame(0, $entries[0]->firstBranch);
         $this->assertSame(2, $entries[0]->branchCount);
         $this->assertSame(['/anyOf' => 0], $entries[0]->ancestors);
-        // The wider rediscovery keeps only its uncovered branches, under the
-        // ancestors that actually make the third branch reachable.
-        $this->assertSame(2, $entries[1]->firstBranch);
-        $this->assertSame(3, $entries[1]->branchCount);
+        $this->assertSame(2, $entries[1]->branchCount);
         $this->assertSame(['/anyOf' => 1], $entries[1]->ancestors);
+    }
+
+    #[Test]
+    public function still_dedupes_rediscoveries_with_identical_content(): void
+    {
+        $schema = [
+            'type' => 'object',
+            'required' => ['v'],
+            'anyOf' => [
+                ['properties' => ['v' => ['oneOf' => [['const' => 'x'], ['const' => 'y']]]]],
+                ['properties' => ['v' => ['oneOf' => [['const' => 'x'], ['const' => 'y']]]]],
+            ],
+        ];
+
+        $entries = [];
+        foreach (SchemaChoicePointEnumerator::enumerate($schema) as $point) {
+            if ($point->pointer === '/properties/v/oneOf') {
+                $entries[] = $point;
+            }
+        }
+
+        $this->assertCount(1, $entries);
     }
 
     #[Test]

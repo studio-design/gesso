@@ -193,6 +193,88 @@ class BranchCompleteCaseGeneratorTest extends TestCase
     }
 
     #[Test]
+    public function covers_every_subtype_of_a_discriminator_style_conditional_all_of(): void
+    {
+        // Discriminator lowering produces this shape: a closed enum plus one
+        // if/then pair per subtype. The none-match branch is unsatisfiable
+        // here; its probe case must be dropped, not fail the whole run.
+        $schema = [
+            'type' => 'object',
+            'required' => ['petType'],
+            'properties' => ['petType' => ['type' => 'string', 'enum' => ['cat', 'dog']]],
+            'allOf' => [
+                [
+                    'if' => ['properties' => ['petType' => ['const' => 'cat']], 'required' => ['petType']],
+                    'then' => ['required' => ['meow'], 'properties' => ['meow' => ['type' => 'string']]],
+                ],
+                [
+                    'if' => ['properties' => ['petType' => ['const' => 'dog']], 'required' => ['petType']],
+                    'then' => ['required' => ['bark'], 'properties' => ['bark' => ['type' => 'string']]],
+                ],
+            ],
+        ];
+
+        $cases = BranchCompleteCaseGenerator::generate($schema, seed: 1);
+
+        $byType = [];
+        foreach ($cases as $case) {
+            $this->assertIsArray($case->value);
+            $byType[$case->value['petType']] = $case->value;
+        }
+
+        $this->assertCount(2, $cases);
+        $this->assertArrayHasKey('meow', $byType['cat']);
+        $this->assertArrayHasKey('bark', $byType['dog']);
+    }
+
+    #[Test]
+    public function covers_the_none_match_state_when_it_is_reachable(): void
+    {
+        $schema = [
+            'type' => 'object',
+            'required' => ['petType'],
+            'properties' => ['petType' => ['type' => 'string']],
+            'allOf' => [
+                [
+                    'if' => ['properties' => ['petType' => ['const' => 'cat']], 'required' => ['petType']],
+                    'then' => ['required' => ['meow'], 'properties' => ['meow' => ['type' => 'string']]],
+                ],
+            ],
+        ];
+
+        $sawNonCat = false;
+        foreach (BranchCompleteCaseGenerator::generate($schema, seed: 1) as $case) {
+            $this->assertIsArray($case->value);
+            $sawNonCat = $sawNonCat || $case->value['petType'] !== 'cat';
+        }
+
+        $this->assertTrue($sawNonCat, 'no case exercised the none-match state of the conditional');
+    }
+
+    #[Test]
+    public function covers_same_pointer_choice_points_with_different_content_per_context(): void
+    {
+        $schema = [
+            'type' => 'object',
+            'required' => ['v'],
+            'anyOf' => [
+                ['properties' => ['v' => ['oneOf' => [['const' => 'x'], ['const' => 'y']]]]],
+                ['properties' => ['v' => ['oneOf' => [['const' => 1], ['const' => 2]]]]],
+            ],
+        ];
+
+        $values = [];
+        foreach (BranchCompleteCaseGenerator::generate($schema, seed: 1) as $case) {
+            $this->assertIsArray($case->value);
+            $values[json_encode($case->value['v'])] = true;
+        }
+
+        foreach (['"x"', '"y"', '1', '2'] as $expected) {
+            $this->assertArrayHasKey($expected, $values, "branch producing {$expected} was never generated");
+        }
+    }
+
+    #[Test]
     public function covers_branches_that_only_exist_under_a_later_composition_branch(): void
     {
         $schema = [

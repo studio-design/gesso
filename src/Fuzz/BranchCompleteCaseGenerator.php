@@ -18,9 +18,13 @@ use InvalidArgumentException;
  * therefore appears in at least one generated case.
  *
  * Every case keeps the existing self-check against the converted schema, so a
- * generator defect fails loudly here instead of reaching user code. Schemas
- * outside the enumeration subset or beyond its documented bounds throw from
- * the pre-pass before anything is generated.
+ * generator defect fails loudly here instead of reaching user code. The one
+ * exception is probe cases — branches whose reachability the schema alone
+ * cannot decide, i.e. the none-match state of conditional `allOf` and choice
+ * points discovered inside it: when the schema forbids that state (a closed
+ * discriminator set), the probe case is dropped instead of failing the run.
+ * Schemas outside the enumeration subset or beyond its documented bounds
+ * throw from the pre-pass before anything is generated.
  *
  * @internal Not part of the package's public API. Do not use from user code.
  */
@@ -41,11 +45,12 @@ final class BranchCompleteCaseGenerator
 
         $plans = [];
         foreach (SchemaChoicePointEnumerator::enumerate($schema) as $point) {
-            for ($branch = $point->firstBranch; $branch < $point->branchCount; $branch++) {
+            for ($branch = 0; $branch < $point->branchCount; $branch++) {
                 $plans[] = new CaseSelectionPlan(
                     [...$point->ancestors, $point->pointer => $branch],
                     $point->pointer,
                     $branch,
+                    $point->probeContext || $branch === $point->probeBranch,
                 );
             }
         }
@@ -60,6 +65,13 @@ final class BranchCompleteCaseGenerator
         $cases = [];
         foreach ($plans as $index => $plan) {
             $value = SchemaDataGenerator::generateOne($schema, $faker, $index, $plan);
+            // A probe pins a state whose reachability the schema alone cannot
+            // decide (the none-match side of conditional allOf — unreachable
+            // for closed discriminator sets). Its case is dropped when the
+            // schema forbids the state; every other case stays loud.
+            if ($plan->probe && !SchemaValueValidator::isValid($value, $schema)) {
+                continue;
+            }
             SchemaValueValidator::assertValid($value, $schema, $index);
             $cases[] = new PlannedSchemaCase($index, $value, $plan);
         }

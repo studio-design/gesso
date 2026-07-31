@@ -251,6 +251,49 @@ final class SchemaDataGenerator
     }
 
     /**
+     * Materialise one branch of the conditional-`allOf` choice space.
+     *
+     * Branches `0..n-1` satisfy that conditional's `if`+`then` while
+     * suppressing every other conditional — their `if`s are excluded through
+     * a single synthesized `not`/`anyOf` and their `else`s applied — so the
+     * generated value satisfies the complete schema rather than just the
+     * selected slice. Branch `n` is the none-match state: no `if` holds and
+     * every `else` applies. Public within the internal fuzz family so
+     * {@see SchemaChoicePointEnumerator} descends exactly these views.
+     *
+     * @param array<string, mixed> $schema node with `allOf` removed and its non-conditional branches merged
+     * @param list<array<string, mixed>> $conditionals
+     *
+     * @return array<string, mixed>
+     */
+    public static function conditionalBranchView(array $schema, array $conditionals, int $branch): array
+    {
+        if ($branch < count($conditionals)) {
+            $selected = $conditionals[$branch];
+            $schema = self::mergeSchemas($schema, $selected['if']);
+            if (isset($selected['then']) && is_array($selected['then'])) {
+                $schema = self::mergeSchemas($schema, $selected['then']);
+            }
+        }
+
+        $suppressedIfs = [];
+        foreach ($conditionals as $index => $conditional) {
+            if ($index === $branch) {
+                continue;
+            }
+            $suppressedIfs[] = $conditional['if'];
+            if (isset($conditional['else']) && is_array($conditional['else'])) {
+                $schema = self::mergeSchemas($schema, $conditional['else']);
+            }
+        }
+        if ($suppressedIfs !== []) {
+            $schema = self::mergeSchemas($schema, ['not' => ['anyOf' => $suppressedIfs]]);
+        }
+
+        return $schema;
+    }
+
+    /**
      * Merge the assertion keywords needed for deterministic allOf generation.
      *
      * Public within the internal fuzz family so
@@ -878,18 +921,15 @@ final class SchemaDataGenerator
             }
             if ($conditionals !== []) {
                 // Rotation only ever satisfies a conditional's `if`+`then`.
-                // Pinned plans encode two branches per conditional — even
-                // takes if+then, odd takes not-if+else, mirroring the
-                // standalone if/then/else resolution below — so the `else`
-                // side of every conditional is reachable.
+                // Pinned plans use the conditionalBranchView() branch space
+                // instead, which suppresses the unselected conditionals so
+                // the value satisfies the complete schema, and adds a
+                // trailing none-match branch.
                 $pinned = $plan?->branchFor($pointer . '/allOf');
-                $selected = $conditionals[($pinned !== null ? intdiv($pinned, 2) : $iteration) % count($conditionals)];
-                if ($pinned !== null && ($pinned % 2) === 1) {
-                    $schema = self::mergeSchemas($schema, self::mergeSchemas(
-                        ['not' => $selected['if']],
-                        is_array($selected['else'] ?? null) ? $selected['else'] : [],
-                    ));
+                if ($pinned !== null) {
+                    $schema = self::conditionalBranchView($schema, $conditionals, $pinned % (count($conditionals) + 1));
                 } else {
+                    $selected = $conditionals[$iteration % count($conditionals)];
                     $schema = self::mergeSchemas($schema, $selected['if']);
                     if (isset($selected['then']) && is_array($selected['then'])) {
                         $schema = self::mergeSchemas($schema, $selected['then']);

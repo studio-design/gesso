@@ -1260,11 +1260,68 @@ class SchemaDataGeneratorTest extends TestCase
         ];
 
         // Rotation only ever takes the if+then side of an allOf conditional;
-        // odd pinned branches select the not-if+else side.
+        // the trailing pinned branch selects the none-match state, where
+        // every conditional's else applies.
         $value = SchemaDataGenerator::generateOne($schema, null, 0, new CaseSelectionPlan(['/allOf' => 1]));
 
         $this->assertIsArray($value);
         $this->assertSame('b', $value['kind']);
+    }
+
+    #[Test]
+    public function pinned_conditional_branch_suppresses_the_other_conditionals(): void
+    {
+        $schema = [
+            'type' => 'object',
+            'required' => ['petType'],
+            'properties' => ['petType' => ['type' => 'string', 'enum' => ['cat', 'dog']]],
+            'allOf' => [
+                [
+                    'if' => ['properties' => ['petType' => ['const' => 'cat']], 'required' => ['petType']],
+                    'then' => ['required' => ['meow'], 'properties' => ['meow' => ['type' => 'string']]],
+                ],
+                [
+                    'if' => ['properties' => ['petType' => ['const' => 'dog']], 'required' => ['petType']],
+                    'then' => ['required' => ['bark'], 'properties' => ['bark' => ['type' => 'string']]],
+                ],
+            ],
+        ];
+
+        // Iteration 1 rotation would select the dog conditional; the pin must
+        // hold the cat branch AND keep the value out of the dog `if`, so the
+        // result satisfies the complete schema, not just the pinned slice.
+        $value = SchemaDataGenerator::generateOne($schema, null, 1, new CaseSelectionPlan(['/allOf' => 0]));
+
+        $this->assertIsArray($value);
+        $this->assertSame('cat', $value['petType']);
+        $this->assertArrayHasKey('meow', $value);
+        $this->assertTrue(SchemaValueValidator::isValid($value, $schema));
+    }
+
+    #[Test]
+    public function pinned_none_match_branch_avoids_every_conditional(): void
+    {
+        $schema = [
+            'type' => 'object',
+            'required' => ['petType'],
+            'properties' => ['petType' => ['type' => 'string']],
+            'allOf' => [
+                [
+                    'if' => ['properties' => ['petType' => ['const' => 'cat']], 'required' => ['petType']],
+                    'then' => ['required' => ['meow'], 'properties' => ['meow' => ['type' => 'string']]],
+                ],
+                [
+                    'if' => ['properties' => ['petType' => ['const' => 'dog']], 'required' => ['petType']],
+                    'then' => ['required' => ['bark'], 'properties' => ['bark' => ['type' => 'string']]],
+                ],
+            ],
+        ];
+
+        $value = SchemaDataGenerator::generateOne($schema, null, 0, new CaseSelectionPlan(['/allOf' => 2]));
+
+        $this->assertIsArray($value);
+        $this->assertNotContains($value['petType'], ['cat', 'dog']);
+        $this->assertTrue(SchemaValueValidator::isValid($value, $schema));
     }
 
     #[Test]
