@@ -373,16 +373,18 @@ final class SchemaDataGenerator
                 $schema = self::mergeSchemas($schema, $conditional['else']);
             }
         }
+        // mergeSchemas() combines `not` assertions conjunctively, so any
+        // exclusion the target already carries — from the base schema or an
+        // earlier else merge — survives these merges.
         foreach ($negatedByProperty as $property => $negated) {
-            $existing = is_array($schema['properties'] ?? null) && is_array($schema['properties'][$property] ?? null)
-                ? ($schema['properties'][$property]['not'] ?? null)
-                : null;
             $schema = self::mergeSchemas($schema, ['properties' => [
-                $property => ['not' => self::negation($existing, $negated)],
+                $property => ['not' => count($negated) === 1 ? $negated[0] : ['anyOf' => $negated]],
             ]]);
         }
         if ($suppressedIfs !== []) {
-            $schema = self::mergeSchemas($schema, ['not' => self::negation($schema['not'] ?? null, $suppressedIfs)]);
+            $schema = self::mergeSchemas($schema, [
+                'not' => count($suppressedIfs) === 1 ? $suppressedIfs[0] : ['anyOf' => $suppressedIfs],
+            ]);
         }
 
         return $schema;
@@ -414,6 +416,13 @@ final class SchemaDataGenerator
                 is_array($left['required'] ?? null) ? $left['required'] : [],
                 is_array($right['required'] ?? null) ? $right['required'] : [],
             )));
+        }
+        // `not` is an assertion like the bound keywords below: both sides
+        // must keep holding after a merge — ¬A ∧ ¬B ⟺ ¬(anyOf [A, B]).
+        // Plain array_merge would let the right side displace the left and
+        // silently widen the admissible domain.
+        if (is_array($left['not'] ?? null) && is_array($right['not'] ?? null) && $left['not'] !== $right['not']) {
+            $merged['not'] = ['anyOf' => [$left['not'], $right['not']]];
         }
         if (isset($left['minimum'], $right['minimum'])) {
             $merged['minimum'] = max($left['minimum'], $right['minimum']);
@@ -449,27 +458,6 @@ final class SchemaDataGenerator
         }
 
         return $merged;
-    }
-
-    /**
-     * Build a `not` value that adds the synthesized exclusions to whatever
-     * exclusion already sits on the target: `¬A ∧ ¬B ⟺ ¬(anyOf [A, B])`.
-     * Merging would overwrite the pre-existing `not` and silently widen the
-     * admissible domain.
-     *
-     * @param list<mixed> $disjuncts
-     *
-     * @return array<string, mixed>
-     */
-    private static function negation(mixed $existingNot, array $disjuncts): array
-    {
-        if ($existingNot !== null) {
-            $disjuncts = [$existingNot, ...$disjuncts];
-        }
-
-        return count($disjuncts) === 1 && is_array($disjuncts[0])
-            ? $disjuncts[0]
-            : ['anyOf' => $disjuncts];
     }
 
     /**

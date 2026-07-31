@@ -387,6 +387,41 @@ class BranchCompleteCaseGeneratorTest extends TestCase
     }
 
     #[Test]
+    public function preserves_a_base_not_across_an_else_merge(): void
+    {
+        // The suppressed conditional's else carries its own kind.not; merging
+        // it must not displace the base exclusion of `forbidden`. Otherwise
+        // the none-match probe generates `forbidden`, fails validation, and
+        // is dropped even though `other` is admissible.
+        $schema = [
+            'type' => 'object',
+            'required' => ['kind'],
+            'properties' => ['kind' => [
+                'type' => 'string',
+                'enum' => ['other', 'forbidden', 'elseForbidden', 'cat'],
+                'not' => ['const' => 'forbidden'],
+            ]],
+            'allOf' => [
+                [
+                    'if' => ['properties' => ['kind' => ['const' => 'cat']], 'required' => ['kind']],
+                    'then' => ['required' => ['meow'], 'properties' => ['meow' => ['type' => 'string']]],
+                    'else' => ['properties' => ['kind' => ['not' => ['const' => 'elseForbidden']]]],
+                ],
+            ],
+        ];
+
+        $kinds = [];
+        foreach (BranchCompleteCaseGenerator::generate($schema, seed: 1) as $case) {
+            $this->assertIsArray($case->value);
+            $kinds[$case->value['kind']] = true;
+        }
+
+        $this->assertArrayHasKey('other', $kinds, 'the none-match state lost the base not across the else merge');
+        $this->assertArrayNotHasKey('forbidden', $kinds);
+        $this->assertArrayNotHasKey('elseForbidden', $kinds);
+    }
+
+    #[Test]
     public function covers_the_none_match_state_when_it_is_reachable(): void
     {
         $schema = [

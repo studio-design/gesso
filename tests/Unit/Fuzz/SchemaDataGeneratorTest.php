@@ -1330,6 +1330,18 @@ class SchemaDataGeneratorTest extends TestCase
     }
 
     #[Test]
+    public function merge_combines_not_constraints_conjunctively(): void
+    {
+        $merged = SchemaDataGenerator::mergeSchemas(
+            ['type' => 'string', 'not' => ['const' => 'a']],
+            ['not' => ['const' => 'b']],
+        );
+
+        // ¬A ∧ ¬B ⟺ ¬(A ∨ B): both exclusions must survive the merge.
+        $this->assertSame(['anyOf' => [['const' => 'a'], ['const' => 'b']]], $merged['not']);
+    }
+
+    #[Test]
     public function planned_enum_generation_filters_values_excluded_by_not(): void
     {
         // Rotation alone cannot escape a long excluded prefix; the planned
