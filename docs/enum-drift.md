@@ -39,7 +39,7 @@ The path is resolved relative to the configured enum root (`OpenApiSpecLoader::g
 }
 ```
 
-Both JSON and YAML bound files are supported. The file extension picks the parser: `.yaml` / `.yml` (case-insensitive) decode as YAML — through the same optional `symfony/yaml` dependency the spec loader uses — and every other path, including extension-less ones, is parsed as JSON. Binding a YAML file without `symfony/yaml` installed throws `EnumBindingException` with reason `YamlLibraryMissing`.
+Both JSON and YAML bound files are supported. The binding path's extension — as written in the attribute — picks the parser: `.yaml` / `.yml` (case-insensitive) decode as YAML — through the same optional `symfony/yaml` dependency the spec loader uses — and every other path, including extension-less ones, is parsed as JSON. Binding a YAML file without `symfony/yaml` installed throws `EnumBindingException` with reason `YamlLibraryMissing`.
 
 ```php
 #[BoundToOpenApiEnum('components/schemas/GrantType.yaml')]

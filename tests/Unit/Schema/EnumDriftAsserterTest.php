@@ -681,6 +681,46 @@ class EnumDriftAsserterTest extends TestCase
     }
 
     #[Test]
+    public function parser_follows_the_binding_path_extension_not_the_symlink_target(): void
+    {
+        // A within-root symlink is allowed, but the binding path's extension
+        // — not the realpath()-resolved target's — must pick the parser.
+        // Here matching.json links to a YAML-content .yaml file inside the
+        // root: the .json binding must keep the JSON parser and fail loudly
+        // instead of silently switching to YAML because of the link target.
+        $scratchDir = sys_get_temp_dir() . '/gesso-enum-alias-' . uniqid('', true);
+        $enumDir = $scratchDir . '/enum-drift';
+        $target = $enumDir . '/target.yaml';
+        $link = $enumDir . '/matching.json';
+        mkdir($scratchDir);
+        mkdir($enumDir);
+        file_put_contents($target, "type: string\nenum:\n  - red\n  - green\n  - blue\n");
+        if (!@symlink('target.yaml', $link)) {
+            unlink($target);
+            rmdir($enumDir);
+            rmdir($scratchDir);
+            $this->markTestSkipped('symlinks are unavailable on this platform');
+        }
+
+        try {
+            OpenApiSpecLoader::reset();
+            OpenApiSpecLoader::configure(basePath: $scratchDir, enumBasePath: $scratchDir);
+
+            try {
+                EnumDriftAsserter::assertNoDrift([MatchingEnum::class]);
+                $this->fail('expected EnumBindingException');
+            } catch (EnumBindingException $e) {
+                $this->assertSame(EnumBindingReason::MalformedJson, $e->reason);
+            }
+        } finally {
+            unlink($link);
+            unlink($target);
+            rmdir($enumDir);
+            rmdir($scratchDir);
+        }
+    }
+
+    #[Test]
     public function extensionless_bound_file_is_still_parsed_as_json(): void
     {
         EnumDriftAsserter::assertNoDrift([NoExtensionSpecEnum::class]);

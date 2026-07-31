@@ -470,6 +470,12 @@ final class EnumDriftAsserter
      * `.yaml` / `.yml` (case-insensitive) decode as YAML through the same
      * optional `symfony/yaml` dependency, everything else — including
      * extension-less paths — keeps the historical JSON parse.
+     *
+     * The extension is read from the binding path as written in the
+     * attribute, not from `$absolute`: realpath() resolves within-root
+     * symlinks, so an `alias.json -> target.yaml` link would otherwise
+     * silently switch parsers (or dodge the symfony/yaml gate) based on
+     * the link target. `$absolute` is only for reading and diagnostics.
      */
     private static function decodeSpecContent(
         string $fqcn,
@@ -477,7 +483,7 @@ final class EnumDriftAsserter
         string $absolute,
         string $content,
     ): mixed {
-        $extension = strtolower(pathinfo($absolute, PATHINFO_EXTENSION));
+        $extension = strtolower(pathinfo($specPath, PATHINFO_EXTENSION));
         if (!in_array($extension, ['yaml', 'yml'], true)) {
             try {
                 return json_decode($content, true, 512, JSON_THROW_ON_ERROR);
