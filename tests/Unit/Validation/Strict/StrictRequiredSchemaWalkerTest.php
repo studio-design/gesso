@@ -11,6 +11,8 @@ use Studio\Gesso\Validation\Strict\StrictRequiredMapMatch;
 use Studio\Gesso\Validation\Strict\StrictRequiredSchemaWalker;
 use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 
+use function json_decode;
+
 final class StrictRequiredSchemaWalkerTest extends TestCase
 {
     #[Test]
@@ -395,6 +397,25 @@ final class StrictRequiredSchemaWalkerTest extends TestCase
             'properties' => ['fixed' => true],
             'additionalProperties' => ['type' => 'string'],
         ];
+
+        $result = StrictRequiredSchemaWalker::collectRequiredByPointer($schema);
+
+        $this->assertSame(['/' => []], $result['walked']);
+        $this->assertSame([], $result['maps']);
+    }
+
+    #[Test]
+    public function collect_required_by_pointer_counts_numeric_string_property_name_from_decoded_json(): void
+    {
+        // "0" is a valid JSON property name, but PHP's decoder coerces it
+        // to the integer key 0. Existence of *any* entry under
+        // `properties` declares shape — the map check must not be fooled
+        // by the key coercion. Built via json_decode so the test pins the
+        // production decoder's behavior, not a hand-written array.
+        $schema = json_decode(
+            '{"type": "object", "properties": {"0": true}, "additionalProperties": {"type": "string"}}',
+            true,
+        );
 
         $result = StrictRequiredSchemaWalker::collectRequiredByPointer($schema);
 
