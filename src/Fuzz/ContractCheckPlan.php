@@ -13,6 +13,7 @@ use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Throwable;
 
 use function array_key_exists;
+use function array_keys;
 use function array_values;
 use function count;
 use function crc32;
@@ -47,8 +48,11 @@ final class ContractCheckPlan
     /** @var null|callable(ExploredCase): mixed */
     private $dispatch;
 
-    /** @var array<string, ?OpenApiPathMatcher> single-template matchers for collision scans, null when uncompilable */
-    private array $templateMatchers = [];
+    /** @var null|array<string, list<string>> templates grouped by each method name they document, built once per plan */
+    private ?array $templatesByDocumentedMethod = null;
+
+    /** @var array<string, ?OpenApiPathMatcher> one collision matcher over every template documenting a method, null when none compile */
+    private array $methodMatchers = [];
 
     public function __construct(
         private readonly string $specName,
@@ -287,7 +291,7 @@ final class ContractCheckPlan
 
             foreach ($cases as $sourceCase) {
                 $concretePath = $sourceCase->withQuery([])->uri();
-                $collisions = $this->collidingDocumentedMethods($path, $concretePath, $paths);
+                $collisions = $this->collidingDocumentedMethods($concretePath, $paths, $candidates);
 
                 $safeCandidates = [];
                 foreach ($candidates as $candidate) {
@@ -331,49 +335,86 @@ final class ContractCheckPlan
     }
 
     /**
-     * Methods that a probe against `$concretePath` cannot disprove: every
-     * method documented by a path template other than `$probedPath` that the
-     * concrete URI also matches.
+     * Candidate methods that a probe against `$concretePath` cannot disprove:
+     * a candidate collides when a documented template also matches the
+     * concrete URI and declares it. Candidates are undocumented on the probed
+     * template by construction, so that template never appears in its
+     * candidates' matchers and any match is a genuine collision. One matcher
+     * per method keeps the scan at a handful of match calls per probe instead
+     * of one per documented template.
      *
      * @param array<string, array<string, mixed>> $paths
+     * @param non-empty-list<HttpMethod> $candidates
      *
-     * @return array<string, string> documented method name => first colliding template declaring it
+     * @return array<string, string> candidate method name => colliding template declaring it
      */
-    private function collidingDocumentedMethods(string $probedPath, string $concretePath, array $paths): array
+    private function collidingDocumentedMethods(string $concretePath, array $paths, array $candidates): array
     {
         $collisions = [];
-        foreach ($paths as $template => $pathItem) {
-            if ($template === $probedPath) {
-                continue;
-            }
-
-            $matcher = $this->templateMatcher($template);
-            if ($matcher === null || $matcher->match($concretePath) === null) {
-                continue;
-            }
-
-            foreach (OpenApiOperationResolver::declaredOperations($pathItem) as $declared) {
-                $collisions[$declared['method']] ??= $template;
+        foreach ($candidates as $candidate) {
+            $template = $this->methodMatcher($candidate->value, $paths)?->match($concretePath);
+            if ($template !== null) {
+                $collisions[$candidate->value] = $template;
             }
         }
 
         return $collisions;
     }
 
-    private function templateMatcher(string $template): ?OpenApiPathMatcher
+    /** @param array<string, array<string, mixed>> $paths */
+    private function methodMatcher(string $method, array $paths): ?OpenApiPathMatcher
     {
-        if (!array_key_exists($template, $this->templateMatchers)) {
-            try {
-                $this->templateMatchers[$template] = new OpenApiPathMatcher([$template]);
-            } catch (InvalidArgumentException) {
-                // A template the runtime matcher refuses to compile (e.g.
-                // duplicate placeholder names) cannot route a request, so it
-                // cannot collide with a probe URI either.
-                $this->templateMatchers[$template] = null;
+        if ($this->templatesByDocumentedMethod === null) {
+            // Keyed by template to deduplicate a (spec-invalid but
+            // runtime-honored) fixed field repeated under additionalOperations.
+            $grouped = [];
+            foreach ($paths as $template => $pathItem) {
+                foreach (OpenApiOperationResolver::declaredOperations($pathItem) as $declared) {
+                    $grouped[$declared['method']][$template] = true;
+                }
+            }
+
+            $this->templatesByDocumentedMethod = [];
+            foreach ($grouped as $documentedMethod => $templates) {
+                $this->templatesByDocumentedMethod[$documentedMethod] = array_keys($templates);
             }
         }
 
-        return $this->templateMatchers[$template];
+        if (!array_key_exists($method, $this->methodMatchers)) {
+            $this->methodMatchers[$method] = $this->compileCollisionMatcher(
+                $this->templatesByDocumentedMethod[$method] ?? [],
+            );
+        }
+
+        return $this->methodMatchers[$method];
+    }
+
+    /** @param list<string> $templates */
+    private function compileCollisionMatcher(array $templates): ?OpenApiPathMatcher
+    {
+        if ($templates === []) {
+            return null;
+        }
+
+        try {
+            return new OpenApiPathMatcher($templates);
+        } catch (InvalidArgumentException) {
+            // At least one template cannot compile (e.g. duplicate placeholder
+            // names). Such a template cannot route a request, so it cannot
+            // collide either; retry with the ones the matcher accepts.
+        }
+
+        $compilable = [];
+        foreach ($templates as $template) {
+            try {
+                new OpenApiPathMatcher([$template]);
+                $compilable[] = $template;
+            } catch (InvalidArgumentException) {
+                continue;
+            }
+        }
+
+        return $compilable === [] ? null : new OpenApiPathMatcher($compilable);
     }
 
     private function generationFailureMessage(
