@@ -245,7 +245,7 @@
       "get": {
         "responses": {
           "200": {
-            "description": "ok; additionalProperties carries a schema with required — strict_required deliberately does NOT walk into additionalProperties",
+            "description": "ok; entries is map-shaped (additionalProperties schema, no properties) — strict_required treats its keys as data (issue #437) and does NOT walk into additionalProperties",
             "content": {
               "application/json": {
                 "schema": {

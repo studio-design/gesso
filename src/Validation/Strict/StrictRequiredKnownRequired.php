@@ -10,11 +10,11 @@ namespace Studio\Gesso\Validation\Strict;
  * the union of `required` arrays at that node (with `allOf` branches
  * unioned).
  *
- * Companion of {@see StrictRequiredDisjunctionMatch}. Caller code that
- * diffs observed keys against the schema's required set should branch on
- * `instanceof` of either variant — the union return type on `lookup()`
- * (`StrictRequiredKnownRequired|StrictRequiredDisjunctionMatch`) makes
- * PHPStan exhaustively check the discriminator.
+ * Companion of {@see StrictRequiredDisjunctionMatch} and
+ * {@see StrictRequiredMapMatch}. Caller code that diffs observed keys
+ * against the schema's required set should branch on `instanceof` of each
+ * variant — the union return type on `lookup()` makes PHPStan exhaustively
+ * check the discriminator.
  *
  * @internal Lookup variants are not part of the SemVer-frozen public API.
  */

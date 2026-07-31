@@ -296,6 +296,14 @@ final class StrictRequiredAsserter
 
                 foreach ($pointers as $pointer => $alwaysPresent) {
                     $lookup = $analysis->lookup($pointer);
+                    if ($lookup instanceof StrictRequiredMapMatch) {
+                        // Map-shaped node (`additionalProperties` schema
+                        // form or `true`, no `properties`): observed keys
+                        // are data, not shape (issue #437). Nothing to
+                        // fix in the spec, so skip silently — no drift
+                        // report and no NOTE.
+                        continue;
+                    }
                     if ($lookup instanceof StrictRequiredDisjunctionMatch) {
                         // The spec node at (or above) this pointer is a
                         // disjunction (`anyOf` / `oneOf`); the "add to
