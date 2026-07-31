@@ -21,11 +21,12 @@ use InvalidArgumentException;
  * generator defect fails loudly here instead of reaching user code. The one
  * exception is probe cases — branches whose reachability the schema alone
  * cannot decide, i.e. the none-match state of conditional `allOf` and choice
- * points discovered inside it: when generation, including its bounded
- * deterministic retry search, cannot produce a valid value — a closed
- * discriminator set genuinely forbids the state — the probe case is dropped
- * instead of failing the run. The drop is best-effort by construction, not a
- * reachability proof. Schemas outside the enumeration subset or beyond its
+ * points discovered inside it: when generation cannot produce a valid value,
+ * the probe case is dropped instead of failing the run. For enum-driven
+ * discriminators that decision is exact — the admissible domain is filtered
+ * exhaustively, so the drop means a closed set genuinely forbids the state;
+ * for other shapes it rests on the bounded deterministic retry search and
+ * remains best-effort. Schemas outside the enumeration subset or beyond its
  * documented bounds throw from the pre-pass before anything is generated.
  *
  * @internal Not part of the package's public API. Do not use from user code.

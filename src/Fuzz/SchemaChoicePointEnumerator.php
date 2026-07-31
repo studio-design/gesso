@@ -34,10 +34,13 @@ use function str_replace;
  * unresolved composition on the same node, keywords reintroduced by a branch
  * merge) are rejected loudly instead of silently dropping branches.
  *
- * A choice point rediscovered at the same pointer under another branch
- * context is deduplicated only when its branch content is identical; a
- * context that gives the same pointer different branches keeps its own entry
- * under its own ancestors, so context-specific branches stay covered.
+ * A choice point rediscovered at the same pointer keeps one entry per
+ * discovery context (ancestors + branch content); only exact revisits
+ * collapse. Contexts are not interchangeable: generation can leave a branch
+ * context mid-case when suppressed conditionals fire, but every reachable
+ * state retains at least one generation-stable context whose case realizes
+ * it — `then` content under its own branch, `else` content under the
+ * none-match state.
  *
  * Enumeration bounds, all loud on excess:
  *  - {@see self::MAX_DEPTH} nested property/item levels;
@@ -409,26 +412,16 @@ final class SchemaChoicePointEnumerator
         ?int $probeBranch = null,
     ): void {
         // The same effective pointer can be rediscovered under a different
-        // branch context. Identical branch content means identical coverage,
-        // so the first discovery suffices — unless the first sat inside a
-        // probe context and this one does not: the non-probe rediscovery is
-        // strictly more reliable, so it takes over the entry. Different
-        // content keeps its own entry under the ancestors that make its
-        // branches reachable.
-        $key = $pointer . '#' . md5((string) json_encode($content));
-        $existing = $this->seen[$key] ?? null;
-        if ($existing !== null) {
-            if ($this->points[$existing]->probeContext && !$probeContext) {
-                $this->points[$existing] = new SchemaChoicePoint(
-                    $kind,
-                    $pointer,
-                    $branchCount,
-                    $ancestors,
-                    $probeBranch,
-                    false,
-                );
-            }
-
+        // branch context. Each context keeps its own entry: generation may
+        // leave a context mid-case (closure expansion when suppressed
+        // conditionals fire), so no single context's claim is authoritative
+        // — but every reachable state has at least one context that is
+        // stable under generation (its own branch for `then` content, the
+        // none-match state for `else` content), and that context's case
+        // realizes the branch. Only exact revisits — same pointer, same
+        // content, same ancestors — collapse.
+        $key = $pointer . '#' . md5((string) json_encode([$ancestors, $content]));
+        if (isset($this->seen[$key])) {
             return;
         }
         $this->seen[$key] = count($this->points);

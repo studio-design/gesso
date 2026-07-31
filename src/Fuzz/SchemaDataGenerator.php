@@ -15,6 +15,7 @@ use Studio\Gesso\Spec\OpenApiSchemaConverter;
 
 use function array_filter;
 use function array_key_exists;
+use function array_key_first;
 use function array_keys;
 use function array_merge;
 use function array_slice;
@@ -73,11 +74,11 @@ final class SchemaDataGenerator
 
     /**
      * How many nearby iterations planned `not` generation probes before
-     * falling back to scalar alternatives. Bounds the search that keeps a
-     * rotation-misaligned enum (e.g. the excluded discriminator value) from
-     * being mistaken for an unsatisfiable constraint; deliberately larger
-     * than the 2/3-cycle rotation periods so every scalar rotation state is
-     * revisited.
+     * falling back to scalar alternatives. Finite domains do not rely on
+     * this: enums under a `not` are filtered exhaustively. The retries cover
+     * the remaining scalar rotations (boolean parity, string/number
+     * boundary cycles), and are deliberately larger than the 2/3-cycle
+     * rotation periods so every such rotation state is revisited.
      */
     private const NOT_GENERATION_RETRIES = 8;
 
@@ -159,6 +160,22 @@ final class SchemaDataGenerator
 
         if (isset($schema['enum']) && is_array($schema['enum']) && $schema['enum'] !== []) {
             $values = array_values($schema['enum']);
+            if ($plan !== null && isset($schema['not']) && is_array($schema['not'])) {
+                // The enum domain is finite, so a `not` (e.g. suppressed
+                // discriminator values pushed down by conditionalSetView())
+                // is honoured by filtering the domain outright — complete
+                // and deterministic where iteration retries could miss the
+                // admissible tail of a long enum. An empty filter result
+                // means the exclusion genuinely closes the domain; fall
+                // through and let the self-check fail or drop the probe.
+                $admissible = array_values(array_filter(
+                    $values,
+                    static fn(mixed $value): bool => SchemaValueValidator::isValid($value, $schema),
+                ));
+                if ($admissible !== []) {
+                    return $admissible[$iteration % count($admissible)];
+                }
+            }
 
             return $values[$iteration % count($values)];
         }
@@ -336,14 +353,30 @@ final class SchemaDataGenerator
         }
 
         $suppressedIfs = [];
+        $negatedByProperty = [];
         foreach ($conditionals as $index => $conditional) {
             if (in_array($index, $satisfied, true)) {
                 continue;
             }
-            $suppressedIfs[] = $conditional['if'];
+            // A single-property `if` — the discriminator-lowering shape —
+            // is negated equivalently at the property itself: `¬(p present
+            // ∧ s(p))` is exactly "when present, `p` fails `s`". That puts
+            // the exclusion where value generation can honour it (the enum
+            // domain filter); other shapes stay in a node-level not/anyOf.
+            $condition = self::singlePropertyCondition($conditional['if']);
+            if ($condition !== null) {
+                $negatedByProperty[$condition[0]][] = $condition[1];
+            } else {
+                $suppressedIfs[] = $conditional['if'];
+            }
             if (isset($conditional['else']) && is_array($conditional['else'])) {
                 $schema = self::mergeSchemas($schema, $conditional['else']);
             }
+        }
+        foreach ($negatedByProperty as $property => $negated) {
+            $schema = self::mergeSchemas($schema, ['properties' => [
+                $property => ['not' => count($negated) === 1 ? $negated[0] : ['anyOf' => $negated]],
+            ]]);
         }
         if ($suppressedIfs !== []) {
             $schema = self::mergeSchemas($schema, ['not' => ['anyOf' => $suppressedIfs]]);
@@ -413,6 +446,34 @@ final class SchemaDataGenerator
         }
 
         return $merged;
+    }
+
+    /**
+     * Recognise an `if` of the shape `{properties: {p: s}, required: [p]}`
+     * with no other assertions, and return `[p, s]`; null otherwise.
+     *
+     * @param array<string, mixed> $if
+     *
+     * @return null|array{string, array<string, mixed>}
+     */
+    private static function singlePropertyCondition(array $if): ?array
+    {
+        if (array_keys($if) !== ['properties', 'required'] && array_keys($if) !== ['required', 'properties']) {
+            return null;
+        }
+        if (!is_array($if['properties']) || count($if['properties']) !== 1) {
+            return null;
+        }
+        $property = array_key_first($if['properties']);
+        $subschema = $if['properties'][$property];
+        if (!is_string($property) || !is_array($subschema)) {
+            return null;
+        }
+        if ($if['required'] !== [$property]) {
+            return null;
+        }
+
+        return [$property, $subschema];
     }
 
     /**

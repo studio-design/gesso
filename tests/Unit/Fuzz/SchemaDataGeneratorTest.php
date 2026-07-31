@@ -30,6 +30,7 @@ use function fmod;
 use function json_decode;
 use function json_encode;
 use function preg_match;
+use function range;
 use function restore_error_handler;
 use function set_error_handler;
 use function str_repeat;
@@ -1326,6 +1327,26 @@ class SchemaDataGeneratorTest extends TestCase
         $this->assertArrayHasKey('a', $value);
         $this->assertArrayHasKey('b', $value);
         $this->assertTrue(SchemaValueValidator::isValid($value, $schema));
+    }
+
+    #[Test]
+    public function planned_enum_generation_filters_values_excluded_by_not(): void
+    {
+        // Rotation alone cannot escape a long excluded prefix; the planned
+        // path must restrict the finite enum domain to admissible values.
+        $excluded = [];
+        foreach (range(0, 8) as $i) {
+            $excluded[] = ['const' => "v{$i}"];
+        }
+        $schema = [
+            'type' => 'string',
+            'enum' => ['v0', 'v1', 'v2', 'v3', 'v4', 'v5', 'v6', 'v7', 'v8', 'other'],
+            'not' => ['anyOf' => $excluded],
+        ];
+
+        $value = SchemaDataGenerator::generateOne($schema, null, 10, new CaseSelectionPlan([]));
+
+        $this->assertSame('other', $value);
     }
 
     #[Test]

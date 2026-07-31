@@ -16,6 +16,7 @@ use function is_array;
 use function is_int;
 use function is_string;
 use function json_encode;
+use function range;
 
 class BranchCompleteCaseGeneratorTest extends TestCase
 {
@@ -284,6 +285,72 @@ class BranchCompleteCaseGeneratorTest extends TestCase
         }
 
         $this->assertArrayHasKey('other', $kinds, 'the reachable none-match probe was dropped');
+    }
+
+    #[Test]
+    public function covers_a_none_match_probe_behind_a_long_enum(): void
+    {
+        // Ten enum values, nine conditionals, and a preceding choice point
+        // shifting the probe's iteration: blind retry windows cannot reach
+        // the one admissible value, so the excluded set must be filtered out
+        // of the enum domain deterministically instead.
+        $conditionals = [];
+        $excluded = [];
+        foreach (range(0, 8) as $i) {
+            $conditionals[] = [
+                'if' => ['properties' => ['kind' => ['const' => "v{$i}"]], 'required' => ['kind']],
+                'then' => ['required' => ["p{$i}"], 'properties' => ["p{$i}" => ['type' => 'string']]],
+            ];
+            $excluded[] = "v{$i}";
+        }
+        $schema = [
+            'type' => 'object',
+            'required' => ['kind'],
+            'oneOf' => [['type' => 'object']],
+            'properties' => ['kind' => ['type' => 'string', 'enum' => [...$excluded, 'other']]],
+            'allOf' => $conditionals,
+        ];
+
+        $kinds = [];
+        foreach (BranchCompleteCaseGenerator::generate($schema, seed: 1) as $case) {
+            $this->assertIsArray($case->value);
+            $kinds[$case->value['kind']] = true;
+        }
+
+        $this->assertArrayHasKey('other', $kinds, 'the reachable none-match state behind a long enum was dropped');
+    }
+
+    #[Test]
+    public function covers_choice_points_inside_a_suppressed_else(): void
+    {
+        // Overlapping ifs: whenever conditional 0 fires, conditional 1 fires
+        // too, so its else — and the optional fallback inside it — is only
+        // realizable in the none-match state. The fallback presence branch
+        // must be generated from that stable context.
+        $schema = [
+            'type' => 'object',
+            'required' => ['flag'],
+            'properties' => ['flag' => ['type' => 'boolean']],
+            'allOf' => [
+                [
+                    'if' => ['properties' => ['flag' => ['const' => true]], 'required' => ['flag']],
+                    'then' => ['required' => ['a'], 'properties' => ['a' => ['type' => 'string']]],
+                ],
+                [
+                    'if' => ['properties' => ['flag' => ['const' => true]], 'required' => ['flag']],
+                    'then' => ['required' => ['b'], 'properties' => ['b' => ['type' => 'string']]],
+                    'else' => ['properties' => ['fallback' => ['type' => 'string']]],
+                ],
+            ],
+        ];
+
+        $sawFallback = false;
+        foreach (BranchCompleteCaseGenerator::generate($schema, seed: 1) as $case) {
+            $this->assertIsArray($case->value);
+            $sawFallback = $sawFallback || isset($case->value['fallback']);
+        }
+
+        $this->assertTrue($sawFallback, 'no case realized the optional property inside the suppressed else');
     }
 
     #[Test]

@@ -11,9 +11,6 @@ use Studio\Gesso\Fuzz\SchemaChoicePoint;
 use Studio\Gesso\Fuzz\SchemaChoicePointEnumerator;
 use Studio\Gesso\Fuzz\SchemaChoicePointKind;
 
-use function array_unique;
-use function array_values;
-
 class SchemaChoicePointEnumeratorTest extends TestCase
 {
     #[Test]
@@ -193,7 +190,7 @@ class SchemaChoicePointEnumeratorTest extends TestCase
     }
 
     #[Test]
-    public function still_dedupes_rediscoveries_with_identical_content(): void
+    public function keeps_identical_content_rediscoveries_from_different_contexts(): void
     {
         $schema = [
             'type' => 'object',
@@ -204,14 +201,14 @@ class SchemaChoicePointEnumeratorTest extends TestCase
             ],
         ];
 
-        $entries = [];
+        $contexts = [];
         foreach (SchemaChoicePointEnumerator::enumerate($schema) as $point) {
             if ($point->pointer === '/properties/v/oneOf') {
-                $entries[] = $point;
+                $contexts[] = $point->ancestors;
             }
         }
 
-        $this->assertCount(1, $entries);
+        $this->assertSame([['/anyOf' => 0], ['/anyOf' => 1]], $contexts);
     }
 
     #[Test]
@@ -260,7 +257,7 @@ class SchemaChoicePointEnumeratorTest extends TestCase
     }
 
     #[Test]
-    public function dedupes_choice_points_rediscovered_across_one_of_branches(): void
+    public function records_rediscoveries_per_branch_context(): void
     {
         $schema = [
             'type' => 'object',
@@ -273,20 +270,27 @@ class SchemaChoicePointEnumeratorTest extends TestCase
             ],
         ];
 
-        $points = SchemaChoicePointEnumerator::enumerate($schema);
-        $pointers = [];
-        foreach ($points as $point) {
-            $pointers[] = $point->pointer;
+        $contexts = [];
+        $presenceContexts = [];
+        foreach (SchemaChoicePointEnumerator::enumerate($schema) as $point) {
+            if ($point->pointer === '/properties/shared/oneOf') {
+                $contexts[] = $point->ancestors;
+            }
+            if ($point->pointer === '/properties/shared') {
+                $presenceContexts[] = $point->ancestors;
+            }
         }
 
-        $this->assertSame($pointers, array_values(array_unique($pointers)));
-
-        $indexed = $this->indexByPointer($points);
-        $this->assertArrayHasKey('/oneOf', $indexed);
-        // Discovered first under branch 0, where `shared` is required.
-        $this->assertSame(['/oneOf' => 0], $indexed['/properties/shared/oneOf']->ancestors);
+        // Generation may leave a claimed branch context (closure expansion),
+        // so every discovery context keeps its own entry; at least one of
+        // them is stable under generation. Under branch 1 `shared` is
+        // optional, so that context also forces its presence.
+        $this->assertSame([
+            ['/oneOf' => 0],
+            ['/oneOf' => 1, '/properties/shared' => SchemaChoicePoint::PRESENT],
+        ], $contexts);
         // Presence is only a choice under branch 1, where `shared` is optional.
-        $this->assertSame(['/oneOf' => 1], $indexed['/properties/shared']->ancestors);
+        $this->assertSame([['/oneOf' => 1]], $presenceContexts);
     }
 
     #[Test]
