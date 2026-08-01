@@ -14,7 +14,11 @@ namespace Studio\Gesso\Fuzz;
  * identify the (choice point, branch) pair the case exists to cover — null
  * for extra rotation-only cases — so failures can name the pinned branch.
  * `observation` is filled in by generation: it records whether the target
- * branch was actually taken by the produced value.
+ * branch was actually taken by the produced value. `refineTarget` marks a
+ * target-search retry attempt: the composition site re-merges the target
+ * branch's own content after all other merges, so non-conjunctive keywords
+ * (`pattern`, `format`) displaced by a later `allOf` merge aim back at the
+ * branch itself.
  *
  * @internal Not part of the package's public API. Do not use from user code.
  */
@@ -27,6 +31,7 @@ final readonly class CaseSelectionPlan
         public array $selections,
         public ?string $targetPointer = null,
         public ?int $targetBranch = null,
+        public bool $refineTarget = false,
     ) {
         $this->observation = new PinnedBranchObservation();
     }

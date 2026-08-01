@@ -1405,6 +1405,44 @@ class SchemaDataGeneratorTest extends TestCase
     }
 
     #[Test]
+    public function merge_narrows_number_and_integer_to_integer(): void
+    {
+        // integer is the zero-fraction subtype of number (2020-12 §6.1.1):
+        // the conjunction is integer in either direction, never empty.
+        $this->assertSame(
+            ['integer'],
+            SchemaDataGenerator::mergeSchemas(['type' => 'integer'], ['type' => 'number'])['type'],
+        );
+        $this->assertSame(
+            'integer',
+            SchemaDataGenerator::mergeSchemas(['type' => 'number'], ['type' => 'integer'])['type'],
+        );
+        $this->assertSame(
+            ['string', 'integer'],
+            SchemaDataGenerator::mergeSchemas(
+                ['type' => ['string', 'integer']],
+                ['type' => ['string', 'number']],
+            )['type'],
+        );
+    }
+
+    #[Test]
+    public function merge_intersects_enum_domains_by_json_equality(): void
+    {
+        // JSON Schema equality is mathematical for numbers (2020-12
+        // §4.2.2): 1 and 1.0 are the same value, so neither enum empties
+        // the other.
+        $this->assertSame(
+            [1.0],
+            SchemaDataGenerator::mergeSchemas(['enum' => [1]], ['enum' => [1.0]])['enum'],
+        );
+        $this->assertSame(
+            [1],
+            SchemaDataGenerator::mergeSchemas(['enum' => [1.0]], ['enum' => [1]])['enum'],
+        );
+    }
+
+    #[Test]
     public function planned_enum_generation_filters_values_excluded_by_not(): void
     {
         // Rotation alone cannot escape a long excluded prefix; the planned

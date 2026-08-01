@@ -340,9 +340,13 @@ final class SchemaDataGenerator
         // previously generated values that failed the loud self-check.
         if (is_array($left['enum'] ?? null) && is_array($right['enum'] ?? null) &&
             $left['enum'] !== [] && $right['enum'] !== []) {
+            // Membership uses JSON Schema equality (2020-12 §4.2.2) via the
+            // validator — 1 and 1.0 are the same mathematical value, and
+            // object equality ignores key order — not PHP identity.
+            $leftEnum = ['enum' => $left['enum']];
             $merged['enum'] = array_values(array_filter(
                 $right['enum'],
-                static fn(mixed $value): bool => in_array($value, $left['enum'], true),
+                static fn(mixed $value): bool => SchemaValueValidator::isValid($value, $leftEnum),
             ));
         }
         $leftType = $left['type'] ?? null;
@@ -350,10 +354,18 @@ final class SchemaDataGenerator
         if ((is_string($leftType) || is_array($leftType)) && (is_string($rightType) || is_array($rightType))) {
             $leftTypes = is_string($leftType) ? [$leftType] : $leftType;
             $rightTypes = is_string($rightType) ? [$rightType] : $rightType;
-            $intersection = array_values(array_filter(
-                $rightTypes,
-                static fn(mixed $type): bool => in_array($type, $leftTypes, true),
-            ));
+            $intersection = [];
+            foreach ($rightTypes as $type) {
+                if (in_array($type, $leftTypes, true)) {
+                    $intersection[] = $type;
+                } elseif (($type === 'number' || $type === 'integer') &&
+                    (in_array('number', $leftTypes, true) || in_array('integer', $leftTypes, true))) {
+                    // integer is the zero-fraction subtype of number
+                    // (2020-12 §6.1.1): number ∧ integer = integer.
+                    $intersection[] = 'integer';
+                }
+            }
+            $intersection = array_values(array_unique($intersection));
             if ($intersection !== $rightTypes) {
                 $merged['type'] = $intersection;
             }
@@ -611,6 +623,17 @@ final class SchemaDataGenerator
             return $schema['const'];
         }
 
+        if ($plan !== null &&
+            (($schema['enum'] ?? null) === [] || ($schema['type'] ?? null) === [] || ($schema['not'] ?? null) === true)) {
+            // A statically empty domain — an enum/type intersection emptied
+            // by mergeSchemas(), or an absorbing `not` — admits no value.
+            // Return a deterministic sentinel so the target search sees the
+            // identical outcome on every attempt and classifies the dead
+            // end as proven, instead of chasing varying garbage; untargeted
+            // cases still fail the loud self-check.
+            return null;
+        }
+
         if (isset($schema['enum']) && is_array($schema['enum']) && $schema['enum'] !== []) {
             $values = array_values($schema['enum']);
             if ($plan !== null && isset($schema['not']) && is_array($schema['not'])) {
@@ -628,6 +651,12 @@ final class SchemaDataGenerator
                 if ($admissible !== []) {
                     return $admissible[$iteration % count($admissible)];
                 }
+
+                // The exclusion provably closes the finite domain: no
+                // rotation can escape it. Pick deterministically so the
+                // target search classifies the dead end as proven rather
+                // than reading iteration-rotated picks as an open search.
+                return $values[0];
             }
 
             return $values[$iteration % count($values)];
@@ -1388,6 +1417,19 @@ final class SchemaDataGenerator
             }
         }
 
+        if ($plan !== null && $plan->refineTarget) {
+            $refinement = $plan->observation->takeRefinement();
+            if ($refinement !== null) {
+                // Refinement attempt of the target search: non-conjunctive
+                // keywords (pattern, format) displaced by a later merge are
+                // restored by re-merging the target branch content last.
+                // Conjunctive keywords are idempotent under the re-merge,
+                // and the whole-schema check plus the branch observation
+                // still gate whatever this view generates.
+                $schema = self::mergeSchemas($schema, $refinement);
+            }
+        }
+
         return $schema;
     }
 
@@ -1438,6 +1480,9 @@ final class SchemaDataGenerator
                 $branch = $branches[$selected];
                 $plan->observation->expect($pointer, static fn(mixed $value): bool
                     => $branch === true || (is_array($branch) && SchemaValueValidator::isValid($value, $branch)));
+                if ($plan->refineTarget && is_array($branch)) {
+                    $plan->observation->stageRefinement($branch);
+                }
             }
             $schema = self::applyCompositionBranch($schema, $branches, $selected, $keyword);
             break;

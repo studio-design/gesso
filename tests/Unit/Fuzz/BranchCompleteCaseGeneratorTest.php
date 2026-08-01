@@ -945,6 +945,96 @@ class BranchCompleteCaseGeneratorTest extends TestCase
     }
 
     #[Test]
+    public function covers_a_pattern_branch_narrowed_by_an_all_of_pattern(): void
+    {
+        // `pattern` cannot be merged conjunctively, so the branch view loses
+        // the branch's own pattern to the allOf one; a single failed
+        // candidate must not be read as proof the branch is unreachable —
+        // "A" satisfies branch 0.
+        $cases = BranchCompleteCaseGenerator::generate([
+            'type' => 'string',
+            'anyOf' => [
+                ['pattern' => '^[A-Z]+$'],
+                ['const' => 'z'],
+            ],
+            'allOf' => [
+                ['pattern' => '^[A-Za-z]+$'],
+            ],
+        ], seed: 1);
+
+        $byBranch = [];
+        foreach ($cases as $case) {
+            if ($case->plan->targetPointer === '/anyOf') {
+                $byBranch[$case->plan->targetBranch] = $case->value;
+            }
+        }
+
+        $this->assertArrayHasKey(0, $byBranch, 'the reachable uppercase branch was silently dropped');
+        $this->assertMatchesRegularExpression('/^[A-Z]+$/', $byBranch[0]);
+        $this->assertSame('z', $byBranch[1] ?? null);
+    }
+
+    #[Test]
+    public function stays_loud_when_a_target_search_cannot_conclude(): void
+    {
+        // Digits and lowercase are disjoint, so branch 0 is unreachable —
+        // but the generator cannot prove that: its candidates vary without
+        // ever succeeding. That must fail explicitly, not drop silently.
+        $this->expectException(FuzzGenerationException::class);
+
+        BranchCompleteCaseGenerator::generate([
+            'type' => 'string',
+            'anyOf' => [
+                ['pattern' => '^[0-9]+$'],
+                ['const' => 'z'],
+            ],
+            'allOf' => [
+                ['pattern' => '^[a-z]+$'],
+            ],
+        ], seed: 1);
+    }
+
+    #[Test]
+    public function generates_integer_cases_for_an_integer_narrowed_by_number(): void
+    {
+        // integer is a subtype of number (2020-12 §6.1.1): the conjunction
+        // is integer, not the empty set.
+        $cases = BranchCompleteCaseGenerator::generate([
+            'type' => 'integer',
+            'allOf' => [['type' => 'number']],
+            'anyOf' => [['minimum' => 0], ['maximum' => -1]],
+        ], seed: 1);
+
+        $byBranch = [];
+        foreach ($cases as $case) {
+            $this->assertIsInt($case->value);
+            if ($case->plan->targetPointer === '/anyOf') {
+                $byBranch[$case->plan->targetBranch] = $case->value;
+            }
+        }
+
+        $this->assertGreaterThanOrEqual(0, $byBranch[0] ?? -1);
+        $this->assertLessThanOrEqual(-1, $byBranch[1] ?? 0);
+    }
+
+    #[Test]
+    public function covers_enum_branches_with_numerically_equal_values(): void
+    {
+        // 1 and 1.0 are the same mathematical value (2020-12 §4.2.2); the
+        // enum conjunction admits it.
+        $cases = BranchCompleteCaseGenerator::generate([
+            'allOf' => [['enum' => [1]], ['enum' => [1.0]]],
+        ], seed: 1);
+
+        $this->assertNotSame([], $cases);
+        foreach ($cases as $case) {
+            // JSON Schema equality, not PHP identity: the generated value
+            // may surface as int 1 or float 1.0 depending on merge order.
+            $this->assertTrue(SchemaValueValidator::isValid($case->value, ['const' => 1]));
+        }
+    }
+
+    #[Test]
     public function drops_a_present_case_whose_property_was_trimmed(): void
     {
         // maxProperties 1 with a required sibling means `b` can never be
