@@ -37,6 +37,7 @@ use function max;
 use function min;
 use function preg_match;
 use function preg_match_all;
+use function preg_quote;
 use function round;
 use function sprintf;
 use function str_ends_with;
@@ -918,6 +919,39 @@ final class SchemaDataGenerator
                 );
             }
         }
+        if ($plan !== null && count($result) < $minProperties && ($schema['additionalProperties'] ?? true) === false) {
+            // `additionalProperties: false` only forbids names that neither
+            // `properties` nor `patternProperties` evaluates (JSON Schema
+            // 2020-12 §10.3.2.3), so a minProperties shortfall on a closed
+            // object can still be met with pattern-matched names. Plan-only:
+            // plan-less rotation output is frozen.
+            $patternProperties = $schema['patternProperties'] ?? null;
+            if (is_array($patternProperties)) {
+                foreach ($patternProperties as $patternKey => $patternSchema) {
+                    if (count($result) >= $minProperties) {
+                        break;
+                    }
+                    if (!is_string($patternKey) || (!is_array($patternSchema) && $patternSchema !== true)) {
+                        continue;
+                    }
+                    $name = self::synthesizePropertyName($patternKey, $faker, $iteration);
+                    // A name that collides with a declared property would
+                    // override that property's own presence rotation or pin,
+                    // so leave the shortfall to fail loudly instead.
+                    if ($name === null || array_key_exists($name, $result) || isset($properties[$name])) {
+                        continue;
+                    }
+                    $result[$name] = self::generateOne(
+                        $patternSchema === true ? [] : $patternSchema,
+                        $faker,
+                        $iteration + count($result),
+                        $plan,
+                        $pointer . '/patternProperties/' . SchemaChoicePointEnumerator::escapePointerSegment($patternKey),
+                        false,
+                    );
+                }
+            }
+        }
         $maxProperties = isset($schema['maxProperties']) && is_int($schema['maxProperties'])
             ? $schema['maxProperties']
             : null;
@@ -979,8 +1013,28 @@ final class SchemaDataGenerator
                     // Without the target property, at most the other named
                     // properties can exist when additionalProperties is
                     // false; fewer than minProperties means omission can
-                    // never satisfy the object.
-                    if (($schema['additionalProperties'] ?? true) === false && $includableOthers < $minProperties) {
+                    // never satisfy the object. The count argument breaks
+                    // down when any patternProperties entry admits values —
+                    // additionalProperties only governs names that neither
+                    // keyword evaluates — so a pattern-open object proves
+                    // nothing.
+                    $patternsAdmitNames = false;
+                    $patternProperties = $schema['patternProperties'] ?? null;
+                    if (is_array($patternProperties) && $patternProperties !== []) {
+                        foreach ($patternProperties as $patternSchema) {
+                            if ($patternSchema !== false) {
+                                $patternsAdmitNames = true;
+
+                                break;
+                            }
+                        }
+                    } elseif ($patternProperties !== null) {
+                        // Malformed node: stay conservative, no proof.
+                        $patternsAdmitNames = true;
+                    }
+                    if (($schema['additionalProperties'] ?? true) === false &&
+                        !$patternsAdmitNames &&
+                        $includableOthers < $minProperties) {
                         $plan->observation->proveDeadEnd();
                     }
                 } elseif ($maxProperties !== null &&
@@ -1725,6 +1779,31 @@ final class SchemaDataGenerator
         }
 
         return $merged;
+    }
+
+    /**
+     * Synthesize a property name matching a `patternProperties` pattern.
+     *
+     * Anchored literal patterns (`^name$`, no metacharacters) are read off
+     * directly; anything else goes through the common pattern synthesis
+     * subset with a final match check, since those synthesizers target
+     * value patterns. Null means the pattern is outside both — the caller
+     * leaves the shortfall unmet and generation fails loudly downstream.
+     */
+    private static function synthesizePropertyName(string $pattern, ?Generator $faker, int $iteration): ?string
+    {
+        if (preg_match('/^\^(.+)\$$/D', $pattern, $matches) === 1 && preg_quote($matches[1], '~') === $matches[1]) {
+            return $matches[1];
+        }
+
+        $name = self::generateCommonPattern($pattern, [], $faker, $iteration);
+        if ($name === null) {
+            return null;
+        }
+        $delimiter = '~';
+        $escaped = str_replace($delimiter, '\\' . $delimiter, $pattern);
+
+        return @preg_match($delimiter . $escaped . $delimiter . 'u', $name) === 1 ? $name : null;
     }
 
     /** @param array<string, mixed> $schema */

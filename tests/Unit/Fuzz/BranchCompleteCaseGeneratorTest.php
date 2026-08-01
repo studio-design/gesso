@@ -676,6 +676,34 @@ class BranchCompleteCaseGeneratorTest extends TestCase
     }
 
     #[Test]
+    public function covers_an_omission_branch_reachable_through_pattern_properties(): void
+    {
+        // additionalProperties: false only forbids names that neither
+        // `properties` nor `patternProperties` evaluates, so minProperties
+        // can be met by a pattern-matched name and omission stays reachable.
+        $schema = [
+            'type' => 'object',
+            'minProperties' => 1,
+            'properties' => ['a' => ['type' => 'string']],
+            'patternProperties' => ['^x$' => ['type' => 'string']],
+            'additionalProperties' => false,
+        ];
+
+        $sawOmitted = false;
+        foreach (BranchCompleteCaseGenerator::generate($schema, seed: 1) as $case) {
+            $this->assertTrue(
+                SchemaValueValidator::isValid($case->value, $schema),
+                'case ' . json_encode($case->value) . ' is invalid',
+            );
+            if (is_array($case->value) && !array_key_exists('a', $case->value)) {
+                $sawOmitted = true;
+            }
+        }
+
+        $this->assertTrue($sawOmitted, 'no case omitted the optional property');
+    }
+
+    #[Test]
     public function drops_a_conditional_branch_made_unreachable_by_a_folded_suppression(): void
     {
         // The first conditional's then: false permanently forbids x; the
