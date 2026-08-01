@@ -1456,6 +1456,28 @@ class SchemaDataGeneratorTest extends TestCase
     }
 
     #[Test]
+    public function merge_keeps_an_empty_enum_marker_through_later_merges(): void
+    {
+        // enum: [] states the conjunction is empty — whether user-authored
+        // or a conflict marker from an earlier merge. Intersecting with any
+        // later enum must stay empty; array_merge displacement would erase
+        // the contradiction and forfeit the dead-end proof.
+        $conflicted = SchemaDataGenerator::mergeSchemas(['const' => 'a'], ['const' => 'b']);
+        $this->assertSame(
+            [],
+            SchemaDataGenerator::mergeSchemas($conflicted, ['enum' => ['a', 'b']])['enum'],
+        );
+        $this->assertSame(
+            [],
+            SchemaDataGenerator::mergeSchemas(['enum' => []], ['enum' => ['a']])['enum'],
+        );
+        $this->assertSame(
+            [],
+            SchemaDataGenerator::mergeSchemas(['enum' => ['a']], ['enum' => []])['enum'],
+        );
+    }
+
+    #[Test]
     public function merge_intersects_enum_domains_by_json_equality(): void
     {
         // JSON Schema equality is mathematical for numbers (2020-12

@@ -340,16 +340,22 @@ final class SchemaDataGenerator
         // byte-identical to the historical array_merge result, keeping
         // plan-less rotation output bit-for-bit. Conflicting domains
         // previously generated values that failed the loud self-check.
-        if (is_array($left['enum'] ?? null) && is_array($right['enum'] ?? null) &&
-            $left['enum'] !== [] && $right['enum'] !== []) {
-            // Membership uses JSON Schema equality (2020-12 §4.2.2) via the
-            // validator — 1 and 1.0 are the same mathematical value, and
-            // object equality ignores key order — not PHP identity.
-            $leftEnum = ['enum' => $left['enum']];
-            $merged['enum'] = array_values(array_filter(
-                $right['enum'],
-                static fn(mixed $value): bool => SchemaValueValidator::isValid($value, $leftEnum),
-            ));
+        if (is_array($left['enum'] ?? null) && is_array($right['enum'] ?? null)) {
+            if ($left['enum'] === [] || $right['enum'] === []) {
+                // An empty side — user-authored or a conflict marker from an
+                // earlier merge — states the conjunction is already empty;
+                // array_merge displacement must not resurrect the domain.
+                $merged['enum'] = [];
+            } else {
+                // Membership uses JSON Schema equality (2020-12 §4.2.2) via
+                // the validator — 1 and 1.0 are the same mathematical value,
+                // and object equality ignores key order — not PHP identity.
+                $leftEnum = ['enum' => $left['enum']];
+                $merged['enum'] = array_values(array_filter(
+                    $right['enum'],
+                    static fn(mixed $value): bool => SchemaValueValidator::isValid($value, $leftEnum),
+                ));
+            }
         }
         // A `const` conflicting with the other side's `const` or `enum` is a
         // static proof the conjunction admits no value; the empty-enum

@@ -676,6 +676,32 @@ class BranchCompleteCaseGeneratorTest extends TestCase
     }
 
     #[Test]
+    public function drops_a_presence_branch_made_unreachable_by_conflicting_consts(): void
+    {
+        // const: a ∧ const: b is a contradiction; the empty-enum marker
+        // must survive the later enum merge so the present branch is a
+        // proven dead end, not a loud search failure.
+        $cases = BranchCompleteCaseGenerator::generate([
+            'type' => 'object',
+            'properties' => [
+                'p' => [
+                    'allOf' => [
+                        ['const' => 'a'],
+                        ['const' => 'b'],
+                        ['enum' => ['a', 'b']],
+                    ],
+                ],
+            ],
+        ], seed: 1);
+
+        $this->assertNotSame([], $cases);
+        foreach ($cases as $case) {
+            $this->assertIsArray($case->value);
+            $this->assertArrayNotHasKey('p', $case->value);
+        }
+    }
+
+    #[Test]
     public function covers_an_omission_branch_reachable_through_pattern_properties(): void
     {
         // additionalProperties: false only forbids names that neither
