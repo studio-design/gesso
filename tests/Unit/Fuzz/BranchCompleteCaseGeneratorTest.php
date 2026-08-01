@@ -1035,6 +1035,44 @@ class BranchCompleteCaseGeneratorTest extends TestCase
     }
 
     #[Test]
+    public function covers_a_presence_branch_gated_by_a_dependent_schema(): void
+    {
+        // dependentSchemas applies its subschema to the whole object when
+        // `a` is present (2020-12 §10.2.2.4): {a, b: 4} is valid, but only
+        // one of b's five untargeted rotations produces it. An identical
+        // presence observation across a too-narrow search must not be read
+        // as proof the present branch is unreachable.
+        $cases = BranchCompleteCaseGenerator::generate([
+            'type' => 'object',
+            'required' => ['b'],
+            'properties' => [
+                'a' => ['type' => 'string'],
+                'b' => ['anyOf' => [
+                    ['const' => 0],
+                    ['const' => 1],
+                    ['const' => 2],
+                    ['const' => 3],
+                    ['const' => 4],
+                ]],
+            ],
+            'dependentSchemas' => [
+                'a' => ['properties' => ['b' => ['const' => 4]]],
+            ],
+        ], seed: 1);
+
+        $present = null;
+        foreach ($cases as $case) {
+            $this->assertIsArray($case->value);
+            if (array_key_exists('a', $case->value)) {
+                $present = $case->value;
+            }
+        }
+
+        $this->assertNotNull($present, 'the reachable present branch of a was silently dropped');
+        $this->assertSame(4, $present['b']);
+    }
+
+    #[Test]
     public function drops_a_present_case_whose_property_was_trimmed(): void
     {
         // maxProperties 1 with a required sibling means `b` can never be
