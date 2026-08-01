@@ -41,6 +41,15 @@ final class PinnedBranchObservation
     public bool $targetSatisfied = false;
     public bool $observed = false;
     public mixed $targetLocal = null;
+
+    /**
+     * Set when generation hit a statically empty value domain at a forced
+     * node — a schema-derived proof that no value can satisfy the pinned
+     * view, so the targeted branch is unreachable and its case may be
+     * dropped. Search failure without this proof must stay loud: generator
+     * determinism is not evidence that no other value exists.
+     */
+    public bool $provenDeadEnd = false;
     private ?string $owner = null;
 
     /** @var ?Closure(mixed): bool */
@@ -69,6 +78,12 @@ final class PinnedBranchObservation
             $this->targetLocal = $value;
             $this->targetSatisfied = ($this->check)($value);
         }
+    }
+
+    /** Record a schema-derived proof that the pinned view admits no value. */
+    public function proveDeadEnd(): void
+    {
+        $this->provenDeadEnd = true;
     }
 
     /** Record an on-the-spot decision from a site that needs no deferral. */

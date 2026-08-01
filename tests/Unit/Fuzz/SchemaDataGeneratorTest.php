@@ -1427,6 +1427,35 @@ class SchemaDataGeneratorTest extends TestCase
     }
 
     #[Test]
+    public function merge_marks_conflicting_value_domains_empty(): void
+    {
+        // A const conflicting with the other side's const or enum is a
+        // static proof the conjunction is empty; the marker lets planned
+        // generation prove a dead end instead of guessing from failures.
+        $this->assertSame(
+            [],
+            SchemaDataGenerator::mergeSchemas(['const' => 'a'], ['const' => 'b'])['enum'],
+        );
+        $this->assertSame(
+            [],
+            SchemaDataGenerator::mergeSchemas(['const' => 'a'], ['enum' => ['b', 'c']])['enum'],
+        );
+        $this->assertSame(
+            [],
+            SchemaDataGenerator::mergeSchemas(['enum' => ['b', 'c']], ['const' => 'a'])['enum'],
+        );
+        // Compatible const/enum pairs stay untouched.
+        $this->assertArrayNotHasKey(
+            'enum',
+            SchemaDataGenerator::mergeSchemas(['const' => 'a'], ['const' => 'a']),
+        );
+        $this->assertSame(
+            ['a', 'b'],
+            SchemaDataGenerator::mergeSchemas(['const' => 'a'], ['enum' => ['a', 'b']])['enum'],
+        );
+    }
+
+    #[Test]
     public function merge_intersects_enum_domains_by_json_equality(): void
     {
         // JSON Schema equality is mathematical for numbers (2020-12

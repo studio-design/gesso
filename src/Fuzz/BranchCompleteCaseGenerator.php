@@ -7,9 +7,7 @@ namespace Studio\Gesso\Fuzz;
 use Faker\Generator;
 use InvalidArgumentException;
 
-use function array_unique;
 use function count;
-use function json_encode;
 use function max;
 use function sprintf;
 
@@ -42,17 +40,18 @@ use function sprintf;
  * domains — at least {@see self::TARGET_SEARCH_ITERATIONS} offsets, widened
  * to cycle the widest choice point completely, since an unpinned sibling
  * rotation can gate the target's validity (e.g. via `dependentSchemas`).
- * The branch is treated as a proven dead end and dropped only when
- * retrying demonstrably cannot help: either every attempt produced the
- * identical whole value (generation is fully deterministic for this case),
- * or the target state itself was never realized and its node-level outcome
- * never moved. When the target was realized but whole-schema validity
- * never held, or the outcomes vary without success, unreachability is
- * unproven and the run fails loudly instead of silently under-covering. If
- * every case is dropped, one rotation-only case still runs loudly, so an
- * unsatisfiable schema remains an error. Schemas outside the enumeration
- * subset or beyond its documented bounds throw from the pre-pass before
- * anything is generated.
+ * A branch is dropped only on a static unreachability proof — generation
+ * recorded a schema-derived contradiction at a node whose constraints are
+ * unavoidable under the plan ({@see PinnedBranchObservation::$provenDeadEnd}):
+ * an emptied enum/type intersection or const conflict, an absorbing `not`,
+ * an exhausted finite const/enum domain, or impossible presence arithmetic.
+ * Search failure is kept strictly apart: generator determinism is not
+ * evidence that no other value exists on the schema, so without a proof the
+ * run fails loudly instead of silently under-covering. If every case is
+ * dropped, one rotation-only case still runs loudly, so an unsatisfiable
+ * schema remains an error. Schemas outside the enumeration subset or beyond
+ * its documented bounds throw from the pre-pass before anything is
+ * generated.
  *
  * @internal Not part of the package's public API. Do not use from user code.
  */
@@ -145,9 +144,7 @@ final class BranchCompleteCaseGenerator
         CaseSelectionPlan $plan,
         int $rounds,
     ): ?PlannedSchemaCase {
-        $wholes = [];
-        $locals = [];
-        $everSatisfied = false;
+        $attempts = 0;
         for ($round = 0; $round < $rounds; $round++) {
             foreach ([false, true] as $refine) {
                 $attempt = new CaseSelectionPlan(
@@ -160,36 +157,26 @@ final class BranchCompleteCaseGenerator
                 if ($attempt->observation->targetSatisfied && SchemaValueValidator::isValid($value, $schema)) {
                     return new PlannedSchemaCase($index, $value, $attempt);
                 }
-                $everSatisfied = $everSatisfied || $attempt->observation->targetSatisfied;
-                $wholes[] = (string) json_encode($value);
-                $locals[] = $attempt->observation->observed
-                    ? (string) json_encode($attempt->observation->targetLocal)
-                    : "\0unobserved";
+                if ($attempt->observation->provenDeadEnd) {
+                    // A schema-derived proof (statically empty domain at a
+                    // forced node, presence arithmetic) that the pinned view
+                    // admits no value: no search can succeed, drop now.
+                    return null;
+                }
+                $attempts++;
             }
         }
 
-        // Two shapes of proof that retrying cannot help:
-        //  - every attempt produced the identical whole value: generation is
-        //    fully deterministic for this case, so no further search can
-        //    change the outcome;
-        //  - the target state itself was never realized and its node-level
-        //    outcome never moved: the miss is deterministic at the target,
-        //    whatever unrelated parts of the value did around it.
-        // An attempt that realized the target but failed whole-schema
-        // validity is neither: the branch is demonstrably reachable and only
-        // the surrounding context is missing, so concluding "unreachable"
-        // would silently under-cover — fail loudly instead.
-        if (count(array_unique($wholes)) === 1 ||
-            (!$everSatisfied && count(array_unique($locals)) === 1)) {
-            return null;
-        }
-
+        // No proof and no success: generator determinism or a too-narrow
+        // synthesis repertoire is not evidence that no other value exists
+        // on the schema, so silent dropping here would under-cover. Fail
+        // loudly instead.
         throw new FuzzGenerationException(sprintf(
             "Branch %d of choice point '%s' was not realized after %d attempts and could not be "
             . 'proven unreachable; this schema is outside the branch-complete generation subset.',
             $plan->targetBranch ?? -1,
             $plan->targetPointer ?? '',
-            count($wholes),
+            $attempts,
         ), $index);
     }
 }

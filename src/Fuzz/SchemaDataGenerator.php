@@ -135,8 +135,9 @@ final class SchemaDataGenerator
         int $iteration,
         ?CaseSelectionPlan $plan = null,
         string $pointer = '',
+        bool $forced = true,
     ): mixed {
-        $value = self::generateNode($schema, $faker, $iteration, $plan, $pointer);
+        $value = self::generateNode($schema, $faker, $iteration, $plan, $pointer, $forced);
         // The site that applied the plan's target registered its
         // branch-level check while this node resolved; the value exists
         // only now. Nested regenerations at the same pointer evaluated
@@ -348,6 +349,23 @@ final class SchemaDataGenerator
                 $right['enum'],
                 static fn(mixed $value): bool => SchemaValueValidator::isValid($value, $leftEnum),
             ));
+        }
+        // A `const` conflicting with the other side's `const` or `enum` is a
+        // static proof the conjunction admits no value; the empty-enum
+        // marker lets planned generation treat the dead end as proven. The
+        // marker is inert on the plan-less path: `const` is generated first
+        // and an empty `enum` is never consulted.
+        $leftConst = array_key_exists('const', $left);
+        $rightConst = array_key_exists('const', $right);
+        if ($leftConst && $rightConst &&
+            !SchemaValueValidator::isValid($left['const'], ['const' => $right['const']])) {
+            $merged['enum'] = [];
+        } elseif ($leftConst && is_array($right['enum'] ?? null) && $right['enum'] !== [] &&
+            !SchemaValueValidator::isValid($left['const'], ['enum' => $right['enum']])) {
+            $merged['enum'] = [];
+        } elseif ($rightConst && is_array($left['enum'] ?? null) && $left['enum'] !== [] &&
+            !SchemaValueValidator::isValid($right['const'], ['enum' => $left['enum']])) {
+            $merged['enum'] = [];
         }
         $leftType = $left['type'] ?? null;
         $rightType = $right['type'] ?? null;
@@ -586,16 +604,28 @@ final class SchemaDataGenerator
         return [$base, $choices, false];
     }
 
-    /** @param array<string, mixed> $schema */
+    /**
+     * `$forced` tracks whether every choice on the path from the root to
+     * this node was pinned by the plan or admitted no alternative — i.e.
+     * whether this node's constraints are unavoidable for any value of the
+     * whole case. A statically empty value domain found at a forced node is
+     * a schema-derived proof the pinned view admits no value at all
+     * (recorded via {@see PinnedBranchObservation::proveDeadEnd()}); the
+     * same emptiness under an unpinned rotation proves nothing, because a
+     * different rotation pick may avoid the node entirely.
+     *
+     * @param array<string, mixed> $schema
+     */
     private static function generateNode(
         array $schema,
         ?Generator $faker,
         int $iteration,
         ?CaseSelectionPlan $plan,
         string $pointer,
+        bool $forced,
     ): mixed {
         if ($plan !== null && ($pinnedConditional = $plan->branchFor($pointer . '/allOf')) !== null) {
-            $resolved = self::resolveBranchChoice($schema, $iteration, $plan, $pointer);
+            $resolved = self::resolveBranchChoice($schema, $iteration, $plan, $pointer, $forced);
             [$base, $conditionals] = self::splitConditionals($resolved);
             if ($conditionals !== []) {
                 [$base, $choices, $unsatisfiable] = self::partitionConditionals($base, $conditionals);
@@ -609,6 +639,7 @@ final class SchemaDataGenerator
                         $iteration,
                         $plan,
                         $pointer,
+                        $forced,
                     );
                 }
                 // No genuine choice remains (all folded, or the node is
@@ -617,46 +648,60 @@ final class SchemaDataGenerator
             }
         }
 
-        $schema = self::resolveComposition($schema, $faker, $iteration, $plan, $pointer);
-
-        if (array_key_exists('const', $schema)) {
-            return $schema['const'];
-        }
+        $schema = self::resolveComposition($schema, $faker, $iteration, $plan, $pointer, $forced);
 
         if ($plan !== null &&
             (($schema['enum'] ?? null) === [] || ($schema['type'] ?? null) === [] || ($schema['not'] ?? null) === true)) {
-            // A statically empty domain — an enum/type intersection emptied
-            // by mergeSchemas(), or an absorbing `not` — admits no value.
-            // Return a deterministic sentinel so the target search sees the
-            // identical outcome on every attempt and classifies the dead
-            // end as proven, instead of chasing varying garbage; untargeted
-            // cases still fail the loud self-check.
+            // A statically empty domain — an enum/type intersection or a
+            // const conflict emptied by mergeSchemas(), or an absorbing
+            // `not` — admits no value. This precedes the const shortcut:
+            // the conflict marker outranks whichever const survived the
+            // merge. At a forced node this is a schema-derived proof the
+            // pinned view is unsatisfiable; the deterministic sentinel
+            // keeps untargeted cases failing the loud self-check.
+            if ($forced) {
+                $plan->observation->proveDeadEnd();
+            }
+
             return null;
+        }
+
+        if (array_key_exists('const', $schema)) {
+            if ($plan !== null && $forced && !SchemaValueValidator::isValid($schema['const'], $schema)) {
+                // The node's domain is the single const value; if even that
+                // value violates the node's own view (a suppression `not`,
+                // an exclusivity constraint), the finite domain is
+                // exhausted — a static proof, not a failed sample.
+                $plan->observation->proveDeadEnd();
+            }
+
+            return $schema['const'];
         }
 
         if (isset($schema['enum']) && is_array($schema['enum']) && $schema['enum'] !== []) {
             $values = array_values($schema['enum']);
-            if ($plan !== null && isset($schema['not']) && is_array($schema['not'])) {
-                // The enum domain is finite, so a `not` (e.g. suppressed
-                // discriminator values pushed down by conditionalSetView())
-                // is honoured by filtering the domain outright — complete
-                // and deterministic where iteration retries could miss the
-                // admissible tail of a long enum. An empty filter result
-                // means the exclusion genuinely closes the domain; fall
-                // through and let the self-check fail or drop the probe.
+            if ($plan !== null) {
+                // The enum domain is finite, so admissibility against the
+                // node view (including any `not` pushed down by suppression)
+                // is decidable outright — complete and deterministic where
+                // iteration retries could miss the admissible tail of a
+                // long enum.
                 $admissible = array_values(array_filter(
                     $values,
                     static fn(mixed $value): bool => SchemaValueValidator::isValid($value, $schema),
                 ));
-                if ($admissible !== []) {
+                if ($admissible === []) {
+                    // The finite domain is provably exhausted; the
+                    // deterministic pick keeps untargeted cases loud.
+                    if ($forced) {
+                        $plan->observation->proveDeadEnd();
+                    }
+
+                    return $values[0];
+                }
+                if (isset($schema['not']) && is_array($schema['not'])) {
                     return $admissible[$iteration % count($admissible)];
                 }
-
-                // The exclusion provably closes the finite domain: no
-                // rotation can escape it. Pick deterministically so the
-                // target search classifies the dead end as proven rather
-                // than reading iteration-rotated picks as an open search.
-                return $values[0];
             }
 
             return $values[$iteration % count($values)];
@@ -675,12 +720,17 @@ final class SchemaDataGenerator
             if ($emitNull) {
                 return null;
             }
+            if ($plan !== null && $pinnedNull === null) {
+                // Rotation chose the non-null side; null remains a way to
+                // satisfy this node, so nothing below can prove a dead end.
+                $forced = false;
+            }
         }
 
         if (isset($schema['not']) && is_array($schema['not'])) {
             $withoutNot = $schema;
             unset($withoutNot['not']);
-            $candidate = self::generateOne($withoutNot, $faker, $iteration, $plan, $pointer);
+            $candidate = self::generateOne($withoutNot, $faker, $iteration, $plan, $pointer, $forced);
             if (!SchemaValueValidator::isValid($candidate, $schema)) {
                 if ($plan !== null) {
                     // The `not` often excludes exactly the rotation pick — a
@@ -690,7 +740,7 @@ final class SchemaDataGenerator
                     // read as "unsatisfiable". Plan-less rotation keeps the
                     // historical single-shot behaviour and output.
                     for ($offset = 1; $offset <= self::NOT_GENERATION_RETRIES; $offset++) {
-                        $retried = self::generateOne($withoutNot, $faker, $iteration + $offset, $plan, $pointer);
+                        $retried = self::generateOne($withoutNot, $faker, $iteration + $offset, $plan, $pointer, $forced);
                         if (SchemaValueValidator::isValid($retried, $schema)) {
                             return $retried;
                         }
@@ -709,8 +759,8 @@ final class SchemaDataGenerator
         $type = self::resolveType($schema);
 
         return match ($type) {
-            'object' => self::generateObject($schema, $faker, $iteration, $plan, $pointer),
-            'array' => self::generateArray($schema, $faker, $iteration, $plan, $pointer),
+            'object' => self::generateObject($schema, $faker, $iteration, $plan, $pointer, $forced),
+            'array' => self::generateArray($schema, $faker, $iteration, $plan, $pointer, $forced),
             'string' => self::generateString($schema, $faker, $iteration),
             'integer' => self::generateInteger($schema, $faker, $iteration),
             'number' => self::generateNumber($schema, $faker, $iteration),
@@ -783,6 +833,7 @@ final class SchemaDataGenerator
         int $iteration,
         ?CaseSelectionPlan $plan = null,
         string $pointer = '',
+        bool $forced = true,
     ): array|stdClass {
         $properties = $schema['properties'] ?? [];
         if (!is_array($properties)) {
@@ -820,6 +871,7 @@ final class SchemaDataGenerator
                 $presenceTarget = $name;
             }
             $isRequired = in_array($name, $required, true);
+            $pinnedPresence = null;
             // Optional properties alternate inclusion across cases so the
             // suite exercises both "required-only" and "required+optional"
             // shapes — mirrors Schemathesis' explore-omit toggle on a small
@@ -841,6 +893,9 @@ final class SchemaDataGenerator
                 $iteration,
                 $plan,
                 $childPointer,
+                // A rotation-included optional property is avoidable by
+                // omission, so its subtree can prove nothing.
+                $forced && ($isRequired || $pinnedPresence === SchemaChoicePoint::PRESENT),
             );
         }
 
@@ -859,6 +914,7 @@ final class SchemaDataGenerator
                     $iteration + count($result),
                     $plan,
                     $pointer . '/additionalProperties',
+                    false,
                 );
             }
         }
@@ -877,6 +933,7 @@ final class SchemaDataGenerator
                     $iteration + count($result),
                     $plan,
                     $pointer . '/additionalProperties',
+                    false,
                 );
             }
         }
@@ -906,6 +963,34 @@ final class SchemaDataGenerator
             $plan->observation->report(
                 $plan->targetBranch === SchemaChoicePoint::OMITTED ? !$present : $present,
             );
+            if ($forced) {
+                // Static presence arithmetic — schema-derived proofs that
+                // the pinned state is impossible, independent of what was
+                // generated. The merged view unions `properties` and
+                // `required` and maximises `minProperties`, so both counts
+                // only over-approximate what the real conjunction admits.
+                $includableOthers = 0;
+                foreach ($properties as $name => $propSchema) {
+                    if (is_string($name) && $name !== $presenceTarget && $propSchema !== false) {
+                        $includableOthers++;
+                    }
+                }
+                if ($plan->targetBranch === SchemaChoicePoint::OMITTED) {
+                    // Without the target property, at most the other named
+                    // properties can exist when additionalProperties is
+                    // false; fewer than minProperties means omission can
+                    // never satisfy the object.
+                    if (($schema['additionalProperties'] ?? true) === false && $includableOthers < $minProperties) {
+                        $plan->observation->proveDeadEnd();
+                    }
+                } elseif ($maxProperties !== null &&
+                    !in_array($presenceTarget, $required, true) &&
+                    count($required) + 1 > $maxProperties) {
+                    // Every valid object carries all required properties;
+                    // adding the target on top provably exceeds the budget.
+                    $plan->observation->proveDeadEnd();
+                }
+            }
         }
         if ($result === []) {
             if ($maxProperties === 0 || ($schema['additionalProperties'] ?? true) === false) {
@@ -928,7 +1013,13 @@ final class SchemaDataGenerator
         int $iteration,
         ?CaseSelectionPlan $plan = null,
         string $pointer = '',
+        bool $forced = true,
     ): array {
+        // Item subtrees never prove dead ends ($forced is deliberately not
+        // forwarded below): element count and content interact with
+        // minItems/maxItems/uniqueItems in ways the proof sites do not
+        // model, so stay conservative and loud.
+        unset($forced);
         // A pinned plan entry at `<pointer>/items` is a forced minimum size:
         // it makes items reachable in the pinned case (mirroring how optional
         // ancestors are forced present) without becoming a rotation strategy.
@@ -971,7 +1062,7 @@ final class SchemaDataGenerator
                     ? $pointer . '/prefixItems/' . $index
                     : $pointer . '/items';
                 if (is_array($item)) {
-                    $result[] = self::generateOne($item, $faker, $iteration + $index, $plan, $itemPointer);
+                    $result[] = self::generateOne($item, $faker, $iteration + $index, $plan, $itemPointer, false);
                 } else {
                     $result[] = 'item-' . $index;
                 }
@@ -1008,12 +1099,12 @@ final class SchemaDataGenerator
         $itemPointer = $pointer . '/items';
         $result = [];
         for ($i = 0; $i < $size; $i++) {
-            $item = self::generateOne($items, $faker, $iteration + $i, $plan, $itemPointer);
+            $item = self::generateOne($items, $faker, $iteration + $i, $plan, $itemPointer, false);
             if (($schema['uniqueItems'] ?? false) === true) {
                 $attempt = 0;
                 while (in_array($item, $result, true) && $attempt < 100) {
                     $attempt++;
-                    $item = self::generateOne($items, $faker, $iteration + $i + $attempt, $plan, $itemPointer);
+                    $item = self::generateOne($items, $faker, $iteration + $i + $attempt, $plan, $itemPointer, false);
                 }
             }
             $result[] = $item;
@@ -1349,8 +1440,9 @@ final class SchemaDataGenerator
         int $iteration,
         ?CaseSelectionPlan $plan = null,
         string $pointer = '',
+        bool &$forced = true,
     ): array {
-        $schema = self::resolveBranchChoice($schema, $iteration, $plan, $pointer);
+        $schema = self::resolveBranchChoice($schema, $iteration, $plan, $pointer, $forced);
 
         if (isset($schema['allOf']) && is_array($schema['allOf'])) {
             [$schema, $conditionals] = self::splitConditionals($schema);
@@ -1373,6 +1465,10 @@ final class SchemaDataGenerator
                 if (isset($selected['then']) && is_array($selected['then'])) {
                     $schema = self::mergeSchemas($schema, $selected['then']);
                 }
+                // An unpinned conditional state is a choice: another
+                // rotation may satisfy a different conditional (or none),
+                // so nothing merged here can prove a dead end.
+                $forced = false;
             }
         }
 
@@ -1394,6 +1490,11 @@ final class SchemaDataGenerator
                 if ($sides !== []) {
                     $pinned = $plan->branchFor($pointer . '/if');
                     $side = $sides[($pinned ?? $iteration) % count($sides)];
+                    if ($pinned === null && count($sides) > 1) {
+                        // An unpinned side is a choice; the other side may
+                        // avoid whatever this merge makes unsatisfiable.
+                        $forced = false;
+                    }
                     if ($plan->targetPointer === $pointer . '/if' && $pinned !== null) {
                         // An else-targeted value that fires the `if` anyway
                         // passes the whole schema through the then side; only
@@ -1448,6 +1549,7 @@ final class SchemaDataGenerator
         int $iteration,
         ?CaseSelectionPlan $plan,
         string $pointer,
+        bool &$forced = true,
     ): array {
         foreach (['oneOf', 'anyOf'] as $keyword) {
             if (!isset($schema[$keyword]) || !is_array($schema[$keyword]) || $schema[$keyword] === []) {
@@ -1473,6 +1575,11 @@ final class SchemaDataGenerator
             unset($schema[$keyword]);
             $pinned = $plan->branchFor($pointer . '/' . $keyword);
             $selected = $enumerable[($pinned ?? $iteration) % count($enumerable)];
+            if ($pinned === null && count($enumerable) > 1) {
+                // An unpinned branch pick is a choice; emptiness under this
+                // branch says nothing about its siblings.
+                $forced = false;
+            }
             if ($plan->targetPointer === $pointer . '/' . $keyword && $pinned !== null) {
                 // Whole-schema validity cannot tell this branch from a
                 // sibling that also matches; the case counts as covering
@@ -1548,6 +1655,7 @@ final class SchemaDataGenerator
         int $iteration,
         CaseSelectionPlan $plan,
         string $pointer,
+        bool $forced,
     ): mixed {
         $count = count($conditionals);
         $branch = $pinned % ($count + 1);
@@ -1576,7 +1684,10 @@ final class SchemaDataGenerator
         $value = null;
         for ($attempt = 0; $attempt <= $count; $attempt++) {
             $view = self::conditionalSetView($base, $conditionals, $satisfied);
-            $value = self::generateOne($view, $faker, $iteration, $plan, $pointer);
+            // Only the pinned starting view is forced: closure expansion is
+            // driven by the generated value, so an expanded satisfied set is
+            // one of several reachable states and proves nothing.
+            $value = self::generateOne($view, $faker, $iteration, $plan, $pointer, $forced && $attempt === 0);
             if ($branch === $count || SchemaValueValidator::isValid($value, $node)) {
                 return $value;
             }

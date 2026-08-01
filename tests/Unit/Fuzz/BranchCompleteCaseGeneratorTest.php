@@ -1073,6 +1073,30 @@ class BranchCompleteCaseGeneratorTest extends TestCase
     }
 
     #[Test]
+    public function stays_loud_when_a_dependent_schema_gates_a_synthesized_pattern(): void
+    {
+        // {"host": "b.example.com"} is valid, but the pattern synthesizer
+        // deterministically produces a different label. Generator
+        // determinism is not a proof that no other value exists on the
+        // schema: without a static unreachability proof the present branch
+        // must fail loudly, never be dropped silently.
+        $this->expectException(FuzzGenerationException::class);
+
+        BranchCompleteCaseGenerator::generate([
+            'type' => 'object',
+            'properties' => [
+                'host' => [
+                    'type' => 'string',
+                    'pattern' => '^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)+example\\.com$',
+                ],
+            ],
+            'dependentSchemas' => [
+                'host' => ['properties' => ['host' => ['const' => 'b.example.com']]],
+            ],
+        ], seed: 1);
+    }
+
+    #[Test]
     public function drops_a_present_case_whose_property_was_trimmed(): void
     {
         // maxProperties 1 with a required sibling means `b` can never be
