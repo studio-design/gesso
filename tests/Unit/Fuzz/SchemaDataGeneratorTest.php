@@ -11,6 +11,8 @@ use Opis\JsonSchema\Validator;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use stdClass;
+use Studio\Gesso\Fuzz\CaseSelectionPlan;
+use Studio\Gesso\Fuzz\SchemaChoicePoint;
 use Studio\Gesso\Fuzz\SchemaDataGenerator;
 use Studio\Gesso\Fuzz\SchemaMutationGenerator;
 use Studio\Gesso\Fuzz\SchemaValueValidator;
@@ -28,6 +30,7 @@ use function fmod;
 use function json_decode;
 use function json_encode;
 use function preg_match;
+use function range;
 use function restore_error_handler;
 use function set_error_handler;
 use function str_repeat;
@@ -1097,5 +1100,490 @@ class SchemaDataGeneratorTest extends TestCase
         foreach ($values as $value) {
             $this->assertLessThanOrEqual(1, count($value));
         }
+    }
+
+    #[Test]
+    public function pinned_plan_overrides_one_of_branch_rotation(): void
+    {
+        $schema = ['oneOf' => [['type' => 'string'], ['type' => 'integer']]];
+        $plan = new CaseSelectionPlan(['/oneOf' => 1]);
+
+        // Iteration 0 rotation would pick branch 0 (string).
+        $value = SchemaDataGenerator::generateOne($schema, null, 0, $plan);
+
+        $this->assertIsInt($value);
+    }
+
+    #[Test]
+    public function pinned_plan_forces_optional_property_presence_and_absence(): void
+    {
+        $schema = [
+            'type' => 'object',
+            'required' => ['id'],
+            'properties' => [
+                'id' => ['type' => 'integer'],
+                'aud' => ['type' => 'string'],
+            ],
+        ];
+
+        // Iteration 0 parity would omit optional properties.
+        $present = SchemaDataGenerator::generateOne(
+            $schema,
+            null,
+            0,
+            new CaseSelectionPlan(['/properties/aud' => SchemaChoicePoint::PRESENT]),
+        );
+        $this->assertIsArray($present);
+        $this->assertArrayHasKey('aud', $present);
+
+        // Iteration 1 parity would include optional properties.
+        $absent = SchemaDataGenerator::generateOne(
+            $schema,
+            null,
+            1,
+            new CaseSelectionPlan(['/properties/aud' => SchemaChoicePoint::OMITTED]),
+        );
+        $this->assertIsArray($absent);
+        $this->assertArrayNotHasKey('aud', $absent);
+    }
+
+    #[Test]
+    public function pinned_plan_selects_nullable_branches(): void
+    {
+        $schema = ['type' => ['string', 'null']];
+
+        // Iteration 0 rotation would produce a string.
+        $null = SchemaDataGenerator::generateOne(
+            $schema,
+            null,
+            0,
+            new CaseSelectionPlan(['/type' => SchemaChoicePoint::NULL_VALUE]),
+        );
+        $this->assertNull($null);
+
+        // Iteration 2 rotation would produce null.
+        $value = SchemaDataGenerator::generateOne(
+            $schema,
+            null,
+            2,
+            new CaseSelectionPlan(['/type' => SchemaChoicePoint::VALUE]),
+        );
+        $this->assertIsString($value);
+    }
+
+    #[Test]
+    public function pinned_plan_selects_the_else_branch_of_a_conditional(): void
+    {
+        $schema = [
+            'type' => 'object',
+            'required' => ['kind'],
+            'properties' => ['kind' => ['type' => 'string']],
+            'if' => ['properties' => ['kind' => ['const' => 'a']], 'required' => ['kind']],
+            'then' => ['properties' => ['kind' => ['const' => 'a']]],
+            'else' => ['properties' => ['kind' => ['const' => 'b']]],
+        ];
+
+        // Iteration 0 parity would take the `then` branch.
+        $value = SchemaDataGenerator::generateOne(
+            $schema,
+            null,
+            0,
+            new CaseSelectionPlan(['/if' => 1]),
+        );
+
+        $this->assertIsArray($value);
+        $this->assertSame('b', $value['kind']);
+    }
+
+    #[Test]
+    public function pinned_plan_forces_minimum_array_sizes(): void
+    {
+        $schema = [
+            'type' => 'array',
+            'minItems' => 0,
+            'items' => ['type' => 'string'],
+        ];
+
+        // Iteration 0 rotation would produce the minItems=0 empty array.
+        $value = SchemaDataGenerator::generateOne(
+            $schema,
+            null,
+            0,
+            new CaseSelectionPlan(['/items' => 1]),
+        );
+
+        $this->assertIsArray($value);
+        $this->assertNotSame([], $value);
+    }
+
+    #[Test]
+    public function max_properties_trimming_spares_pinned_present_properties(): void
+    {
+        $schema = [
+            'type' => 'object',
+            'required' => ['kind'],
+            'maxProperties' => 2,
+            'properties' => [
+                'kind' => ['type' => 'string'],
+                'a' => ['type' => 'integer'],
+                'b' => ['type' => 'string'],
+            ],
+        ];
+
+        // Odd parity includes both optionals; the maxProperties trim must
+        // drop the unpinned one, not the pinned target.
+        $value = SchemaDataGenerator::generateOne(
+            $schema,
+            null,
+            3,
+            new CaseSelectionPlan(['/properties/a' => SchemaChoicePoint::PRESENT]),
+        );
+
+        $this->assertIsArray($value);
+        $this->assertArrayHasKey('a', $value);
+        $this->assertLessThanOrEqual(2, count($value));
+    }
+
+    #[Test]
+    public function pinned_plan_selects_the_else_branch_of_an_all_of_conditional(): void
+    {
+        $schema = [
+            'type' => 'object',
+            'required' => ['kind'],
+            'properties' => ['kind' => ['type' => 'string']],
+            'allOf' => [
+                [
+                    'if' => ['properties' => ['kind' => ['const' => 'a']], 'required' => ['kind']],
+                    'then' => ['properties' => ['kind' => ['const' => 'a']]],
+                    'else' => ['properties' => ['kind' => ['const' => 'b']]],
+                ],
+            ],
+        ];
+
+        // Rotation only ever takes the if+then side of an allOf conditional;
+        // the trailing pinned branch selects the none-match state, where
+        // every conditional's else applies.
+        $value = SchemaDataGenerator::generateOne($schema, null, 0, new CaseSelectionPlan(['/allOf' => 1]));
+
+        $this->assertIsArray($value);
+        $this->assertSame('b', $value['kind']);
+    }
+
+    #[Test]
+    public function pinned_conditional_branch_suppresses_the_other_conditionals(): void
+    {
+        $schema = [
+            'type' => 'object',
+            'required' => ['petType'],
+            'properties' => ['petType' => ['type' => 'string', 'enum' => ['cat', 'dog']]],
+            'allOf' => [
+                [
+                    'if' => ['properties' => ['petType' => ['const' => 'cat']], 'required' => ['petType']],
+                    'then' => ['required' => ['meow'], 'properties' => ['meow' => ['type' => 'string']]],
+                ],
+                [
+                    'if' => ['properties' => ['petType' => ['const' => 'dog']], 'required' => ['petType']],
+                    'then' => ['required' => ['bark'], 'properties' => ['bark' => ['type' => 'string']]],
+                ],
+            ],
+        ];
+
+        // Iteration 1 rotation would select the dog conditional; the pin must
+        // hold the cat branch AND keep the value out of the dog `if`, so the
+        // result satisfies the complete schema, not just the pinned slice.
+        $value = SchemaDataGenerator::generateOne($schema, null, 1, new CaseSelectionPlan(['/allOf' => 0]));
+
+        $this->assertIsArray($value);
+        $this->assertSame('cat', $value['petType']);
+        $this->assertArrayHasKey('meow', $value);
+        $this->assertTrue(SchemaValueValidator::isValid($value, $schema));
+    }
+
+    #[Test]
+    public function pinned_conditional_branch_keeps_overlapping_conditionals_satisfiable(): void
+    {
+        // Two conditionals fire on the same `if`; the only valid state with
+        // flag=true satisfies BOTH thens. Pinning one branch must not force
+        // the other conditional out of existence.
+        $schema = [
+            'type' => 'object',
+            'required' => ['flag'],
+            'properties' => ['flag' => ['type' => 'boolean']],
+            'allOf' => [
+                [
+                    'if' => ['properties' => ['flag' => ['const' => true]], 'required' => ['flag']],
+                    'then' => ['required' => ['a'], 'properties' => ['a' => ['type' => 'string']]],
+                ],
+                [
+                    'if' => ['properties' => ['flag' => ['const' => true]], 'required' => ['flag']],
+                    'then' => ['required' => ['b'], 'properties' => ['b' => ['type' => 'string']]],
+                ],
+            ],
+        ];
+
+        $value = SchemaDataGenerator::generateOne($schema, null, 0, new CaseSelectionPlan(['/allOf' => 0]));
+
+        $this->assertIsArray($value);
+        $this->assertArrayHasKey('a', $value);
+        $this->assertArrayHasKey('b', $value);
+        $this->assertTrue(SchemaValueValidator::isValid($value, $schema));
+    }
+
+    #[Test]
+    public function merge_combines_not_constraints_conjunctively(): void
+    {
+        $merged = SchemaDataGenerator::mergeSchemas(
+            ['type' => 'string', 'not' => ['const' => 'a']],
+            ['not' => ['const' => 'b']],
+        );
+
+        // ¬A ∧ ¬B ⟺ ¬(A ∨ B): both exclusions must survive the merge.
+        $this->assertSame(['anyOf' => [['const' => 'a'], ['const' => 'b']]], $merged['not']);
+    }
+
+    #[Test]
+    public function merge_treats_boolean_not_schemas_as_conjunction_operands(): void
+    {
+        // JSON Schema 2020-12 booleans: `not: false` is a no-op (nothing
+        // matches false), `not: true` rejects everything. Neither may
+        // displace or be displaced by a real exclusion.
+        $exclusion = ['const' => 'forbidden'];
+
+        $this->assertSame(
+            $exclusion,
+            SchemaDataGenerator::mergeSchemas(['not' => $exclusion], ['not' => false])['not'],
+        );
+        $this->assertSame(
+            $exclusion,
+            SchemaDataGenerator::mergeSchemas(['not' => false], ['not' => $exclusion])['not'],
+        );
+        $this->assertTrue(SchemaDataGenerator::mergeSchemas(['not' => $exclusion], ['not' => true])['not']);
+        $this->assertFalse(SchemaDataGenerator::mergeSchemas(['not' => false], ['not' => false])['not']);
+    }
+
+    #[Test]
+    public function merge_intersects_enum_domains(): void
+    {
+        // Both enums are assertions; plain array_merge would let the right
+        // side displace the left and silently widen the admissible domain.
+        $this->assertSame(
+            ['b'],
+            SchemaDataGenerator::mergeSchemas(['enum' => ['a', 'b']], ['enum' => ['c', 'b']])['enum'],
+        );
+        // Right-side order is preserved so unconflicted merges keep the
+        // historical rotation picks bit-for-bit.
+        $this->assertSame(
+            ['b', 'a'],
+            SchemaDataGenerator::mergeSchemas(['enum' => ['a', 'b']], ['enum' => ['b', 'a']])['enum'],
+        );
+        $this->assertSame(
+            [],
+            SchemaDataGenerator::mergeSchemas(['enum' => ['a']], ['enum' => ['c']])['enum'],
+        );
+    }
+
+    #[Test]
+    public function merge_intersects_type_constraints(): void
+    {
+        $this->assertSame(
+            ['integer'],
+            SchemaDataGenerator::mergeSchemas(
+                ['type' => 'integer'],
+                ['type' => ['string', 'integer']],
+            )['type'],
+        );
+        // An unconflicted merge keeps the right side verbatim, string form
+        // included, so historical output is untouched.
+        $this->assertSame(
+            'string',
+            SchemaDataGenerator::mergeSchemas(['type' => ['string', 'null']], ['type' => 'string'])['type'],
+        );
+        $this->assertSame(
+            [],
+            SchemaDataGenerator::mergeSchemas(['type' => 'integer'], ['type' => 'string'])['type'],
+        );
+    }
+
+    #[Test]
+    public function merge_narrows_number_and_integer_to_integer(): void
+    {
+        // integer is the zero-fraction subtype of number (2020-12 §6.1.1):
+        // the conjunction is integer in either direction, never empty.
+        $this->assertSame(
+            ['integer'],
+            SchemaDataGenerator::mergeSchemas(['type' => 'integer'], ['type' => 'number'])['type'],
+        );
+        $this->assertSame(
+            'integer',
+            SchemaDataGenerator::mergeSchemas(['type' => 'number'], ['type' => 'integer'])['type'],
+        );
+        $this->assertSame(
+            ['string', 'integer'],
+            SchemaDataGenerator::mergeSchemas(
+                ['type' => ['string', 'integer']],
+                ['type' => ['string', 'number']],
+            )['type'],
+        );
+    }
+
+    #[Test]
+    public function merge_marks_conflicting_value_domains_empty(): void
+    {
+        // A const conflicting with the other side's const or enum is a
+        // static proof the conjunction is empty; the marker lets planned
+        // generation prove a dead end instead of guessing from failures.
+        $this->assertSame(
+            [],
+            SchemaDataGenerator::mergeSchemas(['const' => 'a'], ['const' => 'b'])['enum'],
+        );
+        $this->assertSame(
+            [],
+            SchemaDataGenerator::mergeSchemas(['const' => 'a'], ['enum' => ['b', 'c']])['enum'],
+        );
+        $this->assertSame(
+            [],
+            SchemaDataGenerator::mergeSchemas(['enum' => ['b', 'c']], ['const' => 'a'])['enum'],
+        );
+        // Compatible const/enum pairs stay untouched.
+        $this->assertArrayNotHasKey(
+            'enum',
+            SchemaDataGenerator::mergeSchemas(['const' => 'a'], ['const' => 'a']),
+        );
+        $this->assertSame(
+            ['a', 'b'],
+            SchemaDataGenerator::mergeSchemas(['const' => 'a'], ['enum' => ['a', 'b']])['enum'],
+        );
+    }
+
+    #[Test]
+    public function merge_keeps_an_empty_enum_marker_through_later_merges(): void
+    {
+        // enum: [] states the conjunction is empty — whether user-authored
+        // or a conflict marker from an earlier merge. Intersecting with any
+        // later enum must stay empty; array_merge displacement would erase
+        // the contradiction and forfeit the dead-end proof.
+        $conflicted = SchemaDataGenerator::mergeSchemas(['const' => 'a'], ['const' => 'b']);
+        $this->assertSame(
+            [],
+            SchemaDataGenerator::mergeSchemas($conflicted, ['enum' => ['a', 'b']])['enum'],
+        );
+        $this->assertSame(
+            [],
+            SchemaDataGenerator::mergeSchemas(['enum' => []], ['enum' => ['a']])['enum'],
+        );
+        $this->assertSame(
+            [],
+            SchemaDataGenerator::mergeSchemas(['enum' => ['a']], ['enum' => []])['enum'],
+        );
+    }
+
+    #[Test]
+    public function merge_intersects_enum_domains_by_json_equality(): void
+    {
+        // JSON Schema equality is mathematical for numbers (2020-12
+        // §4.2.2): 1 and 1.0 are the same value, so neither enum empties
+        // the other.
+        $this->assertSame(
+            [1.0],
+            SchemaDataGenerator::mergeSchemas(['enum' => [1]], ['enum' => [1.0]])['enum'],
+        );
+        $this->assertSame(
+            [1],
+            SchemaDataGenerator::mergeSchemas(['enum' => [1.0]], ['enum' => [1]])['enum'],
+        );
+    }
+
+    #[Test]
+    public function planned_enum_generation_filters_values_excluded_by_not(): void
+    {
+        // Rotation alone cannot escape a long excluded prefix; the planned
+        // path must restrict the finite enum domain to admissible values.
+        $excluded = [];
+        foreach (range(0, 8) as $i) {
+            $excluded[] = ['const' => "v{$i}"];
+        }
+        $schema = [
+            'type' => 'string',
+            'enum' => ['v0', 'v1', 'v2', 'v3', 'v4', 'v5', 'v6', 'v7', 'v8', 'other'],
+            'not' => ['anyOf' => $excluded],
+        ];
+
+        $value = SchemaDataGenerator::generateOne($schema, null, 10, new CaseSelectionPlan([]));
+
+        $this->assertSame('other', $value);
+    }
+
+    #[Test]
+    public function planned_not_generation_retries_nearby_iterations_before_falling_back(): void
+    {
+        // Iteration 1 rotates the enum onto the excluded value; the planned
+        // path must probe nearby iterations instead of giving up on the
+        // first miss.
+        $schema = [
+            'type' => 'object',
+            'required' => ['kind'],
+            'properties' => ['kind' => ['type' => 'string', 'enum' => ['other', 'cat']]],
+            'not' => ['properties' => ['kind' => ['const' => 'cat']], 'required' => ['kind']],
+        ];
+
+        $value = SchemaDataGenerator::generateOne($schema, null, 1, new CaseSelectionPlan([]));
+
+        $this->assertIsArray($value);
+        $this->assertSame('other', $value['kind']);
+    }
+
+    #[Test]
+    public function pinned_none_match_branch_avoids_every_conditional(): void
+    {
+        $schema = [
+            'type' => 'object',
+            'required' => ['petType'],
+            'properties' => ['petType' => ['type' => 'string']],
+            'allOf' => [
+                [
+                    'if' => ['properties' => ['petType' => ['const' => 'cat']], 'required' => ['petType']],
+                    'then' => ['required' => ['meow'], 'properties' => ['meow' => ['type' => 'string']]],
+                ],
+                [
+                    'if' => ['properties' => ['petType' => ['const' => 'dog']], 'required' => ['petType']],
+                    'then' => ['required' => ['bark'], 'properties' => ['bark' => ['type' => 'string']]],
+                ],
+            ],
+        ];
+
+        $value = SchemaDataGenerator::generateOne($schema, null, 0, new CaseSelectionPlan(['/allOf' => 2]));
+
+        $this->assertIsArray($value);
+        $this->assertNotContains($value['petType'], ['cat', 'dog']);
+        $this->assertTrue(SchemaValueValidator::isValid($value, $schema));
+    }
+
+    #[Test]
+    public function pinned_plan_reaches_a_nested_choice_point_through_pointers(): void
+    {
+        $schema = [
+            'type' => 'object',
+            'properties' => [
+                'aud' => [
+                    'oneOf' => [
+                        ['type' => 'string'],
+                        ['type' => 'array', 'items' => ['type' => 'string']],
+                    ],
+                ],
+            ],
+        ];
+
+        $value = SchemaDataGenerator::generateOne(
+            $schema,
+            null,
+            0,
+            new CaseSelectionPlan([
+                '/properties/aud' => SchemaChoicePoint::PRESENT,
+                '/properties/aud/oneOf' => 1,
+            ]),
+        );
+
+        $this->assertIsArray($value);
+        $this->assertIsArray($value['aud']);
     }
 }

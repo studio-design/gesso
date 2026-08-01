@@ -15,6 +15,7 @@ use Studio\Gesso\Spec\OpenApiSchemaConverter;
 
 use function array_filter;
 use function array_key_exists;
+use function array_key_first;
 use function array_keys;
 use function array_merge;
 use function array_slice;
@@ -28,6 +29,7 @@ use function implode;
 use function in_array;
 use function intdiv;
 use function is_array;
+use function is_bool;
 use function is_float;
 use function is_int;
 use function is_string;
@@ -35,6 +37,7 @@ use function max;
 use function min;
 use function preg_match;
 use function preg_match_all;
+use function preg_quote;
 use function round;
 use function sprintf;
 use function str_ends_with;
@@ -70,6 +73,16 @@ use function trigger_error;
 final class SchemaDataGenerator
 {
     private const MAX_SYNTHESIZED_PATTERN_LENGTH = 10_000;
+
+    /**
+     * How many nearby iterations planned `not` generation probes before
+     * falling back to scalar alternatives. Finite domains do not rely on
+     * this: enums under a `not` are filtered exhaustively. The retries cover
+     * the remaining scalar rotations (boolean parity, string/number
+     * boundary cycles), and are deliberately larger than the 2/3-cycle
+     * rotation periods so every such rotation state is revisited.
+     */
+    private const NOT_GENERATION_RETRIES = 8;
 
     /**
      * Per-process record of formats already announced as "faker missing".
@@ -109,53 +122,31 @@ final class SchemaDataGenerator
      * {@see OpenApiEndpointExplorer} can share a faker instance across
      * multiple schemas (body + parameters) within a single case.
      *
+     * When a {@see CaseSelectionPlan} is supplied, choice points whose
+     * pointer (relative to `$pointer`) carries a pinned selection take that
+     * branch instead of rotating with the iteration index; everything else
+     * keeps the documented rotation strategy, so a null plan reproduces the
+     * historical output bit-for-bit.
+     *
      * @param array<string, mixed> $schema
      */
-    public static function generateOne(array $schema, ?Generator $faker, int $iteration): mixed
-    {
-        $schema = self::resolveComposition($schema, $faker, $iteration);
+    public static function generateOne(
+        array $schema,
+        ?Generator $faker,
+        int $iteration,
+        ?CaseSelectionPlan $plan = null,
+        string $pointer = '',
+        bool $forced = true,
+    ): mixed {
+        $value = self::generateNode($schema, $faker, $iteration, $plan, $pointer, $forced);
+        // The site that applied the plan's target registered its
+        // branch-level check while this node resolved; the value exists
+        // only now. Nested regenerations at the same pointer evaluated
+        // their own candidates first — this call ran last, so the final
+        // observation describes the returned value.
+        $plan?->observation->evaluate($pointer, $value);
 
-        if (array_key_exists('const', $schema)) {
-            return $schema['const'];
-        }
-
-        if (isset($schema['enum']) && is_array($schema['enum']) && $schema['enum'] !== []) {
-            $values = array_values($schema['enum']);
-
-            return $values[$iteration % count($values)];
-        }
-
-        if (is_array($schema['type'] ?? null) && in_array('null', $schema['type'], true) && ($iteration % 3) === 2) {
-            return null;
-        }
-
-        if (isset($schema['not']) && is_array($schema['not'])) {
-            $withoutNot = $schema;
-            unset($withoutNot['not']);
-            $candidate = self::generateOne($withoutNot, $faker, $iteration);
-            if (!SchemaValueValidator::isValid($candidate, $schema)) {
-                foreach ([null, false, 0, 1, '', 'value', [], ['value' => true]] as $alternative) {
-                    if (SchemaValueValidator::isValid($alternative, $schema)) {
-                        return $alternative;
-                    }
-                }
-            }
-
-            return $candidate;
-        }
-
-        $type = self::resolveType($schema);
-
-        return match ($type) {
-            'object' => self::generateObject($schema, $faker, $iteration),
-            'array' => self::generateArray($schema, $faker, $iteration),
-            'string' => self::generateString($schema, $faker, $iteration),
-            'integer' => self::generateInteger($schema, $faker, $iteration),
-            'number' => self::generateNumber($schema, $faker, $iteration),
-            'boolean' => self::generateBoolean($iteration),
-            'null' => null,
-            default => null,
-        };
+        return $value;
     }
 
     /**
@@ -195,9 +186,13 @@ final class SchemaDataGenerator
      * which case we infer from `properties`/`items` and finally default to
      * `string` so a permissive untyped schema still produces a value.
      *
+     * Public within the internal fuzz family so
+     * {@see SchemaChoicePointEnumerator} descends exactly the nodes this
+     * generator would materialise.
+     *
      * @param array<string, mixed> $schema
      */
-    private static function resolveType(array $schema): string
+    public static function resolveType(array $schema): string
     {
         $type = $schema['type'] ?? null;
         if (is_string($type)) {
@@ -230,12 +225,623 @@ final class SchemaDataGenerator
     }
 
     /**
+     * Materialise the starting view of one branch of the conditional-`allOf`
+     * choice space: branches `0..n-1` satisfy that conditional's `if`+`then`,
+     * branch `n` is the none-match state where no `if` holds and every
+     * `else` applies. Generation may grow the satisfied set beyond this
+     * starting point when suppressed conditionals fire anyway — see
+     * {@see self::generateConditionalNode()}. Public within the internal
+     * fuzz family so {@see SchemaChoicePointEnumerator} descends exactly
+     * these views.
+     *
+     * @param array<string, mixed> $schema node with `allOf` removed and its non-conditional branches merged
+     * @param list<array<string, mixed>> $conditionals
+     *
+     * @return array<string, mixed>
+     */
+    public static function conditionalBranchView(array $schema, array $conditionals, int $branch): array
+    {
+        return self::conditionalSetView($schema, $conditionals, $branch < count($conditionals) ? [$branch] : []);
+    }
+
+    /**
+     * Materialise the conditional-`allOf` state where exactly the
+     * conditionals in `$satisfied` hold: their `if`+`then` merged, every
+     * other conditional suppressed through a single synthesized `not`/`anyOf`
+     * with its `else` applied. {@see self::generateConditionalNode()} starts
+     * from a singleton (or empty) set and grows it when a suppressed `if`
+     * turns out to fire anyway, so overlapping conditionals stay satisfiable.
+     *
+     * @param array<string, mixed> $schema node with `allOf` removed and its non-conditional branches merged
+     * @param list<array<string, mixed>> $conditionals
+     * @param list<int> $satisfied
+     *
+     * @return array<string, mixed>
+     */
+    public static function conditionalSetView(array $schema, array $conditionals, array $satisfied): array
+    {
+        foreach ($satisfied as $index) {
+            $selected = $conditionals[$index];
+            $schema = self::mergeSchemas($schema, $selected['if']);
+            if (isset($selected['then']) && is_array($selected['then'])) {
+                $schema = self::mergeSchemas($schema, $selected['then']);
+            }
+        }
+
+        $suppressedIfs = [];
+        $negatedByProperty = [];
+        foreach ($conditionals as $index => $conditional) {
+            if (in_array($index, $satisfied, true)) {
+                continue;
+            }
+            // A single-property `if` — the discriminator-lowering shape —
+            // is negated equivalently at the property itself: `¬(p present
+            // ∧ s(p))` is exactly "when present, `p` fails `s`". That puts
+            // the exclusion where value generation can honour it (the enum
+            // domain filter); other shapes stay in a node-level not/anyOf.
+            $condition = self::singlePropertyCondition($conditional['if']);
+            if ($condition !== null) {
+                $negatedByProperty[$condition[0]][] = $condition[1];
+            } else {
+                $suppressedIfs[] = $conditional['if'];
+            }
+            if (isset($conditional['else']) && is_array($conditional['else'])) {
+                $schema = self::mergeSchemas($schema, $conditional['else']);
+            }
+        }
+        // mergeSchemas() combines `not` assertions conjunctively, so any
+        // exclusion the target already carries — from the base schema or an
+        // earlier else merge — survives these merges.
+        foreach ($negatedByProperty as $property => $negated) {
+            $schema = self::mergeSchemas($schema, ['properties' => [
+                $property => ['not' => count($negated) === 1 ? $negated[0] : ['anyOf' => $negated]],
+            ]]);
+        }
+        if ($suppressedIfs !== []) {
+            $schema = self::mergeSchemas($schema, [
+                'not' => count($suppressedIfs) === 1 ? $suppressedIfs[0] : ['anyOf' => $suppressedIfs],
+            ]);
+        }
+
+        return $schema;
+    }
+
+    /**
+     * Merge the assertion keywords needed for deterministic allOf generation.
+     *
+     * Public within the internal fuzz family so
+     * {@see SchemaChoicePointEnumerator} merges branch views with exactly the
+     * semantics generation applies.
+     *
+     * @param array<string, mixed> $left
+     * @param array<string, mixed> $right
+     *
+     * @return array<string, mixed>
+     */
+    public static function mergeSchemas(array $left, array $right): array
+    {
+        $merged = array_merge($left, $right);
+        if (is_array($left['properties'] ?? null) || is_array($right['properties'] ?? null)) {
+            $merged['properties'] = self::mergePropertySchemas(
+                is_array($left['properties'] ?? null) ? $left['properties'] : [],
+                is_array($right['properties'] ?? null) ? $right['properties'] : [],
+            );
+        }
+        if (is_array($left['required'] ?? null) || is_array($right['required'] ?? null)) {
+            $merged['required'] = array_values(array_unique(array_merge(
+                is_array($left['required'] ?? null) ? $left['required'] : [],
+                is_array($right['required'] ?? null) ? $right['required'] : [],
+            )));
+        }
+        // `enum` and `type` are assertions too: a value must satisfy both
+        // sides, so their domains intersect. Right-side order (and, for an
+        // unconflicted `type`, the right side verbatim) is preserved: when
+        // the right domain is already a subset of the left, the merge is
+        // byte-identical to the historical array_merge result, keeping
+        // plan-less rotation output bit-for-bit. Conflicting domains
+        // previously generated values that failed the loud self-check.
+        if (is_array($left['enum'] ?? null) && is_array($right['enum'] ?? null)) {
+            if ($left['enum'] === [] || $right['enum'] === []) {
+                // An empty side — user-authored or a conflict marker from an
+                // earlier merge — states the conjunction is already empty;
+                // array_merge displacement must not resurrect the domain.
+                $merged['enum'] = [];
+            } else {
+                // Membership uses JSON Schema equality (2020-12 §4.2.2) via
+                // the validator — 1 and 1.0 are the same mathematical value,
+                // and object equality ignores key order — not PHP identity.
+                $leftEnum = ['enum' => $left['enum']];
+                $merged['enum'] = array_values(array_filter(
+                    $right['enum'],
+                    static fn(mixed $value): bool => SchemaValueValidator::isValid($value, $leftEnum),
+                ));
+            }
+        }
+        // A `const` conflicting with the other side's `const` or `enum` is a
+        // static proof the conjunction admits no value; the empty-enum
+        // marker lets planned generation treat the dead end as proven. The
+        // marker is inert on the plan-less path: `const` is generated first
+        // and an empty `enum` is never consulted.
+        $leftConst = array_key_exists('const', $left);
+        $rightConst = array_key_exists('const', $right);
+        if ($leftConst && $rightConst &&
+            !SchemaValueValidator::isValid($left['const'], ['const' => $right['const']])) {
+            $merged['enum'] = [];
+        } elseif ($leftConst && is_array($right['enum'] ?? null) && $right['enum'] !== [] &&
+            !SchemaValueValidator::isValid($left['const'], ['enum' => $right['enum']])) {
+            $merged['enum'] = [];
+        } elseif ($rightConst && is_array($left['enum'] ?? null) && $left['enum'] !== [] &&
+            !SchemaValueValidator::isValid($right['const'], ['enum' => $left['enum']])) {
+            $merged['enum'] = [];
+        }
+        $leftType = $left['type'] ?? null;
+        $rightType = $right['type'] ?? null;
+        if ((is_string($leftType) || is_array($leftType)) && (is_string($rightType) || is_array($rightType))) {
+            $leftTypes = is_string($leftType) ? [$leftType] : $leftType;
+            $rightTypes = is_string($rightType) ? [$rightType] : $rightType;
+            $intersection = [];
+            foreach ($rightTypes as $type) {
+                if (in_array($type, $leftTypes, true)) {
+                    $intersection[] = $type;
+                } elseif (($type === 'number' || $type === 'integer') &&
+                    (in_array('number', $leftTypes, true) || in_array('integer', $leftTypes, true))) {
+                    // integer is the zero-fraction subtype of number
+                    // (2020-12 §6.1.1): number ∧ integer = integer.
+                    $intersection[] = 'integer';
+                }
+            }
+            $intersection = array_values(array_unique($intersection));
+            if ($intersection !== $rightTypes) {
+                $merged['type'] = $intersection;
+            }
+        }
+        // `not` is an assertion like the bound keywords below: both sides
+        // must keep holding after a merge — ¬A ∧ ¬B ⟺ ¬(anyOf [A, B]).
+        // Plain array_merge would let the right side displace the left and
+        // silently widen the admissible domain. Operands may be JSON Schema
+        // 2020-12 booleans, which conjoin by identity: `not: false` matches
+        // everything (neutral), `not: true` matches nothing (absorbing).
+        $leftNot = $left['not'] ?? null;
+        $rightNot = $right['not'] ?? null;
+        if ((is_array($leftNot) || is_bool($leftNot)) && (is_array($rightNot) || is_bool($rightNot))) {
+            $merged['not'] = match (true) {
+                $leftNot === false => $rightNot,
+                $rightNot === false => $leftNot,
+                $leftNot === true || $rightNot === true => true,
+                $leftNot === $rightNot => $leftNot,
+                default => ['anyOf' => [$leftNot, $rightNot]],
+            };
+        }
+        if (isset($left['minimum'], $right['minimum'])) {
+            $merged['minimum'] = max($left['minimum'], $right['minimum']);
+        }
+        if (isset($left['maximum'], $right['maximum'])) {
+            $merged['maximum'] = min($left['maximum'], $right['maximum']);
+        }
+        if (isset($left['minLength'], $right['minLength'])) {
+            $merged['minLength'] = max($left['minLength'], $right['minLength']);
+        }
+        if (isset($left['maxLength'], $right['maxLength'])) {
+            $merged['maxLength'] = min($left['maxLength'], $right['maxLength']);
+        }
+        foreach (['minItems', 'minProperties'] as $minimumKeyword) {
+            if (isset($left[$minimumKeyword], $right[$minimumKeyword])) {
+                $merged[$minimumKeyword] = max($left[$minimumKeyword], $right[$minimumKeyword]);
+            }
+        }
+        foreach (['maxItems', 'maxProperties'] as $maximumKeyword) {
+            if (isset($left[$maximumKeyword], $right[$maximumKeyword])) {
+                $merged[$maximumKeyword] = min($left[$maximumKeyword], $right[$maximumKeyword]);
+            }
+        }
+        if ((is_int($left['multipleOf'] ?? null) || is_float($left['multipleOf'] ?? null)) &&
+            (is_int($right['multipleOf'] ?? null) || is_float($right['multipleOf'] ?? null))) {
+            $multipleOf = DecimalMultiple::leastCommonMultiple($left['multipleOf'], $right['multipleOf']);
+            if ($multipleOf === null) {
+                throw new InvalidArgumentException(
+                    'Cannot compose allOf multipleOf constraints within the platform numeric range.',
+                );
+            }
+            $merged['multipleOf'] = $multipleOf;
+        }
+
+        return $merged;
+    }
+
+    /**
+     * The generatable branch space of a `oneOf`/`anyOf` under a plan. Array
+     * branches and boolean schemas both participate (booleans are valid
+     * Schema Objects in OpenAPI 3.1 / JSON Schema 2020-12); branches that
+     * are statically unreachable do not: `false` never matches a value, and
+     * inside `oneOf` a `true` sibling means no other branch can ever be the
+     * sole match. Excluded branches still take part in exclusivity
+     * suppression via {@see self::applyCompositionBranch()}.
+     *
+     * @param list<mixed> $raw
+     *
+     * @return array{list<mixed>, list<int>} kept branches, enumerable indexes into them
+     */
+    public static function compositionBranchSpace(array $raw, string $keyword): array
+    {
+        $branches = array_values(array_filter(
+            $raw,
+            static fn(mixed $branch): bool => is_array($branch) || is_bool($branch),
+        ));
+
+        $hasTrue = in_array(true, $branches, true);
+        $enumerable = [];
+        foreach ($branches as $index => $branch) {
+            if ($branch === false) {
+                continue;
+            }
+            if ($keyword === 'oneOf' && $hasTrue && $branch !== true) {
+                continue;
+            }
+            $enumerable[] = $index;
+        }
+
+        return [$branches, $enumerable];
+    }
+
+    /**
+     * Materialise one branch of a planned `oneOf`/`anyOf` choice: the
+     * selected branch's assertions merged in and, for `oneOf`, every sibling
+     * suppressed through a single `not`/`anyOf` so the value matches exactly
+     * one branch by construction. Shared with the enumerator so descent and
+     * generation see identical views.
+     *
+     * @param array<string, mixed> $schema node with the composition keyword removed
+     * @param list<mixed> $branches
+     *
+     * @return array<string, mixed>
+     */
+    public static function applyCompositionBranch(array $schema, array $branches, int $selected, string $keyword): array
+    {
+        $branch = $branches[$selected];
+        if (is_array($branch)) {
+            $schema = self::mergeSchemas($schema, $branch);
+        }
+
+        if ($keyword !== 'oneOf') {
+            return $schema;
+        }
+
+        $siblings = [];
+        foreach ($branches as $index => $sibling) {
+            if ($index !== $selected && $sibling !== false) {
+                $siblings[] = $sibling;
+            }
+        }
+        if ($siblings !== []) {
+            $schema = self::mergeSchemas($schema, ['not' => ['anyOf' => $siblings]]);
+        }
+
+        return $schema;
+    }
+
+    /**
+     * The generatable sides of an array-schema `if` under a plan: side 0
+     * satisfies the `if` (plus `then`), side 1 violates it (plus `else`). A
+     * boolean `false` consequent makes its side unsatisfiable — nothing
+     * matches `false` — so it is excluded; `true` and absent consequents
+     * assert nothing and stay generatable.
+     *
+     * @param array<string, mixed> $schema
+     *
+     * @return list<int>
+     */
+    public static function ifBranchSides(array $schema): array
+    {
+        $sides = [];
+        if (($schema['then'] ?? null) !== false) {
+            $sides[] = 0;
+        }
+        if (($schema['else'] ?? null) !== false) {
+            $sides[] = 1;
+        }
+
+        return $sides;
+    }
+
+    /**
+     * Materialise one side of an array-schema `if`: the condition (or its
+     * negation) merged with the matching consequent. Shared with the
+     * enumerator so descent and pinned generation see identical views.
+     *
+     * @param array<string, mixed> $schema node still carrying if/then/else
+     *
+     * @return array<string, mixed>
+     */
+    public static function applyIfSide(array $schema, int $side): array
+    {
+        $conditional = $side === 0
+            ? self::mergeSchemas(
+                is_array($schema['if']) ? $schema['if'] : [],
+                is_array($schema['then'] ?? null) ? $schema['then'] : [],
+            )
+            : self::mergeSchemas(
+                ['not' => $schema['if']],
+                is_array($schema['else'] ?? null) ? $schema['else'] : [],
+            );
+        unset($schema['if'], $schema['then'], $schema['else']);
+
+        return self::mergeSchemas($schema, $conditional);
+    }
+
+    /**
+     * Partition conditional `allOf` branches by their boolean consequents
+     * (valid Schema Objects in OpenAPI 3.1 / JSON Schema 2020-12):
+     * `then: false` means the if side is unsatisfiable, so the conditional
+     * is permanently suppressed (¬if and its else folded into the base);
+     * `else: false` means the if must always hold (if+then folded in). Both
+     * false makes the node unsatisfiable. Only the remaining conditionals
+     * are genuine choices. Shared with the enumerator so both sides fold
+     * identically.
+     *
+     * @param array<string, mixed> $base
+     * @param list<array<string, mixed>> $conditionals
+     *
+     * @return array{array<string, mixed>, list<array<string, mixed>>, bool} folded base, choice conditionals, unsatisfiable
+     */
+    public static function partitionConditionals(array $base, array $conditionals): array
+    {
+        $choices = [];
+        foreach ($conditionals as $conditional) {
+            $then = $conditional['then'] ?? null;
+            $else = $conditional['else'] ?? null;
+            if ($then === false && $else === false) {
+                return [$base, $choices, true];
+            }
+            if ($else === false) {
+                $base = self::mergeSchemas($base, $conditional['if']);
+                if (is_array($then)) {
+                    $base = self::mergeSchemas($base, $then);
+                }
+
+                continue;
+            }
+            if ($then === false) {
+                $base = self::suppressConditional($base, $conditional);
+
+                continue;
+            }
+            $choices[] = $conditional;
+        }
+
+        return [$base, $choices, false];
+    }
+
+    /**
+     * `$forced` tracks whether every choice on the path from the root to
+     * this node was pinned by the plan or admitted no alternative — i.e.
+     * whether this node's constraints are unavoidable for any value of the
+     * whole case. A statically empty value domain found at a forced node is
+     * a schema-derived proof the pinned view admits no value at all
+     * (recorded via {@see PinnedBranchObservation::proveDeadEnd()}); the
+     * same emptiness under an unpinned rotation proves nothing, because a
+     * different rotation pick may avoid the node entirely.
+     *
+     * @param array<string, mixed> $schema
+     */
+    private static function generateNode(
+        array $schema,
+        ?Generator $faker,
+        int $iteration,
+        ?CaseSelectionPlan $plan,
+        string $pointer,
+        bool $forced,
+    ): mixed {
+        if ($plan !== null && ($pinnedConditional = $plan->branchFor($pointer . '/allOf')) !== null) {
+            $resolved = self::resolveBranchChoice($schema, $iteration, $plan, $pointer, $forced);
+            [$base, $conditionals] = self::splitConditionals($resolved);
+            if ($conditionals !== []) {
+                [$base, $choices, $unsatisfiable] = self::partitionConditionals($base, $conditionals);
+                if (!$unsatisfiable && $choices !== []) {
+                    return self::generateConditionalNode(
+                        $resolved,
+                        $base,
+                        $choices,
+                        $pinnedConditional,
+                        $faker,
+                        $iteration,
+                        $plan,
+                        $pointer,
+                        $forced,
+                    );
+                }
+                // No genuine choice remains (all folded, or the node is
+                // unsatisfiable): fall through to the normal pipeline, which
+                // re-partitions identically.
+            }
+        }
+
+        $schema = self::resolveComposition($schema, $faker, $iteration, $plan, $pointer, $forced);
+
+        if ($plan !== null &&
+            (($schema['enum'] ?? null) === [] || ($schema['type'] ?? null) === [] || ($schema['not'] ?? null) === true)) {
+            // A statically empty domain — an enum/type intersection or a
+            // const conflict emptied by mergeSchemas(), or an absorbing
+            // `not` — admits no value. This precedes the const shortcut:
+            // the conflict marker outranks whichever const survived the
+            // merge. At a forced node this is a schema-derived proof the
+            // pinned view is unsatisfiable; the deterministic sentinel
+            // keeps untargeted cases failing the loud self-check.
+            if ($forced) {
+                $plan->observation->proveDeadEnd();
+            }
+
+            return null;
+        }
+
+        if (array_key_exists('const', $schema)) {
+            if ($plan !== null && $forced && !SchemaValueValidator::isValid($schema['const'], $schema)) {
+                // The node's domain is the single const value; if even that
+                // value violates the node's own view (a suppression `not`,
+                // an exclusivity constraint), the finite domain is
+                // exhausted — a static proof, not a failed sample.
+                $plan->observation->proveDeadEnd();
+            }
+
+            return $schema['const'];
+        }
+
+        if (isset($schema['enum']) && is_array($schema['enum']) && $schema['enum'] !== []) {
+            $values = array_values($schema['enum']);
+            if ($plan !== null) {
+                // The enum domain is finite, so admissibility against the
+                // node view (including any `not` pushed down by suppression)
+                // is decidable outright — complete and deterministic where
+                // iteration retries could miss the admissible tail of a
+                // long enum.
+                $admissible = array_values(array_filter(
+                    $values,
+                    static fn(mixed $value): bool => SchemaValueValidator::isValid($value, $schema),
+                ));
+                if ($admissible === []) {
+                    // The finite domain is provably exhausted; the
+                    // deterministic pick keeps untargeted cases loud.
+                    if ($forced) {
+                        $plan->observation->proveDeadEnd();
+                    }
+
+                    return $values[0];
+                }
+                if (isset($schema['not']) && is_array($schema['not'])) {
+                    return $admissible[$iteration % count($admissible)];
+                }
+            }
+
+            return $values[$iteration % count($values)];
+        }
+
+        if (is_array($schema['type'] ?? null) && in_array('null', $schema['type'], true)) {
+            $pinnedNull = $plan?->branchFor($pointer . '/type');
+            if ($plan !== null && $pinnedNull !== null && $plan->targetPointer === $pointer . '/type') {
+                $wantNull = $pinnedNull === SchemaChoicePoint::NULL_VALUE;
+                $plan->observation->expect($pointer, static fn(mixed $value): bool
+                    => ($value === null) === $wantNull);
+            }
+            $emitNull = $pinnedNull !== null
+                ? $pinnedNull === SchemaChoicePoint::NULL_VALUE
+                : ($iteration % 3) === 2;
+            if ($emitNull) {
+                return null;
+            }
+            if ($plan !== null && $pinnedNull === null) {
+                // Rotation chose the non-null side; null remains a way to
+                // satisfy this node, so nothing below can prove a dead end.
+                $forced = false;
+            }
+        }
+
+        if (isset($schema['not']) && is_array($schema['not'])) {
+            $withoutNot = $schema;
+            unset($withoutNot['not']);
+            $candidate = self::generateOne($withoutNot, $faker, $iteration, $plan, $pointer, $forced);
+            if (!SchemaValueValidator::isValid($candidate, $schema)) {
+                if ($plan !== null) {
+                    // The `not` often excludes exactly the rotation pick — a
+                    // suppressed discriminator value landing on this case's
+                    // iteration. Nearby iterations re-rotate enums and
+                    // scalars before giving up, so one unlucky index is not
+                    // read as "unsatisfiable". Plan-less rotation keeps the
+                    // historical single-shot behaviour and output.
+                    for ($offset = 1; $offset <= self::NOT_GENERATION_RETRIES; $offset++) {
+                        $retried = self::generateOne($withoutNot, $faker, $iteration + $offset, $plan, $pointer, $forced);
+                        if (SchemaValueValidator::isValid($retried, $schema)) {
+                            return $retried;
+                        }
+                    }
+                }
+                foreach ([null, false, 0, 1, '', 'value', [], ['value' => true]] as $alternative) {
+                    if (SchemaValueValidator::isValid($alternative, $schema)) {
+                        return $alternative;
+                    }
+                }
+            }
+
+            return $candidate;
+        }
+
+        $type = self::resolveType($schema);
+
+        return match ($type) {
+            'object' => self::generateObject($schema, $faker, $iteration, $plan, $pointer, $forced),
+            'array' => self::generateArray($schema, $faker, $iteration, $plan, $pointer, $forced),
+            'string' => self::generateString($schema, $faker, $iteration),
+            'integer' => self::generateInteger($schema, $faker, $iteration),
+            'number' => self::generateNumber($schema, $faker, $iteration),
+            'boolean' => self::generateBoolean($iteration),
+            'null' => null,
+            default => null,
+        };
+    }
+
+    /**
+     * Fold the suppressed side of one conditional into a schema: its else
+     * applies and its if must fail — negated at the property itself for the
+     * single-property shape, at the node otherwise. mergeSchemas() combines
+     * `not` assertions conjunctively, so stacked suppressions accumulate.
+     *
+     * @param array<string, mixed> $schema
+     * @param array<string, mixed> $conditional
+     *
+     * @return array<string, mixed>
+     */
+    private static function suppressConditional(array $schema, array $conditional): array
+    {
+        if (isset($conditional['else']) && is_array($conditional['else'])) {
+            $schema = self::mergeSchemas($schema, $conditional['else']);
+        }
+        $condition = self::singlePropertyCondition($conditional['if']);
+        if ($condition !== null) {
+            return self::mergeSchemas($schema, ['properties' => [$condition[0] => ['not' => $condition[1]]]]);
+        }
+
+        return self::mergeSchemas($schema, ['not' => $conditional['if']]);
+    }
+
+    /**
+     * Recognise an `if` of the shape `{properties: {p: s}, required: [p]}`
+     * with no other assertions, and return `[p, s]`; null otherwise.
+     *
+     * @param array<string, mixed> $if
+     *
+     * @return null|array{string, array<string, mixed>}
+     */
+    private static function singlePropertyCondition(array $if): ?array
+    {
+        if (array_keys($if) !== ['properties', 'required'] && array_keys($if) !== ['required', 'properties']) {
+            return null;
+        }
+        if (!is_array($if['properties']) || count($if['properties']) !== 1) {
+            return null;
+        }
+        $property = array_key_first($if['properties']);
+        $subschema = $if['properties'][$property];
+        if (!is_string($property) || !is_array($subschema)) {
+            return null;
+        }
+        if ($if['required'] !== [$property]) {
+            return null;
+        }
+
+        return [$property, $subschema];
+    }
+
+    /**
      * @param array<string, mixed> $schema
      *
      * @return array<string, mixed>|stdClass
      */
-    private static function generateObject(array $schema, ?Generator $faker, int $iteration): array|stdClass
-    {
+    private static function generateObject(
+        array $schema,
+        ?Generator $faker,
+        int $iteration,
+        ?CaseSelectionPlan $plan = null,
+        string $pointer = '',
+        bool $forced = true,
+    ): array|stdClass {
         $properties = $schema['properties'] ?? [];
         if (!is_array($properties)) {
             return [];
@@ -251,21 +857,53 @@ final class SchemaDataGenerator
         }
 
         $result = [];
+        $presenceTarget = null;
         foreach ($properties as $name => $propSchema) {
-            if (!is_string($name) || !is_array($propSchema)) {
+            if (!is_string($name)) {
+                continue;
+            }
+            // Boolean property schemas (OpenAPI 3.1 / JSON Schema 2020-12)
+            // participate under a plan: `true` admits any value, `false`
+            // admits none, so its presence is unreachable and the property
+            // is always omitted. Plan-less rotation keeps skipping them.
+            if (!is_array($propSchema) && !($plan !== null && $propSchema === true)) {
                 continue;
             }
 
+            $childPointer = $pointer . '/properties/' . SchemaChoicePointEnumerator::escapePointerSegment($name);
+            if ($plan !== null && $plan->targetPointer === $childPointer) {
+                // A presence target is decided by this object's final shape
+                // — the maxProperties trim may still remove the property —
+                // so it is reported once composition below has settled.
+                $presenceTarget = $name;
+            }
             $isRequired = in_array($name, $required, true);
+            $pinnedPresence = null;
             // Optional properties alternate inclusion across cases so the
             // suite exercises both "required-only" and "required+optional"
             // shapes — mirrors Schemathesis' explore-omit toggle on a small
-            // budget. Required keys are always emitted.
-            if (!$isRequired && ($iteration % 2) === 0) {
-                continue;
+            // budget. Required keys are always emitted; a pinned plan entry
+            // overrides the parity in either direction.
+            if (!$isRequired) {
+                $pinnedPresence = $plan?->branchFor($childPointer);
+                $omit = $pinnedPresence !== null
+                    ? $pinnedPresence === SchemaChoicePoint::OMITTED
+                    : ($iteration % 2) === 0;
+                if ($omit) {
+                    continue;
+                }
             }
 
-            $result[$name] = self::generateOne($propSchema, $faker, $iteration);
+            $result[$name] = self::generateOne(
+                $propSchema === true ? [] : $propSchema,
+                $faker,
+                $iteration,
+                $plan,
+                $childPointer,
+                // A rotation-included optional property is avoidable by
+                // omission, so its subtree can prove nothing.
+                $forced && ($isRequired || $pinnedPresence === SchemaChoicePoint::PRESENT),
+            );
         }
 
         $minProperties = isset($schema['minProperties']) && is_int($schema['minProperties'])
@@ -277,7 +915,47 @@ final class SchemaDataGenerator
                 $additionalSchema = is_array($schema['additionalProperties'] ?? null)
                     ? $schema['additionalProperties']
                     : ['type' => 'string'];
-                $result[$name] = self::generateOne($additionalSchema, $faker, $iteration + count($result));
+                $result[$name] = self::generateOne(
+                    $additionalSchema,
+                    $faker,
+                    $iteration + count($result),
+                    $plan,
+                    $pointer . '/additionalProperties',
+                    false,
+                );
+            }
+        }
+        if ($plan !== null && count($result) < $minProperties && ($schema['additionalProperties'] ?? true) === false) {
+            // `additionalProperties: false` only forbids names that neither
+            // `properties` nor `patternProperties` evaluates (JSON Schema
+            // 2020-12 §10.3.2.3), so a minProperties shortfall on a closed
+            // object can still be met with pattern-matched names. Plan-only:
+            // plan-less rotation output is frozen.
+            $patternProperties = $schema['patternProperties'] ?? null;
+            if (is_array($patternProperties)) {
+                foreach ($patternProperties as $patternKey => $patternSchema) {
+                    if (count($result) >= $minProperties) {
+                        break;
+                    }
+                    if (!is_string($patternKey) || (!is_array($patternSchema) && $patternSchema !== true)) {
+                        continue;
+                    }
+                    $name = self::synthesizePropertyName($patternKey, $faker, $iteration);
+                    // A name that collides with a declared property would
+                    // override that property's own presence rotation or pin,
+                    // so leave the shortfall to fail loudly instead.
+                    if ($name === null || array_key_exists($name, $result) || isset($properties[$name])) {
+                        continue;
+                    }
+                    $result[$name] = self::generateOne(
+                        $patternSchema === true ? [] : $patternSchema,
+                        $faker,
+                        $iteration + count($result),
+                        $plan,
+                        $pointer . '/patternProperties/' . SchemaChoicePointEnumerator::escapePointerSegment($patternKey),
+                        false,
+                    );
+                }
             }
         }
         $maxProperties = isset($schema['maxProperties']) && is_int($schema['maxProperties'])
@@ -289,16 +967,88 @@ final class SchemaDataGenerator
                 $additionalSchema = is_array($schema['additionalProperties'] ?? null)
                     ? $schema['additionalProperties']
                     : ['type' => 'string'];
-                $result[$name] = self::generateOne($additionalSchema, $faker, $iteration + count($result));
+                $result[$name] = self::generateOne(
+                    $additionalSchema,
+                    $faker,
+                    $iteration + count($result),
+                    $plan,
+                    $pointer . '/additionalProperties',
+                    false,
+                );
             }
         }
         if ($maxProperties !== null && count($result) > $maxProperties) {
-            foreach (array_keys($result) as $name) {
-                if (count($result) <= $maxProperties) {
-                    break;
-                }
-                if (!in_array($name, $required, true)) {
+            // Trim unpinned optional properties first so a plan that forces
+            // a property present keeps it through the maxProperties budget;
+            // pinned ones go only when nothing else is left to drop.
+            foreach ([true, false] as $sparePinned) {
+                foreach (array_keys($result) as $name) {
+                    if (count($result) <= $maxProperties) {
+                        break 2;
+                    }
+                    if (in_array($name, $required, true)) {
+                        continue;
+                    }
+                    if ($sparePinned && $plan?->branchFor(
+                        $pointer . '/properties/' . SchemaChoicePointEnumerator::escapePointerSegment($name),
+                    ) === SchemaChoicePoint::PRESENT) {
+                        continue;
+                    }
                     unset($result[$name]);
+                }
+            }
+        }
+        if ($presenceTarget !== null && $plan !== null) {
+            $present = array_key_exists($presenceTarget, $result);
+            $plan->observation->report(
+                $plan->targetBranch === SchemaChoicePoint::OMITTED ? !$present : $present,
+            );
+            if ($forced) {
+                // Static presence arithmetic — schema-derived proofs that
+                // the pinned state is impossible, independent of what was
+                // generated. The merged view unions `properties` and
+                // `required` and maximises `minProperties`, so both counts
+                // only over-approximate what the real conjunction admits.
+                $includableOthers = 0;
+                foreach ($properties as $name => $propSchema) {
+                    if (is_string($name) && $name !== $presenceTarget && $propSchema !== false) {
+                        $includableOthers++;
+                    }
+                }
+                if ($plan->targetBranch === SchemaChoicePoint::OMITTED) {
+                    // Without the target property, at most the other named
+                    // properties can exist when additionalProperties is
+                    // false; fewer than minProperties means omission can
+                    // never satisfy the object. The count argument breaks
+                    // down when any patternProperties entry admits values —
+                    // additionalProperties only governs names that neither
+                    // keyword evaluates — so a pattern-open object proves
+                    // nothing.
+                    $patternsAdmitNames = false;
+                    $patternProperties = $schema['patternProperties'] ?? null;
+                    if (is_array($patternProperties) && $patternProperties !== []) {
+                        foreach ($patternProperties as $patternSchema) {
+                            if ($patternSchema !== false) {
+                                $patternsAdmitNames = true;
+
+                                break;
+                            }
+                        }
+                    } elseif ($patternProperties !== null) {
+                        // Malformed node: stay conservative, no proof.
+                        $patternsAdmitNames = true;
+                    }
+                    if (($schema['additionalProperties'] ?? true) === false &&
+                        !$patternsAdmitNames &&
+                        $includableOthers < $minProperties) {
+                        $plan->observation->proveDeadEnd();
+                    }
+                } elseif ($maxProperties !== null &&
+                    !in_array($presenceTarget, $required, true) &&
+                    count($required) + 1 > $maxProperties) {
+                    // Every valid object carries all required properties;
+                    // adding the target on top provably exceeds the budget.
+                    $plan->observation->proveDeadEnd();
                 }
             }
         }
@@ -317,8 +1067,24 @@ final class SchemaDataGenerator
      *
      * @return list<mixed>
      */
-    private static function generateArray(array $schema, ?Generator $faker, int $iteration): array
-    {
+    private static function generateArray(
+        array $schema,
+        ?Generator $faker,
+        int $iteration,
+        ?CaseSelectionPlan $plan = null,
+        string $pointer = '',
+        bool $forced = true,
+    ): array {
+        // Item subtrees never prove dead ends ($forced is deliberately not
+        // forwarded below): element count and content interact with
+        // minItems/maxItems/uniqueItems in ways the proof sites do not
+        // model, so stay conservative and loud.
+        unset($forced);
+        // A pinned plan entry at `<pointer>/items` is a forced minimum size:
+        // it makes items reachable in the pinned case (mirroring how optional
+        // ancestors are forced present) without becoming a rotation strategy.
+        $forcedMinimum = $plan?->branchFor($pointer . '/items');
+
         $prefixItems = $schema['prefixItems'] ?? null;
         if (is_array($prefixItems)) {
             $prefixCount = count($prefixItems);
@@ -329,17 +1095,34 @@ final class SchemaDataGenerator
                 1 => $maximum ?? $prefixCount,
                 default => $prefixCount,
             };
+            if ($forcedMinimum !== null) {
+                $size = max($size, $forcedMinimum);
+            }
             if ($maximum !== null) {
                 $size = min($size, $maximum);
             }
             if (($schema['items'] ?? true) === false) {
                 $size = min($size, $prefixCount);
             }
+            if ($plan !== null) {
+                // A `false` prefix item admits no value, so every array long
+                // enough to contain it is invalid: the first one is an
+                // effective maxItems, overriding even a forced size.
+                foreach (array_values($prefixItems) as $prefixIndex => $prefixItem) {
+                    if ($prefixItem === false) {
+                        $size = min($size, $prefixIndex);
+                        break;
+                    }
+                }
+            }
             $result = [];
             for ($index = 0; $index < $size; $index++) {
                 $item = $prefixItems[$index] ?? ($schema['items'] ?? []);
+                $itemPointer = isset($prefixItems[$index])
+                    ? $pointer . '/prefixItems/' . $index
+                    : $pointer . '/items';
                 if (is_array($item)) {
-                    $result[] = self::generateOne($item, $faker, $iteration + $index);
+                    $result[] = self::generateOne($item, $faker, $iteration + $index, $plan, $itemPointer, false);
                 } else {
                     $result[] = 'item-' . $index;
                 }
@@ -349,6 +1132,13 @@ final class SchemaDataGenerator
         }
 
         $items = $schema['items'] ?? null;
+        if ($plan !== null && ($items === true || $items === null)) {
+            // A boolean-true items schema admits any value, and an omitted
+            // items keyword is the empty schema (2020-12 §10.3.1.2) — same
+            // assertion behaviour. Generate from the empty schema instead of
+            // degrading to an empty array that would violate minItems.
+            $items = [];
+        }
         if (!is_array($items)) {
             return [];
         }
@@ -360,17 +1150,21 @@ final class SchemaDataGenerator
             1 => $maximum ?? max(1, $minimum),
             default => max(1, $minimum),
         };
+        if ($forcedMinimum !== null) {
+            $size = max($size, $forcedMinimum);
+        }
         if ($maximum !== null) {
             $size = min($size, $maximum);
         }
+        $itemPointer = $pointer . '/items';
         $result = [];
         for ($i = 0; $i < $size; $i++) {
-            $item = self::generateOne($items, $faker, $iteration + $i);
+            $item = self::generateOne($items, $faker, $iteration + $i, $plan, $itemPointer, false);
             if (($schema['uniqueItems'] ?? false) === true) {
                 $attempt = 0;
                 while (in_array($item, $result, true) && $attempt < 100) {
                     $attempt++;
-                    $item = self::generateOne($items, $faker, $iteration + $i + $attempt);
+                    $item = self::generateOne($items, $faker, $iteration + $i + $attempt, $plan, $itemPointer, false);
                 }
             }
             $result[] = $item;
@@ -700,116 +1494,278 @@ final class SchemaDataGenerator
      *
      * @return array<string, mixed>
      */
-    private static function resolveComposition(array $schema, ?Generator $faker, int $iteration): array
-    {
-        foreach (['oneOf', 'anyOf'] as $keyword) {
-            if (!isset($schema[$keyword]) || !is_array($schema[$keyword]) || $schema[$keyword] === []) {
-                continue;
-            }
-            $branches = array_values(array_filter($schema[$keyword], is_array(...)));
-            if ($branches === []) {
-                continue;
-            }
-            unset($schema[$keyword]);
-            $schema = self::mergeSchemas($schema, $branches[$iteration % count($branches)]);
-            break;
-        }
+    private static function resolveComposition(
+        array $schema,
+        ?Generator $faker,
+        int $iteration,
+        ?CaseSelectionPlan $plan = null,
+        string $pointer = '',
+        bool &$forced = true,
+    ): array {
+        $schema = self::resolveBranchChoice($schema, $iteration, $plan, $pointer, $forced);
 
         if (isset($schema['allOf']) && is_array($schema['allOf'])) {
-            $branches = $schema['allOf'];
-            unset($schema['allOf']);
-            $conditionals = [];
-            foreach ($branches as $branch) {
-                if (!is_array($branch)) {
-                    continue;
-                }
-                if (isset($branch['if']) && is_array($branch['if'])) {
-                    $conditionals[] = $branch;
-                } else {
-                    $schema = self::mergeSchemas($schema, $branch);
+            [$schema, $conditionals] = self::splitConditionals($schema);
+            if ($conditionals !== [] && $plan !== null) {
+                // Boolean consequents leave no choice; fold them into the
+                // node first. An unsatisfiable node generates from the base
+                // and fails the self-check loudly.
+                [$schema, $conditionals, $unsatisfiable] = self::partitionConditionals($schema, $conditionals);
+                if ($unsatisfiable) {
+                    $conditionals = [];
                 }
             }
             if ($conditionals !== []) {
+                // Rotation only ever satisfies a conditional's `if`+`then`;
+                // pinned conditional branches never reach this point — they
+                // are resolved by generateConditionalNode() before the
+                // composition phases run.
                 $selected = $conditionals[$iteration % count($conditionals)];
                 $schema = self::mergeSchemas($schema, $selected['if']);
                 if (isset($selected['then']) && is_array($selected['then'])) {
                     $schema = self::mergeSchemas($schema, $selected['then']);
                 }
+                // An unpinned conditional state is a choice: another
+                // rotation may satisfy a different conditional (or none),
+                // so nothing merged here can prove a dead end.
+                $forced = false;
             }
         }
 
-        if (isset($schema['if']) && is_array($schema['if'])) {
-            $useThen = ($iteration % 2) === 0;
-            $conditional = $useThen
-                ? self::mergeSchemas($schema['if'], is_array($schema['then'] ?? null) ? $schema['then'] : [])
-                : self::mergeSchemas(
-                    ['not' => $schema['if']],
-                    is_array($schema['else'] ?? null) ? $schema['else'] : [],
-                );
+        if ($plan !== null && is_bool($schema['if'] ?? null)) {
+            // Boolean Schema Objects (OpenAPI 3.1 / JSON Schema 2020-12):
+            // `if: true` makes the then unconditional, `if: false` the else
+            // — there is no branch to choose. Plan-less rotation keeps its
+            // historical output and ignores boolean ifs.
+            $branchSchema = $schema['if'] === true ? ($schema['then'] ?? null) : ($schema['else'] ?? null);
             unset($schema['if'], $schema['then'], $schema['else']);
-            $schema = self::mergeSchemas($schema, $conditional);
+            if (is_array($branchSchema)) {
+                $schema = self::mergeSchemas($schema, $branchSchema);
+            }
+        } elseif (isset($schema['if']) && is_array($schema['if'])) {
+            if ($plan !== null) {
+                $sides = self::ifBranchSides($schema);
+                // No generatable side means both consequents are `false`;
+                // leave the keyword unresolved for the loud self-check.
+                if ($sides !== []) {
+                    $pinned = $plan->branchFor($pointer . '/if');
+                    $side = $sides[($pinned ?? $iteration) % count($sides)];
+                    if ($pinned === null && count($sides) > 1) {
+                        // An unpinned side is a choice; the other side may
+                        // avoid whatever this merge makes unsatisfiable.
+                        $forced = false;
+                    }
+                    if ($plan->targetPointer === $pointer . '/if' && $pinned !== null) {
+                        // An else-targeted value that fires the `if` anyway
+                        // passes the whole schema through the then side; only
+                        // the condition itself tells the sides apart.
+                        $condition = $schema['if'];
+                        $plan->observation->expect($pointer, static fn(mixed $value): bool
+                            => SchemaValueValidator::isValid($value, $condition) === ($side === 0));
+                    }
+                    $schema = self::applyIfSide($schema, $side);
+                }
+            } else {
+                $useThen = ($iteration % 2) === 0;
+                $conditional = $useThen
+                    ? self::mergeSchemas($schema['if'], is_array($schema['then'] ?? null) ? $schema['then'] : [])
+                    : self::mergeSchemas(
+                        ['not' => $schema['if']],
+                        is_array($schema['else'] ?? null) ? $schema['else'] : [],
+                    );
+                unset($schema['if'], $schema['then'], $schema['else']);
+                $schema = self::mergeSchemas($schema, $conditional);
+            }
+        }
+
+        if ($plan !== null && $plan->refineTarget) {
+            $refinement = $plan->observation->takeRefinement();
+            if ($refinement !== null) {
+                // Refinement attempt of the target search: non-conjunctive
+                // keywords (pattern, format) displaced by a later merge are
+                // restored by re-merging the target branch content last.
+                // Conjunctive keywords are idempotent under the re-merge,
+                // and the whole-schema check plus the branch observation
+                // still gate whatever this view generates.
+                $schema = self::mergeSchemas($schema, $refinement);
+            }
         }
 
         return $schema;
     }
 
     /**
-     * Merge the assertion keywords needed for deterministic allOf generation.
+     * Resolve the first `oneOf`/`anyOf` on the node — composition phase one.
+     * Idempotent: the resolved keyword is consumed, so a second call is a
+     * no-op, which lets the pinned-conditional path pre-resolve it before
+     * splitting conditionals out of `allOf`.
      *
-     * @param array<string, mixed> $left
-     * @param array<string, mixed> $right
+     * @param array<string, mixed> $schema
      *
      * @return array<string, mixed>
      */
-    private static function mergeSchemas(array $left, array $right): array
-    {
-        $merged = array_merge($left, $right);
-        if (is_array($left['properties'] ?? null) || is_array($right['properties'] ?? null)) {
-            $merged['properties'] = self::mergePropertySchemas(
-                is_array($left['properties'] ?? null) ? $left['properties'] : [],
-                is_array($right['properties'] ?? null) ? $right['properties'] : [],
-            );
-        }
-        if (is_array($left['required'] ?? null) || is_array($right['required'] ?? null)) {
-            $merged['required'] = array_values(array_unique(array_merge(
-                is_array($left['required'] ?? null) ? $left['required'] : [],
-                is_array($right['required'] ?? null) ? $right['required'] : [],
-            )));
-        }
-        if (isset($left['minimum'], $right['minimum'])) {
-            $merged['minimum'] = max($left['minimum'], $right['minimum']);
-        }
-        if (isset($left['maximum'], $right['maximum'])) {
-            $merged['maximum'] = min($left['maximum'], $right['maximum']);
-        }
-        if (isset($left['minLength'], $right['minLength'])) {
-            $merged['minLength'] = max($left['minLength'], $right['minLength']);
-        }
-        if (isset($left['maxLength'], $right['maxLength'])) {
-            $merged['maxLength'] = min($left['maxLength'], $right['maxLength']);
-        }
-        foreach (['minItems', 'minProperties'] as $minimumKeyword) {
-            if (isset($left[$minimumKeyword], $right[$minimumKeyword])) {
-                $merged[$minimumKeyword] = max($left[$minimumKeyword], $right[$minimumKeyword]);
+    private static function resolveBranchChoice(
+        array $schema,
+        int $iteration,
+        ?CaseSelectionPlan $plan,
+        string $pointer,
+        bool &$forced = true,
+    ): array {
+        foreach (['oneOf', 'anyOf'] as $keyword) {
+            if (!isset($schema[$keyword]) || !is_array($schema[$keyword]) || $schema[$keyword] === []) {
+                continue;
             }
-        }
-        foreach (['maxItems', 'maxProperties'] as $maximumKeyword) {
-            if (isset($left[$maximumKeyword], $right[$maximumKeyword])) {
-                $merged[$maximumKeyword] = min($left[$maximumKeyword], $right[$maximumKeyword]);
+
+            if ($plan === null) {
+                // Documented rotation: array branches only, no exclusivity
+                // suppression, historical output bit-for-bit.
+                $branches = array_values(array_filter($schema[$keyword], is_array(...)));
+                if ($branches === []) {
+                    continue;
+                }
+                unset($schema[$keyword]);
+                $schema = self::mergeSchemas($schema, $branches[$iteration % count($branches)]);
+                break;
             }
-        }
-        if ((is_int($left['multipleOf'] ?? null) || is_float($left['multipleOf'] ?? null)) &&
-            (is_int($right['multipleOf'] ?? null) || is_float($right['multipleOf'] ?? null))) {
-            $multipleOf = DecimalMultiple::leastCommonMultiple($left['multipleOf'], $right['multipleOf']);
-            if ($multipleOf === null) {
-                throw new InvalidArgumentException(
-                    'Cannot compose allOf multipleOf constraints within the platform numeric range.',
-                );
+
+            [$branches, $enumerable] = self::compositionBranchSpace(array_values($schema[$keyword]), $keyword);
+            if ($enumerable === []) {
+                continue;
             }
-            $merged['multipleOf'] = $multipleOf;
+            unset($schema[$keyword]);
+            $pinned = $plan->branchFor($pointer . '/' . $keyword);
+            $selected = $enumerable[($pinned ?? $iteration) % count($enumerable)];
+            if ($pinned === null && count($enumerable) > 1) {
+                // An unpinned branch pick is a choice; emptiness under this
+                // branch says nothing about its siblings.
+                $forced = false;
+            }
+            if ($plan->targetPointer === $pointer . '/' . $keyword && $pinned !== null) {
+                // Whole-schema validity cannot tell this branch from a
+                // sibling that also matches; the case counts as covering
+                // the target only if the value satisfies the branch itself.
+                $branch = $branches[$selected];
+                $plan->observation->expect($pointer, static fn(mixed $value): bool
+                    => $branch === true || (is_array($branch) && SchemaValueValidator::isValid($value, $branch)));
+                if ($plan->refineTarget && is_array($branch)) {
+                    $plan->observation->stageRefinement($branch);
+                }
+            }
+            $schema = self::applyCompositionBranch($schema, $branches, $selected, $keyword);
+            break;
         }
 
-        return $merged;
+        return $schema;
+    }
+
+    /**
+     * Split a node's `allOf` into the node with every non-conditional branch
+     * merged in, and the list of conditional (`if`-carrying) branches —
+     * mirrored by the enumerator's traversal.
+     *
+     * @param array<string, mixed> $schema
+     *
+     * @return array{array<string, mixed>, list<array<string, mixed>>}
+     */
+    private static function splitConditionals(array $schema): array
+    {
+        if (!isset($schema['allOf']) || !is_array($schema['allOf'])) {
+            return [$schema, []];
+        }
+
+        $base = $schema;
+        unset($base['allOf']);
+        $conditionals = [];
+        foreach ($schema['allOf'] as $branch) {
+            if (!is_array($branch)) {
+                continue;
+            }
+            if (isset($branch['if']) && is_array($branch['if'])) {
+                $conditionals[] = $branch;
+            } else {
+                $base = self::mergeSchemas($base, $branch);
+            }
+        }
+
+        return [$base, $conditionals];
+    }
+
+    /**
+     * Generate a node whose conditional-`allOf` choice is pinned by the plan.
+     *
+     * Starts from the pinned branch's view — the selected conditional (or
+     * none) satisfied, all others suppressed — and validates the produced
+     * value against the complete node schema. Suppression is a starting
+     * point, not an assumption of exclusivity: when a suppressed `if` fires
+     * on the value anyway (overlapping conditionals), that conditional joins
+     * the satisfied set and the node regenerates, up to once per
+     * conditional. The none-match branch never grows the set — reaching a
+     * state where no `if` fires is exactly its target.
+     *
+     * @param array<string, mixed> $node phase-one-resolved node, conditionals still in `allOf`
+     * @param array<string, mixed> $base node with `allOf` removed and non-conditional branches merged
+     * @param list<array<string, mixed>> $conditionals
+     */
+    private static function generateConditionalNode(
+        array $node,
+        array $base,
+        array $conditionals,
+        int $pinned,
+        ?Generator $faker,
+        int $iteration,
+        CaseSelectionPlan $plan,
+        string $pointer,
+        bool $forced,
+    ): mixed {
+        $count = count($conditionals);
+        $branch = $pinned % ($count + 1);
+        $satisfied = $branch < $count ? [$branch] : [];
+
+        if ($plan->targetPointer === $pointer . '/allOf') {
+            // Branch c is covered only if its `if` actually fires on the
+            // value; the none-match state only if no choice `if` does. A
+            // value can pass the whole node either way (e.g. a node const
+            // that satisfies a suppressed condition), so the state must be
+            // checked against the conditions themselves.
+            $plan->observation->expect($pointer, static function (mixed $value) use ($conditionals, $branch, $count): bool {
+                if ($branch < $count) {
+                    return SchemaValueValidator::isValid($value, $conditionals[$branch]['if']);
+                }
+                foreach ($conditionals as $conditional) {
+                    if (SchemaValueValidator::isValid($value, $conditional['if'])) {
+                        return false;
+                    }
+                }
+
+                return true;
+            });
+        }
+
+        $value = null;
+        for ($attempt = 0; $attempt <= $count; $attempt++) {
+            $view = self::conditionalSetView($base, $conditionals, $satisfied);
+            // Only the pinned starting view is forced: closure expansion is
+            // driven by the generated value, so an expanded satisfied set is
+            // one of several reachable states and proves nothing.
+            $value = self::generateOne($view, $faker, $iteration, $plan, $pointer, $forced && $attempt === 0);
+            if ($branch === $count || SchemaValueValidator::isValid($value, $node)) {
+                return $value;
+            }
+
+            $fired = false;
+            foreach ($conditionals as $index => $conditional) {
+                if (!in_array($index, $satisfied, true) &&
+                    SchemaValueValidator::isValid($value, $conditional['if'])) {
+                    $satisfied[] = $index;
+                    $fired = true;
+                }
+            }
+            if (!$fired) {
+                break;
+            }
+        }
+
+        return $value;
     }
 
     /**
@@ -829,6 +1785,31 @@ final class SchemaDataGenerator
         }
 
         return $merged;
+    }
+
+    /**
+     * Synthesize a property name matching a `patternProperties` pattern.
+     *
+     * Anchored literal patterns (`^name$`, no metacharacters) are read off
+     * directly; anything else goes through the common pattern synthesis
+     * subset with a final match check, since those synthesizers target
+     * value patterns. Null means the pattern is outside both — the caller
+     * leaves the shortfall unmet and generation fails loudly downstream.
+     */
+    private static function synthesizePropertyName(string $pattern, ?Generator $faker, int $iteration): ?string
+    {
+        if (preg_match('/^\^(.+)\$$/D', $pattern, $matches) === 1 && preg_quote($matches[1], '~') === $matches[1]) {
+            return $matches[1];
+        }
+
+        $name = self::generateCommonPattern($pattern, [], $faker, $iteration);
+        if ($name === null) {
+            return null;
+        }
+        $delimiter = '~';
+        $escaped = str_replace($delimiter, '\\' . $delimiter, $pattern);
+
+        return @preg_match($delimiter . $escaped . $delimiter . 'u', $name) === 1 ? $name : null;
     }
 
     /** @param array<string, mixed> $schema */
