@@ -11,6 +11,7 @@ use Studio\Gesso\Attribute\OpenApiSpec;
 use Studio\Gesso\Fuzz\ExplorationCaseKind;
 use Studio\Gesso\Fuzz\ExplorationCases;
 use Studio\Gesso\Fuzz\ExploredCase;
+use Studio\Gesso\Fuzz\GeneratedResponseCases;
 use Studio\Gesso\Fuzz\OpenApiSpecExploration;
 use Studio\Gesso\HttpMethod;
 use Studio\Gesso\Laravel\ExploresOpenApiEndpoint;
@@ -66,6 +67,43 @@ class ExploresOpenApiEndpointTest extends TestCase
             $this->assertSame(ExplorationCaseKind::Invalid, $case->kind);
             $this->assertSame([4], $case->expectedStatusClasses);
         }
+    }
+
+    #[Test]
+    public function exposes_response_schema_exploration(): void
+    {
+        $cases = $this->exploreResponseSchema('GET', '/v1/pets', 200, seed: 1);
+
+        $this->assertInstanceOf(GeneratedResponseCases::class, $cases);
+        $this->assertNotCount(0, $cases);
+        foreach ($cases as $case) {
+            $this->assertSame(200, $case->status);
+            $this->assertSame('application/json', $case->contentType);
+        }
+    }
+
+    #[Test]
+    #[OpenApiSpec('sdk-roundtrip')]
+    public function response_exploration_honors_method_spec_attribute(): void
+    {
+        $cases = $this->exploreResponseSchema(
+            'POST',
+            '/oauth/introspect',
+            200,
+            seed: 1,
+            extraCases: 2,
+        );
+
+        $this->assertCount(6, $cases);
+    }
+
+    #[Test]
+    public function response_resolution_failure_routes_through_fail_explore(): void
+    {
+        $this->expectException(AssertionFailedError::class);
+        $this->expectExceptionMessage('outcome=StatusNotDeclared');
+
+        $this->exploreResponseSchema('GET', '/v1/pets', 201);
     }
 
     #[Test]
@@ -146,6 +184,16 @@ class ExploresOpenApiEndpointTest extends TestCase
         $this->expectExceptionMessage('does-not-exist');
 
         $this->exploreEndpoint('POST', '/v1/pets', cases: 1);
+    }
+
+    #[Test]
+    #[OpenApiSpec('does-not-exist')]
+    public function response_spec_loader_failure_routes_through_fail_explore(): void
+    {
+        $this->expectException(AssertionFailedError::class);
+        $this->expectExceptionMessage('does-not-exist');
+
+        $this->exploreResponseSchema('GET', '/v1/pets', 200);
     }
 }
 

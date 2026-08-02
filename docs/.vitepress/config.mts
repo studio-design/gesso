@@ -149,6 +149,7 @@ export default defineConfig({
           { text: 'PSR-7 validation', link: '/psr7' },
           { text: 'Laravel route parity', link: '/laravel-route-parity' },
           { text: 'Schema-driven fuzzing', link: '/fuzzing' },
+          { text: 'SDK response round trips', link: '/sdk-roundtrip' },
           { text: 'Symfony contract testing', link: '/contract-testing-symfony' },
           { text: 'Spec-driven vs consumer-driven', link: '/spec-driven-vs-consumer-driven' }
         ]

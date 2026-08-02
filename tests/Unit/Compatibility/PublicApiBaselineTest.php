@@ -27,7 +27,10 @@ use Studio\Gesso\Fuzz\ContractCheckPlan;
 use Studio\Gesso\Fuzz\ContractCheckSkip;
 use Studio\Gesso\Fuzz\ContractCheckSummary;
 use Studio\Gesso\Fuzz\ExploredCase;
+use Studio\Gesso\Fuzz\GeneratedResponseCase;
+use Studio\Gesso\Fuzz\GeneratedResponseCases;
 use Studio\Gesso\Fuzz\OpenApiContractChecks;
+use Studio\Gesso\Fuzz\OpenApiResponseExplorer;
 use Studio\Gesso\JsonValidationResultRenderer;
 use Studio\Gesso\Laravel\Commands\OpenApiRoutesCommand;
 use Studio\Gesso\Laravel\ExploresOpenApiEndpoint;
@@ -199,6 +202,8 @@ final class PublicApiBaselineTest extends TestCase
 
         /** @var array<string, array<string, mixed>> $expected */
         $expected = json_decode($mappedV1Json, true, flags: JSON_THROW_ON_ERROR);
+        /** @var array<string, array<string, mixed>> $actual */
+        $actual = json_decode($v2Json, true, flags: JSON_THROW_ON_ERROR);
         unset(
             $expected[InvalidOpenApiSpecReason::class]['cases']['ExternalRef'],
             $expected[InvalidOpenApiSpecReason::class]['cases']['RemoteRefNotImplemented'],
@@ -616,6 +621,27 @@ final class PublicApiBaselineTest extends TestCase
         // still names them, so drop them from the expectation.
         $expected[ExploresOpenApiEndpoint::class]['traits'] = [];
         $expected[ValidatesOpenApiSchema::class]['traits'] = [];
+
+        // #444: response payload exploration adds three public types and one
+        // Laravel convenience method. Their exact signatures remain pinned by
+        // public_php_api_matches_the_v2_baseline(); this inventory declares
+        // the precise new symbols that are intentional relative to v1.9.
+        foreach ([
+            GeneratedResponseCase::class,
+            GeneratedResponseCases::class,
+            OpenApiResponseExplorer::class,
+        ] as $responseExplorerType) {
+            $expected[$responseExplorerType] = $actual[$responseExplorerType];
+        }
+        $explorerMethods = [];
+        foreach ($expected[ExploresOpenApiEndpoint::class]['methods'] as $name => $method) {
+            if ($name === 'exploreSpec') {
+                $explorerMethods['exploreResponseSchema'] =
+                    $actual[ExploresOpenApiEndpoint::class]['methods']['exploreResponseSchema'];
+            }
+            $explorerMethods[$name] = $method;
+        }
+        $expected[ExploresOpenApiEndpoint::class]['methods'] = $explorerMethods;
 
         // New public symbols in v2.x (named contract checks): the
         // ContractCheck enum, its ContractCheckFailure/ContractCheckSkip
@@ -1674,9 +1700,6 @@ final class PublicApiBaselineTest extends TestCase
         ] as $internalType) {
             unset($expected[$internalType]);
         }
-
-        /** @var array<string, array<string, mixed>> $actual */
-        $actual = json_decode($v2Json, true, flags: JSON_THROW_ON_ERROR);
 
         foreach ($actual as &$type) {
             unset($type['trait_composition']);

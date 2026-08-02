@@ -3468,6 +3468,347 @@
             }
         }
     },
+    "Studio\\Gesso\\Fuzz\\GeneratedResponseCase": {
+        "kind": "class",
+        "final": true,
+        "abstract": false,
+        "readonly": true,
+        "instantiable": true,
+        "constructor": {
+            "kind": "declared",
+            "visibility": "public"
+        },
+        "parent": null,
+        "interfaces": [],
+        "traits": [],
+        "attributes": [],
+        "backing_type": null,
+        "cases": [],
+        "constants": [],
+        "properties": {
+            "body": {
+                "type": "mixed",
+                "static": false,
+                "readonly": true,
+                "default": {
+                    "unavailable": true
+                }
+            },
+            "caseIndex": {
+                "type": "int",
+                "static": false,
+                "readonly": true,
+                "default": {
+                    "unavailable": true
+                }
+            },
+            "contentType": {
+                "type": "string",
+                "static": false,
+                "readonly": true,
+                "default": {
+                    "unavailable": true
+                }
+            },
+            "pinnedBranch": {
+                "type": "?string",
+                "static": false,
+                "readonly": true,
+                "default": {
+                    "unavailable": true
+                }
+            },
+            "seed": {
+                "type": "int",
+                "static": false,
+                "readonly": true,
+                "default": {
+                    "unavailable": true
+                }
+            },
+            "status": {
+                "type": "int",
+                "static": false,
+                "readonly": true,
+                "default": {
+                    "unavailable": true
+                }
+            }
+        },
+        "methods": {
+            "__construct": {
+                "static": false,
+                "final": false,
+                "abstract": false,
+                "returns_reference": false,
+                "return_type": null,
+                "attributes": [],
+                "parameters": [
+                    {
+                        "name": "body",
+                        "type": "mixed",
+                        "optional": false,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": {
+                            "unavailable": true
+                        },
+                        "attributes": []
+                    },
+                    {
+                        "name": "status",
+                        "type": "int",
+                        "optional": false,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": {
+                            "unavailable": true
+                        },
+                        "attributes": []
+                    },
+                    {
+                        "name": "contentType",
+                        "type": "string",
+                        "optional": false,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": {
+                            "unavailable": true
+                        },
+                        "attributes": []
+                    },
+                    {
+                        "name": "seed",
+                        "type": "int",
+                        "optional": false,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": {
+                            "unavailable": true
+                        },
+                        "attributes": []
+                    },
+                    {
+                        "name": "caseIndex",
+                        "type": "int",
+                        "optional": false,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": {
+                            "unavailable": true
+                        },
+                        "attributes": []
+                    },
+                    {
+                        "name": "pinnedBranch",
+                        "type": "?string",
+                        "optional": false,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": {
+                            "unavailable": true
+                        },
+                        "attributes": []
+                    },
+                    {
+                        "name": "specName",
+                        "type": "string",
+                        "optional": false,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": {
+                            "unavailable": true
+                        },
+                        "attributes": []
+                    },
+                    {
+                        "name": "method",
+                        "type": "string",
+                        "optional": false,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": {
+                            "unavailable": true
+                        },
+                        "attributes": []
+                    },
+                    {
+                        "name": "matchedPath",
+                        "type": "string",
+                        "optional": false,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": {
+                            "unavailable": true
+                        },
+                        "attributes": []
+                    },
+                    {
+                        "name": "schema",
+                        "type": "array",
+                        "optional": false,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": {
+                            "unavailable": true
+                        },
+                        "attributes": []
+                    },
+                    {
+                        "name": "extraCases",
+                        "type": "int",
+                        "optional": true,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": 0,
+                        "attributes": []
+                    }
+                ]
+            },
+            "assertRoundTrip": {
+                "static": false,
+                "final": false,
+                "abstract": false,
+                "returns_reference": false,
+                "return_type": "void",
+                "attributes": [],
+                "parameters": [
+                    {
+                        "name": "reEncoded",
+                        "type": "mixed",
+                        "optional": false,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": {
+                            "unavailable": true
+                        },
+                        "attributes": []
+                    }
+                ]
+            },
+            "bodyAsArray": {
+                "static": false,
+                "final": false,
+                "abstract": false,
+                "returns_reference": false,
+                "return_type": "?array",
+                "attributes": [],
+                "parameters": []
+            },
+            "bodyAsObject": {
+                "static": false,
+                "final": false,
+                "abstract": false,
+                "returns_reference": false,
+                "return_type": "mixed",
+                "attributes": [],
+                "parameters": []
+            },
+            "replaySnippet": {
+                "static": false,
+                "final": false,
+                "abstract": false,
+                "returns_reference": false,
+                "return_type": "string",
+                "attributes": [],
+                "parameters": []
+            }
+        }
+    },
+    "Studio\\Gesso\\Fuzz\\GeneratedResponseCases": {
+        "kind": "class",
+        "final": true,
+        "abstract": false,
+        "readonly": true,
+        "instantiable": true,
+        "constructor": {
+            "kind": "declared",
+            "visibility": "public"
+        },
+        "parent": null,
+        "interfaces": [
+            "Countable",
+            "IteratorAggregate",
+            "Traversable"
+        ],
+        "traits": [],
+        "attributes": [],
+        "backing_type": null,
+        "cases": [],
+        "constants": [],
+        "properties": {
+            "cases": {
+                "type": "array",
+                "static": false,
+                "readonly": true,
+                "default": {
+                    "unavailable": true
+                }
+            }
+        },
+        "methods": {
+            "__construct": {
+                "static": false,
+                "final": false,
+                "abstract": false,
+                "returns_reference": false,
+                "return_type": null,
+                "attributes": [],
+                "parameters": [
+                    {
+                        "name": "cases",
+                        "type": "array",
+                        "optional": false,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": {
+                            "unavailable": true
+                        },
+                        "attributes": []
+                    }
+                ]
+            },
+            "count": {
+                "static": false,
+                "final": false,
+                "abstract": false,
+                "returns_reference": false,
+                "return_type": "int",
+                "attributes": [],
+                "parameters": []
+            },
+            "each": {
+                "static": false,
+                "final": false,
+                "abstract": false,
+                "returns_reference": false,
+                "return_type": "self",
+                "attributes": [],
+                "parameters": [
+                    {
+                        "name": "callback",
+                        "type": "callable",
+                        "optional": false,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": {
+                            "unavailable": true
+                        },
+                        "attributes": []
+                    }
+                ]
+            },
+            "getIterator": {
+                "static": false,
+                "final": false,
+                "abstract": false,
+                "returns_reference": false,
+                "return_type": "Traversable",
+                "attributes": [],
+                "parameters": []
+            }
+        }
+    },
     "Studio\\Gesso\\Fuzz\\OpenApiContractChecks": {
         "kind": "class",
         "final": true,
@@ -3667,6 +4008,108 @@
                         "variadic": false,
                         "by_reference": false,
                         "default": null,
+                        "attributes": []
+                    }
+                ]
+            }
+        }
+    },
+    "Studio\\Gesso\\Fuzz\\OpenApiResponseExplorer": {
+        "kind": "class",
+        "final": true,
+        "abstract": false,
+        "readonly": false,
+        "instantiable": true,
+        "constructor": {
+            "kind": "implicit",
+            "visibility": "public"
+        },
+        "parent": null,
+        "interfaces": [],
+        "traits": [],
+        "attributes": [],
+        "backing_type": null,
+        "cases": [],
+        "constants": [],
+        "properties": [],
+        "methods": {
+            "explore": {
+                "static": true,
+                "final": false,
+                "abstract": false,
+                "returns_reference": false,
+                "return_type": "Studio\\Gesso\\Fuzz\\GeneratedResponseCases",
+                "attributes": [],
+                "parameters": [
+                    {
+                        "name": "specName",
+                        "type": "string",
+                        "optional": false,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": {
+                            "unavailable": true
+                        },
+                        "attributes": []
+                    },
+                    {
+                        "name": "method",
+                        "type": "string",
+                        "optional": false,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": {
+                            "unavailable": true
+                        },
+                        "attributes": []
+                    },
+                    {
+                        "name": "path",
+                        "type": "string",
+                        "optional": false,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": {
+                            "unavailable": true
+                        },
+                        "attributes": []
+                    },
+                    {
+                        "name": "status",
+                        "type": "int",
+                        "optional": false,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": {
+                            "unavailable": true
+                        },
+                        "attributes": []
+                    },
+                    {
+                        "name": "contentType",
+                        "type": "?string",
+                        "optional": true,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": null,
+                        "attributes": []
+                    },
+                    {
+                        "name": "seed",
+                        "type": "?int",
+                        "optional": true,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": null,
+                        "attributes": []
+                    },
+                    {
+                        "name": "extraCases",
+                        "type": "int",
+                        "optional": true,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": 0,
                         "attributes": []
                     }
                 ]
@@ -4533,6 +4976,76 @@
                     }
                 ]
             },
+            "exploreResponseSchema": {
+                "static": false,
+                "final": false,
+                "abstract": false,
+                "returns_reference": false,
+                "return_type": "Studio\\Gesso\\Fuzz\\GeneratedResponseCases",
+                "attributes": [],
+                "parameters": [
+                    {
+                        "name": "method",
+                        "type": "string",
+                        "optional": false,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": {
+                            "unavailable": true
+                        },
+                        "attributes": []
+                    },
+                    {
+                        "name": "path",
+                        "type": "string",
+                        "optional": false,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": {
+                            "unavailable": true
+                        },
+                        "attributes": []
+                    },
+                    {
+                        "name": "status",
+                        "type": "int",
+                        "optional": false,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": {
+                            "unavailable": true
+                        },
+                        "attributes": []
+                    },
+                    {
+                        "name": "contentType",
+                        "type": "?string",
+                        "optional": true,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": null,
+                        "attributes": []
+                    },
+                    {
+                        "name": "seed",
+                        "type": "?int",
+                        "optional": true,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": null,
+                        "attributes": []
+                    },
+                    {
+                        "name": "extraCases",
+                        "type": "int",
+                        "optional": true,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": 0,
+                        "attributes": []
+                    }
+                ]
+            },
             "exploreSpec": {
                 "static": false,
                 "final": false,
@@ -4684,6 +5197,77 @@
                             "variadic": false,
                             "by_reference": false,
                             "default": null,
+                            "attributes": []
+                        }
+                    ]
+                },
+                "exploreResponseSchema": {
+                    "visibility": "public",
+                    "static": false,
+                    "final": false,
+                    "abstract": false,
+                    "returns_reference": false,
+                    "return_type": "Studio\\Gesso\\Fuzz\\GeneratedResponseCases",
+                    "attributes": [],
+                    "parameters": [
+                        {
+                            "name": "method",
+                            "type": "string",
+                            "optional": false,
+                            "variadic": false,
+                            "by_reference": false,
+                            "default": {
+                                "unavailable": true
+                            },
+                            "attributes": []
+                        },
+                        {
+                            "name": "path",
+                            "type": "string",
+                            "optional": false,
+                            "variadic": false,
+                            "by_reference": false,
+                            "default": {
+                                "unavailable": true
+                            },
+                            "attributes": []
+                        },
+                        {
+                            "name": "status",
+                            "type": "int",
+                            "optional": false,
+                            "variadic": false,
+                            "by_reference": false,
+                            "default": {
+                                "unavailable": true
+                            },
+                            "attributes": []
+                        },
+                        {
+                            "name": "contentType",
+                            "type": "?string",
+                            "optional": true,
+                            "variadic": false,
+                            "by_reference": false,
+                            "default": null,
+                            "attributes": []
+                        },
+                        {
+                            "name": "seed",
+                            "type": "?int",
+                            "optional": true,
+                            "variadic": false,
+                            "by_reference": false,
+                            "default": null,
+                            "attributes": []
+                        },
+                        {
+                            "name": "extraCases",
+                            "type": "int",
+                            "optional": true,
+                            "variadic": false,
+                            "by_reference": false,
+                            "default": 0,
                             "attributes": []
                         }
                     ]
