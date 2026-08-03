@@ -147,4 +147,30 @@ class SpecResponseKeyResolverTest extends TestCase
 
         $this->assertSame([], $captured, 'no warnings for valid keys');
     }
+
+    #[Test]
+    public function warn_suspicious_keys_skips_specification_extensions_alongside_default(): void
+    {
+        $responses = ['x-owner' => 'sdk-team', 'default' => []];
+        $this->assertSame('default', SpecResponseKeyResolver::resolve('418', $responses));
+
+        $captured = [];
+        set_error_handler(static function (int $errno, string $errstr) use (&$captured): bool {
+            if ($errno === E_USER_WARNING) {
+                $captured[] = $errstr;
+
+                return true;
+            }
+
+            return false;
+        });
+
+        try {
+            SpecResponseKeyResolver::warnSuspiciousKeys('fixture', 'GET', '/widgets', $responses);
+        } finally {
+            restore_error_handler();
+        }
+
+        $this->assertSame([], $captured, 'specification extensions are not suspicious response keys');
+    }
 }
