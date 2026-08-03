@@ -35,6 +35,20 @@
                 }
               }
             }
+          },
+          "202": {
+            "description": "Asynchronous pet list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["jobId"],
+                  "properties": {
+                    "jobId": {"type": "string"}
+                  }
+                }
+              }
+            }
           }
         }
       },

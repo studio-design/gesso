@@ -123,6 +123,12 @@ final class OpenApiResponseSpecExplorationTest extends TestCase
     {
         $summary = OpenApiResponseExplorer::exploreSpec('sdk-roundtrip-plan')
             ->includeOperations(['listPets'])
+            ->mapResponse(
+                'listPets',
+                200,
+                static fn(GeneratedResponseCase $case): mixed => $case->bodyAsObject(),
+                static fn(mixed $decoded): mixed => $decoded,
+            )
             ->assertRoundTrips();
 
         $mappingGaps = array_filter(
@@ -130,9 +136,13 @@ final class OpenApiResponseSpecExplorationTest extends TestCase
             static fn(ResponseSpecExplorationSkip $skip): bool => $skip->mappingGap,
         );
 
-        $this->assertCount(2, $mappingGaps);
+        $this->assertCount(1, $mappingGaps);
         $this->assertSame(
-            ['application/json', 'application/problem+json'],
+            ['202'],
+            array_map(static fn(ResponseSpecExplorationSkip $skip): string => $skip->status, $mappingGaps),
+        );
+        $this->assertSame(
+            ['application/json'],
             array_map(static fn(ResponseSpecExplorationSkip $skip): ?string => $skip->contentType, $mappingGaps),
         );
         $this->assertTrue($summary->hasMappingGaps());
@@ -143,13 +153,32 @@ final class OpenApiResponseSpecExplorationTest extends TestCase
     {
         $this->expectException(AssertionFailedError::class);
         $this->expectExceptionMessage('Unmapped response schemas');
+        $this->expectExceptionMessage('status=202');
         $this->expectExceptionMessage('application/json');
-        $this->expectExceptionMessage('application/problem+json');
 
         OpenApiResponseExplorer::exploreSpec('sdk-roundtrip-plan')
             ->includeOperations(['listPets'])
+            ->mapResponse(
+                'listPets',
+                200,
+                static fn(GeneratedResponseCase $case): mixed => $case->bodyAsObject(),
+                static fn(mixed $decoded): mixed => $decoded,
+            )
             ->failOnUnmapped()
             ->assertRoundTrips();
+    }
+
+    #[Test]
+    public function operation_without_an_id_is_an_explicit_mapping_gap(): void
+    {
+        $summary = OpenApiResponseExplorer::exploreSpec('sdk-roundtrip-plan')
+            ->includePaths(['/anonymous'])
+            ->assertRoundTrips();
+
+        $this->assertCount(1, $summary->skips);
+        $this->assertTrue($summary->skips[0]->mappingGap);
+        $this->assertNull($summary->skips[0]->operation->operationId);
+        $this->assertStringContainsString("operation '(none)'", $summary->skips[0]->reason);
     }
 
     #[Test]
