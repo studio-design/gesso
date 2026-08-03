@@ -1,6 +1,6 @@
 # ADR 0003: branch-complete response payloads and an SDK round-trip harness
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-07-31
 - Issue: [#441](https://github.com/studio-design/gesso/issues/441)
 - Related: [#403](https://github.com/studio-design/gesso/issues/403)
