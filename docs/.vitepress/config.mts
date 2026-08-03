@@ -39,7 +39,8 @@ const homeStructuredData = {
 export default defineConfig({
   lang: 'en',
   title: 'Gesso',
-  description: 'OpenAPI contract testing for PHP',
+  description:
+    'Gesso — OpenAPI contract testing for PHP. Validate Laravel and Symfony HTTP requests and responses against your OpenAPI 3.x spec with PSR-7 adapters, coverage reports, and schema-driven fuzzing.',
   base,
   head: [
     ['link', { rel: 'stylesheet', href: `${base}styles/tombo.css` }],
@@ -58,12 +59,10 @@ export default defineConfig({
     ['meta', { property: 'og:image:width', content: '1280' }],
     ['meta', { property: 'og:image:height', content: '640' }],
     ['meta', { name: 'twitter:card', content: 'summary_large_image' }],
-    ['meta', { name: 'description', content: 'Gesso — OpenAPI contract testing for PHP. Validate Laravel and Symfony HTTP requests and responses against your OpenAPI 3.x spec with PSR-7 adapters, coverage reports, and schema-driven fuzzing.' }],
     ['meta', { property: 'og:type', content: 'website' }],
     ['meta', { property: 'og:site_name', content: 'Gesso' }],
     ['meta', { property: 'og:title', content: 'Gesso — OpenAPI contract testing for PHP' }],
-    ['meta', { property: 'og:description', content: 'Validate Laravel and Symfony HTTP requests and responses against your OpenAPI 3.x spec — spec-driven contract testing with PSR-7 adapters.' }],
-    ['meta', { property: 'og:image', content: 'https://studio-design.github.io/gesso/og-image.png' }]
+    ['meta', { property: 'og:description', content: 'Validate Laravel and Symfony HTTP requests and responses against your OpenAPI 3.x spec — spec-driven contract testing with PSR-7 adapters.' }]
   ],
   cleanUrls: true,
   lastUpdated: true,

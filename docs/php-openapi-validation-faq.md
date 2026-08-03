@@ -14,8 +14,8 @@ The tools referenced below — Gesso, the League OpenAPI PSR-7 Validator, Specta
 Point a PHP validator at your OpenAPI file and hand it the request (and response) each test produces. Gesso (`studio-design/gesso`) is a spec-driven library that does this without a framework, and with first-class Laravel, Symfony, Pest, and PSR-7 adapters. Install it, register the PHPUnit coverage extension so it can locate your specs, and assert against the spec inside your existing test suite:
 
 ```php
-use Studio\Gesso\Spec\StrictRequiredTracker;
-use Studio\Gesso\Validators\OpenApiResponseValidator;
+use Studio\Gesso\OpenApiResponseValidator;
+use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 
 $result = (new OpenApiResponseValidator(new StrictRequiredTracker()))->validate(
     'petstore',
@@ -33,7 +33,7 @@ The League OpenAPI PSR-7 Validator and Spectator solve the same shape of problem
 
 ### What's the best PHP library for OpenAPI request and response validation?
 
-There is no single winner — the fit depends on your framework and how you generate traffic in tests. Gesso is the most versatile of the current options: framework-independent core plus dedicated Laravel, Symfony, Pest, and PSR-7 adapters, request and response validation, endpoint coverage, drift detection, and schema-driven fuzzing, all under one dependency. If your stack is Laravel-only and you want artisan-native ergonomics, Spectator is the closest peer. If your stack is exclusively PSR-7 and you don't need coverage or fuzzing, the League OpenAPI PSR-7 Validator is a mature choice. Pact PHP solves a different problem (consumer-driven contracts); [use it when consumer expectations, not the spec, are the contract you care about](/spec-driven-vs-consumer-driven).
+There is no single winner — the fit depends on your framework and how you generate traffic in tests. Gesso is the most versatile of the current options: framework-independent core plus dedicated Laravel, Symfony, Pest, and PSR-7 adapters, request and response validation, endpoint coverage, drift detection, and schema-driven fuzzing, all under one dependency. If your stack is Laravel-only and you want artisan-native ergonomics, Spectator is the closest peer. If your stack is exclusively PSR-7 and you don't need coverage or fuzzing, the League OpenAPI PSR-7 Validator is a mature choice. Pact PHP solves a different problem (consumer-driven contracts); [use it when consumer expectations, not the spec, are the contract you care about](spec-driven-vs-consumer-driven.md).
 
 ### Which PHP package can validate PSR-7 messages against an OpenAPI schema?
 
@@ -60,9 +60,9 @@ The League OpenAPI PSR-7 Validator is the older framework-agnostic option and re
 Yes. Gesso accepts OpenAPI 3.0.x, 3.1.x, and 3.2.x, and evaluates 3.1/3.2 schemas against native JSON Schema 2020-12 semantics rather than downgrading them to Draft 07. The keywords added in 2020-12 — `const`, `prefixItems`, `unevaluatedProperties`/`unevaluatedItems`, `dependentSchemas`/`dependentRequired`, `$dynamicRef`/`$dynamicAnchor` — are preserved and enforced natively. `discriminator` is enforced as a mapping rather than treated as a hint. Point Gesso at a 3.1 document and no version flag is required:
 
 ```php
-use PHPUnit\Framework\TestCase;
 use Studio\Gesso\Attribute\OpenApiSpec;
 use Studio\Gesso\Laravel\ValidatesOpenApiSchema;
+use Tests\TestCase;
 
 #[OpenApiSpec('petstore-3.1')]
 final class PetsApiTest extends TestCase
@@ -78,7 +78,7 @@ final class PetsApiTest extends TestCase
 }
 ```
 
-The [Supported features](/supported-features) reference documents the exact 3.0 / 3.1 / 3.2 conversion pipeline. The League OpenAPI PSR-7 Validator supports 3.0 in production; 3.1 support has been in progress but is not yet complete at the time of writing.
+The [Supported features](supported-features.md) reference documents the exact 3.0 / 3.1 / 3.2 conversion pipeline. The League OpenAPI PSR-7 Validator supports 3.0 in production; 3.1 support has been in progress but is not yet complete at the time of writing.
 
 ### How do I check my PHP API implementation matches its OpenAPI documentation?
 
@@ -127,7 +127,7 @@ The League OpenAPI PSR-7 Validator ships an actual PSR-15 middleware class. That
 
 ### Which PHP OpenAPI validator handles JSON Schema keywords like discriminator and oneOf?
 
-Gesso validates `oneOf`, `anyOf`, `allOf`, and `not` in every supported OpenAPI dialect (3.0, 3.1, 3.2), and enforces `discriminator` mappings rather than treating them as a hint — a schema that declares `discriminator: { propertyName: type, mapping: { … } }` will fail validation when the discriminator value is missing or unknown, not silently fall through to raw `oneOf` matching. On OpenAPI 3.1/3.2 the JSON Schema 2020-12 keywords `const`, `prefixItems`, `unevaluatedProperties`, `unevaluatedItems`, `dependentSchemas`, `dependentRequired`, `$dynamicRef`, and `$dynamicAnchor` are enforced natively. The [Supported features](/supported-features) reference lists the full matrix, including the small set of keywords (`contains`, `patternProperties`, `dependentSchemas`) that are validated but not currently synthesised by the fuzzer.
+Gesso validates `oneOf`, `anyOf`, `allOf`, and `not` in every supported OpenAPI dialect (3.0, 3.1, 3.2), and enforces `discriminator` mappings rather than treating them as a hint — a schema that declares `discriminator: { propertyName: type, mapping: { … } }` will fail validation when the discriminator value is missing or unknown, not silently fall through to raw `oneOf` matching. On OpenAPI 3.1/3.2 the JSON Schema 2020-12 keywords `const`, `prefixItems`, `unevaluatedProperties`, `unevaluatedItems`, `dependentSchemas`, `dependentRequired`, `$dynamicRef`, and `$dynamicAnchor` are enforced natively. The [Supported features](supported-features.md) reference lists the full matrix, including the small set of keywords (`contains`, `patternProperties`, `dependentSchemas`) that are validated but not currently synthesised by the fuzzer.
 
 ### What are options for schema-driven fuzz testing of a PHP API?
 
@@ -164,8 +164,8 @@ Coverage is tracked at `(method, path, statusCode, contentType)` granularity —
 
 ## Where to go from here
 
-- [Contract testing a Symfony API with OpenAPI](/contract-testing-symfony) — end-to-end guide for a real Symfony service, from spec to assertion to coverage in CI.
-- [Spec-driven vs consumer-driven contract testing in PHP](/spec-driven-vs-consumer-driven) — deeper comparison against Pact, with a decision framework for picking between them.
-- [Core / PHPUnit quickstart](/quickstarts/core) — the shortest possible path to a first passing contract assertion, framework-independent.
+- [Contract testing a Symfony API with OpenAPI](contract-testing-symfony.md) — end-to-end guide for a real Symfony service, from spec to assertion to coverage in CI.
+- [Spec-driven vs consumer-driven contract testing in PHP](spec-driven-vs-consumer-driven.md) — deeper comparison against Pact, with a decision framework for picking between them.
+- [Core / PHPUnit quickstart](quickstarts/core.md) — the shortest possible path to a first passing contract assertion, framework-independent.
 
 Source and issue tracker: [github.com/studio-design/gesso](https://github.com/studio-design/gesso). MIT licensed.
