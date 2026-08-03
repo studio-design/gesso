@@ -1,4 +1,4 @@
-# Schema-driven request fuzzing
+# Schema-driven fuzzing
 
 The `ExploresOpenApiEndpoint` trait ships for Laravel only. It generates
 deterministic request inputs for one operation or a filtered whole spec. Symfony,
@@ -51,6 +51,38 @@ object becomes an empty PHP array; encode `body` directly when the `{}` versus
 `[]` distinction matters. `uri($prefix)` substitutes and URL-encodes path
 parameters, prepends an optional application prefix, and appends the generated
 query string.
+
+## Explore response payloads against a generated SDK
+
+`OpenApiResponseExplorer` exercises the other side of the contract: whether a
+generated SDK can decode every supported branch of one response schema and
+encode the values without losing data. Unlike request exploration's fixed case
+count and rotation, the response explorer derives enough cases to cover every
+branch of every reachable choice point, then appends any requested
+`extraCases`.
+
+```php
+use Studio\Gesso\Fuzz\GeneratedResponseCase;
+use Studio\Gesso\Fuzz\OpenApiResponseExplorer;
+
+OpenApiResponseExplorer::explore(
+    'front',
+    'POST',
+    '/oauth/introspect',
+    200,
+    seed: 1,
+)->each(function (GeneratedResponseCase $case): void {
+    $model = ObjectSerializer::deserialize($case->bodyAsObject(), IntrospectResponse::class);
+    $case->assertRoundTrip(ObjectSerializer::sanitizeForSerialization($model));
+});
+```
+
+Laravel tests using `ExploresOpenApiEndpoint` can call
+`$this->exploreResponseSchema(...)` with the same arguments except the spec
+name. If `seed` is omitted, response exploration uses the replayable default
+seed `0`. See the [SDK round-trip guide](sdk-roundtrip.md) for the complete case
+contract, fidelity rules, deterministic replay, and unsupported response
+outcomes.
 
 ## Explore a whole spec
 
@@ -176,7 +208,7 @@ fuzz generator defect` diagnostic instead of sending invalid data to the API.
 | Numbers | inclusive/exclusive bounds and `multipleOf`, including OAS 3.0 boolean-exclusive lowering | outside/equal-exclusive bound, non-multiple |
 | Arrays | `items`, `prefixItems`, min/max items, `uniqueItems` | too few/many or duplicate items |
 | Objects | properties, required, min/max properties, schema-valued/default additional properties | missing required, extra forbidden, too few/many properties, nested property constraint |
-| Composition | branch rotation for `oneOf`/`anyOf`, merged object/range assertions for `allOf`, `not`, and `if`/`then`/`else`; lowered discriminator branches use the same path | deterministic composition miss where one can be isolated |
+| Composition | Request cases rotate `oneOf`/`anyOf` and conditional branches. Response payload exploration guarantees at least one case for every branch of every reachable composition, nullable, and optional-property choice point. Both merge `allOf`/range assertions and preserve lowered discriminator branches. | deterministic composition miss where one can be isolated |
 
 Arbitrary regex synthesis, recursive schemas, `contains`,
 `patternProperties`, `dependentSchemas`, and `unevaluated*` generation are not
@@ -184,7 +216,7 @@ currently strategies. Those keywords remain validator features; an operation
 whose valid value cannot be synthesized fails locally with a supported-subset
 diagnostic or is an explicit whole-spec skip carrying that reason.
 
-- Optional object properties alternate between included and omitted across cases, so each batch exercises both required-only and required+optional shapes.
+- Request cases alternate optional object properties between included and omitted. Response payload exploration pins both presence branches for every reachable optional property.
 - Required keys are always emitted.
 - Path resolution accepts both the spec template form (`/v1/pets/{petId}`) and concrete URIs that match it (`/api/v1/pets/123` with `strip_prefixes=/api`). Captured URI values are intentionally discarded — `pathParams` is always regenerated from the operation spec for consistency.
 

@@ -9,7 +9,9 @@ use PHPUnit\Framework\Assert;
 use PHPUnit\Framework\AssertionFailedError;
 use RuntimeException;
 use Studio\Gesso\Fuzz\ExplorationCases;
+use Studio\Gesso\Fuzz\GeneratedResponseCases;
 use Studio\Gesso\Fuzz\OpenApiEndpointExplorer;
+use Studio\Gesso\Fuzz\OpenApiResponseExplorer;
 use Studio\Gesso\Fuzz\OpenApiSpecExploration;
 use Studio\Gesso\Fuzz\OpenApiSpecExplorer;
 use Studio\Gesso\Internal\StackTraceFilter;
@@ -98,6 +100,43 @@ trait ExploresOpenApiEndpoint
                 $expectedStatusClasses,
                 $cases,
                 $seed,
+            );
+        } catch (InvalidArgumentException|RuntimeException $e) {
+            $this->failExplore($e->getMessage());
+        }
+    }
+
+    /**
+     * Generate branch-complete valid payloads for one response schema so a
+     * generated SDK's decode/encode round trip can be exercised.
+     */
+    public function exploreResponseSchema(
+        string $method,
+        string $path,
+        int $status,
+        ?string $contentType = null,
+        ?int $seed = null,
+        int $extraCases = 0,
+    ): GeneratedResponseCases {
+        $specName = $this->resolveOpenApiSpec();
+        if (!is_string($specName) || $specName === '') {
+            $this->failExplore(
+                'openApiSpec() must return a non-empty spec name, but an empty string was returned. '
+                . 'Either add #[OpenApiSpec(\'your-spec\')] to your test class or method, '
+                . 'override openApiSpec() in your test class, or set the "default_spec" key '
+                . 'in config/gesso.php.',
+            );
+        }
+
+        try {
+            return OpenApiResponseExplorer::explore(
+                $specName,
+                $method,
+                $path,
+                $status,
+                $contentType,
+                $seed,
+                $extraCases,
             );
         } catch (InvalidArgumentException|RuntimeException $e) {
             $this->failExplore($e->getMessage());

@@ -2,6 +2,7 @@
 
 - [`OpenApiResponseValidator`](#openapiresponsevalidator)
 - [`OpenApiPsr7Validator`](#openapipsr7validator)
+- [`OpenApiResponseExplorer`](#openapiresponseexplorer)
 - [`OpenApiSpecExplorer`](#openapispecexplorer)
 - [`OpenApiContractChecks`](#openapicontractchecks)
 - [`OpenApiSpecLoader`](#openapispecloader)
@@ -127,6 +128,47 @@ Use `validateRequest()`, `validateResponse()`, or
 `validateResponseForOperation()` when only one side is available. See the
 [PSR-7 guide](psr7.md) for PHPUnit assertions, stream handling, and a PSR-15
 test integration recipe.
+
+## `OpenApiResponseExplorer`
+
+Generates deterministic, branch-complete valid payloads for one response
+schema and returns a non-empty `GeneratedResponseCases` collection:
+
+```php
+use Studio\Gesso\Fuzz\GeneratedResponseCase;
+use Studio\Gesso\Fuzz\OpenApiResponseExplorer;
+
+$cases = OpenApiResponseExplorer::explore(
+    specName: 'front',
+    method: 'POST',
+    path: '/oauth/introspect',
+    status: 200,
+    contentType: 'application/json', // optional; first JSON type when null
+    seed: 1,
+    extraCases: 2,
+);
+
+$cases->each(function (GeneratedResponseCase $case): void {
+    $decoded = sdk_decode($case->bodyAsObject());
+    $case->assertRoundTrip(sdk_encode($decoded));
+});
+```
+
+The collection is `Countable` and `IteratorAggregate`. Each readonly case
+exposes `body`, `status`, `contentType`, `seed`, `caseIndex`, and
+`pinnedBranch`; `bodyAsObject()` supplies decoded JSON shapes to SDKs,
+`bodyAsArray()` supports array-typed consumers, and `replaySnippet()` renders a
+focused reproduction. `assertRoundTrip()` first validates the SDK output
+against the exact converted response schema, then requires all generated object
+keys and values to survive recursively; JSON lists compare exactly.
+
+The case count is derived from reachable schema choice points, not supplied by
+the caller. An omitted `seed` uses `0`, and `extraCases` appends deterministic
+rotation-only cases. No-content,
+non-JSON-only, schema-less, and OpenAPI 3.2 `itemSchema` responses throw a loud
+`InvalidArgumentException` carrying the structured resolver outcome. Laravel's
+`ExploresOpenApiEndpoint::exploreResponseSchema()` resolves the configured spec
+and delegates to the same facade. See the [SDK round-trip guide](sdk-roundtrip.md).
 
 ## `OpenApiSpecExplorer`
 
