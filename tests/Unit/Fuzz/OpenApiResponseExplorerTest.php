@@ -150,6 +150,23 @@ class OpenApiResponseExplorerTest extends TestCase
     }
 
     #[Test]
+    public function appends_requested_extra_cases_when_the_schema_has_no_choice_points(): void
+    {
+        $this->assertCount(
+            1,
+            OpenApiResponseExplorer::explore('sdk-roundtrip', 'GET', '/accounts/123', 200, extraCases: 0),
+        );
+        $this->assertCount(
+            2,
+            OpenApiResponseExplorer::explore('sdk-roundtrip', 'GET', '/accounts/123', 200, extraCases: 1),
+        );
+        $this->assertCount(
+            3,
+            OpenApiResponseExplorer::explore('sdk-roundtrip', 'GET', '/accounts/123', 200, extraCases: 2),
+        );
+    }
+
+    #[Test]
     public function preserves_case_sensitive_openapi_32_additional_operation_names(): void
     {
         $cases = OpenApiResponseExplorer::explore(

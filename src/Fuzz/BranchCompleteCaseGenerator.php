@@ -93,10 +93,10 @@ final class BranchCompleteCaseGenerator
                 );
             }
         }
-        for ($extra = 0; $extra < $extraCases; $extra++) {
+        if ($plans === []) {
             $plans[] = new CaseSelectionPlan([]);
         }
-        if ($plans === []) {
+        for ($extra = 0; $extra < $extraCases; $extra++) {
             $plans[] = new CaseSelectionPlan([]);
         }
 

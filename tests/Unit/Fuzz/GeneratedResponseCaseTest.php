@@ -49,6 +49,28 @@ class GeneratedResponseCaseTest extends TestCase
     }
 
     #[Test]
+    public function body_as_object_preserves_nested_zero_fractions_for_round_trips(): void
+    {
+        $case = $this->nestedNumberCase();
+        $objectBody = $case->bodyAsObject();
+
+        $this->assertInstanceOf(stdClass::class, $objectBody);
+        $this->assertInstanceOf(stdClass::class, $objectBody->nested);
+        $this->assertSame(1.0, $objectBody->nested->n);
+        $case->assertRoundTrip($objectBody);
+    }
+
+    #[Test]
+    public function body_as_array_preserves_nested_zero_fractions_for_round_trips(): void
+    {
+        $case = $this->nestedNumberCase();
+        $arrayBody = $case->bodyAsArray();
+
+        $this->assertSame(1.0, $arrayBody['nested']['n'] ?? null);
+        $case->assertRoundTrip($arrayBody);
+    }
+
+    #[Test]
     public function body_as_array_rejects_a_scalar_response(): void
     {
         $case = new GeneratedResponseCase(
@@ -276,6 +298,32 @@ class GeneratedResponseCaseTest extends TestCase
             method: 'POST',
             matchedPath: '/oauth/introspect',
             schema: self::OBJECT_SCHEMA,
+        );
+    }
+
+    private function nestedNumberCase(): GeneratedResponseCase
+    {
+        return new GeneratedResponseCase(
+            body: ['nested' => ['n' => 1.0]],
+            status: 200,
+            contentType: 'application/json',
+            seed: 7,
+            caseIndex: 3,
+            pinnedBranch: null,
+            specName: 'sdk-roundtrip',
+            method: 'GET',
+            matchedPath: '/number',
+            schema: [
+                'type' => 'object',
+                'required' => ['nested'],
+                'properties' => [
+                    'nested' => [
+                        'type' => 'object',
+                        'required' => ['n'],
+                        'properties' => ['n' => ['type' => 'number']],
+                    ],
+                ],
+            ],
         );
     }
 

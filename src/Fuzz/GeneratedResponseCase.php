@@ -52,7 +52,10 @@ final readonly class GeneratedResponseCase
      */
     public function bodyAsObject(): mixed
     {
-        return json_decode(json_encode($this->body, JSON_THROW_ON_ERROR), flags: JSON_THROW_ON_ERROR);
+        return json_decode(
+            json_encode($this->body, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION),
+            flags: JSON_THROW_ON_ERROR,
+        );
     }
 
     /**
@@ -69,7 +72,11 @@ final readonly class GeneratedResponseCase
             return null;
         }
 
-        $body = json_decode(json_encode($this->body, JSON_THROW_ON_ERROR), true, flags: JSON_THROW_ON_ERROR);
+        $body = json_decode(
+            json_encode($this->body, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION),
+            true,
+            flags: JSON_THROW_ON_ERROR,
+        );
         if (!is_array($body)) {
             throw new LogicException(
                 'GeneratedResponseCase::bodyAsArray() requires a JSON object or array body; use body directly for a scalar response.',
