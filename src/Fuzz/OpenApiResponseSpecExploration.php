@@ -24,6 +24,7 @@ use function is_array;
 use function is_string;
 use function preg_match;
 use function sprintf;
+use function str_starts_with;
 use function strtoupper;
 
 /**
@@ -336,6 +337,10 @@ final class OpenApiResponseSpecExploration
         $ranges = [];
 
         foreach (array_keys($responses) as $rawStatus) {
+            if (is_string($rawStatus) && str_starts_with($rawStatus, 'x-')) {
+                continue;
+            }
+
             $status = self::normalizeDeclaredStatus($rawStatus);
             if (preg_match('/^[1-5][0-9]{2}$/', $status) === 1) {
                 $exact[(int) $status] = true;
@@ -346,6 +351,10 @@ final class OpenApiResponseSpecExploration
 
         $targets = [];
         foreach (array_keys($responses) as $rawStatus) {
+            if (is_string($rawStatus) && str_starts_with($rawStatus, 'x-')) {
+                continue;
+            }
+
             $status = self::normalizeDeclaredStatus($rawStatus);
             if (preg_match('/^[1-5][0-9]{2}$/', $status) === 1) {
                 $wireStatus = (int) $status;

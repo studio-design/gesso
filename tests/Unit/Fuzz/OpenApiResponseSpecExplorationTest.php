@@ -83,6 +83,46 @@ final class OpenApiResponseSpecExplorationTest extends TestCase
     }
 
     #[Test]
+    public function responses_specification_extensions_are_not_status_targets(): void
+    {
+        $summary = OpenApiResponseExplorer::exploreSpec('sdk-roundtrip-plan')
+            ->includeOperations(['listPets'])
+            ->mapResponse(
+                'listPets',
+                200,
+                static fn(GeneratedResponseCase $case): mixed => $case->bodyAsObject(),
+                static fn(mixed $decoded): mixed => $decoded,
+            )
+            ->mapResponse(
+                'listPets',
+                202,
+                static fn(GeneratedResponseCase $case): mixed => $case->bodyAsObject(),
+                static fn(mixed $decoded): mixed => $decoded,
+            )
+            ->assertRoundTrips();
+
+        $this->assertSame(3, $summary->executedResponses);
+        $this->assertSame([], $summary->skips);
+    }
+
+    #[Test]
+    public function paths_specification_extensions_are_not_explored_as_path_items(): void
+    {
+        $summary = OpenApiResponseExplorer::exploreSpec('sdk-roundtrip-plan')
+            ->includeOperations(['createPet'])
+            ->mapResponse(
+                'createPet',
+                201,
+                static fn(GeneratedResponseCase $case): mixed => $case->bodyAsObject(),
+                static fn(mixed $decoded): mixed => $decoded,
+            )
+            ->assertRoundTrips();
+
+        $this->assertSame(1, $summary->executedOperations);
+        $this->assertSame('/pets', $summary->operations[0]->path);
+    }
+
+    #[Test]
     public function maps_range_and_default_response_keys_with_deterministic_wire_statuses(): void
     {
         $statuses = [];
@@ -320,6 +360,46 @@ final class OpenApiResponseSpecExplorationTest extends TestCase
 
         $this->assertGreaterThanOrEqual(2, $decodeAttempts);
         $this->assertGreaterThanOrEqual(1, $roundTripAttempts);
+    }
+
+    #[Test]
+    public function application_wildcard_failure_replay_preserves_the_null_content_type(): void
+    {
+        $failedCase = null;
+
+        try {
+            OpenApiResponseExplorer::exploreSpec('sdk-roundtrip-plan', seed: 19)
+                ->includeOperations(['wildcardPayload'])
+                ->mapResponse(
+                    'wildcardPayload',
+                    200,
+                    static function (GeneratedResponseCase $case) use (&$failedCase): never {
+                        $failedCase = $case;
+
+                        throw new RuntimeException('decoder rejected wildcard payload');
+                    },
+                    static fn(mixed $decoded): mixed => $decoded,
+                )
+                ->assertRoundTrips();
+            $this->fail('Expected wildcard response decode failure.');
+        } catch (AssertionFailedError $e) {
+            $this->assertStringContainsString(
+                "replay: OpenApiResponseExplorer::explore('sdk-roundtrip-plan', 'GET', '/wildcard', 200, NULL, seed:",
+                $e->getMessage(),
+            );
+        }
+
+        $this->assertInstanceOf(GeneratedResponseCase::class, $failedCase);
+        $replayed = OpenApiResponseExplorer::explore(
+            'sdk-roundtrip-plan',
+            'GET',
+            '/wildcard',
+            200,
+            null,
+            seed: $failedCase->seed,
+        )->cases[$failedCase->caseIndex];
+
+        $this->assertSame($failedCase->body, $replayed->body);
     }
 
     #[Test]

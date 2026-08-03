@@ -5,11 +5,13 @@
     "version": "1.0.0"
   },
   "paths": {
+    "x-owner": "sdk-team",
     "/pets": {
       "get": {
         "operationId": "listPets",
         "tags": ["public", "pets"],
         "responses": {
+          "x-owner": "sdk-team",
           "200": {
             "description": "Pets",
             "content": {
@@ -101,6 +103,28 @@
                   "required": ["error"],
                   "properties": {
                     "error": {"type": "string"}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/wildcard": {
+      "get": {
+        "operationId": "wildcardPayload",
+        "tags": ["public"],
+        "responses": {
+          "200": {
+            "description": "Wildcard application response",
+            "content": {
+              "application/*": {
+                "schema": {
+                  "type": "object",
+                  "required": ["value"],
+                  "properties": {
+                    "value": {"type": "string"}
                   }
                 }
               }
