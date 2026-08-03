@@ -9,6 +9,7 @@ use PHPUnit\Framework\TestCase;
 use Studio\Gesso\Coverage\EndpointCoverageState;
 use Studio\Gesso\Coverage\MarkdownCoverageRenderer;
 use Studio\Gesso\Coverage\ResponseCoverageState;
+use Studio\Gesso\Tests\Helpers\SdkExerciseCoverageResultFixture;
 
 use function explode;
 use function strpos;
@@ -366,6 +367,22 @@ class MarkdownCoverageRendererTest extends TestCase
         $output = MarkdownCoverageRenderer::render($results);
 
         $this->assertStringContainsString('#### `GET /v1/pets` (listPets)', $output);
+    }
+
+    #[Test]
+    public function render_includes_sdk_response_schema_summary_and_table(): void
+    {
+        $output = MarkdownCoverageRenderer::render(
+            [],
+            ['front' => SdkExerciseCoverageResultFixture::result()],
+        );
+
+        $this->assertStringContainsString('### front', $output);
+        $this->assertStringContainsString('#### SDK response schema exercise', $output);
+        $this->assertStringContainsString('_SDK responses: 1/2 exercised (50%) — 1 unexercised_', $output);
+        $this->assertStringContainsString('| :white_check_mark: | `GET /v1/sdk-pets` | 200 | application/json | exercised (2 hits) |', $output);
+        $this->assertStringContainsString('| :x: | `GET /v1/sdk-pets` | 422 | application/problem+json | unexercised |', $output);
+        $this->assertStringContainsString('`GET /v1/orphan` `418` `application/json` (3 hits)', $output);
     }
 
     /**

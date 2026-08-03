@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Coverage;
 
+use function array_keys;
+use function array_unique;
 use function implode;
 use function round;
 use function sprintf;
+use function str_replace;
 
 /**
  * @internal Output is exposed through the PHPUnit extension and merge CLI.
@@ -15,6 +18,7 @@ use function sprintf;
  * @phpstan-import-type CoverageResult from OpenApiCoverageTracker
  * @phpstan-import-type EndpointSummary from OpenApiCoverageTracker
  * @phpstan-import-type ResponseRow from OpenApiCoverageTracker
+ * @phpstan-import-type SdkExerciseCoverageResult from SdkExerciseCoverageReportBuilder
  */
 final class MarkdownCoverageRenderer
 {
@@ -26,68 +30,134 @@ final class MarkdownCoverageRenderer
 
     /**
      * @param array<string, CoverageResult> $results
+     * @param array<string, SdkExerciseCoverageResult> $sdkResults
      */
-    public static function render(array $results): string
+    public static function render(array $results, array $sdkResults = []): string
     {
-        if ($results === []) {
+        if ($results === [] && $sdkResults === []) {
             return '';
         }
 
         $lines = ['## OpenAPI Contract Test Coverage', ''];
 
-        foreach ($results as $specName => $result) {
-            $endpointPct = self::percentage($result['endpointFullyCovered'], $result['endpointTotal']);
-            $responsePct = self::percentage($result['responseCovered'], $result['responseTotal']);
+        $specNames = array_unique([...array_keys($results), ...array_keys($sdkResults)]);
+        foreach ($specNames as $specName) {
+            $result = $results[$specName] ?? null;
+            if ($result === null) {
+                $lines[] = sprintf('### %s', $specName);
+                $lines[] = '';
+            } else {
+                $endpointPct = self::percentage($result['endpointFullyCovered'], $result['endpointTotal']);
+                $responsePct = self::percentage($result['responseCovered'], $result['responseTotal']);
 
-            $lines[] = sprintf(
-                '### %s — endpoints: %d/%d fully covered (%s%%)',
-                $specName,
-                $result['endpointFullyCovered'],
-                $result['endpointTotal'],
-                self::formatPercent($endpointPct),
-            );
-            $lines[] = '';
-            $lines[] = sprintf(
-                '_responses: %d/%d covered (%s%%) — %d skipped, %d uncovered, %d partial endpoints, %d uncovered endpoints_',
-                $result['responseCovered'],
-                $result['responseTotal'],
-                self::formatPercent($responsePct),
-                $result['responseSkipped'],
-                $result['responseUncovered'],
-                $result['endpointPartial'],
-                $result['endpointUncovered'],
-            );
-            $lines[] = '';
-
-            if ($result['endpoints'] === []) {
-                continue;
-            }
-
-            $lines[] = '| Status | Endpoint | Responses |';
-            $lines[] = '|--------|----------|-----------|';
-            foreach ($result['endpoints'] as $endpoint) {
                 $lines[] = sprintf(
-                    '| %s | `%s` | %s |',
-                    self::endpointMarker($endpoint['state']),
-                    $endpoint['endpoint'],
-                    self::endpointResponsesSummary($endpoint),
+                    '### %s — endpoints: %d/%d fully covered (%s%%)',
+                    $specName,
+                    $result['endpointFullyCovered'],
+                    $result['endpointTotal'],
+                    self::formatPercent($endpointPct),
                 );
+                $lines[] = '';
+                $lines[] = sprintf(
+                    '_responses: %d/%d covered (%s%%) — %d skipped, %d uncovered, %d partial endpoints, %d uncovered endpoints_',
+                    $result['responseCovered'],
+                    $result['responseTotal'],
+                    self::formatPercent($responsePct),
+                    $result['responseSkipped'],
+                    $result['responseUncovered'],
+                    $result['endpointPartial'],
+                    $result['endpointUncovered'],
+                );
+                $lines[] = '';
+
+                if ($result['endpoints'] !== []) {
+                    $lines[] = '| Status | Endpoint | Responses |';
+                    $lines[] = '|--------|----------|-----------|';
+                    foreach ($result['endpoints'] as $endpoint) {
+                        $lines[] = sprintf(
+                            '| %s | `%s` | %s |',
+                            self::endpointMarker($endpoint['state']),
+                            $endpoint['endpoint'],
+                            self::endpointResponsesSummary($endpoint),
+                        );
+                    }
+                    $lines[] = '';
+
+                    $lines[] = '<details>';
+                    $lines[] = '<summary>Per-response detail</summary>';
+                    $lines[] = '';
+
+                    foreach ($result['endpoints'] as $endpoint) {
+                        $lines = [...$lines, ...self::renderEndpointDetail($endpoint)];
+                    }
+
+                    $lines[] = '</details>';
+                    $lines[] = '';
+                }
             }
-            $lines[] = '';
 
-            $lines[] = '<details>';
-            $lines[] = '<summary>Per-response detail</summary>';
-            $lines[] = '';
-
-            foreach ($result['endpoints'] as $endpoint) {
-                $lines = [...$lines, ...self::renderEndpointDetail($endpoint)];
+            if (isset($sdkResults[$specName])) {
+                $lines = [...$lines, ...self::renderSdkExercise($sdkResults[$specName])];
             }
-
-            $lines[] = '</details>';
-            $lines[] = '';
         }
 
         return implode("\n", $lines);
+    }
+
+    /**
+     * @param SdkExerciseCoverageResult $result
+     *
+     * @return list<string>
+     */
+    private static function renderSdkExercise(array $result): array
+    {
+        $lines = [
+            '#### SDK response schema exercise',
+            '',
+            sprintf(
+                '_SDK responses: %d/%d exercised (%s%%) — %d unexercised_',
+                $result['responseExercised'],
+                $result['responseTotal'],
+                self::formatPercent(self::percentage($result['responseExercised'], $result['responseTotal'])),
+                $result['responseUnexercised'],
+            ),
+            '',
+            '| Status | Endpoint | Response | Content-Type | State |',
+            '|--------|----------|----------|--------------|-------|',
+        ];
+        foreach ($result['responses'] as $row) {
+            $lines[] = sprintf(
+                '| %s | `%s` | %s | %s | %s |',
+                $row['exercised'] ? self::MARKER_ALL_COVERED : self::MARKER_UNCOVERED,
+                self::escapeCell($row['endpoint']),
+                self::escapeCell($row['statusKey']),
+                self::escapeCell($row['contentTypeKey']),
+                $row['exercised'] ? sprintf('exercised (%d hits)', $row['hits']) : 'unexercised',
+            );
+        }
+        $lines[] = '';
+
+        if ($result['unexpectedObservations'] !== []) {
+            $lines[] = '_Unexpected SDK exercise observations (not eligible in live spec):_';
+            $lines[] = '';
+            foreach ($result['unexpectedObservations'] as $row) {
+                $lines[] = sprintf(
+                    '- `%s` `%s` `%s` (%d hits)',
+                    $row['endpoint'],
+                    $row['statusKey'],
+                    $row['contentTypeKey'],
+                    $row['hits'],
+                );
+            }
+            $lines[] = '';
+        }
+
+        return $lines;
+    }
+
+    private static function escapeCell(string $value): string
+    {
+        return str_replace(['|', "\n", "\r"], ['\\|', '<br>', ''], $value);
     }
 
     /**

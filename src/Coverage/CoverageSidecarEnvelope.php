@@ -49,9 +49,13 @@ use function sprintf;
  * ```
  *
  * Wire shapes v4/v5 add `strictAdditionalProperties` state. v4 is the
- * current plain-worker format; v5 is v4 plus the v3 baseline half.
+ * legacy plain-worker format; v5 is v4 plus the v3 baseline half.
  * Older v2/v3 envelopes remain readable and contribute no strict
  * additional-properties observations.
+ *
+ * Wire shapes v6/v7 add `sdkExercise` state. v6 is the current plain-worker
+ * format; v7 is v6 plus the baseline half. Versions v2-v5 remain readable
+ * and contribute no SDK exercise observations.
  *
  * Backwards compatibility: workers running an older library version write
  * a bare v1 coverage payload (`{ "version": 1, "specs": { ... } }`) with no
@@ -79,12 +83,14 @@ use function sprintf;
  *     coverage: CoverageStatePayload,
  *     strictRequired: StrictRequiredStatePayload,
  *     strictAdditionalProperties?: StrictAdditionalPropertiesState,
+ *     sdkExercise?: array<string, mixed>,
  *     baseline?: array<string, mixed>,
  * }
  * @phpstan-type ParsedEnvelope array{
  *     coverage: array<string, mixed>,
  *     strictRequired: array<string, mixed>|null,
  *     strictAdditionalProperties: array<string, mixed>|null,
+ *     sdkExercise: array<string, mixed>|null,
  *     baseline: array<string, mixed>|null,
  * }
  */
@@ -106,6 +112,8 @@ final class CoverageSidecarEnvelope
 
     public const ENVELOPE_VERSION_WITH_STRICT_ADDITIONAL_PROPERTIES = 4;
     public const ENVELOPE_VERSION_WITH_STRICT_ADDITIONAL_PROPERTIES_AND_BASELINE = 5;
+    public const ENVELOPE_VERSION_WITH_SDK_EXERCISE = 6;
+    public const ENVELOPE_VERSION_WITH_SDK_EXERCISE_AND_BASELINE = 7;
 
     private function __construct() {}
 
@@ -122,6 +130,7 @@ final class CoverageSidecarEnvelope
      *
      * @param null|array<string, mixed> $baselineDocument
      * @param null|array<string, mixed> $strictAdditionalPropertiesState
+     * @param null|array<string, mixed> $sdkExerciseState
      *
      * @phpstan-param CoverageStatePayload $coverageState
      * @phpstan-param StrictRequiredStatePayload $strictRequiredState
@@ -134,7 +143,29 @@ final class CoverageSidecarEnvelope
         array $strictRequiredState,
         ?array $baselineDocument = null,
         ?array $strictAdditionalPropertiesState = null,
+        ?array $sdkExerciseState = null,
     ): array {
+        if ($sdkExerciseState !== null) {
+            if ($strictAdditionalPropertiesState === null) {
+                throw new InvalidArgumentException('SDK exercise sidecar envelopes require strict additional-properties state.');
+            }
+
+            $payload = [
+                'envelopeVersion' => $baselineDocument === null
+                    ? self::ENVELOPE_VERSION_WITH_SDK_EXERCISE
+                    : self::ENVELOPE_VERSION_WITH_SDK_EXERCISE_AND_BASELINE,
+                'coverage' => $coverageState,
+                'strictRequired' => $strictRequiredState,
+                'strictAdditionalProperties' => $strictAdditionalPropertiesState,
+                'sdkExercise' => $sdkExerciseState,
+            ];
+            if ($baselineDocument !== null) {
+                $payload['baseline'] = $baselineDocument;
+            }
+
+            return $payload;
+        }
+
         if ($strictAdditionalPropertiesState !== null) {
             $payload = [
                 'envelopeVersion' => $baselineDocument === null
@@ -197,10 +228,14 @@ final class CoverageSidecarEnvelope
             // land in the v1 fast-path. Mirror the strict version check
             // {@see StrictRequiredTracker::importState()} performs on its
             // own payload.
-            if (array_key_exists('strictRequired', $payload) || array_key_exists('strictAdditionalProperties', $payload)) {
+            if (
+                array_key_exists('strictRequired', $payload) ||
+                array_key_exists('strictAdditionalProperties', $payload) ||
+                array_key_exists('sdkExercise', $payload)
+            ) {
                 throw new InvalidArgumentException(
                     'Legacy v1 sidecar payload must not contain top-level "strictRequired" '
-                    . 'or "strictAdditionalProperties" keys; '
+                    . ', "strictAdditionalProperties", or "sdkExercise" keys; '
                     . 'expected a versioned envelope when strict data is present.',
                 );
             }
@@ -212,6 +247,7 @@ final class CoverageSidecarEnvelope
                 'coverage' => $payload,
                 'strictRequired' => null,
                 'strictAdditionalProperties' => null,
+                'sdkExercise' => null,
                 'baseline' => null,
             ];
         }
@@ -236,15 +272,19 @@ final class CoverageSidecarEnvelope
                 self::ENVELOPE_VERSION_WITH_BASELINE,
                 self::ENVELOPE_VERSION_WITH_STRICT_ADDITIONAL_PROPERTIES,
                 self::ENVELOPE_VERSION_WITH_STRICT_ADDITIONAL_PROPERTIES_AND_BASELINE,
+                self::ENVELOPE_VERSION_WITH_SDK_EXERCISE,
+                self::ENVELOPE_VERSION_WITH_SDK_EXERCISE_AND_BASELINE,
             ], true)
         ) {
             throw new InvalidArgumentException(sprintf(
-                'Unsupported sidecar envelope version: got %s, expected %d, %d, %d, or %d.',
+                'Unsupported sidecar envelope version: got %s, expected one of %d, %d, %d, %d, %d, or %d.',
                 is_int($version) ? (string) $version : get_debug_type($version),
                 self::ENVELOPE_VERSION,
                 self::ENVELOPE_VERSION_WITH_BASELINE,
                 self::ENVELOPE_VERSION_WITH_STRICT_ADDITIONAL_PROPERTIES,
                 self::ENVELOPE_VERSION_WITH_STRICT_ADDITIONAL_PROPERTIES_AND_BASELINE,
+                self::ENVELOPE_VERSION_WITH_SDK_EXERCISE,
+                self::ENVELOPE_VERSION_WITH_SDK_EXERCISE_AND_BASELINE,
             ));
         }
 
@@ -268,6 +308,8 @@ final class CoverageSidecarEnvelope
         $hasStrictAdditionalProperties = in_array($version, [
             self::ENVELOPE_VERSION_WITH_STRICT_ADDITIONAL_PROPERTIES,
             self::ENVELOPE_VERSION_WITH_STRICT_ADDITIONAL_PROPERTIES_AND_BASELINE,
+            self::ENVELOPE_VERSION_WITH_SDK_EXERCISE,
+            self::ENVELOPE_VERSION_WITH_SDK_EXERCISE_AND_BASELINE,
         ], true);
         if ($hasStrictAdditionalProperties && !is_array($strictAdditionalProperties)) {
             throw new InvalidArgumentException(sprintf(
@@ -278,21 +320,46 @@ final class CoverageSidecarEnvelope
         }
         if (!$hasStrictAdditionalProperties && array_key_exists('strictAdditionalProperties', $payload)) {
             throw new InvalidArgumentException(sprintf(
-                'Sidecar envelope v%d must not contain "strictAdditionalProperties"; expected envelopeVersion=4 or 5.',
+                'Sidecar envelope v%d must not contain "strictAdditionalProperties"; expected envelopeVersion=4, 5, 6, or 7.',
+                $version,
+            ));
+        }
+
+        $sdkExercise = $payload['sdkExercise'] ?? null;
+        $hasSdkExercise = in_array($version, [
+            self::ENVELOPE_VERSION_WITH_SDK_EXERCISE,
+            self::ENVELOPE_VERSION_WITH_SDK_EXERCISE_AND_BASELINE,
+        ], true);
+        if ($hasSdkExercise && !is_array($sdkExercise)) {
+            throw new InvalidArgumentException(sprintf(
+                'Sidecar envelope v%d "sdkExercise" must be an array; got %s.',
+                $version,
+                get_debug_type($sdkExercise),
+            ));
+        }
+        if (!$hasSdkExercise && array_key_exists('sdkExercise', $payload)) {
+            throw new InvalidArgumentException(sprintf(
+                'Sidecar envelope v%d must not contain "sdkExercise"; expected envelopeVersion=6 or 7.',
                 $version,
             ));
         }
 
         $baseline = $payload['baseline'] ?? null;
-        if (in_array($version, [self::ENVELOPE_VERSION, self::ENVELOPE_VERSION_WITH_STRICT_ADDITIONAL_PROPERTIES], true)) {
+        if (in_array($version, [
+            self::ENVELOPE_VERSION,
+            self::ENVELOPE_VERSION_WITH_STRICT_ADDITIONAL_PROPERTIES,
+            self::ENVELOPE_VERSION_WITH_SDK_EXERCISE,
+        ], true)) {
             // A plain envelope must not smuggle a baseline half: accepting it
             // would silently drop generation data whenever a future writer
             // (or a hand-edited sidecar) forgets the version bump — mirror
             // the v1 `strictRequired` guard in parse().
             if (array_key_exists('baseline', $payload)) {
-                $expectedVersion = $version === self::ENVELOPE_VERSION
-                    ? self::ENVELOPE_VERSION_WITH_BASELINE
-                    : self::ENVELOPE_VERSION_WITH_STRICT_ADDITIONAL_PROPERTIES_AND_BASELINE;
+                $expectedVersion = match ($version) {
+                    self::ENVELOPE_VERSION => self::ENVELOPE_VERSION_WITH_BASELINE,
+                    self::ENVELOPE_VERSION_WITH_STRICT_ADDITIONAL_PROPERTIES => self::ENVELOPE_VERSION_WITH_STRICT_ADDITIONAL_PROPERTIES_AND_BASELINE,
+                    self::ENVELOPE_VERSION_WITH_SDK_EXERCISE => self::ENVELOPE_VERSION_WITH_SDK_EXERCISE_AND_BASELINE,
+                };
 
                 throw new InvalidArgumentException(sprintf(
                     'Sidecar envelope v%d must not contain a "baseline" key; expected envelopeVersion=%d when baseline data is present.',
@@ -314,6 +381,7 @@ final class CoverageSidecarEnvelope
             'coverage' => $coverage,
             'strictRequired' => $strictRequired,
             'strictAdditionalProperties' => $strictAdditionalProperties,
+            'sdkExercise' => $sdkExercise,
             'baseline' => $baseline,
         ];
     }

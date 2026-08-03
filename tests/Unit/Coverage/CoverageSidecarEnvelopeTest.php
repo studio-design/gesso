@@ -208,4 +208,92 @@ class CoverageSidecarEnvelopeTest extends TestCase
 
         $this->assertNull($parsed['strictRequired']);
     }
+
+    #[Test]
+    public function build_with_sdk_exercise_emits_v6_and_v7_envelopes(): void
+    {
+        $coverage = ['version' => 1, 'specs' => []];
+        $strictRequired = ['version' => 2, 'observations' => []];
+        $strictAdditional = ['version' => 1, 'evaluations' => 0, 'observations' => []];
+        $sdkExercise = ['version' => 1, 'observations' => []];
+
+        $plain = CoverageSidecarEnvelope::build(
+            coverageState: $coverage,
+            strictRequiredState: $strictRequired,
+            strictAdditionalPropertiesState: $strictAdditional,
+            sdkExerciseState: $sdkExercise,
+        );
+        $baseline = CoverageSidecarEnvelope::build(
+            coverageState: $coverage,
+            strictRequiredState: $strictRequired,
+            baselineDocument: ['baseline_version' => 1, 'violations' => []],
+            strictAdditionalPropertiesState: $strictAdditional,
+            sdkExerciseState: $sdkExercise,
+        );
+
+        $this->assertSame(6, $plain['envelopeVersion']);
+        $this->assertSame($sdkExercise, $plain['sdkExercise']);
+        $this->assertSame(7, $baseline['envelopeVersion']);
+        $this->assertSame($sdkExercise, $baseline['sdkExercise']);
+    }
+
+    #[Test]
+    public function parse_routes_sdk_exercise_and_returns_null_for_legacy_versions(): void
+    {
+        $sdkExercise = ['version' => 1, 'observations' => []];
+        $parsed = CoverageSidecarEnvelope::parse([
+            'envelopeVersion' => 6,
+            'coverage' => ['version' => 1, 'specs' => []],
+            'strictRequired' => ['version' => 2, 'observations' => []],
+            'strictAdditionalProperties' => ['version' => 1, 'evaluations' => 0, 'observations' => []],
+            'sdkExercise' => $sdkExercise,
+        ]);
+
+        $this->assertSame($sdkExercise, $parsed['sdkExercise']);
+        $legacy = CoverageSidecarEnvelope::parse([
+            'envelopeVersion' => 4,
+            'coverage' => ['version' => 1, 'specs' => []],
+            'strictRequired' => ['version' => 2, 'observations' => []],
+            'strictAdditionalProperties' => ['version' => 1, 'evaluations' => 0, 'observations' => []],
+        ]);
+        $this->assertNull($legacy['sdkExercise']);
+    }
+
+    #[Test]
+    public function parse_rejects_missing_misplaced_or_unknown_sdk_envelope_shapes(): void
+    {
+        $base = [
+            'coverage' => ['version' => 1, 'specs' => []],
+            'strictRequired' => ['version' => 2, 'observations' => []],
+            'strictAdditionalProperties' => ['version' => 1, 'evaluations' => 0, 'observations' => []],
+        ];
+
+        foreach ([
+            ['envelopeVersion' => 6, ...$base],
+            ['envelopeVersion' => 6, ...$base, 'sdkExercise' => 'invalid'],
+            ['envelopeVersion' => 4, ...$base, 'sdkExercise' => ['version' => 1, 'observations' => []]],
+            ['envelopeVersion' => 7, ...$base, 'sdkExercise' => ['version' => 1, 'observations' => []]],
+            ['envelopeVersion' => 8, ...$base, 'sdkExercise' => ['version' => 1, 'observations' => []]],
+        ] as $payload) {
+            try {
+                CoverageSidecarEnvelope::parse($payload);
+                $this->fail('Malformed or unknown SDK envelope shape must be rejected.');
+            } catch (InvalidArgumentException) {
+                $this->addToAssertionCount(1);
+            }
+        }
+    }
+
+    #[Test]
+    public function legacy_bare_payload_rejects_a_stray_sdk_exercise_half(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('sdkExercise');
+
+        CoverageSidecarEnvelope::parse([
+            'version' => 1,
+            'specs' => [],
+            'sdkExercise' => ['version' => 1, 'observations' => []],
+        ]);
+    }
 }

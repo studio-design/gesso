@@ -11,6 +11,7 @@ use PHPUnit\Framework\TestCase;
 use PHPUnit\Runner\Extension\ParameterCollection;
 use Studio\Gesso\Coverage\InvalidCoverageOutputPathException;
 use Studio\Gesso\Coverage\InvalidThresholdConfigurationException;
+use Studio\Gesso\Coverage\SdkExerciseCoverageTracker;
 use Studio\Gesso\Exception\EnumBindingException;
 use Studio\Gesso\Exception\EnumBindingReason;
 use Studio\Gesso\Exception\EnumDriftException;
@@ -59,6 +60,7 @@ class OpenApiCoverageExtensionTest extends TestCase
         EnumScanner::reset();
         StrictAdditionalPropertiesPerCallChecker::reset();
         StrictAdditionalPropertiesTracker::resetCurrent();
+        SdkExerciseCoverageTracker::resetCurrent();
 
         $buffer = fopen('php://memory', 'w+');
         if ($buffer === false) {
@@ -83,6 +85,7 @@ class OpenApiCoverageExtensionTest extends TestCase
         EnumScanner::reset();
         StrictAdditionalPropertiesPerCallChecker::reset();
         StrictAdditionalPropertiesTracker::resetCurrent();
+        SdkExerciseCoverageTracker::resetCurrent();
         parent::tearDown();
     }
 
@@ -473,6 +476,23 @@ class OpenApiCoverageExtensionTest extends TestCase
     }
 
     #[Test]
+    public function bootstrap_warns_on_invalid_min_sdk_exercise_coverage_when_not_strict(): void
+    {
+        $extension = new OpenApiCoverageExtension();
+        $parameters = ParameterCollection::fromArray([
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => 'refs-valid',
+            'min_sdk_exercise_coverage' => '101',
+        ]);
+
+        $extension->setupExtension(null, $parameters, null);
+
+        $stderr = $this->readStderr();
+        $this->assertStringContainsString('WARNING', $stderr);
+        $this->assertStringContainsString('min_sdk_exercise_coverage', $stderr);
+    }
+
+    #[Test]
     public function bootstrap_throws_on_out_of_range_threshold_when_strict(): void
     {
         // C1: strict=true must treat a typo'd threshold as a configuration
@@ -518,6 +538,27 @@ class OpenApiCoverageExtensionTest extends TestCase
     }
 
     #[Test]
+    public function bootstrap_throws_on_invalid_sdk_threshold_when_strict(): void
+    {
+        $extension = new OpenApiCoverageExtension();
+        $parameters = ParameterCollection::fromArray([
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => 'refs-valid',
+            'min_sdk_exercise_coverage' => 'all',
+            'min_coverage_strict' => 'true',
+        ]);
+
+        $this->expectException(InvalidThresholdConfigurationException::class);
+
+        try {
+            $extension->setupExtension(null, $parameters, null);
+        } finally {
+            $this->assertStringContainsString('FATAL', $this->readStderr());
+            $this->assertStringContainsString('min_sdk_exercise_coverage', $this->readStderr());
+        }
+    }
+
+    #[Test]
     public function bootstrap_treats_empty_strict_value_as_enabled(): void
     {
         // I1: `<parameter name="min_coverage_strict" />` (no value) was a
@@ -547,6 +588,7 @@ class OpenApiCoverageExtensionTest extends TestCase
             'specs' => 'refs-valid',
             'min_endpoint_coverage' => '80',
             'min_response_coverage' => '70.5',
+            'min_sdk_exercise_coverage' => '100',
             'min_coverage_strict' => 'true',
         ]);
 
@@ -1238,6 +1280,29 @@ class OpenApiCoverageExtensionTest extends TestCase
         $extension->setupExtension(null, $parameters, null);
 
         $this->assertSame([], StrictRequiredTracker::getObservations('refs-valid'));
+    }
+
+    #[Test]
+    public function bootstrap_installs_a_fresh_sdk_exercise_tracker(): void
+    {
+        SdkExerciseCoverageTracker::current()->recordOn(
+            'refs-valid',
+            'GET',
+            '/leftover',
+            '200',
+            'application/json',
+        );
+
+        (new OpenApiCoverageExtension())->setupExtension(
+            null,
+            ParameterCollection::fromArray([
+                'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+                'specs' => 'refs-valid',
+            ]),
+            null,
+        );
+
+        $this->assertSame([], SdkExerciseCoverageTracker::current()->observationsForSpecOn('refs-valid'));
     }
 
     #[Test]

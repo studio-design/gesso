@@ -30,12 +30,14 @@ use function strlen;
  *           diagnostics are the supported public surfaces.
  *
  * @phpstan-import-type CoverageResult from OpenApiCoverageTracker
+ * @phpstan-import-type SdkExerciseCoverageResult from SdkExerciseCoverageReportBuilder
  *
- * @phpstan-type ThresholdLine array{percent: float, threshold: float, ok: bool}
+ * @phpstan-type ThresholdLine array{percent: float, threshold: float, ok: bool, evaluable: bool}
  * @phpstan-type ThresholdResult array{
  *     passed: bool,
  *     endpoint: ?ThresholdLine,
  *     response: ?ThresholdLine,
+ *     sdkExercise: ?ThresholdLine,
  *     message: string,
  * }
  */
@@ -46,13 +48,16 @@ final class CoverageThresholdEvaluator
 
     /**
      * @param array<string, CoverageResult> $results
+     * @param array<string, SdkExerciseCoverageResult> $sdkResults
      *
      * @return ThresholdResult
      */
     public static function evaluate(
         array $results,
+        array $sdkResults,
         ?float $minEndpointPct,
         ?float $minResponsePct,
+        ?float $minSdkExercisePct,
         bool $strict,
     ): array {
         $endpointCovered = 0;
@@ -66,24 +71,37 @@ final class CoverageThresholdEvaluator
             $responseTotal += $result['responseTotal'];
         }
 
+        $sdkExercised = 0;
+        $sdkTotal = 0;
+        foreach ($sdkResults as $result) {
+            $sdkExercised += $result['responseExercised'];
+            $sdkTotal += $result['responseTotal'];
+        }
+
         $endpoint = $minEndpointPct === null
             ? null
             : self::buildLine($endpointCovered, $endpointTotal, $minEndpointPct);
         $response = $minResponsePct === null
             ? null
             : self::buildLine($responseCovered, $responseTotal, $minResponsePct);
+        $sdkExercise = $minSdkExercisePct === null
+            ? null
+            : self::buildLine($sdkExercised, $sdkTotal, $minSdkExercisePct, emptyIsFailure: true);
 
-        $passed = ($endpoint['ok'] ?? true) && ($response['ok'] ?? true);
+        $passed = ($endpoint['ok'] ?? true) &&
+            ($response['ok'] ?? true) &&
+            ($sdkExercise['ok'] ?? true);
 
         $message = '';
         if (!$passed) {
-            $message = self::renderMessage($endpoint, $response, $strict);
+            $message = self::renderMessage($endpoint, $response, $sdkExercise, $strict);
         }
 
         return [
             'passed' => $passed,
             'endpoint' => $endpoint,
             'response' => $response,
+            'sdkExercise' => $sdkExercise,
             'message' => $message,
         ];
     }
@@ -91,8 +109,12 @@ final class CoverageThresholdEvaluator
     /**
      * @return ThresholdLine
      */
-    private static function buildLine(int $covered, int $total, float $threshold): array
-    {
+    private static function buildLine(
+        int $covered,
+        int $total,
+        float $threshold,
+        bool $emptyIsFailure = false,
+    ): array {
         // `total === 0` only happens for a spec with no declared paths /
         // responses — there's no contract API to fail against, so report it
         // as 100% so the gate doesn't punish well-formed empty specs.
@@ -105,16 +127,22 @@ final class CoverageThresholdEvaluator
         return [
             'percent' => $percent,
             'threshold' => $threshold,
-            'ok' => $percent >= $threshold,
+            'ok' => (!$emptyIsFailure || $total > 0) && $percent >= $threshold,
+            'evaluable' => !$emptyIsFailure || $total > 0,
         ];
     }
 
     /**
      * @param null|ThresholdLine $endpoint
      * @param null|ThresholdLine $response
+     * @param null|ThresholdLine $sdkExercise
      */
-    private static function renderMessage(?array $endpoint, ?array $response, bool $strict): string
-    {
+    private static function renderMessage(
+        ?array $endpoint,
+        ?array $response,
+        ?array $sdkExercise,
+        bool $strict,
+    ): string {
         $prefix = sprintf('[OpenAPI Coverage] %s: ', $strict ? 'FAIL' : 'WARN');
         $indent = str_repeat(' ', strlen($prefix));
         $lines = [];
@@ -125,6 +153,10 @@ final class CoverageThresholdEvaluator
             $lead = $lines === [] ? $prefix : $indent;
             $lines[] = $lead . self::renderLine('response', $response);
         }
+        if ($sdkExercise !== null) {
+            $lead = $lines === [] ? $prefix : $indent;
+            $lines[] = $lead . self::renderLine('SDK exercise', $sdkExercise);
+        }
 
         return implode("\n", $lines) . "\n";
     }
@@ -134,6 +166,10 @@ final class CoverageThresholdEvaluator
      */
     private static function renderLine(string $label, array $line): string
     {
+        if (!$line['evaluable']) {
+            return sprintf('%s coverage cannot be evaluated (no eligible response schemas).', $label);
+        }
+
         $actual = self::formatPercent($line['percent']);
         $threshold = self::formatPercent($line['threshold']);
 

@@ -7,6 +7,7 @@ namespace Studio\Gesso\Tests\Unit\Fuzz;
 use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+use RuntimeException;
 use Studio\Gesso\Fuzz\GeneratedResponseCase;
 use Studio\Gesso\Fuzz\GeneratedResponseCases;
 
@@ -39,6 +40,29 @@ class GeneratedResponseCasesTest extends TestCase
         $this->assertSame([0, 1], $visited);
         $this->assertSame([$first, $second], iterator_to_array($cases));
         $this->assertSame($cases, $returned);
+    }
+
+    #[Test]
+    public function each_invokes_the_optional_hook_immediately_before_each_callback(): void
+    {
+        $events = [];
+        $cases = GeneratedResponseCases::withBeforeEach(
+            [$this->caseAt(0), $this->caseAt(1)],
+            static function () use (&$events): void {
+                $events[] = 'before';
+            },
+        );
+
+        try {
+            $cases->each(static function (GeneratedResponseCase $case) use (&$events): never {
+                $events[] = 'callback-' . $case->caseIndex;
+
+                throw new RuntimeException('decoder failed');
+            });
+            $this->fail('The decoder failure must escape the collection.');
+        } catch (RuntimeException) {
+            $this->assertSame(['before', 'callback-0'], $events);
+        }
     }
 
     private function caseAt(int $index): GeneratedResponseCase

@@ -10,6 +10,8 @@ use Studio\Gesso\Coverage\EndpointCoverageState;
 use Studio\Gesso\Coverage\MarkdownCoverageRenderer;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\Coverage\ResponseCoverageState;
+use Studio\Gesso\Coverage\SdkExerciseCoverageReportBuilder;
+use Studio\Gesso\Tests\Helpers\SdkExerciseCoverageResultFixture;
 
 use function dirname;
 use function escapeshellarg;
@@ -27,6 +29,7 @@ use function unlink;
 /**
  * @phpstan-import-type CoverageResult from OpenApiCoverageTracker
  * @phpstan-import-type EndpointSummary from OpenApiCoverageTracker
+ * @phpstan-import-type SdkExerciseCoverageResult from SdkExerciseCoverageReportBuilder
  */
 final class MarkdownCoverageRendererLintTest extends TestCase
 {
@@ -40,6 +43,15 @@ final class MarkdownCoverageRendererLintTest extends TestCase
     public function edge_cases_rendered_markdown_passes_markdownlint(): void
     {
         $this->assertRenderedMarkdownPassesLint(self::edgeCasesFixture());
+    }
+
+    #[Test]
+    public function sdk_exercise_rendered_markdown_passes_markdownlint(): void
+    {
+        $this->assertRenderedMarkdownPassesLint(
+            [],
+            ['front' => SdkExerciseCoverageResultFixture::result()],
+        );
     }
 
     /**
@@ -193,8 +205,9 @@ final class MarkdownCoverageRendererLintTest extends TestCase
 
     /**
      * @param array<string, CoverageResult> $results
+     * @param array<string, SdkExerciseCoverageResult> $sdkResults
      */
-    private function assertRenderedMarkdownPassesLint(array $results): void
+    private function assertRenderedMarkdownPassesLint(array $results, array $sdkResults = []): void
     {
         $probeOutput = [];
         $probeExit = 1;
@@ -207,7 +220,7 @@ final class MarkdownCoverageRendererLintTest extends TestCase
         if ($tmpFile === false) {
             $this->fail('tempnam() failed to create a temp file');
         }
-        $output = MarkdownCoverageRenderer::render($results);
+        $output = MarkdownCoverageRenderer::render($results, $sdkResults);
         if (file_put_contents($tmpFile, $output) === false) {
             unlink($tmpFile);
             $this->fail('file_put_contents() failed to write the rendered markdown');

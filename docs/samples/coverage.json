@@ -1,5 +1,5 @@
 {
-    "schema_version": 2,
+    "schema_version": 3,
     "generated_at": "2026-05-11T12:34:56+00:00",
     "tool": {
         "name": "studio-design/gesso",
@@ -14,7 +14,12 @@
         "response_total": 3,
         "response_covered": 2,
         "response_skipped": 0,
-        "response_uncovered": 1
+        "response_uncovered": 1,
+        "sdk_exercise": {
+            "response_total": 2,
+            "response_exercised": 1,
+            "response_unexercised": 1
+        }
     },
     "specs": {
         "petstore": {
@@ -84,7 +89,35 @@
                         }
                     ]
                 }
-            ]
+            ],
+            "sdk_exercise": {
+                "response_total": 2,
+                "response_exercised": 1,
+                "response_unexercised": 1,
+                "responses": [
+                    {
+                        "endpoint": "GET /v1/pets",
+                        "method": "GET",
+                        "path": "/v1/pets",
+                        "operation_id": "listPets",
+                        "status_key": "200",
+                        "content_type_key": "application/json",
+                        "exercised": true,
+                        "hits": 3
+                    },
+                    {
+                        "endpoint": "POST /v1/pets",
+                        "method": "POST",
+                        "path": "/v1/pets",
+                        "operation_id": "createPet",
+                        "status_key": "201",
+                        "content_type_key": "application/json",
+                        "exercised": false,
+                        "hits": 0
+                    }
+                ],
+                "unexpected_observations": []
+            }
         }
     }
 }

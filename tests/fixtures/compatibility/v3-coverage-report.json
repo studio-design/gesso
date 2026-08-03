@@ -1,0 +1,102 @@
+{
+    "schema_version": 3,
+    "generated_at": "2026-07-14T00:00:00+00:00",
+    "tool": {
+        "name": "studio-design/gesso",
+        "version": "<runtime-version>"
+    },
+    "aggregate": {
+        "endpoint_total": 2,
+        "endpoint_fully_covered": 0,
+        "endpoint_partial": 1,
+        "endpoint_uncovered": 0,
+        "endpoint_request_only": 1,
+        "response_total": 3,
+        "response_covered": 1,
+        "response_skipped": 1,
+        "response_uncovered": 1,
+        "sdk_exercise": {
+            "response_total": 0,
+            "response_exercised": 0,
+            "response_unexercised": 0
+        }
+    },
+    "specs": {
+        "front": {
+            "aggregates": {
+                "endpoint_total": 2,
+                "endpoint_fully_covered": 0,
+                "endpoint_partial": 1,
+                "endpoint_uncovered": 0,
+                "endpoint_request_only": 1,
+                "response_total": 3,
+                "response_covered": 1,
+                "response_skipped": 1,
+                "response_uncovered": 1
+            },
+            "endpoints": [
+                {
+                    "endpoint": "GET /v1/pets",
+                    "method": "GET",
+                    "path": "/v1/pets",
+                    "operation_id": "listPets",
+                    "endpoint_state": "partial",
+                    "request_reached": true,
+                    "responses": [
+                        {
+                            "status_key": "200",
+                            "content_type_key": "application/json",
+                            "response_state": "validated",
+                            "hits": 2,
+                            "skip_reason": null
+                        },
+                        {
+                            "status_key": "503",
+                            "content_type_key": "*",
+                            "response_state": "skipped",
+                            "hits": 1,
+                            "skip_reason": "status 503 matched skip pattern 5\\d\\d"
+                        }
+                    ],
+                    "covered_response_count": 1,
+                    "skipped_response_count": 1,
+                    "total_response_count": 2,
+                    "unexpected_observations": [
+                        {
+                            "status_key": "418",
+                            "content_type_key": "application/json"
+                        }
+                    ]
+                },
+                {
+                    "endpoint": "POST /v1/pets",
+                    "method": "POST",
+                    "path": "/v1/pets",
+                    "operation_id": null,
+                    "endpoint_state": "request-only",
+                    "request_reached": true,
+                    "responses": [
+                        {
+                            "status_key": "201",
+                            "content_type_key": "application/json",
+                            "response_state": "uncovered",
+                            "hits": 0,
+                            "skip_reason": null
+                        }
+                    ],
+                    "covered_response_count": 0,
+                    "skipped_response_count": 0,
+                    "total_response_count": 1,
+                    "unexpected_observations": []
+                }
+            ],
+            "sdk_exercise": {
+                "response_total": 0,
+                "response_exercised": 0,
+                "response_unexercised": 0,
+                "responses": [],
+                "unexpected_observations": []
+            }
+        }
+    }
+}

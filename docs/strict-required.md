@@ -210,7 +210,7 @@ A future release may add an opt-out attribute (e.g. `#[StrictRequiredPerCallIgno
 
 ## Paratest
 
-Paratest / Pest `--parallel` is supported. Each worker exports its observations via the coverage sidecar envelope (v2). Pass `--strict-required=<mode>` to the merge CLI to evaluate the gate after the workers complete:
+Paratest / Pest `--parallel` is supported. Each worker exports its observations via the versioned coverage sidecar envelope. Pass `--strict-required=<mode>` to the merge CLI to evaluate the gate after the workers complete:
 
 ```bash
 vendor/bin/gesso coverage:merge \

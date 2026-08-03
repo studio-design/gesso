@@ -11,6 +11,7 @@ use Studio\Gesso\Coverage\EndpointCoverageState;
 use Studio\Gesso\Coverage\JUnitCoverageRenderer;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\Coverage\ResponseCoverageState;
+use Studio\Gesso\Tests\Helpers\SdkExerciseCoverageResultFixture;
 
 use function explode;
 use function simplexml_load_string;
@@ -303,6 +304,26 @@ class JUnitCoverageRendererTest extends TestCase
         );
 
         $this->assertStringStartsWith('<?xml version="1.0" encoding="UTF-8"', $xml);
+    }
+
+    #[Test]
+    public function render_maps_sdk_schemas_to_exercised_unexercised_and_unexpected_cases(): void
+    {
+        $xml = JUnitCoverageRenderer::render(
+            [],
+            ['front' => SdkExerciseCoverageResultFixture::result()],
+        );
+        $sx = $this->parse($xml);
+        $cases = $sx->xpath('//testcase[@classname="front.sdk-exercise"]');
+
+        $this->assertCount(3, $cases);
+        $this->assertSame('3', (string) $sx['tests']);
+        $this->assertSame('2', (string) $sx['failures']);
+        $this->assertCount(0, $cases[0]->xpath('failure'));
+        $this->assertSame('UnexercisedSdkResponseSchema', (string) $cases[1]->failure['type']);
+        $this->assertSame('UnexpectedSdkExerciseObservation', (string) $cases[2]->failure['type']);
+        $this->assertStringContainsString('hits=2', (string) $cases[0]->{'system-out'});
+        $this->assertStringContainsString('operationId=listSdkPets', (string) $cases[0]->{'system-out'});
     }
 
     /**

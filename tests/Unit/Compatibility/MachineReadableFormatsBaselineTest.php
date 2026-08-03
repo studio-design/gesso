@@ -33,7 +33,7 @@ use function json_encode;
 final class MachineReadableFormatsBaselineTest extends TestCase
 {
     #[Test]
-    public function coverage_json_matches_the_v2_fixture(): void
+    public function coverage_json_matches_the_v3_fixture(): void
     {
         /** @var array<string, CoverageResult> $results */
         $results = [
@@ -115,7 +115,7 @@ final class MachineReadableFormatsBaselineTest extends TestCase
         $payload['tool'] = $tool;
 
         $this->assertSame(
-            $this->fixture('v2-coverage-report.json'),
+            $this->fixture('v3-coverage-report.json'),
             json_encode(
                 $payload,
                 JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE,

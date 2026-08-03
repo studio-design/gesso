@@ -1,0 +1,100 @@
+{
+  "openapi": "3.2.0",
+  "info": {
+    "title": "SDK exercise coverage fixture",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/pets": {
+      "get": {
+        "operationId": "listPets",
+        "responses": {
+          "200": {
+            "description": "Pets",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "pets": {"type": "array", "items": {"type": "string"}}
+                  }
+                }
+              },
+              "Application/Vnd.Pet+JSON": {
+                "schema": {"type": "object"}
+              },
+              "text/plain": {
+                "schema": {"type": "string"}
+              }
+            }
+          },
+          "2xx": {
+            "description": "Other successful response",
+            "content": {
+              "application/json": {
+                "schema": {"type": "object"}
+              }
+            }
+          },
+          "204": {
+            "description": "No content"
+          },
+          "default": {
+            "description": "Problem response",
+            "content": {
+              "application/problem+json": {
+                "schema": {"type": "object"}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/unsupported": {
+      "get": {
+        "operationId": "unsupportedResponses",
+        "responses": {
+          "200": {
+            "description": "Text response",
+            "content": {
+              "text/plain": {
+                "schema": {"type": "string"}
+              }
+            }
+          },
+          "201": {
+            "description": "Missing schema",
+            "content": {
+              "application/json": {}
+            }
+          },
+          "202": {
+            "description": "Streaming items",
+            "content": {
+              "application/json": {
+                "itemSchema": {"type": "string"}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/events": {
+      "additionalOperations": {
+        "SUBSCRIBE": {
+          "operationId": "subscribeEvents",
+          "responses": {
+            "200": {
+              "description": "Event subscription",
+              "content": {
+                "application/json": {
+                  "schema": {"type": "object"}
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

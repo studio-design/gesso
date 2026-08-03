@@ -10,6 +10,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
+use Studio\Gesso\Coverage\SdkExerciseCoverageTracker;
 use Studio\Gesso\Fuzz\ExploredOperation;
 use Studio\Gesso\Fuzz\GeneratedResponseCase;
 use Studio\Gesso\Fuzz\OpenApiResponseExplorer;
@@ -30,10 +31,12 @@ final class OpenApiResponseSpecExplorationTest extends TestCase
         parent::setUp();
         OpenApiSpecLoader::reset();
         OpenApiSpecLoader::configure(__DIR__ . '/../../fixtures/specs');
+        SdkExerciseCoverageTracker::resetCurrent();
     }
 
     protected function tearDown(): void
     {
+        SdkExerciseCoverageTracker::resetCurrent();
         OpenApiSpecLoader::reset();
         parent::tearDown();
     }
@@ -360,6 +363,30 @@ final class OpenApiResponseSpecExplorationTest extends TestCase
 
         $this->assertGreaterThanOrEqual(2, $decodeAttempts);
         $this->assertGreaterThanOrEqual(1, $roundTripAttempts);
+    }
+
+    #[Test]
+    public function spec_wide_decode_failures_still_record_the_attempted_response_schemas(): void
+    {
+        $tracker = new SdkExerciseCoverageTracker();
+        SdkExerciseCoverageTracker::setCurrent($tracker);
+
+        try {
+            OpenApiResponseExplorer::exploreSpec('sdk-roundtrip-plan')
+                ->includeOperations(['listPets'])
+                ->mapResponse(
+                    'listPets',
+                    200,
+                    static fn(): never => throw new RuntimeException('decoder rejected payload'),
+                    static fn(mixed $decoded): mixed => $decoded,
+                )
+                ->assertRoundTrips();
+            $this->fail('Expected aggregate SDK round-trip failure.');
+        } catch (AssertionFailedError) {
+            $observations = $tracker->observationsForSpecOn('sdk-roundtrip-plan');
+            $this->assertGreaterThanOrEqual(1, $observations['GET /pets'][200]['application/json']);
+            $this->assertGreaterThanOrEqual(1, $observations['GET /pets'][200]['application/problem+json']);
+        }
     }
 
     #[Test]

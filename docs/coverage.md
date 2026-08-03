@@ -14,6 +14,12 @@ Coverage is tracked at **`(method, path, statusCode, contentType)` granularity**
 
 The report also breaks the coverage rate into two numbers — the strict endpoint rate (all declared responses validated) and the response-level rate (`responseCovered / responseTotal`).
 
+SDK response exploration is reported separately as **SDK exercise coverage**.
+It measures whether eligible JSON response schemas were handed to a generated
+SDK decoder; it does not change HTTP validation coverage. A response can be
+covered by an HTTP contract assertion but remain unexercised by an SDK, or vice
+versa.
+
 - [Console modes](#console-modes)
 - [Coverage threshold gate](#coverage-threshold-gate)
 - Output formats — see [`ci.md`](ci.md#coverage-output-formats), [`coverage-html-output.md`](coverage-html-output.md), [`coverage-json-schema.md`](coverage-json-schema.md)
@@ -31,6 +37,7 @@ OpenAPI Contract Test Coverage
 
 [front] endpoints: 12/45 fully covered (26.7%), 8 partial, 25 uncovered
         responses: 38/120 covered (31.7%), 4 skipped, 78 uncovered
+        SDK responses: 20/24 exercised (83.3%), 4 unexercised
 --------------------------------------------------
 Legend: ✓=validated  ⚠=skipped  ✗=uncovered  ◐=partial  ·=request-only  *=any/no content-type
   ✓ GET /v1/pets  (3/3 responses)
@@ -110,10 +117,16 @@ OPENAPI_CONSOLE_OUTPUT=uncovered_only vendor/bin/phpunit
 
 ## Coverage threshold gate
 
-Optional CI gate that fails the run when contract coverage drops below a configured percentage — the contract-testing analogue of PHPUnit's own `--coverage-threshold`. Both metrics are aggregated across every spec listed in `specs=`:
+Optional CI gate that fails the run when contract or SDK exercise coverage drops below a configured percentage — the contract-testing analogue of PHPUnit's own `--coverage-threshold`. All metrics are aggregated across every spec listed in `specs=`:
 
 - `min_endpoint_coverage` — percentage of endpoints with **all** declared `(status, content-type)` pairs validated.
 - `min_response_coverage` — percentage of `(method, path, status, content-type)` rows validated (the same rate the report calls "responses covered").
+- `min_sdk_exercise_coverage` — percentage of eligible JSON response schemas for which an SDK decoder callback was attempted.
+
+The SDK denominator includes resolved JSON-compatible response media types
+with a schema. It excludes no-content responses, non-JSON media types, missing
+or non-JSON schemas, and OpenAPI 3.2 `itemSchema` streaming responses. A
+configured SDK gate fails as unevaluable when that denominator is empty.
 
 Default is **warn-only**: a miss prints `[OpenAPI Coverage] WARN: …` to stderr but the run exits 0. Flip `min_coverage_strict=true` to make a miss fail-fast with exit 1.
 
@@ -124,6 +137,7 @@ Default is **warn-only**: a miss prints `[OpenAPI Coverage] WARN: …` to stderr
         <parameter name="specs" value="front,admin"/>
         <parameter name="min_endpoint_coverage" value="80"/>   <!-- percent, optional -->
         <parameter name="min_response_coverage" value="60"/>   <!-- percent, optional -->
+        <parameter name="min_sdk_exercise_coverage" value="100"/> <!-- percent, optional -->
         <parameter name="min_coverage_strict" value="true"/>   <!-- default false → warn-only -->
     </bootstrap>
 </extensions>
@@ -134,6 +148,7 @@ Failure looks like:
 ```
 [OpenAPI Coverage] FAIL: endpoint coverage 67.4% < threshold 80%.
                          response coverage 71.2% (>= 60%, ok).
+                         SDK exercise coverage 83.3% < threshold 100%.
 ```
 
 Out-of-range or non-numeric values produce a `WARNING` to stderr and skip that gate (rather than silently treating the misconfiguration as `0%`).
@@ -148,5 +163,11 @@ vendor/bin/gesso coverage:merge \
     --specs=front,admin \
     --min-endpoint-coverage=80 \
     --min-response-coverage=60 \
+    --min-sdk-exercise-coverage=100 \
     --min-coverage-strict
 ```
+
+The parallel strict SDK gate also requires every worker sidecar to contain SDK
+exercise state. A mixed old/new worker fleet is incomplete evidence and fails;
+warn-only mode reports the missing-worker count and evaluates the available
+observations.

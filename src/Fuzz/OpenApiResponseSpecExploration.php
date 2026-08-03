@@ -11,6 +11,7 @@ use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Validation\Response\ResponseSchemaResolution;
 use Studio\Gesso\Validation\Response\ResponseSchemaResolutionOutcome;
 use Studio\Gesso\Validation\Response\ResponseSchemaResolver;
+use Studio\Gesso\Validation\Response\ResponseStatusTargetEnumerator;
 use Studio\Gesso\Validation\Support\ContentTypeMatcher;
 use Throwable;
 
@@ -19,12 +20,10 @@ use function array_keys;
 use function count;
 use function crc32;
 use function implode;
-use function intdiv;
 use function is_array;
 use function is_string;
 use function preg_match;
 use function sprintf;
-use function str_starts_with;
 use function strtoupper;
 
 /**
@@ -128,11 +127,11 @@ final class OpenApiResponseSpecExploration
                 }
 
                 $operationExecuted = false;
-                foreach (self::statusTargets($operationResolution->responses) as $target) {
+                foreach (ResponseStatusTargetEnumerator::enumerate($operationResolution->responses) as $target) {
                     if ($target['wireStatus'] === null) {
                         $skips[] = new ResponseSpecExplorationSkip(
                             $operation,
-                            $target['status'],
+                            $target['selector'],
                             null,
                             'UnreachableStatus: no wire status can select this declared response.',
                         );
@@ -150,7 +149,7 @@ final class OpenApiResponseSpecExploration
                         ? []
                         : self::jsonContentTypes($initialResolution->responseSpec);
                     if ($contentTypes === []) {
-                        $skips[] = self::unsupportedSkip($operation, $target['status'], $initialResolution);
+                        $skips[] = self::unsupportedSkip($operation, $target['selector'], $initialResolution);
 
                         continue;
                     }
@@ -165,23 +164,23 @@ final class OpenApiResponseSpecExploration
                         if ($resolution->outcome !== ResponseSchemaResolutionOutcome::Resolved ||
                             $resolution->contentType === null
                         ) {
-                            $skips[] = self::unsupportedSkip($operation, $target['status'], $resolution);
+                            $skips[] = self::unsupportedSkip($operation, $target['selector'], $resolution);
 
                             continue;
                         }
 
                         $mapping = $operation->operationId === null
                             ? null
-                            : ($this->mappings[self::mappingKey($operation->operationId, $target['status'])] ?? null);
+                            : ($this->mappings[self::mappingKey($operation->operationId, $target['selector'])] ?? null);
                         if ($mapping === null) {
                             $skips[] = new ResponseSpecExplorationSkip(
                                 $operation,
-                                $target['status'],
+                                $target['selector'],
                                 $resolution->contentType,
                                 sprintf(
                                     "No SDK mapping registered for operation '%s' response '%s' (%s).",
                                     $operation->operationId ?? '(none)',
-                                    $target['status'],
+                                    $target['selector'],
                                     $resolution->contentType,
                                 ),
                                 mappingGap: true,
@@ -200,20 +199,28 @@ final class OpenApiResponseSpecExploration
                             $this->extraCases,
                         );
 
-                        foreach ($cases as $case) {
+                        $cases->each(static function (GeneratedResponseCase $case) use (
+                            $mapping,
+                            $operation,
+                            $target,
+                            $resolution,
+                            &$decodeFailures,
+                            &$roundTripFailures,
+                            &$executedCases,
+                        ): void {
                             try {
                                 $decoded = ($mapping['decode'])($case, $operation);
                             } catch (Throwable $failure) {
                                 $decodeFailures[] = self::failure(
                                     $operation,
-                                    $target['status'],
+                                    $target['selector'],
                                     $target['wireStatus'],
                                     $resolution->contentType,
                                     $case,
                                     $failure,
                                 );
 
-                                continue;
+                                return;
                             }
 
                             try {
@@ -222,18 +229,18 @@ final class OpenApiResponseSpecExploration
                             } catch (Throwable $failure) {
                                 $roundTripFailures[] = self::failure(
                                     $operation,
-                                    $target['status'],
+                                    $target['selector'],
                                     $target['wireStatus'],
                                     $resolution->contentType,
                                     $case,
                                     $failure,
                                 );
 
-                                continue;
+                                return;
                             }
 
                             $executedCases++;
-                        }
+                        });
 
                         $executedResponses++;
                         $operationExecuted = true;
@@ -324,93 +331,6 @@ final class OpenApiResponseSpecExploration
     private static function mappingKey(string $operationId, string $status): string
     {
         return $operationId . "\0" . $status;
-    }
-
-    /**
-     * @param array<array-key, mixed> $responses
-     *
-     * @return list<array{status: string, wireStatus: ?int}>
-     */
-    private static function statusTargets(array $responses): array
-    {
-        $exact = [];
-        $ranges = [];
-
-        foreach (array_keys($responses) as $rawStatus) {
-            if (is_string($rawStatus) && str_starts_with($rawStatus, 'x-')) {
-                continue;
-            }
-
-            $status = self::normalizeDeclaredStatus($rawStatus);
-            if (preg_match('/^[1-5][0-9]{2}$/', $status) === 1) {
-                $exact[(int) $status] = true;
-            } elseif (preg_match('/^[1-5]XX$/', $status) === 1) {
-                $ranges[(int) $status[0]] = true;
-            }
-        }
-
-        $targets = [];
-        foreach (array_keys($responses) as $rawStatus) {
-            if (is_string($rawStatus) && str_starts_with($rawStatus, 'x-')) {
-                continue;
-            }
-
-            $status = self::normalizeDeclaredStatus($rawStatus);
-            if (preg_match('/^[1-5][0-9]{2}$/', $status) === 1) {
-                $wireStatus = (int) $status;
-            } elseif (preg_match('/^([1-5])XX$/', $status, $matches) === 1) {
-                $wireStatus = self::representativeRangeStatus((int) $matches[1], $exact);
-            } else {
-                $wireStatus = self::representativeDefaultStatus($exact, $ranges);
-            }
-
-            $targets[] = ['status' => $status, 'wireStatus' => $wireStatus];
-        }
-
-        return $targets;
-    }
-
-    private static function normalizeDeclaredStatus(int|string $status): string
-    {
-        $normalized = (string) $status;
-        if (preg_match('/^[1-5][0-9]{2}$/', $normalized) === 1 || $normalized === 'default') {
-            return $normalized;
-        }
-        if (preg_match('/^[1-5](?:XX|xx)$/', $normalized) === 1) {
-            return strtoupper($normalized);
-        }
-
-        throw new InvalidArgumentException(sprintf(
-            "Invalid response key '%s': expected an exact HTTP status, range status, or default.",
-            $normalized,
-        ));
-    }
-
-    /** @param array<int, true> $exact */
-    private static function representativeRangeStatus(int $class, array $exact): ?int
-    {
-        for ($status = $class * 100; $status <= ($class * 100) + 99; $status++) {
-            if (!isset($exact[$status])) {
-                return $status;
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * @param array<int, true> $exact
-     * @param array<int, true> $ranges
-     */
-    private static function representativeDefaultStatus(array $exact, array $ranges): ?int
-    {
-        for ($status = 100; $status <= 599; $status++) {
-            if (!isset($exact[$status]) && !isset($ranges[intdiv($status, 100)])) {
-                return $status;
-            }
-        }
-
-        return null;
     }
 
     private static function throwIfMalformed(ResponseSchemaResolution $resolution): void
