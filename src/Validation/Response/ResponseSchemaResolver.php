@@ -244,10 +244,10 @@ final class ResponseSchemaResolver
         }
 
         /** @var array<string, mixed> $responseSpec */
-        // 204 No Content (and similar) declare no `content` block. `isset`
-        // (not `array_key_exists`) is the historical validator behavior: an
-        // explicit `content: null` also lands here.
-        if (!isset($responseSpec['content'])) {
+        // 204 No Content (and similar) declare no `content` block. Check key
+        // presence so an explicit `content: null` reaches the malformed-node
+        // guard below.
+        if (!array_key_exists('content', $responseSpec)) {
             return ResponseSchemaResolution::noContent($matchedPath, $matchedResponseKey, $responseSpec);
         }
 

@@ -174,6 +174,11 @@ class ResponseSchemaResolverTest extends TestCase
         $this->assertSame(ResponseSchemaResolutionOutcome::MalformedContent, $contentBlock->outcome);
         $this->assertStringContainsString("Malformed 'responses[200].content'", (string) $contentBlock->message);
 
+        $nullContent = $this->resolver->resolve('malformed', 'GET', '/response-null-content', 200, 'application/json');
+        $this->assertSame(ResponseSchemaResolutionOutcome::MalformedContent, $nullContent->outcome);
+        $this->assertStringContainsString("Malformed 'responses[200].content'", (string) $nullContent->message);
+        $this->assertStringContainsString('expected object, got null', (string) $nullContent->message);
+
         $mediaType = $this->resolver->resolve('malformed', 'GET', '/response-scalar-content-media-type', 200, 'application/json');
         $this->assertSame(ResponseSchemaResolutionOutcome::MalformedContent, $mediaType->outcome);
         $this->assertStringContainsString(
