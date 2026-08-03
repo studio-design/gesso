@@ -10,6 +10,26 @@ the README for the full surface contract.
 
 ## Unreleased
 
+## [2.3.0](https://github.com/studio-design/gesso/compare/v2.2.0...v2.3.0) (2026-08-03)
+
+
+### Features
+
+* **coverage:** report SDK decoder exercise coverage ([#465](https://github.com/studio-design/gesso/issues/465)) ([82fd407](https://github.com/studio-design/gesso/commit/82fd407bf2113876d72a20adfd871443fa5966d9))
+* **fuzz:** add response payload explorer with SDK round-trip assertions ([#462](https://github.com/studio-design/gesso/issues/462)) ([c755e88](https://github.com/studio-design/gesso/commit/c755e88916b3cb1f4a3016e69d58b375e0a1255d))
+* **fuzz:** add spec-wide SDK round-trip plan ([#464](https://github.com/studio-design/gesso/issues/464)) ([632cdfa](https://github.com/studio-design/gesso/commit/632cdfab0f1df5b205e5ddbc028370e70d2d5192))
+* **fuzz:** branch-complete case generation across composition choice points ([#461](https://github.com/studio-design/gesso/issues/461)) ([15c73c1](https://github.com/studio-design/gesso/commit/15c73c174f85cdc388d7ea1002ef811178a758f9))
+* **fuzz:** explore named component schemas ([#463](https://github.com/studio-design/gesso/issues/463)) ([f1ce665](https://github.com/studio-design/gesso/commit/f1ce665c4f169be6280c37b83ceb15d734fa44ba))
+* **validation:** extract shared response schema resolution for reuse outside the response validator ([#460](https://github.com/studio-design/gesso/issues/460)) ([675ee6b](https://github.com/studio-design/gesso/commit/675ee6ba66a09ff1ee1be8c9d0cb69d6628ce45f))
+
+
+### Bug Fixes
+
+* **docs:** correct stale parallel baseline-generation claims ([#457](https://github.com/studio-design/gesso/issues/457)) ([526891b](https://github.com/studio-design/gesso/commit/526891b6b2638b4967da3af53eb20ea5d6b36e2e))
+* **fuzz:** cover nullable enum branches ([#467](https://github.com/studio-design/gesso/issues/467)) ([d09faa6](https://github.com/studio-design/gesso/commit/d09faa6fc2968d00a3b4a748037c00a2aa747608))
+* **strict:** treat map-shaped additionalProperties objects as data, not drift ([#459](https://github.com/studio-design/gesso/issues/459)) ([212b733](https://github.com/studio-design/gesso/commit/212b7335096209ec6a7043834c560299f770cf01))
+* **validation:** reject null response content ([#466](https://github.com/studio-design/gesso/issues/466)) ([68adc03](https://github.com/studio-design/gesso/commit/68adc03154b9f073938bfbe5c336e7290e20b399))
+
 ## [2.2.0](https://github.com/studio-design/gesso/compare/v2.1.0...v2.2.0) (2026-07-31)
 
 
