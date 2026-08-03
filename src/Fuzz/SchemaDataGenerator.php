@@ -673,6 +673,9 @@ final class SchemaDataGenerator
             return null;
         }
 
+        $nullablePointer = $pointer . '/type';
+        $pinnedNullable = $plan?->branchFor($nullablePointer);
+
         if (array_key_exists('const', $schema)) {
             if ($plan !== null && $forced && !SchemaValueValidator::isValid($schema['const'], $schema)) {
                 // The node's domain is the single const value; if even that
@@ -706,7 +709,27 @@ final class SchemaDataGenerator
 
                     return $values[0];
                 }
-                if (isset($schema['not']) && is_array($schema['not'])) {
+                if ($pinnedNullable !== null) {
+                    $wantNull = $pinnedNullable === SchemaChoicePoint::NULL_VALUE;
+                    if ($plan->targetPointer === $nullablePointer) {
+                        $plan->observation->expect(
+                            $pointer,
+                            static fn(mixed $value): bool => ($value === null) === $wantNull,
+                        );
+                    }
+                    $admissible = array_values(array_filter(
+                        $admissible,
+                        static fn(mixed $value): bool => ($value === null) === $wantNull,
+                    ));
+                    if ($admissible === []) {
+                        if ($forced) {
+                            $plan->observation->proveDeadEnd();
+                        }
+
+                        return $values[0];
+                    }
+                }
+                if ((isset($schema['not']) && is_array($schema['not'])) || $pinnedNullable !== null) {
                     return $admissible[$iteration % count($admissible)];
                 }
             }
@@ -715,19 +738,18 @@ final class SchemaDataGenerator
         }
 
         if (is_array($schema['type'] ?? null) && in_array('null', $schema['type'], true)) {
-            $pinnedNull = $plan?->branchFor($pointer . '/type');
-            if ($plan !== null && $pinnedNull !== null && $plan->targetPointer === $pointer . '/type') {
-                $wantNull = $pinnedNull === SchemaChoicePoint::NULL_VALUE;
+            if ($plan !== null && $pinnedNullable !== null && $plan->targetPointer === $nullablePointer) {
+                $wantNull = $pinnedNullable === SchemaChoicePoint::NULL_VALUE;
                 $plan->observation->expect($pointer, static fn(mixed $value): bool
                     => ($value === null) === $wantNull);
             }
-            $emitNull = $pinnedNull !== null
-                ? $pinnedNull === SchemaChoicePoint::NULL_VALUE
+            $emitNull = $pinnedNullable !== null
+                ? $pinnedNullable === SchemaChoicePoint::NULL_VALUE
                 : ($iteration % 3) === 2;
             if ($emitNull) {
                 return null;
             }
-            if ($plan !== null && $pinnedNull === null) {
+            if ($plan !== null && $pinnedNullable === null) {
                 // Rotation chose the non-null side; null remains a way to
                 // satisfy this node, so nothing below can prove a dead end.
                 $forced = false;
