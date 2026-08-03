@@ -1,0 +1,18 @@
+{
+  "openapi": "3.1.0",
+  "info": {"title": "Malformed SDK coverage media type", "version": "1.0.0"},
+  "paths": {
+    "/pets": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Malformed media type",
+            "content": {
+              "application/json": "not an object"
+            }
+          }
+        }
+      }
+    }
+  }
+}
