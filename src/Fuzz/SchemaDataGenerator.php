@@ -691,46 +691,18 @@ final class SchemaDataGenerator
         if (isset($schema['enum']) && is_array($schema['enum']) && $schema['enum'] !== []) {
             $values = array_values($schema['enum']);
             if ($plan !== null) {
-                // The enum domain is finite, so admissibility against the
-                // node view (including any `not` pushed down by suppression)
-                // is decidable outright — complete and deterministic where
-                // iteration retries could miss the admissible tail of a
-                // long enum.
-                $admissible = array_values(array_filter(
+                [$handled, $plannedValue] = self::plannedEnumValue(
+                    $schema,
                     $values,
-                    static fn(mixed $value): bool => SchemaValueValidator::isValid($value, $schema),
-                ));
-                if ($admissible === []) {
-                    // The finite domain is provably exhausted; the
-                    // deterministic pick keeps untargeted cases loud.
-                    if ($forced) {
-                        $plan->observation->proveDeadEnd();
-                    }
-
-                    return $values[0];
-                }
-                if ($pinnedNullable !== null) {
-                    $wantNull = $pinnedNullable === SchemaChoicePoint::NULL_VALUE;
-                    if ($plan->targetPointer === $nullablePointer) {
-                        $plan->observation->expect(
-                            $pointer,
-                            static fn(mixed $value): bool => ($value === null) === $wantNull,
-                        );
-                    }
-                    $admissible = array_values(array_filter(
-                        $admissible,
-                        static fn(mixed $value): bool => ($value === null) === $wantNull,
-                    ));
-                    if ($admissible === []) {
-                        if ($forced) {
-                            $plan->observation->proveDeadEnd();
-                        }
-
-                        return $values[0];
-                    }
-                }
-                if ((isset($schema['not']) && is_array($schema['not'])) || $pinnedNullable !== null) {
-                    return $admissible[$iteration % count($admissible)];
+                    $iteration,
+                    $plan,
+                    $pinnedNullable,
+                    $nullablePointer,
+                    $pointer,
+                    $forced,
+                );
+                if ($handled) {
+                    return $plannedValue;
                 }
             }
 
@@ -797,6 +769,75 @@ final class SchemaDataGenerator
             'null' => null,
             default => null,
         };
+    }
+
+    /**
+     * Restrict a finite enum domain for planned generation while leaving
+     * plan-less rotation untouched.
+     *
+     * @param array<string, mixed> $schema
+     * @param list<mixed> $values
+     *
+     * @return array{bool, mixed} Whether the caller should return the value.
+     */
+    private static function plannedEnumValue(
+        array $schema,
+        array $values,
+        int $iteration,
+        CaseSelectionPlan $plan,
+        ?int $pinnedNullable,
+        string $nullablePointer,
+        string $pointer,
+        bool $forced,
+    ): array {
+        // The enum domain is finite, so admissibility against the node view
+        // (including any `not` pushed down by suppression) is decidable
+        // outright — complete and deterministic where iteration retries
+        // could miss the admissible tail of a long enum.
+        $admissible = array_values(array_filter(
+            $values,
+            static fn(mixed $value): bool => SchemaValueValidator::isValid($value, $schema),
+        ));
+        if ($admissible === []) {
+            // The finite domain is provably exhausted; the deterministic pick
+            // keeps untargeted cases loud.
+            if ($forced) {
+                $plan->observation->proveDeadEnd();
+            }
+
+            return [true, $values[0]];
+        }
+
+        if ($pinnedNullable !== null) {
+            $wantNull = $pinnedNullable === SchemaChoicePoint::NULL_VALUE;
+            if ($plan->targetPointer === $nullablePointer) {
+                $plan->observation->expect(
+                    $pointer,
+                    static fn(mixed $value): bool => ($value === null) === $wantNull,
+                );
+            }
+            $partition = [];
+            foreach ($admissible as $value) {
+                if (($value === null) === $wantNull) {
+                    $partition[] = $value;
+                }
+            }
+            if ($partition === []) {
+                if ($forced) {
+                    $plan->observation->proveDeadEnd();
+                }
+
+                return [true, $values[0]];
+            }
+
+            return [true, $partition[$iteration % count($partition)]];
+        }
+
+        if (isset($schema['not']) && is_array($schema['not'])) {
+            return [true, $admissible[$iteration % count($admissible)]];
+        }
+
+        return [false, null];
     }
 
     /**
