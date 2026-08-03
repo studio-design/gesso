@@ -24,5 +24,17 @@
         }
       }
     }
+  },
+  "components": {
+    "schemas": {
+      "DialectProbe": {
+        "type": "object",
+        "required": ["id"],
+        "properties": {
+          "id": {"type": "string"}
+        },
+        "unevaluatedProperties": false
+      }
+    }
   }
 }

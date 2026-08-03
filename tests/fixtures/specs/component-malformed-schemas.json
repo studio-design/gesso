@@ -1,0 +1,11 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Malformed component schemas fixture",
+    "version": "1.0.0"
+  },
+  "paths": {},
+  "components": {
+    "schemas": "invalid"
+  }
+}

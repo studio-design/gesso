@@ -5,11 +5,20 @@ declare(strict_types=1);
 namespace Studio\Gesso\Fuzz;
 
 use InvalidArgumentException;
+use Studio\Gesso\OpenApiVersion;
+use Studio\Gesso\SchemaContext;
 use Studio\Gesso\Spec\OpenApiOperationResolver;
+use Studio\Gesso\Spec\OpenApiSchemaConverter;
+use Studio\Gesso\Spec\OpenApiSchemaDialect;
+use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Validation\Response\ResponseSchemaResolution;
 use Studio\Gesso\Validation\Response\ResponseSchemaResolutionOutcome;
 use Studio\Gesso\Validation\Response\ResponseSchemaResolver;
+use Studio\Gesso\Validation\Support\DiscriminatorContext;
+use Studio\Gesso\Validation\Support\DiscriminatorEnforcement;
+use Studio\Gesso\Validation\Support\MalformedSpecNode;
 
+use function array_key_exists;
 use function array_keys;
 use function array_map;
 use function sprintf;
@@ -51,23 +60,105 @@ final class OpenApiResponseExplorer
             throw self::unsupportedResolution($specName, $method, $path, $status, $resolution);
         }
 
-        $schema = $resolution->convertedSchema();
-        $matchedPath = $resolution->matchedPath;
-        $resolvedContentType = $resolution->contentType;
-        $replayMethod = OpenApiOperationResolver::normalizeMethodForKey($method);
-        $effectiveSeed = $seed ?? 0;
+        return self::buildCases(
+            schema: $resolution->convertedSchema(),
+            effectiveSeed: $seed ?? 0,
+            extraCases: $extraCases,
+            specName: $specName,
+            status: $status,
+            contentType: $resolution->contentType,
+            method: OpenApiOperationResolver::normalizeMethodForKey($method),
+            matchedPath: $resolution->matchedPath,
+        );
+    }
+
+    /**
+     * Generate deterministic, branch-complete valid payloads for one named
+     * `components.schemas` entry, converted with response-side semantics.
+     */
+    public static function exploreComponent(
+        string $specName,
+        string $schemaName,
+        ?int $seed = null,
+        int $extraCases = 0,
+    ): GeneratedResponseCases {
+        if ($extraCases < 0) {
+            throw new InvalidArgumentException(sprintf(
+                'OpenApiResponseExplorer::exploreComponent() requires extraCases >= 0, got %d.',
+                $extraCases,
+            ));
+        }
+
+        $spec = OpenApiSpecLoader::load($specName);
+        $components = array_key_exists('components', $spec) ? $spec['components'] : [];
+        self::assertComponentNode($components, 'components', $specName);
+
+        /** @var array<array-key, mixed> $components */
+        $schemas = array_key_exists('schemas', $components) ? $components['schemas'] : [];
+        self::assertComponentNode($schemas, 'components.schemas', $specName);
+
+        /** @var array<array-key, mixed> $schemas */
+        if (!array_key_exists($schemaName, $schemas)) {
+            throw new InvalidArgumentException(sprintf(
+                "Component schema '%s' is not defined in '%s' spec.",
+                $schemaName,
+                $specName,
+            ));
+        }
+
+        $componentSchema = $schemas[$schemaName];
+        self::assertComponentNode(
+            $componentSchema,
+            sprintf('components.schemas["%s"]', $schemaName),
+            $specName,
+        );
+
+        /** @var array<string, mixed> $componentSchema */
+        $version = OpenApiVersion::fromSpec($spec);
+        $convertedSchema = OpenApiSchemaConverter::convert(
+            $componentSchema,
+            $version,
+            SchemaContext::Response,
+            new DiscriminatorContext($spec, DiscriminatorEnforcement::isEnabled()),
+            OpenApiSchemaDialect::fromSpec($spec, $version),
+        );
+
+        return self::buildCases(
+            schema: $convertedSchema,
+            effectiveSeed: $seed ?? 0,
+            extraCases: $extraCases,
+            specName: $specName,
+            schemaName: $schemaName,
+        );
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     */
+    private static function buildCases(
+        array $schema,
+        int $effectiveSeed,
+        int $extraCases,
+        string $specName,
+        ?int $status = null,
+        ?string $contentType = null,
+        ?string $method = null,
+        ?string $matchedPath = null,
+        ?string $schemaName = null,
+    ): GeneratedResponseCases {
         $plannedCases = BranchCompleteCaseGenerator::generate($schema, $effectiveSeed, $extraCases);
 
         return new GeneratedResponseCases(array_map(
             static function (PlannedSchemaCase $planned, int $caseIndex) use (
                 $status,
-                $resolvedContentType,
+                $contentType,
                 $effectiveSeed,
                 $specName,
-                $replayMethod,
+                $method,
                 $matchedPath,
                 $schema,
                 $extraCases,
+                $schemaName,
             ): GeneratedResponseCase {
                 $pointer = $planned->plan->targetPointer;
                 $branch = $planned->plan->targetBranch;
@@ -75,19 +166,34 @@ final class OpenApiResponseExplorer
                 return new GeneratedResponseCase(
                     body: $planned->value,
                     status: $status,
-                    contentType: $resolvedContentType,
+                    contentType: $contentType,
                     seed: $effectiveSeed,
                     caseIndex: $caseIndex,
                     pinnedBranch: $pointer !== null && $branch !== null ? $pointer . '@' . $branch : null,
                     specName: $specName,
-                    method: $replayMethod,
+                    method: $method,
                     matchedPath: $matchedPath,
                     schema: $schema,
                     extraCases: $extraCases,
+                    schemaName: $schemaName,
                 );
             },
             $plannedCases,
             array_keys($plannedCases),
+        ));
+    }
+
+    private static function assertComponentNode(mixed $node, string $location, string $specName): void
+    {
+        if (!MalformedSpecNode::isMalformed($node)) {
+            return;
+        }
+
+        throw new InvalidArgumentException(sprintf(
+            "Malformed '%s' in '%s' spec: expected object, got %s.",
+            $location,
+            $specName,
+            MalformedSpecNode::describe($node),
         ));
     }
 
