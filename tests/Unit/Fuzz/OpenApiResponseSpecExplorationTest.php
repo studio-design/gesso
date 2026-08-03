@@ -6,8 +6,10 @@ namespace Studio\Gesso\Tests\Unit\Fuzz;
 
 use InvalidArgumentException;
 use PHPUnit\Framework\AssertionFailedError;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+use RuntimeException;
 use Studio\Gesso\Fuzz\ExploredOperation;
 use Studio\Gesso\Fuzz\GeneratedResponseCase;
 use Studio\Gesso\Fuzz\OpenApiResponseExplorer;
@@ -234,6 +236,74 @@ final class OpenApiResponseSpecExplorationTest extends TestCase
         $this->expectExceptionMessage('exact status, range status, or default');
         OpenApiResponseExplorer::exploreSpec('sdk-roundtrip-plan')
             ->mapResponse('listPets', 'success', static fn(): null => null, static fn(): null => null);
+    }
+
+    #[Test]
+    public function aggregate_failure_distinguishes_decode_and_round_trip_failures(): void
+    {
+        $decodeAttempts = 0;
+        $roundTripAttempts = 0;
+
+        try {
+            OpenApiResponseExplorer::exploreSpec('sdk-roundtrip-plan', seed: 9)
+                ->includeOperations(['listPets', 'createPet'])
+                ->mapResponse(
+                    'listPets',
+                    200,
+                    static function () use (&$decodeAttempts): never {
+                        $decodeAttempts++;
+
+                        throw new RuntimeException('decoder rejected payload');
+                    },
+                    static fn(mixed $decoded): mixed => $decoded,
+                )
+                ->mapResponse(
+                    'createPet',
+                    201,
+                    static fn(GeneratedResponseCase $case): mixed => $case->bodyAsObject(),
+                    static function () use (&$roundTripAttempts): array {
+                        $roundTripAttempts++;
+
+                        return [];
+                    },
+                )
+                ->assertRoundTrips();
+            $this->fail('Expected aggregate SDK round-trip failure.');
+        } catch (AssertionFailedError $e) {
+            $this->assertStringContainsString('Decode failures', $e->getMessage());
+            $this->assertStringContainsString('decoder rejected payload', $e->getMessage());
+            $this->assertStringContainsString('Round-trip failures', $e->getMessage());
+            $this->assertStringContainsString('operation=createPet', $e->getMessage());
+            $this->assertStringContainsString('replay:', $e->getMessage());
+        }
+
+        $this->assertGreaterThanOrEqual(2, $decodeAttempts);
+        $this->assertGreaterThanOrEqual(1, $roundTripAttempts);
+    }
+
+    /**
+     * @return iterable<string, array{string, string}>
+     */
+    public static function malformed_spec_nodes(): iterable
+    {
+        yield 'responses map' => ['malformedResponses', "Malformed 'paths[\"/responses\"].get.responses'"];
+        yield 'response entry' => ['malformedResponse', "Malformed 'responses[200]'"];
+        yield 'content map' => ['malformedContent', "Malformed 'responses[200].content'"];
+        yield 'schema node' => ['malformedSchema', "Malformed 'responses[200].content[\"application/json\"].schema'"];
+    }
+
+    #[Test]
+    #[DataProvider('malformed_spec_nodes')]
+    public function malformed_spec_nodes_fail_at_the_shared_resolver_location(
+        string $operationId,
+        string $expectedLocation,
+    ): void {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage($expectedLocation);
+
+        OpenApiResponseExplorer::exploreSpec('sdk-roundtrip-plan-malformed')
+            ->includeOperations([$operationId])
+            ->assertRoundTrips();
     }
 
     /**

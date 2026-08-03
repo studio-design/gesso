@@ -1,0 +1,49 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Malformed spec-wide SDK round-trip plan fixture",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/responses": {
+      "get": {
+        "operationId": "malformedResponses",
+        "responses": "not an object"
+      }
+    },
+    "/response": {
+      "get": {
+        "operationId": "malformedResponse",
+        "responses": {
+          "200": "not an object"
+        }
+      }
+    },
+    "/content": {
+      "get": {
+        "operationId": "malformedContent",
+        "responses": {
+          "200": {
+            "description": "Malformed content",
+            "content": "not an object"
+          }
+        }
+      }
+    },
+    "/schema": {
+      "get": {
+        "operationId": "malformedSchema",
+        "responses": {
+          "200": {
+            "description": "Malformed schema",
+            "content": {
+              "application/json": {
+                "schema": "not an object"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -12,6 +12,7 @@ use Studio\Gesso\Validation\Response\ResponseSchemaResolution;
 use Studio\Gesso\Validation\Response\ResponseSchemaResolutionOutcome;
 use Studio\Gesso\Validation\Response\ResponseSchemaResolver;
 use Studio\Gesso\Validation\Support\ContentTypeMatcher;
+use Throwable;
 
 use function array_key_exists;
 use function array_keys;
@@ -99,6 +100,8 @@ final class OpenApiResponseSpecExploration
         $executedResponses = 0;
         $executedCases = 0;
         $operations = [];
+        $decodeFailures = [];
+        $roundTripFailures = [];
         $skips = [];
 
         foreach ($paths as $path => $pathItem) {
@@ -197,9 +200,37 @@ final class OpenApiResponseSpecExploration
                         );
 
                         foreach ($cases as $case) {
-                            $decoded = ($mapping['decode'])($case, $operation);
-                            $encoded = ($mapping['encode'])($decoded, $case, $operation);
-                            $case->assertRoundTrip($encoded);
+                            try {
+                                $decoded = ($mapping['decode'])($case, $operation);
+                            } catch (Throwable $failure) {
+                                $decodeFailures[] = self::failure(
+                                    $operation,
+                                    $target['status'],
+                                    $target['wireStatus'],
+                                    $resolution->contentType,
+                                    $case,
+                                    $failure,
+                                );
+
+                                continue;
+                            }
+
+                            try {
+                                $encoded = ($mapping['encode'])($decoded, $case, $operation);
+                                $case->assertRoundTrip($encoded);
+                            } catch (Throwable $failure) {
+                                $roundTripFailures[] = self::failure(
+                                    $operation,
+                                    $target['status'],
+                                    $target['wireStatus'],
+                                    $resolution->contentType,
+                                    $case,
+                                    $failure,
+                                );
+
+                                continue;
+                            }
+
                             $executedCases++;
                         }
 
@@ -226,13 +257,13 @@ final class OpenApiResponseSpecExploration
             executedResponses: $executedResponses,
             executedCases: $executedCases,
             operations: $operations,
-            decodeFailures: [],
-            roundTripFailures: [],
+            decodeFailures: $decodeFailures,
+            roundTripFailures: $roundTripFailures,
             skips: $skips,
         );
 
-        if ($this->failOnUnmapped && $summary->hasMappingGaps()) {
-            Assert::fail(self::mappingGapMessage($summary));
+        if ($summary->hasFailures() || ($this->failOnUnmapped && $summary->hasMappingGaps())) {
+            Assert::fail(self::failureMessage($summary, $this->failOnUnmapped));
         }
 
         return $summary;
@@ -416,24 +447,85 @@ final class OpenApiResponseSpecExploration
         );
     }
 
-    private static function mappingGapMessage(ResponseSpecExplorationSummary $summary): string
-    {
-        $lines = ['Unmapped response schemas:'];
-        foreach ($summary->skips as $skip) {
-            if (!$skip->mappingGap) {
-                continue;
-            }
+    private static function failure(
+        ExploredOperation $operation,
+        string $status,
+        int $wireStatus,
+        string $contentType,
+        GeneratedResponseCase $case,
+        Throwable $failure,
+    ): ResponseSpecExplorationFailure {
+        return new ResponseSpecExplorationFailure(
+            $operation,
+            $status,
+            $wireStatus,
+            $contentType,
+            $case->caseIndex,
+            $case->seed,
+            $case->pinnedBranch,
+            $case->replaySnippet(),
+            $failure->getMessage(),
+            $failure,
+        );
+    }
 
-            $lines[] = sprintf(
-                '- %s %s operation=%s status=%s content-type=%s',
-                $skip->operation->method,
-                $skip->operation->path,
-                $skip->operation->operationId ?? '(none)',
-                $skip->status,
-                $skip->contentType ?? '(none)',
-            );
+    private static function failureMessage(ResponseSpecExplorationSummary $summary, bool $includeMappingGaps): string
+    {
+        $sections = [];
+
+        if ($summary->decodeFailures !== []) {
+            $lines = ['Decode failures:'];
+            foreach ($summary->decodeFailures as $failure) {
+                $lines[] = self::failureLine($failure);
+            }
+            $sections[] = implode("\n", $lines);
         }
 
-        return implode("\n", $lines);
+        if ($summary->roundTripFailures !== []) {
+            $lines = ['Round-trip failures:'];
+            foreach ($summary->roundTripFailures as $failure) {
+                $lines[] = self::failureLine($failure);
+            }
+            $sections[] = implode("\n", $lines);
+        }
+
+        if ($includeMappingGaps && $summary->hasMappingGaps()) {
+            $lines = ['Unmapped response schemas:'];
+            foreach ($summary->skips as $skip) {
+                if (!$skip->mappingGap) {
+                    continue;
+                }
+
+                $lines[] = sprintf(
+                    '- %s %s operation=%s status=%s content-type=%s',
+                    $skip->operation->method,
+                    $skip->operation->path,
+                    $skip->operation->operationId ?? '(none)',
+                    $skip->status,
+                    $skip->contentType ?? '(none)',
+                );
+            }
+            $sections[] = implode("\n", $lines);
+        }
+
+        return implode("\n\n", $sections);
+    }
+
+    private static function failureLine(ResponseSpecExplorationFailure $failure): string
+    {
+        return sprintf(
+            '- %s %s operation=%s status=%s wire-status=%d content-type=%s seed=%d case=%d pinned=%s: %s; replay: %s',
+            $failure->operation->method,
+            $failure->operation->path,
+            $failure->operation->operationId ?? '(none)',
+            $failure->status,
+            $failure->wireStatus,
+            $failure->contentType,
+            $failure->seed,
+            $failure->caseIndex,
+            $failure->pinnedBranch ?? 'none',
+            $failure->message,
+            $failure->replay,
+        );
     }
 }
