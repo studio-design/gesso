@@ -19,10 +19,10 @@ use Closure;
  * spot (property presence after the maxProperties trim) report directly.
  *
  * `targetLocal` keeps the node-level outcome at the target site — the value
- * the check ran on, or the reported state. The target search compares it
- * across attempts: identical failing outcomes mean generation is
- * deterministic for this case and the branch is a proven dead end; varying
- * outcomes mean the search cannot conclude and must fail loudly.
+ * the check ran on, or the reported state — for diagnostics only. A case may
+ * be dropped solely when generation records a schema-derived empty-domain
+ * proof through {@see self::proveDeadEnd()}. Search exhaustion, repeated
+ * output, or deterministic failure without that proof must stay loud.
  *
  * A composition site also stages its branch content here when the plan asks
  * for a refinement attempt ({@see CaseSelectionPlan::$refineTarget}); the

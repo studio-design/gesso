@@ -11,6 +11,8 @@ use Studio\Gesso\Fuzz\SchemaChoicePoint;
 use Studio\Gesso\Fuzz\SchemaChoicePointEnumerator;
 use Studio\Gesso\Fuzz\SchemaChoicePointKind;
 
+use function array_fill;
+
 class SchemaChoicePointEnumeratorTest extends TestCase
 {
     #[Test]
@@ -488,6 +490,20 @@ class SchemaChoicePointEnumeratorTest extends TestCase
         SchemaChoicePointEnumerator::enumerate([
             'type' => 'object',
             'properties' => $properties,
+        ]);
+    }
+
+    #[Test]
+    public function throws_beyond_the_documented_node_visit_budget(): void
+    {
+        $prefixItems = array_fill(0, 10_000, ['type' => 'string']);
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('node-visit budget of 10000');
+
+        SchemaChoicePointEnumerator::enumerate([
+            'type' => 'array',
+            'prefixItems' => $prefixItems,
         ]);
     }
 

@@ -241,6 +241,11 @@ currently strategies. Those keywords remain validator features; an operation
 whose valid value cannot be synthesized fails locally with a supported-subset
 diagnostic or is an explicit whole-spec skip carrying that reason.
 
+Branch-complete response enumeration is bounded to 32 nested property/item
+levels, 256 collected choice points, and 10,000 visited schema nodes across all
+branch contexts. Exceeding any limit fails locally with a supported-subset
+diagnostic; Gesso never returns partial branch coverage.
+
 - Request cases alternate optional object properties between included and omitted. Response payload exploration pins both presence branches for every reachable optional property.
 - Required keys are always emitted.
 - Path resolution accepts both the spec template form (`/v1/pets/{petId}`) and concrete URIs that match it (`/api/v1/pets/123` with `strip_prefixes=/api`). Captured URI values are intentionally discarded — `pathParams` is always regenerated from the operation spec for consistency.
