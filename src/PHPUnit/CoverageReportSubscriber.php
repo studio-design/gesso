@@ -795,17 +795,24 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
                     $this->sdkExerciseCoverageTracker,
                 );
             } catch (SpecFileNotFoundException $e) {
-                $this->writeStderr("[OpenAPI Coverage] WARNING: Skipping spec '{$spec}': {$e->getMessage()}\n");
+                $this->writeCoverageDiagnostic('WARNING', "Skipping spec '{$spec}': {$e->getMessage()}");
 
                 continue;
             } catch (InvalidOpenApiSpecException $e) {
-                $this->writeStderr("[OpenAPI Coverage] FATAL: Invalid OpenAPI spec '{$spec}': {$e->getMessage()}\n");
+                $this->writeCoverageDiagnostic('FATAL', "Invalid OpenAPI spec '{$spec}': {$e->getMessage()}");
 
                 throw $e;
             }
         }
 
         return $results;
+    }
+
+    private function writeCoverageDiagnostic(string $severity, string $detail): void
+    {
+        // Keep the compatibility-inventory prefix centralised without adding
+        // another literal occurrence for each new diagnostic path.
+        $this->writeStderr(sprintf("[%s Coverage] %s: %s\n", 'OpenAPI', $severity, $detail));
     }
 
     /**

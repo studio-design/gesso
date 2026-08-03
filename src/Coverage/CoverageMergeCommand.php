@@ -433,12 +433,14 @@ final class CoverageMergeCommand
         }
 
         if ($minSdkExercisePct !== null && $sidecarsWithoutSdkExercise > 0) {
-            $this->writeStderr(sprintf(
-                '[OpenAPI Coverage] %s: %d worker sidecar(s) have no SDK exercise state; '
-                . "the merged SDK exercise gate may be incomplete. Upgrade every worker to the v6/v7 sidecar envelope.\n",
+            $this->writeCoverageDiagnostic(
                 $minStrict ? 'FATAL' : 'WARNING',
-                $sidecarsWithoutSdkExercise,
-            ));
+                sprintf(
+                    '%d worker sidecar(s) have no SDK exercise state; '
+                    . 'the merged SDK exercise gate may be incomplete. Upgrade every worker to the v6/v7 sidecar envelope.',
+                    $sidecarsWithoutSdkExercise,
+                ),
+            );
             if ($minStrict) {
                 return 1;
             }
@@ -483,10 +485,10 @@ final class CoverageMergeCommand
 
         $httpThresholdUnavailable = $results === [] && ($minEndpointPct !== null || $minResponsePct !== null);
         if ($httpThresholdUnavailable) {
-            $this->writeStderr(sprintf(
-                "[OpenAPI Coverage] %s: no contract test coverage was recorded; configured HTTP threshold cannot be evaluated.\n",
+            $this->writeCoverageDiagnostic(
                 $minStrict ? 'FATAL' : 'WARNING',
-            ));
+                'no contract test coverage was recorded; configured HTTP threshold cannot be evaluated.',
+            );
         }
         $thresholdFailure = ($httpThresholdUnavailable && $minStrict) || $this->evaluateThresholdGate(
             $results,
@@ -968,9 +970,9 @@ final class CoverageMergeCommand
             try {
                 $results[$spec] = SdkExerciseCoverageReportBuilder::build($spec, $tracker);
             } catch (SpecFileNotFoundException $e) {
-                $this->writeStderr(sprintf("[OpenAPI Coverage] WARNING: Skipping spec '%s': %s\n", $spec, $e->getMessage()));
+                $this->writeCoverageDiagnostic('WARNING', sprintf("Skipping spec '%s': %s", $spec, $e->getMessage()));
             } catch (InvalidOpenApiSpecException $e) {
-                $this->writeStderr(sprintf("[OpenAPI Coverage] FATAL: Invalid OpenAPI spec '%s': %s\n", $spec, $e->getMessage()));
+                $this->writeCoverageDiagnostic('FATAL', sprintf("Invalid OpenAPI spec '%s': %s", $spec, $e->getMessage()));
 
                 throw $e;
             }
