@@ -43,6 +43,35 @@ Omit `contentType` to select the first JSON-compatible media type exactly as
 response validation does. Status resolution also shares validator behavior:
 an exact response key wins, followed by an `X00` range key and `default`.
 
+## Named component models
+
+Some generated SDK models map directly to `components.schemas` entries and are
+not reachable through one useful operation/status pair. Select those models by
+their exact, case-sensitive component name:
+
+```php
+OpenApiResponseExplorer::exploreComponent(
+    specName: 'front',
+    schemaName: 'IntrospectResponse',
+    seed: 1,
+)->each(function (GeneratedResponseCase $case): void {
+    $model = ObjectSerializer::deserialize(
+        $case->bodyAsObject(),
+        IntrospectResponse::class,
+    );
+
+    $case->assertRoundTrip(
+        ObjectSerializer::sanitizeForSerialization($model),
+    );
+});
+```
+
+Component schemas use the spec's OpenAPI version, JSON Schema dialect,
+response-side read/write semantics, and discriminator context. The returned
+cases have `null` `status` and `contentType`, while `replaySnippet()` records an
+`exploreComponent()` call. Unknown, malformed, recursive, and otherwise
+unsupported component schemas throw instead of producing an empty green run.
+
 ## Laravel
 
 The `ExploresOpenApiEndpoint` trait uses the same spec-name precedence as the
@@ -108,10 +137,10 @@ effective seed is stored on every case and included in `replaySnippet()`.
 | `body` | Raw generated PHP value |
 | `bodyAsObject()` | JSON round-trip with objects decoded as `stdClass`; arrays and scalars retain their JSON shape |
 | `bodyAsArray()` | Associative decoded form for object/array bodies; scalar bodies throw |
-| `status`, `contentType` | Selected wire status and declared media-type key |
+| `status`, `contentType` | Selected wire status and declared media-type key; both are `null` for named components |
 | `seed`, `caseIndex` | Deterministic replay identity |
 | `pinnedBranch` | Target JSON Pointer plus zero-based branch, for example `/properties/aud/oneOf@0`; `null` for an extra case |
-| `replaySnippet()` | Minimal `OpenApiResponseExplorer::explore(...)` reproduction |
+| `replaySnippet()` | Minimal `explore(...)` or `exploreComponent(...)` reproduction |
 
 `assertRoundTrip()` makes two assertions in order:
 
@@ -138,6 +167,6 @@ shapes that cannot represent one buffered JSON document throw
 - selected non-JSON schemas; and
 - OpenAPI 3.2 streaming responses using `itemSchema`.
 
-Named component exploration, spec-wide SDK mapping, and SDK exercise coverage
-are separate follow-up phases; this entry point intentionally targets one
-resolved operation response at a time.
+Spec-wide SDK mapping and SDK exercise coverage remain separate follow-up
+phases. Use `explore()` for one resolved operation response or
+`exploreComponent()` for one named model schema.

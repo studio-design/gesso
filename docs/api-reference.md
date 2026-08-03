@@ -154,8 +154,32 @@ $cases->each(function (GeneratedResponseCase $case): void {
 });
 ```
 
+To exercise an SDK model by its exact, case-sensitive
+`components.schemas` name without inventing an operation, use the same facade:
+
+```php
+$cases = OpenApiResponseExplorer::exploreComponent(
+    specName: 'front',
+    schemaName: 'IntrospectResponse',
+    seed: 1,
+    extraCases: 2,
+);
+
+$cases->each(function (GeneratedResponseCase $case): void {
+    $decoded = sdk_decode($case->bodyAsObject());
+    $case->assertRoundTrip(sdk_encode($decoded));
+});
+```
+
+Named components are converted with the spec's OpenAPI version and JSON Schema
+dialect, response-side read/write semantics, and discriminator context. Their
+cases have `null` `status` and `contentType` because no operation was selected;
+`replaySnippet()` renders the corresponding `exploreComponent()` call.
+Unknown, malformed, recursive, and otherwise unsupported schemas throw loudly
+instead of returning an empty collection.
+
 The collection is `Countable` and `IteratorAggregate`. Each readonly case
-exposes `body`, `status`, `contentType`, `seed`, `caseIndex`, and
+exposes `body`, nullable `status` and `contentType`, `seed`, `caseIndex`, and
 `pinnedBranch`; `bodyAsObject()` supplies decoded JSON shapes to SDKs,
 `bodyAsArray()` supports array-typed consumers, and `replaySnippet()` renders a
 focused reproduction. `assertRoundTrip()` first validates the SDK output

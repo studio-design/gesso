@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace Studio\Gesso\Tests\Unit\Fuzz;
 
 use InvalidArgumentException;
+use PHPUnit\Framework\AssertionFailedError;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+use Studio\Gesso\Exception\InvalidOpenApiSpecException;
 use Studio\Gesso\Fuzz\GeneratedResponseCase;
 use Studio\Gesso\Fuzz\GeneratedResponseCases;
 use Studio\Gesso\Fuzz\OpenApiResponseExplorer;
@@ -53,6 +55,152 @@ class OpenApiResponseExplorerTest extends TestCase
         yield 'unknown path' => ['/unknown', 'GET', 200, 'PathNotFound'];
         yield 'unknown method' => ['/oauth/introspect', 'GET', 200, 'MethodNotDefined'];
         yield 'unknown status' => ['/oauth/introspect', 'POST', 201, 'StatusNotDeclared'];
+    }
+
+    /**
+     * @return iterable<string, array{string, string, string}>
+     */
+    public static function provideRejects_unknown_or_malformed_component_schemas_loudlyCases(): iterable
+    {
+        yield 'unknown schema name' => [
+            'sdk-roundtrip',
+            'MissingSchema',
+            "Component schema 'MissingSchema' is not defined in 'sdk-roundtrip' spec",
+        ];
+        yield 'malformed components' => [
+            'component-malformed-components',
+            'Model',
+            "Malformed 'components' in 'component-malformed-components' spec: expected object, got string",
+        ];
+        yield 'malformed schemas' => [
+            'component-malformed-schemas',
+            'Model',
+            "Malformed 'components.schemas' in 'component-malformed-schemas' spec: expected object, got string",
+        ];
+        yield 'malformed selected schema' => [
+            'sdk-roundtrip',
+            'MalformedSchema',
+            "Malformed 'components.schemas[\"MalformedSchema\"]' in 'sdk-roundtrip' spec: expected object, got string",
+        ];
+    }
+
+    #[Test]
+    public function explores_a_named_component_with_branch_complete_cases_and_no_operation_metadata(): void
+    {
+        $cases = OpenApiResponseExplorer::exploreComponent(
+            'sdk-roundtrip',
+            'IntrospectResponse',
+            seed: 1,
+            extraCases: 1,
+        );
+
+        $this->assertSame(
+            [
+                '/properties/aud@0',
+                '/properties/aud@1',
+                '/properties/aud/oneOf@0',
+                '/properties/aud/oneOf@1',
+            ],
+            array_values(array_filter(array_map(
+                static fn(GeneratedResponseCase $case): ?string => $case->pinnedBranch,
+                $cases->cases,
+            ))),
+        );
+        foreach ($cases as $case) {
+            $this->assertNull($case->status);
+            $this->assertNull($case->contentType);
+            $this->assertArrayNotHasKey('secret', $case->bodyAsArray() ?? []);
+        }
+        $this->assertStringContainsString(
+            "OpenApiResponseExplorer::exploreComponent('sdk-roundtrip', 'IntrospectResponse', seed: 1, extraCases: 1)",
+            $cases->cases[0]->replaySnippet(),
+        );
+    }
+
+    #[Test]
+    public function component_cases_keep_the_existing_round_trip_fidelity_assertion(): void
+    {
+        $case = OpenApiResponseExplorer::exploreComponent(
+            'sdk-roundtrip',
+            'IntrospectResponse',
+            seed: 1,
+        )->cases[2];
+        $body = $case->bodyAsArray();
+        $this->assertIsArray($body);
+        $case->assertRoundTrip($body);
+
+        unset($body['aud']);
+        $this->expectException(AssertionFailedError::class);
+        $this->expectExceptionMessage("missing generated key 'aud'");
+        $case->assertRoundTrip($body);
+    }
+
+    #[Test]
+    public function component_conversion_uses_the_document_json_schema_dialect(): void
+    {
+        $case = OpenApiResponseExplorer::exploreComponent(
+            'dialect-draft07',
+            'DialectProbe',
+            seed: 1,
+        )->cases[0];
+        $body = $case->bodyAsArray();
+
+        $this->assertIsArray($body);
+        $case->assertRoundTrip([...$body, 'sdkExtra' => 'allowed by Draft 07']);
+        $this->addToAssertionCount(1);
+    }
+
+    #[Test]
+    public function component_discriminator_mapping_resolves_against_the_document_root(): void
+    {
+        $cases = OpenApiResponseExplorer::exploreComponent(
+            'sdk-roundtrip',
+            'JsonWebKey',
+            seed: 1,
+        );
+        $encoded = json_encode(array_map(
+            static fn(GeneratedResponseCase $case): mixed => $case->body,
+            $cases->cases,
+        ));
+
+        $this->assertIsString($encoded);
+        $this->assertStringContainsString('RSA', $encoded);
+        $this->assertStringContainsString('EC', $encoded);
+    }
+
+    #[Test]
+    #[DataProvider('provideRejects_unknown_or_malformed_component_schemas_loudlyCases')]
+    public function rejects_unknown_or_malformed_component_schemas_loudly(
+        string $specName,
+        string $schemaName,
+        string $message,
+    ): void {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage($message);
+
+        OpenApiResponseExplorer::exploreComponent($specName, $schemaName);
+    }
+
+    #[Test]
+    public function rejects_negative_component_extra_cases_at_the_public_boundary(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('OpenApiResponseExplorer::exploreComponent() requires extraCases >= 0');
+
+        OpenApiResponseExplorer::exploreComponent(
+            'sdk-roundtrip',
+            'IntrospectResponse',
+            extraCases: -1,
+        );
+    }
+
+    #[Test]
+    public function rejects_recursive_component_schemas_loudly(): void
+    {
+        $this->expectException(InvalidOpenApiSpecException::class);
+        $this->expectExceptionMessage('Circular $ref');
+
+        OpenApiResponseExplorer::exploreComponent('refs-circular', 'Node');
     }
 
     #[Test]

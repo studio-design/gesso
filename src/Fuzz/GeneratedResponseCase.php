@@ -31,16 +31,17 @@ final readonly class GeneratedResponseCase
      */
     public function __construct(
         public mixed $body,
-        public int $status,
-        public string $contentType,
+        public ?int $status,
+        public ?string $contentType,
         public int $seed,
         public int $caseIndex,
         public ?string $pinnedBranch,
         private string $specName,
-        private string $method,
-        private string $matchedPath,
+        private ?string $method,
+        private ?string $matchedPath,
         private array $schema,
         private int $extraCases = 0,
+        private ?string $schemaName = null,
     ) {}
 
     /**
@@ -119,6 +120,21 @@ final readonly class GeneratedResponseCase
     public function replaySnippet(): string
     {
         $extraCases = $this->extraCases > 0 ? sprintf(', extraCases: %d', $this->extraCases) : '';
+
+        if ($this->schemaName !== null) {
+            return sprintf(
+                'OpenApiResponseExplorer::exploreComponent(%s, %s, seed: %d%s)->cases[%d]',
+                var_export($this->specName, true),
+                var_export($this->schemaName, true),
+                $this->seed,
+                $extraCases,
+                $this->caseIndex,
+            );
+        }
+
+        if ($this->status === null || $this->contentType === null || $this->method === null || $this->matchedPath === null) {
+            throw new LogicException('GeneratedResponseCase replay metadata does not identify an operation response or component schema.');
+        }
 
         return sprintf(
             'OpenApiResponseExplorer::explore(%s, %s, %s, %d, %s, seed: %d%s)->cases[%d]',
