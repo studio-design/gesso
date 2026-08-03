@@ -8,6 +8,7 @@ use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Studio\Gesso\Coverage\CoverageThresholdEvaluator;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
+use Studio\Gesso\Coverage\SdkExerciseCoverageReportBuilder;
 
 use function explode;
 use function str_repeat;
@@ -16,6 +17,7 @@ use function trim;
 
 /**
  * @phpstan-import-type CoverageResult from OpenApiCoverageTracker
+ * @phpstan-import-type SdkExerciseCoverageResult from SdkExerciseCoverageReportBuilder
  */
 class CoverageThresholdEvaluatorTest extends TestCase
 {
@@ -26,8 +28,10 @@ class CoverageThresholdEvaluatorTest extends TestCase
             results: [
                 'front' => self::counts(endpointFullyCovered: 8, endpointTotal: 10, responseCovered: 7, responseTotal: 10),
             ],
+            sdkResults: [],
             minEndpointPct: 80.0,
             minResponsePct: 70.0,
+            minSdkExercisePct: null,
             strict: true,
         );
 
@@ -51,8 +55,10 @@ class CoverageThresholdEvaluatorTest extends TestCase
             results: [
                 'front' => self::counts(endpointFullyCovered: 67, endpointTotal: 99, responseCovered: 80, responseTotal: 100),
             ],
+            sdkResults: [],
             minEndpointPct: 80.0,
             minResponsePct: 70.0,
+            minSdkExercisePct: null,
             strict: true,
         );
 
@@ -73,8 +79,10 @@ class CoverageThresholdEvaluatorTest extends TestCase
             results: [
                 'front' => self::counts(endpointFullyCovered: 9, endpointTotal: 10, responseCovered: 5, responseTotal: 10),
             ],
+            sdkResults: [],
             minEndpointPct: 80.0,
             minResponsePct: 70.0,
+            minSdkExercisePct: null,
             strict: true,
         );
 
@@ -90,8 +98,10 @@ class CoverageThresholdEvaluatorTest extends TestCase
             results: [
                 'front' => self::counts(endpointFullyCovered: 5, endpointTotal: 10, responseCovered: 5, responseTotal: 10),
             ],
+            sdkResults: [],
             minEndpointPct: 80.0,
             minResponsePct: 70.0,
+            minSdkExercisePct: null,
             strict: true,
         );
 
@@ -107,8 +117,10 @@ class CoverageThresholdEvaluatorTest extends TestCase
             results: [
                 'front' => self::counts(endpointFullyCovered: 5, endpointTotal: 10, responseCovered: 5, responseTotal: 10),
             ],
+            sdkResults: [],
             minEndpointPct: 80.0,
             minResponsePct: null,
+            minSdkExercisePct: null,
             strict: false,
         );
 
@@ -124,8 +136,10 @@ class CoverageThresholdEvaluatorTest extends TestCase
             results: [
                 'front' => self::counts(endpointFullyCovered: 5, endpointTotal: 10, responseCovered: 5, responseTotal: 10),
             ],
+            sdkResults: [],
             minEndpointPct: 80.0,
             minResponsePct: null, // not configured
+            minSdkExercisePct: null,
             strict: true,
         );
 
@@ -143,8 +157,10 @@ class CoverageThresholdEvaluatorTest extends TestCase
             results: [
                 'front' => self::counts(endpointFullyCovered: 0, endpointTotal: 100, responseCovered: 0, responseTotal: 100),
             ],
+            sdkResults: [],
             minEndpointPct: null,
             minResponsePct: null,
+            minSdkExercisePct: null,
             strict: true,
         );
 
@@ -163,8 +179,10 @@ class CoverageThresholdEvaluatorTest extends TestCase
             results: [
                 'front' => self::counts(endpointFullyCovered: 0, endpointTotal: 0, responseCovered: 0, responseTotal: 0),
             ],
+            sdkResults: [],
             minEndpointPct: 80.0,
             minResponsePct: 70.0,
+            minSdkExercisePct: null,
             strict: true,
         );
 
@@ -183,8 +201,10 @@ class CoverageThresholdEvaluatorTest extends TestCase
                 'front' => self::counts(endpointFullyCovered: 10, endpointTotal: 20, responseCovered: 30, responseTotal: 40),
                 'admin' => self::counts(endpointFullyCovered: 5, endpointTotal: 30, responseCovered: 10, responseTotal: 60),
             ],
+            sdkResults: [],
             minEndpointPct: 80.0,
             minResponsePct: 50.0,
+            minSdkExercisePct: null,
             strict: true,
         );
 
@@ -205,8 +225,10 @@ class CoverageThresholdEvaluatorTest extends TestCase
             results: [
                 'front' => self::counts(endpointFullyCovered: 8, endpointTotal: 10, responseCovered: 8, responseTotal: 10),
             ],
+            sdkResults: [],
             minEndpointPct: 80.0,
             minResponsePct: 80.0,
+            minSdkExercisePct: null,
             strict: true,
         );
 
@@ -223,8 +245,10 @@ class CoverageThresholdEvaluatorTest extends TestCase
             results: [
                 'front' => self::counts(endpointFullyCovered: 5, endpointTotal: 10, responseCovered: 7, responseTotal: 10),
             ],
+            sdkResults: [],
             minEndpointPct: 80.0,
             minResponsePct: 60.0,
+            minSdkExercisePct: null,
             strict: true,
         );
 
@@ -236,6 +260,83 @@ class CoverageThresholdEvaluatorTest extends TestCase
         // same column as "endpoint".
         $this->assertSame(str_repeat(' ', 25), substr($lines[1], 0, 25));
         $this->assertStringStartsWith('response coverage', substr($lines[1], 25));
+    }
+
+    #[Test]
+    public function evaluates_an_sdk_only_threshold_across_specs(): void
+    {
+        $result = CoverageThresholdEvaluator::evaluate(
+            results: [],
+            sdkResults: [
+                'front' => self::sdkCounts(exercised: 3, total: 4),
+                'admin' => self::sdkCounts(exercised: 1, total: 1),
+            ],
+            minEndpointPct: null,
+            minResponsePct: null,
+            minSdkExercisePct: 80.0,
+            strict: true,
+        );
+
+        $this->assertTrue($result['passed']);
+        $this->assertNull($result['endpoint']);
+        $this->assertNull($result['response']);
+        $this->assertNotNull($result['sdkExercise']);
+        $this->assertSame(80.0, $result['sdkExercise']['percent']);
+        $this->assertTrue($result['sdkExercise']['ok']);
+    }
+
+    #[Test]
+    public function reports_sdk_miss_alongside_passing_http_metrics(): void
+    {
+        $result = CoverageThresholdEvaluator::evaluate(
+            results: [
+                'front' => self::counts(endpointFullyCovered: 10, endpointTotal: 10, responseCovered: 9, responseTotal: 10),
+            ],
+            sdkResults: ['front' => self::sdkCounts(exercised: 1, total: 2)],
+            minEndpointPct: 100.0,
+            minResponsePct: 90.0,
+            minSdkExercisePct: 100.0,
+            strict: false,
+        );
+
+        $this->assertFalse($result['passed']);
+        $this->assertStringContainsString('endpoint coverage 100% (>= 100%, ok)', $result['message']);
+        $this->assertStringContainsString('response coverage 90% (>= 90%, ok)', $result['message']);
+        $this->assertStringContainsString('SDK exercise coverage 50% < threshold 100%', $result['message']);
+        $this->assertStringContainsString('[OpenAPI Coverage] WARN:', $result['message']);
+    }
+
+    #[Test]
+    public function sdk_zero_percent_meets_a_zero_threshold(): void
+    {
+        $result = CoverageThresholdEvaluator::evaluate(
+            results: [],
+            sdkResults: ['front' => self::sdkCounts(exercised: 0, total: 2)],
+            minEndpointPct: null,
+            minResponsePct: null,
+            minSdkExercisePct: 0.0,
+            strict: true,
+        );
+
+        $this->assertTrue($result['passed']);
+    }
+
+    #[Test]
+    public function empty_sdk_denominator_is_an_unevaluable_miss(): void
+    {
+        $result = CoverageThresholdEvaluator::evaluate(
+            results: [],
+            sdkResults: ['front' => self::sdkCounts(exercised: 0, total: 0)],
+            minEndpointPct: null,
+            minResponsePct: null,
+            minSdkExercisePct: 0.0,
+            strict: true,
+        );
+
+        $this->assertFalse($result['passed']);
+        $this->assertNotNull($result['sdkExercise']);
+        $this->assertFalse($result['sdkExercise']['ok']);
+        $this->assertStringContainsString('SDK exercise coverage cannot be evaluated (no eligible response schemas)', $result['message']);
     }
 
     /**
@@ -263,6 +364,18 @@ class CoverageThresholdEvaluatorTest extends TestCase
             'responseCovered' => $responseCovered,
             'responseSkipped' => 0,
             'responseUncovered' => 0,
+        ];
+    }
+
+    /** @return SdkExerciseCoverageResult */
+    private static function sdkCounts(int $exercised, int $total): array
+    {
+        return [
+            'responses' => [],
+            'responseTotal' => $total,
+            'responseExercised' => $exercised,
+            'responseUnexercised' => $total - $exercised,
+            'unexpectedObservations' => [],
         ];
     }
 }

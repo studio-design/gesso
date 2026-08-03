@@ -24,6 +24,7 @@ use Studio\Gesso\Coverage\JsonCoverageRenderer;
 use Studio\Gesso\Coverage\JUnitCoverageRenderer;
 use Studio\Gesso\Coverage\MarkdownCoverageRenderer;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
+use Studio\Gesso\Coverage\SdkExerciseCoverageReportBuilder;
 use Studio\Gesso\Coverage\SdkExerciseCoverageTracker;
 use Studio\Gesso\Exception\InvalidOpenApiSpecException;
 use Studio\Gesso\Exception\SpecFileNotFoundException;
@@ -49,7 +50,13 @@ use function trim;
 
 /**
  * @phpstan-import-type CoverageResult from OpenApiCoverageTracker
- * @phpstan-import-type CoverageReportEntry from OpenApiCoverageTracker
+ * @phpstan-import-type SdkExerciseCoverageResult from SdkExerciseCoverageReportBuilder
+ *
+ * @phpstan-type SubscriberReportEntry array{
+ *     label: string,
+ *     renderer: callable(array<string, CoverageResult>, array<string, SdkExerciseCoverageResult>): string,
+ *     outputFile: ?string,
+ * }
  *
  * @internal Not part of the package's public API. Do not use from user code.
  */
@@ -79,6 +86,7 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
      *                                        (rolled across `$specs`) is below this percent, the subscriber prints
      *                                        a FAIL/WARN line. See issue #135.
      * @param null|float $minResponseCoverage Same idea, but at `(method, path, status, content-type)` granularity.
+     * @param null|float $minSdkExerciseCoverage Gate SDK decoder exercise at eligible response-schema granularity.
      * @param bool $minCoverageStrict Treat threshold misses as exit non-zero (default warn-only).
      * @param null|callable(int): void $exitHandler Test seam for the strict-miss exit. Defaults to native `exit()`
      *                                              so production behavior matches PHPUnit's own coverage gate.
@@ -114,6 +122,7 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
         private ?string $sidecarDir = null,
         private ?float $minEndpointCoverage = null,
         private ?float $minResponseCoverage = null,
+        private ?float $minSdkExerciseCoverage = null,
         private bool $minCoverageStrict = false,
         private mixed $exitHandler = null,
         private ?string $junitOutput = null,
@@ -155,11 +164,12 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
         }
 
         $results = $this->computeAllResults();
+        $sdkResults = $this->computeAllSdkResults();
 
         // Free cached spec data now that coverage has been computed
         OpenApiSpecLoader::clearCache();
 
-        if ($results === []) {
+        if ($results === [] && $sdkResults === []) {
             // C2: a strict CI gate must not silently pass when zero contract
             // assertions ran. Pre-fix, this branch quietly returned 0 even
             // though the user had opted into fail-fast via min_*_coverage.
@@ -172,15 +182,19 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
             return;
         }
 
-        echo ConsoleCoverageRenderer::render($results, $this->consoleOutput);
+        echo ConsoleCoverageRenderer::render($results, $this->consoleOutput, $sdkResults);
 
-        $this->writeReports($results);
+        $this->writeReports($results, $sdkResults);
 
         $this->writeBaselineFile();
 
         $this->reportBaselineEnforcement();
 
-        $this->evaluateThresholdGate($results);
+        if ($results === [] && ($this->minEndpointCoverage !== null || $this->minResponseCoverage !== null)) {
+            $this->failOnEmptyResultsIfGated(httpOnly: true);
+        } else {
+            $this->evaluateThresholdGate($results, $sdkResults);
+        }
 
         // Issue #224: schema under-description detection runs after coverage
         // rendering so a strict-mode fail does not suppress the coverage
@@ -343,10 +357,15 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
      * for paratest, so this method runs only on the in-process path.
      *
      * @param array<string, CoverageResult> $results
+     * @param array<string, SdkExerciseCoverageResult> $sdkResults
      */
-    private function evaluateThresholdGate(array $results): void
+    private function evaluateThresholdGate(array $results, array $sdkResults): void
     {
-        if ($this->minEndpointCoverage === null && $this->minResponseCoverage === null) {
+        if (
+            $this->minEndpointCoverage === null &&
+            $this->minResponseCoverage === null &&
+            $this->minSdkExerciseCoverage === null
+        ) {
             return;
         }
 
@@ -362,8 +381,10 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
 
         $evaluation = CoverageThresholdEvaluator::evaluate(
             $results,
+            $sdkResults,
             $this->minEndpointCoverage,
             $this->minResponseCoverage,
+            $this->minSdkExerciseCoverage,
             $this->minCoverageStrict,
         );
 
@@ -402,9 +423,13 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
      * fail-fast — otherwise a CI that opted into the gate silently passes
      * when its tests didn't actually validate anything.
      */
-    private function failOnEmptyResultsIfGated(): void
+    private function failOnEmptyResultsIfGated(bool $httpOnly = false): void
     {
-        if ($this->minEndpointCoverage === null && $this->minResponseCoverage === null) {
+        if (
+            $this->minEndpointCoverage === null &&
+            $this->minResponseCoverage === null &&
+            ($httpOnly || $this->minSdkExerciseCoverage === null)
+        ) {
             return;
         }
 
@@ -748,6 +773,36 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
     }
 
     /**
+     * Build the denominator even when no decoder ran so reports can show the
+     * eligible response schemas that remain unexercised.
+     *
+     * @return array<string, SdkExerciseCoverageResult>
+     */
+    private function computeAllSdkResults(): array
+    {
+        $results = [];
+
+        foreach ($this->specs as $spec) {
+            try {
+                $results[$spec] = SdkExerciseCoverageReportBuilder::build(
+                    $spec,
+                    $this->sdkExerciseCoverageTracker,
+                );
+            } catch (SpecFileNotFoundException $e) {
+                $this->writeStderr("[OpenAPI Coverage] WARNING: Skipping spec '{$spec}': {$e->getMessage()}\n");
+
+                continue;
+            } catch (InvalidOpenApiSpecException $e) {
+                $this->writeStderr("[OpenAPI Coverage] FATAL: Invalid OpenAPI spec '{$spec}': {$e->getMessage()}\n");
+
+                throw $e;
+            }
+        }
+
+        return $results;
+    }
+
+    /**
      * Dispatch each configured renderer to its output target. Per-entry render
      * or write failures emit a WARNING and continue — one format's broken path
      * must not suppress the others or block the threshold gate that runs after
@@ -756,8 +811,9 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
      * GITHUB_STEP_SUMMARY is Markdown-only by design and handled separately.
      *
      * @param array<string, CoverageResult> $results
+     * @param array<string, SdkExerciseCoverageResult> $sdkResults
      */
-    private function writeReports(array $results): void
+    private function writeReports(array $results, array $sdkResults): void
     {
         if ($this->partialRun !== null) {
             $this->emitPartialRunSkipWarning($this->partialRun);
@@ -776,7 +832,7 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
             }
 
             try {
-                $rendered = ($entry['renderer'])($results);
+                $rendered = ($entry['renderer'])($results, $sdkResults);
             } catch (Throwable $e) {
                 $this->writeStderr(sprintf(
                     "[OpenAPI Coverage] WARNING: Failed to render %s report: %s\n",
@@ -817,7 +873,7 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
             }
         }
 
-        $this->appendGithubStepSummary($results);
+        $this->appendGithubStepSummary($results, $sdkResults);
     }
 
     /**
@@ -827,29 +883,29 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
      * be added to both in lockstep — note the severity asymmetry (subscriber
      * warns; CLI counts failures toward exit code).
      *
-     * @return list<CoverageReportEntry>
+     * @return list<SubscriberReportEntry>
      */
     private function buildReportEntries(): array
     {
         return [
             [
                 'label' => 'Markdown',
-                'renderer' => static fn(array $r): string => MarkdownCoverageRenderer::render($r),
+                'renderer' => static fn(array $r, array $s): string => MarkdownCoverageRenderer::render($r, $s),
                 'outputFile' => $this->outputFile,
             ],
             [
                 'label' => 'JUnit XML',
-                'renderer' => static fn(array $r): string => JUnitCoverageRenderer::render($r),
+                'renderer' => static fn(array $r, array $s): string => JUnitCoverageRenderer::render($r, $s),
                 'outputFile' => $this->junitOutput,
             ],
             [
                 'label' => 'JSON',
-                'renderer' => static fn(array $r): string => JsonCoverageRenderer::render($r),
+                'renderer' => static fn(array $r, array $s): string => JsonCoverageRenderer::render($r, sdkResults: $s),
                 'outputFile' => $this->jsonOutput,
             ],
             [
                 'label' => 'HTML',
-                'renderer' => static fn(array $r): string => HtmlCoverageRenderer::render($r),
+                'renderer' => static fn(array $r, array $s): string => HtmlCoverageRenderer::render($r, $s),
                 'outputFile' => $this->htmlOutput,
             ],
         ];
@@ -900,14 +956,15 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
      * this path).
      *
      * @param array<string, CoverageResult> $results
+     * @param array<string, SdkExerciseCoverageResult> $sdkResults
      */
-    private function appendGithubStepSummary(array $results): void
+    private function appendGithubStepSummary(array $results, array $sdkResults): void
     {
         if ($this->githubSummaryPath === null) {
             return;
         }
 
-        $markdown = MarkdownCoverageRenderer::render($results);
+        $markdown = MarkdownCoverageRenderer::render($results, $sdkResults);
         // Same @ rationale as writeReports().
         $written = @file_put_contents($this->githubSummaryPath, $markdown . "\n", FILE_APPEND);
 

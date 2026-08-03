@@ -671,7 +671,14 @@ final class CoverageMergeCommand
             return false;
         }
 
-        $evaluation = CoverageThresholdEvaluator::evaluate($results, $minEndpointPct, $minResponsePct, $strict);
+        $evaluation = CoverageThresholdEvaluator::evaluate(
+            $results,
+            [],
+            $minEndpointPct,
+            $minResponsePct,
+            null,
+            $strict,
+        );
 
         if ($evaluation['passed']) {
             return false;

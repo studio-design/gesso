@@ -443,6 +443,7 @@ final class OpenApiCoverageExtension implements Extension
         $minCoverageStrict = self::resolveStrictFlag($parameters);
         $minEndpointCoverage = self::resolveThresholdParameter($parameters, 'min_endpoint_coverage', $minCoverageStrict);
         $minResponseCoverage = self::resolveThresholdParameter($parameters, 'min_response_coverage', $minCoverageStrict);
+        $minSdkExerciseCoverage = self::resolveThresholdParameter($parameters, 'min_sdk_exercise_coverage', $minCoverageStrict);
 
         // Issue #229: install fresh tracker instances for this run and route
         // the static facades (used by the Laravel trait that can't take DI)
@@ -540,6 +541,7 @@ final class OpenApiCoverageExtension implements Extension
             sidecarDir: $sidecarDir,
             minEndpointCoverage: $minEndpointCoverage,
             minResponseCoverage: $minResponseCoverage,
+            minSdkExerciseCoverage: $minSdkExerciseCoverage,
             minCoverageStrict: $minCoverageStrict,
             junitOutput: $junitOutput,
             jsonOutput: $jsonOutput,
@@ -895,7 +897,8 @@ final class OpenApiCoverageExtension implements Extension
 
     /**
      * Read a percentage parameter (`min_endpoint_coverage` /
-     * `min_response_coverage`) from `phpunit.xml`. Mirrors the merge CLI's
+     * `min_response_coverage` / `min_sdk_exercise_coverage`) from
+     * `phpunit.xml`. Mirrors the merge CLI's
      * resolveThreshold():
      *  - non-strict (warn-only): bad values become a `WARNING` and the gate
      *    is dropped so a misconfigured XML attribute surfaces in the log

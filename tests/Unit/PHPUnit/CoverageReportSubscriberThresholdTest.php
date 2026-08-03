@@ -4,23 +4,30 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Tests\Unit\PHPUnit;
 
+use const JSON_THROW_ON_ERROR;
+
 use PHPUnit\Event\TestRunner\ExecutionFinished;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use ReflectionClass;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
+use Studio\Gesso\Coverage\SdkExerciseCoverageTracker;
 use Studio\Gesso\Internal\PartialRunDecision;
 use Studio\Gesso\PHPUnit\ConsoleOutput;
 use Studio\Gesso\PHPUnit\CoverageReportSubscriber;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 
+use function file_get_contents;
 use function getenv;
 use function glob;
 use function is_dir;
+use function json_decode;
+use function mkdir;
 use function ob_get_clean;
 use function ob_start;
 use function putenv;
 use function rmdir;
+use function substr_count;
 use function sys_get_temp_dir;
 use function uniqid;
 use function unlink;
@@ -39,6 +46,7 @@ class CoverageReportSubscriberThresholdTest extends TestCase
     {
         parent::setUp();
         OpenApiCoverageTracker::reset();
+        SdkExerciseCoverageTracker::resetCurrent();
         OpenApiSpecLoader::reset();
         OpenApiSpecLoader::configure(__DIR__ . '/../../fixtures/specs');
 
@@ -65,6 +73,7 @@ class CoverageReportSubscriberThresholdTest extends TestCase
         }
 
         OpenApiCoverageTracker::reset();
+        SdkExerciseCoverageTracker::resetCurrent();
         OpenApiSpecLoader::reset();
         parent::tearDown();
     }
@@ -364,6 +373,128 @@ class CoverageReportSubscriberThresholdTest extends TestCase
         $this->assertNull($exitCode);
         $this->assertStringNotContainsString('FAIL:', $stderr);
         $this->assertStringNotContainsString('WARN:', $stderr);
+    }
+
+    #[Test]
+    public function sdk_only_activity_renders_and_strict_threshold_miss_exits(): void
+    {
+        $tracker = new SdkExerciseCoverageTracker();
+        $tracker->recordOn('sdk-exercise-coverage', 'GET', '/pets', '200', 'application/json');
+
+        $exitCode = null;
+        $stderr = '';
+        $subscriber = new CoverageReportSubscriber(
+            specs: ['sdk-exercise-coverage'],
+            outputFile: null,
+            consoleOutput: ConsoleOutput::DEFAULT,
+            githubSummaryPath: null,
+            stderrWriter: static function (string $msg) use (&$stderr): void {
+                $stderr .= $msg;
+            },
+            minSdkExerciseCoverage: 100.0,
+            minCoverageStrict: true,
+            exitHandler: static function (int $code) use (&$exitCode): void {
+                $exitCode = $code;
+            },
+            sdkExerciseCoverageTracker: $tracker,
+        );
+
+        ob_start();
+        $subscriber->notify($this->fakeExecutionFinished());
+        $output = (string) ob_get_clean();
+
+        $this->assertStringContainsString('[sdk-exercise-coverage] SDK responses: 1/5 exercised (20%)', $output);
+        $this->assertSame(1, $exitCode);
+        $this->assertStringContainsString('SDK exercise coverage 20% < threshold 100%', $stderr);
+    }
+
+    #[Test]
+    public function sdk_threshold_miss_warns_without_exiting(): void
+    {
+        $exitCode = null;
+        $stderr = '';
+        $subscriber = new CoverageReportSubscriber(
+            specs: ['sdk-exercise-coverage'],
+            outputFile: null,
+            consoleOutput: ConsoleOutput::ALL,
+            githubSummaryPath: null,
+            stderrWriter: static function (string $msg) use (&$stderr): void {
+                $stderr .= $msg;
+            },
+            minSdkExerciseCoverage: 1.0,
+            minCoverageStrict: false,
+            exitHandler: static function (int $code) use (&$exitCode): void {
+                $exitCode = $code;
+            },
+            sdkExerciseCoverageTracker: new SdkExerciseCoverageTracker(),
+        );
+
+        ob_start();
+        $subscriber->notify($this->fakeExecutionFinished());
+        $output = (string) ob_get_clean();
+
+        $this->assertStringContainsString('5 unexercised', $output);
+        $this->assertStringContainsString('GET /pets  200  application/json  unexercised', $output);
+        $this->assertNull($exitCode);
+        $this->assertStringContainsString('[OpenAPI Coverage] WARN:', $stderr);
+    }
+
+    #[Test]
+    public function persistent_json_output_receives_sdk_results_without_http_results(): void
+    {
+        $tracker = new SdkExerciseCoverageTracker();
+        $tracker->recordOn('sdk-exercise-coverage', 'GET', '/pets', '200', 'application/json');
+        mkdir($this->tmpDir, 0o777, true);
+        $path = $this->tmpDir . '/coverage.json';
+
+        $subscriber = new CoverageReportSubscriber(
+            specs: ['sdk-exercise-coverage'],
+            outputFile: null,
+            consoleOutput: ConsoleOutput::DEFAULT,
+            githubSummaryPath: null,
+            jsonOutput: $path,
+            sdkExerciseCoverageTracker: $tracker,
+        );
+
+        ob_start();
+        $subscriber->notify($this->fakeExecutionFinished());
+        ob_get_clean();
+
+        /** @var array<string, mixed> $payload */
+        $payload = json_decode((string) file_get_contents($path), true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame(5, $payload['aggregate']['sdk_exercise']['response_total']);
+        $this->assertSame(1, $payload['aggregate']['sdk_exercise']['response_exercised']);
+    }
+
+    #[Test]
+    public function partial_run_skips_sdk_threshold_with_the_existing_note(): void
+    {
+        $exitCode = null;
+        $stderr = '';
+        $subscriber = new CoverageReportSubscriber(
+            specs: ['sdk-exercise-coverage'],
+            outputFile: null,
+            consoleOutput: ConsoleOutput::DEFAULT,
+            githubSummaryPath: null,
+            stderrWriter: static function (string $msg) use (&$stderr): void {
+                $stderr .= $msg;
+            },
+            minSdkExerciseCoverage: 100.0,
+            minCoverageStrict: true,
+            exitHandler: static function (int $code) use (&$exitCode): void {
+                $exitCode = $code;
+            },
+            partialRun: PartialRunDecision::partial('--filter'),
+            sdkExerciseCoverageTracker: new SdkExerciseCoverageTracker(),
+        );
+
+        ob_start();
+        $subscriber->notify($this->fakeExecutionFinished());
+        ob_get_clean();
+
+        $this->assertStringContainsString('[Gesso] NOTE:', $stderr);
+        $this->assertSame(1, substr_count($stderr, 'coverage threshold gate is skipped'));
+        $this->assertNull($exitCode);
     }
 
     #[Test]

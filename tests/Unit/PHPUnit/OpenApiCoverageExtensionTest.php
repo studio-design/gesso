@@ -476,6 +476,23 @@ class OpenApiCoverageExtensionTest extends TestCase
     }
 
     #[Test]
+    public function bootstrap_warns_on_invalid_min_sdk_exercise_coverage_when_not_strict(): void
+    {
+        $extension = new OpenApiCoverageExtension();
+        $parameters = ParameterCollection::fromArray([
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => 'refs-valid',
+            'min_sdk_exercise_coverage' => '101',
+        ]);
+
+        $extension->setupExtension(null, $parameters, null);
+
+        $stderr = $this->readStderr();
+        $this->assertStringContainsString('WARNING', $stderr);
+        $this->assertStringContainsString('min_sdk_exercise_coverage', $stderr);
+    }
+
+    #[Test]
     public function bootstrap_throws_on_out_of_range_threshold_when_strict(): void
     {
         // C1: strict=true must treat a typo'd threshold as a configuration
@@ -521,6 +538,27 @@ class OpenApiCoverageExtensionTest extends TestCase
     }
 
     #[Test]
+    public function bootstrap_throws_on_invalid_sdk_threshold_when_strict(): void
+    {
+        $extension = new OpenApiCoverageExtension();
+        $parameters = ParameterCollection::fromArray([
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => 'refs-valid',
+            'min_sdk_exercise_coverage' => 'all',
+            'min_coverage_strict' => 'true',
+        ]);
+
+        $this->expectException(InvalidThresholdConfigurationException::class);
+
+        try {
+            $extension->setupExtension(null, $parameters, null);
+        } finally {
+            $this->assertStringContainsString('FATAL', $this->readStderr());
+            $this->assertStringContainsString('min_sdk_exercise_coverage', $this->readStderr());
+        }
+    }
+
+    #[Test]
     public function bootstrap_treats_empty_strict_value_as_enabled(): void
     {
         // I1: `<parameter name="min_coverage_strict" />` (no value) was a
@@ -550,6 +588,7 @@ class OpenApiCoverageExtensionTest extends TestCase
             'specs' => 'refs-valid',
             'min_endpoint_coverage' => '80',
             'min_response_coverage' => '70.5',
+            'min_sdk_exercise_coverage' => '100',
             'min_coverage_strict' => 'true',
         ]);
 
