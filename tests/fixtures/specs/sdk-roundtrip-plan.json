@@ -1,0 +1,224 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Spec-wide SDK round-trip plan fixture",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "x-owner": "sdk-team",
+    "/pets": {
+      "get": {
+        "operationId": "listPets",
+        "tags": ["public", "pets"],
+        "responses": {
+          "x-owner": "sdk-team",
+          "200": {
+            "description": "Pets",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["pets"],
+                  "properties": {
+                    "pets": {
+                      "type": "array",
+                      "items": {"type": "string"}
+                    }
+                  }
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["detail"],
+                  "properties": {
+                    "detail": {"type": "string"}
+                  }
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Asynchronous pet list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["jobId"],
+                  "properties": {
+                    "jobId": {"type": "string"}
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createPet",
+        "tags": ["public", "pets"],
+        "responses": {
+          "201": {
+            "description": "Created pet",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["id"],
+                  "properties": {
+                    "id": {"type": "integer"}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/fallbacks": {
+      "get": {
+        "operationId": "statusFallbacks",
+        "tags": ["public", "fallbacks"],
+        "responses": {
+          "2XX": {
+            "description": "Successful fallback",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["ok"],
+                  "properties": {
+                    "ok": {"type": "boolean"}
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error fallback",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["error"],
+                  "properties": {
+                    "error": {"type": "string"}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/wildcard": {
+      "get": {
+        "operationId": "wildcardPayload",
+        "tags": ["public"],
+        "responses": {
+          "200": {
+            "description": "Wildcard application response",
+            "content": {
+              "application/*": {
+                "schema": {
+                  "type": "object",
+                  "required": ["value"],
+                  "properties": {
+                    "value": {"type": "string"}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/deprecated": {
+      "get": {
+        "operationId": "deprecatedPets",
+        "tags": ["internal"],
+        "deprecated": true,
+        "responses": {
+          "200": {
+            "description": "Deprecated",
+            "content": {
+              "application/json": {
+                "schema": {"type": "string"}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/anonymous": {
+      "get": {
+        "tags": ["internal"],
+        "responses": {
+          "200": {
+            "description": "Anonymous operation",
+            "content": {
+              "application/json": {
+                "schema": {"type": "string"}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/no-content": {
+      "get": {
+        "operationId": "noContent",
+        "tags": ["unsupported"],
+        "responses": {
+          "204": {"description": "No content"}
+        }
+      }
+    },
+    "/text-only": {
+      "get": {
+        "operationId": "textOnly",
+        "tags": ["unsupported"],
+        "responses": {
+          "200": {
+            "description": "Text only",
+            "content": {
+              "text/plain": {
+                "schema": {"type": "string"}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/missing-schema": {
+      "get": {
+        "operationId": "missingSchema",
+        "tags": ["unsupported"],
+        "responses": {
+          "200": {
+            "description": "Missing schema",
+            "content": {
+              "application/json": {}
+            }
+          }
+        }
+      }
+    },
+    "/stream": {
+      "get": {
+        "operationId": "streamItems",
+        "tags": ["unsupported"],
+        "responses": {
+          "200": {
+            "description": "Stream",
+            "content": {
+              "application/json": {
+                "itemSchema": {"type": "string"}
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

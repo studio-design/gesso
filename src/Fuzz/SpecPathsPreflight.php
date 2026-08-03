@@ -11,6 +11,7 @@ use Studio\Gesso\Validation\Support\MalformedSpecNode;
 use function array_key_exists;
 use function is_string;
 use function sprintf;
+use function str_starts_with;
 
 /**
  * Structural preflight over a spec's `paths` shared by the whole-spec
@@ -42,12 +43,17 @@ final class SpecPathsPreflight
             ));
         }
 
+        $validatedPaths = [];
         foreach ($paths as $path => $pathItem) {
             if (!is_string($path)) {
                 throw new InvalidArgumentException(sprintf(
                     "Malformed 'paths' in '%s' spec: expected string path key.",
                     $specName,
                 ));
+            }
+
+            if (str_starts_with($path, 'x-')) {
+                continue;
             }
 
             if (MalformedSpecNode::isMalformed($pathItem)) {
@@ -84,8 +90,10 @@ final class SpecPathsPreflight
                     MalformedSpecNode::describe($declared['operation']),
                 ));
             }
+
+            $validatedPaths[$path] = $pathItem;
         }
 
-        return $paths;
+        return $validatedPaths;
     }
 }

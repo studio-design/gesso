@@ -18,6 +18,7 @@ use function json_decode;
 use function json_encode;
 use function sprintf;
 use function str_replace;
+use function strtolower;
 use function var_export;
 
 /**
@@ -136,13 +137,17 @@ final readonly class GeneratedResponseCase
             throw new LogicException('GeneratedResponseCase replay metadata does not identify an operation response or component schema.');
         }
 
+        $replayContentType = strtolower($this->contentType) === 'application/*'
+            ? null
+            : $this->contentType;
+
         return sprintf(
             'OpenApiResponseExplorer::explore(%s, %s, %s, %d, %s, seed: %d%s)->cases[%d]',
             var_export($this->specName, true),
             var_export($this->method, true),
             var_export($this->matchedPath, true),
             $this->status,
-            var_export($this->contentType, true),
+            var_export($replayContentType, true),
             $this->seed,
             $extraCases,
             $this->caseIndex,

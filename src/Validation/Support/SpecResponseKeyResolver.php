@@ -9,6 +9,7 @@ use const E_USER_WARNING;
 use function array_keys;
 use function preg_match;
 use function sprintf;
+use function str_starts_with;
 use function trigger_error;
 
 /**
@@ -94,6 +95,9 @@ final class SpecResponseKeyResolver
     {
         foreach (array_keys($responses) as $key) {
             $keyStr = (string) $key;
+            if (str_starts_with($keyStr, 'x-')) {
+                continue;
+            }
             if ($keyStr === 'default') {
                 continue;
             }

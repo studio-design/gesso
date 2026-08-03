@@ -171,6 +171,32 @@ $cases->each(function (GeneratedResponseCase $case): void {
 });
 ```
 
+For explicit mappings across every selected operation response, build a
+spec-wide plan:
+
+```php
+$summary = OpenApiResponseExplorer::exploreSpec('front', seed: 1)
+    ->includeTags(['public'])
+    ->mapResponse(
+        'introspect',
+        200,
+        fn (GeneratedResponseCase $case) => sdk_decode($case->bodyAsObject()),
+        fn (mixed $model) => sdk_encode($model),
+    )
+    ->failOnUnmapped()
+    ->assertRoundTrips();
+```
+
+`OpenApiResponseSpecExploration` exposes the same tag, method, path,
+operation-ID, and deprecated filters as `OpenApiSpecExploration`.
+`mapResponse()` accepts an exact status, an OpenAPI range key, or `default`.
+The returned `ResponseSpecExplorationSummary` contains execution counts,
+executed `ExploredOperation` rows, categorized `decodeFailures` and
+`roundTripFailures`, and `ResponseSpecExplorationSkip` rows. Callback failures
+produce one aggregate assertion after all cases run; each
+`ResponseSpecExplorationFailure` preserves the original throwable and replay
+metadata. Mapping gaps are skips unless `failOnUnmapped()` is enabled.
+
 Named components are converted with the spec's OpenAPI version and JSON Schema
 dialect, response-side read/write semantics, and discriminator context. Their
 cases have `null` `status` and `contentType` because no operation was selected;
@@ -192,7 +218,8 @@ rotation-only cases. No-content,
 non-JSON-only, schema-less, and OpenAPI 3.2 `itemSchema` responses throw a loud
 `InvalidArgumentException` carrying the structured resolver outcome. Laravel's
 `ExploresOpenApiEndpoint::exploreResponseSchema()` resolves the configured spec
-and delegates to the same facade. See the [SDK round-trip guide](sdk-roundtrip.md).
+and delegates to the same facade; `exploreResponseSpec()` returns the spec-wide
+plan. See the [SDK round-trip guide](sdk-roundtrip.md).
 
 ## `OpenApiSpecExplorer`
 

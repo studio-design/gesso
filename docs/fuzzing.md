@@ -84,6 +84,31 @@ seed `0`. See the [SDK round-trip guide](sdk-roundtrip.md) for the complete case
 contract, fidelity rules, deterministic replay, and unsupported response
 outcomes.
 
+To replace one-test-per-response maintenance with a loud spec-wide gate,
+register explicit SDK mappings on `OpenApiResponseExplorer::exploreSpec()`:
+
+```php
+OpenApiResponseExplorer::exploreSpec('front', seed: 1)
+    ->includeTags(['public'])
+    ->mapResponse(
+        'introspect',
+        200,
+        static fn (GeneratedResponseCase $case): mixed => sdk_decode($case->bodyAsObject()),
+        static fn (mixed $model): mixed => sdk_encode($model),
+    )
+    ->failOnUnmapped()
+    ->assertRoundTrips();
+```
+
+The plan uses the whole-spec tag/method/path/operation/deprecated filters and
+stable per-operation crc32 seeds. Exact, range, and `default` status mappings
+are supported; one mapping exercises every JSON media type for that response.
+The summary distinguishes explicit skips from decoder and round-trip failures,
+while `failOnUnmapped()` makes newly added unmapped schemas fail CI. Laravel
+tests call `$this->exploreResponseSpec()` for the same builder. See the
+[SDK round-trip guide](sdk-roundtrip.md#exercise-every-mapped-response-in-a-spec)
+for callback and reporting details.
+
 ## Explore a whole spec
 
 `exploreSpec()` enumerates the Path Item operations defined by OpenAPI,

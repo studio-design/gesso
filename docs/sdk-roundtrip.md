@@ -72,6 +72,63 @@ cases have `null` `status` and `contentType`, while `replaySnippet()` records an
 `exploreComponent()` call. Unknown, malformed, recursive, and otherwise
 unsupported component schemas throw instead of producing an empty green run.
 
+## Exercise every mapped response in a spec
+
+Use `exploreSpec()` when one test should discover the selected operations and
+exercise every mapped JSON response schema:
+
+```php
+$summary = OpenApiResponseExplorer::exploreSpec('front', seed: 1)
+    ->includeTags(['public'])
+    ->mapResponse(
+        operationId: 'introspect',
+        status: 200,
+        decode: static fn (GeneratedResponseCase $case): mixed =>
+            ObjectSerializer::deserialize(
+                $case->bodyAsObject(),
+                IntrospectResponse::class,
+            ),
+        encode: static fn (mixed $model): mixed =>
+            ObjectSerializer::sanitizeForSerialization($model),
+    )
+    ->failOnUnmapped()
+    ->assertRoundTrips();
+```
+
+Mappings are explicit `(operationId, declared response status)` pairs. The
+status accepts an integer/exact string such as `200`, a range key such as
+`2XX`/`2xx`, or `default`. One mapping applies to every JSON media type under
+that response; Gesso never guesses model names. The decode callback receives
+the `GeneratedResponseCase` and `ExploredOperation`. The encode callback
+receives the decoded value followed by the same case and operation, so either
+callback can use response and replay metadata.
+
+The plan supports the same include/exclude filters for tags, methods, paths,
+operation IDs, and deprecated operations as whole-spec request exploration.
+Deprecated operations are excluded by default. Operations without an
+`operationId` remain discoverable, but their schemas are mapping gaps because
+there is no stable mapping key to guess.
+
+Every operation receives a crc32-derived seed based on the spec name, method,
+path, and global seed. Mapping registration and spec traversal order therefore
+do not change an existing operation's generated cases. `extraCases` appends
+the requested deterministic cases to every explored schema.
+
+When all mapped callbacks succeed, `assertRoundTrips()` returns a
+`ResponseSpecExplorationSummary` with executed operation, response-schema, and
+case counts plus structured skips. Unmapped JSON schemas are always skips with
+`mappingGap: true`; `failOnUnmapped()` promotes all such gaps to one assertion
+failure after discovery. No-content, non-JSON-only, missing-schema, and
+`itemSchema` responses are explicit non-mapping skips with structured reasons.
+Malformed spec nodes fail immediately with the shared response resolver's
+location-aware diagnostic.
+
+Decoder exceptions and encode/round-trip failures are collected across all
+remaining cases, then reported under separate `Decode failures` and
+`Round-trip failures` headings. Each row includes the operation, declared and
+representative wire statuses, content type, seed, case, pinned branch, and
+`OpenApiResponseExplorer::explore()` replay expression.
+
 ## Laravel
 
 The `ExploresOpenApiEndpoint` trait uses the same spec-name precedence as the
@@ -106,6 +163,11 @@ final class IntrospectSdkTest extends TestCase
     }
 }
 ```
+
+For a spec-wide plan, replace the single-response call with
+`$this->exploreResponseSpec(seed: 1)`. It returns the same
+`OpenApiResponseSpecExploration` builder shown above while resolving the spec
+name from the method/class attribute, `openApiSpec()`, or `default_spec`.
 
 Schema-to-model mapping deliberately stays in your test. Gesso does not guess
 class names or conventions from openapi-generator, Kiota, or another SDK tool.
@@ -167,6 +229,6 @@ shapes that cannot represent one buffered JSON document throw
 - selected non-JSON schemas; and
 - OpenAPI 3.2 streaming responses using `itemSchema`.
 
-Spec-wide SDK mapping and SDK exercise coverage remain separate follow-up
-phases. Use `explore()` for one resolved operation response or
-`exploreComponent()` for one named model schema.
+SDK exercise coverage reporting remains a separate follow-up phase. Use
+`explore()` for one resolved operation response, `exploreComponent()` for one
+named model schema, or `exploreSpec()` for explicit mappings across a spec.
