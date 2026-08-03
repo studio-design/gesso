@@ -29,6 +29,27 @@ use function sprintf;
  */
 final class OpenApiResponseExplorer
 {
+    /**
+     * Build a deterministic whole-spec SDK response round-trip plan.
+     */
+    public static function exploreSpec(
+        string $specName,
+        int $seed = 1,
+        int $extraCases = 0,
+    ): OpenApiResponseSpecExploration {
+        if ($specName === '') {
+            throw new InvalidArgumentException('OpenApiResponseExplorer::exploreSpec() requires a non-empty spec name.');
+        }
+        if ($extraCases < 0) {
+            throw new InvalidArgumentException(sprintf(
+                'OpenApiResponseExplorer::exploreSpec() requires extraCases >= 0, got %d.',
+                $extraCases,
+            ));
+        }
+
+        return new OpenApiResponseSpecExploration($specName, $seed, $extraCases);
+    }
+
     public static function explore(
         string $specName,
         string $method,
