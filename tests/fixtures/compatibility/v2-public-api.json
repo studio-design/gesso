@@ -3503,7 +3503,7 @@
                 }
             },
             "contentType": {
-                "type": "string",
+                "type": "?string",
                 "static": false,
                 "readonly": true,
                 "default": {
@@ -3527,7 +3527,7 @@
                 }
             },
             "status": {
-                "type": "int",
+                "type": "?int",
                 "static": false,
                 "readonly": true,
                 "default": {
@@ -3557,7 +3557,7 @@
                     },
                     {
                         "name": "status",
-                        "type": "int",
+                        "type": "?int",
                         "optional": false,
                         "variadic": false,
                         "by_reference": false,
@@ -3568,7 +3568,7 @@
                     },
                     {
                         "name": "contentType",
-                        "type": "string",
+                        "type": "?string",
                         "optional": false,
                         "variadic": false,
                         "by_reference": false,
@@ -3623,7 +3623,7 @@
                     },
                     {
                         "name": "method",
-                        "type": "string",
+                        "type": "?string",
                         "optional": false,
                         "variadic": false,
                         "by_reference": false,
@@ -3634,7 +3634,7 @@
                     },
                     {
                         "name": "matchedPath",
-                        "type": "string",
+                        "type": "?string",
                         "optional": false,
                         "variadic": false,
                         "by_reference": false,
@@ -3661,6 +3661,15 @@
                         "variadic": false,
                         "by_reference": false,
                         "default": 0,
+                        "attributes": []
+                    },
+                    {
+                        "name": "schemaName",
+                        "type": "?string",
+                        "optional": true,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": null,
                         "attributes": []
                     }
                 ]
@@ -4092,6 +4101,56 @@
                         "variadic": false,
                         "by_reference": false,
                         "default": null,
+                        "attributes": []
+                    },
+                    {
+                        "name": "seed",
+                        "type": "?int",
+                        "optional": true,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": null,
+                        "attributes": []
+                    },
+                    {
+                        "name": "extraCases",
+                        "type": "int",
+                        "optional": true,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": 0,
+                        "attributes": []
+                    }
+                ]
+            },
+            "exploreComponent": {
+                "static": true,
+                "final": false,
+                "abstract": false,
+                "returns_reference": false,
+                "return_type": "Studio\\Gesso\\Fuzz\\GeneratedResponseCases",
+                "attributes": [],
+                "parameters": [
+                    {
+                        "name": "specName",
+                        "type": "string",
+                        "optional": false,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": {
+                            "unavailable": true
+                        },
+                        "attributes": []
+                    },
+                    {
+                        "name": "schemaName",
+                        "type": "string",
+                        "optional": false,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": {
+                            "unavailable": true
+                        },
                         "attributes": []
                     },
                     {
