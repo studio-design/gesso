@@ -296,16 +296,42 @@ class SchemaChoicePointEnumeratorTest extends TestCase
     }
 
     #[Test]
-    public function stops_at_const_and_enum_schemas(): void
+    public function collects_nullable_choice_for_an_enum_spanning_both_reachable_sides(): void
     {
-        $this->assertSame([], SchemaChoicePointEnumerator::enumerate([
-            'const' => 'fixed',
-            'properties' => ['a' => ['oneOf' => [['type' => 'string'], ['type' => 'integer']]]],
-        ]));
-        $this->assertSame([], SchemaChoicePointEnumerator::enumerate([
+        $points = SchemaChoicePointEnumerator::enumerate([
             'type' => ['string', 'null'],
-            'enum' => ['a', 'b', null],
-        ]));
+            'enum' => ['member', null],
+        ]);
+
+        $this->assertCount(1, $points);
+        $this->assertSame(SchemaChoicePointKind::Nullable, $points[0]->kind);
+        $this->assertSame('/type', $points[0]->pointer);
+        $this->assertSame(2, $points[0]->branchCount);
+        $this->assertSame([], $points[0]->ancestors);
+    }
+
+    #[Test]
+    public function stops_at_exact_domains_that_reach_only_one_nullable_side(): void
+    {
+        $schemas = [
+            [
+                'const' => 'fixed',
+                'properties' => ['a' => ['oneOf' => [['type' => 'string'], ['type' => 'integer']]]],
+            ],
+            ['type' => ['string', 'null'], 'const' => 'fixed'],
+            ['type' => ['string', 'null'], 'const' => null],
+            ['type' => ['string', 'null'], 'enum' => ['fixed']],
+            ['type' => ['string', 'null'], 'enum' => [null]],
+            [
+                'type' => ['string', 'null'],
+                'enum' => ['fixed', null],
+                'not' => ['const' => null],
+            ],
+        ];
+
+        foreach ($schemas as $schema) {
+            $this->assertSame([], SchemaChoicePointEnumerator::enumerate($schema));
+        }
     }
 
     #[Test]

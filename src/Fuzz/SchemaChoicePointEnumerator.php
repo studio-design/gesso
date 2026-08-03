@@ -329,6 +329,22 @@ final class SchemaChoicePointEnumerator
             return;
         }
         if (isset($schema['enum']) && is_array($schema['enum']) && $schema['enum'] !== []) {
+            $admissible = array_values(array_filter(
+                $schema['enum'],
+                static fn(mixed $value): bool => SchemaValueValidator::isValid($value, $schema),
+            ));
+            $hasNull = in_array(null, $admissible, true);
+            $hasValue = array_filter($admissible, static fn(mixed $value): bool => $value !== null) !== [];
+            if (self::isNullableTypeArray($schema) && $hasNull && $hasValue) {
+                $this->record(
+                    SchemaChoicePointKind::Nullable,
+                    $pointer . '/type',
+                    2,
+                    $ancestors,
+                    null,
+                );
+            }
+
             return;
         }
 
