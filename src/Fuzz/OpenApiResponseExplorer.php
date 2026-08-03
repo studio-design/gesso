@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Fuzz;
 
+use Closure;
 use InvalidArgumentException;
+use Studio\Gesso\Coverage\SdkExerciseCoverageTracker;
 use Studio\Gesso\OpenApiVersion;
 use Studio\Gesso\SchemaContext;
 use Studio\Gesso\Spec\OpenApiOperationResolver;
@@ -76,10 +78,16 @@ final class OpenApiResponseExplorer
 
         if ($resolution->outcome !== ResponseSchemaResolutionOutcome::Resolved ||
             $resolution->matchedPath === null ||
+            $resolution->statusKey === null ||
             $resolution->contentType === null
         ) {
             throw self::unsupportedResolution($specName, $method, $path, $status, $resolution);
         }
+
+        $normalizedMethod = OpenApiOperationResolver::normalizeMethodForKey($method);
+        $matchedPath = $resolution->matchedPath;
+        $statusKey = $resolution->statusKey;
+        $contentTypeKey = $resolution->contentType;
 
         return self::buildCases(
             schema: $resolution->convertedSchema(),
@@ -88,8 +96,17 @@ final class OpenApiResponseExplorer
             specName: $specName,
             status: $status,
             contentType: $resolution->contentType,
-            method: OpenApiOperationResolver::normalizeMethodForKey($method),
-            matchedPath: $resolution->matchedPath,
+            method: $normalizedMethod,
+            matchedPath: $matchedPath,
+            beforeEach: static function () use ($specName, $normalizedMethod, $matchedPath, $statusKey, $contentTypeKey): void {
+                SdkExerciseCoverageTracker::current()->recordOn(
+                    $specName,
+                    $normalizedMethod,
+                    $matchedPath,
+                    $statusKey,
+                    $contentTypeKey,
+                );
+            },
         );
     }
 
@@ -166,10 +183,11 @@ final class OpenApiResponseExplorer
         ?string $method = null,
         ?string $matchedPath = null,
         ?string $schemaName = null,
+        ?Closure $beforeEach = null,
     ): GeneratedResponseCases {
         $plannedCases = BranchCompleteCaseGenerator::generate($schema, $effectiveSeed, $extraCases);
 
-        return new GeneratedResponseCases(array_map(
+        $cases = array_map(
             static function (PlannedSchemaCase $planned, int $caseIndex) use (
                 $status,
                 $contentType,
@@ -201,7 +219,11 @@ final class OpenApiResponseExplorer
             },
             $plannedCases,
             array_keys($plannedCases),
-        ));
+        );
+
+        return $beforeEach === null
+            ? new GeneratedResponseCases($cases)
+            : GeneratedResponseCases::withBeforeEach($cases, $beforeEach);
     }
 
     private static function assertComponentNode(mixed $node, string $location, string $specName): void

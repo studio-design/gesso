@@ -199,7 +199,15 @@ final class OpenApiResponseSpecExploration
                             $this->extraCases,
                         );
 
-                        foreach ($cases as $case) {
+                        $cases->each(static function (GeneratedResponseCase $case) use (
+                            $mapping,
+                            $operation,
+                            $target,
+                            $resolution,
+                            &$decodeFailures,
+                            &$roundTripFailures,
+                            &$executedCases,
+                        ): void {
                             try {
                                 $decoded = ($mapping['decode'])($case, $operation);
                             } catch (Throwable $failure) {
@@ -212,7 +220,7 @@ final class OpenApiResponseSpecExploration
                                     $failure,
                                 );
 
-                                continue;
+                                return;
                             }
 
                             try {
@@ -228,11 +236,11 @@ final class OpenApiResponseSpecExploration
                                     $failure,
                                 );
 
-                                continue;
+                                return;
                             }
 
                             $executedCases++;
-                        }
+                        });
 
                         $executedResponses++;
                         $operationExecuted = true;

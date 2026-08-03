@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Studio\Gesso\Fuzz;
 
 use ArrayIterator;
+use Closure;
 use Countable;
 use InvalidArgumentException;
 use IteratorAggregate;
@@ -31,6 +32,19 @@ final readonly class GeneratedResponseCases implements Countable, IteratorAggreg
         }
     }
 
+    /**
+     * @param list<GeneratedResponseCase> $cases
+     *
+     * @internal Response explorer construction seam; not public API.
+     */
+    public static function withBeforeEach(array $cases, Closure $beforeEach): self
+    {
+        $instance = new self($cases);
+        GeneratedResponseCasesHookRegistry::set($instance, $beforeEach);
+
+        return $instance;
+    }
+
     public function count(): int
     {
         return count($this->cases);
@@ -42,6 +56,7 @@ final readonly class GeneratedResponseCases implements Countable, IteratorAggreg
     public function each(callable $callback): self
     {
         foreach ($this->cases as $case) {
+            GeneratedResponseCasesHookRegistry::invoke($this);
             $callback($case);
         }
 

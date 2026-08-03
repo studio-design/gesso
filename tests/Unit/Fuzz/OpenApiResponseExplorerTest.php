@@ -9,6 +9,8 @@ use PHPUnit\Framework\AssertionFailedError;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+use RuntimeException;
+use Studio\Gesso\Coverage\SdkExerciseCoverageTracker;
 use Studio\Gesso\Exception\InvalidOpenApiSpecException;
 use Studio\Gesso\Fuzz\GeneratedResponseCase;
 use Studio\Gesso\Fuzz\GeneratedResponseCases;
@@ -18,6 +20,7 @@ use Studio\Gesso\Spec\OpenApiSpecLoader;
 use function array_filter;
 use function array_map;
 use function array_values;
+use function count;
 use function json_encode;
 
 class OpenApiResponseExplorerTest extends TestCase
@@ -27,10 +30,12 @@ class OpenApiResponseExplorerTest extends TestCase
         parent::setUp();
         OpenApiSpecLoader::reset();
         OpenApiSpecLoader::configure(__DIR__ . '/../../fixtures/specs');
+        SdkExerciseCoverageTracker::resetCurrent();
     }
 
     protected function tearDown(): void
     {
+        SdkExerciseCoverageTracker::resetCurrent();
         OpenApiSpecLoader::reset();
         parent::tearDown();
     }
@@ -237,6 +242,66 @@ class OpenApiResponseExplorerTest extends TestCase
             $this->assertSame($index, $case->caseIndex);
         }
         $this->assertStringContainsString('extraCases: 2', $cases->cases[5]->replaySnippet());
+    }
+
+    #[Test]
+    public function generation_and_plain_iteration_do_not_record_sdk_exercise(): void
+    {
+        $tracker = new SdkExerciseCoverageTracker();
+        SdkExerciseCoverageTracker::setCurrent($tracker);
+
+        $cases = OpenApiResponseExplorer::explore('sdk-roundtrip', 'POST', '/oauth/introspect', 200);
+        foreach ($cases as $case) {
+            $this->assertInstanceOf(GeneratedResponseCase::class, $case);
+        }
+
+        $this->assertSame([], $tracker->observationsForSpecOn('sdk-roundtrip'));
+    }
+
+    #[Test]
+    public function each_records_immediately_before_a_decoder_failure(): void
+    {
+        $tracker = new SdkExerciseCoverageTracker();
+        SdkExerciseCoverageTracker::setCurrent($tracker);
+        $cases = OpenApiResponseExplorer::explore('sdk-roundtrip', 'POST', '/oauth/introspect', 200);
+
+        try {
+            $cases->each(static fn(GeneratedResponseCase $case): never => throw new RuntimeException('decoder failed'));
+            $this->fail('The decoder failure must escape the collection.');
+        } catch (RuntimeException) {
+            $this->assertSame([
+                'POST /oauth/introspect' => [
+                    200 => ['application/json' => 1],
+                ],
+            ], $tracker->observationsForSpecOn('sdk-roundtrip'));
+        }
+    }
+
+    #[Test]
+    public function each_records_every_attempted_generated_case(): void
+    {
+        $tracker = new SdkExerciseCoverageTracker();
+        SdkExerciseCoverageTracker::setCurrent($tracker);
+        $cases = OpenApiResponseExplorer::explore('sdk-roundtrip', 'POST', '/oauth/introspect', 200);
+
+        $cases->each(static fn(GeneratedResponseCase $case): null => null);
+
+        $this->assertSame(
+            count($cases),
+            $tracker->observationsForSpecOn('sdk-roundtrip')['POST /oauth/introspect'][200]['application/json'],
+        );
+    }
+
+    #[Test]
+    public function component_exploration_is_not_an_operation_response_observation(): void
+    {
+        $tracker = new SdkExerciseCoverageTracker();
+        SdkExerciseCoverageTracker::setCurrent($tracker);
+
+        OpenApiResponseExplorer::exploreComponent('sdk-roundtrip', 'IntrospectResponse')
+            ->each(static fn(GeneratedResponseCase $case): null => null);
+
+        $this->assertSame([], $tracker->observationsForSpecOn('sdk-roundtrip'));
     }
 
     #[Test]
