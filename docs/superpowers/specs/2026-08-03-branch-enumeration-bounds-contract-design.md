@@ -30,11 +30,12 @@ unreachable; an unsuccessful search must fail loudly.
 
 ## Testing
 
-The regression test must first fail because no direct node-budget assertion is
-present, then pass without changing production behavior because the loud bound
-already exists. Run the focused enumerator suite, affected fuzz suites if the
-fixture reveals shared behavior, formatting/static analysis, and the full
-`composer ci` gate.
+The loud node-budget guard already exists, so the new regression test will pass
+against the current implementation. Prove that the test protects the guard by
+temporarily raising the production threshold, observing the test fail because
+no exception is thrown, restoring the threshold, and observing it pass. Run the
+focused enumerator suite, formatting/static analysis, and the full `composer ci`
+gate.
 
 ## Non-goals
 
