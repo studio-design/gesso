@@ -48,6 +48,7 @@ vendor/bin/gesso coverage:merge \
 | `--console-output=<mode>` | `default` | `default` / `all` / `uncovered_only` |
 | `--min-endpoint-coverage=<pct>` | — | Threshold gate (see [Coverage threshold gate](coverage.md#coverage-threshold-gate)) |
 | `--min-response-coverage=<pct>` | — | Threshold gate at `(method, path, status, content-type)` granularity |
+| `--min-sdk-exercise-coverage=<pct>` | — | Threshold gate for eligible response schemas attempted by SDK decoder callbacks |
 | `--min-coverage-strict` | `false` (warn-only) | Treat threshold misses as exit non-zero |
 | `--strict-required=<mode>` | `off` | `off` / `warn` / `fail`. Assert no schema under-description drift across worker observations. See [`strict-required.md`](strict-required.md#paratest) |
 | `--strict-additional-properties=<mode>` | `off` | `off` / `warn` / `fail`. Report returned response properties absent from schema declarations. See [`strict-additional-properties.md`](strict-additional-properties.md#parallel-test-runners) |
@@ -74,18 +75,20 @@ itself; the default already does this.
 
 Sidecars are a versioned worker-to-merge protocol, separate from the coverage
 report produced by `json_output`. The current writer emits an
-`envelopeVersion: 4` envelope containing coverage state `version: 1`,
+`envelopeVersion: 6` envelope containing coverage state `version: 1`,
 strict-required state `version: 2`, and strict-additional-properties state
-`version: 1`. A baseline-generation run (`OPENAPI_BASELINE_GENERATE=1`) emits
-`envelopeVersion: 5` and adds the violation-baseline document
+`version: 1`, plus SDK exercise state `version: 1`. A baseline-generation run
+(`OPENAPI_BASELINE_GENERATE=1`) emits `envelopeVersion: 7` and adds the violation-baseline document
 (`baseline_version: 1`).
 
-The merge reader also accepts envelopes 2/3 and the older bare coverage state
-`version: 1`, so coverage can still be combined while a worker fleet is being
-upgraded. Those older payloads have no strict-additional-properties state;
-`--strict-additional-properties=fail` therefore requires every worker on the
-v4/v5 format. Likewise, the legacy payload and v2/v4 envelopes carry no
-baseline data, so `--baseline-file` requires every worker to emit v3 or v5.
+The merge reader also accepts envelopes 2–5 and the older bare coverage state
+`version: 1`, so HTTP coverage can still be combined while a worker fleet is
+being upgraded. Envelopes 2/3 have no strict-additional-properties state, and
+envelopes 2–5 have no SDK exercise state. A strict SDK exercise threshold
+therefore requires every worker on v6/v7; warn-only mode reports missing
+worker state and evaluates the available SDK observations. Likewise, plain
+envelopes carry no baseline data, so `--baseline-file` requires every worker
+to use a corresponding baseline envelope.
 
 Unknown envelope or tracker versions fail the merge rather than being guessed.
 Strict-required state `version: 1` is also rejected because merging it with the
@@ -105,7 +108,7 @@ changing a sidecar shape or filename pattern.
   sidecar exactly like a paratest worker would. No additional wiring
   needed beyond the merge step shown above.
 - **`strict_required` aggregates across workers.** Workers always export
-  observations via the sidecar envelope (v2). The merge CLI's
+  observations via the versioned sidecar envelope. The merge CLI's
   `--strict-required` flag decides whether to assert the gate; the
   `strict_required` parameter on the PHPUnit extension does not propagate
   to the merge step. See [`strict-required.md`](strict-required.md#paratest).

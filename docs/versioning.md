@@ -96,27 +96,36 @@ The baseline-generation protocol introduced `envelopeVersion: 3` — the v2
 shape plus a `baseline` key holding the violation-baseline document
 (`baseline_version: 1`). It remains an accepted compatibility input.
 
-The current strict-additional-properties writer emits `envelopeVersion: 4` for
-plain worker runs. It adds `strictAdditionalProperties` state `version: 1`,
-including a total evaluation count and findings grouped by operation,
-response, and property pointer. A baseline-generation worker emits
-`envelopeVersion: 5`, which combines the v4 strict tracker halves with the v3
-`baseline` half. The reader accepts envelopes 2–5 and the legacy bare coverage
-state. A v2/v4 envelope carrying a `baseline` key and a v3/v5 envelope missing
-one are rejected as malformed; `coverage:merge --baseline-file` refuses to
-write a union when any sidecar lacks the baseline half. Versions 2/3 return no
-strict-additional-properties contribution;
+The current writer emits `envelopeVersion: 6` for plain worker runs. It carries
+coverage state `version: 1`, strict-required state `version: 2`,
+strict-additional-properties state `version: 1`, and SDK exercise state
+`version: 1`. A baseline-generation worker emits `envelopeVersion: 7`, which
+adds the `baseline` document to the v6 tracker halves.
+
+The reader accepts envelopes 2–7 and the legacy bare coverage state. Versions
+4/5 are the older strict-additional-properties shapes; versions 2/3 contribute
+no strict-additional-properties state, and versions 2–5 contribute no SDK
+exercise state. A plain envelope carrying a `baseline` key or a baseline
+envelope missing one is rejected as malformed; `coverage:merge
+--baseline-file` refuses to write a union when any sidecar lacks the baseline
+half. Likewise, a strict parallel SDK exercise threshold rejects any worker
+sidecar without the SDK half instead of treating an old/mixed fleet as complete
+evidence. Warn-only SDK gating reports the missing-worker count and evaluates
+the available observations.
+
 `--strict-additional-properties=fail` fails loudly when any worker lacks that
 state, or when no worker exported an evaluation, instead of treating an
-incomplete/old-fleet merge as clean.
+incomplete/old-fleet merge as clean. Unknown envelope versions and unknown
+inner coverage, strict, baseline, or SDK tracker versions are rejected; they
+are never guessed or partially imported.
 
 The compatibility rules are:
 
 - A newer merge reader keeps support for the explicitly documented older
   payloads within the same major line.
 - A format owner bumps its version for an incompatible shape change. Envelope,
-  coverage state, strict-required state, and strict-additional-properties
-  state versions evolve independently.
+  coverage state, strict-required state, strict-additional-properties state,
+  and SDK exercise state versions evolve independently.
 - An older reader is not required to accept payloads written by a future
   version. Unknown versions and unrecognised shapes fail loudly instead of
   being guessed or partially merged.

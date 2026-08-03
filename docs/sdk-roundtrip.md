@@ -129,6 +129,32 @@ remaining cases, then reported under separate `Decode failures` and
 representative wire statuses, content type, seed, case, pinned branch, and
 `OpenApiResponseExplorer::explore()` replay expression.
 
+## SDK exercise coverage
+
+Gesso records an SDK exercise attempt immediately before it invokes a decoder
+callback. Both supported callback paths contribute:
+
+- `GeneratedResponseCases::each()` for one operation response;
+- the decode callbacks executed by `exploreSpec(...)->assertRoundTrips()`.
+
+Generating a collection or iterating it manually with `foreach` does not prove
+that a decoder ran and records nothing. Use `each()` when you want direct
+exploration to contribute to SDK exercise coverage. Named
+`exploreComponent()` cases also remain outside this metric because a component
+does not identify a response `(method, path, status, content-type)`.
+
+The denominator is derived independently from the live spec. It contains every
+resolved JSON-compatible response media type with a schema, and excludes
+no-content responses, non-JSON media types, missing or non-JSON schemas, and
+OpenAPI 3.2 `itemSchema` streams. An attempt counts even if the decoder then
+throws: coverage answers whether the boundary was exercised, while the thrown
+exception or round-trip mismatch remains a normal test failure.
+
+The console, Markdown, HTML, JUnit, and JSON coverage reports show exercised
+and unexercised SDK response schemas. See the
+[coverage threshold gate](coverage.md#coverage-threshold-gate) to enforce a
+minimum percentage.
+
 ## Laravel
 
 The `ExploresOpenApiEndpoint` trait uses the same spec-name precedence as the
@@ -229,6 +255,5 @@ shapes that cannot represent one buffered JSON document throw
 - selected non-JSON schemas; and
 - OpenAPI 3.2 streaming responses using `itemSchema`.
 
-SDK exercise coverage reporting remains a separate follow-up phase. Use
-`explore()` for one resolved operation response, `exploreComponent()` for one
-named model schema, or `exploreSpec()` for explicit mappings across a spec.
+Use `explore()` for one resolved operation response, `exploreComponent()` for
+one named model schema, or `exploreSpec()` for explicit mappings across a spec.
