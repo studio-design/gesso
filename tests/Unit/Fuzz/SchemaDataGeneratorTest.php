@@ -1172,6 +1172,31 @@ class SchemaDataGeneratorTest extends TestCase
     }
 
     #[Test]
+    public function pinned_plan_partitions_nullable_enum_values(): void
+    {
+        $schema = [
+            'type' => ['string', 'null'],
+            'enum' => [null, 'member', 'alternate'],
+        ];
+
+        $null = SchemaDataGenerator::generateOne(
+            $schema,
+            null,
+            2,
+            new CaseSelectionPlan(['/type' => SchemaChoicePoint::NULL_VALUE]),
+        );
+        $this->assertNull($null);
+
+        $value = SchemaDataGenerator::generateOne(
+            $schema,
+            null,
+            0,
+            new CaseSelectionPlan(['/type' => SchemaChoicePoint::VALUE]),
+        );
+        $this->assertSame('member', $value);
+    }
+
+    #[Test]
     public function pinned_plan_selects_the_else_branch_of_a_conditional(): void
     {
         $schema = [

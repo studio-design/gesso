@@ -123,6 +123,26 @@ class BranchCompleteCaseGeneratorTest extends TestCase
     }
 
     #[Test]
+    public function covers_both_reachable_nullable_enum_branches(): void
+    {
+        $schema = [
+            'type' => ['string', 'null'],
+            'enum' => [null, 'member', 'alternate'],
+        ];
+
+        $cases = BranchCompleteCaseGenerator::generate($schema, seed: 1);
+        $values = array_map(static fn(PlannedSchemaCase $case): mixed => $case->value, $cases);
+
+        $this->assertCount(2, $cases);
+        $this->assertContains(null, $values);
+        $this->assertContains('member', $values);
+        foreach ($cases as $case) {
+            $this->assertTrue(SchemaValueValidator::isValid($case->value, $schema));
+            $this->assertSame('/type', $case->plan->targetPointer);
+        }
+    }
+
+    #[Test]
     public function is_deterministic_for_a_fixed_schema_and_seed(): void
     {
         $first = BranchCompleteCaseGenerator::generate(self::INCIDENT_SHAPE, seed: 7, extraCases: 3);
