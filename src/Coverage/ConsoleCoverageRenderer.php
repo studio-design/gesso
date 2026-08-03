@@ -8,6 +8,8 @@ use const STR_PAD_RIGHT;
 
 use Studio\Gesso\PHPUnit\ConsoleOutput;
 
+use function array_keys;
+use function array_unique;
 use function round;
 use function sprintf;
 use function str_pad;
@@ -20,6 +22,7 @@ use function str_repeat;
  * @phpstan-import-type CoverageResult from OpenApiCoverageTracker
  * @phpstan-import-type EndpointSummary from OpenApiCoverageTracker
  * @phpstan-import-type ResponseRow from OpenApiCoverageTracker
+ * @phpstan-import-type SdkExerciseCoverageResult from SdkExerciseCoverageReportBuilder
  */
 final class ConsoleCoverageRenderer
 {
@@ -31,10 +34,14 @@ final class ConsoleCoverageRenderer
 
     /**
      * @param array<string, CoverageResult> $results
+     * @param array<string, SdkExerciseCoverageResult> $sdkResults
      */
-    public static function render(array $results, ConsoleOutput $consoleOutput = ConsoleOutput::DEFAULT): string
-    {
-        if ($results === []) {
+    public static function render(
+        array $results,
+        ConsoleOutput $consoleOutput = ConsoleOutput::DEFAULT,
+        array $sdkResults = [],
+    ): string {
+        if ($results === [] && $sdkResults === []) {
             return '';
         }
 
@@ -42,8 +49,16 @@ final class ConsoleCoverageRenderer
         $output .= "OpenAPI Contract Test Coverage\n";
         $output .= str_repeat('=', 50) . "\n";
 
-        foreach ($results as $spec => $result) {
-            if ($consoleOutput === ConsoleOutput::ACTIVE_ONLY && !self::specHasActivity($result)) {
+        $specNames = array_unique([...array_keys($results), ...array_keys($sdkResults)]);
+        foreach ($specNames as $spec) {
+            $result = $results[$spec] ?? null;
+            $sdkResult = $sdkResults[$spec] ?? null;
+            if ($consoleOutput === ConsoleOutput::ACTIVE_ONLY && !self::specHasActivity($result, $sdkResult)) {
+                if ($result === null) {
+                    $output .= sprintf("\n[%s] no SDK exercise activity (%d responses in spec)\n", $spec, $sdkResult['responseTotal'] ?? 0);
+
+                    continue;
+                }
                 $output .= sprintf(
                     "\n[%s] no test activity (%d endpoints, %d responses in spec)\n",
                     $spec,
@@ -54,30 +69,48 @@ final class ConsoleCoverageRenderer
                 continue;
             }
 
-            $endpointPct = self::percentage($result['endpointFullyCovered'], $result['endpointTotal']);
-            $responsePct = self::percentage($result['responseCovered'], $result['responseTotal']);
+            if ($result !== null) {
+                $endpointPct = self::percentage($result['endpointFullyCovered'], $result['endpointTotal']);
+                $responsePct = self::percentage($result['responseCovered'], $result['responseTotal']);
 
-            $output .= sprintf(
-                "\n[%s] endpoints: %d/%d fully covered (%s%%), %d partial, %d uncovered\n",
-                $spec,
-                $result['endpointFullyCovered'],
-                $result['endpointTotal'],
-                $endpointPct,
-                $result['endpointPartial'],
-                $result['endpointUncovered'],
-            );
-            $output .= sprintf(
-                "        responses: %d/%d covered (%s%%), %d skipped, %d uncovered\n",
-                $result['responseCovered'],
-                $result['responseTotal'],
-                $responsePct,
-                $result['responseSkipped'],
-                $result['responseUncovered'],
-            );
+                $output .= sprintf(
+                    "\n[%s] endpoints: %d/%d fully covered (%s%%), %d partial, %d uncovered\n",
+                    $spec,
+                    $result['endpointFullyCovered'],
+                    $result['endpointTotal'],
+                    $endpointPct,
+                    $result['endpointPartial'],
+                    $result['endpointUncovered'],
+                );
+                $output .= sprintf(
+                    "        responses: %d/%d covered (%s%%), %d skipped, %d uncovered\n",
+                    $result['responseCovered'],
+                    $result['responseTotal'],
+                    $responsePct,
+                    $result['responseSkipped'],
+                    $result['responseUncovered'],
+                );
+            }
+
+            if ($sdkResult !== null) {
+                $prefix = $result === null ? sprintf("\n[%s] ", $spec) : '        ';
+                $output .= $prefix . sprintf(
+                    'SDK responses: %d/%d exercised (%s%%), %d unexercised' . "\n",
+                    $sdkResult['responseExercised'],
+                    $sdkResult['responseTotal'],
+                    self::percentage($sdkResult['responseExercised'], $sdkResult['responseTotal']),
+                    $sdkResult['responseUnexercised'],
+                );
+            }
             $output .= str_repeat('-', 50) . "\n";
             $output .= "Legend: ✓=validated  ⚠=skipped  ✗=uncovered  ◐=partial  ·=request-only  *=any/no content-type\n";
 
-            $output .= self::renderEndpoints($result['endpoints'], $consoleOutput);
+            if ($result !== null) {
+                $output .= self::renderEndpoints($result['endpoints'], $consoleOutput);
+            }
+            if ($sdkResult !== null && ($consoleOutput === ConsoleOutput::ALL || $consoleOutput === ConsoleOutput::UNCOVERED_ONLY)) {
+                $output .= self::renderSdkResponses($sdkResult, $consoleOutput);
+            }
         }
 
         $output .= "\n";
@@ -98,13 +131,49 @@ final class ConsoleCoverageRenderer
      * after a mid-run spec edit) are dropped by `computeCoverage` and so do
      * not flip a spec to active here either.
      *
-     * @param CoverageResult $result
+     * @param null|CoverageResult $result
+     * @param null|SdkExerciseCoverageResult $sdkResult
      */
-    private static function specHasActivity(array $result): bool
+    private static function specHasActivity(?array $result, ?array $sdkResult): bool
     {
-        return $result['responseCovered'] > 0 ||
+        return ($result !== null && (
+            $result['responseCovered'] > 0 ||
             $result['responseSkipped'] > 0 ||
-            $result['endpointRequestOnly'] > 0;
+            $result['endpointRequestOnly'] > 0
+        )) || ($sdkResult !== null && (
+            $sdkResult['responseExercised'] > 0 ||
+            $sdkResult['unexpectedObservations'] !== []
+        ));
+    }
+
+    /** @param SdkExerciseCoverageResult $result */
+    private static function renderSdkResponses(array $result, ConsoleOutput $mode): string
+    {
+        $output = '';
+        foreach ($result['responses'] as $row) {
+            if ($mode === ConsoleOutput::UNCOVERED_ONLY && $row['exercised']) {
+                continue;
+            }
+            $output .= sprintf(
+                "  %s %s  %s  %s  %s\n",
+                $row['exercised'] ? self::MARKER_ALL_COVERED : self::MARKER_UNCOVERED,
+                $row['endpoint'],
+                $row['statusKey'],
+                $row['contentTypeKey'],
+                $row['exercised'] ? sprintf('[%d]', $row['hits']) : 'unexercised',
+            );
+        }
+        foreach ($result['unexpectedObservations'] as $row) {
+            $output .= sprintf(
+                "  ! %s  %s  %s  unexpected [%d]\n",
+                $row['endpoint'],
+                $row['statusKey'],
+                $row['contentTypeKey'],
+                $row['hits'],
+            );
+        }
+
+        return $output;
     }
 
     /**

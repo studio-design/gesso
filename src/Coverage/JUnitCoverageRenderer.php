@@ -8,6 +8,8 @@ use DOMDocument;
 use DOMElement;
 use RuntimeException;
 
+use function array_keys;
+use function array_unique;
 use function implode;
 use function sprintf;
 
@@ -39,6 +41,9 @@ use function sprintf;
  * @phpstan-import-type CoverageResult from OpenApiCoverageTracker
  * @phpstan-import-type EndpointSummary from OpenApiCoverageTracker
  * @phpstan-import-type ResponseRow from OpenApiCoverageTracker
+ * @phpstan-import-type SdkExerciseCoverageResult from SdkExerciseCoverageReportBuilder
+ * @phpstan-import-type SdkExerciseResponseRow from SdkExerciseCoverageReportBuilder
+ * @phpstan-import-type SdkExerciseUnexpected from SdkExerciseCoverageReportBuilder
  */
 final class JUnitCoverageRenderer
 {
@@ -47,10 +52,11 @@ final class JUnitCoverageRenderer
 
     /**
      * @param array<string, CoverageResult> $results
+     * @param array<string, SdkExerciseCoverageResult> $sdkResults
      */
-    public static function render(array $results): string
+    public static function render(array $results, array $sdkResults = []): string
     {
-        if ($results === []) {
+        if ($results === [] && $sdkResults === []) {
             return '';
         }
 
@@ -66,8 +72,14 @@ final class JUnitCoverageRenderer
         $totalFailures = 0;
         $totalSkipped = 0;
 
-        foreach ($results as $specName => $result) {
-            [$suite, $suiteTests, $suiteFailures, $suiteSkipped] = self::renderSpec($doc, $specName, $result);
+        $specNames = array_unique([...array_keys($results), ...array_keys($sdkResults)]);
+        foreach ($specNames as $specName) {
+            [$suite, $suiteTests, $suiteFailures, $suiteSkipped] = self::renderSpec(
+                $doc,
+                $specName,
+                $results[$specName] ?? null,
+                $sdkResults[$specName] ?? null,
+            );
             $root->appendChild($suite);
 
             $totalTests += $suiteTests;
@@ -93,12 +105,17 @@ final class JUnitCoverageRenderer
     }
 
     /**
-     * @param CoverageResult $result
+     * @param null|CoverageResult $result
+     * @param null|SdkExerciseCoverageResult $sdkResult
      *
      * @return array{0: DOMElement, 1: int, 2: int, 3: int} {suite element, tests, failures, skipped}
      */
-    private static function renderSpec(DOMDocument $doc, string $specName, array $result): array
-    {
+    private static function renderSpec(
+        DOMDocument $doc,
+        string $specName,
+        ?array $result,
+        ?array $sdkResult,
+    ): array {
         $suite = $doc->createElement('testsuite');
         $suite->setAttribute('name', $specName);
         $suite->setAttribute('time', '0');
@@ -108,17 +125,36 @@ final class JUnitCoverageRenderer
         $failures = 0;
         $skipped = 0;
 
-        foreach ($result['endpoints'] as $endpoint) {
-            foreach (self::renderEndpoint($doc, $classname, $endpoint) as $entry) {
-                /** @var array{element: DOMElement, isFailure: bool, isSkipped: bool} $entry */
+        if ($result !== null) {
+            foreach ($result['endpoints'] as $endpoint) {
+                foreach (self::renderEndpoint($doc, $classname, $endpoint) as $entry) {
+                    /** @var array{element: DOMElement, isFailure: bool, isSkipped: bool} $entry */
+                    $suite->appendChild($entry['element']);
+                    $tests++;
+                    if ($entry['isFailure']) {
+                        $failures++;
+                    }
+                    if ($entry['isSkipped']) {
+                        $skipped++;
+                    }
+                }
+            }
+        }
+
+        if ($sdkResult !== null) {
+            $sdkClassname = $specName . '.sdk-exercise';
+            foreach ($sdkResult['responses'] as $row) {
+                $entry = self::renderSdkResponseCase($doc, $sdkClassname, $row);
                 $suite->appendChild($entry['element']);
                 $tests++;
                 if ($entry['isFailure']) {
                     $failures++;
                 }
-                if ($entry['isSkipped']) {
-                    $skipped++;
-                }
+            }
+            foreach ($sdkResult['unexpectedObservations'] as $row) {
+                $suite->appendChild(self::renderUnexpectedSdkCase($doc, $sdkClassname, $row));
+                $tests++;
+                $failures++;
             }
         }
 
@@ -127,6 +163,60 @@ final class JUnitCoverageRenderer
         $suite->setAttribute('skipped', (string) $skipped);
 
         return [$suite, $tests, $failures, $skipped];
+    }
+
+    /**
+     * @param SdkExerciseResponseRow $row
+     *
+     * @return array{element: DOMElement, isFailure: bool}
+     */
+    private static function renderSdkResponseCase(DOMDocument $doc, string $classname, array $row): array
+    {
+        $name = sprintf('%s [%s %s]', $row['endpoint'], $row['statusKey'], $row['contentTypeKey']);
+        $testcase = self::baseTestcase($doc, $classname, $name);
+        if (!$row['exercised']) {
+            $failure = $doc->createElement('failure');
+            $failure->setAttribute('type', 'UnexercisedSdkResponseSchema');
+            $failure->setAttribute('message', sprintf(
+                'Response schema %s %s on %s was not exercised against an SDK decoder',
+                $row['statusKey'],
+                $row['contentTypeKey'],
+                $row['endpoint'],
+            ));
+            $testcase->appendChild($failure);
+        }
+        self::appendSdkSystemOut($doc, $testcase, $row['hits'], $row['operationId']);
+
+        return ['element' => $testcase, 'isFailure' => !$row['exercised']];
+    }
+
+    /** @param SdkExerciseUnexpected $row */
+    private static function renderUnexpectedSdkCase(DOMDocument $doc, string $classname, array $row): DOMElement
+    {
+        $name = sprintf('%s [unexpected %s %s]', $row['endpoint'], $row['statusKey'], $row['contentTypeKey']);
+        $testcase = self::baseTestcase($doc, $classname, $name);
+        $failure = $doc->createElement('failure');
+        $failure->setAttribute('type', 'UnexpectedSdkExerciseObservation');
+        $failure->setAttribute('message', 'SDK exercise observation does not match an eligible live-spec response schema');
+        $testcase->appendChild($failure);
+        self::appendSdkSystemOut($doc, $testcase, $row['hits'], null);
+
+        return $testcase;
+    }
+
+    private static function appendSdkSystemOut(
+        DOMDocument $doc,
+        DOMElement $testcase,
+        int $hits,
+        ?string $operationId,
+    ): void {
+        $parts = [sprintf('hits=%d', $hits)];
+        if ($operationId !== null) {
+            $parts[] = sprintf('operationId=%s', $operationId);
+        }
+        $systemOut = $doc->createElement('system-out');
+        $systemOut->appendChild($doc->createTextNode(implode(' ', $parts)));
+        $testcase->appendChild($systemOut);
     }
 
     /**

@@ -12,6 +12,7 @@ use Studio\Gesso\Coverage\EndpointCoverageState;
 use Studio\Gesso\Coverage\JsonCoverageRenderer;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\Coverage\ResponseCoverageState;
+use Studio\Gesso\Tests\Helpers\SdkExerciseCoverageResultFixture;
 
 use function array_keys;
 use function explode;
@@ -36,7 +37,7 @@ class JsonCoverageRendererTest extends TestCase
     {
         $payload = $this->decode($this->renderOneValidated());
 
-        $this->assertSame(2, $payload['schema_version']);
+        $this->assertSame(3, $payload['schema_version']);
         $this->assertSame(self::FIXED_TIMESTAMP, $payload['generated_at']);
     }
 
@@ -353,8 +354,45 @@ class JsonCoverageRendererTest extends TestCase
             'response_uncovered',
         ];
 
-        $this->assertSame($expectedKeys, array_keys($payload['aggregate']));
+        $this->assertSame([...$expectedKeys, 'sdk_exercise'], array_keys($payload['aggregate']));
         $this->assertSame($expectedKeys, array_keys($payload['specs']['front']['aggregates']));
+    }
+
+    #[Test]
+    public function render_serialises_sdk_exercise_aggregate_rows_and_unexpected_observations(): void
+    {
+        $payload = $this->decode(JsonCoverageRenderer::render(
+            $this->oneSpecResults(),
+            $this->fixedNow(),
+            ['front' => SdkExerciseCoverageResultFixture::result()],
+        ));
+
+        $this->assertSame([
+            'response_total' => 2,
+            'response_exercised' => 1,
+            'response_unexercised' => 1,
+        ], $payload['aggregate']['sdk_exercise']);
+
+        $sdk = $payload['specs']['front']['sdk_exercise'];
+        $this->assertSame(2, $sdk['response_total']);
+        $this->assertSame(1, $sdk['response_exercised']);
+        $this->assertSame(1, $sdk['response_unexercised']);
+        $this->assertSame([
+            'endpoint' => 'GET /v1/sdk-pets',
+            'method' => 'GET',
+            'path' => '/v1/sdk-pets',
+            'operation_id' => 'listSdkPets',
+            'status_key' => '200',
+            'content_type_key' => 'application/json',
+            'exercised' => true,
+            'hits' => 2,
+        ], $sdk['responses'][0]);
+        $this->assertSame([
+            'endpoint' => 'GET /v1/orphan',
+            'status_key' => '418',
+            'content_type_key' => 'application/json',
+            'hits' => 3,
+        ], $sdk['unexpected_observations'][0]);
     }
 
     /**

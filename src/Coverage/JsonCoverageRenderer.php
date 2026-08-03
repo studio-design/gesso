@@ -13,6 +13,8 @@ use DateTimeImmutable;
 use RuntimeException;
 use Throwable;
 
+use function array_keys;
+use function array_unique;
 use function json_encode;
 use function json_last_error_msg;
 use function sprintf;
@@ -43,6 +45,7 @@ use function sprintf;
  * @phpstan-import-type CoverageResult from OpenApiCoverageTracker
  * @phpstan-import-type EndpointSummary from OpenApiCoverageTracker
  * @phpstan-import-type ResponseRow from OpenApiCoverageTracker
+ * @phpstan-import-type SdkExerciseCoverageResult from SdkExerciseCoverageReportBuilder
  *
  * @phpstan-type JsonAggregate array{
  *     endpoint_total: int,
@@ -82,16 +85,18 @@ use function sprintf;
  * @phpstan-type JsonSpec array{
  *     aggregates: JsonAggregate,
  *     endpoints: list<JsonEndpoint>,
+ *     sdk_exercise: array<string, mixed>,
  * }
  */
 final class JsonCoverageRenderer
 {
-    public const SCHEMA_VERSION = 2;
+    public const SCHEMA_VERSION = 3;
     private const COMPOSER_PACKAGE_NAME = 'studio-design/gesso';
     private const TOOL_NAME = 'studio-design/gesso';
 
     /**
      * @param array<string, CoverageResult> $results
+     * @param array<string, SdkExerciseCoverageResult> $sdkResults
      * @param null|DateTimeImmutable $generatedAt Override the document timestamp.
      *                                            Defaults to the current time.
      *
@@ -99,9 +104,12 @@ final class JsonCoverageRenderer
      *                short-circuit a no-coverage run; otherwise a pretty-printed
      *                JSON document terminated by a single `"\n"`.
      */
-    public static function render(array $results, ?DateTimeImmutable $generatedAt = null): string
-    {
-        if ($results === []) {
+    public static function render(
+        array $results,
+        ?DateTimeImmutable $generatedAt = null,
+        array $sdkResults = [],
+    ): string {
+        if ($results === [] && $sdkResults === []) {
             return '';
         }
 
@@ -112,8 +120,11 @@ final class JsonCoverageRenderer
                 'name' => self::TOOL_NAME,
                 'version' => self::resolveToolVersion(),
             ],
-            'aggregate' => self::aggregate($results),
-            'specs' => self::serialiseSpecs($results),
+            'aggregate' => [
+                ...self::aggregate($results),
+                'sdk_exercise' => self::aggregateSdk($sdkResults),
+            ],
+            'specs' => self::serialiseSpecs($results, $sdkResults),
         ];
 
         $encoded = json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
@@ -165,21 +176,95 @@ final class JsonCoverageRenderer
     }
 
     /**
+     * @param array<string, SdkExerciseCoverageResult> $sdkResults
+     *
+     * @return array{response_total: int, response_exercised: int, response_unexercised: int}
+     */
+    private static function aggregateSdk(array $sdkResults): array
+    {
+        $totals = [
+            'response_total' => 0,
+            'response_exercised' => 0,
+            'response_unexercised' => 0,
+        ];
+        foreach ($sdkResults as $result) {
+            $totals['response_total'] += $result['responseTotal'];
+            $totals['response_exercised'] += $result['responseExercised'];
+            $totals['response_unexercised'] += $result['responseUnexercised'];
+        }
+
+        return $totals;
+    }
+
+    /**
      * @param array<string, CoverageResult> $results
+     * @param array<string, SdkExerciseCoverageResult> $sdkResults
      *
      * @return array<string, JsonSpec>
      */
-    private static function serialiseSpecs(array $results): array
+    private static function serialiseSpecs(array $results, array $sdkResults): array
     {
         $specs = [];
-        foreach ($results as $specName => $result) {
+        $specNames = array_unique([...array_keys($results), ...array_keys($sdkResults)]);
+        foreach ($specNames as $specName) {
+            $result = $results[$specName] ?? null;
             $specs[$specName] = [
-                'aggregates' => self::aggregate([$specName => $result]),
-                'endpoints' => self::serialiseEndpoints($result['endpoints']),
+                'aggregates' => $result === null ? self::aggregate([]) : self::aggregate([$specName => $result]),
+                'endpoints' => $result === null ? [] : self::serialiseEndpoints($result['endpoints']),
+                'sdk_exercise' => self::serialiseSdkExercise($sdkResults[$specName] ?? null),
             ];
         }
 
         return $specs;
+    }
+
+    /**
+     * @param null|SdkExerciseCoverageResult $result
+     *
+     * @return array<string, mixed>
+     */
+    private static function serialiseSdkExercise(?array $result): array
+    {
+        if ($result === null) {
+            return [
+                'response_total' => 0,
+                'response_exercised' => 0,
+                'response_unexercised' => 0,
+                'responses' => [],
+                'unexpected_observations' => [],
+            ];
+        }
+
+        $responses = [];
+        foreach ($result['responses'] as $row) {
+            $responses[] = [
+                'endpoint' => $row['endpoint'],
+                'method' => $row['method'],
+                'path' => $row['path'],
+                'operation_id' => $row['operationId'],
+                'status_key' => $row['statusKey'],
+                'content_type_key' => $row['contentTypeKey'],
+                'exercised' => $row['exercised'],
+                'hits' => $row['hits'],
+            ];
+        }
+        $unexpected = [];
+        foreach ($result['unexpectedObservations'] as $row) {
+            $unexpected[] = [
+                'endpoint' => $row['endpoint'],
+                'status_key' => $row['statusKey'],
+                'content_type_key' => $row['contentTypeKey'],
+                'hits' => $row['hits'],
+            ];
+        }
+
+        return [
+            'response_total' => $result['responseTotal'],
+            'response_exercised' => $result['responseExercised'],
+            'response_unexercised' => $result['responseUnexercised'],
+            'responses' => $responses,
+            'unexpected_observations' => $unexpected,
+        ];
     }
 
     /**

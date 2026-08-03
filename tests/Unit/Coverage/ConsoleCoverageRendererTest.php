@@ -10,6 +10,7 @@ use Studio\Gesso\Coverage\ConsoleCoverageRenderer;
 use Studio\Gesso\Coverage\EndpointCoverageState;
 use Studio\Gesso\Coverage\ResponseCoverageState;
 use Studio\Gesso\PHPUnit\ConsoleOutput;
+use Studio\Gesso\Tests\Helpers\SdkExerciseCoverageResultFixture;
 
 use function explode;
 
@@ -382,6 +383,21 @@ class ConsoleCoverageRendererTest extends TestCase
 
         $this->assertStringContainsString('! 418', $output);
         $this->assertStringContainsString('unexpected (not in spec)', $output);
+    }
+
+    #[Test]
+    public function all_mode_renders_sdk_exercise_summary_rows_and_unexpected_observations(): void
+    {
+        $output = ConsoleCoverageRenderer::render(
+            [],
+            ConsoleOutput::ALL,
+            ['front' => SdkExerciseCoverageResultFixture::result()],
+        );
+
+        $this->assertStringContainsString('[front] SDK responses: 1/2 exercised (50%), 1 unexercised', $output);
+        $this->assertStringContainsString('✓ GET /v1/sdk-pets  200  application/json  [2]', $output);
+        $this->assertStringContainsString('✗ GET /v1/sdk-pets  422  application/problem+json  unexercised', $output);
+        $this->assertStringContainsString('! GET /v1/orphan  418  application/json  unexpected [3]', $output);
     }
 
     /**

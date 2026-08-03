@@ -10,6 +10,7 @@ use Studio\Gesso\Coverage\EndpointCoverageState;
 use Studio\Gesso\Coverage\HtmlCoverageRenderer;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\Coverage\ResponseCoverageState;
+use Studio\Gesso\Tests\Helpers\SdkExerciseCoverageResultFixture;
 
 use function array_unique;
 use function explode;
@@ -477,6 +478,23 @@ class HtmlCoverageRendererTest extends TestCase
         $html = $this->renderOneValidated();
 
         $this->assertStringEndsWith("</html>\n", $html);
+    }
+
+    #[Test]
+    public function render_includes_escaped_sdk_response_schema_summary_and_table(): void
+    {
+        $html = HtmlCoverageRenderer::render(
+            [],
+            ['front' => SdkExerciseCoverageResultFixture::result()],
+        );
+
+        $this->assertStringContainsString('<h2>front</h2>', $html);
+        $this->assertStringContainsString('<h3>SDK response schema exercise</h3>', $html);
+        $this->assertStringContainsString('SDK responses: 1 / 2 exercised (50%)', $html);
+        $this->assertStringContainsString('GET /v1/sdk-pets', $html);
+        $this->assertStringContainsString('application/problem+json', $html);
+        $this->assertStringContainsString('unexercised', $html);
+        $this->assertStringContainsString('GET /v1/orphan', $html);
     }
 
     /**

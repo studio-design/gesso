@@ -7,6 +7,8 @@ namespace Studio\Gesso\Coverage;
 use const ENT_QUOTES;
 use const ENT_SUBSTITUTE;
 
+use function array_keys;
+use function array_unique;
 use function htmlspecialchars;
 use function implode;
 use function preg_replace;
@@ -43,6 +45,7 @@ use function strtolower;
  * @phpstan-import-type CoverageResult from OpenApiCoverageTracker
  * @phpstan-import-type EndpointSummary from OpenApiCoverageTracker
  * @phpstan-import-type ResponseRow from OpenApiCoverageTracker
+ * @phpstan-import-type SdkExerciseCoverageResult from SdkExerciseCoverageReportBuilder
  */
 final class HtmlCoverageRenderer
 {
@@ -54,14 +57,15 @@ final class HtmlCoverageRenderer
 
     /**
      * @param array<string, CoverageResult> $results
+     * @param array<string, SdkExerciseCoverageResult> $sdkResults
      *
      * @return string Empty string when `$results` is empty so callers can
      *                short-circuit a no-coverage run; otherwise a full HTML
      *                document terminated by a trailing newline.
      */
-    public static function render(array $results): string
+    public static function render(array $results, array $sdkResults = []): string
     {
-        if ($results === []) {
+        if ($results === [] && $sdkResults === []) {
             return '';
         }
 
@@ -80,13 +84,20 @@ final class HtmlCoverageRenderer
             '<header class="page-header">',
             '<h1>OpenAPI Contract Test Coverage</h1>',
             self::renderAggregateSummary($totals),
+            self::renderSdkAggregateSummary($sdkResults),
             '</header>',
         ];
 
         $allocateAnchor = self::makeAnchorAllocator();
 
-        foreach ($results as $specName => $result) {
-            $lines[] = self::renderSpec($specName, $result, $allocateAnchor);
+        $specNames = array_unique([...array_keys($results), ...array_keys($sdkResults)]);
+        foreach ($specNames as $specName) {
+            $lines[] = self::renderSpec(
+                $specName,
+                $results[$specName] ?? null,
+                $sdkResults[$specName] ?? null,
+                $allocateAnchor,
+            );
         }
 
         $lines[] = '</body>';
@@ -167,19 +178,48 @@ final class HtmlCoverageRenderer
         );
     }
 
+    /** @param array<string, SdkExerciseCoverageResult> $sdkResults */
+    private static function renderSdkAggregateSummary(array $sdkResults): string
+    {
+        if ($sdkResults === []) {
+            return '';
+        }
+
+        $total = 0;
+        $exercised = 0;
+        foreach ($sdkResults as $result) {
+            $total += $result['responseTotal'];
+            $exercised += $result['responseExercised'];
+        }
+
+        return sprintf(
+            '<div class="aggregate sdk-aggregate"><p class="metric"><strong>%d / %d</strong> SDK responses exercised (%s%%)</p></div>',
+            $exercised,
+            $total,
+            self::formatPercent(self::percent($exercised, $total)),
+        );
+    }
+
     /**
-     * @param CoverageResult $result
+     * @param null|CoverageResult $result
+     * @param null|SdkExerciseCoverageResult $sdkResult
      * @param callable(string, string): string $allocateAnchor
      */
-    private static function renderSpec(string $specName, array $result, callable $allocateAnchor): string
-    {
-        $endpointPct = self::percent($result['endpointFullyCovered'], $result['endpointTotal']);
-        $responsePct = self::percent($result['responseCovered'], $result['responseTotal']);
-
+    private static function renderSpec(
+        string $specName,
+        ?array $result,
+        ?array $sdkResult,
+        callable $allocateAnchor,
+    ): string {
         $lines = [
             '<section class="spec">',
             sprintf('<h2>%s</h2>', self::escape($specName)),
-            sprintf(
+        ];
+
+        if ($result !== null) {
+            $endpointPct = self::percent($result['endpointFullyCovered'], $result['endpointTotal']);
+            $responsePct = self::percent($result['responseCovered'], $result['responseTotal']);
+            $lines[] = sprintf(
                 '<p class="spec-summary">endpoints: %d / %d fully covered (%s%%) — responses: %d / %d covered (%s%%)</p>',
                 $result['endpointFullyCovered'],
                 $result['endpointTotal'],
@@ -187,24 +227,78 @@ final class HtmlCoverageRenderer
                 $result['responseCovered'],
                 $result['responseTotal'],
                 self::formatPercent($responsePct),
-            ),
-        ];
+            );
 
-        if ($result['endpoints'] !== []) {
-            // Resolve every anchor up front so the list and detail sections
-            // emit byte-for-byte identical IDs without recomputing (which
-            // would risk allocator divergence on collision-suffix runs).
-            $anchors = [];
-            foreach ($result['endpoints'] as $endpoint) {
-                $anchors[] = $allocateAnchor($specName, $endpoint['endpoint']);
-            }
+            if ($result['endpoints'] !== []) {
+                // Resolve every anchor up front so the list and detail sections
+                // emit byte-for-byte identical IDs without recomputing (which
+                // would risk allocator divergence on collision-suffix runs).
+                $anchors = [];
+                foreach ($result['endpoints'] as $endpoint) {
+                    $anchors[] = $allocateAnchor($specName, $endpoint['endpoint']);
+                }
 
-            $lines[] = self::renderEndpointList($result['endpoints'], $anchors);
-            foreach ($result['endpoints'] as $i => $endpoint) {
-                $lines[] = self::renderEndpointDetail($endpoint, $anchors[$i]);
+                $lines[] = self::renderEndpointList($result['endpoints'], $anchors);
+                foreach ($result['endpoints'] as $i => $endpoint) {
+                    $lines[] = self::renderEndpointDetail($endpoint, $anchors[$i]);
+                }
             }
         }
 
+        if ($sdkResult !== null) {
+            $lines[] = self::renderSdkExercise($sdkResult);
+        }
+
+        $lines[] = '</section>';
+
+        return implode("\n", $lines);
+    }
+
+    /** @param SdkExerciseCoverageResult $result */
+    private static function renderSdkExercise(array $result): string
+    {
+        $lines = [
+            '<section class="sdk-exercise">',
+            '<h3>SDK response schema exercise</h3>',
+            sprintf(
+                '<p class="sdk-summary">SDK responses: %d / %d exercised (%s%%) — %d unexercised</p>',
+                $result['responseExercised'],
+                $result['responseTotal'],
+                self::formatPercent(self::percent($result['responseExercised'], $result['responseTotal'])),
+                $result['responseUnexercised'],
+            ),
+            '<table class="sdk-responses">',
+            '<thead><tr><th>Endpoint</th><th>Operation</th><th>Status</th><th>Content type</th><th>State</th><th>Hits</th></tr></thead>',
+            '<tbody>',
+        ];
+        foreach ($result['responses'] as $row) {
+            $lines[] = sprintf(
+                '<tr class="state-%s"><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%d</td></tr>',
+                $row['exercised'] ? 'exercised' : 'unexercised',
+                self::escape($row['endpoint']),
+                $row['operationId'] !== null ? self::escape($row['operationId']) : '',
+                self::escape($row['statusKey']),
+                self::escape($row['contentTypeKey']),
+                $row['exercised'] ? 'exercised' : 'unexercised',
+                $row['hits'],
+            );
+        }
+        $lines[] = '</tbody></table>';
+
+        if ($result['unexpectedObservations'] !== []) {
+            $lines[] = '<p class="unexpected-heading">Unexpected SDK exercise observations</p>';
+            $lines[] = '<table class="unexpected"><thead><tr><th>Endpoint</th><th>Status</th><th>Content type</th><th>Hits</th></tr></thead><tbody>';
+            foreach ($result['unexpectedObservations'] as $row) {
+                $lines[] = sprintf(
+                    '<tr><td>%s</td><td>%s</td><td>%s</td><td>%d</td></tr>',
+                    self::escape($row['endpoint']),
+                    self::escape($row['statusKey']),
+                    self::escape($row['contentTypeKey']),
+                    $row['hits'],
+                );
+            }
+            $lines[] = '</tbody></table>';
+        }
         $lines[] = '</section>';
 
         return implode("\n", $lines);
