@@ -491,6 +491,23 @@ class SchemaChoicePointEnumeratorTest extends TestCase
         ]);
     }
 
+    #[Test]
+    public function throws_beyond_the_documented_node_visit_budget(): void
+    {
+        $prefixItems = [];
+        for ($i = 0; $i < 10_000; $i++) {
+            $prefixItems[] = ['type' => 'string'];
+        }
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('node-visit budget of 10000');
+
+        SchemaChoicePointEnumerator::enumerate([
+            'type' => 'array',
+            'prefixItems' => $prefixItems,
+        ]);
+    }
+
     /**
      * @param list<SchemaChoicePoint> $points
      *
