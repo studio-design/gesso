@@ -12,6 +12,7 @@ use Studio\Gesso\Fuzz\ExplorationCases;
 use Studio\Gesso\Fuzz\GeneratedResponseCases;
 use Studio\Gesso\Fuzz\OpenApiEndpointExplorer;
 use Studio\Gesso\Fuzz\OpenApiResponseExplorer;
+use Studio\Gesso\Fuzz\OpenApiResponseSpecExploration;
 use Studio\Gesso\Fuzz\OpenApiSpecExploration;
 use Studio\Gesso\Fuzz\OpenApiSpecExplorer;
 use Studio\Gesso\Internal\StackTraceFilter;
@@ -138,6 +139,28 @@ trait ExploresOpenApiEndpoint
                 $seed,
                 $extraCases,
             );
+        } catch (InvalidArgumentException|RuntimeException $e) {
+            $this->failExplore($e->getMessage());
+        }
+    }
+
+    /**
+     * Build a deterministic spec-wide generated SDK response round-trip plan.
+     */
+    public function exploreResponseSpec(int $seed = 1, int $extraCases = 0): OpenApiResponseSpecExploration
+    {
+        $specName = $this->resolveOpenApiSpec();
+        if (!is_string($specName) || $specName === '') {
+            $this->failExplore(
+                'openApiSpec() must return a non-empty spec name, but an empty string was returned. '
+                . 'Either add #[OpenApiSpec(\'your-spec\')] to your test class or method, '
+                . 'override openApiSpec() in your test class, or set the "default_spec" key '
+                . 'in config/gesso.php.',
+            );
+        }
+
+        try {
+            return OpenApiResponseExplorer::exploreSpec($specName, $seed, $extraCases);
         } catch (InvalidArgumentException|RuntimeException $e) {
             $this->failExplore($e->getMessage());
         }

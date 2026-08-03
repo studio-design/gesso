@@ -12,6 +12,8 @@ use Studio\Gesso\Fuzz\ExplorationCaseKind;
 use Studio\Gesso\Fuzz\ExplorationCases;
 use Studio\Gesso\Fuzz\ExploredCase;
 use Studio\Gesso\Fuzz\GeneratedResponseCases;
+use Studio\Gesso\Fuzz\GeneratedResponseCase;
+use Studio\Gesso\Fuzz\OpenApiResponseSpecExploration;
 use Studio\Gesso\Fuzz\OpenApiSpecExploration;
 use Studio\Gesso\HttpMethod;
 use Studio\Gesso\Laravel\ExploresOpenApiEndpoint;
@@ -119,6 +121,27 @@ class ExploresOpenApiEndpointTest extends TestCase
 
         $this->assertSame(1, $summary->executedOperations);
         $this->assertSame(2, $summary->executedCases);
+    }
+
+    #[Test]
+    #[OpenApiSpec('sdk-roundtrip-plan')]
+    public function exposes_the_spec_wide_response_round_trip_plan(): void
+    {
+        $plan = $this->exploreResponseSpec(seed: 11, extraCases: 1);
+
+        $this->assertInstanceOf(OpenApiResponseSpecExploration::class, $plan);
+        $summary = $plan
+            ->includeOperations(['createPet'])
+            ->mapResponse(
+                'createPet',
+                201,
+                static fn(GeneratedResponseCase $case): mixed => $case->bodyAsObject(),
+                static fn(mixed $value): mixed => $value,
+            )
+            ->assertRoundTrips();
+
+        $this->assertSame(1, $summary->executedOperations);
+        $this->assertGreaterThanOrEqual(2, $summary->executedCases);
     }
 
     #[Test]
