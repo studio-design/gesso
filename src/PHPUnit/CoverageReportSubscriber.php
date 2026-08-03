@@ -192,6 +192,9 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
 
         if ($results === [] && ($this->minEndpointCoverage !== null || $this->minResponseCoverage !== null)) {
             $this->failOnEmptyResultsIfGated(httpOnly: true);
+            if (!$this->minCoverageStrict && $this->partialRun === null) {
+                $this->evaluateThresholdGate($results, $sdkResults, includeHttp: false);
+            }
         } else {
             $this->evaluateThresholdGate($results, $sdkResults);
         }
@@ -359,11 +362,14 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
      * @param array<string, CoverageResult> $results
      * @param array<string, SdkExerciseCoverageResult> $sdkResults
      */
-    private function evaluateThresholdGate(array $results, array $sdkResults): void
-    {
+    private function evaluateThresholdGate(
+        array $results,
+        array $sdkResults,
+        bool $includeHttp = true,
+    ): void {
         if (
-            $this->minEndpointCoverage === null &&
-            $this->minResponseCoverage === null &&
+            (!$includeHttp || $this->minEndpointCoverage === null) &&
+            (!$includeHttp || $this->minResponseCoverage === null) &&
             $this->minSdkExerciseCoverage === null
         ) {
             return;
@@ -382,8 +388,8 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
         $evaluation = CoverageThresholdEvaluator::evaluate(
             $results,
             $sdkResults,
-            $this->minEndpointCoverage,
-            $this->minResponseCoverage,
+            $includeHttp ? $this->minEndpointCoverage : null,
+            $includeHttp ? $this->minResponseCoverage : null,
             $this->minSdkExerciseCoverage,
             $this->minCoverageStrict,
         );

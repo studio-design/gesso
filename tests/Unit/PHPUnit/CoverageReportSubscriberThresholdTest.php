@@ -440,6 +440,34 @@ class CoverageReportSubscriberThresholdTest extends TestCase
     }
 
     #[Test]
+    public function warn_only_sdk_gate_is_still_evaluated_when_http_evidence_is_empty(): void
+    {
+        $tracker = new SdkExerciseCoverageTracker();
+        $tracker->recordOn('sdk-exercise-coverage', 'GET', '/pets', '200', 'application/json');
+        $stderr = '';
+        $subscriber = new CoverageReportSubscriber(
+            specs: ['sdk-exercise-coverage'],
+            outputFile: null,
+            consoleOutput: ConsoleOutput::DEFAULT,
+            githubSummaryPath: null,
+            stderrWriter: static function (string $message) use (&$stderr): void {
+                $stderr .= $message;
+            },
+            minEndpointCoverage: 1.0,
+            minSdkExerciseCoverage: 100.0,
+            minCoverageStrict: false,
+            sdkExerciseCoverageTracker: $tracker,
+        );
+
+        ob_start();
+        $subscriber->notify($this->fakeExecutionFinished());
+        ob_get_clean();
+
+        $this->assertStringContainsString('configured threshold cannot be evaluated', $stderr);
+        $this->assertStringContainsString('SDK exercise coverage 20% < threshold 100%', $stderr);
+    }
+
+    #[Test]
     public function persistent_json_output_receives_sdk_results_without_http_results(): void
     {
         $tracker = new SdkExerciseCoverageTracker();
