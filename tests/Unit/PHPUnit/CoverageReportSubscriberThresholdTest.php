@@ -12,6 +12,7 @@ use PHPUnit\Framework\TestCase;
 use ReflectionClass;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\Coverage\SdkExerciseCoverageTracker;
+use Studio\Gesso\Exception\InvalidOpenApiSpecException;
 use Studio\Gesso\Internal\PartialRunDecision;
 use Studio\Gesso\PHPUnit\ConsoleOutput;
 use Studio\Gesso\PHPUnit\CoverageReportSubscriber;
@@ -437,6 +438,37 @@ class CoverageReportSubscriberThresholdTest extends TestCase
         $this->assertStringContainsString('GET /pets  200  application/json  unexercised', $output);
         $this->assertNull($exitCode);
         $this->assertStringContainsString('[OpenAPI Coverage] WARN:', $stderr);
+    }
+
+    #[Test]
+    public function sdk_reporting_survives_loader_reset_after_subscriber_construction(): void
+    {
+        $subscriber = new CoverageReportSubscriber(
+            specs: ['sdk-exercise-coverage'],
+            outputFile: null,
+            consoleOutput: ConsoleOutput::DEFAULT,
+            githubSummaryPath: null,
+            sdkExerciseCoverageTracker: new SdkExerciseCoverageTracker(),
+        );
+
+        // Framework base tests may reset static loader state in tearDown()
+        // before PHPUnit dispatches ExecutionFinished.
+        OpenApiSpecLoader::reset();
+
+        ob_start();
+
+        try {
+            $subscriber->notify($this->fakeExecutionFinished());
+        } catch (InvalidOpenApiSpecException $e) {
+            $this->fail('ExecutionFinished must retain the boot-time spec configuration: ' . $e->getMessage());
+        } finally {
+            $output = (string) ob_get_clean();
+        }
+
+        $this->assertStringContainsString(
+            '[sdk-exercise-coverage] SDK responses: 0/5 exercised (0%), 5 unexercised',
+            $output,
+        );
     }
 
     #[Test]
