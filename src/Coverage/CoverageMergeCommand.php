@@ -55,8 +55,13 @@ use function unlink;
  * subprocess.
  *
  * @phpstan-import-type CoverageResult from OpenApiCoverageTracker
- * @phpstan-import-type CoverageReportEntry from OpenApiCoverageTracker
+ * @phpstan-import-type SdkExerciseCoverageResult from SdkExerciseCoverageReportBuilder
  *
+ * @phpstan-type MergeReportEntry array{
+ *     label: string,
+ *     renderer: callable(array<string, CoverageResult>, array<string, SdkExerciseCoverageResult>): string,
+ *     outputFile: ?string,
+ * }
  * @phpstan-type MergeOptions array{
  *     sidecar_dir?: string,
  *     spec_base_path?: string,
@@ -71,6 +76,7 @@ use function unlink;
  *     cleanup?: bool,
  *     min_endpoint_coverage?: float|string,
  *     min_response_coverage?: float|string,
+ *     min_sdk_exercise_coverage?: float|string,
  *     min_coverage_strict?: bool,
  *     strict_required?: string,
  *     strict_additional_properties?: string,
@@ -141,6 +147,7 @@ final class CoverageMergeCommand
                     break;
                 case 'min_endpoint_coverage':
                 case 'min_response_coverage':
+                case 'min_sdk_exercise_coverage':
                     // Cast numeric values up-front so phpstan can prove the
                     // 0..100 range check in run(). For non-numeric values
                     // pass the raw string through — run()'s resolveThreshold
@@ -191,6 +198,9 @@ final class CoverageMergeCommand
               --min-endpoint-coverage=<pct> Fail-fast (with --min-coverage-strict) when fully-
                                             covered-endpoint percent is below this value (0-100).
               --min-response-coverage=<pct> Same, at (method, path, status, content-type) granularity.
+              --min-sdk-exercise-coverage=<pct>
+                                            Minimum eligible response schemas exercised by an
+                                            SDK decoder callback (0-100).
               --min-coverage-strict[=BOOL]  Treat threshold misses as exit non-zero (default
                                             warn-only).
               --strict-required=<mode>      off | warn | fail. Aggregate worker observations
@@ -254,7 +264,8 @@ final class CoverageMergeCommand
         $minStrict = $options['min_coverage_strict'] ?? false;
         $endpointResolution = $this->resolveThreshold('min_endpoint_coverage', $options['min_endpoint_coverage'] ?? null, $minStrict);
         $responseResolution = $this->resolveThreshold('min_response_coverage', $options['min_response_coverage'] ?? null, $minStrict);
-        if ($endpointResolution['fatal'] || $responseResolution['fatal']) {
+        $sdkResolution = $this->resolveThreshold('min_sdk_exercise_coverage', $options['min_sdk_exercise_coverage'] ?? null, $minStrict);
+        if ($endpointResolution['fatal'] || $responseResolution['fatal'] || $sdkResolution['fatal']) {
             // Strict-mode misconfiguration: a typo'd / out-of-range threshold
             // would otherwise silently disable the gate the user opted into.
             // Exit 2 mirrors the `--spec-base-path is required` config error.
@@ -262,6 +273,7 @@ final class CoverageMergeCommand
         }
         $minEndpointPct = $endpointResolution['value'];
         $minResponsePct = $responseResolution['value'];
+        $minSdkExercisePct = $sdkResolution['value'];
 
         try {
             $strictRequiredMode = StrictRequiredMode::fromConfigValue($options['strict_required'] ?? null);
@@ -341,7 +353,7 @@ final class CoverageMergeCommand
             // Strict-mode gate must fail-fast even before sidecars exist —
             // otherwise a misconfigured paratest dir or zero workers would
             // silently pass an opt-in CI gate (issue #135 review C2).
-            if ($minStrict && ($minEndpointPct !== null || $minResponsePct !== null)) {
+            if ($minStrict && ($minEndpointPct !== null || $minResponsePct !== null || $minSdkExercisePct !== null)) {
                 $this->writeStderr(sprintf(
                     "[OpenAPI Coverage] FATAL: no contract test coverage was recorded; configured threshold cannot be evaluated. (no sidecars in %s)\n",
                     $sidecarDir,
@@ -369,15 +381,19 @@ final class CoverageMergeCommand
         $coverageTracker = new OpenApiCoverageTracker();
         $strictRequiredTracker = new StrictRequiredTracker();
         $strictAdditionalPropertiesTracker = new StrictAdditionalPropertiesTracker();
+        $sdkExerciseCoverageTracker = new SdkExerciseCoverageTracker();
         OpenApiCoverageTracker::resetCurrent();
         StrictRequiredTracker::resetCurrent();
         StrictAdditionalPropertiesTracker::resetCurrent();
+        SdkExerciseCoverageTracker::resetCurrent();
         OpenApiCoverageTracker::setCurrent($coverageTracker);
         StrictRequiredTracker::setCurrent($strictRequiredTracker);
         StrictAdditionalPropertiesTracker::setCurrent($strictAdditionalPropertiesTracker);
+        SdkExerciseCoverageTracker::setCurrent($sdkExerciseCoverageTracker);
         $mergedBaseline = new ViolationBaseline();
         $sidecarsWithoutBaseline = 0;
         $sidecarsWithoutStrictAdditionalProperties = 0;
+        $sidecarsWithoutSdkExercise = 0;
         foreach ($payloads as $payload) {
             try {
                 $parsed = CoverageSidecarEnvelope::parse($payload);
@@ -389,6 +405,11 @@ final class CoverageMergeCommand
                     $strictAdditionalPropertiesTracker->importStateOn($parsed['strictAdditionalProperties']);
                 } else {
                     $sidecarsWithoutStrictAdditionalProperties++;
+                }
+                if ($parsed['sdkExercise'] !== null) {
+                    $sdkExerciseCoverageTracker->importStateOn($parsed['sdkExercise']);
+                } else {
+                    $sidecarsWithoutSdkExercise++;
                 }
                 if ($parsed['baseline'] !== null) {
                     // parseDocument re-validates the embedded document
@@ -411,9 +432,29 @@ final class CoverageMergeCommand
             return 1;
         }
 
+        if ($minSdkExercisePct !== null && $sidecarsWithoutSdkExercise > 0) {
+            $this->writeStderr(sprintf(
+                '[OpenAPI Coverage] %s: %d worker sidecar(s) have no SDK exercise state; '
+                . "the merged SDK exercise gate may be incomplete. Upgrade every worker to the v6/v7 sidecar envelope.\n",
+                $minStrict ? 'FATAL' : 'WARNING',
+                $sidecarsWithoutSdkExercise,
+            ));
+            if ($minStrict) {
+                return 1;
+            }
+        }
+
         $results = $this->computeResults($specs, $coverageTracker);
-        if ($results === []) {
-            $strictGated = $minStrict && ($minEndpointPct !== null || $minResponsePct !== null);
+        $hasSdkState = $sidecarsWithoutSdkExercise < count($payloads);
+        $sdkResults = $hasSdkState || $minSdkExercisePct !== null
+            ? $this->computeSdkResults($specs, $sdkExerciseCoverageTracker)
+            : [];
+        if ($results === [] && $sdkResults === []) {
+            $strictGated = $minStrict && (
+                $minEndpointPct !== null ||
+                $minResponsePct !== null ||
+                $minSdkExercisePct !== null
+            );
             $strictAdditionalPropertiesFailure = $this->evaluateStrictAdditionalPropertiesGate(
                 $strictAdditionalPropertiesMode,
                 $githubSummaryPath,
@@ -435,12 +476,26 @@ final class CoverageMergeCommand
             return $strictGated || $strictAdditionalPropertiesFailure ? 1 : 0;
         }
 
-        $this->writeStdout(ConsoleCoverageRenderer::render($results, $consoleOutput));
+        $this->writeStdout(ConsoleCoverageRenderer::render($results, $consoleOutput, $sdkResults));
 
-        $writeFailures = $this->writeReports($results, $outputFile, $junitOutput, $jsonOutput, $htmlOutput);
-        $this->appendGithubStepSummary($results, $githubSummaryPath);
+        $writeFailures = $this->writeReports($results, $sdkResults, $outputFile, $junitOutput, $jsonOutput, $htmlOutput);
+        $this->appendGithubStepSummary($results, $sdkResults, $githubSummaryPath);
 
-        $thresholdFailure = $this->evaluateThresholdGate($results, $minEndpointPct, $minResponsePct, $minStrict);
+        $httpThresholdUnavailable = $results === [] && ($minEndpointPct !== null || $minResponsePct !== null);
+        if ($httpThresholdUnavailable) {
+            $this->writeStderr(sprintf(
+                "[OpenAPI Coverage] %s: no contract test coverage was recorded; configured HTTP threshold cannot be evaluated.\n",
+                $minStrict ? 'FATAL' : 'WARNING',
+            ));
+        }
+        $thresholdFailure = ($httpThresholdUnavailable && $minStrict) || $this->evaluateThresholdGate(
+            $results,
+            $sdkResults,
+            $httpThresholdUnavailable ? null : $minEndpointPct,
+            $httpThresholdUnavailable ? null : $minResponsePct,
+            $minSdkExercisePct,
+            $minStrict,
+        );
 
         // Issue #226: aggregate strict_required across workers and run the
         // gate after the report is rendered so a fatal drift doesn't suppress
@@ -535,11 +590,18 @@ final class CoverageMergeCommand
      * runs after this.
      *
      * @param array<string, CoverageResult> $results
+     * @param array<string, SdkExerciseCoverageResult> $sdkResults
      *
      * @return int Number of format outputs that failed to write
      */
-    private function writeReports(array $results, ?string $outputFile, ?string $junitOutput, ?string $jsonOutput, ?string $htmlOutput): int
-    {
+    private function writeReports(
+        array $results,
+        array $sdkResults,
+        ?string $outputFile,
+        ?string $junitOutput,
+        ?string $jsonOutput,
+        ?string $htmlOutput,
+    ): int {
         $writeFailures = 0;
 
         foreach ($this->buildReportEntries($outputFile, $junitOutput, $jsonOutput, $htmlOutput) as $entry) {
@@ -548,7 +610,7 @@ final class CoverageMergeCommand
             }
 
             try {
-                $rendered = ($entry['renderer'])($results);
+                $rendered = ($entry['renderer'])($results, $sdkResults);
             } catch (Throwable $e) {
                 $this->writeStderr(sprintf(
                     "[OpenAPI Coverage] FATAL: Failed to render %s report: %s\n",
@@ -601,29 +663,29 @@ final class CoverageMergeCommand
      * format must be added to both in lockstep — note the severity asymmetry
      * (subscriber warns; CLI counts failures toward exit code).
      *
-     * @return list<CoverageReportEntry>
+     * @return list<MergeReportEntry>
      */
     private function buildReportEntries(?string $outputFile, ?string $junitOutput, ?string $jsonOutput, ?string $htmlOutput): array
     {
         return [
             [
                 'label' => 'Markdown',
-                'renderer' => static fn(array $r): string => MarkdownCoverageRenderer::render($r),
+                'renderer' => static fn(array $r, array $s): string => MarkdownCoverageRenderer::render($r, $s),
                 'outputFile' => $outputFile,
             ],
             [
                 'label' => 'JUnit XML',
-                'renderer' => static fn(array $r): string => JUnitCoverageRenderer::render($r),
+                'renderer' => static fn(array $r, array $s): string => JUnitCoverageRenderer::render($r, $s),
                 'outputFile' => $junitOutput,
             ],
             [
                 'label' => 'JSON',
-                'renderer' => static fn(array $r): string => JsonCoverageRenderer::render($r),
+                'renderer' => static fn(array $r, array $s): string => JsonCoverageRenderer::render($r, sdkResults: $s),
                 'outputFile' => $jsonOutput,
             ],
             [
                 'label' => 'HTML',
-                'renderer' => static fn(array $r): string => HtmlCoverageRenderer::render($r),
+                'renderer' => static fn(array $r, array $s): string => HtmlCoverageRenderer::render($r, $s),
                 'outputFile' => $htmlOutput,
             ],
         ];
@@ -636,14 +698,15 @@ final class CoverageMergeCommand
      * code stays driven by the primary output writes.
      *
      * @param array<string, CoverageResult> $results
+     * @param array<string, SdkExerciseCoverageResult> $sdkResults
      */
-    private function appendGithubStepSummary(array $results, ?string $githubSummaryPath): void
+    private function appendGithubStepSummary(array $results, array $sdkResults, ?string $githubSummaryPath): void
     {
         if ($githubSummaryPath === null) {
             return;
         }
 
-        $markdown = MarkdownCoverageRenderer::render($results);
+        $markdown = MarkdownCoverageRenderer::render($results, $sdkResults);
 
         if (@file_put_contents($githubSummaryPath, $markdown . "\n", FILE_APPEND) === false) {
             $this->writeStderr(sprintf(
@@ -660,23 +723,26 @@ final class CoverageMergeCommand
      * misses propagate to a non-zero exit).
      *
      * @param array<string, CoverageResult> $results
+     * @param array<string, SdkExerciseCoverageResult> $sdkResults
      */
     private function evaluateThresholdGate(
         array $results,
+        array $sdkResults,
         ?float $minEndpointPct,
         ?float $minResponsePct,
+        ?float $minSdkExercisePct,
         bool $strict,
     ): bool {
-        if ($minEndpointPct === null && $minResponsePct === null) {
+        if ($minEndpointPct === null && $minResponsePct === null && $minSdkExercisePct === null) {
             return false;
         }
 
         $evaluation = CoverageThresholdEvaluator::evaluate(
             $results,
-            [],
+            $sdkResults,
             $minEndpointPct,
             $minResponsePct,
-            null,
+            $minSdkExercisePct,
             $strict,
         );
 
@@ -878,6 +944,29 @@ final class CoverageMergeCommand
         foreach ($specs as $spec) {
             try {
                 $results[$spec] = $tracker->computeCoverageOn($spec);
+            } catch (SpecFileNotFoundException $e) {
+                $this->writeStderr(sprintf("[OpenAPI Coverage] WARNING: Skipping spec '%s': %s\n", $spec, $e->getMessage()));
+            } catch (InvalidOpenApiSpecException $e) {
+                $this->writeStderr(sprintf("[OpenAPI Coverage] FATAL: Invalid OpenAPI spec '%s': %s\n", $spec, $e->getMessage()));
+
+                throw $e;
+            }
+        }
+
+        return $results;
+    }
+
+    /**
+     * @param list<string> $specs
+     *
+     * @return array<string, SdkExerciseCoverageResult>
+     */
+    private function computeSdkResults(array $specs, SdkExerciseCoverageTracker $tracker): array
+    {
+        $results = [];
+        foreach ($specs as $spec) {
+            try {
+                $results[$spec] = SdkExerciseCoverageReportBuilder::build($spec, $tracker);
             } catch (SpecFileNotFoundException $e) {
                 $this->writeStderr(sprintf("[OpenAPI Coverage] WARNING: Skipping spec '%s': %s\n", $spec, $e->getMessage()));
             } catch (InvalidOpenApiSpecException $e) {

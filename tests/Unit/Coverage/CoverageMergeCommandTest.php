@@ -15,6 +15,7 @@ use Studio\Gesso\Coverage\CoverageMergeCommand;
 use Studio\Gesso\Coverage\CoverageSidecarEnvelope;
 use Studio\Gesso\Coverage\CoverageSidecarWriter;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
+use Studio\Gesso\Coverage\SdkExerciseCoverageTracker;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Validation\Strict\StrictAdditionalPropertiesTracker;
 use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
@@ -50,6 +51,7 @@ class CoverageMergeCommandTest extends TestCase
         OpenApiCoverageTracker::reset();
         StrictRequiredTracker::reset();
         StrictAdditionalPropertiesTracker::resetCurrent();
+        SdkExerciseCoverageTracker::resetCurrent();
         OpenApiSpecLoader::reset();
 
         $base = sys_get_temp_dir() . '/openapi-coverage-merge-' . uniqid('', true);
@@ -76,6 +78,7 @@ class CoverageMergeCommandTest extends TestCase
         OpenApiCoverageTracker::resetCurrent();
         StrictRequiredTracker::resetCurrent();
         StrictAdditionalPropertiesTracker::resetCurrent();
+        SdkExerciseCoverageTracker::resetCurrent();
         OpenApiSpecLoader::reset();
         parent::tearDown();
     }
@@ -961,12 +964,307 @@ class CoverageMergeCommandTest extends TestCase
             '--spec-base-path=/tmp/spec',
             '--min-endpoint-coverage=80',
             '--min-response-coverage=70.5',
+            '--min-sdk-exercise-coverage=100',
             '--min-coverage-strict',
         ]);
 
         $this->assertSame(80.0, $opts['min_endpoint_coverage']);
         $this->assertSame(70.5, $opts['min_response_coverage']);
+        $this->assertSame(100.0, $opts['min_sdk_exercise_coverage']);
         $this->assertTrue($opts['min_coverage_strict']);
+    }
+
+    #[Test]
+    public function usage_documents_sdk_exercise_threshold(): void
+    {
+        $this->assertStringContainsString('--min-sdk-exercise-coverage=<pct>', CoverageMergeCommand::usage());
+    }
+
+    #[Test]
+    public function parse_argv_preserves_non_numeric_sdk_threshold_for_validation(): void
+    {
+        $opts = CoverageMergeCommand::parseArgv(['--min-sdk-exercise-coverage=all']);
+
+        $this->assertSame('all', $opts['min_sdk_exercise_coverage']);
+    }
+
+    #[Test]
+    public function invalid_sdk_threshold_exits_two_in_strict_mode(): void
+    {
+        $stderr = '';
+        $command = new CoverageMergeCommand(
+            stderrWriter: static function (string $message) use (&$stderr): void {
+                $stderr .= $message;
+            },
+        );
+
+        $exit = $command->run([
+            'sidecar_dir' => $this->sidecarDir,
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'min_sdk_exercise_coverage' => 'all',
+            'min_coverage_strict' => true,
+        ]);
+
+        $this->assertSame(2, $exit);
+        $this->assertStringContainsString('min_sdk_exercise_coverage', $stderr);
+    }
+
+    #[Test]
+    public function invalid_sdk_threshold_warns_in_non_strict_mode(): void
+    {
+        $stderr = '';
+        $command = new CoverageMergeCommand(
+            stderrWriter: static function (string $message) use (&$stderr): void {
+                $stderr .= $message;
+            },
+        );
+
+        $exit = $command->run([
+            'sidecar_dir' => $this->sidecarDir,
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'min_sdk_exercise_coverage' => 101.0,
+        ]);
+
+        $this->assertSame(0, $exit);
+        $this->assertStringContainsString('WARNING', $stderr);
+        $this->assertStringContainsString('min_sdk_exercise_coverage', $stderr);
+    }
+
+    #[Test]
+    public function merges_sdk_exercise_observations_into_json_v3_output(): void
+    {
+        $this->writeSdkSidecar('1', [
+            ['GET', '/pets', '200', 'application/json'],
+        ]);
+        $this->writeSdkSidecar('2', [
+            ['GET', '/pets', '2xx', 'application/json'],
+        ]);
+        $jsonPath = dirname($this->sidecarDir) . '/sdk-coverage.json';
+        $stdout = '';
+        $command = new CoverageMergeCommand(
+            stdoutWriter: static function (string $message) use (&$stdout): void {
+                $stdout .= $message;
+            },
+        );
+
+        $exit = $command->run([
+            'sidecar_dir' => $this->sidecarDir,
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => ['sdk-exercise-coverage'],
+            'json_output' => $jsonPath,
+            'cleanup' => true,
+        ]);
+
+        /** @var array<string, mixed> $payload */
+        $payload = json_decode((string) file_get_contents($jsonPath), true);
+        $this->assertSame(0, $exit);
+        $this->assertSame(3, $payload['schema_version']);
+        $this->assertSame(5, $payload['aggregate']['sdk_exercise']['response_total']);
+        $this->assertSame(2, $payload['aggregate']['sdk_exercise']['response_exercised']);
+        $this->assertStringContainsString('SDK responses: 2/5 exercised (40%)', $stdout);
+        @unlink($jsonPath);
+    }
+
+    #[Test]
+    public function strict_sdk_gate_rejects_a_mixed_fleet_and_preserves_sidecars(): void
+    {
+        $this->writeSdkSidecar('1', [
+            ['GET', '/pets', '200', 'application/json'],
+        ]);
+        CoverageSidecarWriter::write(
+            $this->sidecarDir,
+            '2',
+            (new OpenApiCoverageTracker())->exportStateOn(),
+        );
+        $stderr = '';
+        $command = new CoverageMergeCommand(
+            stderrWriter: static function (string $message) use (&$stderr): void {
+                $stderr .= $message;
+            },
+            stdoutWriter: static fn(string $message): null => null,
+        );
+
+        $exit = $command->run([
+            'sidecar_dir' => $this->sidecarDir,
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => ['sdk-exercise-coverage'],
+            'min_sdk_exercise_coverage' => 0.0,
+            'min_coverage_strict' => true,
+            'cleanup' => true,
+        ]);
+
+        $this->assertSame(1, $exit);
+        $this->assertStringContainsString('1 worker sidecar(s) have no SDK exercise state', $stderr);
+        $this->assertCount(2, $this->sidecars());
+    }
+
+    #[Test]
+    public function warn_only_sdk_gate_reports_mixed_fleet_and_evaluates_available_state(): void
+    {
+        $this->writeSdkSidecar('1', [
+            ['GET', '/pets', '200', 'application/json'],
+        ]);
+        CoverageSidecarWriter::write(
+            $this->sidecarDir,
+            '2',
+            (new OpenApiCoverageTracker())->exportStateOn(),
+        );
+        $stderr = '';
+        $command = new CoverageMergeCommand(
+            stderrWriter: static function (string $message) use (&$stderr): void {
+                $stderr .= $message;
+            },
+            stdoutWriter: static fn(string $message): null => null,
+        );
+
+        $exit = $command->run([
+            'sidecar_dir' => $this->sidecarDir,
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => ['sdk-exercise-coverage'],
+            'min_sdk_exercise_coverage' => 100.0,
+            'cleanup' => true,
+        ]);
+
+        $this->assertSame(0, $exit);
+        $this->assertStringContainsString('WARNING: 1 worker sidecar(s) have no SDK exercise state', $stderr);
+        $this->assertStringContainsString('SDK exercise coverage 20% < threshold 100%', $stderr);
+        $this->assertSame([], $this->sidecars());
+    }
+
+    #[Test]
+    public function strict_sdk_gate_fails_when_no_sidecars_exist(): void
+    {
+        $stderr = '';
+        $command = new CoverageMergeCommand(
+            stderrWriter: static function (string $message) use (&$stderr): void {
+                $stderr .= $message;
+            },
+        );
+
+        $exit = $command->run([
+            'sidecar_dir' => $this->sidecarDir,
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => ['sdk-exercise-coverage'],
+            'min_sdk_exercise_coverage' => 0.0,
+            'min_coverage_strict' => true,
+        ]);
+
+        $this->assertSame(1, $exit);
+        $this->assertStringContainsString('configured threshold cannot be evaluated', $stderr);
+    }
+
+    #[Test]
+    public function strict_sdk_threshold_passes_and_fails_against_merged_totals(): void
+    {
+        $this->writeSdkSidecar('1', [
+            ['GET', '/pets', '200', 'application/json'],
+        ]);
+        $stderr = '';
+        $command = new CoverageMergeCommand(
+            stderrWriter: static function (string $message) use (&$stderr): void {
+                $stderr .= $message;
+            },
+            stdoutWriter: static fn(string $message): null => null,
+        );
+        $options = [
+            'sidecar_dir' => $this->sidecarDir,
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => ['sdk-exercise-coverage'],
+            'min_coverage_strict' => true,
+            'cleanup' => false,
+        ];
+
+        $this->assertSame(0, $command->run([
+            ...$options,
+            'min_sdk_exercise_coverage' => 20.0,
+        ]));
+        $this->assertSame(1, $command->run([
+            ...$options,
+            'min_sdk_exercise_coverage' => 100.0,
+        ]));
+        $this->assertStringContainsString('SDK exercise coverage 20% < threshold 100%', $stderr);
+    }
+
+    #[Test]
+    public function strict_sdk_threshold_rejects_an_empty_eligible_denominator(): void
+    {
+        $this->writeSdkSidecar('1', []);
+        $stderr = '';
+        $command = new CoverageMergeCommand(
+            stderrWriter: static function (string $message) use (&$stderr): void {
+                $stderr .= $message;
+            },
+            stdoutWriter: static fn(string $message): null => null,
+        );
+
+        $exit = $command->run([
+            'sidecar_dir' => $this->sidecarDir,
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => ['non-json-content-schema'],
+            'min_sdk_exercise_coverage' => 0.0,
+            'min_coverage_strict' => true,
+            'cleanup' => false,
+        ]);
+
+        $this->assertSame(1, $exit);
+        $this->assertStringContainsString('no eligible response schemas', $stderr);
+    }
+
+    #[Test]
+    public function v7_sdk_sidecar_remains_compatible_with_baseline_merge(): void
+    {
+        $envelope = $this->sdkEnvelope([
+            ['GET', '/pets', '200', 'application/json'],
+        ]);
+        $envelope['envelopeVersion'] = CoverageSidecarEnvelope::ENVELOPE_VERSION_WITH_SDK_EXERCISE_AND_BASELINE;
+        $envelope['baseline'] = ViolationBaselineFile::toDocument(new ViolationBaseline());
+        CoverageSidecarWriter::write($this->sidecarDir, '1', $envelope);
+        $baselinePath = dirname($this->sidecarDir) . '/baseline.json';
+        $command = new CoverageMergeCommand(
+            stderrWriter: static fn(string $message): null => null,
+            stdoutWriter: static fn(string $message): null => null,
+        );
+
+        $exit = $command->run([
+            'sidecar_dir' => $this->sidecarDir,
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => ['sdk-exercise-coverage'],
+            'baseline_file' => $baselinePath,
+            'min_sdk_exercise_coverage' => 20.0,
+            'min_coverage_strict' => true,
+            'cleanup' => true,
+        ]);
+
+        $this->assertSame(0, $exit);
+        $this->assertFileExists($baselinePath);
+        @unlink($baselinePath);
+    }
+
+    #[Test]
+    public function unknown_sdk_tracker_version_is_fatal_and_preserves_sidecar(): void
+    {
+        $envelope = $this->sdkEnvelope([
+            ['GET', '/pets', '200', 'application/json'],
+        ]);
+        $envelope['sdkExercise']['version'] = 99;
+        CoverageSidecarWriter::write($this->sidecarDir, '1', $envelope);
+        $stderr = '';
+        $command = new CoverageMergeCommand(
+            stderrWriter: static function (string $message) use (&$stderr): void {
+                $stderr .= $message;
+            },
+        );
+
+        $exit = $command->run([
+            'sidecar_dir' => $this->sidecarDir,
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => ['sdk-exercise-coverage'],
+            'cleanup' => true,
+        ]);
+
+        $this->assertSame(1, $exit);
+        $this->assertStringContainsString('Unsupported SDK exercise coverage state version', $stderr);
+        $this->assertCount(1, $this->sidecars());
     }
 
     #[Test]
@@ -2145,6 +2443,34 @@ class CoverageMergeCommandTest extends TestCase
             'response.body',
             $instancePath,
             'type',
+        );
+    }
+
+    /**
+     * @param list<array{string, string, string, string}> $observations
+     */
+    private function writeSdkSidecar(string $token, array $observations): void
+    {
+        CoverageSidecarWriter::write($this->sidecarDir, $token, $this->sdkEnvelope($observations));
+    }
+
+    /**
+     * @param list<array{string, string, string, string}> $observations
+     *
+     * @return array<string, mixed>
+     */
+    private function sdkEnvelope(array $observations): array
+    {
+        $sdk = new SdkExerciseCoverageTracker();
+        foreach ($observations as [$method, $path, $status, $contentType]) {
+            $sdk->recordOn('sdk-exercise-coverage', $method, $path, $status, $contentType);
+        }
+
+        return CoverageSidecarEnvelope::build(
+            coverageState: (new OpenApiCoverageTracker())->exportStateOn(),
+            strictRequiredState: (new StrictRequiredTracker())->exportStateOn(),
+            strictAdditionalPropertiesState: (new StrictAdditionalPropertiesTracker())->exportStateOn(),
+            sdkExerciseState: $sdk->exportStateOn(),
         );
     }
 
