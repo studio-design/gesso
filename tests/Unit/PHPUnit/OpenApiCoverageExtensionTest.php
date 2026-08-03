@@ -11,6 +11,7 @@ use PHPUnit\Framework\TestCase;
 use PHPUnit\Runner\Extension\ParameterCollection;
 use Studio\Gesso\Coverage\InvalidCoverageOutputPathException;
 use Studio\Gesso\Coverage\InvalidThresholdConfigurationException;
+use Studio\Gesso\Coverage\SdkExerciseCoverageTracker;
 use Studio\Gesso\Exception\EnumBindingException;
 use Studio\Gesso\Exception\EnumBindingReason;
 use Studio\Gesso\Exception\EnumDriftException;
@@ -59,6 +60,7 @@ class OpenApiCoverageExtensionTest extends TestCase
         EnumScanner::reset();
         StrictAdditionalPropertiesPerCallChecker::reset();
         StrictAdditionalPropertiesTracker::resetCurrent();
+        SdkExerciseCoverageTracker::resetCurrent();
 
         $buffer = fopen('php://memory', 'w+');
         if ($buffer === false) {
@@ -83,6 +85,7 @@ class OpenApiCoverageExtensionTest extends TestCase
         EnumScanner::reset();
         StrictAdditionalPropertiesPerCallChecker::reset();
         StrictAdditionalPropertiesTracker::resetCurrent();
+        SdkExerciseCoverageTracker::resetCurrent();
         parent::tearDown();
     }
 
@@ -1238,6 +1241,29 @@ class OpenApiCoverageExtensionTest extends TestCase
         $extension->setupExtension(null, $parameters, null);
 
         $this->assertSame([], StrictRequiredTracker::getObservations('refs-valid'));
+    }
+
+    #[Test]
+    public function bootstrap_installs_a_fresh_sdk_exercise_tracker(): void
+    {
+        SdkExerciseCoverageTracker::current()->recordOn(
+            'refs-valid',
+            'GET',
+            '/leftover',
+            '200',
+            'application/json',
+        );
+
+        (new OpenApiCoverageExtension())->setupExtension(
+            null,
+            ParameterCollection::fromArray([
+                'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+                'specs' => 'refs-valid',
+            ]),
+            null,
+        );
+
+        $this->assertSame([], SdkExerciseCoverageTracker::current()->observationsForSpecOn('refs-valid'));
     }
 
     #[Test]

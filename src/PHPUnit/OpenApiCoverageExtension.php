@@ -21,6 +21,7 @@ use Studio\Gesso\Baseline\ViolationBaselineFile;
 use Studio\Gesso\Coverage\InvalidCoverageOutputPathException;
 use Studio\Gesso\Coverage\InvalidThresholdConfigurationException;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
+use Studio\Gesso\Coverage\SdkExerciseCoverageTracker;
 use Studio\Gesso\Exception\EnumBindingException;
 use Studio\Gesso\Exception\EnumBindingReason;
 use Studio\Gesso\Exception\EnumDriftException;
@@ -457,12 +458,15 @@ final class OpenApiCoverageExtension implements Extension
         $coverageTracker = new OpenApiCoverageTracker();
         $strictRequiredTracker = new StrictRequiredTracker();
         $strictAdditionalPropertiesTracker = new StrictAdditionalPropertiesTracker();
+        $sdkExerciseCoverageTracker = new SdkExerciseCoverageTracker();
         OpenApiCoverageTracker::resetCurrent();
         StrictRequiredTracker::resetCurrent();
         StrictAdditionalPropertiesTracker::resetCurrent();
+        SdkExerciseCoverageTracker::resetCurrent();
         OpenApiCoverageTracker::setCurrent($coverageTracker);
         StrictRequiredTracker::setCurrent($strictRequiredTracker);
         StrictAdditionalPropertiesTracker::setCurrent($strictAdditionalPropertiesTracker);
+        SdkExerciseCoverageTracker::setCurrent($sdkExerciseCoverageTracker);
 
         // Issue #224: schema under-description detection mode is read from
         // phpunit.xml here so a misspelled `strict_required=` value
@@ -544,6 +548,7 @@ final class OpenApiCoverageExtension implements Extension
             strictRequiredMode: $strictRequiredMode,
             strictAdditionalPropertiesTracker: $strictAdditionalPropertiesTracker,
             strictAdditionalPropertiesMode: $strictAdditionalPropertiesMode,
+            sdkExerciseCoverageTracker: $sdkExerciseCoverageTracker,
             baselineGeneratePath: $baselineGeneratePath,
             baselineStaleMode: $baselineStaleMode,
             baselineCompletionTracer: $baselineCompletionTracer,

@@ -24,6 +24,7 @@ use Studio\Gesso\Coverage\JsonCoverageRenderer;
 use Studio\Gesso\Coverage\JUnitCoverageRenderer;
 use Studio\Gesso\Coverage\MarkdownCoverageRenderer;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
+use Studio\Gesso\Coverage\SdkExerciseCoverageTracker;
 use Studio\Gesso\Exception\InvalidOpenApiSpecException;
 use Studio\Gesso\Exception\SpecFileNotFoundException;
 use Studio\Gesso\Internal\PartialRunDecision;
@@ -57,6 +58,7 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
     private OpenApiCoverageTracker $coverageTracker;
     private StrictAdditionalPropertiesTracker $strictAdditionalPropertiesTracker;
     private StrictRequiredTracker $strictRequiredTracker;
+    private SdkExerciseCoverageTracker $sdkExerciseCoverageTracker;
 
     /**
      * @param string[] $specs
@@ -124,6 +126,7 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
         private ?TestRunCompletionTracer $baselineCompletionTracer = null,
         ?StrictAdditionalPropertiesTracker $strictAdditionalPropertiesTracker = null,
         private StrictAdditionalPropertiesMode $strictAdditionalPropertiesMode = StrictAdditionalPropertiesMode::Off,
+        ?SdkExerciseCoverageTracker $sdkExerciseCoverageTracker = null,
     ) {
         // Eager resolution at construction time keeps the readonly invariant
         // honest: by the time any other method runs, $coverageTracker and
@@ -135,6 +138,7 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
         $this->coverageTracker = $coverageTracker ?? OpenApiCoverageTracker::current();
         $this->strictRequiredTracker = $strictRequiredTracker ?? StrictRequiredTracker::current();
         $this->strictAdditionalPropertiesTracker = $strictAdditionalPropertiesTracker ?? StrictAdditionalPropertiesTracker::current();
+        $this->sdkExerciseCoverageTracker = $sdkExerciseCoverageTracker ?? SdkExerciseCoverageTracker::current();
     }
 
     /** @phpcsSuppress SlevomatCodingStandard.Functions.UnusedParameter.UnusedParameter */
@@ -491,6 +495,7 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
             strictRequiredState: $this->strictRequiredTracker->exportStateOn(),
             baselineDocument: $baselineDocument,
             strictAdditionalPropertiesState: $this->strictAdditionalPropertiesTracker->exportStateOn(),
+            sdkExerciseState: $this->sdkExerciseCoverageTracker->exportStateOn(),
         );
 
         try {

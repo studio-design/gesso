@@ -11,6 +11,7 @@ use ReflectionClass;
 use Studio\Gesso\Coverage\CoverageSidecarEnvelope;
 use Studio\Gesso\Coverage\CoverageSidecarReader;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
+use Studio\Gesso\Coverage\SdkExerciseCoverageTracker;
 use Studio\Gesso\PHPUnit\ConsoleOutput;
 use Studio\Gesso\PHPUnit\CoverageReportSubscriber;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
@@ -49,6 +50,7 @@ class CoverageReportSubscriberWorkerModeTest extends TestCase
     {
         parent::setUp();
         OpenApiCoverageTracker::reset();
+        SdkExerciseCoverageTracker::resetCurrent();
         OpenApiSpecLoader::reset();
         OpenApiSpecLoader::configure(__DIR__ . '/../../fixtures/specs');
 
@@ -77,6 +79,7 @@ class CoverageReportSubscriberWorkerModeTest extends TestCase
         }
 
         OpenApiCoverageTracker::reset();
+        SdkExerciseCoverageTracker::resetCurrent();
         OpenApiSpecLoader::reset();
         parent::tearDown();
     }
@@ -91,6 +94,13 @@ class CoverageReportSubscriberWorkerModeTest extends TestCase
             '200',
             'application/json',
             schemaValidated: true,
+        );
+        SdkExerciseCoverageTracker::current()->recordOn(
+            'petstore-3.0',
+            'GET',
+            '/v1/pets',
+            '200',
+            'application/json',
         );
         putenv('TEST_TOKEN=4');
 
@@ -126,13 +136,17 @@ class CoverageReportSubscriberWorkerModeTest extends TestCase
 
         $loaded = CoverageSidecarReader::readDir($this->tmpDir);
         $this->assertCount(1, $loaded);
-        // v4 envelope: coverage and both strict tracker payloads are nested.
+        // v6 envelope: coverage, strict trackers, and SDK exercise are nested.
         $this->assertSame(
-            CoverageSidecarEnvelope::ENVELOPE_VERSION_WITH_STRICT_ADDITIONAL_PROPERTIES,
+            CoverageSidecarEnvelope::ENVELOPE_VERSION_WITH_SDK_EXERCISE,
             $loaded[0]['envelopeVersion'],
         );
         $this->assertSame(1, $loaded[0]['coverage']['version']);
         $this->assertArrayHasKey('petstore-3.0', $loaded[0]['coverage']['specs']);
+        $this->assertSame(
+            1,
+            $loaded[0]['sdkExercise']['observations']['petstore-3.0']['GET /v1/pets'][200]['application/json'],
+        );
     }
 
     #[Test]
@@ -162,14 +176,24 @@ class CoverageReportSubscriberWorkerModeTest extends TestCase
             'application/json',
             ['/' => ['id', 'name']],
         );
+        $sdkExerciseTracker = new SdkExerciseCoverageTracker();
+        $sdkExerciseTracker->recordOn(
+            'petstore-3.0',
+            'POST',
+            '/v1/pets',
+            '201',
+            'application/json',
+        );
 
         // Process-global locator points at fresh, EMPTY trackers — if the
         // subscriber ever read from current() instead of the injected refs,
         // the sidecar would serialize this empty state.
         OpenApiCoverageTracker::resetCurrent();
         StrictRequiredTracker::resetCurrent();
+        SdkExerciseCoverageTracker::resetCurrent();
         OpenApiCoverageTracker::setCurrent(new OpenApiCoverageTracker());
         StrictRequiredTracker::setCurrent(new StrictRequiredTracker());
+        SdkExerciseCoverageTracker::setCurrent(new SdkExerciseCoverageTracker());
 
         putenv('TEST_TOKEN=9');
 
@@ -180,6 +204,7 @@ class CoverageReportSubscriberWorkerModeTest extends TestCase
             githubSummaryPath: null,
             coverageTracker: $coverageTracker,
             strictRequiredTracker: $strictRequiredTracker,
+            sdkExerciseCoverageTracker: $sdkExerciseTracker,
             sidecarDir: $this->tmpDir,
         );
 
@@ -200,6 +225,11 @@ class CoverageReportSubscriberWorkerModeTest extends TestCase
             'POST /v1/pets',
             $loaded[0]['strictRequired']['observations']['petstore-3.0'],
             'sidecar must serialize the injected strict_required tracker, not ::current()',
+        );
+        $this->assertArrayHasKey(
+            'POST /v1/pets',
+            $loaded[0]['sdkExercise']['observations']['petstore-3.0'],
+            'sidecar must serialize the injected SDK exercise tracker, not ::current()',
         );
     }
 
@@ -326,7 +356,7 @@ class CoverageReportSubscriberWorkerModeTest extends TestCase
         $this->assertFileExists($jsonPath, 'sequential mode must write json_output when configured');
         $decoded = json_decode((string) file_get_contents($jsonPath), true);
         $this->assertIsArray($decoded);
-        $this->assertSame(2, $decoded['schema_version']);
+        $this->assertSame(3, $decoded['schema_version']);
         $this->assertArrayHasKey('petstore-3.0', $decoded['specs']);
     }
 
