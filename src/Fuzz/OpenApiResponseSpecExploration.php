@@ -269,14 +269,6 @@ final class OpenApiResponseSpecExploration
         return $summary;
     }
 
-    private function operationFromDeclaration(string $path, string $method, mixed $rawOperation): ExploredOperation
-    {
-        $normalizedMethod = OpenApiOperationResolver::normalizeMethodForKey($method);
-        $derivedSeed = crc32(implode("\0", [$this->specName, $normalizedMethod, $path, (string) $this->seed])) & 0x7fffffff;
-
-        return ExploredOperation::fromDeclaration($this->specName, $path, $method, $rawOperation, $derivedSeed);
-    }
-
     /**
      * @param array<string, mixed> $responseSpec
      *
@@ -346,7 +338,7 @@ final class OpenApiResponseSpecExploration
         foreach (array_keys($responses) as $rawStatus) {
             $status = self::normalizeDeclaredStatus($rawStatus);
             if (preg_match('/^[1-5][0-9]{2}$/', $status) === 1) {
-                $exact[$status] = true;
+                $exact[(int) $status] = true;
             } elseif (preg_match('/^[1-5]XX$/', $status) === 1) {
                 $ranges[(int) $status[0]] = true;
             }
@@ -385,11 +377,11 @@ final class OpenApiResponseSpecExploration
         ));
     }
 
-    /** @param array<string, true> $exact */
+    /** @param array<int, true> $exact */
     private static function representativeRangeStatus(int $class, array $exact): ?int
     {
         for ($status = $class * 100; $status <= ($class * 100) + 99; $status++) {
-            if (!isset($exact[(string) $status])) {
+            if (!isset($exact[$status])) {
                 return $status;
             }
         }
@@ -398,13 +390,13 @@ final class OpenApiResponseSpecExploration
     }
 
     /**
-     * @param array<string, true> $exact
+     * @param array<int, true> $exact
      * @param array<int, true> $ranges
      */
     private static function representativeDefaultStatus(array $exact, array $ranges): ?int
     {
         for ($status = 100; $status <= 599; $status++) {
-            if (!isset($exact[(string) $status]) && !isset($ranges[intdiv($status, 100)])) {
+            if (!isset($exact[$status]) && !isset($ranges[intdiv($status, 100)])) {
                 return $status;
             }
         }
@@ -527,5 +519,13 @@ final class OpenApiResponseSpecExploration
             $failure->message,
             $failure->replay,
         );
+    }
+
+    private function operationFromDeclaration(string $path, string $method, mixed $rawOperation): ExploredOperation
+    {
+        $normalizedMethod = OpenApiOperationResolver::normalizeMethodForKey($method);
+        $derivedSeed = crc32(implode("\0", [$this->specName, $normalizedMethod, $path, (string) $this->seed])) & 0x7fffffff;
+
+        return ExploredOperation::fromDeclaration($this->specName, $path, $method, $rawOperation, $derivedSeed);
     }
 }

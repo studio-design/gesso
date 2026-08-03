@@ -31,6 +31,10 @@ use Studio\Gesso\Fuzz\GeneratedResponseCase;
 use Studio\Gesso\Fuzz\GeneratedResponseCases;
 use Studio\Gesso\Fuzz\OpenApiContractChecks;
 use Studio\Gesso\Fuzz\OpenApiResponseExplorer;
+use Studio\Gesso\Fuzz\OpenApiResponseSpecExploration;
+use Studio\Gesso\Fuzz\ResponseSpecExplorationFailure;
+use Studio\Gesso\Fuzz\ResponseSpecExplorationSkip;
+use Studio\Gesso\Fuzz\ResponseSpecExplorationSummary;
 use Studio\Gesso\JsonValidationResultRenderer;
 use Studio\Gesso\Laravel\Commands\OpenApiRoutesCommand;
 use Studio\Gesso\Laravel\ExploresOpenApiEndpoint;
@@ -630,6 +634,10 @@ final class PublicApiBaselineTest extends TestCase
             GeneratedResponseCase::class,
             GeneratedResponseCases::class,
             OpenApiResponseExplorer::class,
+            OpenApiResponseSpecExploration::class,
+            ResponseSpecExplorationFailure::class,
+            ResponseSpecExplorationSkip::class,
+            ResponseSpecExplorationSummary::class,
         ] as $responseExplorerType) {
             $expected[$responseExplorerType] = $actual[$responseExplorerType];
         }
@@ -638,6 +646,8 @@ final class PublicApiBaselineTest extends TestCase
             if ($name === 'exploreSpec') {
                 $explorerMethods['exploreResponseSchema'] =
                     $actual[ExploresOpenApiEndpoint::class]['methods']['exploreResponseSchema'];
+                $explorerMethods['exploreResponseSpec'] =
+                    $actual[ExploresOpenApiEndpoint::class]['methods']['exploreResponseSpec'];
             }
             $explorerMethods[$name] = $method;
         }

@@ -41,6 +41,7 @@
 ### Task 1: Exact-status plan and public result types
 
 **Files:**
+
 - Create: `tests/fixtures/specs/sdk-roundtrip-plan.json`
 - Create: `tests/Unit/Fuzz/OpenApiResponseSpecExplorationTest.php`
 - Create: `src/Fuzz/OpenApiResponseSpecExploration.php`
@@ -50,6 +51,7 @@
 - Modify: `src/Fuzz/OpenApiResponseExplorer.php`
 
 **Interfaces:**
+
 - Produces: `OpenApiResponseExplorer::exploreSpec(string $specName, int $seed = 1, int $extraCases = 0): OpenApiResponseSpecExploration`.
 - Produces: `OpenApiResponseSpecExploration::mapResponse(string $operationId, int|string $status, callable $decode, callable $encode): self`.
 - Produces: `OpenApiResponseSpecExploration::assertRoundTrips(): ResponseSpecExplorationSummary`.
@@ -177,11 +179,13 @@ git commit -m "feat(fuzz): add spec-wide sdk round-trip plan"
 ### Task 2: Status discovery, filters, seeds, skips, and strict mapping
 
 **Files:**
+
 - Modify: `tests/fixtures/specs/sdk-roundtrip-plan.json`
 - Modify: `tests/Unit/Fuzz/OpenApiResponseSpecExplorationTest.php`
 - Modify: `src/Fuzz/OpenApiResponseSpecExploration.php`
 
 **Interfaces:**
+
 - Produces: mappings normalized to exact (`200`), range (`2XX` or `2xx`), and `default` declared keys.
 - Produces: `OpenApiResponseSpecExploration::failOnUnmapped(bool $fail = true): self`.
 - Consumes: `ResponseSchemaResolver::resolveOperation()` and `resolveResponseSchema()` so structural and dialect behavior cannot drift.
@@ -282,6 +286,7 @@ git commit -m "feat(fuzz): report sdk response mapping gaps"
 ### Task 3: Categorized callback failures and malformed-spec diagnostics
 
 **Files:**
+
 - Create: `tests/fixtures/specs/sdk-roundtrip-plan-malformed-responses.json`
 - Create: `tests/fixtures/specs/sdk-roundtrip-plan-malformed-response.json`
 - Create: `tests/fixtures/specs/sdk-roundtrip-plan-malformed-content.json`
@@ -290,6 +295,7 @@ git commit -m "feat(fuzz): report sdk response mapping gaps"
 - Modify: `src/Fuzz/ResponseSpecExplorationSummary.php`
 
 **Interfaces:**
+
 - Produces: categorized `decodeFailures` and `roundTripFailures` rows populated before one aggregate assertion failure.
 - Preserves: the original throwable as `ResponseSpecExplorationFailure::$cause`.
 
@@ -347,10 +353,12 @@ git commit -m "feat(fuzz): categorize sdk round-trip plan failures"
 ### Task 4: Laravel convenience
 
 **Files:**
+
 - Modify: `tests/Unit/Laravel/ExploresOpenApiEndpointTest.php`
 - Modify: `src/Laravel/ExploresOpenApiEndpoint.php`
 
 **Interfaces:**
+
 - Produces: `ExploresOpenApiEndpoint::exploreResponseSpec(int $seed = 1, int $extraCases = 0): OpenApiResponseSpecExploration`.
 - Consumes: `ResolvesOpenApiSpec` and `OpenApiResponseExplorer::exploreSpec()`.
 
@@ -398,6 +406,7 @@ git commit -m "feat(laravel): expose spec-wide sdk round trips"
 ### Task 5: Public API inventory and documentation
 
 **Files:**
+
 - Modify: `tests/Unit/Compatibility/PublicApiBaselineTest.php`
 - Modify: `tests/fixtures/compatibility/v2-public-api.json`
 - Modify: `docs/sdk-roundtrip.md`
@@ -405,6 +414,7 @@ git commit -m "feat(laravel): expose spec-wide sdk round trips"
 - Modify: `docs/api-reference.md`
 
 **Interfaces:**
+
 - Documents: `exploreSpec()`, `mapResponse()`, shared filters, range/default mapping, `failOnUnmapped()`, summary fields, callback failure categories, skips, seeds, and Laravel convenience.
 
 - [ ] **Step 1: Run the compatibility test red**
@@ -455,9 +465,11 @@ git commit -m "docs(fuzz): document spec-wide sdk round trips"
 ### Task 6: Completion audit
 
 **Files:**
+
 - Verify all files changed by Tasks 1–5.
 
 **Interfaces:**
+
 - Proves each issue #447 scope item through a named test, checked public surface, or documentation section.
 
 - [ ] **Step 1: Inspect the full branch diff**

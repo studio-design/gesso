@@ -20,6 +20,7 @@ use function array_filter;
 use function array_keys;
 use function array_map;
 use function array_unique;
+use function explode;
 use function sort;
 
 final class OpenApiResponseSpecExplorationTest extends TestCase
@@ -35,6 +36,17 @@ final class OpenApiResponseSpecExplorationTest extends TestCase
     {
         OpenApiSpecLoader::reset();
         parent::tearDown();
+    }
+
+    /**
+     * @return iterable<string, array{string, string}>
+     */
+    public static function provideMalformed_spec_nodes_fail_at_the_shared_resolver_locationCases(): iterable
+    {
+        yield 'responses map' => ['malformedResponses', "Malformed 'paths[\"/responses\"].get.responses'"];
+        yield 'response entry' => ['malformedResponse', "Malformed 'responses[200]'"];
+        yield 'content map' => ['malformedContent', "Malformed 'responses[200].content'"];
+        yield 'schema node' => ['malformedSchema', "Malformed 'responses[200].content[\"application/json\"].schema'"];
     }
 
     #[Test]
@@ -281,19 +293,8 @@ final class OpenApiResponseSpecExplorationTest extends TestCase
         $this->assertGreaterThanOrEqual(1, $roundTripAttempts);
     }
 
-    /**
-     * @return iterable<string, array{string, string}>
-     */
-    public static function malformed_spec_nodes(): iterable
-    {
-        yield 'responses map' => ['malformedResponses', "Malformed 'paths[\"/responses\"].get.responses'"];
-        yield 'response entry' => ['malformedResponse', "Malformed 'responses[200]'"];
-        yield 'content map' => ['malformedContent', "Malformed 'responses[200].content'"];
-        yield 'schema node' => ['malformedSchema', "Malformed 'responses[200].content[\"application/json\"].schema'"];
-    }
-
     #[Test]
-    #[DataProvider('malformed_spec_nodes')]
+    #[DataProvider('provideMalformed_spec_nodes_fail_at_the_shared_resolver_locationCases')]
     public function malformed_spec_nodes_fail_at_the_shared_resolver_location(
         string $operationId,
         string $expectedLocation,
