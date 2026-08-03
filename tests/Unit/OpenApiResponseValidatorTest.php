@@ -2313,6 +2313,26 @@ class OpenApiResponseValidatorTest extends TestCase
     }
 
     #[Test]
+    public function null_response_content_block_returns_failure(): void
+    {
+        $result = $this->validator->validate(
+            'malformed',
+            'GET',
+            '/response-null-content',
+            200,
+            ['id' => 1],
+            'application/json',
+        );
+
+        $this->assertFalse($result->isValid());
+        $this->assertStringContainsString(
+            "Malformed 'responses[200].content'",
+            $result->errors()[0],
+        );
+        $this->assertStringContainsString('expected object, got null', $result->errors()[0]);
+    }
+
+    #[Test]
     public function malformed_response_content_media_type_entry_returns_failure(): void
     {
         // `responses.200.content["application/json"]` is a scalar. The
