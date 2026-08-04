@@ -254,18 +254,23 @@ failing body while preserving a caller-defined failure classification.
 ## `OpenApiContractChecks`
 
 Builds a plan of named negative contract checks — probes for protocol-level
-holes schema validation cannot see. The first check, `unsupported_method`,
-dispatches one deterministically chosen undocumented HTTP method per
-documented path and expects 405 by default:
+holes schema validation cannot see:
+
+| `ContractCheck` case | Probe | Default pass statuses |
+|---|---|---|
+| `IgnoredAuth` | the valid request without credentials, then with invalid ones | `401`, `403` |
+| `MissingRequiredHeader` | the valid request with one `required: true` header omitted | any `4xx` |
+| `UnsupportedMethod` | one deterministically chosen undocumented method per documented path | `405` |
 
 ```php
 use Studio\Gesso\Fuzz\ContractCheck;
 use Studio\Gesso\Fuzz\OpenApiContractChecks;
 
 $summary = OpenApiContractChecks::run('front', seed: 7)
-    ->checks([ContractCheck::UnsupportedMethod])
+    ->checks([ContractCheck::IgnoredAuth, ContractCheck::UnsupportedMethod])
     ->includeTags(['public'])
     ->expectedStatuses(ContractCheck::UnsupportedMethod, [405, 404]) // optional override
+    ->expectedStatusClasses(ContractCheck::IgnoredAuth, [4])         // optional override
     ->dispatchUsing(fn ($case) => dispatch_request($case))
     ->report();
 
@@ -274,12 +279,15 @@ self::assertSame([], $summary->failures, $summary->describeFailures());
 
 The plan shares the exploration filter set (tags, methods, paths, operation
 IDs, deprecated) and the `authenticateUsing()` / `setUpUsing()` /
-`tearDownUsing()` hooks. `dispatchUsing()` may return an `int`, a PSR-7
-response, or any object exposing `getStatusCode(): int`. Probes never throw
-on a status mismatch — the returned `ContractCheckSummary` collects every
-`ContractCheckFailure` (with a replayable curl command) and every explained
-`ContractCheckSkip`, plus `probedPaths` / `dispatchedProbes` counts. See
-[named contract checks](fuzzing.md#named-contract-checks).
+`tearDownUsing()` hooks — except that `IgnoredAuth` probes bypass
+`authenticateUsing()` by design. Either `expectedStatuses()` or
+`expectedStatusClasses()` replaces a check's whole default expectation.
+`dispatchUsing()` may return an `int`, a PSR-7 response, or any object
+exposing `getStatusCode(): int`. Probes never throw on a status mismatch — the
+returned `ContractCheckSummary` collects every `ContractCheckFailure` (naming
+the check, operation, dispatched mutation, and a replayable curl command) and
+every explained `ContractCheckSkip`, plus `probedPaths` / `dispatchedProbes`
+counts. See [named contract checks](fuzzing.md#named-contract-checks).
 
 ## `OpenApiSpecLoader`
 

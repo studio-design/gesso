@@ -64,10 +64,12 @@ This library follows [Semantic Versioning 2.0](https://semver.org/). v1.0.0 is t
   baselined, and entries that no longer occur during a full run are reported
   as stale per `baseline_stale`. Unknown `baseline_version` values are
   rejected.
-- Named contract checks: `ContractCheck` names and default expected statuses,
-  the `OpenApiContractChecks`/`ContractCheckPlan` fluent surface, and the
+- Named contract checks: `ContractCheck` names and default expected statuses
+  and status classes, the `OpenApiContractChecks`/`ContractCheckPlan` fluent
+  surface, and the
   `ContractCheckSummary`/`ContractCheckFailure`/`ContractCheckSkip` shapes.
-  Failure/skip prose is not a contract.
+  Failure/skip prose is not a contract, and neither is the placeholder value
+  an `ignored_auth` invalid-credential probe writes.
 - CLI surfaces by major (commands, flags, exit codes, and versioned inputs and
   output where applicable):
   - v1.x: `bin/openapi-contract`, `bin/openapi-coverage-merge`, and the v1.10

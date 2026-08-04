@@ -308,7 +308,11 @@ use Studio\Gesso\Fuzz\ExploredCase;
 use Studio\Gesso\Fuzz\OpenApiContractChecks;
 
 $summary = OpenApiContractChecks::run('petstore', seed: 7)
-    ->checks([ContractCheck::UnsupportedMethod])
+    ->checks([
+        ContractCheck::IgnoredAuth,
+        ContractCheck::MissingRequiredHeader,
+        ContractCheck::UnsupportedMethod,
+    ])
     ->dispatchUsing(fn (ExploredCase $case): int => $this->send($case)->getStatusCode())
     ->report();
 
@@ -317,6 +321,8 @@ self::assertSame([], $summary->failures, $summary->describeFailures());
 
 | Check | Probe | Default pass statuses |
 |---|---|---|
+| `ignored_auth` | per operation with an effective `security` requirement: the valid request with no credentials, then again with credentials the API cannot have issued | `401`, `403` |
+| `missing_required_header` | per `required: true` header parameter: the valid request with that one header omitted | any `4xx` |
 | `unsupported_method` | one deterministically chosen undocumented method per documented path | `405` |
 
 `dispatchUsing()` may return an `int` status, a PSR-7 response, or any object
@@ -324,9 +330,55 @@ exposing `getStatusCode(): int` (Symfony `Response`, Laravel `TestResponse`).
 The same `includeTags()`/`excludePaths()`/… filters and
 `setUpUsing()`/`authenticateUsing()`/`tearDownUsing()` hooks as whole-spec
 exploration apply; a path is probed when at least one of its documented
-operations passes the filters. Override the pass statuses per check with
-`expectedStatuses(ContractCheck::UnsupportedMethod, [405, 404])` for
-frameworks that answer unknown methods with 404.
+operations passes the filters. `ignored_auth` is the one exception to
+`authenticateUsing()`: its probes deliberately bypass the hook, because
+handing them credentials is exactly what the check exists to prevent.
+
+Override an expectation per check with
+`expectedStatuses(ContractCheck::UnsupportedMethod, [405, 404])` for frameworks
+that answer unknown methods with 404, or
+`expectedStatusClasses(ContractCheck::IgnoredAuth, [4])` to accept any client
+error. Either call replaces the check's whole default expectation, so
+`expectedStatuses(ContractCheck::MissingRequiredHeader, [400])` means exactly
+400 — the default `4xx` class no longer widens it.
+
+### `ignored_auth`
+
+An operation is probed when its effective `security` — operation-level if
+declared, root-level otherwise — actually demands credentials. `security: []`
+and a requirement list containing an empty `{}` entry both document
+unauthenticated access, so they are skipped rather than reported.
+
+The invalid-credential probe writes a placeholder into every credential
+location the operation declares (all of them, so an AND-style requirement is
+genuinely exercised): `Authorization: Bearer …` for `http` + `bearer`, and the
+declared header / query / cookie name for `apiKey`. Those are the schemes
+[request validation can locate](supported-features.md#security-schemes);
+operations secured
+solely by `oauth2`, `openIdConnect`, `mutualTLS`, or non-bearer `http` schemes
+get the no-credential probe plus a skip for the other one, rather than a
+fabricated credential in a guessed location.
+
+The no-credential probe also strips any `apiKey` header or query value the
+generated valid case happened to carry, so it is genuinely credential-free.
+It cannot, however, see credentials your own `dispatchUsing()` closure adds —
+send the case as-is there.
+
+### `missing_required_header`
+
+One probe per `required: true` `in: header` parameter, each omitting exactly
+that header so the failure names the one that was not enforced.
+`Accept`/`Content-Type`/`Authorization` parameter declarations are excluded:
+per OAS 3.x §4.7.12.1 they are ignored, and content negotiation and security
+schemes own them. Operations that declare no required header are skipped with
+a reason.
+
+The default expectation is the `4xx` class rather than a status list, because
+frameworks answer a missing required header with 400, 406, 422, or a
+scheme-specific 401/403 — pinning one of them would report framework choice as
+contract drift.
+
+### `unsupported_method`
 
 Probe construction: candidates are the explorer-supported methods (`GET`,
 `POST`, `PUT`, `PATCH`, `DELETE`, `QUERY`) minus every method the path
@@ -346,13 +398,43 @@ excluded too — the application would route the probe to the documented
 operation, so a failure there would be a false positive. Paths where every
 explorable method is documented, where every remaining candidate collides
 with another template, or where no documented operation's path parameters
-can be generated, appear in `$summary->skips` with a reason. `ContractCheckFailure::describe()` names the
-check, operation, expected/actual status, and a replayable curl command.
+can be generated, appear in `$summary->skips` with a reason.
 
 Two caveats: `HEAD`/`OPTIONS`/`TRACE` are outside the explorer's method set
 and are not probed, and a probe response cannot pass normal response
 validation (its method is undocumented by definition) — disable Laravel's
 `auto_assert` in contract-check tests or dispatch outside the trait's helpers.
+
+### Reading the results
+
+`ContractCheckFailure::describe()` names the check, the operation, the mutation
+the probe dispatched, the expected and actual status, and a replayable curl
+command:
+
+```text
+ignored_auth: GET /orders/{orderId} (showOrder) [no credentials] — expected 401 or 403, got 200
+  Curl: curl -X GET '/orders/42'
+```
+
+Every reason a probe was not dispatched lands in `$summary->skips` as a
+`ContractCheckSkip` carrying the check, path, method (null for path-level
+skips), and an explanation. Nothing is dropped silently — a check that found no
+work says so.
+
+### Compared with Schemathesis
+
+Check names match [Schemathesis][schemathesis-checks] so cross-tool
+documentation and CI dashboards line up, and the probes match its behavior:
+`ignored_auth` sends two extra requests per operation (no credentials, then
+invalid ones), `unsupported_method` expects 405, and
+`missing_required_header` expects a client error. Two deliberate differences:
+Gesso accepts 403 alongside 401 for `ignored_auth` (many PHP frameworks answer
+an unauthenticated request with 403), and it does not assert the RFC 9110
+`Allow` header on a 405 — only the status. The rest of the Schemathesis check
+catalog (`use_after_free`, `ensure_resource_availability`,
+`max_response_time`, and the response-conformance family) is out of scope here;
+response conformance is what `OpenApiResponseValidator` and the coverage
+tracker already cover.
 
 [schemathesis-checks]: https://schemathesis.readthedocs.io/en/stable/reference/checks/
 
