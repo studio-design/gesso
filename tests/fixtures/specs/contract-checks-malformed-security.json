@@ -1,7 +1,7 @@
 {
     "openapi": "3.1.0",
     "info": {
-        "title": "Contract checks fixture with a malformed security declaration",
+        "title": "Contract checks fixture with malformed security declarations",
         "version": "1.0.0"
     },
     "paths": {
@@ -15,6 +15,68 @@
                     }
                 }
             }
+        },
+        "/broken-scopes": {
+            "get": {
+                "operationId": "brokenScopesGet",
+                "security": [
+                    {
+                        "bearerAuth": "not-a-list"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "ok"
+                    }
+                }
+            }
+        },
+        "/broken-scope-item": {
+            "get": {
+                "operationId": "brokenScopeItemGet",
+                "security": [
+                    {
+                        "bearerAuth": [
+                            123
+                        ]
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "ok"
+                    }
+                }
+            }
+        },
+        "/undefined-scheme": {
+            "get": {
+                "operationId": "undefinedSchemeGet",
+                "security": [
+                    {
+                        "noSuchScheme": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "ok"
+                    }
+                }
+            }
+        },
+        "/broken-scheme-definition": {
+            "get": {
+                "operationId": "brokenSchemeDefinitionGet",
+                "security": [
+                    {
+                        "brokenApiKey": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "ok"
+                    }
+                }
+            }
         }
     },
     "components": {
@@ -22,6 +84,9 @@
             "bearerAuth": {
                 "type": "http",
                 "scheme": "bearer"
+            },
+            "brokenApiKey": {
+                "type": "apiKey"
             }
         }
     }

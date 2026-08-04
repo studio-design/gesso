@@ -449,6 +449,27 @@
                 }
             }
         },
+        "/imports": {
+            "post": {
+                "operationId": "createImport",
+                "parameters": [
+                    {
+                        "name": "X-Idempotency-Key",
+                        "in": "header",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "created"
+                    }
+                }
+            }
+        },
         "/tenants": {
             "get": {
                 "operationId": "listTenants",

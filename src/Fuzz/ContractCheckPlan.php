@@ -11,6 +11,7 @@ use Studio\Gesso\HttpMethod;
 use Studio\Gesso\Spec\OpenApiOperationResolver;
 use Studio\Gesso\Spec\OpenApiPathMatcher;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
+use Studio\Gesso\Validation\Request\SecurityRequirementDefect;
 use Studio\Gesso\Validation\Request\SecuritySchemeIntrospector;
 use Studio\Gesso\Validation\Request\SecurityValidator;
 use Throwable;
@@ -18,6 +19,7 @@ use Throwable;
 use function array_is_list;
 use function array_key_exists;
 use function array_keys;
+use function array_map;
 use function array_values;
 use function count;
 use function crc32;
@@ -289,6 +291,8 @@ final class ContractCheckPlan
             return false;
         }
 
+        $schemes = $spec['components']['securitySchemes'] ?? null;
+
         foreach ($security as $entryIndex => $entry) {
             // An empty requirement object is how OAS spells "credentials are
             // optional for this operation". Empty objects survive decoding as
@@ -309,9 +313,54 @@ final class ContractCheckPlan
                     $entry === [] ? 'an empty array' : get_debug_type($entry),
                 )));
             }
+
+            // Inside the entry, defer to the runtime validator's structural
+            // rules rather than re-deriving a subset of them: non-list scopes,
+            // non-string scope items, undefined scheme names, and malformed
+            // scheme definitions are all hard errors there, and a probe built
+            // on a declaration the validator rejects proves nothing.
+            foreach ($entry as $schemeName => $scopes) {
+                $defects = SecurityValidator::inspectRequirementPair($schemeName, $scopes, $schemes)['defects'];
+                if ($defects !== []) {
+                    throw new InvalidArgumentException(self::malformedSecurityMessage(
+                        $operation,
+                        implode(' ', array_map(self::describeSecurityDefect(...), $defects)),
+                    ));
+                }
+            }
         }
 
         return true;
+    }
+
+    private static function describeSecurityDefect(SecurityRequirementDefect $defect): string
+    {
+        return match ($defect->kind) {
+            SecurityRequirementDefect::SCHEME_NAME_NOT_STRING => sprintf(
+                'a security scheme name must be a string, got %s.',
+                $defect->actualType,
+            ),
+            SecurityRequirementDefect::SCOPES_NOT_LIST => sprintf(
+                "security requirement '%s' scopes must be a list of strings, got %s.",
+                $defect->schemeName,
+                $defect->actualType,
+            ),
+            SecurityRequirementDefect::SCOPE_NOT_STRING => sprintf(
+                "security requirement '%s' scope at index %d must be a string, got %s.",
+                $defect->schemeName,
+                $defect->scopeIndex,
+                $defect->actualType,
+            ),
+            SecurityRequirementDefect::UNDEFINED_SCHEME => sprintf(
+                "security requirement references undefined scheme '%s' — add it under components.securitySchemes.",
+                $defect->schemeName,
+            ),
+            default => sprintf(
+                "security scheme '%s' is malformed: %s",
+                $defect->schemeName,
+                $defect->reason,
+            ),
+        };
     }
 
     private static function malformedSecurityMessage(ExploredOperation $operation, string $reason): string
@@ -392,6 +441,16 @@ final class ContractCheckPlan
         }
 
         return $case->withHeaders($headers)->withQuery($query)->withCookies($cookies);
+    }
+
+    /**
+     * RFC 9110 §9.2.1 safe methods, restricted to the explorer's set. `QUERY`
+     * is safe by design (draft-ietf-httpbis-safe-method-w-body); `HEAD`,
+     * `OPTIONS`, and `TRACE` are safe too but the explorer never generates them.
+     */
+    private static function isSafeMethod(string $method): bool
+    {
+        return in_array($method, ['GET', 'QUERY'], true);
     }
 
     private function derivedSeed(ContractCheck $check, string $path): int
@@ -560,6 +619,23 @@ final class ContractCheckPlan
                 continue;
             }
 
+            // The control request and each omission probe are separate
+            // dispatches against the same resource. On a method that changes
+            // state, the control's own effect answers the probes — a duplicate
+            // create is a 409, an already-deleted resource is a 404 — and both
+            // land inside the 4xx class this check accepts. Nothing in the
+            // status can distinguish that from real header enforcement, so
+            // require the caller to have declared a reset hook instead.
+            if (!self::isSafeMethod($operation->method) && $this->setUp === null && $this->tearDown === null) {
+                $skips[] = new ContractCheckSkip($check, $path, $operation->method, sprintf(
+                    "%s changes state, so the control request's own effect would answer the omission probes (a duplicate-create 409 or an already-deleted 404 is a 4xx too) and be scored as header enforcement. Configure setUpUsing()/tearDownUsing() to reset state between dispatches, or excludeMethods(['%s']).",
+                    $operation->method,
+                    $operation->method,
+                ));
+
+                continue;
+            }
+
             // Deferred until a header is known to exist: generating a full
             // valid case can skip an operation whose body is not synthesizable,
             // and that skip would be noise for an operation this check has no
@@ -578,9 +654,14 @@ final class ContractCheckPlan
             ), $derivedSeed);
             $dispatchedProbes++;
 
-            if ($controlStatus >= 400) {
+            // Only a 2xx proves the request reached the handler. A 3xx does
+            // not: an unauthenticated non-JSON request in Laravel is answered
+            // with a 302 to the login page, and the omission probes would then
+            // be compared against a redirect that has nothing to do with
+            // header enforcement.
+            if ($controlStatus < 200 || $controlStatus >= 300) {
                 $skips[] = new ContractCheckSkip($check, $path, $operation->method, sprintf(
-                    'The unmutated valid request answered %d, so it never reached the handler whose header enforcement this check tests; every omission probe would have been scored as a pass for an unrelated reason. Configure setUpUsing()/authenticateUsing() so the valid request succeeds.',
+                    'The unmutated valid request answered %d rather than a 2xx, so it is not known to have reached the handler whose header enforcement this check tests; every omission probe would have been scored against an unrelated response. Configure setUpUsing()/authenticateUsing() so the valid request succeeds.',
                     $controlStatus,
                 ));
 

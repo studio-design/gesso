@@ -549,16 +549,30 @@ class OpenApiContractChecksTest extends TestCase
     #[Test]
     public function ignored_auth_fails_loudly_on_a_malformed_security_declaration(): void
     {
-        // Reading `security: "not-a-list"` as "no authentication required"
-        // would report a green run with zero probes for a broken spec — the
-        // runtime validator treats it as a hard error, so this must too.
-        $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessageMatches('/must be a list of requirement objects, got string/');
+        // Every one of these is a hard error in SecurityValidator. Treating any
+        // of them as "no authentication required" — or probing a declaration
+        // the validator rejects — would report a green run for a broken spec.
+        $cases = [
+            '/broken' => 'must be a list of requirement objects, got string',
+            '/broken-scopes' => 'scopes must be a list of strings, got string',
+            '/broken-scope-item' => 'scope at index 0 must be a string, got int',
+            '/undefined-scheme' => 'references undefined scheme',
+            '/broken-scheme-definition' => "scheme 'brokenApiKey' is malformed",
+        ];
 
-        OpenApiContractChecks::run('contract-checks-malformed-security', seed: 7)
-            ->checks([ContractCheck::IgnoredAuth])
-            ->dispatchUsing(static fn(ExploredCase $case): int => 401)
-            ->report();
+        foreach ($cases as $path => $expectedMessage) {
+            try {
+                OpenApiContractChecks::run('contract-checks-malformed-security', seed: 7)
+                    ->checks([ContractCheck::IgnoredAuth])
+                    ->includePaths([$path])
+                    ->dispatchUsing(static fn(ExploredCase $case): int => 401)
+                    ->report();
+                $this->fail("Expected {$path} to fail loudly.");
+            } catch (InvalidArgumentException $e) {
+                $this->assertStringContainsString($expectedMessage, $e->getMessage());
+                $this->assertStringContainsString($path, $e->getMessage());
+            }
+        }
     }
 
     #[Test]
@@ -705,7 +719,82 @@ class OpenApiContractChecksTest extends TestCase
         $this->assertCount(1, $summary->skips);
         $this->assertSame('GET', $summary->skips[0]->method);
         $this->assertStringContainsString('answered 401', $summary->skips[0]->reason);
-        $this->assertStringContainsString('never reached the handler', $summary->skips[0]->reason);
+        $this->assertStringContainsString('not known to have reached the handler', $summary->skips[0]->reason);
+    }
+
+    #[Test]
+    public function missing_required_header_treats_a_redirect_control_as_not_reaching_the_handler(): void
+    {
+        $dispatched = 0;
+
+        $summary = OpenApiContractChecks::run('contract-checks', seed: 7)
+            ->checks([ContractCheck::MissingRequiredHeader])
+            ->includePaths(['/tenants'])
+            // Laravel answers an unauthenticated non-JSON request with a 302 to
+            // the login page; the omission probes would answer the same way.
+            ->dispatchUsing(static function (ExploredCase $case) use (&$dispatched): int {
+                $dispatched++;
+
+                return 302;
+            })
+            ->report();
+
+        // A 3xx is not proof the request reached the handler, so gating on
+        // "below 400" would have reported two failures about a redirect that
+        // has nothing to do with header enforcement.
+        $this->assertSame(1, $dispatched);
+        $this->assertFalse($summary->hasFailures());
+        $this->assertCount(1, $summary->skips);
+        $this->assertStringContainsString('answered 302 rather than a 2xx', $summary->skips[0]->reason);
+    }
+
+    #[Test]
+    public function missing_required_header_skips_state_changing_methods_without_a_reset_hook(): void
+    {
+        $dispatched = 0;
+
+        $summary = OpenApiContractChecks::run('contract-checks', seed: 7)
+            ->checks([ContractCheck::MissingRequiredHeader])
+            ->includePaths(['/imports'])
+            ->dispatchUsing(static function (ExploredCase $case) use (&$dispatched): int {
+                $dispatched++;
+
+                // The control creates the resource; the omission probe then
+                // collides with it. Both statuses are 4xx-adjacent answers that
+                // say nothing about header enforcement.
+                return $dispatched === 1 ? 201 : 409;
+            })
+            ->report();
+
+        $this->assertSame(0, $dispatched, 'nothing is dispatched without a declared state-reset hook');
+        $this->assertFalse($summary->hasFailures());
+        $this->assertCount(1, $summary->skips);
+        $this->assertSame('POST', $summary->skips[0]->method);
+        $this->assertStringContainsString('POST changes state', $summary->skips[0]->reason);
+        $this->assertStringContainsString('setUpUsing()/tearDownUsing()', $summary->skips[0]->reason);
+    }
+
+    #[Test]
+    public function missing_required_header_probes_state_changing_methods_once_a_reset_hook_is_declared(): void
+    {
+        $dispatched = [];
+
+        $summary = OpenApiContractChecks::run('contract-checks', seed: 7)
+            ->checks([ContractCheck::MissingRequiredHeader])
+            ->includePaths(['/imports'])
+            ->tearDownUsing(static function (ExploredOperation $operation): void {
+                // Stands in for a transaction rollback between dispatches.
+            })
+            ->dispatchUsing(static function (ExploredCase $case) use (&$dispatched): int {
+                $dispatched[] = $case;
+
+                return array_key_exists('X-Idempotency-Key', $case->headers) ? 201 : 422;
+            })
+            ->report();
+
+        $this->assertCount(2, $dispatched);
+        $this->assertSame([], $summary->skips);
+        $this->assertFalse($summary->hasFailures());
     }
 
     #[Test]

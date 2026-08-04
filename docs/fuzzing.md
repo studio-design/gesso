@@ -323,7 +323,7 @@ self::assertSame([], $summary->failures, $summary->describeFailures());
 | Check | Probe | Default pass statuses |
 |---|---|---|
 | `ignored_auth` | per operation with an effective `security` requirement: the valid request with no credentials, then again with credentials the API cannot have issued | `401`, `403` |
-| `missing_required_header` | per `required: true` header parameter: the valid request with that one header omitted, gated behind a control request | any `4xx` |
+| `missing_required_header` | per `required: true` header parameter: the valid request with that one header omitted, gated behind a 2xx control request | any `4xx` |
 | `unsupported_method` | one deterministically chosen undocumented method per documented path | `405` |
 
 `dispatchUsing()` may return an `int` status, a PSR-7 response, or any object
@@ -348,11 +348,15 @@ error. Either call replaces the check's whole default expectation, so
 An operation is probed when its effective `security` — operation-level if
 declared, root-level otherwise — actually demands credentials. `security: []`
 and a requirement list containing an empty `{}` entry both document
-unauthenticated access, so they are skipped rather than reported. A *malformed*
-`security` node (`security: "not-a-list"`, a scalar requirement entry) is a hard
-error instead: reading it as "no authentication required" would turn a broken
-spec into a green run with zero probes, so the check fails the same way
-`SecurityValidator` does at runtime.
+unauthenticated access, so they are skipped rather than reported. Anything else
+malformed is a hard error instead — reading it as "no authentication required",
+or probing a declaration the runtime validator rejects, would turn a broken spec
+into a green run. That covers the outer node (`security: "not-a-list"`, a scalar
+requirement entry) and the inside of each entry: non-list scopes, non-string
+scope items, undefined scheme names, and malformed scheme definitions. The
+detection rules are the runtime validator's own
+(`SecurityValidator::inspectRequirementPair()`), shared rather than
+re-derived, so the two cannot disagree about which specs are broken.
 
 The invalid-credential probe writes a placeholder into every credential
 location the operation declares (all of them, so an AND-style requirement is
@@ -405,12 +409,24 @@ contract drift.
 
 Accepting a family that wide is only sound with a control: each operation first
 dispatches the **unmutated** valid case, and the omission probes run only when
-that control answers below 400. Without it, an operation that never enforces
-the header would score green because the request was rejected for an unrelated
-reason — no credentials configured, a missing fixture, a 404. When the control
-fails, the operation is skipped with its status in the reason, so use
-`setUpUsing()` / `authenticateUsing()` to make the valid request succeed. The
-control counts toward `$summary->dispatchedProbes`.
+that control answers a 2xx. Without it, an operation that never enforces the
+header would score green because the request was rejected for an unrelated
+reason — no credentials configured, a missing fixture, a 404. A 3xx does not
+qualify either: Laravel answers an unauthenticated non-JSON request with a 302
+to the login page, and comparing the omission probes against that redirect
+proves nothing. When the control does not return 2xx, the operation is skipped
+with its status in the reason, so use `setUpUsing()` / `authenticateUsing()` to
+make the valid request succeed. The control counts toward
+`$summary->dispatchedProbes`.
+
+State-changing methods need one more thing. On `POST` / `PUT` / `PATCH` /
+`DELETE`, the control request's own effect answers the probes that follow it —
+a duplicate create is a 409, an already-deleted resource is a 404, and both sit
+inside the accepted 4xx class — so the status cannot distinguish them from real
+header enforcement. Those operations are skipped unless `setUpUsing()` or
+`tearDownUsing()` is configured; both hooks run around **every** dispatch, so a
+transaction rollback there isolates the control from each probe. `GET` and
+`QUERY` are safe methods (RFC 9110 §9.2.1) and need no hook.
 
 ### `unsupported_method`
 
