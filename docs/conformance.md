@@ -6,7 +6,7 @@ commit SHA in `composer.json` and asserted on every CI run:
 | Corpus | Question it answers | Result |
 | --- | --- | --- |
 | [OAI/learn.openapis.org][learn] | Does Gesso understand the documents the OpenAPI Initiative itself publishes? | 22 of 22 files load without error; one document reports three not-enforced security schemes |
-| [JSON Schema Test Suite][suite] | What does Gesso's schema rewriting change about a schema's meaning? | 126 of 3,784 verdicts move; each one listed with a reason |
+| [JSON Schema Test Suite][suite] | What does Gesso's schema rewriting change about a schema's meaning? | 11 of 3,784 verdicts move; each one listed with a reason |
 
 Both results are committed as machine-readable baselines, so a number can only
 move when someone updates the record.
@@ -80,8 +80,8 @@ is lowered to Draft 07, `discriminator` becomes `if`/`then` conditionals,
 of a contract-testing tool most likely to quietly change what your spec means.
 
 This section measures exactly where it does. Of 3,784 official test-suite cases
-put through both pipelines, conversion changes the verdict on 126 — 115 of them
-one tracked defect, the other 11 deliberate. Every one is listed with a reason.
+put through both pipelines, conversion changes the verdict on 11, all of them
+deliberate. Every one is listed with a reason.
 
 ### What is measured
 
@@ -121,9 +121,9 @@ Corpus: [`json-schema-org/JSON-Schema-Test-Suite`][suite] at
 
 | Suite | OAS pipeline | In corpus | Excluded | Boolean root | Compared | Verdict changed |
 | --- | --- | ---: | ---: | ---: | ---: | ---: |
-| `draft7` | 3.0 → Draft 07 | 1,657 | 0 | 18 | 1,639 | 56 |
-| `draft2020-12` | 3.1 / 3.2 → 2020-12 | 2,167 | 4 | 18 | 2,145 | 70 |
-| **Total** | | **3,824** | **4** | **36** | **3,784** | **126** |
+| `draft7` | 3.0 → Draft 07 | 1,657 | 0 | 18 | 1,639 | 0 |
+| `draft2020-12` | 3.1 / 3.2 → 2020-12 | 2,167 | 4 | 18 | 2,145 | 11 |
+| **Total** | | **3,824** | **4** | **36** | **3,784** | **11** |
 
 Required and `optional/` cases are both included, `optional/format/` among
 them. The suite's `remotes/` directory is served at `http://localhost:1234/` as
@@ -133,22 +133,10 @@ identically on both sides.
 OAS 3.2 shares the 3.1 conversion pipeline, so running it would reproduce the
 3.1 numbers exactly and it is not run twice.
 
-#### The 126 differences
+#### The 11 differences
 
-Three causes. Each recorded case cites one of them by key in the baseline's
-`reasons` map.
-
-**`empty-schema-object` — 115 cases. A real defect, tracked in
-[#478](https://github.com/studio-design/gesso/issues/478).** An empty Schema
-Object `{}` is indistinguishable from an empty array once a spec is decoded
-with `json_decode(..., true)`, so it reaches opis as a JSON array and is
-rejected as not-a-schema. `additionalProperties: {}`, `properties: {x: {}}`,
-`items: {}` and `not: {}` are ordinary OpenAPI and all hit it. 114 of these
-surface as a loud `InvalidKeywordException`; one degrades further —
-`{"items": {}, "additionalItems": false}` becomes tuple-form `items: []`, so a
-compliant array is reported as a contract violation with no error at all. That
-last case is the reason this harness was worth building: it is a false failure
-that no existing test caught.
+Two causes. Each recorded case cites one of them by key in the baseline's
+`reasons` map. The `draft7` suite converts with no verdict change at all.
 
 **`unsupported-dialect` — 9 cases** (`vocabulary.json`,
 `format-assertion.json`). These declare a custom metaschema URI in `$schema`.

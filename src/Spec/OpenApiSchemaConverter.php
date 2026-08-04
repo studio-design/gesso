@@ -13,6 +13,7 @@ use Studio\Gesso\OpenApiVersion;
 use Studio\Gesso\SchemaContext;
 use Studio\Gesso\Validation\Support\DiscriminatorContext;
 use Studio\Gesso\Validation\Support\MalformedSpecNode;
+use Studio\Gesso\Validation\Support\ObjectConverter;
 
 use function array_is_list;
 use function array_key_exists;
@@ -213,6 +214,10 @@ final class OpenApiSchemaConverter
 
         $implicitDiscriminatorValues = self::implicitDiscriminatorValues($schema);
 
+        // Runs before the keyword warnings below so a no-op empty map is not
+        // reported as an unenforced constraint.
+        self::dropEmptySchemaMaps($schema);
+
         if ($version === OpenApiVersion::V3_0) {
             self::handleNullable($schema);
             self::normalizeOpenApi30ExclusiveBounds($schema);
@@ -249,31 +254,29 @@ final class OpenApiSchemaConverter
 
         if (isset($schema['properties']) && is_array($schema['properties'])) {
             foreach ($schema['properties'] as &$property) {
-                if (is_array($property)) {
-                    self::convertInPlace($property, $version, $context, $discriminator);
-                }
+                self::convertSubschemaInPlace($property, $version, $context, $discriminator);
             }
             unset($property);
         }
 
         if (isset($schema['items']) && is_array($schema['items'])) {
-            if (array_is_list($schema['items'])) {
+            // A non-empty list is the Draft 07 / OAS 3.0 tuple form. An empty
+            // array cannot be the tuple form — the Draft 07 metaschema requires
+            // `minItems: 1` there — so it is the empty Schema Object `{}`, and
+            // convertSubschemaInPlace() normalises it below.
+            if ($schema['items'] !== [] && array_is_list($schema['items'])) {
                 foreach ($schema['items'] as &$item) {
-                    if (is_array($item)) {
-                        self::convertInPlace($item, $version, $context, $discriminator);
-                    }
+                    self::convertSubschemaInPlace($item, $version, $context, $discriminator);
                 }
                 unset($item);
             } else {
-                self::convertInPlace($schema['items'], $version, $context, $discriminator);
+                self::convertSubschemaInPlace($schema['items'], $version, $context, $discriminator);
             }
         }
 
         if ($version !== OpenApiVersion::V3_0 && isset($schema['prefixItems']) && is_array($schema['prefixItems'])) {
             foreach ($schema['prefixItems'] as &$item) {
-                if (is_array($item)) {
-                    self::convertInPlace($item, $version, $context, $discriminator);
-                }
+                self::convertSubschemaInPlace($item, $version, $context, $discriminator);
             }
             unset($item);
         }
@@ -281,27 +284,25 @@ final class OpenApiSchemaConverter
         // OAS 3.0 inherits Draft 04's `additionalItems`; recurse into a
         // hand-authored schema so nullable and OpenAPI annotations are still
         // handled inside it.
-        if (isset($schema['additionalItems']) && is_array($schema['additionalItems'])) {
-            self::convertInPlace($schema['additionalItems'], $version, $context, $discriminator);
+        if (isset($schema['additionalItems'])) {
+            self::convertSubschemaInPlace($schema['additionalItems'], $version, $context, $discriminator);
         }
 
         foreach (['allOf', 'oneOf', 'anyOf'] as $combiner) {
             if (isset($schema[$combiner]) && is_array($schema[$combiner])) {
                 foreach ($schema[$combiner] as &$item) {
-                    if (is_array($item)) {
-                        self::convertInPlace($item, $version, $context, $discriminator);
-                    }
+                    self::convertSubschemaInPlace($item, $version, $context, $discriminator);
                 }
                 unset($item);
             }
         }
 
-        if (isset($schema['additionalProperties']) && is_array($schema['additionalProperties'])) {
-            self::convertInPlace($schema['additionalProperties'], $version, $context, $discriminator);
+        if (isset($schema['additionalProperties'])) {
+            self::convertSubschemaInPlace($schema['additionalProperties'], $version, $context, $discriminator);
         }
 
-        if (isset($schema['not']) && is_array($schema['not'])) {
-            self::convertInPlace($schema['not'], $version, $context, $discriminator);
+        if (isset($schema['not'])) {
+            self::convertSubschemaInPlace($schema['not'], $version, $context, $discriminator);
         }
 
         // Descend into the remaining subschema positions opis Draft 07
@@ -313,15 +314,27 @@ final class OpenApiSchemaConverter
         // recurse into its values for hygiene and to stay symmetric with
         // the other map-of-schemas positions.
         foreach (['if', 'then', 'else', 'propertyNames', 'contains'] as $key) {
-            if (isset($schema[$key]) && is_array($schema[$key])) {
-                self::convertInPlace($schema[$key], $version, $context, $discriminator);
+            if (isset($schema[$key])) {
+                self::convertSubschemaInPlace($schema[$key], $version, $context, $discriminator);
             }
         }
 
         if (isset($schema['patternProperties']) && is_array($schema['patternProperties'])) {
             foreach ($schema['patternProperties'] as &$sub) {
-                if (is_array($sub)) {
-                    self::convertInPlace($sub, $version, $context, $discriminator);
+                self::convertSubschemaInPlace($sub, $version, $context, $discriminator);
+            }
+            unset($sub);
+        }
+
+        // Draft 07's `dependencies` holds either a subschema or a list of
+        // property names per key; only the subschema form is converted, and an
+        // empty value is normalised as the empty Schema Object — which for this
+        // keyword agrees with the empty-name-list reading anyway, since both
+        // constrain nothing.
+        if (isset($schema['dependencies']) && is_array($schema['dependencies'])) {
+            foreach ($schema['dependencies'] as &$sub) {
+                if ($sub === [] || (is_array($sub) && !array_is_list($sub))) {
+                    self::convertSubschemaInPlace($sub, $version, $context, $discriminator);
                 }
             }
             unset($sub);
@@ -329,14 +342,15 @@ final class OpenApiSchemaConverter
 
         if (isset($schema['dependentSchemas']) && is_array($schema['dependentSchemas'])) {
             foreach ($schema['dependentSchemas'] as &$sub) {
-                // A list-shaped value here belongs under `dependentRequired`
-                // (an array of property names), not `dependentSchemas` (a
-                // map of schemas). Skip descent so a sibling-keyword misuse
-                // remains a no-op rather than being silently routed through
-                // schema lowering — the same silent-defect class the rest
-                // of this method exists to surface.
-                if (is_array($sub) && !array_is_list($sub)) {
-                    self::convertInPlace($sub, $version, $context, $discriminator);
+                // A non-empty list-shaped value here belongs under
+                // `dependentRequired` (an array of property names), not
+                // `dependentSchemas` (a map of schemas). Skip descent so a
+                // sibling-keyword misuse remains a no-op rather than being
+                // silently routed through schema lowering — the same
+                // silent-defect class the rest of this method exists to
+                // surface. An *empty* array is the empty Schema Object.
+                if ($sub === [] || (is_array($sub) && !array_is_list($sub))) {
+                    self::convertSubschemaInPlace($sub, $version, $context, $discriminator);
                 }
             }
             unset($sub);
@@ -344,16 +358,14 @@ final class OpenApiSchemaConverter
 
         if ($version !== OpenApiVersion::V3_0) {
             foreach (['contentSchema', 'unevaluatedProperties', 'unevaluatedItems'] as $key) {
-                if (isset($schema[$key]) && is_array($schema[$key])) {
-                    self::convertInPlace($schema[$key], $version, $context, $discriminator);
+                if (isset($schema[$key])) {
+                    self::convertSubschemaInPlace($schema[$key], $version, $context, $discriminator);
                 }
             }
 
             if (isset($schema['$defs']) && is_array($schema['$defs'])) {
                 foreach ($schema['$defs'] as &$sub) {
-                    if (is_array($sub)) {
-                        self::convertInPlace($sub, $version, $context, $discriminator);
-                    }
+                    self::convertSubschemaInPlace($sub, $version, $context, $discriminator);
                 }
                 unset($sub);
             }
@@ -366,6 +378,85 @@ final class OpenApiSchemaConverter
         // already converted by lowerDiscriminator itself and are not
         // re-visited here. See Issue #262.
         self::lowerDiscriminator($schema, $version, $context, $discriminator, $implicitDiscriminatorValues);
+    }
+
+    /**
+     * Drop map-valued keywords whose value decoded as an empty PHP array.
+     *
+     * Sibling of the empty Schema Object problem in
+     * {@see convertSubschemaInPlace()}: `properties: {}` and friends are legal,
+     * common OpenAPI, but `json_decode(..., true)` hands them to us as `[]` and
+     * opis rejects the list form outright (`properties must be an object`). An
+     * empty map of schemas — or of required-property lists — constrains
+     * nothing, so removing the keyword is exactly equivalent to keeping it and
+     * needs no object/array distinction to survive downstream. `$defs` /
+     * `definitions` are included for uniformity: they only ever hold `$ref`
+     * targets, and an empty one holds none.
+     *
+     * @param array<string, mixed> $schema
+     */
+    private static function dropEmptySchemaMaps(array &$schema): void
+    {
+        foreach (
+            [
+                'properties',
+                'patternProperties',
+                'dependencies',
+                'dependentSchemas',
+                'dependentRequired',
+                '$defs',
+                'definitions',
+            ] as $keyword
+        ) {
+            if (($schema[$keyword] ?? null) === []) {
+                unset($schema[$keyword]);
+            }
+        }
+    }
+
+    /**
+     * Convert one subschema slot in place, normalising the empty Schema Object.
+     *
+     * `OpenApiSpecLoader` decodes with `json_decode(..., true)`, which collapses
+     * the empty JSON object `{}` and the empty array `[]` onto the same PHP
+     * `[]`. In a *schema* position that ambiguity is fatal: an empty Schema
+     * Object is legal, idiomatic OpenAPI meaning "any value"
+     * (`additionalProperties: {}`, `properties: {x: {}}`, `items: {}`,
+     * `not: {}`), but it reaches opis as a JSON array and is rejected with
+     * `InvalidKeywordException: … must be a json schema` — or, for
+     * `{items: {}, additionalItems: false}`, is silently read as the empty
+     * tuple form and turns a compliant array into a contract violation
+     * (Issue #478).
+     *
+     * Boolean `true` is the canonical equivalent of `{}` in every draft this
+     * package targets, and unlike a `stdClass` it survives
+     * {@see MalformedSpecNode} guards and
+     * {@see ObjectConverter::convert()}
+     * unchanged, so the normalisation happens once here rather than in a
+     * post-hoc pass that cannot tell schema position from data.
+     *
+     * Only schema positions route through this method. Keyword-value positions
+     * whose value genuinely is an array — `enum`, `required`, `allOf` / `anyOf`
+     * / `oneOf`, `prefixItems`, `examples` — keep their empty arrays as arrays.
+     */
+    private static function convertSubschemaInPlace(
+        mixed &$slot,
+        OpenApiVersion $version,
+        SchemaContext $context,
+        DiscriminatorContext $discriminator,
+    ): void {
+        if ($slot === []) {
+            $slot = true;
+
+            return;
+        }
+
+        if (!is_array($slot)) {
+            return;
+        }
+
+        /** @var array<string, mixed> $slot */
+        self::convertInPlace($slot, $version, $context, $discriminator);
     }
 
     /**
@@ -700,8 +791,11 @@ final class OpenApiSchemaConverter
             $value = $route['value'];
             $pointer = $route['pointer'];
 
+            // Through convertSubschemaInPlace(), not convertInPlace(): a
+            // mapping may point at an empty Schema Object, and `then: []`
+            // is not a schema opis accepts (#478).
             $subschema = self::resolveMappingTarget($value, $pointer, $discriminator->root);
-            self::convertInPlace($subschema, $version, $context, $childContext);
+            self::convertSubschemaInPlace($subschema, $version, $context, $childContext);
 
             $branches[] = [
                 'if' => [
@@ -715,7 +809,7 @@ final class OpenApiSchemaConverter
         $defaultSubschema = null;
         if (is_string($defaultMapping)) {
             $defaultSubschema = self::resolveMappingTarget('default', $defaultMapping, $discriminator->root, 'defaultMapping');
-            self::convertInPlace($defaultSubschema, $version, $context, $childContext);
+            self::convertSubschemaInPlace($defaultSubschema, $version, $context, $childContext);
         }
 
         $allOf = (isset($schema['allOf']) && is_array($schema['allOf'])) ? $schema['allOf'] : [];
