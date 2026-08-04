@@ -2,7 +2,7 @@
 
 This is a contract-testing tool: where we can't enforce a constraint precisely, we prefer a loud failure or an explicit "skipped" outcome over silently accepting non-compliant data. The list below pins down what does and does not get checked so you can decide whether the gaps matter for your spec.
 
-The schema-conversion behaviour described here is measured against the official JSON Schema Test Suite on every CI run — see [JSON Schema conformance](conformance.md) for the current result.
+The schema-conversion behaviour described here is measured against the official JSON Schema Test Suite on every CI run, and the loader against the OpenAPI Initiative's own example documents — see [conformance](conformance.md) for the current results.
 
 - [OpenAPI 3.0, 3.1, and 3.2](#openapi-30-31-and-32)
   - [`readOnly` / `writeOnly` enforcement](#readonly--writeonly-enforcement)

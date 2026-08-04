@@ -35,6 +35,25 @@
                     "reference": "cf2e5e0ff2e3d90239c3b59e68ac4c080bd4ac92"
                 }
             }
+        },
+        {
+            "comment": "The official OpenAPI example documents, maintained by the OpenAPI Initiative and published under CC-BY-4.0. Not on Packagist and not tagged, so they are pinned by commit SHA here for the same reason as the suite above. See docs/conformance.md.",
+            "type": "package",
+            "package": {
+                "name": "oai/learn.openapis.org",
+                "version": "2026.05.07",
+                "license": "CC-BY-4.0",
+                "dist": {
+                    "type": "zip",
+                    "url": "https://codeload.github.com/OAI/learn.openapis.org/zip/43756549c27cbf84107b190b82c65e0336f2f09f",
+                    "reference": "43756549c27cbf84107b190b82c65e0336f2f09f"
+                },
+                "source": {
+                    "type": "git",
+                    "url": "https://github.com/OAI/learn.openapis.org.git",
+                    "reference": "43756549c27cbf84107b190b82c65e0336f2f09f"
+                }
+            }
         }
     ],
     "require-dev": {
@@ -43,6 +62,7 @@
         "guzzlehttp/psr7": "^2.12.1",
         "json-schema-org/json-schema-test-suite": "2026.08.04",
         "nyholm/psr7": "^1.8",
+        "oai/learn.openapis.org": "2026.05.07",
         "orchestra/testbench": "^9.0 || ^10.0 || ^11.0",
         "phpstan/phpstan": "^2.1.13",
         "symfony/browser-kit": "^6.4 || ^7.0 || ^8.0",
