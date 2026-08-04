@@ -35,10 +35,12 @@ maintenance cost.
 - `bin/gesso`: Composer-installed CLI for `doctor` and `coverage:merge`.
 - `tests/Unit`, `tests/Integration`, `tests/fixtures`: tests and representative
   OpenAPI fixtures. Pest integration tests run through a separate command.
-- `tests/Integration/Conformance`: runs the official JSON Schema Test Suite
-  (pinned by commit SHA in `composer.json`) through the schema converter and
-  pins the resulting verdict delta. See `docs/conformance.md` before changing
-  `OpenApiSchemaConverter`.
+- `tests/Integration/Conformance`: runs two upstream corpora, both pinned by
+  commit SHA in `composer.json` — the official JSON Schema Test Suite through
+  the schema converter (pinning the verdict delta), and the OpenAPI
+  Initiative's example documents through the loader and `gesso doctor`. See
+  `docs/conformance.md` before changing `OpenApiSchemaConverter` or the
+  doctor's structural checks.
 - `docs/`: focused guides. Start with `docs/setup.md`,
   `docs/supported-features.md`, `docs/coverage.md`, and `docs/versioning.md`.
 

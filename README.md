@@ -41,7 +41,7 @@ when upgrading from `studio-design/openapi-contract-testing` v1.10.
 - **Multi-format reports** — Markdown / JUnit XML / JSON / HTML output with one-click GitHub Step Summary
 - **Zero runtime overhead** — Only used in test suites
 
-**Conformance evidence**: the schema rewriting behind those claims is pinned against the official [JSON Schema Test Suite](https://github.com/json-schema-org/JSON-Schema-Test-Suite). Of 3,784 cases compared, conversion changes the verdict on 126 — 115 of them one tracked defect ([#478](https://github.com/studio-design/gesso/issues/478)), the other 11 deliberate. Each is recorded with a reason and enforced in CI. See [`docs/conformance.md`](docs/conformance.md).
+**Conformance evidence**: every example document the OpenAPI Initiative publishes for 3.0, 3.1, and 3.2 loads without error — 11 documents in both their JSON and YAML forms, of which ten are issue-free and `tictactoe` reports three security schemes as recognized but not enforced. The schema rewriting behind the claims above is pinned against the official [JSON Schema Test Suite](https://github.com/json-schema-org/JSON-Schema-Test-Suite): of 3,784 cases compared, conversion changes the verdict on 126 — 115 of them one tracked defect ([#478](https://github.com/studio-design/gesso/issues/478)), the other 11 deliberate. Both corpora are pinned by commit SHA and enforced in CI. See [`docs/conformance.md`](docs/conformance.md).
 
 ## Why this library?
 
@@ -244,7 +244,7 @@ To validate every response automatically, set `'auto_assert' => true` and drop t
 | CI integration (GitHub Actions, PR comments, output formats, partial-run handling) | [`docs/ci.md`](docs/ci.md) |
 | API reference (`OpenApiResponseValidator`, `OpenApiSpecLoader`, `OpenApiCoverageTracker`) | [`docs/api-reference.md`](docs/api-reference.md) |
 | Supported features, known limitations, warning channel | [`docs/supported-features.md`](docs/supported-features.md) |
-| JSON Schema conformance result (conversion delta vs the official test suite) | [`docs/conformance.md`](docs/conformance.md) |
+| Conformance results (official OAS example documents, JSON Schema conversion delta) | [`docs/conformance.md`](docs/conformance.md) |
 | Versioning policy & support matrix | [`docs/versioning.md`](docs/versioning.md) |
 
 ## Development

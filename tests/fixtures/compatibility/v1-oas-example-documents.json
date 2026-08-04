@@ -1,0 +1,184 @@
+{
+    "format_version": 1,
+    "description": "How the official OpenAPI example documents published by the OpenAPI Initiative are diagnosed by the spec loader and `gesso doctor`. Recorded by tests/Integration/Conformance/OasExampleDocumentTest.php; see docs/conformance.md.",
+    "corpus": {
+        "name": "OAI/learn.openapis.org",
+        "source": "https://github.com/OAI/learn.openapis.org",
+        "commit": "43756549c27cbf84107b190b82c65e0336f2f09f",
+        "license": "CC-BY-4.0",
+        "pinned_in": "composer.json",
+        "measured": "examples/v3.0, examples/v3.1, examples/v3.2 — every document in both its JSON and its YAML form. examples/v2.0 is Swagger 2.0 and is out of scope."
+    },
+    "documents": {
+        "v3.0/api-with-examples.json": {
+            "openapi": "3.0.0",
+            "exit": 0,
+            "operations": 2,
+            "responses": 4,
+            "issues": []
+        },
+        "v3.0/api-with-examples.yaml": {
+            "openapi": "3.0.0",
+            "exit": 0,
+            "operations": 2,
+            "responses": 4,
+            "issues": []
+        },
+        "v3.0/callback-example.json": {
+            "openapi": "3.0.0",
+            "exit": 0,
+            "operations": 1,
+            "responses": 1,
+            "issues": []
+        },
+        "v3.0/callback-example.yaml": {
+            "openapi": "3.0.0",
+            "exit": 0,
+            "operations": 1,
+            "responses": 1,
+            "issues": []
+        },
+        "v3.0/link-example.json": {
+            "openapi": "3.0.0",
+            "exit": 0,
+            "operations": 6,
+            "responses": 6,
+            "issues": []
+        },
+        "v3.0/link-example.yaml": {
+            "openapi": "3.0.0",
+            "exit": 0,
+            "operations": 6,
+            "responses": 6,
+            "issues": []
+        },
+        "v3.0/petstore-expanded.json": {
+            "openapi": "3.0.0",
+            "exit": 0,
+            "operations": 4,
+            "responses": 8,
+            "issues": []
+        },
+        "v3.0/petstore-expanded.yaml": {
+            "openapi": "3.0.0",
+            "exit": 0,
+            "operations": 4,
+            "responses": 8,
+            "issues": []
+        },
+        "v3.0/petstore.json": {
+            "openapi": "3.0.0",
+            "exit": 0,
+            "operations": 3,
+            "responses": 6,
+            "issues": []
+        },
+        "v3.0/petstore.yaml": {
+            "openapi": "3.0.0",
+            "exit": 0,
+            "operations": 3,
+            "responses": 6,
+            "issues": []
+        },
+        "v3.0/uspto.json": {
+            "openapi": "3.0.1",
+            "exit": 0,
+            "operations": 3,
+            "responses": 5,
+            "issues": []
+        },
+        "v3.0/uspto.yaml": {
+            "openapi": "3.0.1",
+            "exit": 0,
+            "operations": 3,
+            "responses": 5,
+            "issues": []
+        },
+        "v3.1/non-oauth-scopes.json": {
+            "openapi": "3.1.0",
+            "exit": 0,
+            "operations": 1,
+            "responses": 0,
+            "issues": []
+        },
+        "v3.1/non-oauth-scopes.yaml": {
+            "openapi": "3.1.0",
+            "exit": 0,
+            "operations": 1,
+            "responses": 0,
+            "issues": []
+        },
+        "v3.1/tictactoe.json": {
+            "openapi": "3.1.0",
+            "exit": 0,
+            "operations": 3,
+            "responses": 5,
+            "issues": [
+                "skipped/feature",
+                "skipped/feature",
+                "skipped/feature"
+            ]
+        },
+        "v3.1/tictactoe.yaml": {
+            "openapi": "3.1.0",
+            "exit": 0,
+            "operations": 3,
+            "responses": 6,
+            "issues": [
+                "skipped/feature",
+                "skipped/feature",
+                "skipped/feature"
+            ]
+        },
+        "v3.1/webhook-example.json": {
+            "openapi": "3.1.0",
+            "exit": 0,
+            "operations": 0,
+            "responses": 0,
+            "issues": []
+        },
+        "v3.1/webhook-example.yaml": {
+            "openapi": "3.1.0",
+            "exit": 0,
+            "operations": 0,
+            "responses": 0,
+            "issues": []
+        },
+        "v3.2/3.2-query-example.json": {
+            "openapi": "3.2.0",
+            "exit": 0,
+            "operations": 1,
+            "responses": 1,
+            "issues": []
+        },
+        "v3.2/3.2-query-example.yaml": {
+            "openapi": "3.2.0",
+            "exit": 0,
+            "operations": 1,
+            "responses": 1,
+            "issues": []
+        },
+        "v3.2/3.2-tags-example.json": {
+            "openapi": "3.2.0",
+            "exit": 0,
+            "operations": 4,
+            "responses": 0,
+            "issues": []
+        },
+        "v3.2/3.2-tags-example.yaml": {
+            "openapi": "3.2.0",
+            "exit": 0,
+            "operations": 4,
+            "responses": 0,
+            "issues": []
+        }
+    },
+    "serialization_differences": {
+        "v3.1/tictactoe": "Upstream, not a pipeline difference: the YAML form declares a 202 response on `POST /board/{row}/{column}` that the JSON form omits, so the YAML form counts 6 responses to the JSON forms 5."
+    },
+    "notes": {
+        "issue-codes": "Issues are recorded as `severity/category` only. Message wording is not a compatibility surface (docs/versioning.md) and is pinned by the doctor's own unit tests.",
+        "skipped-feature-on-tictactoe": "The three `skipped/feature` issues are its HTTP-basic and OAuth2 security schemes: recognized, resolved, and reported as not enforced rather than silently passed.",
+        "webhook-example": "`v3.1/webhook-example` describes only `webhooks`, which this package deliberately does not consult (docs/supported-features.md), so it loads clean with zero operations. The zero is the honest signal, not a pass."
+    }
+}
