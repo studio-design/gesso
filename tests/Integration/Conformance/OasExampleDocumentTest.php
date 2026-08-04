@@ -10,6 +10,7 @@ use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Studio\Gesso\Cli\DoctorCommand;
 
+use function array_keys;
 use function basename;
 use function copy;
 use function file_get_contents;
@@ -18,6 +19,7 @@ use function json_decode;
 use function ksort;
 use function mkdir;
 use function rmdir;
+use function sort;
 use function sprintf;
 use function str_ends_with;
 use function substr;
@@ -120,18 +122,32 @@ final class OasExampleDocumentTest extends TestCase
     public function json_and_yaml_forms_agree_except_where_the_corpus_itself_differs(): void
     {
         $documents = $this->measure();
-        $differences = [];
 
-        foreach ($documents as $key => $entry) {
-            if (!str_ends_with($key, '.json')) {
-                continue;
+        // Compared in both directions: a document that upstream ships in only
+        // one serialization would otherwise slip through as "nothing to
+        // compare" the moment the baseline records it.
+        $jsonForms = [];
+        $yamlForms = [];
+        foreach (array_keys($documents) as $key) {
+            if (str_ends_with($key, '.json')) {
+                $jsonForms[] = substr($key, 0, -5);
+            } elseif (str_ends_with($key, '.yaml')) {
+                $yamlForms[] = substr($key, 0, -5);
             }
+        }
+        sort($jsonForms);
+        sort($yamlForms);
 
-            $document = substr($key, 0, -5);
-            $yaml = $documents[$document . '.yaml'] ?? null;
-            $this->assertNotNull($yaml, sprintf('Document "%s" has no YAML form to compare against.', $document));
+        $this->assertSame(
+            $jsonForms,
+            $yamlForms,
+            'Every example document must be measured in both serializations. A document present in only one '
+            . 'of them is either an upstream change or a glob that stopped matching.',
+        );
 
-            if ($entry !== $yaml) {
+        $differences = [];
+        foreach ($jsonForms as $document) {
+            if ($documents[$document . '.json'] !== $documents[$document . '.yaml']) {
                 $differences[] = $document;
             }
         }
