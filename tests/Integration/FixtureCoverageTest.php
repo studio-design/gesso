@@ -915,6 +915,74 @@ class FixtureCoverageTest extends TestCase
         $this->assertFalse($rejected->isValid(), 'prefixItems tuple must reject reversed types');
     }
 
+    // ============================================================
+    // empty-schema-object.json — the empty Schema Object `{}` (#478)
+    // ============================================================
+
+    #[Test]
+    public function empty_schema_object_in_schema_positions_accepts_any_value(): void
+    {
+        // `json_decode(..., true)` collapses `{}` and `[]` onto the same PHP
+        // `[]`, so before #478 `properties: {anything: {}}` reached opis as a
+        // JSON array and the whole endpoint failed with an
+        // InvalidKeywordException instead of validating.
+        $result = $this->responseValidator->validate(
+            'empty-schema-object',
+            'GET',
+            '/things',
+            200,
+            ['anything' => 'x', 'whatever' => [1, 2]],
+            'application/json',
+        );
+
+        $this->assertTrue($result->isValid(), implode(' | ', $result->errors()));
+    }
+
+    #[Test]
+    public function empty_items_schema_leaves_boolean_additional_items_inert(): void
+    {
+        // The silently-wrong half of #478: `items: {}` used to become the
+        // tuple form `items: []`, after which `additionalItems: false`
+        // forbade every element past position 0 and a compliant array was
+        // reported as a contract violation.
+        $result = $this->responseValidator->validate(
+            'empty-schema-object',
+            'GET',
+            '/tuples',
+            200,
+            ['a', 2, true],
+            'application/json',
+        );
+
+        $this->assertTrue($result->isValid(), implode(' | ', $result->errors()));
+    }
+
+    #[Test]
+    public function empty_properties_map_constrains_nothing_but_keeps_siblings(): void
+    {
+        $accepted = $this->responseValidator->validate(
+            'empty-schema-object',
+            'GET',
+            '/empty-maps',
+            200,
+            ['count' => 3],
+            'application/json',
+        );
+        $this->assertTrue($accepted->isValid(), implode(' | ', $accepted->errors()));
+
+        // Dropping the empty `properties` must not take `additionalProperties`
+        // with it — every property is still an "additional" one.
+        $rejected = $this->responseValidator->validate(
+            'empty-schema-object',
+            'GET',
+            '/empty-maps',
+            200,
+            ['count' => 'three'],
+            'application/json',
+        );
+        $this->assertFalse($rejected->isValid(), 'additionalProperties must still be enforced');
+    }
+
     /**
      * Build a valid Profile body and override one field so a single test
      * can pin one format failure without re-listing every field.

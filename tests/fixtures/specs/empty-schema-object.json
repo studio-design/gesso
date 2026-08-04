@@ -1,0 +1,60 @@
+{
+  "openapi": "3.0.3",
+  "info": {"title": "Empty Schema Object", "version": "1.0.0"},
+  "paths": {
+    "/things": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Empty Schema Objects in schema positions mean \"any value\"",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {"anything": {}},
+                  "additionalProperties": {}
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tuples": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "`items: {}` is a schema, not the empty tuple form, so `additionalItems` never applies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {},
+                  "additionalItems": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/empty-maps": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "An empty `properties` map constrains nothing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": {"type": "integer"}
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -925,11 +925,14 @@ final class SchemaDataGenerator
             if (!is_string($name)) {
                 continue;
             }
-            // Boolean property schemas (OpenAPI 3.1 / JSON Schema 2020-12)
-            // participate under a plan: `true` admits any value, `false`
-            // admits none, so its presence is unreachable and the property
-            // is always omitted. Plan-less rotation keeps skipping them.
-            if (!is_array($propSchema) && !($plan !== null && $propSchema === true)) {
+            // Boolean property schemas (OpenAPI 3.1 / JSON Schema 2020-12,
+            // and the empty Schema Object `{}` the converter normalises to
+            // `true` — see #478): `true` admits any value and is generated
+            // like any other schema, while `false` admits none, so its
+            // presence is unreachable and the property is always omitted.
+            // Skipping `true` here would drop a *required* property and
+            // produce a body that fails its own schema.
+            if ($propSchema !== true && !is_array($propSchema)) {
                 continue;
             }
 

@@ -2719,6 +2719,177 @@ class OpenApiSchemaConverterTest extends TestCase
         $this->assertSame([], $result['const']);
     }
 
+    // ========================================
+    // Empty Schema Object `{}` (#478)
+    // ========================================
+
+    #[Test]
+    public function empty_schema_object_in_every_subschema_position_becomes_boolean_true(): void
+    {
+        // `{}` and `[]` are the same PHP value after `json_decode(..., true)`.
+        // In a schema position the empty Schema Object is the only legal
+        // reading, and boolean `true` is its canonical equivalent — the one
+        // form that survives ObjectConverter without an object/array guess.
+        $result = OpenApiSchemaConverter::convert(
+            [
+                'properties' => ['anything' => []],
+                'additionalProperties' => [],
+                'items' => [],
+                'additionalItems' => [],
+                'prefixItems' => [[]],
+                'allOf' => [[]],
+                'anyOf' => [[]],
+                'oneOf' => [[]],
+                'not' => [],
+                'if' => [],
+                'then' => [],
+                'else' => [],
+                'contains' => [],
+                'propertyNames' => [],
+                'patternProperties' => ['^x-' => []],
+                'dependencies' => ['foo' => []],
+                'dependentSchemas' => ['foo' => []],
+                'unevaluatedProperties' => [],
+                'unevaluatedItems' => [],
+                'contentSchema' => [],
+                '$defs' => ['Anything' => []],
+            ],
+            OpenApiVersion::V3_1,
+        );
+
+        $this->assertTrue($result['properties']['anything']);
+        $this->assertTrue($result['additionalProperties']);
+        $this->assertTrue($result['items']);
+        $this->assertTrue($result['additionalItems']);
+        $this->assertTrue($result['prefixItems'][0]);
+        $this->assertTrue($result['allOf'][0]);
+        $this->assertTrue($result['anyOf'][0]);
+        $this->assertTrue($result['oneOf'][0]);
+        $this->assertTrue($result['not']);
+        $this->assertTrue($result['if']);
+        $this->assertTrue($result['then']);
+        $this->assertTrue($result['else']);
+        $this->assertTrue($result['contains']);
+        $this->assertTrue($result['propertyNames']);
+        $this->assertTrue($result['patternProperties']['^x-']);
+        $this->assertTrue($result['dependencies']['foo']);
+        $this->assertTrue($result['dependentSchemas']['foo']);
+        $this->assertTrue($result['unevaluatedProperties']);
+        $this->assertTrue($result['unevaluatedItems']);
+        $this->assertTrue($result['contentSchema']);
+        $this->assertTrue($result['$defs']['Anything']);
+    }
+
+    #[Test]
+    public function empty_schema_object_in_tuple_items_becomes_boolean_true(): void
+    {
+        // Draft 07 tuple form: only the *elements* are schemas, so an empty
+        // element is the one that normalises, not the list itself.
+        $result = OpenApiSchemaConverter::convert(
+            ['items' => [['type' => 'string'], []]],
+            OpenApiVersion::V3_0,
+        );
+
+        $this->assertSame(['type' => 'string'], $result['items'][0]);
+        $this->assertTrue($result['items'][1]);
+    }
+
+    #[Test]
+    public function keyword_value_empty_arrays_are_not_treated_as_schemas(): void
+    {
+        // The cases a naive fix breaks: these positions hold arrays of values
+        // or of schemas, never a single schema, so an empty one stays an
+        // empty array (opis rejects `enum: []` / `allOf: []` itself — that
+        // verdict is opis's to make, and this pins that we do not silently
+        // rewrite it into "any value").
+        $result = OpenApiSchemaConverter::convert(
+            [
+                'enum' => [],
+                'required' => [],
+                'allOf' => [],
+                'anyOf' => [],
+                'oneOf' => [],
+                'prefixItems' => [],
+                'dependentRequired' => ['foo' => []],
+            ],
+            OpenApiVersion::V3_1,
+        );
+
+        $this->assertSame([], $result['enum']);
+        $this->assertSame([], $result['required']);
+        $this->assertSame([], $result['allOf']);
+        $this->assertSame([], $result['anyOf']);
+        $this->assertSame([], $result['oneOf']);
+        $this->assertSame([], $result['prefixItems']);
+        $this->assertSame([], $result['dependentRequired']['foo']);
+    }
+
+    #[Test]
+    public function non_empty_dependencies_name_list_is_left_alone(): void
+    {
+        $result = OpenApiSchemaConverter::convert(
+            ['dependencies' => ['foo' => ['bar'], 'baz' => ['nullable' => true, 'type' => 'string']]],
+            OpenApiVersion::V3_0,
+        );
+
+        $this->assertSame(['bar'], $result['dependencies']['foo']);
+        $this->assertSame(['string', 'null'], $result['dependencies']['baz']['type']);
+    }
+
+    #[Test]
+    public function empty_map_valued_keywords_are_dropped(): void
+    {
+        // Same decode ambiguity, different shape: opis rejects the list form
+        // of these keywords outright ("properties must be an object"), and an
+        // empty map constrains nothing, so the keyword is removed.
+        $result = OpenApiSchemaConverter::convert(
+            [
+                'type' => 'object',
+                'properties' => [],
+                'patternProperties' => [],
+                'dependencies' => [],
+                'dependentSchemas' => [],
+                'dependentRequired' => [],
+                '$defs' => [],
+                'definitions' => [],
+            ],
+            OpenApiVersion::V3_1,
+        );
+
+        $this->assertSame(['type' => 'object', '$schema' => 'https://json-schema.org/draft/2020-12/schema'], $result);
+    }
+
+    #[Test]
+    public function empty_schema_object_validates_any_value_through_opis(): void
+    {
+        $runner = new SchemaValidatorRunner(20);
+        $schema = OpenApiSchemaConverter::convert(
+            [
+                'type' => 'object',
+                'properties' => ['anything' => []],
+                'additionalProperties' => [],
+            ],
+            OpenApiVersion::V3_0,
+        );
+
+        $errors = $runner->validate(
+            ObjectConverter::convert($schema),
+            ObjectConverter::convert((object) ['anything' => 'x', 'whatever' => 1]),
+        );
+
+        $this->assertSame([], $errors);
+    }
+
+    #[Test]
+    public function empty_not_schema_still_rejects_every_instance(): void
+    {
+        // `not: {}` is the inverse of "any value" — it must reject, not pass.
+        $runner = new SchemaValidatorRunner(20);
+        $schema = OpenApiSchemaConverter::convert(['not' => []], OpenApiVersion::V3_0);
+
+        $this->assertNotSame([], $runner->validate(ObjectConverter::convert($schema), 'anything'));
+    }
+
     /**
      * Build an enforcing DiscriminatorContext over a stub root spec for the
      * `discriminator.mapping` lowering tests (#262).
