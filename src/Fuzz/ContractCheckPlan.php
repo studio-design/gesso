@@ -15,11 +15,13 @@ use Studio\Gesso\Validation\Request\SecuritySchemeIntrospector;
 use Studio\Gesso\Validation\Request\SecurityValidator;
 use Throwable;
 
+use function array_is_list;
 use function array_key_exists;
 use function array_keys;
 use function array_values;
 use function count;
 use function crc32;
+use function get_debug_type;
 use function get_object_vars;
 use function implode;
 use function in_array;
@@ -213,7 +215,7 @@ final class ContractCheckPlan
 
                 $probes = match ($check) {
                     ContractCheck::IgnoredAuth => $this->buildIgnoredAuthProbes($check, $path, $spec, $matching, $derivedSeed, $skips),
-                    ContractCheck::MissingRequiredHeader => $this->buildMissingRequiredHeaderProbes($check, $path, $matching, $derivedSeed, $skips),
+                    ContractCheck::MissingRequiredHeader => $this->buildMissingRequiredHeaderProbes($check, $path, $matching, $derivedSeed, $skips, $probedPathSet, $dispatchedProbes),
                     ContractCheck::UnsupportedMethod => $this->buildUnsupportedMethodProbes($check, $path, $pathItem, $matching, $derivedSeed, $skips, $paths),
                 };
 
@@ -258,28 +260,68 @@ final class ContractCheckPlan
      * {@see SecurityValidator::effectiveSecurity()} so the probe and the
      * runtime validator cannot disagree about which declaration wins.
      *
+     * A malformed declaration is a hard error here for the same reason it is
+     * one in {@see SecurityValidator::validate()}: reading `security:
+     * "not-a-list"` as "no authentication required" would turn a broken spec
+     * into a green run with zero probes — the silent pass this check exists to
+     * eliminate. Only the two well-formed spellings of "no credentials needed"
+     * return false.
+     *
      * @param array<string, mixed> $spec
      * @param array<string, mixed> $rawOperation
+     *
+     * @throws InvalidArgumentException when the effective `security` node is malformed
      */
-    private static function requiresAuthentication(array $spec, array $rawOperation): bool
+    private static function requiresAuthentication(array $spec, array $rawOperation, ExploredOperation $operation): bool
     {
         $security = SecurityValidator::effectiveSecurity($spec, $rawOperation);
-        if (!is_array($security) || $security === []) {
+        if ($security === null) {
+            return false;
+        }
+        if (!is_array($security) || !array_is_list($security)) {
+            throw new InvalidArgumentException(self::malformedSecurityMessage(
+                $operation,
+                sprintf('operation/root-level `security` must be a list of requirement objects, got %s.', get_debug_type($security)),
+            ));
+        }
+        // An explicit `security: []` opts the operation out of authentication.
+        if ($security === []) {
             return false;
         }
 
-        foreach ($security as $entry) {
+        foreach ($security as $entryIndex => $entry) {
             // An empty requirement object is how OAS spells "credentials are
-            // optional for this operation". A JSON document decoded into
-            // associative arrays renders it as `[]`; an object-preserving
-            // decode renders it as an empty stdClass. Either way the operation
-            // documents unauthenticated access, so a 2xx is not a contract hole.
-            if ($entry === [] || ($entry instanceof stdClass && get_object_vars($entry) === [])) {
-                return false;
+            // optional for this operation". Empty objects survive decoding as
+            // stdClass (see SpecDocumentDecoder), so an empty *array* entry is
+            // a JSON `[]` where an object belongs — malformed, exactly as the
+            // runtime validator reads it.
+            if ($entry instanceof stdClass) {
+                if (get_object_vars($entry) === []) {
+                    return false;
+                }
+
+                continue;
+            }
+            if (!is_array($entry) || $entry === []) {
+                throw new InvalidArgumentException(self::malformedSecurityMessage($operation, sprintf(
+                    'security requirement at index %s must be an object mapping scheme names to scope arrays, got %s.',
+                    (string) $entryIndex,
+                    $entry === [] ? 'an empty array' : get_debug_type($entry),
+                )));
             }
         }
 
         return true;
+    }
+
+    private static function malformedSecurityMessage(ExploredOperation $operation, string $reason): string
+    {
+        return sprintf(
+            "ignored_auth cannot decide whether %s '%s' requires authentication: %s Fix the spec — reading a malformed declaration as \"no authentication required\" would silently probe nothing.",
+            $operation->method,
+            $operation->path,
+            $reason,
+        );
     }
 
     /**
@@ -295,6 +337,7 @@ final class ContractCheckPlan
     {
         $headers = $case->headers;
         $query = $case->query;
+        $cookies = $case->cookies;
 
         foreach ($credentials as $credential) {
             if ($credential['kind'] !== 'apiKey') {
@@ -308,10 +351,12 @@ final class ContractCheckPlan
                 }
             } elseif ($credential['in'] === 'query') {
                 unset($query[$credential['name']]);
+            } else {
+                unset($cookies[$credential['name']]);
             }
         }
 
-        return $case->withHeaders($headers)->withQuery($query);
+        return $case->withHeaders($headers)->withQuery($query)->withCookies($cookies);
     }
 
     /**
@@ -325,7 +370,7 @@ final class ContractCheckPlan
     {
         $headers = $case->headers;
         $query = $case->query;
-        $cookiePairs = [];
+        $cookies = $case->cookies;
 
         foreach ($credentials as $credential) {
             if ($credential['kind'] === 'bearer') {
@@ -338,17 +383,15 @@ final class ContractCheckPlan
             } elseif ($credential['in'] === 'query') {
                 $query[$credential['name']] = self::INVALID_CREDENTIAL;
             } else {
-                $cookiePairs[] = $credential['name'] . '=' . self::INVALID_CREDENTIAL;
+                // A `Cookie:` request header is the wire form, but test clients
+                // build cookies from a separate argument, so writing the header
+                // alone would leave `$request->cookie(...)` empty and the probe
+                // indistinguishable from the no-credential one.
+                $cookies[$credential['name']] = self::INVALID_CREDENTIAL;
             }
         }
 
-        if ($cookiePairs !== []) {
-            // ExploredCase has no cookie jar; the wire form of a cookie is a
-            // request header, which is what a dispatcher forwards anyway.
-            $headers['Cookie'] = implode('; ', $cookiePairs);
-        }
-
-        return $case->withHeaders($headers)->withQuery($query);
+        return $case->withHeaders($headers)->withQuery($query)->withCookies($cookies);
     }
 
     private function derivedSeed(ContractCheck $check, string $path): int
@@ -411,7 +454,7 @@ final class ContractCheckPlan
         $probes = [];
 
         foreach ($matching as [$operation, $rawOperation]) {
-            if (!self::requiresAuthentication($spec, $rawOperation)) {
+            if (!self::requiresAuthentication($spec, $rawOperation, $operation)) {
                 $skips[] = new ContractCheckSkip(
                     $check,
                     $path,
@@ -468,8 +511,18 @@ final class ContractCheckPlan
      * that header from an otherwise-valid case so the failing status names the
      * header that was not enforced.
      *
+     * Every omission probe is gated behind a control request: the *unmutated*
+     * valid case, dispatched first. Accepting any 4xx is only meaningful once
+     * the un-omitted request is known to reach the handler — otherwise an
+     * operation that never enforces the header still "passes" because the
+     * request was rejected for an unrelated reason (no credentials configured,
+     * a missing fixture, a 404). When the control does not succeed, the
+     * operation is skipped with the control's status in the reason rather than
+     * scored green.
+     *
      * @param non-empty-list<array{ExploredOperation, array<string, mixed>}> $matching
      * @param list<ContractCheckSkip> $skips
+     * @param array<string, true> $probedPathSet
      *
      * @return list<ContractCheckProbe>
      */
@@ -479,6 +532,8 @@ final class ContractCheckPlan
         array $matching,
         int $derivedSeed,
         array &$skips,
+        array &$probedPathSet,
+        int &$dispatchedProbes,
     ): array {
         $probes = [];
 
@@ -511,6 +566,24 @@ final class ContractCheckPlan
             // work for anyway.
             $case = $this->validCaseFor($check, $path, $operation, $derivedSeed, $skips);
             if ($case === null) {
+                continue;
+            }
+
+            $probedPathSet[$path] = true;
+            $controlStatus = $this->dispatchProbe($check, new ContractCheckProbe(
+                $case,
+                $operation,
+                $operation->operationId,
+                'control: unmutated valid request',
+            ), $derivedSeed);
+            $dispatchedProbes++;
+
+            if ($controlStatus >= 400) {
+                $skips[] = new ContractCheckSkip($check, $path, $operation->method, sprintf(
+                    'The unmutated valid request answered %d, so it never reached the handler whose header enforcement this check tests; every omission probe would have been scored as a pass for an unrelated reason. Configure setUpUsing()/authenticateUsing() so the valid request succeeds.',
+                    $controlStatus,
+                ));
+
                 continue;
             }
 

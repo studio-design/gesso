@@ -38,6 +38,7 @@ What you get per case (`Studio\Gesso\Fuzz\ExploredCase`):
 | `query` | name → value for every `in: query` parameter |
 | `headers` | name → value for every `in: header` parameter (excludes the OpenAPI-reserved `Accept`/`Content-Type`/`Authorization`) |
 | `pathParams` | name → value for every `{placeholder}` segment |
+| `cookies` | name → value; empty unless a check populated it (cookie generation is not implemented). A dispatcher must forward these to its client's cookie bag — a `Cookie:` header alone never reaches `$request->cookie(...)` in Laravel or Symfony test clients |
 | `method`, `matchedPath` | The resolved spec template (`/v1/pets/{petId}`) and its method |
 | `kind`, `targetKeyword`, `targetPointer` | Valid/invalid classification and the single constraint targeted by a negative case |
 | `expectedStatusClasses` | Explicit response classes supplied for a negative case (for example `[4]`) |
@@ -180,9 +181,9 @@ suite demonstrates this with `OpenApiPsr7Validator` assertions.
 - `setUpUsing()` and `tearDownUsing()` run once per operation;
   `authenticateUsing()` runs after setup and before its cases.
 - `mutateCasesUsing()` runs per generated case and must return an
-  `ExploredCase`. Its `withBody()`, `withQuery()`, `withHeaders()`, and
-  `withPathParams()` helpers support credentials, stateful IDs, and other
-  request-specific changes without mutating shared state.
+  `ExploredCase`. Its `withBody()`, `withQuery()`, `withHeaders()`,
+  `withCookies()`, and `withPathParams()` helpers support credentials, stateful
+  IDs, and other request-specific changes without mutating shared state.
 
 Operations that are declared but cannot be generated are returned in
 `SpecExplorationSummary::$skips` with their reason. This includes schema-less
@@ -322,7 +323,7 @@ self::assertSame([], $summary->failures, $summary->describeFailures());
 | Check | Probe | Default pass statuses |
 |---|---|---|
 | `ignored_auth` | per operation with an effective `security` requirement: the valid request with no credentials, then again with credentials the API cannot have issued | `401`, `403` |
-| `missing_required_header` | per `required: true` header parameter: the valid request with that one header omitted | any `4xx` |
+| `missing_required_header` | per `required: true` header parameter: the valid request with that one header omitted, gated behind a control request | any `4xx` |
 | `unsupported_method` | one deterministically chosen undocumented method per documented path | `405` |
 
 `dispatchUsing()` may return an `int` status, a PSR-7 response, or any object
@@ -347,7 +348,11 @@ error. Either call replaces the check's whole default expectation, so
 An operation is probed when its effective `security` — operation-level if
 declared, root-level otherwise — actually demands credentials. `security: []`
 and a requirement list containing an empty `{}` entry both document
-unauthenticated access, so they are skipped rather than reported.
+unauthenticated access, so they are skipped rather than reported. A *malformed*
+`security` node (`security: "not-a-list"`, a scalar requirement entry) is a hard
+error instead: reading it as "no authentication required" would turn a broken
+spec into a green run with zero probes, so the check fails the same way
+`SecurityValidator` does at runtime.
 
 The invalid-credential probe writes a placeholder into every credential
 location the operation declares (all of them, so an AND-style requirement is
@@ -359,10 +364,30 @@ solely by `oauth2`, `openIdConnect`, `mutualTLS`, or non-bearer `http` schemes
 get the no-credential probe plus a skip for the other one, rather than a
 fabricated credential in a guessed location.
 
-The no-credential probe also strips any `apiKey` header or query value the
-generated valid case happened to carry, so it is genuinely credential-free.
+The no-credential probe also strips any `apiKey` header, query, or cookie value
+the generated valid case happened to carry, so it is genuinely credential-free.
 It cannot, however, see credentials your own `dispatchUsing()` closure adds —
 send the case as-is there.
+
+**Cookie credentials require dispatcher cooperation.** `apiKey` + `in: cookie`
+values land in `$case->cookies`, not in a `Cookie:` request header, because
+Laravel's and Symfony's test clients build their cookie bag from a separate
+`SymfonyRequest::create()` argument — a header alone leaves
+`$request->cookie(...)` empty. A dispatcher that drops `$case->cookies` makes
+the invalid-credential probe identical to the no-credential one, and an API
+that accepts any cookie value would pass. Forward them:
+
+```php
+->dispatchUsing(fn (ExploredCase $case): int => $this->call(
+    $case->method->value,
+    $case->uri(),
+    [],
+    $case->cookies,      // <- not optional for cookie-secured operations
+    [],
+    $this->transformHeadersToServerVars($case->headers),
+    $case->body !== null ? (string) json_encode($case->body) : null,
+)->getStatusCode())
+```
 
 ### `missing_required_header`
 
@@ -377,6 +402,15 @@ The default expectation is the `4xx` class rather than a status list, because
 frameworks answer a missing required header with 400, 406, 422, or a
 scheme-specific 401/403 — pinning one of them would report framework choice as
 contract drift.
+
+Accepting a family that wide is only sound with a control: each operation first
+dispatches the **unmutated** valid case, and the omission probes run only when
+that control answers below 400. Without it, an operation that never enforces
+the header would score green because the request was rejected for an unrelated
+reason — no credentials configured, a missing fixture, a 404. When the control
+fails, the operation is skipped with its status in the reason, so use
+`setUpUsing()` / `authenticateUsing()` to make the valid request succeed. The
+control counts toward `$summary->dispatchedProbes`.
 
 ### `unsupported_method`
 

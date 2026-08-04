@@ -14,6 +14,7 @@ use Studio\Gesso\Fuzz\ExploredOperation;
 use Studio\Gesso\Fuzz\OpenApiContractChecks;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 
+use function array_key_exists;
 use function range;
 
 class OpenApiContractChecksTest extends TestCase
@@ -530,13 +531,34 @@ class OpenApiContractChecksTest extends TestCase
         // no-credential probe must not ship it.
         $this->assertArrayNotHasKey('X-Api-Key', $dispatched[0]->headers);
         $this->assertArrayNotHasKey('api_key', $dispatched[0]->query);
-        $this->assertArrayNotHasKey('Cookie', $dispatched[0]->headers);
+        $this->assertSame([], $dispatched[0]->cookies);
 
         // An AND-style requirement is only exercised when every scheme is
         // present but wrong.
         $this->assertSame('gesso-invalid-credential', $dispatched[1]->headers['X-Api-Key']);
         $this->assertSame('gesso-invalid-credential', $dispatched[1]->query['api_key']);
-        $this->assertSame('session=gesso-invalid-credential', $dispatched[1]->headers['Cookie']);
+        // A cookie credential must travel as a cookie, not as a Cookie header:
+        // test clients build their cookie bag from a separate argument, so a
+        // header alone would leave $request->cookie(...) empty and make this
+        // probe indistinguishable from the no-credential one.
+        $this->assertSame('gesso-invalid-credential', $dispatched[1]->cookies['session']);
+        $this->assertArrayNotHasKey('Cookie', $dispatched[1]->headers);
+        $this->assertStringContainsString("-H 'Cookie: <redacted>'", $dispatched[1]->curlSnippet());
+    }
+
+    #[Test]
+    public function ignored_auth_fails_loudly_on_a_malformed_security_declaration(): void
+    {
+        // Reading `security: "not-a-list"` as "no authentication required"
+        // would report a green run with zero probes for a broken spec — the
+        // runtime validator treats it as a hard error, so this must too.
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/must be a list of requirement objects, got string/');
+
+        OpenApiContractChecks::run('contract-checks-malformed-security', seed: 7)
+            ->checks([ContractCheck::IgnoredAuth])
+            ->dispatchUsing(static fn(ExploredCase $case): int => 401)
+            ->report();
     }
 
     #[Test]
@@ -621,13 +643,18 @@ class OpenApiContractChecksTest extends TestCase
             })
             ->report();
 
-        $this->assertCount(2, $dispatched);
-        $this->assertArrayNotHasKey('X-Request-Id', $dispatched[0]->headers);
+        // [0] is the control request: unmutated, every header present.
+        $this->assertCount(3, $dispatched);
+        $this->assertArrayHasKey('X-Request-Id', $dispatched[0]->headers);
         $this->assertArrayHasKey('X-Tenant', $dispatched[0]->headers);
-        $this->assertArrayHasKey('X-Trace', $dispatched[0]->headers);
-        $this->assertArrayNotHasKey('X-Tenant', $dispatched[1]->headers);
-        $this->assertArrayHasKey('X-Request-Id', $dispatched[1]->headers);
 
+        $this->assertArrayNotHasKey('X-Request-Id', $dispatched[1]->headers);
+        $this->assertArrayHasKey('X-Tenant', $dispatched[1]->headers);
+        $this->assertArrayHasKey('X-Trace', $dispatched[1]->headers);
+        $this->assertArrayNotHasKey('X-Tenant', $dispatched[2]->headers);
+        $this->assertArrayHasKey('X-Request-Id', $dispatched[2]->headers);
+
+        $this->assertSame(3, $summary->dispatchedProbes);
         $this->assertCount(2, $summary->failures);
         $this->assertSame("omitted required header 'X-Request-Id'", $summary->failures[0]->mutation);
         $this->assertSame('listTenants', $summary->failures[0]->operationId);
@@ -639,15 +666,46 @@ class OpenApiContractChecksTest extends TestCase
     #[Test]
     public function missing_required_header_accepts_any_client_error(): void
     {
-        foreach ([400, 401, 406, 422] as $status) {
+        foreach ([400, 401, 403, 406, 422] as $status) {
             $summary = OpenApiContractChecks::run('contract-checks', seed: 7)
                 ->checks([ContractCheck::MissingRequiredHeader])
                 ->includePaths(['/tenants'])
-                ->dispatchUsing(static fn(ExploredCase $case): int => $status)
+                // The control request (every header present) succeeds; only the
+                // omission probes answer with the client error under test.
+                ->dispatchUsing(static fn(ExploredCase $case): int => array_key_exists('X-Request-Id', $case->headers) &&
+                    array_key_exists('X-Tenant', $case->headers) ? 200 : $status)
                 ->report();
 
+            $this->assertSame([], $summary->skips);
             $this->assertFalse($summary->hasFailures(), "status {$status} must satisfy the 4xx expectation");
         }
+    }
+
+    #[Test]
+    public function missing_required_header_skips_when_the_control_request_does_not_reach_the_handler(): void
+    {
+        $dispatched = 0;
+
+        $summary = OpenApiContractChecks::run('contract-checks', seed: 7)
+            ->checks([ContractCheck::MissingRequiredHeader])
+            ->includePaths(['/tenants'])
+            // No credentials configured, so even the valid request is rejected.
+            ->dispatchUsing(static function (ExploredCase $case) use (&$dispatched): int {
+                $dispatched++;
+
+                return 401;
+            })
+            ->report();
+
+        // Without the control gate this run would be green: both omission
+        // probes would answer 401 and be scored as enforcement that never
+        // happened.
+        $this->assertSame(1, $dispatched, 'only the control request is dispatched');
+        $this->assertFalse($summary->hasFailures());
+        $this->assertCount(1, $summary->skips);
+        $this->assertSame('GET', $summary->skips[0]->method);
+        $this->assertStringContainsString('answered 401', $summary->skips[0]->reason);
+        $this->assertStringContainsString('never reached the handler', $summary->skips[0]->reason);
     }
 
     #[Test]
@@ -681,12 +739,14 @@ class OpenApiContractChecksTest extends TestCase
             ->authenticateUsing(static function (ExploredOperation $operation) use (&$authenticated): void {
                 $authenticated++;
             })
-            ->dispatchUsing(static fn(ExploredCase $case): int => 400)
+            ->dispatchUsing(static fn(ExploredCase $case): int => array_key_exists('X-Request-Id', $case->headers) &&
+                array_key_exists('X-Tenant', $case->headers) ? 200 : 400)
             ->report();
 
         // Only ignored_auth withholds credentials; every other check needs the
-        // request to reach the handler it is testing.
-        $this->assertSame(2, $authenticated);
+        // request to reach the handler it is testing — the control request
+        // included.
+        $this->assertSame(3, $authenticated);
     }
 
     #[Test]
@@ -696,7 +756,8 @@ class OpenApiContractChecksTest extends TestCase
             ->checks([ContractCheck::MissingRequiredHeader])
             ->includePaths(['/tenants'])
             ->expectedStatuses(ContractCheck::MissingRequiredHeader, [400])
-            ->dispatchUsing(static fn(ExploredCase $case): int => 422)
+            ->dispatchUsing(static fn(ExploredCase $case): int => array_key_exists('X-Request-Id', $case->headers) &&
+                array_key_exists('X-Tenant', $case->headers) ? 200 : 422)
             ->report();
 
         // An exact list means exact: the default 4xx class must not widen it.

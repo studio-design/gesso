@@ -2875,6 +2875,14 @@
                     "unavailable": true
                 }
             },
+            "cookies": {
+                "type": "array",
+                "static": false,
+                "readonly": true,
+                "default": {
+                    "unavailable": true
+                }
+            },
             "expectedStatusClasses": {
                 "type": "array",
                 "static": false,
@@ -3090,6 +3098,15 @@
                         "by_reference": false,
                         "default": null,
                         "attributes": []
+                    },
+                    {
+                        "name": "cookies",
+                        "type": "array",
+                        "optional": true,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": [],
+                        "attributes": []
                     }
                 ]
             },
@@ -3190,6 +3207,27 @@
                     {
                         "name": "body",
                         "type": "mixed",
+                        "optional": false,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": {
+                            "unavailable": true
+                        },
+                        "attributes": []
+                    }
+                ]
+            },
+            "withCookies": {
+                "static": false,
+                "final": false,
+                "abstract": false,
+                "returns_reference": false,
+                "return_type": "self",
+                "attributes": [],
+                "parameters": [
+                    {
+                        "name": "cookies",
+                        "type": "array",
                         "optional": false,
                         "variadic": false,
                         "by_reference": false,

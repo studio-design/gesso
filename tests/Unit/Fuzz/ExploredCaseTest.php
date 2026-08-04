@@ -71,6 +71,37 @@ class ExploredCaseTest extends TestCase
     }
 
     #[Test]
+    public function carries_cookies_separately_from_headers(): void
+    {
+        $case = new ExploredCase(
+            body: null,
+            query: [],
+            headers: ['X-Trace' => 'abc'],
+            pathParams: [],
+            method: HttpMethod::GET,
+            matchedPath: '/v1/pets',
+        );
+
+        $this->assertSame([], $case->cookies);
+
+        // Cookies are a distinct transport: test clients build their cookie bag
+        // from a separate argument, so a dispatcher cannot recover them from a
+        // Cookie request header.
+        $withCookies = $case->withCookies(['session' => 'abc123']);
+        $this->assertSame(['session' => 'abc123'], $withCookies->cookies);
+        $this->assertSame(['X-Trace' => 'abc'], $withCookies->headers);
+        $this->assertSame([], $case->cookies, 'the original case is unchanged');
+        $this->assertSame(['session' => 'abc123'], $withCookies->withHeaders(['X-Other' => '1'])->cookies);
+
+        // The curl snippet still renders the wire form so the command replays.
+        $this->assertStringContainsString("-H 'Cookie: <redacted>'", $withCookies->curlSnippet());
+        $this->assertStringContainsString(
+            "-H 'Cookie: session=abc123'",
+            $withCookies->curlSnippet(redactSensitiveHeaders: false),
+        );
+    }
+
+    #[Test]
     public function redacts_sensitive_headers_in_curl_snippet_by_default(): void
     {
         $case = new ExploredCase(

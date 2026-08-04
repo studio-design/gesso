@@ -306,6 +306,46 @@ final class PublicApiBaselineTest extends TestCase
             'default' => true,
             'attributes' => [],
         ];
+        // #401: cookies are a transport of their own — a Cookie request header
+        // never reaches a test client's cookie bag, so `ignored_auth` cookie
+        // credentials need a first-class field a dispatcher can forward.
+        $expected[ExploredCase::class]['properties']['cookies'] = [
+            'type' => 'array',
+            'static' => false,
+            'readonly' => true,
+            'default' => [
+                'unavailable' => true,
+            ],
+        ];
+        $expected[ExploredCase::class]['methods']['__construct']['parameters'][] = [
+            'name' => 'cookies',
+            'type' => 'array',
+            'optional' => true,
+            'variadic' => false,
+            'by_reference' => false,
+            'default' => [],
+            'attributes' => [],
+        ];
+        $expected[ExploredCase::class]['methods']['withCookies'] = [
+            'static' => false,
+            'final' => false,
+            'abstract' => false,
+            'returns_reference' => false,
+            'return_type' => 'self',
+            'attributes' => [],
+            'parameters' => [[
+                'name' => 'cookies',
+                'type' => 'array',
+                'optional' => false,
+                'variadic' => false,
+                'by_reference' => false,
+                'default' => [
+                    'unavailable' => true,
+                ],
+                'attributes' => [],
+            ]],
+        ];
+        ksort($expected[ExploredCase::class]['properties']);
         ksort($expected[ExploredCase::class]['methods']);
 
         $responseValidatorConstructor = $expected[OpenApiResponseValidator::class]['methods']['__construct'];
