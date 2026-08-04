@@ -9,7 +9,10 @@ use const JSON_THROW_ON_ERROR;
 use JsonException;
 use Studio\Gesso\UploadedPart;
 
+use function array_fill_keys;
+use function count;
 use function explode;
+use function in_array;
 use function is_array;
 use function is_string;
 use function json_decode;
@@ -91,6 +94,7 @@ final class FormBodyDecoder
         $errors = [];
 
         foreach ($fields as $name => $value) {
+            $propertySchema = is_array($properties[$name] ?? null) ? $properties[$name] : null;
             $partEncoding = is_array($encoding[$name] ?? null) ? $encoding[$name] : [];
             $declaredContentType = is_string($partEncoding['contentType'] ?? null)
                 ? $partEncoding['contentType']
@@ -103,31 +107,45 @@ final class FormBodyDecoder
                 continue;
             }
 
-            // league/openapi-psr7-validator#234: a part declared as JSON by the
-            // encoding object arrives as a string and must be decoded before
-            // its subschema means anything.
-            if ($declaredContentType !== null && is_string($value) && ContentTypeMatcher::isJsonContentType(
-                ContentTypeMatcher::normalizeMediaType($declaredContentType),
-            )) {
+            // Which media types this part may carry. An explicit
+            // `encoding.<part>.contentType` wins; otherwise OAS 3.0.3's
+            // per-property default applies, which is what makes an `object`
+            // part JSON without any encoding entry at all.
+            $candidates = $declaredContentType !== null
+                ? self::mediaTypeList($declaredContentType)
+                : self::defaultContentTypes($propertySchema);
+
+            // league/openapi-psr7-validator#234: a JSON part arrives as a
+            // string and must be decoded before its subschema means anything.
+            // A candidate list is unordered here: any JSON entry in it is
+            // reason enough to try, so `application/json, text/plain` behaves
+            // the same as `text/plain, application/json`.
+            if (is_string($value) && self::hasJsonCandidate($candidates)) {
                 try {
                     /** @var mixed $decoded */
                     $decoded = json_decode($value, true, flags: JSON_THROW_ON_ERROR);
                     $fields[$name] = $decoded;
-                } catch (JsonException $e) {
-                    $errors[] = sprintf(
-                        "[/%s] part declares encoding contentType '%s' but its content is not valid JSON: %s",
-                        $name,
-                        $declaredContentType,
-                        $e->getMessage(),
-                    );
-                }
 
-                continue;
+                    continue;
+                } catch (JsonException $e) {
+                    // JSON is the only thing this part may be, so a string
+                    // that does not parse is a real failure. With other
+                    // candidates alongside it the part may legitimately be one
+                    // of them; leave the string for the schema to judge.
+                    if (count($candidates) === 1) {
+                        $errors[] = sprintf(
+                            '[/%s] part is declared as %s but its content is not valid JSON: %s',
+                            $name,
+                            $candidates[0],
+                            $e->getMessage(),
+                        );
+
+                        continue;
+                    }
+                }
             }
 
-            $propertySchema = $properties[$name] ?? null;
-            if (is_array($propertySchema)) {
-                /** @var array<string, mixed> $propertySchema */
+            if ($propertySchema !== null) {
                 $fields[$name] = TypeCoercer::coerceQuery($value, $propertySchema);
             }
         }
@@ -136,19 +154,90 @@ final class FormBodyDecoder
     }
 
     /**
-     * Whether `encoding.<part>.contentType` accepts the part's own content type.
-     * The declared value may be a single media type, a `<type>/*` range, or a
+     * Split an `encoding.<part>.contentType` value into normalized media
+     * types. The value may be a single media type, a `<type>/*` range, or a
      * comma-separated list of either.
+     *
+     * @return list<string>
      */
-    private static function contentTypeAccepted(string $partContentType, string $declared): bool
+    private static function mediaTypeList(string $declared): array
     {
         $candidates = [];
         foreach (explode(',', $declared) as $entry) {
             $entry = ContentTypeMatcher::normalizeMediaType(trim($entry));
-            if ($entry !== '') {
-                $candidates[$entry] = true;
+            if ($entry !== '' && !in_array($entry, $candidates, true)) {
+                $candidates[] = $entry;
             }
         }
+
+        return $candidates;
+    }
+
+    /**
+     * The media types a part carries when `encoding.<part>.contentType` is
+     * omitted, per the OAS 3.0.3 Encoding Object: `application/json` for an
+     * object, `application/octet-stream` for a binary string, `text/plain`
+     * for the other primitives, and the inner type's default for an array.
+     *
+     * Only used to decide whether a part is JSON — an omitted `contentType`
+     * is a default for the sender, not a constraint, so it is never matched
+     * against a file part's own Content-Type.
+     *
+     * @param null|array<string, mixed> $propertySchema
+     *
+     * @return list<string>
+     */
+    private static function defaultContentTypes(?array $propertySchema): array
+    {
+        if ($propertySchema === null) {
+            return [];
+        }
+
+        $type = $propertySchema['type'] ?? null;
+        if (is_array($type)) {
+            $type = TypeCoercer::firstPrimitiveType($type);
+        }
+
+        if ($type === 'array') {
+            $items = $propertySchema['items'] ?? null;
+
+            return is_array($items) ? self::defaultContentTypes($items) : [];
+        }
+
+        // A schema with no `type` but object-shaped keywords is still an
+        // object part; composition keywords stay unclassified rather than
+        // guessing a media type for a schema that may accept several shapes.
+        if ($type === 'object' || ($type === null && isset($propertySchema['properties']))) {
+            return ['application/json'];
+        }
+
+        if ($type === 'string') {
+            return [($propertySchema['format'] ?? null) === 'binary' ? 'application/octet-stream' : 'text/plain'];
+        }
+
+        return $type === null ? [] : ['text/plain'];
+    }
+
+    /**
+     * @param list<string> $candidates
+     */
+    private static function hasJsonCandidate(array $candidates): bool
+    {
+        foreach ($candidates as $candidate) {
+            if (ContentTypeMatcher::isJsonContentType($candidate)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Whether `encoding.<part>.contentType` accepts the part's own content type.
+     */
+    private static function contentTypeAccepted(string $partContentType, string $declared): bool
+    {
+        $candidates = self::mediaTypeList($declared);
 
         if ($candidates === []) {
             return true;
@@ -156,7 +245,7 @@ final class FormBodyDecoder
 
         return ContentTypeMatcher::findContentTypeKey(
             ContentTypeMatcher::normalizeMediaType($partContentType),
-            $candidates,
+            array_fill_keys($candidates, true),
         ) !== null;
     }
 
@@ -171,14 +260,19 @@ final class FormBodyDecoder
 
         $errors = [];
         foreach (self::flattenParts($value) as $part) {
-            if ($part->contentType === null || self::contentTypeAccepted($part->contentType, $declaredContentType)) {
+            // RFC 7578 §4.4: a part with no Content-Type header is text/plain.
+            // Treating "unknown" as "acceptable" instead would let any part
+            // slip past a declared constraint the moment its type is unknown.
+            $partContentType = $part->contentType ?? 'text/plain';
+
+            if (self::contentTypeAccepted($partContentType, $declaredContentType)) {
                 continue;
             }
 
             $errors[] = sprintf(
                 "[/%s] part Content-Type '%s' does not match the declared encoding contentType '%s'.",
                 $name,
-                $part->contentType,
+                $part->contentType ?? $partContentType . ' (no Content-Type on the part)',
                 $declaredContentType,
             );
         }

@@ -54,6 +54,12 @@ final class HttpFoundationFormBody
     {
         foreach ($files as $key => $file) {
             if ($file instanceof UploadedFile) {
+                if (!$file->isValid()) {
+                    unset($files[$key]);
+
+                    continue;
+                }
+
                 $files[$key] = new UploadedPart($file->getClientMimeType(), $file->getClientOriginalName());
             } elseif (is_array($file)) {
                 $files[$key] = self::toParts($file);

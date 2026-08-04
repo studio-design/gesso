@@ -163,6 +163,41 @@ final class RequestBodyValidator
                     ),
                 ]);
             }
+
+            // Checked for every declared media type, like its `schema` /
+            // `itemSchema` siblings above: a malformed `encoding` node is a
+            // broken spec whether or not this particular request carried a
+            // body that would reach it (issue #405).
+            if (array_key_exists('encoding', $mediaTypeSpec) && MalformedSpecNode::isMalformed($mediaTypeSpec['encoding'])) {
+                return new RequestBodyValidationResult([
+                    sprintf(
+                        "Malformed 'requestBody.content[\"%s\"].encoding' for %s %s in '%s' spec: expected object, got %s.",
+                        $mediaType,
+                        $method,
+                        $matchedPath,
+                        $specName,
+                        MalformedSpecNode::describe($mediaTypeSpec['encoding']),
+                    ),
+                ]);
+            }
+
+            /** @var array<string, mixed> $encodingSpec */
+            $encodingSpec = $mediaTypeSpec['encoding'] ?? [];
+            foreach ($encodingSpec as $partName => $partEncoding) {
+                if (MalformedSpecNode::isMalformed($partEncoding)) {
+                    return new RequestBodyValidationResult([
+                        sprintf(
+                            "Malformed 'requestBody.content[\"%s\"].encoding[\"%s\"]' for %s %s in '%s' spec: expected object, got %s.",
+                            $mediaType,
+                            $partName,
+                            $method,
+                            $matchedPath,
+                            $specName,
+                            MalformedSpecNode::describe($partEncoding),
+                        ),
+                    ]);
+                }
+            }
         }
 
         // When the actual request Content-Type is provided, handle content negotiation:
@@ -192,9 +227,6 @@ final class RequestBodyValidator
                         $mediaTypeSpec = $content[$matchedKey];
 
                         return $this->validateFormBody(
-                            $specName,
-                            $method,
-                            $matchedPath,
                             $normalizedType,
                             $matchedKey,
                             $mediaTypeSpec,
@@ -393,9 +425,6 @@ final class RequestBodyValidator
      * @param array<string, mixed> $mediaTypeSpec
      */
     private function validateFormBody(
-        string $specName,
-        string $method,
-        string $matchedPath,
         string $normalizedType,
         string $matchedKey,
         array $mediaTypeSpec,
@@ -408,19 +437,6 @@ final class RequestBodyValidator
         // was already rejected before content negotiation reached here.
         if (!$requestBody->present) {
             return new RequestBodyValidationResult([], matchedContentType: $matchedKey);
-        }
-
-        if (array_key_exists('encoding', $mediaTypeSpec) && MalformedSpecNode::isMalformed($mediaTypeSpec['encoding'])) {
-            return new RequestBodyValidationResult([
-                sprintf(
-                    "Malformed 'requestBody.content[\"%s\"].encoding' for %s %s in '%s' spec: expected object, got %s.",
-                    $matchedKey,
-                    $method,
-                    $matchedPath,
-                    $specName,
-                    MalformedSpecNode::describe($mediaTypeSpec['encoding']),
-                ),
-            ]);
         }
 
         $fields = FormBodyDecoder::toFieldMap($requestBody->value, $normalizedType);

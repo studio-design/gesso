@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Tests\Unit\Psr7;
 
+use const UPLOAD_ERR_INI_SIZE;
+use const UPLOAD_ERR_NO_FILE;
 use const UPLOAD_ERR_OK;
 
 use GuzzleHttp\Psr7\NoSeekStream;
@@ -55,6 +57,15 @@ final class OpenApiPsr7ValidatorTest extends TestCase
         yield 'empty' => ['/body/empty', 204, ''];
     }
 
+    /**
+     * @return iterable<string, array{int}>
+     */
+    public static function provideA_failed_upload_does_not_satisfy_a_required_file_partCases(): iterable
+    {
+        yield 'no file sent' => [UPLOAD_ERR_NO_FILE];
+        yield 'size limit' => [UPLOAD_ERR_INI_SIZE];
+    }
+
     #[Test]
     public function validates_a_multipart_server_request_from_its_parsed_parts(): void
     {
@@ -84,6 +95,29 @@ final class OpenApiPsr7ValidatorTest extends TestCase
 
         $this->assertFalse($failure->isValid());
         $this->assertStringContainsString('application/pdf', implode(' | ', $failure->errors()));
+    }
+
+    #[Test]
+    #[DataProvider('provideA_failed_upload_does_not_satisfy_a_required_file_partCases')]
+    public function a_failed_upload_does_not_satisfy_a_required_file_part(int $uploadError): void
+    {
+        // PSR-7 defines UPLOAD_ERR_OK as the only successful upload. A part
+        // that never arrived (or was truncated by a size limit) must not be
+        // mapped onto a file the schema then counts as present.
+        $validator = new OpenApiPsr7Validator('non-json-content-schema');
+
+        $request = (new ServerRequest(
+            'POST',
+            'https://example.test/multipart-encoded',
+            ['Content-Type' => 'multipart/form-data; boundary=----x'],
+        ))->withUploadedFiles([
+            'avatar' => new UploadedFile(Utils::streamFor(''), 0, $uploadError, 'avatar.png', 'image/png'),
+        ]);
+
+        $result = $validator->validateRequest($request);
+
+        $this->assertFalse($result->isValid());
+        $this->assertStringContainsString('avatar', implode(' | ', $result->errors()));
     }
 
     #[Test]

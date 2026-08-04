@@ -1033,6 +1033,165 @@ class RequestBodyValidatorTest extends TestCase
         $this->assertStringContainsString("Malformed 'requestBody.content[\"multipart/form-data\"].encoding'", $result->errors[0]);
     }
 
+    #[Test]
+    public function validate_decodes_an_object_part_that_declares_no_encoding(): void
+    {
+        // OAS 3.0.3 Encoding Object: an object property defaults to
+        // application/json. Without this the part stays a string and fails
+        // its own `type: object` subschema, so a perfectly valid spec that
+        // omits `encoding` could never pass.
+        $operation = self::multipartOperation();
+        unset($operation['requestBody']['content']['multipart/form-data']['encoding']['meta']);
+
+        $result = $this->validator->validate(
+            'spec',
+            'POST',
+            '/uploads',
+            $operation,
+            DecodedBody::present([
+                'avatar' => new UploadedPart('image/png', 'avatar.png'),
+                'meta' => '{"label": "hero"}',
+            ]),
+            'multipart/form-data',
+            OpenApiVersion::V3_0,
+        );
+
+        $this->assertSame([], $result->errors);
+
+        $invalid = $this->validator->validate(
+            'spec',
+            'POST',
+            '/uploads',
+            $operation,
+            DecodedBody::present([
+                'avatar' => new UploadedPart('image/png', 'avatar.png'),
+                'meta' => '{"label": 7}',
+            ]),
+            'multipart/form-data',
+            OpenApiVersion::V3_0,
+        );
+
+        $this->assertCount(1, $invalid->errors);
+        $this->assertStringContainsString('/meta/label', $invalid->errors[0]);
+    }
+
+    #[Test]
+    public function validate_decodes_a_json_part_regardless_of_its_position_in_the_encoding_list(): void
+    {
+        // `encoding.contentType` may be a comma-separated list; a JSON entry
+        // anywhere in it makes the part JSON, not only a leading one.
+        $operation = self::multipartOperation();
+        $operation['requestBody']['content']['multipart/form-data']['encoding']['meta']['contentType']
+            = 'text/plain, application/json';
+
+        $result = $this->validator->validate(
+            'spec',
+            'POST',
+            '/uploads',
+            $operation,
+            DecodedBody::present([
+                'avatar' => new UploadedPart('image/png', 'avatar.png'),
+                'meta' => '{"label": 7}',
+            ]),
+            'multipart/form-data',
+            OpenApiVersion::V3_0,
+        );
+
+        $this->assertCount(1, $result->errors);
+        $this->assertStringContainsString('/meta/label', $result->errors[0]);
+    }
+
+    #[Test]
+    public function validate_keeps_a_non_json_part_when_the_encoding_list_allows_another_type(): void
+    {
+        // With `text/plain` alongside `application/json` a part that does not
+        // parse as JSON may legitimately be the plain-text alternative — the
+        // subschema, not the decoder, decides.
+        $operation = self::multipartOperation();
+        $operation['requestBody']['content']['multipart/form-data']['schema']['properties']['note']
+            = ['type' => 'string'];
+        $operation['requestBody']['content']['multipart/form-data']['encoding']['note']
+            = ['contentType' => 'application/json, text/plain'];
+
+        $result = $this->validator->validate(
+            'spec',
+            'POST',
+            '/uploads',
+            $operation,
+            DecodedBody::present([
+                'avatar' => new UploadedPart('image/png', 'avatar.png'),
+                'note' => 'just words',
+            ]),
+            'multipart/form-data',
+            OpenApiVersion::V3_0,
+        );
+
+        $this->assertSame([], $result->errors);
+    }
+
+    #[Test]
+    public function validate_treats_a_part_without_a_content_type_as_text_plain(): void
+    {
+        // RFC 7578 §4.4: an absent part Content-Type means text/plain, which
+        // does not satisfy `image/*`. Passing unknown types would make the
+        // constraint opt-out for any adapter that cannot report a part type.
+        $result = $this->validator->validate(
+            'spec',
+            'POST',
+            '/uploads',
+            self::multipartOperation(),
+            DecodedBody::present(['avatar' => new UploadedPart(null, 'avatar.bin')]),
+            'multipart/form-data',
+            OpenApiVersion::V3_0,
+        );
+
+        $this->assertCount(1, $result->errors);
+        $this->assertStringContainsString('image/*', $result->errors[0]);
+    }
+
+    #[Test]
+    public function validate_rejects_a_malformed_encoding_object_even_without_a_body(): void
+    {
+        // A broken spec node is broken whether or not this request carried a
+        // body that would reach it — same rule as `content` / `schema`.
+        $operation = self::multipartOperation();
+        $operation['requestBody']['required'] = false;
+        $operation['requestBody']['content']['multipart/form-data']['encoding'] = 'oops';
+
+        $result = $this->validator->validate(
+            'spec',
+            'POST',
+            '/uploads',
+            $operation,
+            DecodedBody::absent(),
+            'multipart/form-data',
+            OpenApiVersion::V3_0,
+        );
+
+        $this->assertCount(1, $result->errors);
+        $this->assertStringContainsString("encoding'", $result->errors[0]);
+    }
+
+    #[Test]
+    public function validate_rejects_a_malformed_encoding_entry(): void
+    {
+        $operation = self::multipartOperation();
+        $operation['requestBody']['content']['multipart/form-data']['encoding']['avatar'] = 'oops';
+
+        $result = $this->validator->validate(
+            'spec',
+            'POST',
+            '/uploads',
+            $operation,
+            DecodedBody::present(['avatar' => new UploadedPart('image/png', 'avatar.png')]),
+            'multipart/form-data',
+            OpenApiVersion::V3_0,
+        );
+
+        $this->assertCount(1, $result->errors);
+        $this->assertStringContainsString('encoding["avatar"]', $result->errors[0]);
+    }
+
     /** @return array<string, mixed> */
     private static function formOperation(): array
     {

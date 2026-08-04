@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Tests\Unit\Symfony;
 
+use const UPLOAD_ERR_INI_SIZE;
+
 use PHPUnit\Framework\AssertionFailedError;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
@@ -12,6 +14,7 @@ use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\Exception\InvalidOpenApiSpecException;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Symfony\OpenApiAssertions;
+use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -176,6 +179,28 @@ final class OpenApiAssertionsTest extends TestCase
         $this->expectExceptionMessage('/age');
 
         $this->assertRequestMatchesOpenApiSchema($invalid);
+    }
+
+    #[Test]
+    #[OpenApiSpec('non-json-content-schema')]
+    public function a_failed_upload_does_not_satisfy_a_required_file_part(): void
+    {
+        // HttpFoundation keeps a failed upload in the files bag with its error
+        // code; mapping it onto a part would let a file the server never
+        // received satisfy `required`.
+        $request = Request::create(
+            '/multipart-encoded',
+            'POST',
+            [],
+            [],
+            ['avatar' => new UploadedFile(__FILE__, 'avatar.png', 'image/png', UPLOAD_ERR_INI_SIZE, true)],
+            ['CONTENT_TYPE' => 'multipart/form-data'],
+        );
+
+        $this->expectException(AssertionFailedError::class);
+        $this->expectExceptionMessage('avatar');
+
+        $this->assertRequestMatchesOpenApiSchema($request);
     }
 
     #[Test]

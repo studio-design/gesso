@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Studio\Gesso\Psr7;
 
 use const JSON_THROW_ON_ERROR;
+use const UPLOAD_ERR_OK;
 
 use JsonException;
 use Psr\Http\Message\RequestInterface;
@@ -361,6 +362,11 @@ final class OpenApiPsr7Validator
      * Map PSR-7 uploaded files onto the validator's {@see UploadedPart}
      * envelope, preserving the nesting of `files[0][avatar]`-style names.
      *
+     * PSR-7 defines `UPLOAD_ERR_OK` as the only successful upload, so a part
+     * carrying any other error (no file sent, size limit hit, partial write)
+     * is dropped instead of mapped — the server never received a file, and a
+     * failed upload must not satisfy a `required` part.
+     *
      * @param array<array-key, mixed> $files
      *
      * @return array<array-key, mixed>
@@ -369,6 +375,12 @@ final class OpenApiPsr7Validator
     {
         foreach ($files as $key => $file) {
             if ($file instanceof UploadedFileInterface) {
+                if ($file->getError() !== UPLOAD_ERR_OK) {
+                    unset($files[$key]);
+
+                    continue;
+                }
+
                 $files[$key] = new UploadedPart($file->getClientMediaType(), $file->getClientFilename());
             } elseif (is_array($file)) {
                 $files[$key] = self::uploadedParts($file);
@@ -409,13 +421,21 @@ final class OpenApiPsr7Validator
         if ($request instanceof ServerRequestInterface) {
             /** @var mixed $parsed */
             $parsed = $request->getParsedBody();
-            $fields = array_merge(
-                is_array($parsed) ? $parsed : [],
-                self::uploadedParts($request->getUploadedFiles()),
-            );
+            $uploaded = $request->getUploadedFiles();
 
-            if ($fields !== []) {
-                return ['body' => DecodedBody::present($fields), 'errors' => []];
+            // Emptiness is judged before failed uploads are dropped: a request
+            // whose only file failed to upload still went through the parsed
+            // path, and must reach the schema as an empty field map (a loud
+            // "required part missing") rather than fall through to the raw
+            // body and be skipped.
+            if ((is_array($parsed) && $parsed !== []) || $uploaded !== []) {
+                return [
+                    'body' => DecodedBody::present(array_merge(
+                        is_array($parsed) ? $parsed : [],
+                        self::uploadedParts($uploaded),
+                    )),
+                    'errors' => [],
+                ];
             }
         }
 
