@@ -13,7 +13,8 @@ pinned in CI, so the number can only move when someone updates the record.
 
 ## What is measured
 
-Each case from the [official JSON Schema Test Suite][suite] is validated twice:
+3,784 of the 3,824 cases in the [official JSON Schema Test Suite][suite] are
+validated twice:
 
 1. **bare** — the schema exactly as the suite wrote it, through
    [opis/json-schema][opis] alone;
@@ -21,11 +22,11 @@ Each case from the [official JSON Schema Test Suite][suite] is validated twice:
    `Studio\Gesso\Spec\OpenApiSchemaConverter::convert()`, through the same
    validator.
 
-Not every corpus case can go through both. Of the 3,824 cases in the two suites,
-4 are excluded outright (see below) and 36 use a boolean `true` / `false` root
-schema, which a Schema Object cannot express and `convert()` therefore never
-sees. Those 36 are counted and reported rather than dropped, but they are
-validated once, not twice. That leaves **3,784 cases actually compared**.
+The remaining 40 are not compared at all. 4 are excluded outright (see below),
+and 36 use a boolean `true` / `false` root schema, which a Schema Object cannot
+express — `convert()` has no counterpart to produce, so there is no second
+verdict to compare against. Both counts are published in the baseline rather
+than silently dropped.
 
 Only the cases where the two verdicts differ are recorded. The recorded set is
 committed as

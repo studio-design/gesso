@@ -35,11 +35,18 @@ use function sprintf;
  * Conformance signal for the OpenAPI-to-JSON-Schema conversion layer
  * (issue #283).
  *
- * Every case in the official JSON Schema Test Suite is validated twice: once
+ * Cases from the official JSON Schema Test Suite are validated twice: once
  * against the bare schema with opis alone, and once after
  * {@see OpenApiSchemaConverter::convert()} has rewritten it. Only the cases
  * where the two verdicts differ are recorded, and that recorded set is pinned
  * by a committed baseline.
+ *
+ * Two kinds of case are never compared: the groups in
+ * {@see self::EXCLUDED_GROUPS}, and boolean (`true` / `false`) root schemas,
+ * which a Schema Object cannot express, so `convert()` has no counterpart to
+ * produce and there is no second verdict. Both are counted and published in the
+ * baseline rather than dropped — 3,784 of the corpus's 3,824 cases are actually
+ * compared.
  *
  * This deliberately does NOT re-measure how conformant opis is — that is
  * published independently at https://bowtie.report via the
