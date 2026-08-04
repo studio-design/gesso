@@ -323,7 +323,7 @@ self::assertSame([], $summary->failures, $summary->describeFailures());
 | Check | Probe | Default pass statuses |
 |---|---|---|
 | `ignored_auth` | per operation with an effective `security` requirement: the valid request with no credentials, then again with credentials the API cannot have issued | `401`, `403` |
-| `missing_required_header` | per `required: true` header parameter: the valid request with that one header omitted, gated behind a 2xx control request (repeated on state-changing methods to measure isolation) | any `4xx` |
+| `missing_required_header` | per `required: true` header parameter: the valid request with that one header omitted, gated behind a 2xx control request; state-changing methods need `dispatchIsolatedUsing()` | any `4xx` |
 | `unsupported_method` | one deterministically chosen undocumented method per documented path | `405` |
 
 `dispatchUsing()` may return an `int` status, a PSR-7 response, or any object
@@ -419,23 +419,32 @@ with its status in the reason, so use `setUpUsing()` / `authenticateUsing()` to
 make the valid request succeed. The control counts toward
 `$summary->dispatchedProbes`.
 
-State-changing methods need one more gate. On `POST` / `PUT` / `PATCH` /
-`DELETE`, the control request's own effect can answer the probes that follow it
-— a duplicate create is a 409, an already-deleted resource is a 404, and both
-sit inside the accepted 4xx class — so the status cannot distinguish them from
-real header enforcement.
+**State-changing methods are skipped by default.** On `POST` / `PUT` / `PATCH`
+/ `DELETE`, the control request's own effect can answer the probes that follow
+it — a duplicate create is a 409, an already-deleted resource is a 404, and
+both sit inside the accepted 4xx class — so the status cannot distinguish them
+from real header enforcement.
 
-Whether your dispatcher isolates state between requests is not something the
-plan can read off its configuration: `setUpUsing()` / `tearDownUsing()` are
-general hooks that may exist for authentication, logging, or fixtures, and a
-no-op one would prove nothing. So it is **measured, not declared**: the control
-is dispatched a second time and must answer identically. Under real isolation
-the two dispatches are indistinguishable; a different answer the second time
-means the first dispatch left state behind, and the operation is skipped with
-both statuses in the reason. Reset state around every dispatch (both hooks run
-around each one, so a transaction rollback there works) or use
-`excludeMethods()`. `GET` and `QUERY` are safe methods (RFC 9110 §9.2.1) and
-skip this second dispatch entirely.
+Nothing observable from inside the plan tells an isolated dispatcher from a
+leaky one. Repeating the control does not: an idempotent create answers 201
+twice and still leaves the row behind, so the next probe collides with it.
+General hooks do not either — `setUpUsing()` / `tearDownUsing()` may exist for
+authentication, logging, or fixtures, and a no-op one proves nothing. So the
+decision is the caller's, stated on the dispatcher that has to honour it:
+
+```php
+->dispatchIsolatedUsing(fn (ExploredCase $case): int => $this->send($case)->getStatusCode())
+```
+
+`dispatchIsolatedUsing()` registers the dispatcher **and** promises that every
+dispatch starts from state indistinguishable from the one before it — a
+transaction rolled back around each call, a database refreshed per call, a
+fixture rebuilt per call. Only make that promise where the isolation is really
+implemented; the plan cannot check it. `dispatchUsing()` is the same dispatcher
+without the promise, and leaves state-changing methods skipped with the reason
+naming this method (calling it after `dispatchIsolatedUsing()` withdraws the
+promise). `GET` and `QUERY` are safe methods (RFC 9110 §9.2.1) and are probed
+either way.
 
 ### `unsupported_method`
 

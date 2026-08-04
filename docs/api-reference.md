@@ -259,7 +259,7 @@ holes schema validation cannot see:
 | `ContractCheck` case | Probe | Default pass statuses |
 |---|---|---|
 | `IgnoredAuth` | the valid request without credentials, then with invalid ones | `401`, `403` |
-| `MissingRequiredHeader` | the valid request with one `required: true` header omitted, gated behind a 2xx unmutated control request (repeated on state-changing methods to measure isolation) | any `4xx` |
+| `MissingRequiredHeader` | the valid request with one `required: true` header omitted, gated behind a 2xx unmutated control request; state-changing methods are skipped unless the dispatcher is registered with `dispatchIsolatedUsing()` | any `4xx` |
 | `UnsupportedMethod` | one deterministically chosen undocumented method per documented path | `405` |
 
 ```php
@@ -283,7 +283,9 @@ IDs, deprecated) and the `authenticateUsing()` / `setUpUsing()` /
 `authenticateUsing()` by design. Either `expectedStatuses()` or
 `expectedStatusClasses()` replaces a check's whole default expectation.
 `dispatchUsing()` may return an `int`, a PSR-7 response, or any object
-exposing `getStatusCode(): int`. Probes never throw on a status mismatch — the
+exposing `getStatusCode(): int`; `dispatchIsolatedUsing()` is the same
+registration plus the caller's promise that every dispatch is state-isolated,
+which `MissingRequiredHeader` requires before probing a state-changing method. Probes never throw on a status mismatch — the
 returned `ContractCheckSummary` collects every `ContractCheckFailure` (naming
 the check, operation, dispatched mutation, and a replayable curl command) and
 every explained `ContractCheckSkip`, plus `probedPaths` / `dispatchedProbes`

@@ -1111,6 +1111,27 @@ final class PublicApiBaselineTest extends TestCase
                         ],
                     ],
                 ],
+                'dispatchIsolatedUsing' => [
+                    'static' => false,
+                    'final' => false,
+                    'abstract' => false,
+                    'returns_reference' => false,
+                    'return_type' => 'self',
+                    'attributes' => [],
+                    'parameters' => [
+                        [
+                            'name' => 'callback',
+                            'type' => 'callable',
+                            'optional' => false,
+                            'variadic' => false,
+                            'by_reference' => false,
+                            'default' => [
+                                'unavailable' => true,
+                            ],
+                            'attributes' => [],
+                        ],
+                    ],
+                ],
                 'dispatchUsing' => [
                     'static' => false,
                     'final' => false,

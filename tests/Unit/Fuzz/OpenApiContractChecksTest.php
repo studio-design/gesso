@@ -749,58 +749,54 @@ class OpenApiContractChecksTest extends TestCase
     }
 
     #[Test]
-    public function missing_required_header_measures_state_isolation_instead_of_trusting_a_hook(): void
+    public function missing_required_header_skips_state_changing_methods_by_default(): void
     {
         $dispatched = 0;
 
         $summary = OpenApiContractChecks::run('contract-checks', seed: 7)
             ->checks([ContractCheck::MissingRequiredHeader])
             ->includePaths(['/imports'])
-            // A general-purpose hook is not evidence of anything: it may exist
-            // for authentication, logging, or fixtures, and this one resets
-            // nothing at all.
+            // An idempotent create: both controls answer 201 while the row they
+            // created stays, so the omission probe collides with it and answers
+            // 409 — a 4xx, and therefore green for an operation that never
+            // enforced the header. Repeating the control cannot see this.
             ->tearDownUsing(static function (ExploredOperation $operation): void {
-                // Deliberately a no-op.
+                // A general-purpose hook, deliberately resetting nothing.
             })
             ->dispatchUsing(static function (ExploredCase $case) use (&$dispatched): int {
                 $dispatched++;
 
-                // The first dispatch creates the resource; every later one
-                // collides with it. A 409 is a 4xx, so an operation that never
-                // enforces the header would be scored green.
-                return $dispatched === 1 ? 201 : 409;
+                return array_key_exists('X-Idempotency-Key', $case->headers) ? 201 : 409;
             })
             ->report();
 
-        // The repeated control detects the collision that the hook's presence
-        // could not rule out.
-        $this->assertSame(2, $dispatched, 'the control is dispatched twice and the probes never run');
+        $this->assertSame(0, $dispatched, 'nothing is dispatched against an unisolated state-changing method');
         $this->assertFalse($summary->hasFailures());
         $this->assertCount(1, $summary->skips);
         $this->assertSame('POST', $summary->skips[0]->method);
-        $this->assertStringContainsString('answered 201, then answered 409 when repeated', $summary->skips[0]->reason);
+        $this->assertStringContainsString('changes state', $summary->skips[0]->reason);
+        $this->assertStringContainsString('dispatchIsolatedUsing()', $summary->skips[0]->reason);
     }
 
     #[Test]
-    public function missing_required_header_probes_state_changing_methods_when_dispatches_are_isolated(): void
+    public function missing_required_header_probes_state_changing_methods_through_an_isolated_dispatcher(): void
     {
         $dispatched = [];
 
         $summary = OpenApiContractChecks::run('contract-checks', seed: 7)
             ->checks([ContractCheck::MissingRequiredHeader])
             ->includePaths(['/imports'])
-            // Stands in for a dispatcher that rolls back between requests: the
-            // same input always produces the same answer.
-            ->dispatchUsing(static function (ExploredCase $case) use (&$dispatched): int {
+            // Stands in for a dispatcher that rolls back around every call.
+            ->dispatchIsolatedUsing(static function (ExploredCase $case) use (&$dispatched): int {
                 $dispatched[] = $case;
 
                 return array_key_exists('X-Idempotency-Key', $case->headers) ? 201 : 422;
             })
             ->report();
 
-        // Two controls plus the single omission probe.
-        $this->assertCount(3, $dispatched);
-        $this->assertSame(3, $summary->dispatchedProbes);
+        // The control plus the single omission probe.
+        $this->assertCount(2, $dispatched);
+        $this->assertSame(2, $summary->dispatchedProbes);
         $this->assertSame([], $summary->skips);
         $this->assertFalse($summary->hasFailures());
     }
@@ -812,12 +808,27 @@ class OpenApiContractChecksTest extends TestCase
             ->checks([ContractCheck::MissingRequiredHeader])
             ->includePaths(['/imports'])
             // Isolated dispatches, but the handler ignores the required header.
-            ->dispatchUsing(static fn(ExploredCase $case): int => 201)
+            ->dispatchIsolatedUsing(static fn(ExploredCase $case): int => 201)
             ->report();
 
         $this->assertSame([], $summary->skips);
         $this->assertCount(1, $summary->failures);
         $this->assertSame("omitted required header 'X-Idempotency-Key'", $summary->failures[0]->mutation);
+    }
+
+    #[Test]
+    public function dispatch_using_drops_the_isolation_contract_of_an_earlier_isolated_dispatcher(): void
+    {
+        $summary = OpenApiContractChecks::run('contract-checks', seed: 7)
+            ->checks([ContractCheck::MissingRequiredHeader])
+            ->includePaths(['/imports'])
+            ->dispatchIsolatedUsing(static fn(ExploredCase $case): int => 201)
+            // Replacing the dispatcher replaces the promise that came with it.
+            ->dispatchUsing(static fn(ExploredCase $case): int => 201)
+            ->report();
+
+        $this->assertFalse($summary->hasFailures());
+        $this->assertCount(1, $summary->skips);
     }
 
     #[Test]

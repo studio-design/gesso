@@ -69,6 +69,9 @@ final class ContractCheckPlan
     /** @var null|callable(ExploredCase): mixed */
     private $dispatch;
 
+    /** True only when the dispatcher was registered through {@see self::dispatchIsolatedUsing()}. */
+    private bool $stateIsolated = false;
+
     /** @var null|array<string, list<string>> templates grouped by each method name they document, built once per plan */
     private ?array $templatesByDocumentedMethod = null;
 
@@ -171,6 +174,32 @@ final class ContractCheckPlan
     public function dispatchUsing(callable $callback): self
     {
         $this->dispatch = $callback;
+        $this->stateIsolated = false;
+
+        return $this;
+    }
+
+    /**
+     * Register the dispatcher *and* contract that every dispatch it performs
+     * starts from state indistinguishable from the one before it — a
+     * transaction rolled back around each call, a database refreshed per call,
+     * or a fixture rebuilt per call.
+     *
+     * Checks whose probes are only meaningful under that contract
+     * (`missing_required_header`) are skipped on state-changing methods unless
+     * the dispatcher was registered here; {@see self::dispatchUsing()} is the
+     * dispatcher without the contract and keeps those methods skipped. This is
+     * a promise the plan cannot verify — a repeated request answering the same
+     * status does not prove the first one left nothing behind, since an
+     * idempotent create returns the same 201 twice while the row it created
+     * stays. Only make it where the isolation is actually implemented.
+     *
+     * @param callable(ExploredCase): mixed $callback
+     */
+    public function dispatchIsolatedUsing(callable $callback): self
+    {
+        $this->dispatch = $callback;
+        $this->stateIsolated = true;
 
         return $this;
     }
@@ -178,7 +207,7 @@ final class ContractCheckPlan
     public function report(): ContractCheckSummary
     {
         if ($this->dispatch === null) {
-            throw new InvalidArgumentException('The contract check plan requires dispatchUsing() before report().');
+            throw new InvalidArgumentException('The contract check plan requires dispatchUsing() or dispatchIsolatedUsing() before report().');
         }
         if ($this->checks === []) {
             throw new InvalidArgumentException('The contract check plan requires checks() with at least one check before report().');
@@ -576,11 +605,13 @@ final class ContractCheckPlan
      * handler — otherwise an operation that never enforces the header still
      * "passes" because the request was rejected for an unrelated reason (no
      * credentials configured, a missing fixture, a 404, a redirect to a login
-     * page). On a state-changing method the control is dispatched a second
-     * time and must answer identically, which measures the state isolation the
-     * probes depend on rather than assuming it. Either gate failing skips the
-     * operation with the observed statuses in the reason rather than scoring
-     * it green.
+     * page). A control that does not answer 2xx skips the operation with the
+     * observed status in the reason rather than scoring it green.
+     *
+     * State-changing methods are skipped before anything is dispatched unless
+     * the caller registered the dispatcher through
+     * {@see self::dispatchIsolatedUsing()}, because the control's own side
+     * effect would otherwise answer the probes.
      *
      * @param non-empty-list<array{ExploredOperation, array<string, mixed>}> $matching
      * @param list<ContractCheckSkip> $skips
@@ -622,6 +653,28 @@ final class ContractCheckPlan
                 continue;
             }
 
+            // The control and each omission probe are separate dispatches
+            // against the same resource, so on a state-changing method the
+            // control's own effect can answer the probes: a duplicate create is
+            // a 409, an already-deleted resource is a 404, and both sit inside
+            // the 4xx class this check accepts.
+            //
+            // Nothing observable from here distinguishes an isolated dispatcher
+            // from a leaky one. Repeating the control does not: an idempotent
+            // create answers 201 twice and still leaves the row behind, so the
+            // next probe collides with it. So the default is to skip, and the
+            // only way in is the caller stating the contract on the dispatcher
+            // that has to honour it.
+            if (!self::isSafeMethod($operation->method) && !$this->stateIsolated) {
+                $skips[] = new ContractCheckSkip($check, $path, $operation->method, sprintf(
+                    "%s changes state, and each probe is a separate dispatch: without state isolation the control's own side effect answers the omission probes (a duplicate-create 409 or an already-deleted 404 is a 4xx too) instead of header enforcement. Register the dispatcher with dispatchIsolatedUsing() once every dispatch really is isolated, or excludeMethods(['%s']).",
+                    $operation->method,
+                    $operation->method,
+                ));
+
+                continue;
+            }
+
             // Deferred until a header is known to exist: generating a full
             // valid case can skip an operation whose body is not synthesizable,
             // and that skip would be noise for an operation this check has no
@@ -652,43 +705,6 @@ final class ContractCheckPlan
                 ));
 
                 continue;
-            }
-
-            // The control and each omission probe are separate dispatches
-            // against the same resource, so on a state-changing method the
-            // control's own effect can answer the probes: a duplicate create is
-            // a 409, an already-deleted resource is a 404, and both sit inside
-            // the 4xx class this check accepts.
-            //
-            // Whether the caller isolates state between dispatches cannot be
-            // read off the plan — setUpUsing()/tearDownUsing() are general
-            // hooks that may exist for authentication, logging, or fixtures,
-            // and a no-op one proves nothing. So measure it instead of trusting
-            // a declaration: repeat the identical valid request. Under real
-            // isolation the second dispatch is indistinguishable from the
-            // first; if it answers differently, the first dispatch left state
-            // behind and every probe after it would be scored against that
-            // residue rather than against header enforcement.
-            if (!self::isSafeMethod($operation->method)) {
-                $repeatStatus = $this->dispatchProbe($check, new ContractCheckProbe(
-                    $case,
-                    $operation,
-                    $operation->operationId,
-                    'control: unmutated valid request, repeated to measure state isolation',
-                ), $derivedSeed);
-                $dispatchedProbes++;
-
-                if ($repeatStatus !== $controlStatus) {
-                    $skips[] = new ContractCheckSkip($check, $path, $operation->method, sprintf(
-                        "%s changes state and is not isolated between dispatches: the unmutated valid request answered %d, then answered %d when repeated, so the first dispatch left state the second one saw. Each omission probe would be answered by the previous dispatch's side effect (a duplicate-create 409 or an already-deleted 404 is a 4xx too) instead of by header enforcement. Reset state around every dispatch with setUpUsing()/tearDownUsing(), or excludeMethods(['%s']).",
-                        $operation->method,
-                        $controlStatus,
-                        $repeatStatus,
-                        $operation->method,
-                    ));
-
-                    continue;
-                }
             }
 
             foreach ($requiredHeaders as $name) {
