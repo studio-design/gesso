@@ -13,13 +13,25 @@
             "cases": 1657,
             "boolean_root_schemas": 18,
             "excluded_cases": 0,
-            "deltas": 0
+            "deltas": 56
         },
         "draft2020-12": {
             "cases": 2163,
             "boolean_root_schemas": 18,
             "excluded_cases": 4,
-            "deltas": 11
+            "deltas": 70
+        }
+    },
+    "reasons": {
+        "empty-schema-object": {
+            "summary": "Known defect. An empty Schema Object `{}` is indistinguishable from an empty array once the spec is decoded with json_decode(..., true), so it reaches opis as a JSON array and is rejected as not-a-schema. Legal OpenAPI (`additionalProperties: {}`, `properties: {x: {}}`, `items: {}`, `not: {}`) is affected. One case — draft7 additionalItems.json \"when items is schema, boolean additionalItems does nothing\" — degrades further into a wrong `invalid` verdict rather than an error, because `items: {}` becomes tuple-form `items: []`.",
+            "issue": "https://github.com/studio-design/gesso/issues/478"
+        },
+        "unsupported-dialect": {
+            "summary": "Deliberate. The schema declares a custom metaschema URI in `$schema`. OpenApiSchemaDialect::assertSupported() rejects dialects it cannot evaluate instead of falling back to one with different semantics, which for a contract-testing tool is the safer failure. See docs/supported-features.md. Note that on vocabulary.json \"no validation: invalid number, but it still validates\" bare opis also disagrees with the suite: opis does not honour a metaschema that drops the validation vocabulary, a gap that belongs to opis and is visible on https://bowtie.report."
+        },
+        "stripped-annotation-ref": {
+            "summary": "Known limitation. The schema points `$ref` at `#/examples/0`. The converter strips `examples` as an OAS annotation keyword, so the reference target no longer exists and opis reports an unresolved reference. A spec that references into an `examples` array is unsupported; the outcome is a loud error, never a silent pass. Referencing annotation internals is not something OpenAPI sanctions, so this is documented rather than fixed."
         }
     },
     "excluded_groups": {
@@ -33,71 +45,761 @@
         }
     },
     "deltas": {
+        "draft2020-12::additionalProperties.json::additionalProperties are allowed by default::additional properties are allowed": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft2020-12::additionalProperties.json::additionalProperties being false does not allow other properties::an additional property is invalid": {
+            "expected": "invalid",
+            "bare": "invalid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft2020-12::additionalProperties.json::additionalProperties being false does not allow other properties::ignores arrays": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft2020-12::additionalProperties.json::additionalProperties being false does not allow other properties::ignores other non-objects": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft2020-12::additionalProperties.json::additionalProperties being false does not allow other properties::ignores strings": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft2020-12::additionalProperties.json::additionalProperties being false does not allow other properties::no additional properties is valid": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft2020-12::additionalProperties.json::additionalProperties being false does not allow other properties::patternProperties are not additional properties": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft2020-12::additionalProperties.json::additionalProperties with schema::an additional invalid property is invalid": {
+            "expected": "invalid",
+            "bare": "invalid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft2020-12::additionalProperties.json::additionalProperties with schema::an additional valid property is valid": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft2020-12::additionalProperties.json::additionalProperties with schema::no additional properties is valid": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft2020-12::additionalProperties.json::dependentSchemas with additionalProperties::additionalProperties can't see bar": {
+            "expected": "invalid",
+            "bare": "invalid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft2020-12::additionalProperties.json::dependentSchemas with additionalProperties::additionalProperties can't see bar even when foo2 is present": {
+            "expected": "invalid",
+            "bare": "invalid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft2020-12::additionalProperties.json::dependentSchemas with additionalProperties::additionalProperties doesn't consider dependentSchemas": {
+            "expected": "invalid",
+            "bare": "invalid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft2020-12::additionalProperties.json::non-ASCII pattern with additionalProperties::matching the pattern is valid": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft2020-12::additionalProperties.json::non-ASCII pattern with additionalProperties::not matching the pattern is invalid": {
+            "expected": "invalid",
+            "bare": "invalid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft2020-12::allOf.json::allOf with one empty schema::any data is valid": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft2020-12::allOf.json::allOf with the first empty schema::number is valid": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft2020-12::allOf.json::allOf with the first empty schema::string is invalid": {
+            "expected": "invalid",
+            "bare": "invalid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft2020-12::allOf.json::allOf with the last empty schema::number is valid": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft2020-12::allOf.json::allOf with the last empty schema::string is invalid": {
+            "expected": "invalid",
+            "bare": "invalid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft2020-12::allOf.json::allOf with two empty schemas::any data is valid": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft2020-12::anyOf.json::anyOf with one empty schema::number is valid": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft2020-12::anyOf.json::anyOf with one empty schema::string is valid": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft2020-12::dependentSchemas.json::dependent subschema incompatible with root::matches both": {
+            "expected": "invalid",
+            "bare": "invalid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft2020-12::dependentSchemas.json::dependent subschema incompatible with root::matches dependency": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft2020-12::dependentSchemas.json::dependent subschema incompatible with root::matches root": {
+            "expected": "invalid",
+            "bare": "invalid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft2020-12::dependentSchemas.json::dependent subschema incompatible with root::no dependency": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
         "draft2020-12::format-assertion.json::schema that uses custom metaschema with format-assertion: false::format-assertion: false: invalid string": {
             "expected": "invalid",
             "bare": "invalid",
             "converted": "convert-error:Studio\\Gesso\\Exception\\InvalidOpenApiSpecException",
-            "reason": "Deliberate. The schema declares a custom metaschema URI in $schema. OpenApiSchemaDialect::assertSupported() rejects dialects it cannot evaluate instead of silently falling back to a dialect with different semantics, which for a contract-testing tool is the safer failure. See docs/supported-features.md."
+            "reason": "unsupported-dialect"
         },
         "draft2020-12::format-assertion.json::schema that uses custom metaschema with format-assertion: false::format-assertion: false: valid string": {
             "expected": "valid",
             "bare": "valid",
             "converted": "convert-error:Studio\\Gesso\\Exception\\InvalidOpenApiSpecException",
-            "reason": "Deliberate. Custom metaschema URI in $schema; unsupported dialects fail loudly rather than falling back."
+            "reason": "unsupported-dialect"
         },
         "draft2020-12::format-assertion.json::schema that uses custom metaschema with format-assertion: true::format-assertion: true: invalid string": {
             "expected": "invalid",
             "bare": "invalid",
             "converted": "convert-error:Studio\\Gesso\\Exception\\InvalidOpenApiSpecException",
-            "reason": "Deliberate. Custom metaschema URI in $schema; unsupported dialects fail loudly rather than falling back."
+            "reason": "unsupported-dialect"
         },
         "draft2020-12::format-assertion.json::schema that uses custom metaschema with format-assertion: true::format-assertion: true: valid string": {
             "expected": "valid",
             "bare": "valid",
             "converted": "convert-error:Studio\\Gesso\\Exception\\InvalidOpenApiSpecException",
-            "reason": "Deliberate. Custom metaschema URI in $schema; unsupported dialects fail loudly rather than falling back."
+            "reason": "unsupported-dialect"
+        },
+        "draft2020-12::items.json::items with heterogeneous array::heterogeneous invalid instance": {
+            "expected": "invalid",
+            "bare": "invalid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft2020-12::items.json::items with heterogeneous array::valid instance": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft2020-12::items.json::prefixItems with no additional items allowed::additional items are not permitted": {
+            "expected": "invalid",
+            "bare": "invalid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft2020-12::items.json::prefixItems with no additional items allowed::empty array": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft2020-12::items.json::prefixItems with no additional items allowed::equal number of items present": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft2020-12::items.json::prefixItems with no additional items allowed::fewer number of items present (1)": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft2020-12::items.json::prefixItems with no additional items allowed::fewer number of items present (2)": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft2020-12::not.json::double negation::any value is valid": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft2020-12::not.json::forbid everything with empty schema::array is invalid": {
+            "expected": "invalid",
+            "bare": "invalid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft2020-12::not.json::forbid everything with empty schema::boolean false is invalid": {
+            "expected": "invalid",
+            "bare": "invalid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft2020-12::not.json::forbid everything with empty schema::boolean true is invalid": {
+            "expected": "invalid",
+            "bare": "invalid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft2020-12::not.json::forbid everything with empty schema::empty array is invalid": {
+            "expected": "invalid",
+            "bare": "invalid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft2020-12::not.json::forbid everything with empty schema::empty object is invalid": {
+            "expected": "invalid",
+            "bare": "invalid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft2020-12::not.json::forbid everything with empty schema::null is invalid": {
+            "expected": "invalid",
+            "bare": "invalid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft2020-12::not.json::forbid everything with empty schema::number is invalid": {
+            "expected": "invalid",
+            "bare": "invalid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft2020-12::not.json::forbid everything with empty schema::object is invalid": {
+            "expected": "invalid",
+            "bare": "invalid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft2020-12::not.json::forbid everything with empty schema::string is invalid": {
+            "expected": "invalid",
+            "bare": "invalid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft2020-12::not.json::forbidden property::property present": {
+            "expected": "invalid",
+            "bare": "invalid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft2020-12::oneOf.json::oneOf with empty schema::both valid - invalid": {
+            "expected": "invalid",
+            "bare": "invalid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft2020-12::oneOf.json::oneOf with empty schema::one valid - valid": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
         },
         "draft2020-12::refOfUnknownKeyword.json::reference internals of known non-applicator::match": {
             "expected": "valid",
             "bare": "valid",
             "converted": "error:Opis\\JsonSchema\\Exceptions\\UnresolvedReferenceException",
-            "reason": "Known limitation. The schema points $ref at \"#/examples/0\". The converter strips OAS annotation keywords including examples, so the reference target no longer exists and opis reports an unresolved reference. A spec that references into an examples array is unsupported; the outcome is a loud error, never a silent pass. Referencing annotation internals is not something OpenAPI sanctions, so this is documented rather than fixed."
+            "reason": "stripped-annotation-ref"
         },
         "draft2020-12::refOfUnknownKeyword.json::reference internals of known non-applicator::mismatch": {
             "expected": "invalid",
             "bare": "invalid",
             "converted": "error:Opis\\JsonSchema\\Exceptions\\UnresolvedReferenceException",
-            "reason": "Known limitation. Same stripped-examples reference target as the match case above."
+            "reason": "stripped-annotation-ref"
+        },
+        "draft2020-12::required.json::required default validation::not required by default": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft2020-12::required.json::required validation::ignores arrays": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft2020-12::required.json::required validation::ignores boolean": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft2020-12::required.json::required validation::ignores null": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft2020-12::required.json::required validation::ignores other non-objects": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft2020-12::required.json::required validation::ignores strings": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft2020-12::required.json::required validation::non-present required property is invalid": {
+            "expected": "invalid",
+            "bare": "invalid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft2020-12::required.json::required validation::present required property is valid": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft2020-12::required.json::required with empty array::property not required": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft2020-12::unevaluatedProperties.json::dependentSchemas with unevaluatedProperties::unevaluatedProperties doesn't consider dependentSchemas": {
+            "expected": "invalid",
+            "bare": "invalid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft2020-12::unevaluatedProperties.json::dependentSchemas with unevaluatedProperties::unevaluatedProperties doesn't see bar when foo2 is absent": {
+            "expected": "invalid",
+            "bare": "invalid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft2020-12::unevaluatedProperties.json::dependentSchemas with unevaluatedProperties::unevaluatedProperties sees bar when foo2 is present": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
         },
         "draft2020-12::vocabulary.json::ignore unrecognized optional vocabulary::number value": {
             "expected": "valid",
             "bare": "valid",
             "converted": "convert-error:Studio\\Gesso\\Exception\\InvalidOpenApiSpecException",
-            "reason": "Deliberate. Custom metaschema URI in $schema; unsupported dialects fail loudly rather than falling back."
+            "reason": "unsupported-dialect"
         },
         "draft2020-12::vocabulary.json::ignore unrecognized optional vocabulary::string value": {
             "expected": "invalid",
             "bare": "invalid",
             "converted": "convert-error:Studio\\Gesso\\Exception\\InvalidOpenApiSpecException",
-            "reason": "Deliberate. Custom metaschema URI in $schema; unsupported dialects fail loudly rather than falling back."
+            "reason": "unsupported-dialect"
         },
         "draft2020-12::vocabulary.json::schema that uses custom metaschema with with no validation vocabulary::applicator vocabulary still works": {
             "expected": "invalid",
             "bare": "invalid",
             "converted": "convert-error:Studio\\Gesso\\Exception\\InvalidOpenApiSpecException",
-            "reason": "Deliberate. Custom metaschema URI in $schema; unsupported dialects fail loudly rather than falling back."
+            "reason": "unsupported-dialect"
         },
         "draft2020-12::vocabulary.json::schema that uses custom metaschema with with no validation vocabulary::no validation: invalid number, but it still validates": {
             "expected": "valid",
             "bare": "invalid",
             "converted": "convert-error:Studio\\Gesso\\Exception\\InvalidOpenApiSpecException",
-            "reason": "Deliberate. Custom metaschema URI in $schema; unsupported dialects fail loudly rather than falling back. Note that bare opis also disagrees with the suite here (expected valid, opis says invalid): opis does not honour a metaschema that drops the validation vocabulary. That gap belongs to opis and is visible on https://bowtie.report; conversion only turns it into a loud error."
+            "reason": "unsupported-dialect"
         },
         "draft2020-12::vocabulary.json::schema that uses custom metaschema with with no validation vocabulary::no validation: valid number": {
             "expected": "valid",
             "bare": "valid",
             "converted": "convert-error:Studio\\Gesso\\Exception\\InvalidOpenApiSpecException",
-            "reason": "Deliberate. Custom metaschema URI in $schema; unsupported dialects fail loudly rather than falling back."
+            "reason": "unsupported-dialect"
+        },
+        "draft7::additionalItems.json::additionalItems as schema::additional items do not match schema": {
+            "expected": "invalid",
+            "bare": "invalid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft7::additionalItems.json::additionalItems as schema::additional items match schema": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft7::additionalItems.json::additionalItems with heterogeneous array::heterogeneous invalid instance": {
+            "expected": "invalid",
+            "bare": "invalid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft7::additionalItems.json::additionalItems with heterogeneous array::valid instance": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft7::additionalItems.json::array of items with no additionalItems permitted::additional items are not permitted": {
+            "expected": "invalid",
+            "bare": "invalid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft7::additionalItems.json::array of items with no additionalItems permitted::empty array": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft7::additionalItems.json::array of items with no additionalItems permitted::equal number of items present": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft7::additionalItems.json::array of items with no additionalItems permitted::fewer number of items present (1)": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft7::additionalItems.json::array of items with no additionalItems permitted::fewer number of items present (2)": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft7::additionalItems.json::when items is schema, boolean additionalItems does nothing::all items match schema": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "invalid",
+            "reason": "empty-schema-object"
+        },
+        "draft7::additionalProperties.json::additionalProperties are allowed by default::additional properties are allowed": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft7::additionalProperties.json::additionalProperties being false does not allow other properties::an additional property is invalid": {
+            "expected": "invalid",
+            "bare": "invalid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft7::additionalProperties.json::additionalProperties being false does not allow other properties::ignores arrays": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft7::additionalProperties.json::additionalProperties being false does not allow other properties::ignores other non-objects": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft7::additionalProperties.json::additionalProperties being false does not allow other properties::ignores strings": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft7::additionalProperties.json::additionalProperties being false does not allow other properties::no additional properties is valid": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft7::additionalProperties.json::additionalProperties being false does not allow other properties::patternProperties are not additional properties": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft7::additionalProperties.json::additionalProperties with schema::an additional invalid property is invalid": {
+            "expected": "invalid",
+            "bare": "invalid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft7::additionalProperties.json::additionalProperties with schema::an additional valid property is valid": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft7::additionalProperties.json::additionalProperties with schema::no additional properties is valid": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft7::additionalProperties.json::non-ASCII pattern with additionalProperties::matching the pattern is valid": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft7::additionalProperties.json::non-ASCII pattern with additionalProperties::not matching the pattern is invalid": {
+            "expected": "invalid",
+            "bare": "invalid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft7::allOf.json::allOf with one empty schema::any data is valid": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft7::allOf.json::allOf with the first empty schema::number is valid": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft7::allOf.json::allOf with the first empty schema::string is invalid": {
+            "expected": "invalid",
+            "bare": "invalid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft7::allOf.json::allOf with the last empty schema::number is valid": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft7::allOf.json::allOf with the last empty schema::string is invalid": {
+            "expected": "invalid",
+            "bare": "invalid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft7::allOf.json::allOf with two empty schemas::any data is valid": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft7::anyOf.json::anyOf with one empty schema::number is valid": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft7::anyOf.json::anyOf with one empty schema::string is valid": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft7::dependencies.json::dependent subschema incompatible with root::matches both": {
+            "expected": "invalid",
+            "bare": "invalid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft7::dependencies.json::dependent subschema incompatible with root::matches dependency": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft7::dependencies.json::dependent subschema incompatible with root::matches root": {
+            "expected": "invalid",
+            "bare": "invalid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft7::dependencies.json::dependent subschema incompatible with root::no dependency": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft7::not.json::double negation::any value is valid": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft7::not.json::forbid everything with empty schema::array is invalid": {
+            "expected": "invalid",
+            "bare": "invalid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft7::not.json::forbid everything with empty schema::boolean false is invalid": {
+            "expected": "invalid",
+            "bare": "invalid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft7::not.json::forbid everything with empty schema::boolean true is invalid": {
+            "expected": "invalid",
+            "bare": "invalid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft7::not.json::forbid everything with empty schema::empty array is invalid": {
+            "expected": "invalid",
+            "bare": "invalid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft7::not.json::forbid everything with empty schema::empty object is invalid": {
+            "expected": "invalid",
+            "bare": "invalid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft7::not.json::forbid everything with empty schema::null is invalid": {
+            "expected": "invalid",
+            "bare": "invalid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft7::not.json::forbid everything with empty schema::number is invalid": {
+            "expected": "invalid",
+            "bare": "invalid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft7::not.json::forbid everything with empty schema::object is invalid": {
+            "expected": "invalid",
+            "bare": "invalid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft7::not.json::forbid everything with empty schema::string is invalid": {
+            "expected": "invalid",
+            "bare": "invalid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft7::not.json::forbidden property::property present": {
+            "expected": "invalid",
+            "bare": "invalid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft7::oneOf.json::oneOf with empty schema::both valid - invalid": {
+            "expected": "invalid",
+            "bare": "invalid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft7::oneOf.json::oneOf with empty schema::one valid - valid": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft7::required.json::required default validation::not required by default": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft7::required.json::required validation::ignores arrays": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft7::required.json::required validation::ignores boolean": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft7::required.json::required validation::ignores null": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft7::required.json::required validation::ignores other non-objects": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft7::required.json::required validation::ignores strings": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft7::required.json::required validation::non-present required property is invalid": {
+            "expected": "invalid",
+            "bare": "invalid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft7::required.json::required validation::present required property is valid": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
+        },
+        "draft7::required.json::required with empty array::property not required": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\InvalidKeywordException",
+            "reason": "empty-schema-object"
         }
     }
 }

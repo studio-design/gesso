@@ -6,7 +6,10 @@ is lowered to Draft 07, `discriminator` becomes `if`/`then` conditionals,
 `readOnly` / `writeOnly` become boolean subschemas. That rewriting is the part
 of a contract-testing tool most likely to quietly change what your spec means.
 
-This page is the evidence that it does not.
+This page measures exactly where it does. Of 3,820 official test-suite cases,
+conversion changes the verdict on 126 — 115 of them one tracked defect, the
+other 11 deliberate. Every one is listed with a reason and pinned in CI, so the
+number can only move when someone updates the record.
 
 ## What is measured
 
@@ -39,36 +42,50 @@ Corpus: [`json-schema-org/JSON-Schema-Test-Suite`][suite] at
 
 | Suite | OAS pipeline | Cases | Verdict changed | Excluded |
 | --- | --- | ---: | ---: | ---: |
-| `draft7` | 3.0 → Draft 07 | 1,657 | **0** | 0 |
-| `draft2020-12` | 3.1 / 3.2 → 2020-12 | 2,163 | **11** | 4 |
+| `draft7` | 3.0 → Draft 07 | 1,657 | 56 | 0 |
+| `draft2020-12` | 3.1 / 3.2 → 2020-12 | 2,163 | 70 | 4 |
 
 Required and `optional/` cases are both included, `optional/format/` among
-them. 18 cases per suite use a boolean (`true` / `false`) root schema, which a
-Schema Object cannot express and the converter therefore never sees; they are
-counted in the baseline rather than dropped.
+them. The suite's `remotes/` directory is served at `http://localhost:1234/` as
+the suite expects, so remote `$ref` cases genuinely resolve instead of failing
+identically on both sides. 18 cases per suite use a boolean (`true` / `false`)
+root schema, which a Schema Object cannot express and the converter therefore
+never sees; they are counted in the baseline rather than dropped.
 
 OAS 3.2 shares the 3.1 conversion pipeline, so running it would reproduce the
 3.1 numbers exactly and it is not run twice.
 
-### The 11 differences
+### The 126 differences
 
-All eleven are in OAS 3.1/3.2 and fall into two groups. Every one produces a
-**loud error**, never a silent pass — which is the outcome this library prefers
-when it cannot evaluate something precisely.
+Three causes. Each recorded case cites one of them by key in the baseline's
+`reasons` map.
 
-**Custom `$schema` metaschemas (9 cases** — `vocabulary.json`,
-`format-assertion.json`**)**. These declare a metaschema URI Gesso does not
-recognize. `OpenApiSchemaDialect::assertSupported()` rejects unknown dialects
-with `InvalidOpenApiSpecException` instead of falling back to a dialect with
-different semantics. This is deliberate and documented in
+**`empty-schema-object` — 115 cases. A real defect, tracked in
+[#478](https://github.com/studio-design/gesso/issues/478).** An empty Schema
+Object `{}` is indistinguishable from an empty array once a spec is decoded
+with `json_decode(..., true)`, so it reaches opis as a JSON array and is
+rejected as not-a-schema. `additionalProperties: {}`, `properties: {x: {}}`,
+`items: {}` and `not: {}` are ordinary OpenAPI and all hit it. 114 of these
+surface as a loud `InvalidKeywordException`; one degrades further —
+`{"items": {}, "additionalItems": false}` becomes tuple-form `items: []`, so a
+compliant array is reported as a contract violation with no error at all. That
+last case is the reason this harness was worth building: it is a false failure
+that no existing test caught.
+
+**`unsupported-dialect` — 9 cases** (`vocabulary.json`,
+`format-assertion.json`). These declare a custom metaschema URI in `$schema`.
+`OpenApiSchemaDialect::assertSupported()` rejects unknown dialects with
+`InvalidOpenApiSpecException` instead of falling back to one with different
+semantics. Deliberate, and documented in
 [supported features](supported-features.md#openapi-30-31-and-32).
 
-**`$ref` into a stripped annotation (2 cases** — `refOfUnknownKeyword.json`**)**.
-The schema points `$ref` at `#/examples/0`. The converter strips `examples` as
-an OAS annotation keyword, so the reference target no longer exists and opis
+**`stripped-annotation-ref` — 2 cases** (`refOfUnknownKeyword.json`). The
+schema points `$ref` at `#/examples/0`. The converter strips `examples` as an
+OAS annotation keyword, so the reference target no longer exists and opis
 reports an unresolved reference. A spec that references into an `examples`
-array is unsupported. Referencing annotation internals is not something OpenAPI
-sanctions, so this is documented rather than fixed.
+array is unsupported; the outcome is a loud error, never a silent pass.
+Referencing annotation internals is not something OpenAPI sanctions, so this is
+documented rather than fixed.
 
 ### The 4 exclusions
 
@@ -99,9 +116,10 @@ Packagist and carries no usable upstream tags.
 2. `composer update json-schema-org/json-schema-test-suite`.
 3. Run the test. It will report the new case counts and any verdict that moved.
 4. Update `corpus.commit`, `suites`, and any `deltas` entries in the
-   baseline — **with a reason for each new entry** — and update the
-   table above. An entry without a reason fails a second assertion, so an
-   unexplained regression cannot be papered over by regenerating the file.
+   baseline — **each citing a key in the `reasons` map** — and update the
+   table above. A delta citing an unknown reason, or a published reason no
+   longer cited by anything, fails a second assertion, so an unexplained
+   regression cannot be papered over by regenerating the file.
 
 If a newly added corpus group triggers the same unbounded opis recursion, the
 test process will die with a fatal error rather than fail cleanly. Add the

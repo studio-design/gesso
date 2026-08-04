@@ -24,9 +24,11 @@ use function in_array;
 use function is_array;
 use function is_dir;
 use function json_decode;
+use function json_encode;
 use function ksort;
 use function restore_error_handler;
 use function set_error_handler;
+use function sort;
 use function sprintf;
 
 /**
@@ -140,13 +142,40 @@ final class JsonSchemaConversionDeltaTest extends TestCase
     {
         $baseline = $this->baseline();
 
+        // Reasons are shared: 114 of the recorded deltas are one defect, and
+        // repeating its explanation per entry would make the file unreadable
+        // without making it more precise. Keys stay per case, so a genuinely
+        // new case still fails the comparison above.
+        foreach ($baseline['reasons'] as $key => $reason) {
+            $this->assertNotSame('', $reason['summary'] ?? '', sprintf('Reason "%s" has no summary.', $key));
+        }
+
+        $referenced = [];
         foreach ($baseline['deltas'] as $key => $entry) {
-            $this->assertNotSame('', $entry['reason'] ?? '', sprintf('Delta "%s" has no reason.', $key));
+            $reason = $entry['reason'] ?? '';
+            $this->assertArrayHasKey(
+                $reason,
+                $baseline['reasons'],
+                sprintf('Delta "%s" cites unknown reason "%s".', $key, $reason),
+            );
+            $referenced[$reason] = true;
         }
 
         foreach ($baseline['excluded_groups'] as $entry) {
             $this->assertNotSame('', $entry['reason'] ?? '', sprintf('Exclusion "%s" has no reason.', $entry['group']));
         }
+
+        $published = array_keys($baseline['reasons']);
+        $cited = array_keys($referenced);
+        sort($published);
+        sort($cited);
+
+        $this->assertSame(
+            $published,
+            $cited,
+            'A published reason is no longer cited by any delta. Remove reasons that no longer apply '
+            . 'instead of leaving them to rot.',
+        );
 
         $this->assertSame(
             self::EXCLUDED_GROUPS,
@@ -167,8 +196,7 @@ final class JsonSchemaConversionDeltaTest extends TestCase
         $suites = [];
 
         foreach (self::SUITES as $suiteName => $suite) {
-            $validator = new Validator();
-            $validator->parser()->setDefaultDraftVersion($suite['draft']);
+            $validator = $this->validatorFor($suite['draft']);
 
             $cases = 0;
             $booleanRootSchemas = 0;
@@ -179,40 +207,65 @@ final class JsonSchemaConversionDeltaTest extends TestCase
                 $contents = file_get_contents($file);
                 $this->assertIsString($contents, sprintf('Unreadable corpus file: %s.', $file));
 
-                /** @var list<array{description: string, schema: mixed, tests: list<array{description: string, data: mixed, valid: bool}>}> $groups */
-                $groups = json_decode($contents, true, flags: JSON_THROW_ON_ERROR);
+                // Decoded twice on purpose. The object form is the faithful
+                // JSON: `{}` stays an object and `[]` stays a list, a
+                // distinction PHP associative arrays cannot carry. It is what
+                // the bare reference run and both data instances are built
+                // from, so the reference side is never distorted by the way
+                // this test reads the corpus.
+                //
+                // The array form exists only because `convert()` takes a
+                // Schema Object as an array — the same shape
+                // `OpenApiSpecLoader` produces with `json_decode(..., true)`.
+                // Any object/list information the OAS pipeline loses is
+                // therefore lost here too, and shows up as a recorded delta
+                // instead of being hidden behind an identical exception on
+                // both sides.
+                /** @var list<object{description: string, schema: mixed, tests: list<object{description: string, data: mixed, valid: bool}>}> $groups */
+                $groups = json_decode($contents, false, flags: JSON_THROW_ON_ERROR);
+                /** @var list<array{description: string, schema: mixed, tests: list<array{description: string, data: mixed, valid: bool}>}> $arrayGroups */
+                $arrayGroups = json_decode($contents, true, flags: JSON_THROW_ON_ERROR);
 
-                foreach ($groups as $group) {
-                    $groupKey = $suiteName . '::' . basename($file) . '::' . $group['description'];
+                foreach ($groups as $groupIndex => $group) {
+                    $groupKey = $suiteName . '::' . basename($file) . '::' . $group->description;
 
                     if (in_array($groupKey, self::EXCLUDED_GROUPS, true)) {
-                        $excludedCases += count($group['tests']);
+                        $excludedCases += count($group->tests);
                         continue;
                     }
 
-                    foreach ($group['tests'] as $case) {
+                    foreach ($group->tests as $case) {
                         $cases++;
 
                         // `convert()` takes a Schema Object; a bare `true` /
                         // `false` root schema has nothing for it to rewrite,
                         // so there is no delta to measure. Counted rather than
                         // dropped.
-                        if (!is_array($group['schema'])) {
+                        if (!is_array($arrayGroups[$groupIndex]['schema'])) {
                             $booleanRootSchemas++;
                             continue;
                         }
 
-                        $data = ObjectConverter::convert($case['data']);
-                        $bare = $this->verdict($validator, ObjectConverter::convert($group['schema']), $data);
-                        $converted = $this->convertedVerdict($validator, $group['schema'], $suite['version'], $data);
+                        // A separate instance per run. opis writes `default`
+                        // values into the instance it validates, so sharing
+                        // one would let the bare run's mutation reach the
+                        // converted run and register as a delta conversion
+                        // never caused.
+                        $bare = $this->verdict($validator, $group->schema, $this->instance($case->data));
+                        $converted = $this->convertedVerdict(
+                            $validator,
+                            $arrayGroups[$groupIndex]['schema'],
+                            $suite['version'],
+                            $this->instance($case->data),
+                        );
 
                         if ($bare === $converted) {
                             continue;
                         }
 
                         $suiteDeltas++;
-                        $deltas[$groupKey . '::' . $case['description']] = [
-                            'expected' => $case['valid'] ? 'valid' : 'invalid',
+                        $deltas[$groupKey . '::' . $case->description] = [
+                            'expected' => $case->valid ? 'valid' : 'invalid',
                             'bare' => $bare,
                             'converted' => $converted,
                         ];
@@ -278,6 +331,32 @@ final class JsonSchemaConversionDeltaTest extends TestCase
     }
 
     /**
+     * The suite expects `remotes/` to be served at `http://localhost:1234/`;
+     * without that mapping every remote `$ref` raises the same unresolved-
+     * reference error on both sides and 54 cases across `refRemote.json`
+     * assert nothing at all.
+     */
+    private function validatorFor(string $draft): Validator
+    {
+        $validator = new Validator();
+        $validator->parser()->setDefaultDraftVersion($draft);
+        $validator->resolver()?->registerPrefix('http://localhost:1234/', $this->corpusPath() . '/remotes');
+
+        return $validator;
+    }
+
+    /**
+     * A private copy of the case data, decoded from the faithful object form
+     * so `{}` and `[]` stay distinct. opis mutates the instance it validates
+     * (it writes `default` values into it), so each verdict has to own its
+     * own.
+     */
+    private function instance(mixed $data): mixed
+    {
+        return json_decode(json_encode($data, flags: JSON_THROW_ON_ERROR), false, flags: JSON_THROW_ON_ERROR);
+    }
+
+    /**
      * Required cases plus the suite's `optional/` and `optional/format/`
      * directories. `optional/` is where `format`, big numbers, and unknown
      * keywords live — all areas the converter actively rewrites — so leaving
@@ -337,6 +416,7 @@ final class JsonSchemaConversionDeltaTest extends TestCase
     /**
      * @return array{
      *     corpus: array{commit: string},
+     *     reasons: array<string, array{summary?: string}>,
      *     deltas: array<string, array{expected: string, bare: string, converted: string, reason?: string}>,
      *     excluded_groups: array<string, array{group: string, reason?: string}>,
      *     suites: array<string, array{cases: int, boolean_root_schemas: int, excluded_cases: int, deltas: int}>
