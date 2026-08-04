@@ -2881,6 +2881,76 @@ class OpenApiSchemaConverterTest extends TestCase
     }
 
     #[Test]
+    public function discriminator_mapping_target_that_is_an_empty_schema_object_lowers_to_any_value(): void
+    {
+        // The lowering resolves its own subtype schemas, so it has to run them
+        // through the same normalisation as every other schema position —
+        // `then: []` is not a schema opis accepts.
+        $root = ['components' => ['schemas' => [
+            'Anything' => [],
+            'Cat' => ['type' => 'object', 'required' => ['meow']],
+        ]]];
+        $schema = [
+            'type' => 'object',
+            'discriminator' => ['propertyName' => 'kind', 'mapping' => ['any' => 'Anything', 'cat' => 'Cat']],
+        ];
+
+        $result = OpenApiSchemaConverter::convert(
+            $schema,
+            OpenApiVersion::V3_1,
+            SchemaContext::Response,
+            $this->enforcing($root),
+        );
+
+        $this->assertTrue($result['allOf'][1]['then']);
+        $this->assertSame(['meow'], $result['allOf'][2]['then']['required']);
+
+        $runner = new SchemaValidatorRunner(20);
+        $this->assertSame(
+            [],
+            $runner->validate(
+                ObjectConverter::convert($result),
+                ObjectConverter::convert((object) ['kind' => 'any', 'whatever' => 1]),
+            ),
+        );
+    }
+
+    #[Test]
+    public function openapi_32_default_mapping_target_that_is_an_empty_schema_object_lowers_to_any_value(): void
+    {
+        $root = ['components' => ['schemas' => [
+            'Cat' => ['type' => 'object', 'required' => ['meow']],
+            'Anything' => [],
+        ]]];
+        $schema = [
+            'type' => 'object',
+            'discriminator' => [
+                'propertyName' => 'kind',
+                'mapping' => ['cat' => 'Cat'],
+                'defaultMapping' => 'Anything',
+            ],
+        ];
+
+        $result = OpenApiSchemaConverter::convert(
+            $schema,
+            OpenApiVersion::V3_2,
+            SchemaContext::Response,
+            $this->enforcing($root),
+        );
+
+        $this->assertTrue($result['allOf'][0]['then']);
+
+        $runner = new SchemaValidatorRunner(20);
+        $this->assertSame(
+            [],
+            $runner->validate(
+                ObjectConverter::convert($result),
+                ObjectConverter::convert((object) ['kind' => 'unmapped']),
+            ),
+        );
+    }
+
+    #[Test]
     public function empty_not_schema_still_rejects_every_instance(): void
     {
         // `not: {}` is the inverse of "any value" — it must reject, not pass.

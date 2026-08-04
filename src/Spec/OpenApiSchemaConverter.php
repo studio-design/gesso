@@ -791,8 +791,11 @@ final class OpenApiSchemaConverter
             $value = $route['value'];
             $pointer = $route['pointer'];
 
+            // Through convertSubschemaInPlace(), not convertInPlace(): a
+            // mapping may point at an empty Schema Object, and `then: []`
+            // is not a schema opis accepts (#478).
             $subschema = self::resolveMappingTarget($value, $pointer, $discriminator->root);
-            self::convertInPlace($subschema, $version, $context, $childContext);
+            self::convertSubschemaInPlace($subschema, $version, $context, $childContext);
 
             $branches[] = [
                 'if' => [
@@ -806,7 +809,7 @@ final class OpenApiSchemaConverter
         $defaultSubschema = null;
         if (is_string($defaultMapping)) {
             $defaultSubschema = self::resolveMappingTarget('default', $defaultMapping, $discriminator->root, 'defaultMapping');
-            self::convertInPlace($defaultSubschema, $version, $context, $childContext);
+            self::convertSubschemaInPlace($defaultSubschema, $version, $context, $childContext);
         }
 
         $allOf = (isset($schema['allOf']) && is_array($schema['allOf'])) ? $schema['allOf'] : [];
