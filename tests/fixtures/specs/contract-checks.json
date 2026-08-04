@@ -362,6 +362,185 @@
                     }
                 }
             }
+        },
+        "/secure": {
+            "get": {
+                "operationId": "secureGet",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "ok"
+                    }
+                }
+            }
+        },
+        "/secure-api-key": {
+            "get": {
+                "operationId": "secureApiKeyGet",
+                "security": [
+                    {
+                        "apiKeyHeader": [],
+                        "apiKeyQuery": [],
+                        "apiKeyCookie": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "X-Api-Key",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "ok"
+                    }
+                }
+            }
+        },
+        "/secure-oauth": {
+            "get": {
+                "operationId": "secureOauthGet",
+                "security": [
+                    {
+                        "oauthScheme": [
+                            "read"
+                        ]
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "ok"
+                    }
+                }
+            }
+        },
+        "/opted-out": {
+            "get": {
+                "operationId": "optedOutGet",
+                "security": [],
+                "responses": {
+                    "200": {
+                        "description": "ok"
+                    }
+                }
+            }
+        },
+        "/optional-auth": {
+            "get": {
+                "operationId": "optionalAuthGet",
+                "security": [
+                    {},
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "ok"
+                    }
+                }
+            }
+        },
+        "/imports": {
+            "post": {
+                "operationId": "createImport",
+                "parameters": [
+                    {
+                        "name": "X-Idempotency-Key",
+                        "in": "header",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "created"
+                    }
+                }
+            }
+        },
+        "/tenants": {
+            "get": {
+                "operationId": "listTenants",
+                "parameters": [
+                    {
+                        "name": "X-Request-Id",
+                        "in": "header",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1
+                        }
+                    },
+                    {
+                        "name": "X-Tenant",
+                        "in": "header",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1
+                        }
+                    },
+                    {
+                        "name": "X-Trace",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "ok"
+                    }
+                }
+            }
+        }
+    },
+    "components": {
+        "securitySchemes": {
+            "bearerAuth": {
+                "type": "http",
+                "scheme": "bearer"
+            },
+            "apiKeyHeader": {
+                "type": "apiKey",
+                "in": "header",
+                "name": "X-Api-Key"
+            },
+            "apiKeyQuery": {
+                "type": "apiKey",
+                "in": "query",
+                "name": "api_key"
+            },
+            "apiKeyCookie": {
+                "type": "apiKey",
+                "in": "cookie",
+                "name": "session"
+            },
+            "oauthScheme": {
+                "type": "oauth2",
+                "flows": {
+                    "clientCredentials": {
+                        "tokenUrl": "https://example.test/token",
+                        "scopes": {
+                            "read": "read"
+                        }
+                    }
+                }
+            }
         }
     }
 }

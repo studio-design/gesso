@@ -306,6 +306,46 @@ final class PublicApiBaselineTest extends TestCase
             'default' => true,
             'attributes' => [],
         ];
+        // #401: cookies are a transport of their own — a Cookie request header
+        // never reaches a test client's cookie bag, so `ignored_auth` cookie
+        // credentials need a first-class field a dispatcher can forward.
+        $expected[ExploredCase::class]['properties']['cookies'] = [
+            'type' => 'array',
+            'static' => false,
+            'readonly' => true,
+            'default' => [
+                'unavailable' => true,
+            ],
+        ];
+        $expected[ExploredCase::class]['methods']['__construct']['parameters'][] = [
+            'name' => 'cookies',
+            'type' => 'array',
+            'optional' => true,
+            'variadic' => false,
+            'by_reference' => false,
+            'default' => [],
+            'attributes' => [],
+        ];
+        $expected[ExploredCase::class]['methods']['withCookies'] = [
+            'static' => false,
+            'final' => false,
+            'abstract' => false,
+            'returns_reference' => false,
+            'return_type' => 'self',
+            'attributes' => [],
+            'parameters' => [[
+                'name' => 'cookies',
+                'type' => 'array',
+                'optional' => false,
+                'variadic' => false,
+                'by_reference' => false,
+                'default' => [
+                    'unavailable' => true,
+                ],
+                'attributes' => [],
+            ]],
+        ];
+        ksort($expected[ExploredCase::class]['properties']);
         ksort($expected[ExploredCase::class]['methods']);
 
         $responseValidatorConstructor = $expected[OpenApiResponseValidator::class]['methods']['__construct'];
@@ -673,6 +713,8 @@ final class PublicApiBaselineTest extends TestCase
             'attributes' => [],
             'backing_type' => 'string',
             'cases' => [
+                'IgnoredAuth' => 'ignored_auth',
+                'MissingRequiredHeader' => 'missing_required_header',
                 'UnsupportedMethod' => 'unsupported_method',
             ],
             'constants' => [],
@@ -697,6 +739,15 @@ final class PublicApiBaselineTest extends TestCase
             'methods' => [
                 'cases' => [
                     'static' => true,
+                    'final' => false,
+                    'abstract' => false,
+                    'returns_reference' => false,
+                    'return_type' => 'array',
+                    'attributes' => [],
+                    'parameters' => [],
+                ],
+                'defaultExpectedStatusClasses' => [
+                    'static' => false,
                     'final' => false,
                     'abstract' => false,
                     'returns_reference' => false,
@@ -800,6 +851,14 @@ final class PublicApiBaselineTest extends TestCase
                         'unavailable' => true,
                     ],
                 ],
+                'expectedStatusClasses' => [
+                    'type' => 'array',
+                    'static' => false,
+                    'readonly' => true,
+                    'default' => [
+                        'unavailable' => true,
+                    ],
+                ],
                 'expectedStatuses' => [
                     'type' => 'array',
                     'static' => false,
@@ -810,6 +869,14 @@ final class PublicApiBaselineTest extends TestCase
                 ],
                 'method' => [
                     'type' => 'string',
+                    'static' => false,
+                    'readonly' => true,
+                    'default' => [
+                        'unavailable' => true,
+                    ],
+                ],
+                'mutation' => [
+                    'type' => '?string',
                     'static' => false,
                     'readonly' => true,
                     'default' => [
@@ -919,6 +986,24 @@ final class PublicApiBaselineTest extends TestCase
                             ],
                             'attributes' => [],
                         ],
+                        [
+                            'name' => 'expectedStatusClasses',
+                            'type' => 'array',
+                            'optional' => true,
+                            'variadic' => false,
+                            'by_reference' => false,
+                            'default' => [],
+                            'attributes' => [],
+                        ],
+                        [
+                            'name' => 'mutation',
+                            'type' => '?string',
+                            'optional' => true,
+                            'variadic' => false,
+                            'by_reference' => false,
+                            'default' => null,
+                            'attributes' => [],
+                        ],
                     ],
                 ],
                 'describe' => [
@@ -1026,6 +1111,27 @@ final class PublicApiBaselineTest extends TestCase
                         ],
                     ],
                 ],
+                'dispatchIsolatedUsing' => [
+                    'static' => false,
+                    'final' => false,
+                    'abstract' => false,
+                    'returns_reference' => false,
+                    'return_type' => 'self',
+                    'attributes' => [],
+                    'parameters' => [
+                        [
+                            'name' => 'callback',
+                            'type' => 'callable',
+                            'optional' => false,
+                            'variadic' => false,
+                            'by_reference' => false,
+                            'default' => [
+                                'unavailable' => true,
+                            ],
+                            'attributes' => [],
+                        ],
+                    ],
+                ],
                 'dispatchUsing' => [
                     'static' => false,
                     'final' => false,
@@ -1120,6 +1226,38 @@ final class PublicApiBaselineTest extends TestCase
                     'parameters' => [
                         [
                             'name' => 'tags',
+                            'type' => 'array',
+                            'optional' => false,
+                            'variadic' => false,
+                            'by_reference' => false,
+                            'default' => [
+                                'unavailable' => true,
+                            ],
+                            'attributes' => [],
+                        ],
+                    ],
+                ],
+                'expectedStatusClasses' => [
+                    'static' => false,
+                    'final' => false,
+                    'abstract' => false,
+                    'returns_reference' => false,
+                    'return_type' => 'self',
+                    'attributes' => [],
+                    'parameters' => [
+                        [
+                            'name' => 'check',
+                            'type' => 'Studio\\Gesso\\Fuzz\\ContractCheck',
+                            'optional' => false,
+                            'variadic' => false,
+                            'by_reference' => false,
+                            'default' => [
+                                'unavailable' => true,
+                            ],
+                            'attributes' => [],
+                        ],
+                        [
+                            'name' => 'statusClasses',
                             'type' => 'array',
                             'optional' => false,
                             'variadic' => false,

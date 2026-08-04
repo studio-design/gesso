@@ -121,6 +121,99 @@ final class SecurityValidator
     }
 
     /**
+     * Resolve the effective `security` requirement for an operation:
+     * operation-level `security` wins over root-level, and a declaration
+     * missing on both levels yields null. The raw node is returned unvalidated
+     * — callers decide how loud a malformed declaration should be.
+     *
+     * Shared with {@see SecuritySchemeIntrospector} and the fuzz-side
+     * `ignored_auth` probe so the precedence rule has one definition.
+     *
+     * @param array<string, mixed> $spec full spec root (for root-level `security`)
+     * @param array<string, mixed> $operation operation spec (for the override)
+     *
+     * @internal Not part of the package's public API. Do not use from user code.
+     */
+    public static function effectiveSecurity(array $spec, array $operation): mixed
+    {
+        return array_key_exists('security', $operation)
+            ? $operation['security']
+            : ($spec['security'] ?? null);
+    }
+
+    /**
+     * Inspect one `schemeName => scopes` pair of a security requirement entry
+     * for spec-shape problems, without touching the request.
+     *
+     * The single source of truth for "is this requirement pair well-formed?".
+     * {@see validate()} and the fuzz-side `ignored_auth` probe both branch on
+     * the returned defects, so they cannot disagree about which declarations
+     * are broken.
+     *
+     * Defects carry a `kind` plus its interpolation data rather than finished
+     * prose: each caller renders its own sentence, which keeps the
+     * ADR-0001-pinned `[security]` string literals in {@see validate()} where
+     * the diagnostic inventory expects them. Ordering mirrors OpenAPI's
+     * structure — a bad scheme name stops there, non-list scopes stop there,
+     * and bad scope items are all reported before the scheme definition is
+     * looked at. `classification` and `definition` are populated only when
+     * `defects` is empty.
+     *
+     * @param mixed $schemes raw `components.securitySchemes` node
+     *
+     * @return array{
+     *     defects: list<SecurityRequirementDefect>,
+     *     classification: ?SchemeClassification,
+     *     definition: ?array<string, mixed>,
+     * }
+     *
+     * @internal Not part of the package's public API. Do not use from user code.
+     */
+    public static function inspectRequirementPair(mixed $schemeName, mixed $scopes, mixed $schemes): array
+    {
+        if (!is_string($schemeName)) {
+            return self::pairDefects([SecurityRequirementDefect::schemeNameNotString(get_debug_type($schemeName))]);
+        }
+
+        if (!is_array($scopes) || !array_is_list($scopes)) {
+            return self::pairDefects([
+                SecurityRequirementDefect::scopesNotList($schemeName, get_debug_type($scopes)),
+            ]);
+        }
+
+        $scopeDefects = [];
+        foreach ($scopes as $scopeIndex => $scope) {
+            if (is_string($scope)) {
+                continue;
+            }
+
+            $scopeDefects[] = SecurityRequirementDefect::scopeNotString(
+                $schemeName,
+                $scopeIndex,
+                get_debug_type($scope),
+            );
+        }
+        if ($scopeDefects !== []) {
+            return self::pairDefects($scopeDefects);
+        }
+
+        $schemeDef = is_array($schemes) ? ($schemes[$schemeName] ?? null) : null;
+        if (!is_array($schemeDef)) {
+            return self::pairDefects([SecurityRequirementDefect::undefinedScheme($schemeName)]);
+        }
+
+        $classification = self::classifyScheme($schemeDef);
+        if ($classification->kind === SchemeKind::Malformed) {
+            /** @var string $reason */
+            $reason = $classification->reason;
+
+            return self::pairDefects([SecurityRequirementDefect::malformedDefinition($schemeName, $reason)]);
+        }
+
+        return ['defects' => [], 'classification' => $classification, 'definition' => $schemeDef];
+    }
+
+    /**
      * Validate the endpoint's `security` requirement against the incoming
      * request. The supported / unsupported / malformed scheme partition is
      * defined by {@see classifyScheme()}; entries containing an unsupported
@@ -166,9 +259,7 @@ final class SecurityValidator
             self::warnAcknowledgementRot($declaredSchemes, $method, $matchedPath);
         }
 
-        $security = array_key_exists('security', $operation)
-            ? $operation['security']
-            : ($spec['security'] ?? null);
+        $security = self::effectiveSecurity($spec, $operation);
 
         if ($security === null) {
             return [];
@@ -238,84 +329,21 @@ final class SecurityValidator
             $validatable = [];
 
             foreach ($entry as $schemeName => $scopes) {
-                if (!is_string($schemeName)) {
-                    $hardErrors[] = new NamedError(null, sprintf(
-                        '[security] %s %s: security scheme name must be a string, got %s.',
-                        $method,
-                        $matchedPath,
-                        get_debug_type($schemeName),
-                    ));
-                    $entryHasHardError = true;
-
-                    continue;
-                }
-
-                if (!is_array($scopes) || !array_is_list($scopes)) {
-                    $hardErrors[] = new NamedError($schemeName, self::formatError(
-                        $method,
-                        $matchedPath,
-                        sprintf(
-                            "security requirement '%s' scopes must be a list of strings, got %s.",
-                            $schemeName,
-                            get_debug_type($scopes),
-                        ),
-                    ));
-                    $entryHasHardError = true;
-
-                    continue;
-                }
-
-                $scopeHasHardError = false;
-                foreach ($scopes as $scopeIndex => $scope) {
-                    if (is_string($scope)) {
-                        continue;
+                $inspection = self::inspectRequirementPair($schemeName, $scopes, $schemes);
+                if ($inspection['defects'] !== []) {
+                    foreach ($inspection['defects'] as $defect) {
+                        $hardErrors[] = self::describeDefect($defect, $method, $matchedPath);
                     }
-
-                    $hardErrors[] = new NamedError($schemeName, self::formatError(
-                        $method,
-                        $matchedPath,
-                        sprintf(
-                            "security requirement '%s' scope at index %d must be a string, got %s.",
-                            $schemeName,
-                            $scopeIndex,
-                            get_debug_type($scope),
-                        ),
-                    ));
-                    $entryHasHardError = true;
-                    $scopeHasHardError = true;
-                }
-
-                if ($scopeHasHardError) {
-                    continue;
-                }
-
-                $schemeDef = $schemes[$schemeName] ?? null;
-                if (!is_array($schemeDef)) {
-                    $hardErrors[] = new NamedError($schemeName, sprintf(
-                        "[security] %s %s: security requirement references undefined scheme '%s' — add it under components.securitySchemes.",
-                        $method,
-                        $matchedPath,
-                        $schemeName,
-                    ));
                     $entryHasHardError = true;
 
                     continue;
                 }
 
-                $classification = self::classifyScheme($schemeDef);
-
-                if ($classification->kind === SchemeKind::Malformed) {
-                    $hardErrors[] = new NamedError($schemeName, sprintf(
-                        "[security] %s %s: security scheme '%s' is malformed: %s",
-                        $method,
-                        $matchedPath,
-                        $schemeName,
-                        $classification->reason,
-                    ));
-                    $entryHasHardError = true;
-
-                    continue;
-                }
+                /** @var string $schemeName */
+                /** @var array<string, mixed> $schemeDef */
+                $schemeDef = $inspection['definition'];
+                /** @var SchemeClassification $classification */
+                $classification = $inspection['classification'];
 
                 if ($classification->kind === SchemeKind::Unsupported) {
                     // An acknowledged scheme (issue #445) skips the warning
@@ -390,6 +418,70 @@ final class SecurityValidator
     private static function formatError(string $method, string $matchedPath, string $detail): string
     {
         return sprintf('[security] %s %s: %s', $method, $matchedPath, $detail);
+    }
+
+    /**
+     * @param non-empty-list<SecurityRequirementDefect> $defects
+     *
+     * @return array{
+     *     defects: list<SecurityRequirementDefect>,
+     *     classification: ?SchemeClassification,
+     *     definition: ?array<string, mixed>,
+     * }
+     */
+    private static function pairDefects(array $defects): array
+    {
+        return ['defects' => $defects, 'classification' => null, 'definition' => null];
+    }
+
+    /**
+     * Render one shared defect as this validator's diagnostic. The wording and
+     * the `[security]` literals are the v1.9 inventory pinned by ADR 0001 and
+     * must not be consolidated away; only the detection rules behind them are
+     * shared (see {@see inspectRequirementPair()}).
+     */
+    private static function describeDefect(SecurityRequirementDefect $defect, string $method, string $matchedPath): NamedError
+    {
+        return match ($defect->kind) {
+            SecurityRequirementDefect::SCHEME_NAME_NOT_STRING => new NamedError(null, sprintf(
+                '[security] %s %s: security scheme name must be a string, got %s.',
+                $method,
+                $matchedPath,
+                $defect->actualType,
+            )),
+            SecurityRequirementDefect::SCOPES_NOT_LIST => new NamedError($defect->schemeName, self::formatError(
+                $method,
+                $matchedPath,
+                sprintf(
+                    "security requirement '%s' scopes must be a list of strings, got %s.",
+                    $defect->schemeName,
+                    $defect->actualType,
+                ),
+            )),
+            SecurityRequirementDefect::SCOPE_NOT_STRING => new NamedError($defect->schemeName, self::formatError(
+                $method,
+                $matchedPath,
+                sprintf(
+                    "security requirement '%s' scope at index %d must be a string, got %s.",
+                    $defect->schemeName,
+                    $defect->scopeIndex,
+                    $defect->actualType,
+                ),
+            )),
+            SecurityRequirementDefect::UNDEFINED_SCHEME => new NamedError($defect->schemeName, sprintf(
+                "[security] %s %s: security requirement references undefined scheme '%s' — add it under components.securitySchemes.",
+                $method,
+                $matchedPath,
+                $defect->schemeName,
+            )),
+            default => new NamedError($defect->schemeName, sprintf(
+                "[security] %s %s: security scheme '%s' is malformed: %s",
+                $method,
+                $matchedPath,
+                $defect->schemeName,
+                $defect->reason,
+            )),
+        };
     }
 
     /**

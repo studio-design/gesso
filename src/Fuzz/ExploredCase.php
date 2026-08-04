@@ -29,10 +29,17 @@ use function str_replace;
  *
  * `body` is null when the operation declares no `requestBody` (or no
  * `application/json` content; see explorer for the loud-failure cases).
- * `query`, `headers`, and `pathParams` are name → value maps, where the
- * `pathParams` keys are the placeholder *names* extracted from `matchedPath`
- * (e.g. `petId`), not positional. `matchedPath` is the spec template with
- * `{placeholders}` unsubstituted. Use {@see self::uri()} for a concrete URI.
+ * `query`, `headers`, `cookies`, and `pathParams` are name → value maps, where
+ * the `pathParams` keys are the placeholder *names* extracted from
+ * `matchedPath` (e.g. `petId`), not positional. `matchedPath` is the spec
+ * template with `{placeholders}` unsubstituted. Use {@see self::uri()} for a
+ * concrete URI.
+ *
+ * A dispatcher must forward `cookies` to its client's cookie bag — Laravel and
+ * Symfony test clients take cookies as a separate `SymfonyRequest::create()`
+ * argument, so a `Cookie:` request header alone never reaches
+ * `$request->cookie(...)`. A dispatcher that drops them would make a
+ * cookie-credential `ignored_auth` probe pass for the wrong reason.
  */
 final readonly class ExploredCase
 {
@@ -60,6 +67,8 @@ final readonly class ExploredCase
         public array $expectedStatusClasses = [],
         public ?int $seed = null,
         public ?int $caseIndex = null,
+        /** @var array<string, mixed> name → value; dispatchers must forward these to the client's cookie bag */
+        public array $cookies = [],
     ) {
         if ($matchedPath === '') {
             throw new InvalidArgumentException(
@@ -90,6 +99,12 @@ final readonly class ExploredCase
     public function withPathParams(array $pathParams): self
     {
         return $this->copy($this->body, $this->query, $this->headers, $pathParams);
+    }
+
+    /** @param array<string, mixed> $cookies */
+    public function withCookies(array $cookies): self
+    {
+        return $this->copy($this->body, $this->query, $this->headers, $this->pathParams, $cookies);
     }
 
     /**
@@ -182,6 +197,15 @@ final readonly class ExploredCase
             $headers['Content-Type'] = 'application/json';
             $body = (string) json_encode($this->body);
         }
+        if ($this->cookies !== []) {
+            // Rendered as the wire form so the pasted command reproduces the
+            // request; the formatter redacts `Cookie` values by default.
+            $pairs = [];
+            foreach ($this->cookies as $name => $value) {
+                $pairs[] = $name . '=' . (string) self::serialiseParameterValue($value);
+            }
+            $headers['Cookie'] = implode('; ', $pairs);
+        }
 
         return CurlCommandFormatter::format(
             $this->method->value,
@@ -208,12 +232,14 @@ final readonly class ExploredCase
      * @param array<string, mixed> $query
      * @param array<string, mixed> $headers
      * @param array<string, mixed> $pathParams
+     * @param null|array<string, mixed> $cookies null keeps the current cookies
      */
     private function copy(
         mixed $body,
         array $query,
         array $headers,
         array $pathParams,
+        ?array $cookies = null,
     ): self {
         return new self(
             $body,
@@ -228,6 +254,7 @@ final readonly class ExploredCase
             $this->expectedStatusClasses,
             $this->seed,
             $this->caseIndex,
+            $cookies ?? $this->cookies,
         );
     }
 }
