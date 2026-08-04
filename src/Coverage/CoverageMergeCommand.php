@@ -367,6 +367,14 @@ final class CoverageMergeCommand
         }
 
         OpenApiSpecLoader::reset();
+        // Issue #172: $enumBasePath is deliberately left unwired. The merge
+        // command never invokes EnumDriftAsserter, so #[BoundToOpenApiEnum]
+        // resolution never runs here and the omission is inert. If enum-drift
+        // responsibilities are ever added to this command, plumb an
+        // `--enum-spec-base-path` flag through to the `enumBasePath:` argument
+        // and mirror the validation in
+        // OpenApiCoverageExtension::resolveEnumSpecBasePathParameter()
+        // (empty / orphaned value => FATAL, EnumSpecBasePathOrphaned).
         OpenApiSpecLoader::configure($specBasePath, $stripPrefixes);
 
         // Issue #229: each merge invocation owns its trackers. Installing
