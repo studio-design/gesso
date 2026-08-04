@@ -9,8 +9,10 @@ use Studio\Gesso\DecodedBody;
 use Studio\Gesso\OpenApiVersion;
 use Studio\Gesso\SchemaContext;
 use Studio\Gesso\Spec\OpenApiSchemaConverter;
+use Studio\Gesso\UploadedPart;
 use Studio\Gesso\Validation\Support\ContentTypeMatcher;
 use Studio\Gesso\Validation\Support\DiscriminatorContext;
+use Studio\Gesso\Validation\Support\FormBodyDecoder;
 use Studio\Gesso\Validation\Support\MalformedSpecNode;
 use Studio\Gesso\Validation\Support\ObjectConverter;
 use Studio\Gesso\Validation\Support\SchemaValidatorRunner;
@@ -42,7 +44,9 @@ final class RequestBodyValidator
      * entries so the orchestrator can accumulate them alongside other
      * validators' errors. A non-JSON Content-Type that matched a spec
      * media-type key declaring a `schema` this engine cannot evaluate yields
-     * an empty `errors` list plus a non-null `skipReason` (issue #254).
+     * an empty `errors` list plus a non-null `skipReason` (issue #254). Form
+     * media types are the exception: their schema is applied to the parsed
+     * field map ({@see self::validateFormBody()}, issue #405).
      *
      * @param array<string, mixed> $operation
      * @param null|DiscriminatorContext $discriminatorContext carries the resolved root + enforce gate
@@ -176,6 +180,29 @@ final class RequestBodyValidator
 
                     if (isset($content[$matchedKey]['itemSchema'])) {
                         return self::unsupportedItemSchemaResult($normalizedType, $matchedKey);
+                    }
+
+                    // Form bodies are the one non-JSON family this engine can
+                    // still check: the adapter hands over the parsed field map
+                    // (or a raw urlencoded string), each field is coerced to
+                    // its declared type, and the media type's schema applies
+                    // as usual (issue #405).
+                    if (isset($content[$matchedKey]['schema']) && FormBodyDecoder::isFormMediaType($normalizedType)) {
+                        /** @var array<string, mixed> $mediaTypeSpec */
+                        $mediaTypeSpec = $content[$matchedKey];
+
+                        return $this->validateFormBody(
+                            $specName,
+                            $method,
+                            $matchedPath,
+                            $normalizedType,
+                            $matchedKey,
+                            $mediaTypeSpec,
+                            $requestBody,
+                            $version,
+                            $discriminatorContext,
+                            $jsonSchemaDialect,
+                        );
                     }
 
                     // A matched non-JSON media type that declares a `schema`
@@ -351,5 +378,88 @@ final class RequestBodyValidator
         }
 
         return false;
+    }
+
+    /**
+     * Validate a `multipart/form-data` or `application/x-www-form-urlencoded`
+     * body against its media-type schema (issue #405).
+     *
+     * The body value is the field map the adapter parsed (file parts arriving
+     * as {@see UploadedPart}), or a raw urlencoded string. When neither shape
+     * is available — an adapter that leaves the body undecoded, or a raw
+     * multipart payload this validator will not reassemble — the body stays
+     * `Skipped` with a reason rather than counting as a clean pass.
+     *
+     * @param array<string, mixed> $mediaTypeSpec
+     */
+    private function validateFormBody(
+        string $specName,
+        string $method,
+        string $matchedPath,
+        string $normalizedType,
+        string $matchedKey,
+        array $mediaTypeSpec,
+        DecodedBody $requestBody,
+        OpenApiVersion $version,
+        ?DiscriminatorContext $discriminatorContext,
+        ?string $jsonSchemaDialect,
+    ): RequestBodyValidationResult {
+        // An absent optional body has nothing to validate; the required case
+        // was already rejected before content negotiation reached here.
+        if (!$requestBody->present) {
+            return new RequestBodyValidationResult([], matchedContentType: $matchedKey);
+        }
+
+        if (array_key_exists('encoding', $mediaTypeSpec) && MalformedSpecNode::isMalformed($mediaTypeSpec['encoding'])) {
+            return new RequestBodyValidationResult([
+                sprintf(
+                    "Malformed 'requestBody.content[\"%s\"].encoding' for %s %s in '%s' spec: expected object, got %s.",
+                    $matchedKey,
+                    $method,
+                    $matchedPath,
+                    $specName,
+                    MalformedSpecNode::describe($mediaTypeSpec['encoding']),
+                ),
+            ]);
+        }
+
+        $fields = FormBodyDecoder::toFieldMap($requestBody->value, $normalizedType);
+
+        if ($fields === null) {
+            return new RequestBodyValidationResult(
+                [],
+                sprintf(
+                    "request Content-Type '%s' matched spec media type '%s', but the form body was not "
+                    . 'available as a parsed field map, so its schema was not applied',
+                    $normalizedType,
+                    $matchedKey,
+                ),
+                $matchedKey,
+            );
+        }
+
+        /** @var array<string, mixed> $schema */
+        $schema = $mediaTypeSpec['schema'];
+        /** @var array<string, mixed> $encoding */
+        $encoding = is_array($mediaTypeSpec['encoding'] ?? null) ? $mediaTypeSpec['encoding'] : [];
+
+        [$data, $errors] = FormBodyDecoder::prepare($fields, $schema, $encoding);
+
+        $jsonSchema = OpenApiSchemaConverter::convert($schema, $version, SchemaContext::Request, $discriminatorContext, $jsonSchemaDialect);
+
+        // An empty field map is an empty JSON object, not an empty array —
+        // same coercion the JSON path applies so `type: object` still matches.
+        $dataObject = ObjectConverter::convert($data === [] ? new stdClass() : $data);
+
+        $violations = $this->runner->validateStructured(ObjectConverter::convert($jsonSchema), $dataObject);
+        foreach ($violations as $violation) {
+            $errors[] = "[{$violation->displayPath()}] {$violation->message}";
+        }
+
+        return new RequestBodyValidationResult(
+            $errors,
+            matchedContentType: $matchedKey,
+            violations: $violations,
+        );
     }
 }

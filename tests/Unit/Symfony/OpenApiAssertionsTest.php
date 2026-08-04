@@ -147,6 +147,38 @@ final class OpenApiAssertionsTest extends TestCase
     }
 
     #[Test]
+    #[OpenApiSpec('non-json-content-schema')]
+    public function form_request_body_is_validated_against_its_schema(): void
+    {
+        // Issue #405: HttpFoundation keeps the parsed form values in the
+        // request bag, which is what the schema is applied to.
+        $valid = Request::create(
+            '/form-required',
+            'POST',
+            ['name' => 'Fido', 'age' => '3'],
+            [],
+            [],
+            ['CONTENT_TYPE' => 'application/x-www-form-urlencoded'],
+        );
+
+        $this->assertRequestMatchesOpenApiSchema($valid);
+
+        $invalid = Request::create(
+            '/form-required',
+            'POST',
+            ['name' => 'Fido', 'age' => 'three'],
+            [],
+            [],
+            ['CONTENT_TYPE' => 'application/x-www-form-urlencoded'],
+        );
+
+        $this->expectException(AssertionFailedError::class);
+        $this->expectExceptionMessage('/age');
+
+        $this->assertRequestMatchesOpenApiSchema($invalid);
+    }
+
+    #[Test]
     public function invalid_request_body_fails_validation(): void
     {
         $request = Request::create(

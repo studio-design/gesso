@@ -261,6 +261,85 @@ class AutoValidateRequestIntegrationTest extends TestCase
     }
 
     #[Test]
+    public function form_body_field_is_validated_against_its_declared_type(): void
+    {
+        // Issue #405: form values arrive as strings and are coerced to the
+        // declared type, so a non-numeric `age` is a real contract failure
+        // instead of a skipped body.
+        config()->set('gesso.auto_validate_request', true);
+        config()->set('gesso.default_spec', 'non-json-content-schema');
+
+        $this->expectException(AssertionFailedError::class);
+        $this->expectExceptionMessage('/age');
+
+        $this
+            ->withHeader('Content-Type', 'application/x-www-form-urlencoded')
+            ->post('/form-required', ['name' => 'Fido', 'age' => 'three']);
+    }
+
+    #[Test]
+    public function form_body_records_coverage_without_a_skip_reason(): void
+    {
+        config()->set('gesso.auto_validate_request', true);
+        config()->set('gesso.default_spec', 'non-json-content-schema');
+
+        $this
+            ->withHeader('Content-Type', 'application/x-www-form-urlencoded')
+            ->post('/form-required', ['name' => 'Fido', 'age' => '3'])
+            ->assertNoContent();
+
+        $state = OpenApiCoverageTracker::exportState();
+        $entry = $state['specs']['non-json-content-schema']['POST /form-required'] ?? null;
+
+        $this->assertNotNull($entry);
+        $this->assertTrue($entry['requestReached']);
+        $this->assertNull($entry['requestSkipReason']);
+    }
+
+    #[Test]
+    public function multipart_part_content_type_must_match_the_encoding_object(): void
+    {
+        config()->set('gesso.auto_validate_request', true);
+        config()->set('gesso.default_spec', 'non-json-content-schema');
+
+        $this->expectException(AssertionFailedError::class);
+        $this->expectExceptionMessage('application/pdf');
+
+        $this
+            ->withHeader('Content-Type', 'multipart/form-data')
+            ->post('/multipart-encoded', [
+                'avatar' => UploadedFile::fake()->create('avatar.pdf', 10, 'application/pdf'),
+            ]);
+    }
+
+    #[Test]
+    public function multipart_json_part_is_validated_against_its_subschema(): void
+    {
+        // league/openapi-psr7-validator#234: the JSON part is decoded through
+        // encoding.contentType before its subschema applies.
+        config()->set('gesso.auto_validate_request', true);
+        config()->set('gesso.default_spec', 'non-json-content-schema');
+
+        $this
+            ->withHeader('Content-Type', 'multipart/form-data')
+            ->post('/multipart-encoded', [
+                'avatar' => UploadedFile::fake()->create('avatar.png', 10, 'image/png'),
+                'meta' => '{"label": "hero"}',
+            ])
+            ->assertNoContent();
+
+        $this->expectException(AssertionFailedError::class);
+        $this->expectExceptionMessage('/meta/label');
+
+        $this
+            ->withHeader('Content-Type', 'multipart/form-data')
+            ->post('/multipart-encoded', [
+                'avatar' => UploadedFile::fake()->create('avatar.png', 10, 'image/png'),
+                'meta' => '{"label": 7}',
+            ]);
+    }
+
+    #[Test]
     public function auto_validate_request_splits_non_exploded_query_arrays_before_decoding(): void
     {
         // https://github.com/studio-design/gesso/issues/436 — the logical
@@ -314,6 +393,7 @@ class AutoValidateRequestIntegrationTest extends TestCase
             return response()->noContent();
         });
         Route::post('/form-required', static fn() => response()->noContent());
+        Route::post('/multipart-encoded', static fn() => response()->noContent());
 
         // Bearer-protected endpoint in the spec. Route implementation is
         // auth-free in the test app — the library validates against the

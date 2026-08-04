@@ -4,10 +4,13 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Tests\Unit\Psr7;
 
+use const UPLOAD_ERR_OK;
+
 use GuzzleHttp\Psr7\NoSeekStream;
 use GuzzleHttp\Psr7\Request;
 use GuzzleHttp\Psr7\Response;
 use GuzzleHttp\Psr7\ServerRequest;
+use GuzzleHttp\Psr7\UploadedFile;
 use GuzzleHttp\Psr7\Utils;
 use Nyholm\Psr7\Request as NyholmRequest;
 use Nyholm\Psr7\Response as NyholmResponse;
@@ -20,6 +23,7 @@ use Studio\Gesso\Psr7\OpenApiPsr7Validator;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 
 use function array_map;
+use function implode;
 
 final class OpenApiPsr7ValidatorTest extends TestCase
 {
@@ -49,6 +53,55 @@ final class OpenApiPsr7ValidatorTest extends TestCase
         yield 'literal null' => ['/body/null', 200, 'null'];
         yield 'scalar' => ['/body/scalar', 200, '42'];
         yield 'empty' => ['/body/empty', 204, ''];
+    }
+
+    #[Test]
+    public function validates_a_multipart_server_request_from_its_parsed_parts(): void
+    {
+        // Issue #405: a ServerRequest already carries the parsed fields and
+        // uploaded files, so the multipart body reaches its media-type schema.
+        $validator = new OpenApiPsr7Validator('non-json-content-schema');
+
+        $request = (new ServerRequest(
+            'POST',
+            'https://example.test/multipart-encoded',
+            ['Content-Type' => 'multipart/form-data; boundary=----x'],
+        ))
+            ->withParsedBody(['meta' => '{"label": "hero"}'])
+            ->withUploadedFiles([
+                'avatar' => new UploadedFile(Utils::streamFor('png-bytes'), 9, UPLOAD_ERR_OK, 'avatar.png', 'image/png'),
+            ]);
+
+        $result = $validator->validateRequest($request);
+
+        $this->assertTrue($result->isValid(), implode(' | ', $result->errors()));
+
+        $rejected = $request->withUploadedFiles([
+            'avatar' => new UploadedFile(Utils::streamFor('pdf-bytes'), 9, UPLOAD_ERR_OK, 'avatar.pdf', 'application/pdf'),
+        ]);
+
+        $failure = $validator->validateRequest($rejected);
+
+        $this->assertFalse($failure->isValid());
+        $this->assertStringContainsString('application/pdf', implode(' | ', $failure->errors()));
+    }
+
+    #[Test]
+    public function parses_a_raw_urlencoded_body_from_a_client_request(): void
+    {
+        // A client RequestInterface has no parsed bag; the raw bytes are
+        // forwarded and parsed by the validator instead of being skipped.
+        $validator = new OpenApiPsr7Validator('non-json-content-schema');
+
+        $result = $validator->validateRequest(new Request(
+            'POST',
+            'https://example.test/form-required',
+            ['Content-Type' => 'application/x-www-form-urlencoded'],
+            'name=Fido&age=three',
+        ));
+
+        $this->assertFalse($result->isValid());
+        $this->assertStringContainsString('/age', implode(' | ', $result->errors()));
     }
 
     #[Test]

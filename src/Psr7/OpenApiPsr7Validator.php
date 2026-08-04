@@ -11,6 +11,7 @@ use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Message\StreamInterface;
+use Psr\Http\Message\UploadedFileInterface;
 use RuntimeException;
 use Studio\Gesso\Baseline\ViolationFingerprint;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
@@ -18,8 +19,10 @@ use Studio\Gesso\DecodedBody;
 use Studio\Gesso\OpenApiRequestValidator;
 use Studio\Gesso\OpenApiResponseValidator;
 use Studio\Gesso\OpenApiValidationResult;
+use Studio\Gesso\UploadedPart;
 use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 use Studio\Gesso\Validation\Support\ContentTypeMatcher;
+use Studio\Gesso\Validation\Support\FormBodyDecoder;
 use Studio\Gesso\ValidationIssue;
 
 use function array_key_exists;
@@ -80,7 +83,7 @@ final class OpenApiPsr7Validator
         $method = $request->getMethod();
         $path = self::requestPath($request);
         $contentType = self::contentType($request);
-        $decoded = $this->decodeBody($request->getBody(), $contentType, 'Request');
+        $decoded = $this->decodeRequestBody($request, $contentType);
 
         if ($request instanceof ServerRequestInterface) {
             /** @var array<string, mixed> $queryParams */
@@ -355,6 +358,124 @@ final class OpenApiPsr7Validator
     }
 
     /**
+     * Map PSR-7 uploaded files onto the validator's {@see UploadedPart}
+     * envelope, preserving the nesting of `files[0][avatar]`-style names.
+     *
+     * @param array<array-key, mixed> $files
+     *
+     * @return array<array-key, mixed>
+     */
+    private static function uploadedParts(array $files): array
+    {
+        foreach ($files as $key => $file) {
+            if ($file instanceof UploadedFileInterface) {
+                $files[$key] = new UploadedPart($file->getClientMediaType(), $file->getClientFilename());
+            } elseif (is_array($file)) {
+                $files[$key] = self::uploadedParts($file);
+            }
+        }
+
+        return $files;
+    }
+
+    /**
+     * @return array{content: null, errors: non-empty-list<string>}
+     */
+    private static function readFailure(string $subject, string $reason): array
+    {
+        return ['content' => null, 'errors' => self::bodyReadFailure($subject, $reason)['errors']];
+    }
+
+    /**
+     * Decode a request body, routing form media types to their parsed field
+     * map so the validator can apply the media type's schema (issue #405).
+     *
+     * A `ServerRequestInterface` already carries the parsed fields and uploaded
+     * files. For a client `RequestInterface` only the raw bytes exist: an
+     * urlencoded payload is forwarded for the validator to parse, while a raw
+     * multipart payload is left undecoded (the validator then reports a skip
+     * rather than a silent pass).
+     *
+     * @return array{body: DecodedBody, errors: list<string>}
+     */
+    private function decodeRequestBody(RequestInterface $request, ?string $contentType): array
+    {
+        if ($contentType === null || !FormBodyDecoder::isFormMediaType(
+            ContentTypeMatcher::normalizeMediaType($contentType),
+        )) {
+            return $this->decodeBody($request->getBody(), $contentType, 'Request');
+        }
+
+        if ($request instanceof ServerRequestInterface) {
+            /** @var mixed $parsed */
+            $parsed = $request->getParsedBody();
+            $fields = array_merge(
+                is_array($parsed) ? $parsed : [],
+                self::uploadedParts($request->getUploadedFiles()),
+            );
+
+            if ($fields !== []) {
+                return ['body' => DecodedBody::present($fields), 'errors' => []];
+            }
+        }
+
+        $read = $this->readBody($request->getBody(), 'Request');
+
+        if ($read['errors'] !== []) {
+            return ['body' => DecodedBody::absent(), 'errors' => $read['errors']];
+        }
+
+        if ($read['content'] === null || $read['content'] === '') {
+            return ['body' => DecodedBody::absent(), 'errors' => []];
+        }
+
+        return ['body' => DecodedBody::present($read['content']), 'errors' => []];
+    }
+
+    /**
+     * Read a body stream without disturbing the caller's cursor. `content` is
+     * null when the stream is empty or could not be read; `errors` is
+     * non-empty only in the latter case.
+     *
+     * @return array{content: null|string, errors: list<string>}
+     */
+    private function readBody(StreamInterface $stream, string $subject): array
+    {
+        if ($stream->getSize() === 0) {
+            return ['content' => null, 'errors' => []];
+        }
+
+        if (!$stream->isReadable()) {
+            return self::readFailure($subject, 'body stream is not readable');
+        }
+
+        if (!$stream->isSeekable()) {
+            return self::readFailure(
+                $subject,
+                'body stream is not seekable; validation was refused to avoid consuming caller state',
+            );
+        }
+
+        try {
+            $position = $stream->tell();
+            $stream->rewind();
+            $content = $stream->getContents();
+        } catch (RuntimeException $e) {
+            return self::readFailure($subject, 'body stream could not be read: ' . $e->getMessage());
+        } finally {
+            if (isset($position)) {
+                try {
+                    $stream->seek($position);
+                } catch (RuntimeException $e) {
+                    return self::readFailure($subject, 'body stream cursor could not be restored: ' . $e->getMessage());
+                }
+            }
+        }
+
+        return ['content' => $content, 'errors' => []];
+    }
+
+    /**
      * @return array{body: DecodedBody, errors: list<string>}
      */
     private function decodeBody(
@@ -368,38 +489,15 @@ final class OpenApiPsr7Validator
             return ['body' => DecodedBody::absent(), 'errors' => []];
         }
 
-        if ($stream->getSize() === 0) {
-            return ['body' => DecodedBody::absent(), 'errors' => []];
+        $read = $this->readBody($stream, $subject);
+
+        if ($read['errors'] !== []) {
+            return ['body' => DecodedBody::absent(), 'errors' => $read['errors']];
         }
 
-        if (!$stream->isReadable()) {
-            return self::bodyReadFailure($subject, 'body stream is not readable');
-        }
+        $content = $read['content'];
 
-        if (!$stream->isSeekable()) {
-            return self::bodyReadFailure(
-                $subject,
-                'body stream is not seekable; validation was refused to avoid consuming caller state',
-            );
-        }
-
-        try {
-            $position = $stream->tell();
-            $stream->rewind();
-            $content = $stream->getContents();
-        } catch (RuntimeException $e) {
-            return self::bodyReadFailure($subject, 'body stream could not be read: ' . $e->getMessage());
-        } finally {
-            if (isset($position)) {
-                try {
-                    $stream->seek($position);
-                } catch (RuntimeException $e) {
-                    return self::bodyReadFailure($subject, 'body stream cursor could not be restored: ' . $e->getMessage());
-                }
-            }
-        }
-
-        if ($content === '') {
+        if ($content === null || $content === '') {
             return ['body' => DecodedBody::absent(), 'errors' => []];
         }
 

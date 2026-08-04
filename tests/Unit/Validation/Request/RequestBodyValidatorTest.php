@@ -9,6 +9,7 @@ use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Studio\Gesso\DecodedBody;
 use Studio\Gesso\OpenApiVersion;
+use Studio\Gesso\UploadedPart;
 use Studio\Gesso\Validation\Request\RequestBodyValidationResult;
 use Studio\Gesso\Validation\Request\RequestBodyValidator;
 use Studio\Gesso\Validation\Support\SchemaValidatorRunner;
@@ -816,5 +817,271 @@ class RequestBodyValidatorTest extends TestCase
         $this->expectExceptionMessage('cannot also carry errors');
 
         new RequestBodyValidationResult(['some error'], 'a skip reason');
+    }
+
+    #[Test]
+    public function validate_checks_a_form_urlencoded_body_against_its_schema(): void
+    {
+        // Issue #405: form bodies are no longer presence-only. Values arrive
+        // as strings and are coerced to the declared types before the schema
+        // runs, exactly as query parameters are.
+        $result = $this->validator->validate(
+            'spec',
+            'POST',
+            '/pets',
+            self::formOperation(),
+            DecodedBody::present(['name' => 'Fido', 'age' => '3']),
+            'application/x-www-form-urlencoded',
+            OpenApiVersion::V3_0,
+        );
+
+        $this->assertSame([], $result->errors);
+        $this->assertNull($result->skipReason);
+        $this->assertSame('application/x-www-form-urlencoded', $result->matchedContentType);
+    }
+
+    #[Test]
+    public function validate_reports_a_form_urlencoded_type_violation(): void
+    {
+        $result = $this->validator->validate(
+            'spec',
+            'POST',
+            '/pets',
+            self::formOperation(),
+            DecodedBody::present(['name' => 'Fido', 'age' => 'three']),
+            'application/x-www-form-urlencoded; charset=utf-8',
+            OpenApiVersion::V3_0,
+        );
+
+        $this->assertCount(1, $result->errors);
+        $this->assertStringContainsString('/age', $result->errors[0]);
+        $this->assertCount(1, $result->violations);
+        $this->assertSame('/age', $result->violations[0]->instancePath);
+    }
+
+    #[Test]
+    public function validate_reports_a_missing_required_form_field(): void
+    {
+        $result = $this->validator->validate(
+            'spec',
+            'POST',
+            '/pets',
+            self::formOperation(),
+            DecodedBody::present(['age' => '3']),
+            'application/x-www-form-urlencoded',
+            OpenApiVersion::V3_0,
+        );
+
+        $this->assertCount(1, $result->errors);
+        $this->assertStringContainsString('name', $result->errors[0]);
+    }
+
+    #[Test]
+    public function validate_parses_a_raw_urlencoded_body(): void
+    {
+        // Adapters without a parsed bag (a client PSR-7 request) hand over the
+        // raw bytes; the validator parses them rather than skipping.
+        $result = $this->validator->validate(
+            'spec',
+            'POST',
+            '/pets',
+            self::formOperation(),
+            DecodedBody::present('name=Fido&age=notanumber'),
+            'application/x-www-form-urlencoded',
+            OpenApiVersion::V3_0,
+        );
+
+        $this->assertCount(1, $result->errors);
+        $this->assertStringContainsString('/age', $result->errors[0]);
+    }
+
+    #[Test]
+    public function validate_accepts_a_multipart_file_part_for_a_required_binary_property(): void
+    {
+        $result = $this->validator->validate(
+            'spec',
+            'POST',
+            '/uploads',
+            self::multipartOperation(),
+            DecodedBody::present(['avatar' => new UploadedPart('image/png', 'avatar.png')]),
+            'multipart/form-data; boundary=----x',
+            OpenApiVersion::V3_0,
+        );
+
+        $this->assertSame([], $result->errors);
+        $this->assertNull($result->skipReason);
+        $this->assertSame('multipart/form-data', $result->matchedContentType);
+    }
+
+    #[Test]
+    public function validate_reports_a_missing_required_multipart_part(): void
+    {
+        $result = $this->validator->validate(
+            'spec',
+            'POST',
+            '/uploads',
+            self::multipartOperation(),
+            DecodedBody::present(['note' => 'no file here']),
+            'multipart/form-data',
+            OpenApiVersion::V3_0,
+        );
+
+        $this->assertCount(1, $result->errors);
+        $this->assertStringContainsString('avatar', $result->errors[0]);
+    }
+
+    #[Test]
+    public function validate_rejects_a_part_content_type_the_encoding_object_forbids(): void
+    {
+        // The bytes of a binary part are never read, but the part's declared
+        // Content-Type is a contract the encoding object can pin.
+        $result = $this->validator->validate(
+            'spec',
+            'POST',
+            '/uploads',
+            self::multipartOperation(),
+            DecodedBody::present(['avatar' => new UploadedPart('application/pdf', 'avatar.pdf')]),
+            'multipart/form-data',
+            OpenApiVersion::V3_0,
+        );
+
+        $this->assertCount(1, $result->errors);
+        $this->assertStringContainsString('application/pdf', $result->errors[0]);
+        $this->assertStringContainsString('image/*', $result->errors[0]);
+    }
+
+    #[Test]
+    public function validate_applies_a_subschema_to_a_json_part(): void
+    {
+        // league/openapi-psr7-validator#234: a JSON part declared through
+        // encoding.contentType is decoded before its subschema is applied.
+        $result = $this->validator->validate(
+            'spec',
+            'POST',
+            '/uploads',
+            self::multipartOperation(),
+            DecodedBody::present([
+                'avatar' => new UploadedPart('image/png', 'avatar.png'),
+                'meta' => '{"label": 7}',
+            ]),
+            'multipart/form-data',
+            OpenApiVersion::V3_0,
+        );
+
+        $this->assertCount(1, $result->errors);
+        $this->assertStringContainsString('/meta/label', $result->errors[0]);
+    }
+
+    #[Test]
+    public function validate_reports_a_json_part_that_does_not_parse(): void
+    {
+        $result = $this->validator->validate(
+            'spec',
+            'POST',
+            '/uploads',
+            self::multipartOperation(),
+            DecodedBody::present([
+                'avatar' => new UploadedPart('image/png', 'avatar.png'),
+                'meta' => '{not json',
+            ]),
+            'multipart/form-data',
+            OpenApiVersion::V3_0,
+        );
+
+        $this->assertNotEmpty($result->errors);
+        $this->assertStringContainsString('not valid JSON', $result->errors[0]);
+    }
+
+    #[Test]
+    public function validate_skips_a_multipart_body_that_was_never_parsed(): void
+    {
+        // Raw multipart bytes are not reassembled here. That must surface as a
+        // skip with a reason, never as a clean pass.
+        $result = $this->validator->validate(
+            'spec',
+            'POST',
+            '/uploads',
+            self::multipartOperation(),
+            DecodedBody::present('--boundary\r\nContent-Disposition: form-data; name="avatar"'),
+            'multipart/form-data',
+            OpenApiVersion::V3_0,
+        );
+
+        $this->assertSame([], $result->errors);
+        $this->assertNotNull($result->skipReason);
+        $this->assertStringContainsString('parsed field map', $result->skipReason);
+        $this->assertSame('multipart/form-data', $result->matchedContentType);
+    }
+
+    #[Test]
+    public function validate_rejects_a_malformed_encoding_object(): void
+    {
+        $operation = self::multipartOperation();
+        $operation['requestBody']['content']['multipart/form-data']['encoding'] = 'oops';
+
+        $result = $this->validator->validate(
+            'spec',
+            'POST',
+            '/uploads',
+            $operation,
+            DecodedBody::present(['avatar' => new UploadedPart('image/png', 'avatar.png')]),
+            'multipart/form-data',
+            OpenApiVersion::V3_0,
+        );
+
+        $this->assertCount(1, $result->errors);
+        $this->assertStringContainsString("Malformed 'requestBody.content[\"multipart/form-data\"].encoding'", $result->errors[0]);
+    }
+
+    /** @return array<string, mixed> */
+    private static function formOperation(): array
+    {
+        return [
+            'requestBody' => [
+                'required' => true,
+                'content' => [
+                    'application/x-www-form-urlencoded' => [
+                        'schema' => [
+                            'type' => 'object',
+                            'required' => ['name'],
+                            'properties' => [
+                                'name' => ['type' => 'string'],
+                                'age' => ['type' => 'integer'],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private static function multipartOperation(): array
+    {
+        return [
+            'requestBody' => [
+                'required' => true,
+                'content' => [
+                    'multipart/form-data' => [
+                        'schema' => [
+                            'type' => 'object',
+                            'required' => ['avatar'],
+                            'properties' => [
+                                'avatar' => ['type' => 'string', 'format' => 'binary'],
+                                'note' => ['type' => 'string'],
+                                'meta' => [
+                                    'type' => 'object',
+                                    'properties' => ['label' => ['type' => 'string']],
+                                ],
+                            ],
+                        ],
+                        'encoding' => [
+                            'avatar' => ['contentType' => 'image/*'],
+                            'meta' => ['contentType' => 'application/json'],
+                        ],
+                    ],
+                ],
+            ],
+        ];
     }
 }
