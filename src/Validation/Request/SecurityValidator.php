@@ -121,6 +121,27 @@ final class SecurityValidator
     }
 
     /**
+     * Resolve the effective `security` requirement for an operation:
+     * operation-level `security` wins over root-level, and a declaration
+     * missing on both levels yields null. The raw node is returned unvalidated
+     * — callers decide how loud a malformed declaration should be.
+     *
+     * Shared with {@see SecuritySchemeIntrospector} and the fuzz-side
+     * `ignored_auth` probe so the precedence rule has one definition.
+     *
+     * @param array<string, mixed> $spec full spec root (for root-level `security`)
+     * @param array<string, mixed> $operation operation spec (for the override)
+     *
+     * @internal Not part of the package's public API. Do not use from user code.
+     */
+    public static function effectiveSecurity(array $spec, array $operation): mixed
+    {
+        return array_key_exists('security', $operation)
+            ? $operation['security']
+            : ($spec['security'] ?? null);
+    }
+
+    /**
      * Validate the endpoint's `security` requirement against the incoming
      * request. The supported / unsupported / malformed scheme partition is
      * defined by {@see classifyScheme()}; entries containing an unsupported
@@ -166,9 +187,7 @@ final class SecurityValidator
             self::warnAcknowledgementRot($declaredSchemes, $method, $matchedPath);
         }
 
-        $security = array_key_exists('security', $operation)
-            ? $operation['security']
-            : ($spec['security'] ?? null);
+        $security = self::effectiveSecurity($spec, $operation);
 
         if ($security === null) {
             return [];

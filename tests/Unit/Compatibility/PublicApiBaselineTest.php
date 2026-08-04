@@ -673,6 +673,8 @@ final class PublicApiBaselineTest extends TestCase
             'attributes' => [],
             'backing_type' => 'string',
             'cases' => [
+                'IgnoredAuth' => 'ignored_auth',
+                'MissingRequiredHeader' => 'missing_required_header',
                 'UnsupportedMethod' => 'unsupported_method',
             ],
             'constants' => [],
@@ -697,6 +699,15 @@ final class PublicApiBaselineTest extends TestCase
             'methods' => [
                 'cases' => [
                     'static' => true,
+                    'final' => false,
+                    'abstract' => false,
+                    'returns_reference' => false,
+                    'return_type' => 'array',
+                    'attributes' => [],
+                    'parameters' => [],
+                ],
+                'defaultExpectedStatusClasses' => [
+                    'static' => false,
                     'final' => false,
                     'abstract' => false,
                     'returns_reference' => false,
@@ -800,6 +811,14 @@ final class PublicApiBaselineTest extends TestCase
                         'unavailable' => true,
                     ],
                 ],
+                'expectedStatusClasses' => [
+                    'type' => 'array',
+                    'static' => false,
+                    'readonly' => true,
+                    'default' => [
+                        'unavailable' => true,
+                    ],
+                ],
                 'expectedStatuses' => [
                     'type' => 'array',
                     'static' => false,
@@ -810,6 +829,14 @@ final class PublicApiBaselineTest extends TestCase
                 ],
                 'method' => [
                     'type' => 'string',
+                    'static' => false,
+                    'readonly' => true,
+                    'default' => [
+                        'unavailable' => true,
+                    ],
+                ],
+                'mutation' => [
+                    'type' => '?string',
                     'static' => false,
                     'readonly' => true,
                     'default' => [
@@ -917,6 +944,24 @@ final class PublicApiBaselineTest extends TestCase
                             'default' => [
                                 'unavailable' => true,
                             ],
+                            'attributes' => [],
+                        ],
+                        [
+                            'name' => 'expectedStatusClasses',
+                            'type' => 'array',
+                            'optional' => true,
+                            'variadic' => false,
+                            'by_reference' => false,
+                            'default' => [],
+                            'attributes' => [],
+                        ],
+                        [
+                            'name' => 'mutation',
+                            'type' => '?string',
+                            'optional' => true,
+                            'variadic' => false,
+                            'by_reference' => false,
+                            'default' => null,
                             'attributes' => [],
                         ],
                     ],
@@ -1120,6 +1165,38 @@ final class PublicApiBaselineTest extends TestCase
                     'parameters' => [
                         [
                             'name' => 'tags',
+                            'type' => 'array',
+                            'optional' => false,
+                            'variadic' => false,
+                            'by_reference' => false,
+                            'default' => [
+                                'unavailable' => true,
+                            ],
+                            'attributes' => [],
+                        ],
+                    ],
+                ],
+                'expectedStatusClasses' => [
+                    'static' => false,
+                    'final' => false,
+                    'abstract' => false,
+                    'returns_reference' => false,
+                    'return_type' => 'self',
+                    'attributes' => [],
+                    'parameters' => [
+                        [
+                            'name' => 'check',
+                            'type' => 'Studio\\Gesso\\Fuzz\\ContractCheck',
+                            'optional' => false,
+                            'variadic' => false,
+                            'by_reference' => false,
+                            'default' => [
+                                'unavailable' => true,
+                            ],
+                            'attributes' => [],
+                        ],
+                        [
+                            'name' => 'statusClasses',
                             'type' => 'array',
                             'optional' => false,
                             'variadic' => false,

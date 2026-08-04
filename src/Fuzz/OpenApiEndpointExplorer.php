@@ -226,6 +226,39 @@ final class OpenApiEndpointExplorer
         return new ExplorationCases($built);
     }
 
+    /**
+     * Names of the operation's `required: true` `in: header` parameters, in
+     * collection order. Reserved header names (`Accept` / `Content-Type` /
+     * `Authorization`) never appear: {@see ParameterCollector} drops them per
+     * OAS §4.7.12.1, so a generated valid case carries no value to omit for
+     * them either.
+     *
+     * @internal probe-construction primitive for {@see ContractCheckPlan}, not public API
+     *
+     * @return list<string>
+     *
+     * @throws InvalidArgumentException when the method is unsupported, the
+     *                                  spec path is not found, or the
+     *                                  operation is not declared.
+     */
+    public static function requiredHeaderNames(string $specName, string $method, string $path): array
+    {
+        [, $methodEnum, $matchedPath, $pathSpec, $operation] = self::resolveOperationContext($specName, $method, $path, 1);
+
+        $names = [];
+        foreach (ParameterCollector::collect($methodEnum->value, $matchedPath, $pathSpec, $operation)->parameters as $parameter) {
+            if (($parameter['in'] ?? null) !== 'header' || ($parameter['required'] ?? false) !== true) {
+                continue;
+            }
+            $name = $parameter['name'] ?? null;
+            if (is_string($name)) {
+                $names[] = $name;
+            }
+        }
+
+        return $names;
+    }
+
     private static function buildValidCases(
         string $specName,
         string $method,

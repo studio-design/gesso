@@ -1621,6 +1621,8 @@
         "attributes": [],
         "backing_type": "string",
         "cases": {
+            "IgnoredAuth": "ignored_auth",
+            "MissingRequiredHeader": "missing_required_header",
             "UnsupportedMethod": "unsupported_method"
         },
         "constants": [],
@@ -1645,6 +1647,15 @@
         "methods": {
             "cases": {
                 "static": true,
+                "final": false,
+                "abstract": false,
+                "returns_reference": false,
+                "return_type": "array",
+                "attributes": [],
+                "parameters": []
+            },
+            "defaultExpectedStatusClasses": {
+                "static": false,
                 "final": false,
                 "abstract": false,
                 "returns_reference": false,
@@ -1747,6 +1758,14 @@
                     "unavailable": true
                 }
             },
+            "expectedStatusClasses": {
+                "type": "array",
+                "static": false,
+                "readonly": true,
+                "default": {
+                    "unavailable": true
+                }
+            },
             "expectedStatuses": {
                 "type": "array",
                 "static": false,
@@ -1757,6 +1776,14 @@
             },
             "method": {
                 "type": "string",
+                "static": false,
+                "readonly": true,
+                "default": {
+                    "unavailable": true
+                }
+            },
+            "mutation": {
+                "type": "?string",
                 "static": false,
                 "readonly": true,
                 "default": {
@@ -1864,6 +1891,24 @@
                         "default": {
                             "unavailable": true
                         },
+                        "attributes": []
+                    },
+                    {
+                        "name": "expectedStatusClasses",
+                        "type": "array",
+                        "optional": true,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": [],
+                        "attributes": []
+                    },
+                    {
+                        "name": "mutation",
+                        "type": "?string",
+                        "optional": true,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": null,
                         "attributes": []
                     }
                 ]
@@ -2066,6 +2111,38 @@
                 "parameters": [
                     {
                         "name": "tags",
+                        "type": "array",
+                        "optional": false,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": {
+                            "unavailable": true
+                        },
+                        "attributes": []
+                    }
+                ]
+            },
+            "expectedStatusClasses": {
+                "static": false,
+                "final": false,
+                "abstract": false,
+                "returns_reference": false,
+                "return_type": "self",
+                "attributes": [],
+                "parameters": [
+                    {
+                        "name": "check",
+                        "type": "Studio\\Gesso\\Fuzz\\ContractCheck",
+                        "optional": false,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": {
+                            "unavailable": true
+                        },
+                        "attributes": []
+                    },
+                    {
+                        "name": "statusClasses",
                         "type": "array",
                         "optional": false,
                         "variadic": false,

@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Validation\Request;
 
-use function array_key_exists;
 use function is_array;
 use function is_string;
 
@@ -96,9 +95,7 @@ final class SecuritySchemeIntrospector
      */
     public function injectableCredentialsFor(array $spec, array $operation): array
     {
-        $security = array_key_exists('security', $operation)
-            ? $operation['security']
-            : ($spec['security'] ?? null);
+        $security = SecurityValidator::effectiveSecurity($spec, $operation);
 
         if (!is_array($security) || $security === []) {
             return [];
