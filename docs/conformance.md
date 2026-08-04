@@ -6,20 +6,26 @@ is lowered to Draft 07, `discriminator` becomes `if`/`then` conditionals,
 `readOnly` / `writeOnly` become boolean subschemas. That rewriting is the part
 of a contract-testing tool most likely to quietly change what your spec means.
 
-This page measures exactly where it does. Of 3,820 official test-suite cases,
-conversion changes the verdict on 126 — 115 of them one tracked defect, the
-other 11 deliberate. Every one is listed with a reason and pinned in CI, so the
-number can only move when someone updates the record.
+This page measures exactly where it does. Of 3,784 official test-suite cases put
+through both pipelines, conversion changes the verdict on 126 — 115 of them one
+tracked defect, the other 11 deliberate. Every one is listed with a reason and
+pinned in CI, so the number can only move when someone updates the record.
 
 ## What is measured
 
-Every case in the [official JSON Schema Test Suite][suite] is validated twice:
+Each case from the [official JSON Schema Test Suite][suite] is validated twice:
 
 1. **bare** — the schema exactly as the suite wrote it, through
    [opis/json-schema][opis] alone;
 2. **converted** — the same schema after
    `Studio\Gesso\Spec\OpenApiSchemaConverter::convert()`, through the same
    validator.
+
+Not every corpus case can go through both. Of the 3,824 cases in the two suites,
+4 are excluded outright (see below) and 36 use a boolean `true` / `false` root
+schema, which a Schema Object cannot express and `convert()` therefore never
+sees. Those 36 are counted and reported rather than dropped, but they are
+validated once, not twice. That leaves **3,784 cases actually compared**.
 
 Only the cases where the two verdicts differ are recorded. The recorded set is
 committed as
@@ -40,17 +46,16 @@ Corpus: [`json-schema-org/JSON-Schema-Test-Suite`][suite] at
 `composer.json`. `composer.lock` is not committed for a library, so
 `composer.json` is the pin.
 
-| Suite | OAS pipeline | Cases | Verdict changed | Excluded |
-| --- | --- | ---: | ---: | ---: |
-| `draft7` | 3.0 → Draft 07 | 1,657 | 56 | 0 |
-| `draft2020-12` | 3.1 / 3.2 → 2020-12 | 2,163 | 70 | 4 |
+| Suite | OAS pipeline | In corpus | Excluded | Boolean root | Compared | Verdict changed |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| `draft7` | 3.0 → Draft 07 | 1,657 | 0 | 18 | 1,639 | 56 |
+| `draft2020-12` | 3.1 / 3.2 → 2020-12 | 2,167 | 4 | 18 | 2,145 | 70 |
+| **Total** | | **3,824** | **4** | **36** | **3,784** | **126** |
 
 Required and `optional/` cases are both included, `optional/format/` among
 them. The suite's `remotes/` directory is served at `http://localhost:1234/` as
 the suite expects, so remote `$ref` cases genuinely resolve instead of failing
-identically on both sides. 18 cases per suite use a boolean (`true` / `false`)
-root schema, which a Schema Object cannot express and the converter therefore
-never sees; they are counted in the baseline rather than dropped.
+identically on both sides.
 
 OAS 3.2 shares the 3.1 conversion pipeline, so running it would reproduce the
 3.1 numbers exactly and it is not run twice.

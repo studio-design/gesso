@@ -142,7 +142,7 @@ final class JsonSchemaConversionDeltaTest extends TestCase
     {
         $baseline = $this->baseline();
 
-        // Reasons are shared: 114 of the recorded deltas are one defect, and
+        // Reasons are shared: 115 of the recorded deltas are one defect, and
         // repeating its explanation per entry would make the file unreadable
         // without making it more precise. Keys stay per case, so a genuinely
         // new case still fails the comparison above.

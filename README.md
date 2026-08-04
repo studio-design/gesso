@@ -41,7 +41,7 @@ when upgrading from `studio-design/openapi-contract-testing` v1.10.
 - **Multi-format reports** — Markdown / JUnit XML / JSON / HTML output with one-click GitHub Step Summary
 - **Zero runtime overhead** — Only used in test suites
 
-**Conformance evidence**: the schema rewriting behind those claims is pinned against the official [JSON Schema Test Suite](https://github.com/json-schema-org/JSON-Schema-Test-Suite). Of 3,820 cases, conversion changes the verdict on 126 — 115 of them one tracked defect ([#478](https://github.com/studio-design/gesso/issues/478)), the other 11 deliberate. Each is recorded with a reason and enforced in CI. See [`docs/conformance.md`](docs/conformance.md).
+**Conformance evidence**: the schema rewriting behind those claims is pinned against the official [JSON Schema Test Suite](https://github.com/json-schema-org/JSON-Schema-Test-Suite). Of 3,784 cases compared, conversion changes the verdict on 126 — 115 of them one tracked defect ([#478](https://github.com/studio-design/gesso/issues/478)), the other 11 deliberate. Each is recorded with a reason and enforced in CI. See [`docs/conformance.md`](docs/conformance.md).
 
 ## Why this library?
 
