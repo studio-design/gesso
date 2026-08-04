@@ -749,42 +749,48 @@ class OpenApiContractChecksTest extends TestCase
     }
 
     #[Test]
-    public function missing_required_header_skips_state_changing_methods_without_a_reset_hook(): void
+    public function missing_required_header_measures_state_isolation_instead_of_trusting_a_hook(): void
     {
         $dispatched = 0;
 
         $summary = OpenApiContractChecks::run('contract-checks', seed: 7)
             ->checks([ContractCheck::MissingRequiredHeader])
             ->includePaths(['/imports'])
+            // A general-purpose hook is not evidence of anything: it may exist
+            // for authentication, logging, or fixtures, and this one resets
+            // nothing at all.
+            ->tearDownUsing(static function (ExploredOperation $operation): void {
+                // Deliberately a no-op.
+            })
             ->dispatchUsing(static function (ExploredCase $case) use (&$dispatched): int {
                 $dispatched++;
 
-                // The control creates the resource; the omission probe then
-                // collides with it. Both statuses are 4xx-adjacent answers that
-                // say nothing about header enforcement.
+                // The first dispatch creates the resource; every later one
+                // collides with it. A 409 is a 4xx, so an operation that never
+                // enforces the header would be scored green.
                 return $dispatched === 1 ? 201 : 409;
             })
             ->report();
 
-        $this->assertSame(0, $dispatched, 'nothing is dispatched without a declared state-reset hook');
+        // The repeated control detects the collision that the hook's presence
+        // could not rule out.
+        $this->assertSame(2, $dispatched, 'the control is dispatched twice and the probes never run');
         $this->assertFalse($summary->hasFailures());
         $this->assertCount(1, $summary->skips);
         $this->assertSame('POST', $summary->skips[0]->method);
-        $this->assertStringContainsString('POST changes state', $summary->skips[0]->reason);
-        $this->assertStringContainsString('setUpUsing()/tearDownUsing()', $summary->skips[0]->reason);
+        $this->assertStringContainsString('answered 201, then answered 409 when repeated', $summary->skips[0]->reason);
     }
 
     #[Test]
-    public function missing_required_header_probes_state_changing_methods_once_a_reset_hook_is_declared(): void
+    public function missing_required_header_probes_state_changing_methods_when_dispatches_are_isolated(): void
     {
         $dispatched = [];
 
         $summary = OpenApiContractChecks::run('contract-checks', seed: 7)
             ->checks([ContractCheck::MissingRequiredHeader])
             ->includePaths(['/imports'])
-            ->tearDownUsing(static function (ExploredOperation $operation): void {
-                // Stands in for a transaction rollback between dispatches.
-            })
+            // Stands in for a dispatcher that rolls back between requests: the
+            // same input always produces the same answer.
             ->dispatchUsing(static function (ExploredCase $case) use (&$dispatched): int {
                 $dispatched[] = $case;
 
@@ -792,9 +798,26 @@ class OpenApiContractChecksTest extends TestCase
             })
             ->report();
 
-        $this->assertCount(2, $dispatched);
+        // Two controls plus the single omission probe.
+        $this->assertCount(3, $dispatched);
+        $this->assertSame(3, $summary->dispatchedProbes);
         $this->assertSame([], $summary->skips);
         $this->assertFalse($summary->hasFailures());
+    }
+
+    #[Test]
+    public function missing_required_header_reports_an_unenforced_header_on_a_state_changing_method(): void
+    {
+        $summary = OpenApiContractChecks::run('contract-checks', seed: 7)
+            ->checks([ContractCheck::MissingRequiredHeader])
+            ->includePaths(['/imports'])
+            // Isolated dispatches, but the handler ignores the required header.
+            ->dispatchUsing(static fn(ExploredCase $case): int => 201)
+            ->report();
+
+        $this->assertSame([], $summary->skips);
+        $this->assertCount(1, $summary->failures);
+        $this->assertSame("omitted required header 'X-Idempotency-Key'", $summary->failures[0]->mutation);
     }
 
     #[Test]

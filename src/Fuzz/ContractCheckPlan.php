@@ -571,13 +571,16 @@ final class ContractCheckPlan
      * header that was not enforced.
      *
      * Every omission probe is gated behind a control request: the *unmutated*
-     * valid case, dispatched first. Accepting any 4xx is only meaningful once
-     * the un-omitted request is known to reach the handler — otherwise an
-     * operation that never enforces the header still "passes" because the
-     * request was rejected for an unrelated reason (no credentials configured,
-     * a missing fixture, a 404). When the control does not succeed, the
-     * operation is skipped with the control's status in the reason rather than
-     * scored green.
+     * valid case, dispatched first and required to answer 2xx. Accepting any
+     * 4xx is only meaningful once the un-omitted request is known to reach the
+     * handler — otherwise an operation that never enforces the header still
+     * "passes" because the request was rejected for an unrelated reason (no
+     * credentials configured, a missing fixture, a 404, a redirect to a login
+     * page). On a state-changing method the control is dispatched a second
+     * time and must answer identically, which measures the state isolation the
+     * probes depend on rather than assuming it. Either gate failing skips the
+     * operation with the observed statuses in the reason rather than scoring
+     * it green.
      *
      * @param non-empty-list<array{ExploredOperation, array<string, mixed>}> $matching
      * @param list<ContractCheckSkip> $skips
@@ -619,23 +622,6 @@ final class ContractCheckPlan
                 continue;
             }
 
-            // The control request and each omission probe are separate
-            // dispatches against the same resource. On a method that changes
-            // state, the control's own effect answers the probes — a duplicate
-            // create is a 409, an already-deleted resource is a 404 — and both
-            // land inside the 4xx class this check accepts. Nothing in the
-            // status can distinguish that from real header enforcement, so
-            // require the caller to have declared a reset hook instead.
-            if (!self::isSafeMethod($operation->method) && $this->setUp === null && $this->tearDown === null) {
-                $skips[] = new ContractCheckSkip($check, $path, $operation->method, sprintf(
-                    "%s changes state, so the control request's own effect would answer the omission probes (a duplicate-create 409 or an already-deleted 404 is a 4xx too) and be scored as header enforcement. Configure setUpUsing()/tearDownUsing() to reset state between dispatches, or excludeMethods(['%s']).",
-                    $operation->method,
-                    $operation->method,
-                ));
-
-                continue;
-            }
-
             // Deferred until a header is known to exist: generating a full
             // valid case can skip an operation whose body is not synthesizable,
             // and that skip would be noise for an operation this check has no
@@ -666,6 +652,43 @@ final class ContractCheckPlan
                 ));
 
                 continue;
+            }
+
+            // The control and each omission probe are separate dispatches
+            // against the same resource, so on a state-changing method the
+            // control's own effect can answer the probes: a duplicate create is
+            // a 409, an already-deleted resource is a 404, and both sit inside
+            // the 4xx class this check accepts.
+            //
+            // Whether the caller isolates state between dispatches cannot be
+            // read off the plan — setUpUsing()/tearDownUsing() are general
+            // hooks that may exist for authentication, logging, or fixtures,
+            // and a no-op one proves nothing. So measure it instead of trusting
+            // a declaration: repeat the identical valid request. Under real
+            // isolation the second dispatch is indistinguishable from the
+            // first; if it answers differently, the first dispatch left state
+            // behind and every probe after it would be scored against that
+            // residue rather than against header enforcement.
+            if (!self::isSafeMethod($operation->method)) {
+                $repeatStatus = $this->dispatchProbe($check, new ContractCheckProbe(
+                    $case,
+                    $operation,
+                    $operation->operationId,
+                    'control: unmutated valid request, repeated to measure state isolation',
+                ), $derivedSeed);
+                $dispatchedProbes++;
+
+                if ($repeatStatus !== $controlStatus) {
+                    $skips[] = new ContractCheckSkip($check, $path, $operation->method, sprintf(
+                        "%s changes state and is not isolated between dispatches: the unmutated valid request answered %d, then answered %d when repeated, so the first dispatch left state the second one saw. Each omission probe would be answered by the previous dispatch's side effect (a duplicate-create 409 or an already-deleted 404 is a 4xx too) instead of by header enforcement. Reset state around every dispatch with setUpUsing()/tearDownUsing(), or excludeMethods(['%s']).",
+                        $operation->method,
+                        $controlStatus,
+                        $repeatStatus,
+                        $operation->method,
+                    ));
+
+                    continue;
+                }
             }
 
             foreach ($requiredHeaders as $name) {

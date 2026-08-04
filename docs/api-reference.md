@@ -259,7 +259,7 @@ holes schema validation cannot see:
 | `ContractCheck` case | Probe | Default pass statuses |
 |---|---|---|
 | `IgnoredAuth` | the valid request without credentials, then with invalid ones | `401`, `403` |
-| `MissingRequiredHeader` | the valid request with one `required: true` header omitted, gated behind a 2xx unmutated control request | any `4xx` |
+| `MissingRequiredHeader` | the valid request with one `required: true` header omitted, gated behind a 2xx unmutated control request (repeated on state-changing methods to measure isolation) | any `4xx` |
 | `UnsupportedMethod` | one deterministically chosen undocumented method per documented path | `405` |
 
 ```php
