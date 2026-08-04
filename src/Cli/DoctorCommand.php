@@ -424,7 +424,7 @@ final class DoctorCommand
             $spec = OpenApiSpecLoader::load($name);
             $version = OpenApiVersion::fromSpec($spec);
             $dialect = OpenApiSchemaDialect::fromSpec($spec, $version);
-            [$operations, $responses] = $this->inspectStructure($spec, $label, $issues);
+            [$operations, $responses] = $this->inspectStructure($spec, $version, $label, $issues);
             $this->inspectSchemas($spec, $version, $dialect, new DiscriminatorContext($spec, true));
             $this->inspectSkippedFeatures($spec, $label, $acknowledgedSchemes, $issues);
 
@@ -461,8 +461,20 @@ final class DoctorCommand
      *
      * @return array{0: int, 1: int}
      */
-    private function inspectStructure(array $spec, string $label, array &$issues): array
+    private function inspectStructure(array $spec, OpenApiVersion $version, string $label, array &$issues): array
     {
+        // `paths` and an operation's `responses` are REQUIRED in OAS 3.0 but
+        // optional from 3.1 on: a document may describe only `webhooks`, and an
+        // operation may describe only its request. The runtime validators
+        // already read both through `array_key_exists()` and treat an absent
+        // key as "nothing to match", so only a node that is present with the
+        // wrong type is a structure error.
+        $optional = $version !== OpenApiVersion::V3_0;
+
+        if ($optional && !array_key_exists('paths', $spec)) {
+            return [0, 0];
+        }
+
         $paths = $spec['paths'] ?? null;
         if (MalformedSpecNode::isMalformed($paths)) {
             $issues[] = $this->issue('error', 'structure', $label, sprintf('`paths` must be an object, got %s.', MalformedSpecNode::describe($paths)), null);
@@ -486,6 +498,10 @@ final class DoctorCommand
                     continue;
                 }
                 $operationCount++;
+                if ($optional && !array_key_exists('responses', $operation)) {
+                    continue;
+                }
+
                 $responses = $operation['responses'] ?? null;
                 if (MalformedSpecNode::isMalformed($responses)) {
                     $issues[] = $this->issue(

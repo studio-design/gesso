@@ -721,6 +721,59 @@ class DoctorCommandTest extends TestCase
         $this->assertStringContainsString('discriminator.mapping', $report['issues'][0]['message']);
     }
 
+    #[Test]
+    public function omitted_paths_and_responses_are_legal_from_openapi_31_on(): void
+    {
+        // `paths` and an operation's `responses` lost their REQUIRED marker in
+        // OAS 3.1 (https://spec.openapis.org/oas/v3.1.1#openapi-object,
+        // #operation-object). Both official example documents below come from
+        // OAI/learn.openapis.org and previously failed the doctor outright.
+        $cases = [
+            // webhook-example: describes only `webhooks`, no `paths` at all.
+            ['3.1.0', ['webhooks' => ['newPet' => ['post' => ['responses' => ['200' => ['description' => 'ok']]]]]], 0],
+            // non-oauth-scopes: an operation carrying only `security`.
+            ['3.1.0', ['paths' => ['/users' => ['get' => ['security' => [['bearerAuth' => ['read:users']]]]]]], 1],
+            // 3.2-tags-example: operations carrying only `tags` / `summary`.
+            ['3.2.0', ['paths' => ['/flights' => ['get' => ['tags' => ['flights']]]]], 1],
+        ];
+
+        foreach ($cases as $index => [$openapi, $document, $expectedOperations]) {
+            $spec = $this->writeSpec("optional-{$index}.json", (string) json_encode(
+                ['openapi' => $openapi, 'info' => ['title' => 'Test', 'version' => '1']] + $document,
+                JSON_THROW_ON_ERROR,
+            ));
+            $report = $this->runJsonDoctor($spec, $exit);
+
+            $this->assertSame(DoctorCommand::EXIT_OK, $exit, "case {$index}");
+            $this->assertSame([], $report['issues'], "case {$index}");
+            $this->assertSame($expectedOperations, $report['summary']['operations'], "case {$index}");
+            $this->assertSame(0, $report['summary']['responses'], "case {$index}");
+        }
+    }
+
+    #[Test]
+    public function omitted_paths_and_responses_stay_errors_in_openapi_30_as_does_an_explicit_null(): void
+    {
+        $cases = [
+            ['3.0.3', [], '`paths` must be an object, got null.'],
+            ['3.0.3', ['paths' => ['/pets' => ['get' => []]]], 'Operation `GET /pets` has an invalid `responses` object: got null.'],
+            ['3.1.0', ['paths' => null], '`paths` must be an object, got null.'],
+            ['3.1.0', ['paths' => ['/pets' => ['get' => ['responses' => null]]]], 'Operation `GET /pets` has an invalid `responses` object: got null.'],
+        ];
+
+        foreach ($cases as $index => [$openapi, $document, $expectedMessage]) {
+            $spec = $this->writeSpec("required-{$index}.json", (string) json_encode(
+                ['openapi' => $openapi, 'info' => ['title' => 'Test', 'version' => '1']] + $document,
+                JSON_THROW_ON_ERROR,
+            ));
+            $report = $this->runJsonDoctor($spec, $exit);
+
+            $this->assertSame(DoctorCommand::EXIT_DIAGNOSTIC_FAILURE, $exit, "case {$index}");
+            $this->assertSame('structure', $report['issues'][0]['category'], "case {$index}");
+            $this->assertSame($expectedMessage, $report['issues'][0]['message'], "case {$index}");
+        }
+    }
+
     private function writeSpec(string $name, string $contents): string
     {
         $path = $this->workDir . '/' . $name;
