@@ -5,7 +5,7 @@ commit SHA in `composer.json` and asserted on every CI run:
 
 | Corpus | Question it answers | Result |
 | --- | --- | --- |
-| [OAI/learn.openapis.org][learn] | Does Gesso understand the documents the OpenAPI Initiative itself publishes? | 22 of 22 load and diagnose clean |
+| [OAI/learn.openapis.org][learn] | Does Gesso understand the documents the OpenAPI Initiative itself publishes? | 22 of 22 files load without error; one document reports three not-enforced security schemes |
 | [JSON Schema Test Suite][suite] | What does Gesso's schema rewriting change about a schema's meaning? | 126 of 3,784 verdicts move; each one listed with a reason |
 
 Both results are committed as machine-readable baselines, so a number can only
@@ -31,10 +31,17 @@ package does not accept by design, and is not measured.
 | `v3.0/petstore-expanded` | 3.0.0 | 4 | 8 | clean |
 | `v3.0/uspto` | 3.0.1 | 3 | 5 | clean |
 | `v3.1/non-oauth-scopes` | 3.1.0 | 1 | 0 | clean |
-| `v3.1/tictactoe` | 3.1.0 | 3 | 5 JSON / 6 YAML | 3 security schemes reported as not enforced |
+| `v3.1/tictactoe` | 3.1.0 | 3 | 5 JSON / 6 YAML | `warning` — 3 security schemes reported as not enforced |
 | `v3.1/webhook-example` | 3.1.0 | 0 | 0 | clean; `webhooks`-only, nothing to enforce |
 | `v3.2/3.2-query-example` | 3.2.0 | 1 | 1 | clean |
 | `v3.2/3.2-tags-example` | 3.2.0 | 4 | 0 | clean |
+
+Nothing here produces an error: `gesso doctor` exits `0` on all 22 files and
+reports `status: ok` for ten of the eleven documents. `tictactoe` is the
+exception at `status: warning`, from three `skipped` diagnostics — its HTTP
+Basic and OAuth2 schemes are recognized and resolved, then reported as not
+enforced rather than silently passed. "Clean" in the table above means no
+issue of any severity.
 
 Recorded in `tests/fixtures/compatibility/v1-oas-example-documents.json` and
 asserted by `tests/Integration/Conformance/OasExampleDocumentTest.php`. Issues

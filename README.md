@@ -41,7 +41,7 @@ when upgrading from `studio-design/openapi-contract-testing` v1.10.
 - **Multi-format reports** — Markdown / JUnit XML / JSON / HTML output with one-click GitHub Step Summary
 - **Zero runtime overhead** — Only used in test suites
 
-**Conformance evidence**: all 22 example documents the OpenAPI Initiative publishes for 3.0, 3.1, and 3.2 — JSON and YAML alike — load and diagnose clean, and the schema rewriting behind the claims above is pinned against the official [JSON Schema Test Suite](https://github.com/json-schema-org/JSON-Schema-Test-Suite): of 3,784 cases compared, conversion changes the verdict on 126 — 115 of them one tracked defect ([#478](https://github.com/studio-design/gesso/issues/478)), the other 11 deliberate. Both corpora are pinned by commit SHA and enforced in CI. See [`docs/conformance.md`](docs/conformance.md).
+**Conformance evidence**: every example document the OpenAPI Initiative publishes for 3.0, 3.1, and 3.2 loads without error — 11 documents in both their JSON and YAML forms, of which ten are issue-free and `tictactoe` reports three security schemes as recognized but not enforced. The schema rewriting behind the claims above is pinned against the official [JSON Schema Test Suite](https://github.com/json-schema-org/JSON-Schema-Test-Suite): of 3,784 cases compared, conversion changes the verdict on 126 — 115 of them one tracked defect ([#478](https://github.com/studio-design/gesso/issues/478)), the other 11 deliberate. Both corpora are pinned by commit SHA and enforced in CI. See [`docs/conformance.md`](docs/conformance.md).
 
 ## Why this library?
 

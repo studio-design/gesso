@@ -6,15 +6,20 @@ namespace Studio\Gesso\Tests\Integration\Conformance;
 
 use const JSON_THROW_ON_ERROR;
 
+use FilesystemIterator;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+use RecursiveDirectoryIterator;
+use RecursiveIteratorIterator;
+use SplFileInfo;
 use Studio\Gesso\Cli\DoctorCommand;
 
 use function array_keys;
-use function basename;
 use function copy;
+use function dirname;
 use function file_get_contents;
-use function glob;
+use function in_array;
+use function is_dir;
 use function json_decode;
 use function ksort;
 use function mkdir;
@@ -22,6 +27,8 @@ use function rmdir;
 use function sort;
 use function sprintf;
 use function str_ends_with;
+use function strlen;
+use function strrpos;
 use function substr;
 use function sys_get_temp_dir;
 use function uniqid;
@@ -76,22 +83,33 @@ final class OasExampleDocumentTest extends TestCase
         $this->yamlRoot = sys_get_temp_dir() . '/gesso-oas-examples-' . uniqid('', true);
 
         foreach (self::VERSIONS as $version) {
-            mkdir($this->yamlRoot . '/' . $version, recursive: true);
-            foreach ($this->documentsIn($version, 'yaml') as $path) {
-                copy($path, $this->yamlRoot . '/' . $version . '/' . basename($path));
+            foreach ($this->documentsIn($version) as $relative) {
+                if (str_ends_with($relative, '.json')) {
+                    continue;
+                }
+
+                $destination = $this->yamlRoot . '/' . $version . '/' . $relative;
+                if (!is_dir(dirname($destination))) {
+                    mkdir(dirname($destination), recursive: true);
+                }
+                copy($this->corpusPath() . '/examples/' . $version . '/' . $relative, $destination);
             }
         }
     }
 
     protected function tearDown(): void
     {
-        foreach (self::VERSIONS as $version) {
-            foreach (glob($this->yamlRoot . '/' . $version . '/*') ?: [] as $path) {
-                @unlink($path);
+        if (is_dir($this->yamlRoot)) {
+            $entries = new RecursiveIteratorIterator(
+                new RecursiveDirectoryIterator($this->yamlRoot, FilesystemIterator::SKIP_DOTS),
+                RecursiveIteratorIterator::CHILD_FIRST,
+            );
+            /** @var SplFileInfo $entry */
+            foreach ($entries as $entry) {
+                $entry->isDir() ? @rmdir($entry->getPathname()) : @unlink($entry->getPathname());
             }
-            @rmdir($this->yamlRoot . '/' . $version);
+            @rmdir($this->yamlRoot);
         }
-        @rmdir($this->yamlRoot);
 
         parent::tearDown();
     }
@@ -128,12 +146,21 @@ final class OasExampleDocumentTest extends TestCase
         // compare" the moment the baseline records it.
         $jsonForms = [];
         $yamlForms = [];
+        $yamlKeys = [];
         foreach (array_keys($documents) as $key) {
+            $stem = substr($key, 0, (int) strrpos($key, '.'));
             if (str_ends_with($key, '.json')) {
-                $jsonForms[] = substr($key, 0, -5);
-            } elseif (str_ends_with($key, '.yaml')) {
-                $yamlForms[] = substr($key, 0, -5);
+                $jsonForms[] = $stem;
+
+                continue;
             }
+
+            // A document shipped as both `.yaml` and `.yml` lands here twice
+            // and fails the comparison below, which is the intent: which of
+            // the two the loader would pick is then a decision to make, not a
+            // detail to average over.
+            $yamlForms[] = $stem;
+            $yamlKeys[$stem] = $key;
         }
         sort($jsonForms);
         sort($yamlForms);
@@ -142,12 +169,12 @@ final class OasExampleDocumentTest extends TestCase
             $jsonForms,
             $yamlForms,
             'Every example document must be measured in both serializations. A document present in only one '
-            . 'of them is either an upstream change or a glob that stopped matching.',
+            . 'of them is either an upstream change or an enumeration that stopped matching.',
         );
 
         $differences = [];
         foreach ($jsonForms as $document) {
-            if ($documents[$document . '.json'] !== $documents[$document . '.yaml']) {
+            if ($documents[$document . '.json'] !== $documents[$yamlKeys[$document]]) {
                 $differences[] = $document;
             }
         }
@@ -176,14 +203,14 @@ final class OasExampleDocumentTest extends TestCase
         $documents = [];
 
         foreach (self::VERSIONS as $version) {
-            foreach (['json', 'yaml'] as $extension) {
-                $paths = $extension === 'json'
-                    ? $this->documentsIn($version, 'json')
-                    : $this->yamlCopies($version);
+            foreach ($this->documentsIn($version) as $relative) {
+                // JSON forms are read where they are published; the YAML forms
+                // are read from the sibling-free copy made in setUp().
+                $path = str_ends_with($relative, '.json')
+                    ? $this->corpusPath() . '/examples/' . $version . '/' . $relative
+                    : $this->yamlRoot . '/' . $version . '/' . $relative;
 
-                foreach ($paths as $path) {
-                    $documents[$version . '/' . basename($path)] = $this->diagnose($path);
-                }
+                $documents[$version . '/' . $relative] = $this->diagnose($path);
             }
         }
 
@@ -227,29 +254,37 @@ final class OasExampleDocumentTest extends TestCase
     }
 
     /**
+     * Every `.json` / `.yaml` / `.yml` file under the version directory, as
+     * paths relative to it, sorted.
+     *
+     * Recursive on purpose: upstream already ships multi-file documents in
+     * subdirectories (`examples/v2.0/json/petstore-separate/`), so a 3.x
+     * document that arrives nested must reach the baseline instead of being
+     * silently skipped by a flat glob. A fragment that is not a standalone
+     * document would then fail the doctor loudly, which is the outcome that
+     * needs a human decision — unlike a file nobody ever looked at.
+     *
      * @return list<string>
      */
-    private function documentsIn(string $version, string $extension): array
+    private function documentsIn(string $version): array
     {
-        $directory = $this->corpusPath() . '/examples/' . $version;
-        $this->assertDirectoryExists($directory, sprintf('Corpus directory "%s" is missing.', $version));
+        $root = $this->corpusPath() . '/examples/' . $version;
+        $this->assertDirectoryExists($root, sprintf('Corpus directory "%s" is missing.', $version));
 
-        $matches = glob($directory . '/*.' . $extension);
-        $this->assertIsArray($matches);
-        $this->assertNotEmpty($matches, sprintf('No .%s documents in corpus directory "%s".', $extension, $version));
+        $documents = [];
+        /** @var SplFileInfo $file */
+        foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS)) as $file) {
+            if (!$file->isFile() || !in_array($file->getExtension(), ['json', 'yaml', 'yml'], true)) {
+                continue;
+            }
 
-        return $matches;
-    }
+            $documents[] = substr($file->getPathname(), strlen($root) + 1);
+        }
 
-    /**
-     * @return list<string>
-     */
-    private function yamlCopies(string $version): array
-    {
-        $matches = glob($this->yamlRoot . '/' . $version . '/*.yaml');
-        $this->assertIsArray($matches);
+        sort($documents);
+        $this->assertNotEmpty($documents, sprintf('No documents in corpus directory "%s".', $version));
 
-        return $matches;
+        return $documents;
     }
 
     private function installedCorpusCommit(): string
