@@ -1,0 +1,103 @@
+{
+    "format_version": 1,
+    "description": "Cases from the official JSON Schema Test Suite whose validation verdict changes when the schema is rewritten by Studio\\Gesso\\Spec\\OpenApiSchemaConverter. Everything not listed here validates identically before and after conversion. See docs/conformance.md and issue #283.",
+    "corpus": {
+        "name": "json-schema-org/json-schema-test-suite",
+        "source": "https://github.com/json-schema-org/JSON-Schema-Test-Suite",
+        "commit": "cf2e5e0ff2e3d90239c3b59e68ac4c080bd4ac92",
+        "license": "MIT",
+        "pinned_in": "composer.json (repositories[].package.dist.reference)"
+    },
+    "suites": {
+        "draft7": {
+            "cases": 1657,
+            "boolean_root_schemas": 18,
+            "excluded_cases": 0,
+            "deltas": 0
+        },
+        "draft2020-12": {
+            "cases": 2163,
+            "boolean_root_schemas": 18,
+            "excluded_cases": 4,
+            "deltas": 11
+        }
+    },
+    "excluded_groups": {
+        "draft2020-12::unevaluatedItems.json::unevaluatedItems with $dynamicRef": {
+            "group": "unevaluatedItems with $dynamicRef",
+            "reason": "Bare opis/json-schema recurses without bound on $dynamicRef inside unevaluatedItems and exhausts the stack. The conversion layer is not involved — the same input crashes opis directly — and the resulting fatal error is not catchable, so the group is excluded statically rather than recorded as a delta."
+        },
+        "draft2020-12::unevaluatedProperties.json::unevaluatedProperties with $dynamicRef": {
+            "group": "unevaluatedProperties with $dynamicRef",
+            "reason": "Same unbounded $dynamicRef recursion in bare opis/json-schema, in the unevaluatedProperties applicator."
+        }
+    },
+    "deltas": {
+        "draft2020-12::format-assertion.json::schema that uses custom metaschema with format-assertion: false::format-assertion: false: invalid string": {
+            "expected": "invalid",
+            "bare": "invalid",
+            "converted": "convert-error:Studio\\Gesso\\Exception\\InvalidOpenApiSpecException",
+            "reason": "Deliberate. The schema declares a custom metaschema URI in $schema. OpenApiSchemaDialect::assertSupported() rejects dialects it cannot evaluate instead of silently falling back to a dialect with different semantics, which for a contract-testing tool is the safer failure. See docs/supported-features.md."
+        },
+        "draft2020-12::format-assertion.json::schema that uses custom metaschema with format-assertion: false::format-assertion: false: valid string": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "convert-error:Studio\\Gesso\\Exception\\InvalidOpenApiSpecException",
+            "reason": "Deliberate. Custom metaschema URI in $schema; unsupported dialects fail loudly rather than falling back."
+        },
+        "draft2020-12::format-assertion.json::schema that uses custom metaschema with format-assertion: true::format-assertion: true: invalid string": {
+            "expected": "invalid",
+            "bare": "invalid",
+            "converted": "convert-error:Studio\\Gesso\\Exception\\InvalidOpenApiSpecException",
+            "reason": "Deliberate. Custom metaschema URI in $schema; unsupported dialects fail loudly rather than falling back."
+        },
+        "draft2020-12::format-assertion.json::schema that uses custom metaschema with format-assertion: true::format-assertion: true: valid string": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "convert-error:Studio\\Gesso\\Exception\\InvalidOpenApiSpecException",
+            "reason": "Deliberate. Custom metaschema URI in $schema; unsupported dialects fail loudly rather than falling back."
+        },
+        "draft2020-12::refOfUnknownKeyword.json::reference internals of known non-applicator::match": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\UnresolvedReferenceException",
+            "reason": "Known limitation. The schema points $ref at \"#/examples/0\". The converter strips OAS annotation keywords including examples, so the reference target no longer exists and opis reports an unresolved reference. A spec that references into an examples array is unsupported; the outcome is a loud error, never a silent pass. Referencing annotation internals is not something OpenAPI sanctions, so this is documented rather than fixed."
+        },
+        "draft2020-12::refOfUnknownKeyword.json::reference internals of known non-applicator::mismatch": {
+            "expected": "invalid",
+            "bare": "invalid",
+            "converted": "error:Opis\\JsonSchema\\Exceptions\\UnresolvedReferenceException",
+            "reason": "Known limitation. Same stripped-examples reference target as the match case above."
+        },
+        "draft2020-12::vocabulary.json::ignore unrecognized optional vocabulary::number value": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "convert-error:Studio\\Gesso\\Exception\\InvalidOpenApiSpecException",
+            "reason": "Deliberate. Custom metaschema URI in $schema; unsupported dialects fail loudly rather than falling back."
+        },
+        "draft2020-12::vocabulary.json::ignore unrecognized optional vocabulary::string value": {
+            "expected": "invalid",
+            "bare": "invalid",
+            "converted": "convert-error:Studio\\Gesso\\Exception\\InvalidOpenApiSpecException",
+            "reason": "Deliberate. Custom metaschema URI in $schema; unsupported dialects fail loudly rather than falling back."
+        },
+        "draft2020-12::vocabulary.json::schema that uses custom metaschema with with no validation vocabulary::applicator vocabulary still works": {
+            "expected": "invalid",
+            "bare": "invalid",
+            "converted": "convert-error:Studio\\Gesso\\Exception\\InvalidOpenApiSpecException",
+            "reason": "Deliberate. Custom metaschema URI in $schema; unsupported dialects fail loudly rather than falling back."
+        },
+        "draft2020-12::vocabulary.json::schema that uses custom metaschema with with no validation vocabulary::no validation: invalid number, but it still validates": {
+            "expected": "valid",
+            "bare": "invalid",
+            "converted": "convert-error:Studio\\Gesso\\Exception\\InvalidOpenApiSpecException",
+            "reason": "Deliberate. Custom metaschema URI in $schema; unsupported dialects fail loudly rather than falling back. Note that bare opis also disagrees with the suite here (expected valid, opis says invalid): opis does not honour a metaschema that drops the validation vocabulary. That gap belongs to opis and is visible on https://bowtie.report; conversion only turns it into a loud error."
+        },
+        "draft2020-12::vocabulary.json::schema that uses custom metaschema with with no validation vocabulary::no validation: valid number": {
+            "expected": "valid",
+            "bare": "valid",
+            "converted": "convert-error:Studio\\Gesso\\Exception\\InvalidOpenApiSpecException",
+            "reason": "Deliberate. Custom metaschema URI in $schema; unsupported dialects fail loudly rather than falling back."
+        }
+    }
+}

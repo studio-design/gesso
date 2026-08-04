@@ -299,6 +299,7 @@ export default defineConfig({
           { text: 'Setup', link: '/setup' },
           { text: 'Coverage', link: '/coverage' },
           { text: 'Supported features', link: '/supported-features' },
+          { text: 'JSON Schema conformance', link: '/conformance' },
           { text: 'API reference', link: '/api-reference' }
         ]
       }

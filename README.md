@@ -41,6 +41,8 @@ when upgrading from `studio-design/openapi-contract-testing` v1.10.
 - **Multi-format reports** — Markdown / JUnit XML / JSON / HTML output with one-click GitHub Step Summary
 - **Zero runtime overhead** — Only used in test suites
 
+**Conformance evidence**: the schema rewriting behind those claims is pinned against the official [JSON Schema Test Suite](https://github.com/json-schema-org/JSON-Schema-Test-Suite). Of 3,820 cases, conversion changes the verdict on **11**, each recorded with a reason and enforced in CI. See [`docs/conformance.md`](docs/conformance.md).
+
 ## Why this library?
 
 Choose based on the workflow you need rather than on a single yes/no feature count:
@@ -242,6 +244,7 @@ To validate every response automatically, set `'auto_assert' => true` and drop t
 | CI integration (GitHub Actions, PR comments, output formats, partial-run handling) | [`docs/ci.md`](docs/ci.md) |
 | API reference (`OpenApiResponseValidator`, `OpenApiSpecLoader`, `OpenApiCoverageTracker`) | [`docs/api-reference.md`](docs/api-reference.md) |
 | Supported features, known limitations, warning channel | [`docs/supported-features.md`](docs/supported-features.md) |
+| JSON Schema conformance result (conversion delta vs the official test suite) | [`docs/conformance.md`](docs/conformance.md) |
 | Versioning policy & support matrix | [`docs/versioning.md`](docs/versioning.md) |
 
 ## Development
