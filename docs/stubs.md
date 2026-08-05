@@ -73,9 +73,16 @@ Everything the spec pins down is filled in:
   `// TODO` comment. The call shape follows the media type: JSON objects go
   through the JSON helpers, `application/x-www-form-urlencoded` and
   `multipart/form-data` are sent as request fields so the form decoders see a
-  field map, and anything else goes out as a raw body with an explicit
-  `Content-Type`. A multipart stub points at `UploadedFile` for the file parts
-  rather than hand-building a boundary.
+  field map, and anything else goes out as a raw body. Whichever shape it
+  takes, the declared media type is set explicitly — `Request::create()` would
+  otherwise default a form request to `application/x-www-form-urlencoded` (and
+  leave `PATCH` with no `Content-Type` at all), so a multipart operation would
+  never match its own `requestBody`. A multipart stub points at `UploadedFile`
+  for the file parts rather than hand-building a boundary.
+
+  "JSON" here means what the validator means by it — `application/json` or a
+  `+json` suffix. `application/vnd.acme+json` uses the JSON helpers;
+  `application/notjson` does not.
 - **Status codes.** A range key such as `4XX`, or `default`, is exercised as a
   concrete code with a comment saying which one was picked. The code is chosen
   the way the runtime resolver reads the spec — exact keys win over ranges, and

@@ -11,6 +11,7 @@ use const JSON_UNESCAPED_UNICODE;
 use InvalidArgumentException;
 use JsonException;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
+use Studio\Gesso\Validation\Support\ContentTypeMatcher;
 
 use function array_filter;
 use function array_is_list;
@@ -37,6 +38,7 @@ use function sprintf;
 use function str_contains;
 use function str_repeat;
 use function str_replace;
+use function str_starts_with;
 use function strrpos;
 use function strtolower;
 use function strtoupper;
@@ -488,7 +490,7 @@ final class StubRenderer
         // another call shape — passing either to postJson() is a TypeError or
         // a body sent under the wrong Content-Type.
         $usesJsonHelper = !$operation['has_request_body'] || (
-            str_contains($contentType, 'json') && is_array($operation['request_body'])
+            $this->isJsonMediaType($contentType) && is_array($operation['request_body'])
         );
 
         // A form body goes through the plain helpers, which hand the array to
@@ -572,10 +574,16 @@ final class StubRenderer
      */
     private function laravelFormBody(array $operation, array $headers, string $contentType): array
     {
+        // Request::create() defaults the write methods to
+        // application/x-www-form-urlencoded and leaves PATCH without a
+        // Content-Type at all, and putting an UploadedFile in the array does
+        // not change the header. Declaring it is the only thing that makes a
+        // multipart operation validate against its own requestBody.
+        $headers['Content-Type'] = $contentType;
+
         $lines = [];
-        if (str_contains($contentType, 'multipart/')) {
-            $lines[] = '// TODO: replace each file part with an Illuminate\\Http\\UploadedFile;';
-            $lines[] = '// Laravel sends multipart/form-data once the array holds one.';
+        if (str_starts_with(ContentTypeMatcher::normalizeMediaType($contentType), 'multipart/')) {
+            $lines[] = '// TODO: replace each file part with an Illuminate\\Http\\UploadedFile.';
         } else {
             $lines[] = '// TODO: adjust the fields your application expects.';
         }
@@ -595,11 +603,10 @@ final class StubRenderer
         $arguments = $helper === null
             ? [$this->literal($operation['method']), $this->literal($operation['request_path']), '$fields']
             : [$this->literal($operation['request_path']), '$fields'];
-        if ($headers !== []) {
-            $arguments[] = $helper === null
-                ? '[],' . "\n" . '    [],' . "\n" . '    $this->transformHeadersToServerVars(' . $this->literal($headers, 1) . ')'
-                : $this->literal($headers, 1);
-        }
+        // $headers always carries the declared Content-Type by this point.
+        $arguments[] = $helper === null
+            ? '[],' . "\n" . '    [],' . "\n" . '    $this->transformHeadersToServerVars(' . $this->literal($headers, 1) . ')'
+            : $this->literal($headers, 1);
 
         $lines[] = sprintf('$response = $this->%s(', $helper ?? 'call');
         foreach ($arguments as $argument) {
@@ -612,7 +619,19 @@ final class StubRenderer
 
     private function isFormMediaType(string $contentType): bool
     {
-        return str_contains($contentType, 'x-www-form-urlencoded') || str_contains($contentType, 'multipart/');
+        $normalized = ContentTypeMatcher::normalizeMediaType($contentType);
+
+        return $normalized === 'application/x-www-form-urlencoded' || str_starts_with($normalized, 'multipart/');
+    }
+
+    /**
+     * The runtime's own reading of "is this JSON" — `application/json` or a
+     * `+json` suffix. A substring test would take `application/notjson` for
+     * JSON and generate a postJson() call the validator then rejects.
+     */
+    private function isJsonMediaType(string $contentType): bool
+    {
+        return ContentTypeMatcher::isJsonContentType(ContentTypeMatcher::normalizeMediaType($contentType));
     }
 
     /**
@@ -653,12 +672,16 @@ final class StubRenderer
         if ($isForm) {
             $arguments[] = 'parameters: ' . $this->literal($operation['request_body'], 1);
         }
-        if ($operation['headers'] !== [] || ($operation['has_request_body'] && !$isForm)) {
+        if ($operation['headers'] !== [] || $operation['has_request_body']) {
             $server = [];
             foreach ($operation['headers'] as $name => $value) {
                 $server['HTTP_' . strtoupper(str_replace('-', '_', $name))] = $value;
             }
-            if ($operation['has_request_body'] && !$isForm) {
+            if ($operation['has_request_body']) {
+                // Declared for the form branch too: Request::create() would
+                // otherwise default it to urlencoded (or, for PATCH, leave it
+                // unset), and a multipart operation would never match its own
+                // requestBody.
                 $server['CONTENT_TYPE'] = $contentType;
             }
             $arguments[] = 'server: ' . $this->literal($server, 1);
@@ -738,7 +761,7 @@ final class StubRenderer
      */
     private function rawBody(mixed $value, string $contentType): string
     {
-        return is_string($value) && !str_contains($contentType, 'json')
+        return is_string($value) && !$this->isJsonMediaType($contentType)
             ? $value
             : $this->encode($value);
     }

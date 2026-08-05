@@ -11,6 +11,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Studio\Gesso\Cli\StubsCommand;
+use Studio\Gesso\OpenApiRequestValidator;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Stubs\StubRenderer;
 
@@ -359,12 +360,104 @@ class StubsCommandTest extends TestCase
     }
 
     #[Test]
-    public function a_multipart_request_body_points_at_uploaded_files(): void
+    public function a_multipart_request_body_declares_its_content_type(): void
     {
-        $spec = $this->writeInlineSpec('multipart', ['/avatars' => ['post' => [
+        // Request::create() defaults the write methods to urlencoded and
+        // leaves PATCH without a Content-Type, and an UploadedFile in the
+        // array does not change the header — so the media type has to be
+        // declared or the request never matches its own requestBody.
+        $spec = $this->writeInlineSpec('multipart', ['/avatars' => ['patch' => [
             'requestBody' => ['content' => ['multipart/form-data' => [
                 'schema' => ['type' => 'object'],
                 'example' => ['avatar' => 'binary'],
+            ]]],
+            'responses' => ['200' => ['content' => ['application/json' => ['schema' => ['type' => 'object']]]]],
+        ]]]);
+
+        foreach (['laravel' => 'out', 'symfony' => 'sym'] as $adapter => $directory) {
+            $this->command()->run(StubsCommand::parseArgv([
+                '--spec=' . $spec,
+                '--adapter=' . $adapter,
+                '--output=' . $this->workDir . '/' . $directory,
+            ]));
+            $code = (string) file_get_contents($this->workDir . '/' . $directory . '/PatchAvatarsTest.php');
+            $this->assertStringContainsString('multipart/form-data', $code, $adapter);
+        }
+
+        $this->assertStringContainsString(
+            'UploadedFile',
+            (string) file_get_contents($this->workDir . '/out/PatchAvatarsTest.php'),
+        );
+    }
+
+    #[Test]
+    public function the_generated_multipart_request_validates_against_the_spec(): void
+    {
+        $spec = $this->writeInlineSpec('multipartlive', ['/avatars' => ['patch' => [
+            'requestBody' => ['required' => true, 'content' => ['multipart/form-data' => [
+                'schema' => [
+                    'type' => 'object',
+                    'required' => ['avatar'],
+                    'properties' => ['avatar' => ['type' => 'string']],
+                ],
+                'example' => ['avatar' => 'binary'],
+            ]]],
+            'responses' => ['200' => ['content' => ['application/json' => ['schema' => ['type' => 'object']]]]],
+        ]]]);
+
+        $this->command()->run(StubsCommand::parseArgv([
+            '--spec=' . $spec,
+            '--adapter=symfony',
+            '--output=' . $this->workDir . '/out',
+        ]));
+        $code = (string) file_get_contents($this->workDir . '/out/PatchAvatarsTest.php');
+
+        // Build the request exactly as the stub does, then run it through the
+        // real request validator: the media type the stub declares must be the
+        // one the spec's requestBody defines.
+        $this->assertStringContainsString("'CONTENT_TYPE' => 'multipart/form-data',", $code);
+        $this->assertStringContainsString('parameters: [', $code);
+
+        OpenApiSpecLoader::reset();
+        OpenApiSpecLoader::configure($this->workDir);
+        $result = (new OpenApiRequestValidator())->validate(
+            'multipartlive',
+            'PATCH',
+            '/avatars',
+            [],
+            ['Content-Type' => 'multipart/form-data'],
+            ['avatar' => 'binary'],
+            'multipart/form-data',
+        );
+
+        $this->assertTrue($result->isValid(), $result->errorMessage());
+
+        // The urlencoded default Request::create() would have applied is not
+        // in the spec, so it must not validate — proving the assertion above
+        // is not passing for an unrelated reason.
+        $wrongMediaType = (new OpenApiRequestValidator())->validate(
+            'multipartlive',
+            'PATCH',
+            '/avatars',
+            [],
+            ['Content-Type' => 'application/x-www-form-urlencoded'],
+            ['avatar' => 'binary'],
+            'application/x-www-form-urlencoded',
+        );
+
+        $this->assertFalse($wrongMediaType->isValid());
+    }
+
+    #[Test]
+    public function a_media_type_that_merely_contains_json_is_not_treated_as_json(): void
+    {
+        // ContentTypeMatcher::isJsonContentType() reads application/json and
+        // +json suffixes only; a substring test would send postJson() here and
+        // the request would go out as application/json.
+        $spec = $this->writeInlineSpec('notjson', ['/things' => ['post' => [
+            'requestBody' => ['content' => ['application/notjson' => [
+                'schema' => ['type' => 'object'],
+                'example' => ['a' => 1],
             ]]],
             'responses' => ['201' => ['content' => ['application/json' => ['schema' => ['type' => 'object']]]]],
         ]]]);
@@ -375,9 +468,32 @@ class StubsCommandTest extends TestCase
             '--output=' . $this->workDir . '/out',
         ]));
 
-        $code = (string) file_get_contents($this->workDir . '/out/PostAvatarsTest.php');
-        $this->assertStringContainsString('UploadedFile', $code);
-        $this->assertStringContainsString('$response = $this->post(', $code);
+        $code = (string) file_get_contents($this->workDir . '/out/PostThingsTest.php');
+        $this->assertStringNotContainsString('postJson', $code);
+        $this->assertStringContainsString("'Content-Type' => 'application/notjson',", $code);
+    }
+
+    #[Test]
+    public function a_json_suffix_media_type_still_uses_the_json_helpers(): void
+    {
+        $spec = $this->writeInlineSpec('suffix', ['/things' => ['post' => [
+            'requestBody' => ['content' => ['application/vnd.acme+json' => [
+                'schema' => ['type' => 'object'],
+                'example' => ['a' => 1],
+            ]]],
+            'responses' => ['201' => ['content' => ['application/json' => ['schema' => ['type' => 'object']]]]],
+        ]]]);
+
+        $this->command()->run(StubsCommand::parseArgv([
+            '--spec=' . $spec,
+            '--adapter=laravel',
+            '--output=' . $this->workDir . '/out',
+        ]));
+
+        $this->assertStringContainsString(
+            'postJson',
+            (string) file_get_contents($this->workDir . '/out/PostThingsTest.php'),
+        );
     }
 
     #[Test]

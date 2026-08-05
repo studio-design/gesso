@@ -8,6 +8,7 @@ use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\Spec\OpenApiOperationResolver;
 use Studio\Gesso\Validation\Request\ParameterCollector;
 use Studio\Gesso\Validation\Response\ResponseStatusTargetEnumerator;
+use Studio\Gesso\Validation\Support\ContentTypeMatcher;
 
 use function array_filter;
 use function array_key_exists;
@@ -24,7 +25,6 @@ use function is_string;
 use function ksort;
 use function preg_match;
 use function rawurlencode;
-use function str_contains;
 use function str_replace;
 use function str_starts_with;
 use function strcmp;
@@ -348,16 +348,10 @@ final class StubGenerator
 
         // A JSON media type keeps the generated call on the framework's JSON
         // helpers; anything else still gets a stub, just with its own type.
-        $contentType = null;
-        foreach (array_keys($content) as $candidate) {
-            $candidate = (string) $candidate;
-            if (str_contains($candidate, 'json')) {
-                $contentType = $candidate;
-
-                break;
-            }
-        }
-        $contentType ??= (string) array_key_first($content);
+        // ContentTypeMatcher decides which is which, so the stub agrees with
+        // the validator that will judge it — a substring test would read
+        // `application/notjson` as JSON.
+        $contentType = ContentTypeMatcher::findJsonContentType($content) ?? (string) array_key_first($content);
 
         $media = $content[$contentType] ?? null;
         [$example, $hasExample] = $this->example(is_array($media) ? $media : []);
