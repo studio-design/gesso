@@ -27,6 +27,7 @@ use function array_filter;
 use function array_key_exists;
 use function array_keys;
 use function array_values;
+use function count;
 use function implode;
 use function in_array;
 use function is_array;
@@ -41,6 +42,14 @@ use function str_starts_with;
  */
 final class RequestBodyValidator
 {
+    /**
+     * How many readings of one body the validator will enumerate before
+     * falling back to varying a single part at a time. Each unresolved part
+     * multiplies the count, and a form with more than a handful of them is
+     * far outside what a real spec declares.
+     */
+    private const MAX_BODY_READINGS = 64;
+
     public function __construct(
         private readonly SchemaValidatorRunner $runner,
     ) {}
@@ -368,20 +377,21 @@ final class RequestBodyValidator
     }
 
     /**
-     * Every other reading of the body the contract still allows, one per
-     * plausible interpretation of the unverifiable parts' bytes.
+     * Every other reading of the body the contract still allows.
      *
-     * Two readings are always available: the raw string the adapter handed
-     * over (the text reading, already validated by the caller) and the JSON
-     * value it decodes to when it parses — a JSON part whose content is the
-     * string `"hello"` really does read as the string `hello`, which is why
-     * the decoded value is used whatever its type. When a candidate media
-     * type cannot be materialised here at all (XML, an image, the octet
-     * stream), the value is genuinely unknown, so two shape probes stand in
-     * for "could be anything".
+     * Each unverifiable part chooses its media type independently, so the
+     * readings are built per part and then combined: two parts declaring
+     * `application/json, text/plain` really can arrive as text and JSON in
+     * either order, and a probe added because one part may be an image must
+     * not be forced onto a part whose contract only allows JSON or text.
      *
-     * A part declared as an array keeps its container: `encoding` applies to
-     * the items, so only the leaves are re-read.
+     * A part's own readings are the raw string the adapter handed over (the
+     * text reading, which the caller already validated), the JSON value its
+     * bytes decode to when JSON is among its candidates, and — when a
+     * candidate cannot be materialised here at all (XML, an image, the octet
+     * stream) — two shape probes standing in for "could be anything".
+     * An array part keeps its container throughout: `encoding` applies to the
+     * items, so only the leaves are re-read.
      *
      * @param array<string, mixed> $data
      * @param array<string, array{reason: string, candidates: list<string>}> $unverifiable
@@ -390,36 +400,106 @@ final class RequestBodyValidator
      */
     private static function alternativeReadings(array $data, array $unverifiable): array
     {
-        $transforms = [self::jsonReading(...)];
+        $perPart = [];
+        foreach ($unverifiable as $partName => $part) {
+            if (array_key_exists($partName, $data)) {
+                $perPart[$partName] = self::readingsForPart($data[$partName], $part['candidates']);
+            }
+        }
 
-        foreach ($unverifiable as $part) {
-            foreach ($part['candidates'] as $candidate) {
-                if (!ContentTypeMatcher::isJsonContentType($candidate) && $candidate !== 'text/plain') {
-                    $transforms[] = static fn(mixed $_leaf): mixed => new stdClass();
-                    $transforms[] = static fn(mixed $_leaf): mixed => 0;
+        $variants = [$data];
+        foreach ($perPart as $partName => $readings) {
+            $combined = [];
+            foreach ($variants as $variant) {
+                foreach ($readings as $reading) {
+                    $variant[$partName] = $reading;
+                    $combined[] = $variant;
+                }
+            }
 
-                    break 2;
+            // The full product is exponential in the number of unresolved
+            // parts. Past the ceiling, fall back to varying one part at a
+            // time: cross-part combinations go unchecked, which can only keep
+            // a violation that some unchecked mix would have excused — never
+            // hide one.
+            if (count($combined) > self::MAX_BODY_READINGS) {
+                return self::oneReadingAtATime($data, $perPart);
+            }
+
+            $variants = $combined;
+        }
+
+        return array_values(array_filter(
+            $variants,
+            static fn(array $variant): bool => $variant !== $data,
+        ));
+    }
+
+    /**
+     * The values a single part may hold, its raw reading first.
+     *
+     * @param list<string> $candidates
+     *
+     * @return list<mixed>
+     */
+    private static function readingsForPart(mixed $value, array $candidates): array
+    {
+        $readings = [$value];
+        $opaque = false;
+
+        foreach ($candidates as $candidate) {
+            if (ContentTypeMatcher::isJsonContentType($candidate)) {
+                $readings[] = self::readLeaves($value, self::jsonReading(...));
+
+                continue;
+            }
+
+            $opaque = $opaque || $candidate !== 'text/plain';
+        }
+
+        if ($opaque) {
+            $readings[] = self::readLeaves($value, static fn(mixed $_leaf): mixed => new stdClass());
+            $readings[] = self::readLeaves($value, static fn(mixed $_leaf): mixed => 0);
+        }
+
+        $distinct = [];
+        foreach ($readings as $reading) {
+            foreach ($distinct as $seen) {
+                if ($seen === $reading) {
+                    continue 2;
+                }
+            }
+
+            $distinct[] = $reading;
+        }
+
+        return $distinct;
+    }
+
+    /**
+     * Fallback for a body with more unresolved parts than the reading product
+     * can enumerate: vary each part in turn, leaving the others as they came.
+     *
+     * @param array<string, mixed> $data
+     * @param array<string, list<mixed>> $perPart
+     *
+     * @return list<array<string, mixed>>
+     */
+    private static function oneReadingAtATime(array $data, array $perPart): array
+    {
+        $variants = [];
+        foreach ($perPart as $partName => $readings) {
+            foreach ($readings as $reading) {
+                $variant = $data;
+                $variant[$partName] = $reading;
+
+                if ($variant !== $data) {
+                    $variants[] = $variant;
                 }
             }
         }
 
-        $readings = [];
-        foreach ($transforms as $transform) {
-            $reading = $data;
-            foreach ($unverifiable as $partName => $_part) {
-                if (array_key_exists($partName, $data)) {
-                    $reading[$partName] = self::readLeaves($data[$partName], $transform);
-                }
-            }
-
-            // A transform that changed nothing would re-run the validation the
-            // caller already has.
-            if ($reading !== $data) {
-                $readings[] = $reading;
-            }
-        }
-
-        return $readings;
+        return $variants;
     }
 
     /**

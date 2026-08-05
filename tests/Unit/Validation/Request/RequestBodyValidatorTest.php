@@ -1511,6 +1511,78 @@ class RequestBodyValidatorTest extends TestCase
     }
 
     #[Test]
+    public function validate_combines_the_readings_of_two_parts_independently(): void
+    {
+        // Both parts may be text or JSON, and they choose independently. The
+        // branch fires only when the two agree in type, so the mixed readings
+        // — equally permitted — never ask for `fallback`.
+        $operation = self::multipartOperation();
+        $operation['requestBody']['content']['multipart/form-data']['schema'] = [
+            'type' => 'object',
+            'properties' => ['fallback' => ['type' => 'string']],
+            'if' => [
+                'required' => ['a', 'b'],
+                'anyOf' => [
+                    ['properties' => ['a' => ['type' => 'string'], 'b' => ['type' => 'string']]],
+                    ['properties' => ['a' => ['type' => 'object'], 'b' => ['type' => 'object']]],
+                ],
+            ],
+            'then' => ['required' => ['fallback']],
+        ];
+        $operation['requestBody']['content']['multipart/form-data']['encoding'] = [
+            'a' => ['contentType' => 'application/json, text/plain'],
+            'b' => ['contentType' => 'application/json, text/plain'],
+        ];
+
+        $result = $this->validator->validate(
+            'spec',
+            'POST',
+            '/uploads',
+            $operation,
+            DecodedBody::present(['a' => '{"x": 1}', 'b' => '{"y": 2}']),
+            'multipart/form-data',
+            OpenApiVersion::V3_1,
+        );
+
+        $this->assertSame([], $result->errors);
+        $this->assertNotNull($result->skipReason);
+    }
+
+    #[Test]
+    public function validate_does_not_apply_one_parts_probes_to_another(): void
+    {
+        // `a` may be an image, so its value is unknown; `b` may only be JSON
+        // or text, and its bytes are not JSON — so `b` is a string under every
+        // reading it is allowed to have. A branch keyed on that holds
+        // throughout and stays a failure.
+        $operation = self::multipartOperation();
+        $operation['requestBody']['content']['multipart/form-data']['schema'] = [
+            'type' => 'object',
+            'properties' => ['fallback' => ['type' => 'string']],
+            'if' => ['required' => ['b'], 'properties' => ['b' => ['type' => 'string']]],
+            'then' => ['required' => ['fallback']],
+        ];
+        $operation['requestBody']['content']['multipart/form-data']['encoding'] = [
+            'a' => ['contentType' => 'image/png'],
+            'b' => ['contentType' => 'application/json, text/plain'],
+        ];
+
+        $result = $this->validator->validate(
+            'spec',
+            'POST',
+            '/uploads',
+            $operation,
+            DecodedBody::present(['a' => 'opaque', 'b' => 'hello']),
+            'multipart/form-data',
+            OpenApiVersion::V3_1,
+        );
+
+        $this->assertNull($result->skipReason);
+        $this->assertCount(1, $result->errors);
+        $this->assertStringContainsString('fallback', $result->errors[0]);
+    }
+
+    #[Test]
     public function validate_keeps_an_array_part_an_array_in_every_reading(): void
     {
         // `encoding` applies to an array property's items, so the container is
