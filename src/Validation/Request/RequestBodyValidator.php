@@ -43,10 +43,12 @@ use function str_starts_with;
 final class RequestBodyValidator
 {
     /**
-     * How many readings of one body the validator will enumerate before
-     * falling back to varying a single part at a time. Each unresolved part
-     * multiplies the count, and a form with more than a handful of them is
-     * far outside what a real spec declares.
+     * How many readings of one body the validator will enumerate. Each
+     * unresolved part multiplies the count, and a form with more than a
+     * handful of them is far outside what a real spec declares. Past the
+     * ceiling nothing is enumerated: a partially checked product cannot tell a
+     * real violation from one an unchecked combination would excuse, so the
+     * body is reported as unchecked instead.
      */
     private const MAX_BODY_READINGS = 64;
 
@@ -396,9 +398,11 @@ final class RequestBodyValidator
      * @param array<string, mixed> $data
      * @param array<string, array{reason: string, candidates: list<string>}> $unverifiable
      *
-     * @return list<array<string, mixed>>
+     * @return null|list<array<string, mixed>> null when the parts combine into
+     *                                         more readings than this validator enumerates — nothing about the
+     *                                         body's remaining violations can be confirmed then
      */
-    private static function alternativeReadings(array $data, array $unverifiable): array
+    private static function alternativeReadings(array $data, array $unverifiable): ?array
     {
         $perPart = [];
         foreach ($unverifiable as $partName => $part) {
@@ -418,12 +422,12 @@ final class RequestBodyValidator
             }
 
             // The full product is exponential in the number of unresolved
-            // parts. Past the ceiling, fall back to varying one part at a
-            // time: cross-part combinations go unchecked, which can only keep
-            // a violation that some unchecked mix would have excused — never
-            // hide one.
+            // parts. Past the ceiling the readings are not enumerated at all:
+            // a partial sweep would leave combinations unchecked, and any one
+            // of them may be the reading that excuses a violation, so the
+            // caller reports the body as unchecked instead of failing it.
             if (count($combined) > self::MAX_BODY_READINGS) {
-                return self::oneReadingAtATime($data, $perPart);
+                return null;
             }
 
             $variants = $combined;
@@ -474,32 +478,6 @@ final class RequestBodyValidator
         }
 
         return $distinct;
-    }
-
-    /**
-     * Fallback for a body with more unresolved parts than the reading product
-     * can enumerate: vary each part in turn, leaving the others as they came.
-     *
-     * @param array<string, mixed> $data
-     * @param array<string, list<mixed>> $perPart
-     *
-     * @return list<array<string, mixed>>
-     */
-    private static function oneReadingAtATime(array $data, array $perPart): array
-    {
-        $variants = [];
-        foreach ($perPart as $partName => $readings) {
-            foreach ($readings as $reading) {
-                $variant = $data;
-                $variant[$partName] = $reading;
-
-                if ($variant !== $data) {
-                    $variants[] = $variant;
-                }
-            }
-        }
-
-        return $variants;
     }
 
     /**
@@ -733,18 +711,36 @@ final class RequestBodyValidator
         //    schema with the part read differently tells the two apart: what
         //    both readings agree on is a real violation, what they disagree
         //    on hinges on a Content-Type the wire did not preserve.
+        $reasons = array_column($unverifiable, 'reason');
+
         if ($unverifiable !== []) {
             $violations = self::withoutViolationsInside($violations, array_keys($unverifiable));
+            $readings = self::alternativeReadings($data, $unverifiable);
 
-            foreach (self::alternativeReadings($data, $unverifiable) as $reading) {
-                if ($violations === []) {
-                    break;
+            if ($readings === null) {
+                // Too many combinations to enumerate: an unchecked one may be
+                // the reading that excuses what is left, so none of it is
+                // confirmed and the body is reported as unchecked.
+                if ($violations !== []) {
+                    $reasons[] = sprintf(
+                        'the media types of %d unresolved parts combine into more readings than the %d this '
+                        . 'validator enumerates, so the violations depending on them were left unconfirmed',
+                        count($unverifiable),
+                        self::MAX_BODY_READINGS,
+                    );
+                    $violations = [];
                 }
+            } else {
+                foreach ($readings as $reading) {
+                    if ($violations === []) {
+                        break;
+                    }
 
-                $violations = self::violationsEveryReadingAgreesOn(
-                    $violations,
-                    $this->runner->validateStructured($schemaObject, ObjectConverter::convert($reading)),
-                );
+                    $violations = self::violationsEveryReadingAgreesOn(
+                        $violations,
+                        $this->runner->validateStructured($schemaObject, ObjectConverter::convert($reading)),
+                    );
+                }
             }
         }
 
@@ -762,7 +758,7 @@ final class RequestBodyValidator
                     "request Content-Type '%s' matched spec media type '%s', but part of its body schema was not applied: %s",
                     $normalizedType,
                     $matchedKey,
-                    implode('; ', array_column($unverifiable, 'reason')),
+                    implode('; ', $reasons),
                 ),
                 $matchedKey,
             );

@@ -1549,6 +1549,50 @@ class RequestBodyValidatorTest extends TestCase
     }
 
     #[Test]
+    public function validate_does_not_confirm_violations_it_could_not_enumerate_the_readings_of(): void
+    {
+        // Seven parts choosing between JSON and text are 128 readings, past
+        // what this validator enumerates. The branch here is satisfied only
+        // when two parts are read as JSON at once, so no single-part reading
+        // clears it — reporting `fallback` would fail a body that a permitted
+        // but unchecked combination validates.
+        $properties = ['fallback' => ['type' => 'string']];
+        $encoding = [];
+        $fields = [];
+        foreach (['a', 'b', 'c', 'd', 'e', 'f', 'g'] as $part) {
+            $encoding[$part] = ['contentType' => 'application/json, text/plain'];
+            $fields[$part] = '{"x": 1}';
+        }
+
+        $operation = self::multipartOperation();
+        $operation['requestBody']['content']['multipart/form-data']['schema'] = [
+            'type' => 'object',
+            'properties' => $properties,
+            'if' => [
+                'required' => ['a', 'b'],
+                'properties' => ['a' => ['type' => 'object'], 'b' => ['type' => 'object']],
+            ],
+            'then' => true,
+            'else' => ['required' => ['fallback']],
+        ];
+        $operation['requestBody']['content']['multipart/form-data']['encoding'] = $encoding;
+
+        $result = $this->validator->validate(
+            'spec',
+            'POST',
+            '/uploads',
+            $operation,
+            DecodedBody::present($fields),
+            'multipart/form-data',
+            OpenApiVersion::V3_1,
+        );
+
+        $this->assertSame([], $result->errors);
+        $this->assertNotNull($result->skipReason);
+        $this->assertStringContainsString('left unconfirmed', $result->skipReason);
+    }
+
+    #[Test]
     public function validate_does_not_apply_one_parts_probes_to_another(): void
     {
         // `a` may be an image, so its value is unknown; `b` may only be JSON
