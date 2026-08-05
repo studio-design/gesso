@@ -173,18 +173,26 @@ final class StubRenderer
      * Why this adapter cannot express the operation's request, or null when it
      * can.
      *
-     * A multipart body on an `additionalOperations` method is the one case:
+     * A multipart body on an `additionalOperations` method is the usual case:
      * Request::create() routes its parameters argument to the query bag for a
      * non-standard method, and multipart — unlike urlencoded — has no raw-byte
      * form FormBodyDecoder can parse back, so neither the field bag nor the
      * body can be populated. Emitting a stub anyway would produce a request
-     * whose requestBody silently validates as Skipped. The phpunit adapter is
-     * unaffected: it only validates responses and never builds a request.
+     * whose requestBody silently validates as Skipped. The other case is a
+     * body whose every declared media type the runtime resolves to something
+     * else, leaving nothing to send. The phpunit adapter is unaffected by
+     * either: it only validates responses and never builds a request.
      *
      * @param StubOperation $operation
      */
     public function unsupportedReason(array $operation): ?string
     {
+        // The core adapter never builds a request, so no requestBody — however
+        // it is declared — can make an operation unstubbable for it.
+        if ($this->adapter === 'phpunit') {
+            return null;
+        }
+
         // Only a *required* body with no expressible media type is a dead
         // end. An optional one can simply be omitted, and an operation that
         // also offers urlencoded is stubbable through that.
@@ -196,6 +204,11 @@ final class StubRenderer
             static fn(array $candidate): string => $candidate['content_type'],
             $operation['request_candidates'],
         );
+
+        if ($declared === []) {
+            return 'its required body declares no media type a client could send and have the '
+                . 'validator resolve back to it';
+        }
 
         return sprintf(
             'its required %s body cannot be built through Request::create(), which routes '
@@ -217,7 +230,8 @@ final class StubRenderer
     /**
      * The first declared request media type this adapter can actually put on
      * the wire, or null when the operation declares no body or none of its
-     * media types is expressible.
+     * media types is expressible. Only the request-building adapters ask; the
+     * core one validates responses alone and never calls this.
      *
      * @param StubOperation $operation
      *
@@ -226,12 +240,6 @@ final class StubRenderer
     private function selectRequestBody(array $operation): ?array
     {
         foreach ($operation['request_candidates'] as $candidate) {
-            // The core adapter only validates responses, so it never has to
-            // build a request at all.
-            if ($this->adapter === 'phpunit') {
-                return $candidate;
-            }
-
             $normalized = ContentTypeMatcher::normalizeMediaType($candidate['content_type']);
             if (!str_starts_with($normalized, 'multipart/') ||
                 $this->parametersReachTheRequestBag($operation['method'])) {

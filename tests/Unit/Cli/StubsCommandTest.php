@@ -620,6 +620,72 @@ class StubsCommandTest extends TestCase
     }
 
     #[Test]
+    public function a_schema_less_range_shadowed_by_a_json_sibling_is_stubbed_as_a_non_json_type(): void
+    {
+        $spec = $this->writeInlineSpec('schemaless', ['/things' => ['get' => ['responses' => ['200' => [
+            'content' => [
+                'application/json' => ['schema' => ['type' => 'object', 'required' => ['exact'], 'properties' => ['exact' => ['type' => 'integer']]]],
+                'application/*' => [],
+            ],
+        ]]]]]);
+
+        $this->command()->run(StubsCommand::parseArgv([
+            '--spec=' . $spec,
+            '--output=' . $this->workDir . '/out',
+        ]));
+        $code = (string) file_get_contents($this->workDir . '/out/GetThingsTest.php');
+
+        // The JSON resolver never selects the range past a literal JSON key,
+        // but the general one matches it in its second pass — and with no
+        // schema on the range, that route resolves cleanly instead of ending
+        // in the "schema this engine cannot evaluate" skip. So the tuple is
+        // reachable and gets a stub rather than an unreachable report.
+        $this->assertSame(2, substr_count($code, 'public function test_'));
+        $this->assertStringNotContainsString('not stubbed', $this->stdout);
+        $this->assertStringContainsString("'application/vnd.gesso-stub',", $code);
+
+        // Pin the resolver behaviour the decision rests on: the sent type must
+        // come back as the declared key, or the stub would close the wrong
+        // coverage tuple.
+        OpenApiSpecLoader::reset();
+        OpenApiSpecLoader::configure($this->workDir);
+        $result = (new OpenApiResponseValidator(new StrictRequiredTracker()))
+            ->validate('schemaless', 'GET', '/things', 200, ['anything' => true], 'application/vnd.gesso-stub');
+        $this->assertTrue($result->isValid());
+        $this->assertFalse($result->isSkipped());
+        $this->assertSame('application/*', $result->matchedContentType());
+    }
+
+    #[Test]
+    public function an_unsendable_request_body_does_not_block_the_response_only_adapter(): void
+    {
+        $spec = $this->writeInlineSpec('unsendable', ['/things' => ['post' => [
+            // No Content-Type resolves back to `*/*`: a JSON one falls through
+            // to findJsonContentType(), which skips the full wildcard, and a
+            // non-JSON one hits the schema this engine cannot evaluate.
+            'requestBody' => ['required' => true, 'content' => ['*/*' => ['schema' => ['type' => 'object']]]],
+            'responses' => ['200' => ['content' => ['application/json' => ['schema' => ['type' => 'object']]]]],
+        ]]]);
+
+        foreach (['phpunit' => 'out', 'laravel' => 'lar'] as $adapter => $directory) {
+            $this->command()->run(StubsCommand::parseArgv([
+                '--spec=' . $spec,
+                '--adapter=' . $adapter,
+                '--output=' . $this->workDir . '/' . $directory,
+            ]));
+        }
+
+        // The core adapter validates responses only and never builds a
+        // request, so an unsendable requestBody cannot cost it an operation.
+        $this->assertFileExists($this->workDir . '/out/PostThingsTest.php');
+        $this->assertFileDoesNotExist($this->workDir . '/lar/PostThingsTest.php');
+        $this->assertStringContainsString(
+            'its required body declares no media type a client could send',
+            $this->stdout,
+        );
+    }
+
+    #[Test]
     public function an_optional_custom_method_multipart_body_is_stubbed_without_one(): void
     {
         $spec = $this->writeInlineSpec('optionalmultipart', ['/things' => ['additionalOperations' => ['COPY' => [

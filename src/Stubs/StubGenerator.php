@@ -179,13 +179,22 @@ final class StubGenerator
      * guessed: whatever is sent must come back as *this* key, or the stub
      * would validate a sibling's schema and leave its own tuple uncovered.
      *
-     * Null means no media type can select the key at all. That happens to a
-     * `<type>/*` range declared next to a literal JSON key:
-     * {@see ContentTypeMatcher::findJsonContentTypeForResponse()} takes an
-     * exact match first and otherwise falls back to the first literal JSON
-     * entry, so the range is never selected however the Content-Type is
-     * spelled — the media-type twin of a `4XX` declared alongside every exact
-     * 4xx code. The caller reports those instead of stubbing them.
+     * Which resolver decides that depends on the *substitute*, not on the
+     * declared key: the runtime routes a JSON-flavoured Content-Type through
+     * {@see ContentTypeMatcher::findJsonContentTypeForResponse()} and anything
+     * else through {@see ContentTypeMatcher::findContentTypeKey()}. The two
+     * disagree on ranges — the JSON resolver skips `<type>/*` whenever a
+     * literal JSON key exists, while the general one matches it in its second
+     * pass. So a range shadowed by a JSON sibling is still reachable through a
+     * non-JSON Content-Type, which is only worth sending when the key declares
+     * no `schema`: with one, that route ends in the "non-JSON media type
+     * declaring a schema this engine cannot evaluate" skip instead.
+     *
+     * Null means no media type can select the key at all — a `<type>/*` range
+     * carrying a schema and declared next to a literal JSON key is the case:
+     * the JSON route resolves to the sibling and the non-JSON route cannot
+     * validate. That is the media-type twin of a `4XX` declared alongside every
+     * exact 4xx code, and the caller reports those instead of stubbing them.
      *
      * @param array<string, mixed> $siblings the content map the key belongs to
      */
@@ -195,9 +204,18 @@ final class StubGenerator
         $candidates = [$declared, 'application/json'];
 
         [$type] = explode('/', $normalized, 2);
-        foreach ($type === '*' || $type === '' ? ['application', 'text'] : [$type] as $prefix) {
+        $prefixes = $type === '*' || $type === '' ? ['application', 'text'] : [$type];
+        foreach ($prefixes as $prefix) {
             for ($i = 0; $i < 4; $i++) {
                 $candidates[] = $prefix . '/vnd.gesso-stub' . ($i === 0 ? '' : (string) $i) . '+json';
+            }
+        }
+
+        if (!isset($siblings[$declared]['schema'])) {
+            foreach ($prefixes as $prefix) {
+                for ($i = 0; $i < 4; $i++) {
+                    $candidates[] = $prefix . '/vnd.gesso-stub' . ($i === 0 ? '' : (string) $i);
+                }
             }
         }
 
@@ -207,10 +225,11 @@ final class StubGenerator
                 // makes the body validator skip the schema entirely.
                 continue;
             }
-            if (ContentTypeMatcher::findJsonContentTypeForResponse(
-                ContentTypeMatcher::normalizeMediaType($candidate),
-                $siblings,
-            ) === $declared) {
+            $normalizedCandidate = ContentTypeMatcher::normalizeMediaType($candidate);
+            $matched = ContentTypeMatcher::isJsonContentType($normalizedCandidate)
+                ? ContentTypeMatcher::findJsonContentTypeForResponse($normalizedCandidate, $siblings)
+                : ContentTypeMatcher::findContentTypeKey($normalizedCandidate, $siblings);
+            if ($matched === $declared) {
                 return $candidate;
             }
         }

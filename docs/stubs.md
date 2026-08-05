@@ -93,10 +93,13 @@ Everything the spec pins down is filled in:
   the decoder can parse back. A multipart body on a custom method is therefore
   only a dead end when it is `required` *and* no other media type is declared:
   an optional body is simply omitted, and an operation that also offers
-  urlencoded is stubbed through that. When it is a dead end the operation is
-  reported as not stubbable for the Laravel, Pest, and Symfony adapters rather
-  than emitted as a request that would silently validate as skipped. The
-  `phpunit` adapter is unaffected — it only validates responses.
+  urlencoded is stubbed through that. A body no Content-Type resolves back to
+  at all — a `*/*` key, which the JSON path skips and the non-JSON path cannot
+  evaluate — is the other dead end. Either way the operation is reported as not
+  stubbable for the Laravel, Pest, and Symfony adapters rather than emitted as
+  a request that would silently validate as skipped. The `phpunit` adapter is
+  unaffected by both — it only validates responses and never builds a request,
+  so no `requestBody` can cost it an operation.
 - **Status codes.** A range key such as `4XX`, or `default`, is exercised as a
   concrete code with a comment saying which one was picked. The code is chosen
   the way the runtime resolver reads the spec — exact keys win over ranges, and
@@ -113,10 +116,15 @@ Everything the spec pins down is filled in:
   the same response. A range key (`application/*`) is exercised as a concrete
   type it covers — sending the range itself would make the validator read the
   body as non-JSON and skip the schema, so a violating body would pass. The
-  declared key still names the test and the coverage tuple it closes. A range
-  declared *alongside* a literal JSON key is reported rather than stubbed: the
-  resolver takes an exact match first and otherwise the first JSON entry, so no
-  Content-Type can ever select the range.
+  declared key still names the test and the coverage tuple it closes. Which
+  substitute works depends on the key: the JSON resolver takes an exact match
+  first and otherwise the first JSON entry, so a range declared *alongside* a
+  literal JSON key is unreachable through a JSON Content-Type. A non-JSON one
+  reaches it — the general matcher matches `<type>/*` in its second pass — but
+  only pays off when the range declares no `schema`, since a non-JSON type that
+  lands on one is skipped as a contract this engine cannot evaluate. So a
+  schema-less range is stubbed with a concrete non-JSON type, and a range
+  carrying a schema next to a JSON sibling is reported rather than stubbed.
 - **Responses without `content`.** These become a single "no content" test, the
   same tuple the coverage tracker records for a 204.
 
