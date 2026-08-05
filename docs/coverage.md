@@ -12,6 +12,8 @@ Coverage is tracked at **`(method, path, statusCode, contentType)` granularity**
 | `✗` / `:x:` | No pair validated for this endpoint |
 | `·` / `:information_source:` | Endpoint reached via request-validation but no response asserted |
 
+Specification extensions (`x-` keys) on a Responses Object are not responses and are excluded from the declared set.
+
 The report also breaks the coverage rate into two numbers — the strict endpoint rate (all declared responses validated) and the response-level rate (`responseCovered / responseTotal`).
 
 SDK response exploration is reported separately as **SDK exercise coverage**.

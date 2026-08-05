@@ -96,6 +96,23 @@ class CoverageGateCommandTest extends TestCase
     }
 
     #[Test]
+    public function adding_a_responses_object_extension_is_not_a_changed_response(): void
+    {
+        // Issue #493: `x-` keys on a Responses Object are specification
+        // extensions, not declared responses, so they can never be covered.
+        $spec = $this->baseSpec();
+        $spec['paths']['/pets/{id}']['put']['responses']['x-doc'] = ['owner' => 'platform-team'];
+        $spec['paths']['/pets/{id}']['put']['responses']['x-owner'] = 'platform-team';
+
+        $this->writeSpec('base.json', $this->baseSpec());
+        $this->writeSpec('openapi.json', $spec);
+        $this->writeCoverage([]);
+
+        $this->assertSame(CoverageGateCommand::EXIT_OK, $this->gate());
+        $this->assertSame("[Gesso] No operation changed against the base spec.\n", $this->stdout);
+    }
+
+    #[Test]
     public function an_uncovered_added_response_fails_the_gate(): void
     {
         $this->writeSpec('base.json', $this->baseSpec());
