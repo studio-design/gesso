@@ -164,6 +164,30 @@ class CoverageGateCommandTest extends TestCase
     }
 
     #[Test]
+    public function an_overridden_path_level_parameter_change_is_not_a_change(): void
+    {
+        $base = $this->baseSpec();
+        $base['paths']['/pets/{id}']['parameters'] = [
+            ['name' => 'id', 'in' => 'path', 'required' => true, 'schema' => ['type' => 'string']],
+        ];
+        // The operation redeclares the same (in, name), so the Path Item entry
+        // never reaches the request validator.
+        $base['paths']['/pets/{id}']['put']['parameters'] = [
+            ['name' => 'id', 'in' => 'path', 'required' => true, 'schema' => ['type' => 'integer']],
+        ];
+        $head = $base;
+        $head['paths']['/pets/{id}']['parameters'][0]['schema'] = ['type' => 'number', 'format' => 'double'];
+
+        $this->writeSpec('base.json', $base);
+        $this->writeSpec('openapi.json', $head);
+        $this->writeCoverage([]);
+
+        // GET /legacy has no parameters at all, so nothing changes anywhere.
+        $this->assertSame(CoverageGateCommand::EXIT_OK, $this->gate());
+        $this->assertSame("[Gesso] No operation changed against the base spec.\n", $this->stdout);
+    }
+
+    #[Test]
     public function a_security_scheme_definition_change_puts_the_operation_in_scope(): void
     {
         $base = $this->baseSpec();

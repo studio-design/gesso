@@ -9,7 +9,7 @@ It needs three inputs:
 
 | Input | Where it comes from |
 |---|---|
-| the base spec | `git show origin/main:openapi.json > base.json` |
+| the base spec | `git show` for a single file, `git worktree` for a split spec (below) |
 | the current spec | your working tree |
 | a coverage document | [`json_output`](coverage-json-schema.md) from the test run |
 
@@ -19,6 +19,20 @@ git show origin/main:openapi.json > /tmp/base.json
 vendor/bin/gesso coverage:gate \
   --base-spec=/tmp/base.json \
   --spec=openapi.json \
+  --coverage=build/coverage.json
+```
+
+Both documents are loaded exactly like the runtime loader loads them, so local
+`$ref`s resolve **relative to their own entry document's directory**. The
+single-file `git show` redirect above only works for a spec that has no local
+`$ref`. For a split spec, materialise the whole base tree instead:
+
+```bash
+git worktree add /tmp/base origin/main
+
+vendor/bin/gesso coverage:gate \
+  --base-spec=/tmp/base/openapi/root.yaml \
+  --spec=openapi/root.yaml \
   --coverage=build/coverage.json
 ```
 
@@ -50,13 +64,19 @@ each operation is fingerprinted:
   the deleted row as `removed (not testable)`.
 
 The request contract means the **effective** one, not just the operation
-object: the Path Item fields the operation inherits (shared `parameters`,
-`servers`, …) and the security requirement that actually applies —
-operation-level if declared, otherwise the root default — together with the
-`components.securitySchemes` definitions it names. Tightening a path-level
-parameter to `required`, or swapping an API key from a header to a query
-parameter, therefore puts every affected operation in scope even though no
-operation object changed.
+object:
+
+- the Path Item fields the operation inherits (`servers`, …);
+- the parameters after the Path Item / operation merge — an operation-level
+  entry replaces the Path Item entry with the same `in` + `name`, so changing
+  an *already-overridden* Path Item parameter is not a change;
+- the security requirement that actually applies — operation-level if
+  declared, otherwise the root default — together with the
+  `components.securitySchemes` definitions it names.
+
+Tightening a path-level parameter to `required`, or swapping an API key from a
+header to a query parameter, therefore puts every affected operation in scope
+even though no operation object changed.
 
 The comparison is **structural, not semantic**. The gate does not classify a
 change as breaking or non-breaking — that is the job of a dedicated diff tool

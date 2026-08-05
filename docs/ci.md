@@ -98,8 +98,13 @@ vendor/bin/gesso coverage:merge \
 
 `gesso coverage:gate` fails the build when a pull request changes an operation
 that no test exercises — see [Spec patch coverage gate](coverage-gate.md) for
-the full behaviour and exit codes. It needs the base branch's copy of the spec,
-so check out with enough history for `git show` to reach it:
+the full behaviour and exit codes.
+
+It needs the base branch's copy of the spec **including whatever that copy
+`$ref`s**: the gate resolves local references relative to the base document's
+own directory, exactly like the runtime loader. Materialise the base revision
+as a `git worktree` rather than redirecting a single `git show`, so a split
+spec (`root.yaml` → `./schemas/*.yaml`) resolves there too:
 
 ```yaml
 name: Spec patch coverage
@@ -123,16 +128,16 @@ jobs:
       - name: Run tests with JSON coverage
         run: vendor/bin/phpunit
 
-      - name: Fetch the base spec
+      - name: Check out the base spec tree
         run: |
-          git fetch --no-tags --depth=1 origin "${{ github.base_ref }}"
-          git show "origin/${{ github.base_ref }}:openapi.json" > "${RUNNER_TEMP}/base.json"
+          git fetch --no-tags origin "${{ github.base_ref }}"
+          git worktree add "${RUNNER_TEMP}/base" FETCH_HEAD
 
       - name: Gate the changed operations
         run: |
           set -o pipefail
           vendor/bin/gesso coverage:gate \
-            --base-spec="${RUNNER_TEMP}/base.json" \
+            --base-spec="${RUNNER_TEMP}/base/openapi.json" \
             --spec=openapi.json \
             --coverage=build/coverage.json \
             --format=markdown | tee -a "${GITHUB_STEP_SUMMARY}"
@@ -145,6 +150,11 @@ parameter (or `coverage:merge --json-output` for parallel runs) as shown in
 > **Note:** `set -o pipefail` is required. GitHub Actions runs `run:` blocks
 > under `bash -e` without it, so the step would take `tee`'s exit code and the
 > gate's failure would be swallowed.
+
+A single-file spec with no local `$ref` needs no worktree —
+`git show "origin/${{ github.base_ref }}:openapi.json" > "${RUNNER_TEMP}/base.json"`
+is enough. If you already publish a bundled artifact, point `--base-spec` at
+the base branch's bundle instead.
 
 ## Partial test runs (`--filter`, `--testsuite`, path args, …)
 

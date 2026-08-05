@@ -18,6 +18,7 @@ use Studio\Gesso\Coverage\JsonCoverageRenderer;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\Spec\OpenApiOperationResolver;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
+use Studio\Gesso\Validation\Request\ParameterCollector;
 use Throwable;
 
 use function array_is_list;
@@ -140,8 +141,10 @@ final class CoverageGateCommand
               {$invocation} --base-spec=<path> --spec=<path> --coverage=<path> [options]
 
             Options:
-              --base-spec=<path>   Spec as it looks on the base branch, e.g. written by
-                                   `git show origin/main:openapi.json > base.json`.
+              --base-spec=<path>   Spec as it looks on the base branch. Local \$refs
+                                   resolve from its own directory, so materialise the
+                                   whole tree (`git worktree add /tmp/base origin/main`)
+                                   unless the spec is a single self-contained file.
               --spec=<path>        Spec as it looks on this branch.
               --coverage=<path>    Coverage JSON (schema_version 3) written by the
                                    `json_output` extension parameter or
@@ -290,9 +293,11 @@ final class CoverageGateCommand
 
             // Path Item fields the operations under it inherit. Everything
             // that is itself an operation is stripped so a sibling's change
-            // does not leak into this operation's fingerprint.
+            // does not leak into this operation's fingerprint. `parameters`
+            // is stripped too — it is fingerprinted per operation, after the
+            // override merge.
             $inherited = $pathItem;
-            unset($inherited['additionalOperations']);
+            unset($inherited['additionalOperations'], $inherited['parameters']);
             foreach (OpenApiOperationResolver::FIXED_OPERATION_FIELDS as $field) {
                 unset($inherited[$field]);
             }
@@ -310,10 +315,11 @@ final class CoverageGateCommand
 
                 $endpoint = $method . ' ' . (string) $path;
                 $ownShape = $operation;
-                unset($ownShape['responses']);
+                unset($ownShape['responses'], $ownShape['parameters']);
                 $shape = [
                     $ownShape,
                     $inherited,
+                    $this->effectiveParameters($pathItem, $operation),
                     $this->effectiveSecurity($operation, $rootSecurity, $securitySchemes),
                 ];
 
@@ -374,6 +380,46 @@ final class CoverageGateCommand
     {
         return in_array($method, ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'QUERY'], true) ||
             str_starts_with($location, 'additionalOperations[');
+    }
+
+    /**
+     * The parameters that actually apply, merged the way
+     * {@see ParameterCollector::collect()}
+     * merges them: an operation-level entry replaces the Path Item entry with
+     * the same `in` + `name`. Fingerprinting the two lists separately would
+     * flag a change to an already-overridden Path Item parameter, even though
+     * the request validator never sees it.
+     *
+     * @param array<string, mixed> $pathItem
+     * @param array<string, mixed> $operation
+     *
+     * @return array<string, mixed>
+     */
+    private function effectiveParameters(array $pathItem, array $operation): array
+    {
+        $merged = [];
+        $unkeyable = 0;
+
+        foreach ([$pathItem['parameters'] ?? [], $operation['parameters'] ?? []] as $index => $source) {
+            if (!is_array($source)) {
+                // Malformed node: keep it in the fingerprint rather than
+                // dropping it, so a change to it still reads as a change.
+                $merged['!' . $index] = $source;
+
+                continue;
+            }
+
+            foreach ($source as $parameter) {
+                $key = is_array($parameter) &&
+                    is_string($parameter['in'] ?? null) &&
+                    is_string($parameter['name'] ?? null)
+                        ? $parameter['in'] . ':' . $parameter['name']
+                        : '#' . $unkeyable++;
+                $merged[$key] = $parameter;
+            }
+        }
+
+        return $merged;
     }
 
     /**
