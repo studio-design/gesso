@@ -26,9 +26,11 @@ use Studio\Gesso\Validation\Support\ContentTypeMatcher;
 use Studio\Gesso\Validation\Support\FormBodyDecoder;
 use Studio\Gesso\ValidationIssue;
 
+use function array_is_list;
 use function array_key_exists;
 use function array_merge;
 use function array_pad;
+use function array_values;
 use function explode;
 use function is_array;
 use function json_decode;
@@ -373,6 +375,12 @@ final class OpenApiPsr7Validator
      */
     private static function uploadedParts(array $files): array
     {
+        // A dropped element must not leave a hole: `files[0]` failing would
+        // otherwise turn the remaining list into the map `{1: ...}`, which
+        // reaches the schema as an object and fails `type: array` even though
+        // a valid file is still there.
+        $wasList = array_is_list($files);
+
         foreach ($files as $key => $file) {
             if ($file instanceof UploadedFileInterface) {
                 if ($file->getError() !== UPLOAD_ERR_OK) {
@@ -387,7 +395,7 @@ final class OpenApiPsr7Validator
             }
         }
 
-        return $files;
+        return $wasList ? array_values($files) : $files;
     }
 
     /**

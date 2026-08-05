@@ -459,7 +459,7 @@ final class RequestBodyValidator
         /** @var array<string, mixed> $encoding */
         $encoding = is_array($mediaTypeSpec['encoding'] ?? null) ? $mediaTypeSpec['encoding'] : [];
 
-        [$data, $errors] = FormBodyDecoder::prepare($fields, $schema, $encoding);
+        [$data, $errors] = FormBodyDecoder::prepare($fields, $schema, $encoding, $normalizedType);
 
         $jsonSchema = OpenApiSchemaConverter::convert($schema, $version, SchemaContext::Request, $discriminatorContext, $jsonSchemaDialect);
 

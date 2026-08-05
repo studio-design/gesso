@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Studio\Gesso\Tests\Unit\Symfony;
 
 use const UPLOAD_ERR_INI_SIZE;
+use const UPLOAD_ERR_OK;
 
 use PHPUnit\Framework\AssertionFailedError;
 use PHPUnit\Framework\Attributes\Test;
@@ -199,6 +200,27 @@ final class OpenApiAssertionsTest extends TestCase
 
         $this->expectException(AssertionFailedError::class);
         $this->expectExceptionMessage('avatar');
+
+        $this->assertRequestMatchesOpenApiSchema($request);
+    }
+
+    #[Test]
+    #[OpenApiSpec('non-json-content-schema')]
+    public function dropping_a_failed_upload_keeps_the_remaining_files_a_list(): void
+    {
+        $request = Request::create(
+            '/multipart-file-list',
+            'POST',
+            [],
+            [],
+            [
+                'files' => [
+                    new UploadedFile(__FILE__, 'too-big.png', 'image/png', UPLOAD_ERR_INI_SIZE, true),
+                    new UploadedFile(__FILE__, 'ok.png', 'image/png', UPLOAD_ERR_OK, true),
+                ],
+            ],
+            ['CONTENT_TYPE' => 'multipart/form-data'],
+        );
 
         $this->assertRequestMatchesOpenApiSchema($request);
     }

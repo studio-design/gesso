@@ -8,6 +8,8 @@ use Studio\Gesso\UploadedPart;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\Request;
 
+use function array_is_list;
+use function array_values;
 use function is_array;
 
 /**
@@ -52,6 +54,12 @@ final class HttpFoundationFormBody
      */
     private static function toParts(array $files): array
     {
+        // A dropped element must not leave a hole: `files[0]` failing would
+        // otherwise turn the remaining list into the map `{1: ...}`, which
+        // reaches the schema as an object and fails `type: array` even though
+        // a valid file is still there.
+        $wasList = array_is_list($files);
+
         foreach ($files as $key => $file) {
             if ($file instanceof UploadedFile) {
                 if (!$file->isValid()) {
@@ -66,6 +74,6 @@ final class HttpFoundationFormBody
             }
         }
 
-        return $files;
+        return $wasList ? array_values($files) : $files;
     }
 }

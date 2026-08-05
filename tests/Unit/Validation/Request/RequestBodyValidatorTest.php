@@ -1078,8 +1078,65 @@ class RequestBodyValidatorTest extends TestCase
     #[Test]
     public function validate_decodes_a_json_part_regardless_of_its_position_in_the_encoding_list(): void
     {
-        // `encoding.contentType` may be a comma-separated list; a JSON entry
-        // anywhere in it makes the part JSON, not only a leading one.
+        // `encoding.contentType` may list several JSON flavours; the part is
+        // JSON whichever one comes first.
+        $operation = self::multipartOperation();
+        $operation['requestBody']['content']['multipart/form-data']['encoding']['meta']['contentType']
+            = 'application/problem+json, application/json';
+
+        $result = $this->validator->validate(
+            'spec',
+            'POST',
+            '/uploads',
+            $operation,
+            DecodedBody::present([
+                'avatar' => new UploadedPart('image/png', 'avatar.png'),
+                'meta' => '{"label": 7}',
+            ]),
+            'multipart/form-data',
+            OpenApiVersion::V3_0,
+        );
+
+        $this->assertCount(1, $result->errors);
+        $this->assertStringContainsString('/meta/label', $result->errors[0]);
+    }
+
+    #[Test]
+    public function validate_does_not_sniff_a_string_part_against_a_mixed_encoding_list(): void
+    {
+        // OAS 3.2 §4.15.4.1: the part's own Content-Type selects among several
+        // declared media types, and sniffing is not the default. That header
+        // does not survive any adapter's form parsing, so a text/plain value
+        // that happens to parse as JSON (`42`) must NOT be decoded — doing so
+        // turned a valid string part into an integer and failed its schema.
+        $operation = self::multipartOperation();
+        $operation['requestBody']['content']['multipart/form-data']['schema']['properties']['note']
+            = ['type' => 'string'];
+        $operation['requestBody']['content']['multipart/form-data']['encoding']['note']
+            = ['contentType' => 'application/json, text/plain'];
+
+        $result = $this->validator->validate(
+            'spec',
+            'POST',
+            '/uploads',
+            $operation,
+            DecodedBody::present([
+                'avatar' => new UploadedPart('image/png', 'avatar.png'),
+                'note' => '42',
+            ]),
+            'multipart/form-data',
+            OpenApiVersion::V3_0,
+        );
+
+        $this->assertSame([], $result->errors);
+    }
+
+    #[Test]
+    public function validate_decodes_a_mixed_list_part_whose_schema_cannot_hold_a_string(): void
+    {
+        // The text alternative of a mixed list could never satisfy an object
+        // schema, so JSON is the only readable choice — a contract-driven
+        // selection rather than a guess from the content.
         $operation = self::multipartOperation();
         $operation['requestBody']['content']['multipart/form-data']['encoding']['meta']['contentType']
             = 'text/plain, application/json';
@@ -1102,11 +1159,53 @@ class RequestBodyValidatorTest extends TestCase
     }
 
     #[Test]
+    public function validate_rejects_a_binary_part_that_arrived_as_a_plain_field(): void
+    {
+        // A non-file part carries no Content-Type through any adapter, so an
+        // `image/*` encoding entry cannot be matched against one. The schema
+        // still decides the case that matters: raw-bytes properties must
+        // arrive as file parts.
+        $result = $this->validator->validate(
+            'spec',
+            'POST',
+            '/uploads',
+            self::multipartOperation(),
+            DecodedBody::present(['avatar' => 'hello']),
+            'multipart/form-data',
+            OpenApiVersion::V3_0,
+        );
+
+        $this->assertCount(1, $result->errors);
+        $this->assertStringContainsString('did not arrive as a file part', $result->errors[0]);
+    }
+
+    #[Test]
+    public function validate_accepts_a_binary_property_as_a_plain_field_for_urlencoded_bodies(): void
+    {
+        // The file-part rule is multipart-only: an urlencoded body has no
+        // parts at all, so `format: binary` there is just a string.
+        $operation = self::formOperation();
+        $operation['requestBody']['content']['application/x-www-form-urlencoded']['schema']['properties']['name']
+            = ['type' => 'string', 'format' => 'binary'];
+
+        $result = $this->validator->validate(
+            'spec',
+            'POST',
+            '/pets',
+            $operation,
+            DecodedBody::present(['name' => 'Fido']),
+            'application/x-www-form-urlencoded',
+            OpenApiVersion::V3_0,
+        );
+
+        $this->assertSame([], $result->errors);
+    }
+
+    #[Test]
     public function validate_keeps_a_non_json_part_when_the_encoding_list_allows_another_type(): void
     {
-        // With `text/plain` alongside `application/json` a part that does not
-        // parse as JSON may legitimately be the plain-text alternative — the
-        // subschema, not the decoder, decides.
+        // A mixed list plus a string schema means the part is never read as
+        // JSON, so unparseable content is not an encoding error either.
         $operation = self::multipartOperation();
         $operation['requestBody']['content']['multipart/form-data']['schema']['properties']['note']
             = ['type' => 'string'];

@@ -198,6 +198,38 @@
                     }
                 }
             }
+        },
+        "/multipart-file-list": {
+            "post": {
+                "operationId": "postMultipartFileList",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "multipart/form-data": {
+                            "schema": {
+                                "type": "object",
+                                "required": [
+                                    "files"
+                                ],
+                                "properties": {
+                                    "files": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string",
+                                            "format": "binary"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "204": {
+                        "description": "Accepted"
+                    }
+                }
+            }
         }
     }
 }

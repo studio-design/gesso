@@ -121,6 +121,30 @@ final class OpenApiPsr7ValidatorTest extends TestCase
     }
 
     #[Test]
+    public function dropping_a_failed_upload_keeps_the_remaining_files_a_list(): void
+    {
+        // Unsetting `files[0]` would otherwise leave `{1: ...}`, which reaches
+        // the schema as an object and fails `type: array` even though a valid
+        // file is still there.
+        $validator = new OpenApiPsr7Validator('non-json-content-schema');
+
+        $request = (new ServerRequest(
+            'POST',
+            'https://example.test/multipart-file-list',
+            ['Content-Type' => 'multipart/form-data; boundary=----x'],
+        ))->withUploadedFiles([
+            'files' => [
+                new UploadedFile(Utils::streamFor(''), 0, UPLOAD_ERR_INI_SIZE, 'too-big.png', 'image/png'),
+                new UploadedFile(Utils::streamFor('png'), 3, UPLOAD_ERR_OK, 'ok.png', 'image/png'),
+            ],
+        ]);
+
+        $result = $validator->validateRequest($request);
+
+        $this->assertTrue($result->isValid(), implode(' | ', $result->errors()));
+    }
+
+    #[Test]
     public function parses_a_raw_urlencoded_body_from_a_client_request(): void
     {
         // A client RequestInterface has no parsed bag; the raw bytes are
