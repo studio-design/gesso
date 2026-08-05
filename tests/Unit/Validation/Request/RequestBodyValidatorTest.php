@@ -6,6 +6,7 @@ namespace Studio\Gesso\Tests\Unit\Validation\Request;
 
 use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\Test;
+use PHPUnit\Framework\Attributes\TestWith;
 use PHPUnit\Framework\TestCase;
 use Studio\Gesso\DecodedBody;
 use Studio\Gesso\OpenApiVersion;
@@ -1669,6 +1670,48 @@ class RequestBodyValidatorTest extends TestCase
         $this->assertCount(1, $result->errors);
         $this->assertStringContainsString('must', $result->errors[0]);
         $this->assertStringNotContainsString('fallback', $result->errors[0]);
+    }
+
+    /**
+     * A root `enum` compares the whole object, so which reading each part has
+     * decides it. It must not survive the reading ceiling as a confirmed
+     * violation — on either side of it.
+     *
+     * @param list<string> $parts
+     */
+    #[Test]
+    #[TestWith([['a', 'b', 'c', 'd', 'e', 'f'], '64 readings, enumerated'])]
+    #[TestWith([['a', 'b', 'c', 'd', 'e', 'f', 'g'], '128 readings, past the ceiling'])]
+    public function validate_never_confirms_a_root_enum_over_unresolved_parts(array $parts, string $case): void
+    {
+        $encoding = [];
+        $fields = [];
+        $allJson = [];
+        foreach ($parts as $part) {
+            $encoding[$part] = ['contentType' => 'application/json, text/plain'];
+            $fields[$part] = '{"x": 1}';
+            $allJson[$part] = ['x' => 1];
+        }
+
+        $operation = self::multipartOperation();
+        $operation['requestBody']['content']['multipart/form-data']['schema'] = [
+            'type' => 'object',
+            'enum' => [$allJson],
+        ];
+        $operation['requestBody']['content']['multipart/form-data']['encoding'] = $encoding;
+
+        $result = $this->validator->validate(
+            'spec',
+            'POST',
+            '/uploads',
+            $operation,
+            DecodedBody::present($fields),
+            'multipart/form-data',
+            OpenApiVersion::V3_1,
+        );
+
+        $this->assertSame([], $result->errors, $case);
+        $this->assertNotNull($result->skipReason, $case);
     }
 
     #[Test]

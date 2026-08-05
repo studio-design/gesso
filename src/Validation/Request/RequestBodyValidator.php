@@ -54,25 +54,39 @@ final class RequestBodyValidator
     private const MAX_BODY_READINGS = 64;
 
     /**
-     * The keywords through which one property's value can decide a violation
-     * reported elsewhere in the object, and the reference keywords that can
-     * hide one out of reach ({@see self::unconditionalSchema()}).
+     * The keywords an object-level schema may keep when it is reduced to what
+     * a part's reading cannot influence ({@see self::readingIndependentSchema()}).
+     *
+     * Each reads only the object's key set (`required`, `minProperties`,
+     * `propertyNames`, …) or applies a subschema to one property's value at a
+     * time (`properties`, `patternProperties`, `additionalProperties`) — a
+     * subschema never sees the object around it, so what it reports about a
+     * property that is not an unresolved part is fixed. Everything else is
+     * dropped, including keywords that read the object as a whole (`enum`,
+     * `const`), the conditional ones (`if` / `then` / `else`, `anyOf`,
+     * `oneOf`, `not`, `unevaluated*`), and any keyword a future dialect adds.
      */
-    private const CONDITIONAL_KEYWORDS = [
-        'if',
-        'then',
-        'else',
-        'anyOf',
-        'oneOf',
-        'not',
-        'unevaluatedProperties',
-        'unevaluatedItems',
+    private const READING_INDEPENDENT_KEYWORDS = [
+        '$schema',
+        'type',
+        'required',
+        'minProperties',
+        'maxProperties',
+        'properties',
+        'patternProperties',
+        'additionalProperties',
+        'propertyNames',
+        'dependentRequired',
     ];
 
-    private const REFERENCE_KEYWORDS = ['$ref', '$dynamicRef', '$recursiveRef'];
+    /**
+     * Keywords carrying further object-level schemas, applied unconditionally
+     * (`allOf`) or on a key's presence (`dependentSchemas`) — both invariant
+     * across readings, so they are kept with the allowlist applied inside.
+     */
+    private const NESTED_OBJECT_SCHEMA_KEYWORDS = ['allOf', 'dependentSchemas'];
 
-    /** Keywords whose value is a map of name => schema, not a schema. */
-    private const SCHEMA_MAP_KEYWORDS = ['properties', 'patternProperties', 'dependentSchemas', '$defs', 'definitions'];
+    private const REFERENCE_KEYWORDS = ['$ref', '$dynamicRef', '$recursiveRef'];
 
     public function __construct(
         private readonly SchemaValidatorRunner $runner,
@@ -540,18 +554,19 @@ final class RequestBodyValidator
     }
 
     /**
-     * The schema reduced to the keywords no part's reading can influence.
+     * The schema reduced to what no part's reading can influence.
      *
-     * `if` / `then` / `else`, `anyOf`, `oneOf`, `not` and the `unevaluated*`
-     * pair are the keywords whose outcome one property's value can decide for
-     * the whole object, and they are the only route by which reading an
-     * unresolved part differently changes a violation reported outside that
-     * part. What the schema without them still reports — an unconditional
-     * `required`, `minProperties`, `additionalProperties`, a plain field's own
-     * type — holds under every reading.
+     * The readings only ever change the *values* of the unresolved parts:
+     * which keys the object carries, and the value of every other property,
+     * are the same under all of them. So only the keywords that read no more
+     * than that are kept ({@see self::READING_INDEPENDENT_KEYWORDS}) — an
+     * allowlist, because a keyword that reads the object as a whole (`enum`,
+     * `const`) or that lets one property decide another's verdict (`if`,
+     * `anyOf`, …) must not survive by being merely unrecognised. What this
+     * schema still reports holds under every reading.
      *
      * null when a reference keyword is in the way: the referenced schema is
-     * not reachable here, so nothing about it can be called unconditional.
+     * not reachable here, so nothing about it can be called independent.
      *
      * @param array<string, mixed> $schema
      *
@@ -559,7 +574,7 @@ final class RequestBodyValidator
      */
     private static function unconditionalSchema(array $schema): ?array
     {
-        return self::containsReference($schema) ? null : self::withoutConditionalKeywords($schema);
+        return self::containsReference($schema) ? null : self::readingIndependentSchema($schema);
     }
 
     /**
@@ -581,37 +596,37 @@ final class RequestBodyValidator
     }
 
     /**
-     * Drop the conditional keywords everywhere below `$node`. Schema-valued
-     * maps (`properties`, `$defs`, …) are descended into as maps, so a
-     * property literally named `if` keeps its subschema.
-     *
-     * @param array<array-key, mixed> $node
+     * @param array<array-key, mixed> $schema
      *
      * @return array<array-key, mixed>
      */
-    private static function withoutConditionalKeywords(array $node): array
+    private static function readingIndependentSchema(array $schema): array
     {
-        $stripped = [];
-        foreach ($node as $key => $value) {
-            if (in_array($key, self::CONDITIONAL_KEYWORDS, true)) {
-                continue;
-            }
-
-            if (in_array($key, self::SCHEMA_MAP_KEYWORDS, true) && is_array($value)) {
-                $subschemas = [];
-                foreach ($value as $name => $subschema) {
-                    $subschemas[$name] = is_array($subschema) ? self::withoutConditionalKeywords($subschema) : $subschema;
-                }
-
-                $stripped[$key] = $subschemas;
+        $kept = [];
+        foreach ($schema as $key => $value) {
+            if (in_array($key, self::READING_INDEPENDENT_KEYWORDS, true)) {
+                // Subschemas below `properties` and friends are kept whole:
+                // each sees one property's value, and a violation it reports
+                // about an unresolved part points into that part, where the
+                // pointer filter already withholds it.
+                $kept[$key] = $value;
 
                 continue;
             }
 
-            $stripped[$key] = is_array($value) ? self::withoutConditionalKeywords($value) : $value;
+            if (!in_array($key, self::NESTED_OBJECT_SCHEMA_KEYWORDS, true) || !is_array($value)) {
+                continue;
+            }
+
+            $nested = [];
+            foreach ($value as $name => $subschema) {
+                $nested[$name] = is_array($subschema) ? self::readingIndependentSchema($subschema) : $subschema;
+            }
+
+            $kept[$key] = $nested;
         }
 
-        return $stripped;
+        return $kept;
     }
 
     /**
