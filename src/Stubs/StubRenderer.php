@@ -481,18 +481,26 @@ final class StubRenderer
         }
 
         $lines = [];
+        $contentType = (string) ($operation['request_content_type'] ?? '');
+
         // The JSON helpers take an array and encode it themselves. A scalar or
-        // null JSON example, or a non-JSON media type, has to go through the
-        // raw call instead — passing either to postJson() is a TypeError or a
-        // body sent under the wrong Content-Type.
+        // null JSON example, or a non-JSON media type, has to go through
+        // another call shape — passing either to postJson() is a TypeError or
+        // a body sent under the wrong Content-Type.
         $usesJsonHelper = !$operation['has_request_body'] || (
-            $operation['request_content_type'] !== null &&
-            str_contains($operation['request_content_type'], 'json') &&
-            is_array($operation['request_body'])
+            str_contains($contentType, 'json') && is_array($operation['request_body'])
         );
 
+        // A form body goes through the plain helpers, which hand the array to
+        // Symfony as request parameters — which is what the framework, and
+        // FormBodyDecoder / HttpFoundationFormBody reading the decoded
+        // parameter bag, expect. JSON-encoding it under a form Content-Type
+        // would produce a request no decoder can read.
+        if (!$usesJsonHelper && is_array($operation['request_body']) && $this->isFormMediaType($contentType)) {
+            return array_merge($this->laravelFormBody($operation, $headers, $contentType), $this->laravelAssertions($tuple));
+        }
+
         if (!$usesJsonHelper) {
-            $contentType = (string) $operation['request_content_type'];
             $headers['Content-Type'] = $contentType;
             $lines[] = '// TODO: adjust the payload your application expects.';
             $lines[] = '$payload = ' . $this->literal($this->rawBody($operation['request_body'], $contentType)) . ';';
@@ -551,6 +559,63 @@ final class StubRenderer
     }
 
     /**
+     * The plain (non-JSON) helpers, which send an array as request parameters.
+     * Symfony's Request::create sets `application/x-www-form-urlencoded` for
+     * them, and Laravel promotes the request to `multipart/form-data` as soon
+     * as the array holds UploadedFile instances — which is why the multipart
+     * stub points at those rather than hand-building a boundary.
+     *
+     * @param StubOperation $operation
+     * @param array<string, string> $headers
+     *
+     * @return list<string>
+     */
+    private function laravelFormBody(array $operation, array $headers, string $contentType): array
+    {
+        $lines = [];
+        if (str_contains($contentType, 'multipart/')) {
+            $lines[] = '// TODO: replace each file part with an Illuminate\\Http\\UploadedFile;';
+            $lines[] = '// Laravel sends multipart/form-data once the array holds one.';
+        } else {
+            $lines[] = '// TODO: adjust the fields your application expects.';
+        }
+        $lines[] = '$fields = ' . $this->literal($operation['request_body']) . ';';
+        $lines[] = '';
+
+        $helper = match ($operation['method']) {
+            'POST' => 'post',
+            'PUT' => 'put',
+            'PATCH' => 'patch',
+            'DELETE' => 'delete',
+            default => null,
+        };
+
+        // call() takes ($method, $uri, $parameters) before its server vars, so
+        // a non-standard method still sends the fields as parameters.
+        $arguments = $helper === null
+            ? [$this->literal($operation['method']), $this->literal($operation['request_path']), '$fields']
+            : [$this->literal($operation['request_path']), '$fields'];
+        if ($headers !== []) {
+            $arguments[] = $helper === null
+                ? '[],' . "\n" . '    [],' . "\n" . '    $this->transformHeadersToServerVars(' . $this->literal($headers, 1) . ')'
+                : $this->literal($headers, 1);
+        }
+
+        $lines[] = sprintf('$response = $this->%s(', $helper ?? 'call');
+        foreach ($arguments as $argument) {
+            $lines[] = '    ' . $argument . ',';
+        }
+        $lines[] = ');';
+
+        return $lines;
+    }
+
+    private function isFormMediaType(string $contentType): bool
+    {
+        return str_contains($contentType, 'x-www-form-urlencoded') || str_contains($contentType, 'multipart/');
+    }
+
+    /**
      * @param StubTuple $tuple
      *
      * @return list<string>
@@ -572,19 +637,34 @@ final class StubRenderer
      */
     private function symfonyBody(array $operation, array $tuple): array
     {
+        $contentType = (string) ($operation['request_content_type'] ?? '');
+        // A form body belongs in $parameters, not $content: HttpFoundationFormBody
+        // reads `$request->request->all()`, and Request::create only fills that
+        // bag from the parameters argument. It also sets the urlencoded
+        // Content-Type for the write methods, so the media type stays right.
+        $isForm = $operation['has_request_body'] &&
+            is_array($operation['request_body']) &&
+            $this->isFormMediaType($contentType);
+
         $arguments = [
             $this->literal($operation['request_path']),
             $this->literal($operation['method']),
         ];
-        if ($operation['headers'] !== []) {
+        if ($isForm) {
+            $arguments[] = 'parameters: ' . $this->literal($operation['request_body'], 1);
+        }
+        if ($operation['headers'] !== [] || ($operation['has_request_body'] && !$isForm)) {
             $server = [];
             foreach ($operation['headers'] as $name => $value) {
                 $server['HTTP_' . strtoupper(str_replace('-', '_', $name))] = $value;
             }
+            if ($operation['has_request_body'] && !$isForm) {
+                $server['CONTENT_TYPE'] = $contentType;
+            }
             $arguments[] = 'server: ' . $this->literal($server, 1);
         }
-        if ($operation['has_request_body']) {
-            $arguments[] = 'content: ' . $this->literal($this->encode($operation['request_body']));
+        if ($operation['has_request_body'] && !$isForm) {
+            $arguments[] = 'content: ' . $this->literal($this->rawBody($operation['request_body'], $contentType));
         }
 
         $lines = ['$request = Request::create('];

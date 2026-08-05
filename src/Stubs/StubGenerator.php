@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Stubs;
 
-use InvalidArgumentException;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\Spec\OpenApiOperationResolver;
 use Studio\Gesso\Validation\Request\ParameterCollector;
@@ -23,6 +22,7 @@ use function is_float;
 use function is_int;
 use function is_string;
 use function ksort;
+use function preg_match;
 use function rawurlencode;
 use function str_contains;
 use function str_replace;
@@ -39,7 +39,7 @@ use function usort;
  * contributes a single `(status, '*')` tuple" rule. A stub for a tuple the
  * tracker can never report would be a test that cannot move the coverage number.
  *
- * @phpstan-type StubTuple array{status: string, content_type: string, status_code: null|int, is_range: bool, example: mixed, has_example: bool}
+ * @phpstan-type StubTuple array{status: string, content_type: string, status_code: null|int, is_range: bool, reason: 'ok'|'unreachable'|'malformed', example: mixed, has_example: bool}
  * @phpstan-type StubOperation array{
  *     method: string,
  *     path: string,
@@ -125,11 +125,11 @@ final class StubGenerator
                     continue;
                 }
 
+                // Operations with nothing left to stub stay in the list: the
+                // file name a plan resolves to has to be decided against every
+                // operation the spec declares, not just the uncovered ones.
+                // See StubRenderer::classNames().
                 $tuples = $this->tuples($method, $path, $operation, $states);
-                if ($tuples === []) {
-                    continue;
-                }
-
                 $parameters = ParameterCollector::collect($method, $path, $pathItem, $operation)->parameters;
                 [$requestBody, $hasRequestBody, $requestContentType] = $this->requestBody($operation);
 
@@ -157,6 +157,14 @@ final class StubGenerator
         return $plans;
     }
 
+    /** Response keys {@see ResponseStatusTargetEnumerator} accepts. */
+    private static function isStatusKey(string $status): bool
+    {
+        return $status === 'default' ||
+            preg_match('/^[1-5][0-9]{2}$/', $status) === 1 ||
+            preg_match('/^[1-5](?:XX|xx)$/', $status) === 1;
+    }
+
     private function isTrackedMethod(string $method, string $location): bool
     {
         return in_array($method, self::TRACKED_METHODS, true) ||
@@ -179,7 +187,10 @@ final class StubGenerator
 
         foreach ($responses as $status => $response) {
             $status = (string) $status;
-            if (!is_array($response)) {
+            // A Responses Object may carry specification extensions. They are
+            // not responses, so they get no stub — the same reading
+            // ResponseStatusTargetEnumerator applies.
+            if (str_starts_with($status, 'x-') || !is_array($response)) {
                 continue;
             }
 
@@ -246,6 +257,11 @@ final class StubGenerator
             'content_type' => $contentType,
             'status_code' => $statusCode,
             'is_range' => $statusCode !== null && (string) $statusCode !== $status,
+            'reason' => match (true) {
+                $statusCode !== null => 'ok',
+                self::isStatusKey($status) => 'unreachable',
+                default => 'malformed',
+            },
             'example' => $example,
             'has_example' => $hasExample,
         ];
@@ -268,17 +284,21 @@ final class StubGenerator
      */
     private function wireStatuses(array $responses): array
     {
-        try {
-            $targets = ResponseStatusTargetEnumerator::enumerate($responses);
-        } catch (InvalidArgumentException) {
-            // A key the enumerator rejects (`"ok"`, `"20x"`) is a malformed
-            // spec node. `gesso doctor` is the loud path for those; here every
-            // key of the operation simply becomes unreachable.
-            return [];
+        // Only keys the enumerator accepts are handed to it. Letting it throw
+        // on a malformed key (`"ok"`, `"20x"`) and swallowing the exception
+        // would take the operation's valid keys down with it — the `200` next
+        // to a typo'd `20x` would read as unreachable and never be stubbed.
+        // The malformed key is classified separately in tuple().
+        $declared = [];
+        foreach (array_keys($responses) as $status) {
+            $status = (string) $status;
+            if (!str_starts_with($status, 'x-') && self::isStatusKey($status)) {
+                $declared[$status] = $responses[$status];
+            }
         }
 
         $wireStatuses = [];
-        foreach ($targets as $target) {
+        foreach (ResponseStatusTargetEnumerator::enumerate($declared) as $target) {
             $wireStatuses[$target['declaredStatusKey']] = $target['wireStatus'];
         }
 

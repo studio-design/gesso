@@ -70,14 +70,23 @@ Everything the spec pins down is filled in:
   the request.
 - **Bodies.** A request body or response `example` (or the first entry of
   `examples`) becomes the literal in the stub. Without one you get `[]` under a
-  `// TODO` comment.
+  `// TODO` comment. The call shape follows the media type: JSON objects go
+  through the JSON helpers, `application/x-www-form-urlencoded` and
+  `multipart/form-data` are sent as request fields so the form decoders see a
+  field map, and anything else goes out as a raw body with an explicit
+  `Content-Type`. A multipart stub points at `UploadedFile` for the file parts
+  rather than hand-building a boundary.
 - **Status codes.** A range key such as `4XX`, or `default`, is exercised as a
   concrete code with a comment saying which one was picked. The code is chosen
   the way the runtime resolver reads the spec — exact keys win over ranges, and
   ranges over `default` — so an operation declaring both `400` and `4XX` gets a
   `4XX` stub sending 401, not one that would silently validate the `400` schema.
   A key no status can reach (a `4XX` alongside all 100 exact 4xx codes) is
-  reported rather than stubbed, because no test could ever cover it.
+  reported rather than stubbed, because no test could ever cover it. A key that
+  is not a status, a range, or `default` is reported as malformed and does not
+  affect its operation's valid keys — run [`gesso doctor`](doctor.md) for those.
+- **Specification extensions.** An `x-` key on a Responses Object is not a
+  response and gets no stub.
 - **Content negotiation.** Each response media type gets its own `Accept`
   header, so two media types declared under one status do not both resolve to
   the same response.
@@ -146,7 +155,9 @@ Class names come from the method and path — `GET /pets/{petId}` becomes
 `operationId` cannot collide two operations into one file. Where two paths do
 normalise to the same name (`/foo-bar` and `/foo/bar`), each gets a suffix
 derived from its own endpoint, so neither is dropped and neither name shifts
-when an unrelated operation joins the spec.
+when an unrelated operation joins the spec. Collisions are resolved against
+every operation the spec declares, not just the uncovered ones, so a name stays
+put once the other side of a collision goes green.
 
 `--spec` is loaded through the runtime loader, which resolves a *name* and
 searches `.json` before `.yaml` before `.yml`. Passing `--spec=openapi.yaml`

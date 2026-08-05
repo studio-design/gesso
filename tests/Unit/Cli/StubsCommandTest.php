@@ -297,6 +297,155 @@ class StubsCommandTest extends TestCase
     }
 
     #[Test]
+    public function a_colliding_name_stays_suffixed_when_coverage_hides_the_other_side(): void
+    {
+        $spec = $this->writeInlineSpec('collide', [
+            '/foo-bar' => ['get' => ['responses' => ['200' => ['content' => ['application/json' => ['schema' => ['type' => 'object']]]]]]],
+            '/foo/bar' => ['get' => ['responses' => ['200' => ['content' => ['application/json' => ['schema' => ['type' => 'object']]]]]]],
+        ]);
+
+        // First run: neither is covered, so both are written.
+        $this->command()->run(StubsCommand::parseArgv([
+            '--spec=' . $spec,
+            '--output=' . $this->workDir . '/out',
+        ]));
+        $both = $this->generatedFiles();
+        $this->assertCount(2, $both);
+
+        // Second run: /foo-bar has since been covered, so only /foo/bar is
+        // left to stub. Its name must still be the suffixed one. Resolving
+        // names against the uncovered subset would drop the suffix, landing on
+        // the file /foo-bar already owns — where never-overwrite would report
+        // it as existing and the uncovered operation would be lost.
+        $coverage = $this->writeCoverage(['GET /foo-bar' => [['200', 'application/json', 'validated']]], 'collide');
+        $this->command()->run(StubsCommand::parseArgv([
+            '--spec=' . $spec,
+            '--coverage=' . $coverage,
+            '--output=' . $this->workDir . '/second',
+        ]));
+
+        $second = $this->generatedFiles('second');
+        $this->assertCount(1, $second);
+        $this->assertContains($second[0], $both);
+        $this->assertNotSame('GetFooBarTest.php', $second[0]);
+    }
+
+    #[Test]
+    public function a_form_request_body_is_sent_as_fields_rather_than_json(): void
+    {
+        $spec = $this->writeInlineSpec('form', ['/login' => ['post' => [
+            'requestBody' => ['content' => ['application/x-www-form-urlencoded' => [
+                'schema' => ['type' => 'object'],
+                'example' => ['username' => 'alice'],
+            ]]],
+            'responses' => ['200' => ['content' => ['application/json' => ['schema' => ['type' => 'object']]]]],
+        ]]]);
+
+        $this->command()->run(StubsCommand::parseArgv([
+            '--spec=' . $spec,
+            '--adapter=laravel',
+            '--output=' . $this->workDir . '/out',
+        ]));
+
+        // FormBodyDecoder::toFieldMap() reads a decoded field map, so the
+        // fields have to reach Symfony as request parameters — postJson()
+        // would send {"username":"alice"} under a form Content-Type.
+        $code = (string) file_get_contents($this->workDir . '/out/PostLoginTest.php');
+        $this->assertStringNotContainsString('postJson', $code);
+        $this->assertStringNotContainsString('{"username"', $code);
+        $this->assertStringContainsString('$response = $this->post(', $code);
+        $this->assertStringContainsString('$fields = [', $code);
+        $this->assertStringContainsString("'username' => 'alice',", $code);
+    }
+
+    #[Test]
+    public function a_multipart_request_body_points_at_uploaded_files(): void
+    {
+        $spec = $this->writeInlineSpec('multipart', ['/avatars' => ['post' => [
+            'requestBody' => ['content' => ['multipart/form-data' => [
+                'schema' => ['type' => 'object'],
+                'example' => ['avatar' => 'binary'],
+            ]]],
+            'responses' => ['201' => ['content' => ['application/json' => ['schema' => ['type' => 'object']]]]],
+        ]]]);
+
+        $this->command()->run(StubsCommand::parseArgv([
+            '--spec=' . $spec,
+            '--adapter=laravel',
+            '--output=' . $this->workDir . '/out',
+        ]));
+
+        $code = (string) file_get_contents($this->workDir . '/out/PostAvatarsTest.php');
+        $this->assertStringContainsString('UploadedFile', $code);
+        $this->assertStringContainsString('$response = $this->post(', $code);
+    }
+
+    #[Test]
+    public function the_symfony_adapter_puts_a_form_body_in_the_parameter_bag(): void
+    {
+        $spec = $this->writeInlineSpec('symfonyform', ['/login' => ['post' => [
+            'requestBody' => ['content' => ['application/x-www-form-urlencoded' => [
+                'schema' => ['type' => 'object'],
+                'example' => ['username' => 'alice'],
+            ]]],
+            'responses' => ['200' => ['content' => ['application/json' => ['schema' => ['type' => 'object']]]]],
+        ]]]);
+
+        $this->command()->run(StubsCommand::parseArgv([
+            '--spec=' . $spec,
+            '--adapter=symfony',
+            '--output=' . $this->workDir . '/out',
+        ]));
+
+        // HttpFoundationFormBody reads $request->request->all(), which
+        // Request::create only fills from its parameters argument.
+        $code = (string) file_get_contents($this->workDir . '/out/PostLoginTest.php');
+        $this->assertStringContainsString('parameters: [', $code);
+        $this->assertStringNotContainsString('content: \'{"username"', $code);
+    }
+
+    #[Test]
+    public function a_specification_extension_is_not_treated_as_a_response(): void
+    {
+        $spec = $this->writeInlineSpec('extensions', ['/pets' => ['get' => ['responses' => [
+            '200' => ['content' => ['application/json' => ['schema' => ['type' => 'object']]]],
+            'x-doc' => ['owner' => 'team'],
+        ]]]]);
+
+        $exit = $this->command()->run(StubsCommand::parseArgv([
+            '--spec=' . $spec,
+            '--output=' . $this->workDir . '/out',
+        ]));
+
+        $this->assertSame(StubsCommand::EXIT_OK, $exit);
+        $this->assertStringNotContainsString('x-doc', $this->stdout);
+        $this->assertStringNotContainsString('x-doc', (string) file_get_contents($this->workDir . '/out/GetPetsTest.php'));
+    }
+
+    #[Test]
+    public function a_malformed_status_key_does_not_take_the_valid_ones_with_it(): void
+    {
+        $spec = $this->writeInlineSpec('malformed', ['/pets' => ['get' => ['responses' => [
+            '200' => ['content' => ['application/json' => ['schema' => ['type' => 'object']]]],
+            '20x' => ['content' => ['application/json' => ['schema' => ['type' => 'object']]]],
+        ]]]]);
+
+        $exit = $this->command()->run(StubsCommand::parseArgv([
+            '--spec=' . $spec,
+            '--output=' . $this->workDir . '/out',
+        ]));
+
+        $this->assertSame(StubsCommand::EXIT_OK, $exit);
+        // The valid 200 is still stubbed; the typo is reported as malformed
+        // rather than silently making the whole operation unreachable.
+        $code = (string) file_get_contents($this->workDir . '/out/GetPetsTest.php');
+        $this->assertStringContainsString('test_get_pets_200_application_json', $code);
+        $this->assertStringNotContainsString('20x', $code);
+        $this->assertStringContainsString('not an HTTP status, a range, or `default`', $this->stdout);
+        $this->assertStringContainsString('GET /pets  20x application/json', $this->stdout);
+    }
+
+    #[Test]
     public function each_response_media_type_asks_for_its_own_content_type(): void
     {
         $spec = $this->writeInlineSpec('negotiated', ['/pets' => ['get' => ['responses' => ['200' => ['content' => [
@@ -670,7 +819,7 @@ class StubsCommandTest extends TestCase
     }
 
     /** @param array<string, list<array{string, string, string}>> $endpoints */
-    private function writeCoverage(array $endpoints): string
+    private function writeCoverage(array $endpoints, string $specName = 'petstore'): string
     {
         $rows = [];
         foreach ($endpoints as $endpoint => $responses) {
@@ -689,16 +838,16 @@ class StubsCommandTest extends TestCase
         $path = $this->workDir . '/coverage.json';
         file_put_contents($path, json_encode([
             'schema_version' => 3,
-            'specs' => ['petstore' => ['endpoints' => $rows]],
+            'specs' => [$specName => ['endpoints' => $rows]],
         ], JSON_THROW_ON_ERROR));
 
         return $path;
     }
 
     /** @return list<string> */
-    private function generatedFiles(): array
+    private function generatedFiles(string $subdirectory = 'out'): array
     {
-        $directory = $this->workDir . '/out';
+        $directory = $this->workDir . '/' . $subdirectory;
         if (!is_dir($directory)) {
             return [];
         }
