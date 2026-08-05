@@ -7,6 +7,69 @@ full record.
 Sections are ordered newest-first. If you are jumping multiple minors,
 read each intermediate section in order — behavioural changes compose.
 
+## Within v2.x
+
+The v2.x line is covered end-to-end by SemVer (see `docs/versioning.md` for the
+surface contract). Minor releases are additive by default; only the releases
+listed below change existing behaviour.
+
+### From v2.3.0 → v2.4.0
+
+No public method signatures, CLI flags, exit codes, or wire formats change. The
+new `coverage:gate` / `stubs` commands, the coverage baseline, and the
+`ignored_auth` / `missing_required_header` contract checks are all opt-in. Four
+existing behaviours change:
+
+- **Form request bodies are now validated against their schema** (#486). A
+  `multipart/form-data` or `application/x-www-form-urlencoded` request body that
+  matched a spec media type declaring a `schema` previously came back `Skipped`
+  — and `OpenApiValidationResult::isValid()` reports `Skipped` as valid, so it
+  passed silently. It is now checked.
+  - **Behaviour change**: contract tests posting form bodies may begin failing.
+    Values arrive as strings and are coerced to the declared property types
+    exactly as query parameters are, so `age=3` satisfies `type: integer` while
+    `age=three` fails at `/age`. Fix the payload or the schema; these failures
+    expose drift the skip only hid.
+  - Applies to the Laravel trait, the Symfony trait, and the PSR-7 validator.
+    Response-side form bodies remain presence-only.
+  - There is no opt-out flag. A part whose media type the wire did not preserve
+    is still reported as unchecked rather than failed, and a raw
+    `multipart/form-data` payload with no parsed parts stays `Skipped` with a
+    reason. See
+    [`docs/supported-features.md`](docs/supported-features.md#body-validation).
+- **An empty Schema Object `{}` is read as "any value"** (#483). It previously
+  reached opis as a JSON array and was rejected with
+  `InvalidKeywordException: … must be a json schema`, and
+  `{items: {}, additionalItems: false}` was silently read as the empty tuple
+  form, failing compliant arrays. Specs that could not load, or that failed
+  valid payloads for this reason, now work. Nothing that previously passed
+  starts failing.
+- **Specification extensions on a Responses Object are no longer counted**
+  (#495). An `x-`-prefixed key under `responses` was previously declared as a
+  coverage tuple nothing could ever cover, and reported by `doctor` as a
+  structure error.
+  - **Behaviour change**: the coverage denominator drops for specs using them,
+    so reported percentages rise and a `min_response_coverage` gate becomes
+    easier to satisfy. Regenerate any committed coverage baseline. `doctor`
+    stops emitting the false structure error, which can flip its exit code from
+    1 to 0.
+- **`doctor` accepts OpenAPI 3.1+ documents that omit `paths` or `responses`**
+  (#479). Both are required in 3.0 but optional from 3.1 on — a document may
+  describe only `webhooks`, and an operation may describe only its request. The
+  runtime validators already treated an absent key as "nothing to match"; only
+  `doctor` disagreed.
+  - **Behaviour change**: a CI job gating on `gesso doctor`'s exit code may go
+    from 1 to 0 for such documents. A node that is *present* with the wrong type
+    is still an error.
+
+Users of the fuzz `ContractCheckPlan` with a custom dispatcher should also note
+that `ExploredCase` now carries a `cookies` map. Forward it to your client's
+cookie bag — Laravel and Symfony test clients take cookies as a separate
+`SymfonyRequest::create()` argument, so a `Cookie:` request header alone never
+reaches `$request->cookie(...)`. A dispatcher that drops them makes a
+cookie-credential `ignored_auth` probe pass for the wrong reason. Existing
+checks are unaffected.
+
 ## From v1.10.x to v2.0.0
 
 Gesso v2 uses `Studio\Gesso\` as its only PHP namespace and is installed from
