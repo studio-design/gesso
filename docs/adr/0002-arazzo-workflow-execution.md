@@ -147,8 +147,10 @@ diagnostics are generalized. It must then:
   form `$sourceDescriptions.<name>.<operationId>` whenever more than one
   non-`arazzo` source description is defined. Arazzo makes that a MUST from
   the second source onwards, independently of whether the IDs actually clash,
-  so the check is on the source count, not on collision detection. The same
-  rule governs `workflowId` inside an `arazzo` source, which phase 4 inherits;
+  so the check is on the source count, not on collision detection. `workflowId`
+  carries a separate condition that phase 4 inherits and must not be folded
+  into this one: qualification is a MUST whenever the referenced workflow lives
+  in an `arazzo` source description, no matter how many sources are defined;
   and
 - retain enough source identity that request/response validation and coverage
   are attributed to the correct OpenAPI description.
