@@ -66,13 +66,18 @@ each operation is fingerprinted:
 The request contract means the **effective** one, not just the operation
 object:
 
-- the Path Item fields the operation inherits (`servers`, …);
 - the parameters after the Path Item / operation merge — an operation-level
   entry replaces the Path Item entry with the same `in` + `name`, so changing
   an *already-overridden* Path Item parameter is not a change;
+- the `servers` that actually apply. `servers` overrides rather than merges,
+  so exactly one level is ever in force: operation, else Path Item, else root.
+  A root `servers` change reaches every operation that inherits it, and never
+  reaches one that declares its own;
 - the security requirement that actually applies — operation-level if
   declared, otherwise the root default — together with the
-  `components.securitySchemes` definitions it names.
+  `components.securitySchemes` definitions it names;
+- any remaining Path Item fields the operation inherits (`summary`,
+  `description`, extensions).
 
 Tightening a path-level parameter to `required`, or swapping an API key from a
 header to a query parameter, therefore puts every affected operation in scope

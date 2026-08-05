@@ -281,6 +281,7 @@ final class CoverageGateCommand
         /** @var array<string, mixed> $paths */
         $paths = is_array($spec['paths'] ?? null) ? $spec['paths'] : [];
         $rootSecurity = $spec['security'] ?? null;
+        $rootServers = $spec['servers'] ?? null;
         $components = is_array($spec['components'] ?? null) ? $spec['components'] : [];
         /** @var array<string, mixed> $securitySchemes */
         $securitySchemes = is_array($components['securitySchemes'] ?? null) ? $components['securitySchemes'] : [];
@@ -294,10 +295,10 @@ final class CoverageGateCommand
             // Path Item fields the operations under it inherit. Everything
             // that is itself an operation is stripped so a sibling's change
             // does not leak into this operation's fingerprint. `parameters`
-            // is stripped too — it is fingerprinted per operation, after the
-            // override merge.
+            // and `servers` are stripped too — both are fingerprinted per
+            // operation, after their inheritance rules are applied.
             $inherited = $pathItem;
-            unset($inherited['additionalOperations'], $inherited['parameters']);
+            unset($inherited['additionalOperations'], $inherited['parameters'], $inherited['servers']);
             foreach (OpenApiOperationResolver::FIXED_OPERATION_FIELDS as $field) {
                 unset($inherited[$field]);
             }
@@ -315,11 +316,12 @@ final class CoverageGateCommand
 
                 $endpoint = $method . ' ' . (string) $path;
                 $ownShape = $operation;
-                unset($ownShape['responses'], $ownShape['parameters']);
+                unset($ownShape['responses'], $ownShape['parameters'], $ownShape['servers']);
                 $shape = [
                     $ownShape,
                     $inherited,
                     $this->effectiveParameters($pathItem, $operation),
+                    $this->effectiveServers($operation, $pathItem, $rootServers),
                     $this->effectiveSecurity($operation, $rootSecurity, $securitySchemes),
                 ];
 
@@ -420,6 +422,28 @@ final class CoverageGateCommand
         }
 
         return $merged;
+    }
+
+    /**
+     * The servers that actually apply. `servers` is not inherited additively:
+     * an Operation Object's array overrides the Path Item's, which overrides
+     * the root's, so only one of the three is ever in force. Fingerprinting
+     * the levels separately would both miss a root-only change and flag a
+     * Path Item change an operation already overrides.
+     *
+     * @param array<string, mixed> $operation
+     * @param array<string, mixed> $pathItem
+     */
+    private function effectiveServers(array $operation, array $pathItem, mixed $rootServers): mixed
+    {
+        if (array_key_exists('servers', $operation)) {
+            return $operation['servers'];
+        }
+        if (array_key_exists('servers', $pathItem)) {
+            return $pathItem['servers'];
+        }
+
+        return $rootServers;
     }
 
     /**

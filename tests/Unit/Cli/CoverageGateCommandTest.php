@@ -188,6 +188,42 @@ class CoverageGateCommandTest extends TestCase
     }
 
     #[Test]
+    public function a_root_server_change_puts_every_inheriting_operation_in_scope(): void
+    {
+        $base = $this->baseSpec();
+        $base['servers'] = [['url' => 'https://api.example.com/v1']];
+        $head = $base;
+        $head['servers'][0]['url'] = 'https://api.example.com/v2';
+
+        $this->writeSpec('base.json', $base);
+        $this->writeSpec('openapi.json', $head);
+        $this->writeCoverage([$this->endpoint('PUT', '/pets/{id}', [['200', 'application/json', 'uncovered']])]);
+
+        $this->assertSame(CoverageGateCommand::EXIT_UNCOVERED_CHANGE, $this->gate());
+        $this->assertStringContainsString('  PUT /pets/{id}', $this->stdout);
+        $this->assertStringContainsString('  GET /legacy', $this->stdout);
+    }
+
+    #[Test]
+    public function an_operation_level_servers_override_shields_it_from_a_path_item_change(): void
+    {
+        $base = $this->baseSpec();
+        $base['paths']['/pets/{id}']['servers'] = [['url' => 'https://pets.example.com']];
+        // servers is override-not-merge, so the Path Item entry never applies
+        // to this operation.
+        $base['paths']['/pets/{id}']['put']['servers'] = [['url' => 'https://writes.example.com']];
+        $head = $base;
+        $head['paths']['/pets/{id}']['servers'][0]['url'] = 'https://pets2.example.com';
+
+        $this->writeSpec('base.json', $base);
+        $this->writeSpec('openapi.json', $head);
+        $this->writeCoverage([]);
+
+        $this->assertSame(CoverageGateCommand::EXIT_OK, $this->gate());
+        $this->assertSame("[Gesso] No operation changed against the base spec.\n", $this->stdout);
+    }
+
+    #[Test]
     public function a_security_scheme_definition_change_puts_the_operation_in_scope(): void
     {
         $base = $this->baseSpec();
