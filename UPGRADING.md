@@ -10,15 +10,29 @@ read each intermediate section in order — behavioural changes compose.
 ## Within v2.x
 
 The v2.x line is covered end-to-end by SemVer (see `docs/versioning.md` for the
-surface contract). Minor releases are additive by default; only the releases
-listed below change existing behaviour.
+surface contract). Minor releases are additive by default, but "additive" does
+not mean "no behaviour changes" — a fix that closes a silent-pass gap changes
+what your suite reports.
+
+Only v2.4.0 has a section below. Earlier v2 minors carry behavioural fixes that
+were never written up here: v2.2.0 stopped applying the coverage threshold gate
+to partial runs (#453) and v2.3.0 began rejecting `null` response content
+(#466), among others. If you are jumping from v2.0.x, v2.1.x, or v2.2.x, read
+the `### Bug Fixes` entries for each intermediate release in `CHANGELOG.md`;
+this file cannot be relied on to list them.
 
 ### From v2.3.0 → v2.4.0
 
-No public method signatures, CLI flags, exit codes, or wire formats change. The
-new `coverage:gate` / `stubs` commands, the coverage baseline, and the
-`ignored_auth` / `missing_required_header` contract checks are all opt-in. Four
-existing behaviours change:
+There are no backward-incompatible changes to the public API. The additions —
+new `coverage:gate` / `stubs` CLI commands, new `coverage_baseline_*` extension
+parameters and `coverage:merge` flags, the new `Studio\Gesso\UploadedPart`
+class, new methods such as `ContractCheckPlan::dispatchIsolatedUsing()` and
+`ExploredCase::withCookies()`, and a new optional trailing `$cookies` parameter
+on `ExploredCase::__construct()` — leave every existing
+signature, flag, exit code, and wire format meaning what it meant in v2.3.0. The
+new commands, the coverage baseline, and the `ignored_auth` /
+`missing_required_header` contract checks are all opt-in. Four existing
+behaviours change:
 
 - **Form request bodies are now validated against their schema** (#486). A
   `multipart/form-data` or `application/x-www-form-urlencoded` request body that
