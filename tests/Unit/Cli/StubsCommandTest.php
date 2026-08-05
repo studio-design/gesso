@@ -14,6 +14,7 @@ use Studio\Gesso\Cli\StubsCommand;
 use Studio\Gesso\OpenApiRequestValidator;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Stubs\StubRenderer;
+use Symfony\Component\HttpFoundation\Request as SymfonyRequest;
 
 use function array_map;
 use function escapeshellarg;
@@ -474,10 +475,10 @@ class StubsCommandTest extends TestCase
     }
 
     #[Test]
-    public function a_json_suffix_media_type_still_uses_the_json_helpers(): void
+    public function a_json_suffix_media_type_is_sent_under_its_declared_content_type(): void
     {
-        $spec = $this->writeInlineSpec('suffix', ['/things' => ['post' => [
-            'requestBody' => ['content' => ['application/vnd.acme+json' => [
+        $spec = $this->writeInlineSpec('vendorjson', ['/things' => ['post' => [
+            'requestBody' => ['required' => true, 'content' => ['application/vnd.acme+json' => [
                 'schema' => ['type' => 'object'],
                 'example' => ['a' => 1],
             ]]],
@@ -490,10 +491,90 @@ class StubsCommandTest extends TestCase
             '--output=' . $this->workDir . '/out',
         ]));
 
-        $this->assertStringContainsString(
-            'postJson',
-            (string) file_get_contents($this->workDir . '/out/PostThingsTest.php'),
+        // postJson() defaults to application/json. RequestBodyValidator treats
+        // JSON media types as interchangeable, so that already validated — but
+        // the stub should still say what the spec says, so the request it
+        // documents is one a real client would send.
+        $code = (string) file_get_contents($this->workDir . '/out/PostThingsTest.php');
+        $this->assertStringContainsString('postJson', $code);
+        $this->assertStringContainsString("'Content-Type' => 'application/vnd.acme+json',", $code);
+
+        OpenApiSpecLoader::reset();
+        OpenApiSpecLoader::configure($this->workDir);
+        $result = (new OpenApiRequestValidator())->validate(
+            'vendorjson',
+            'POST',
+            '/things',
+            [],
+            ['Content-Type' => 'application/vnd.acme+json'],
+            ['a' => 1],
+            'application/vnd.acme+json',
         );
+        $this->assertTrue($result->isValid(), $result->errorMessage());
+    }
+
+    #[Test]
+    public function a_wildcard_request_media_type_is_sent_as_a_concrete_one(): void
+    {
+        $spec = $this->writeInlineSpec('wildcard', ['/things' => ['post' => [
+            'requestBody' => ['content' => ['application/*' => [
+                'schema' => ['type' => 'object'],
+                'example' => ['a' => 1],
+            ]]],
+            'responses' => ['201' => ['content' => ['application/json' => ['schema' => ['type' => 'object']]]]],
+        ]]]);
+
+        $this->command()->run(StubsCommand::parseArgv([
+            '--spec=' . $spec,
+            '--adapter=laravel',
+            '--output=' . $this->workDir . '/out',
+        ]));
+
+        // `application/*` is a spec range key, not something a client can put
+        // on the wire; findContentTypeKey() matches application/json to it.
+        $code = (string) file_get_contents($this->workDir . '/out/PostThingsTest.php');
+        $this->assertStringNotContainsString('application/*', $code);
+        $this->assertStringContainsString("'Content-Type' => 'application/json',", $code);
+    }
+
+    #[Test]
+    public function a_custom_method_form_body_is_sent_as_raw_urlencoded_bytes(): void
+    {
+        $spec = $this->writeInlineSpec('customform', ['/things' => ['additionalOperations' => ['COPY' => [
+            'requestBody' => ['required' => true, 'content' => ['application/x-www-form-urlencoded' => [
+                'schema' => ['type' => 'object'],
+                'example' => ['name' => 'a b'],
+            ]]],
+            'responses' => ['200' => ['content' => ['application/json' => ['schema' => ['type' => 'object']]]]],
+        ]]]]);
+
+        foreach (['laravel' => 'out', 'symfony' => 'sym'] as $adapter => $directory) {
+            $this->command()->run(StubsCommand::parseArgv([
+                '--spec=' . $spec,
+                '--adapter=' . $adapter,
+                '--output=' . $this->workDir . '/' . $directory,
+            ]));
+            $code = (string) file_get_contents($this->workDir . '/' . $directory . '/CopyThingsTest.php');
+            // Request::create() routes the parameters argument to the query bag
+            // for a non-standard method, so the fields have to be raw bytes
+            // FormBodyDecoder::toFieldMap() can parse_str() back.
+            $this->assertStringContainsString('name=a+b', $code, $adapter);
+            $this->assertStringNotContainsString('parameters:', $code, $adapter);
+            $this->assertStringNotContainsString('{"name"', $code, $adapter);
+        }
+    }
+
+    #[Test]
+    public function request_create_confirms_a_custom_method_drops_parameters_from_the_body(): void
+    {
+        // Pins the framework behaviour the stub works around: if this ever
+        // changes, the raw-body detour above can be dropped.
+        $standard = SymfonyRequest::create('/things', 'POST', ['name' => 'a']);
+        $custom = SymfonyRequest::create('/things', 'COPY', ['name' => 'a']);
+
+        $this->assertSame(['name' => 'a'], $standard->request->all());
+        $this->assertSame([], $custom->request->all());
+        $this->assertSame(['name' => 'a'], $custom->query->all());
     }
 
     #[Test]

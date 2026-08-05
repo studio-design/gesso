@@ -15,6 +15,7 @@ use function array_key_exists;
 use function array_key_first;
 use function array_keys;
 use function array_values;
+use function explode;
 use function implode;
 use function in_array;
 use function is_array;
@@ -25,6 +26,7 @@ use function is_string;
 use function ksort;
 use function preg_match;
 use function rawurlencode;
+use function str_contains;
 use function str_replace;
 use function str_starts_with;
 use function strcmp;
@@ -163,6 +165,32 @@ final class StubGenerator
         return $status === 'default' ||
             preg_match('/^[1-5][0-9]{2}$/', $status) === 1 ||
             preg_match('/^[1-5](?:XX|xx)$/', $status) === 1;
+    }
+
+    /**
+     * The media type the generated request actually sends.
+     *
+     * A spec key may be a *range* (`application/*`, `*&#47;*`) rather than a
+     * media type. Ranges are legal on the spec side — the request validator
+     * matches a concrete type against them — but a client cannot put one on
+     * the wire, so the stub substitutes a concrete type the range covers.
+     * Concrete keys, including `+json` suffixes, are sent verbatim: sending
+     * `application/json` for a declared `application/vnd.acme+json` would not
+     * match the spec's content map.
+     */
+    private static function wireMediaType(string $declared): string
+    {
+        $normalized = ContentTypeMatcher::normalizeMediaType($declared);
+        if (!str_contains($normalized, '*')) {
+            return $declared;
+        }
+        if ($normalized === '*/*' || $normalized === 'application/*') {
+            return 'application/json';
+        }
+
+        [$type] = explode('/', $normalized, 2);
+
+        return $type . '/plain';
     }
 
     private function isTrackedMethod(string $method, string $location): bool
@@ -351,12 +379,12 @@ final class StubGenerator
         // ContentTypeMatcher decides which is which, so the stub agrees with
         // the validator that will judge it — a substring test would read
         // `application/notjson` as JSON.
-        $contentType = ContentTypeMatcher::findJsonContentType($content) ?? (string) array_key_first($content);
+        $declared = ContentTypeMatcher::findJsonContentType($content) ?? (string) array_key_first($content);
 
-        $media = $content[$contentType] ?? null;
+        $media = $content[$declared] ?? null;
         [$example, $hasExample] = $this->example(is_array($media) ? $media : []);
 
-        return [$hasExample ? $example : [], true, $contentType];
+        return [$hasExample ? $example : [], true, self::wireMediaType($declared)];
     }
 
     /**

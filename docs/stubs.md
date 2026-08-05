@@ -82,7 +82,14 @@ Everything the spec pins down is filled in:
 
   "JSON" here means what the validator means by it — `application/json` or a
   `+json` suffix. `application/vnd.acme+json` uses the JSON helpers;
-  `application/notjson` does not.
+  `application/notjson` does not. A spec key that is a *range* (`application/*`,
+  `*/*`) is not something a client can put on the wire, so the stub sends a
+  concrete type the range covers.
+
+  A form body on an `additionalOperations` method goes out as raw urlencoded
+  bytes rather than request fields: `Request::create()` only moves its
+  parameters into the request bag for POST/PUT/PATCH/DELETE/QUERY, and routes
+  anything else into the query bag.
 - **Status codes.** A range key such as `4XX`, or `default`, is exercised as a
   concrete code with a comment saying which one was picked. The code is chosen
   the way the runtime resolver reads the spec — exact keys win over ranges, and

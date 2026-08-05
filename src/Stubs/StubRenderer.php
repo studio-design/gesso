@@ -21,6 +21,7 @@ use function array_merge;
 use function count;
 use function explode;
 use function hash;
+use function http_build_query;
 use function implode;
 use function in_array;
 use function is_array;
@@ -499,7 +500,12 @@ final class StubRenderer
         // parameter bag, expect. JSON-encoding it under a form Content-Type
         // would produce a request no decoder can read.
         if (!$usesJsonHelper && is_array($operation['request_body']) && $this->isFormMediaType($contentType)) {
-            return array_merge($this->laravelFormBody($operation, $headers, $contentType), $this->laravelAssertions($tuple));
+            return array_merge(
+                $this->parametersReachTheRequestBag($operation['method'])
+                    ? $this->laravelFormBody($operation, $headers, $contentType)
+                    : $this->laravelCustomMethodFormBody($operation, $headers, $contentType),
+                $this->laravelAssertions($tuple),
+            );
         }
 
         if (!$usesJsonHelper) {
@@ -533,6 +539,10 @@ final class StubRenderer
         };
 
         if ($operation['has_request_body']) {
+            // json() defaults CONTENT_TYPE to application/json, which does not
+            // match a declared `application/vnd.acme+json` — the caller's
+            // headers are merged over the defaults, so declaring it wins.
+            $headers['Content-Type'] = $contentType;
             $lines[] = '// TODO: adjust the payload your application expects.';
             $lines[] = '$payload = ' . $this->literal($operation['request_body']) . ';';
             $lines[] = '';
@@ -598,8 +608,6 @@ final class StubRenderer
             default => null,
         };
 
-        // call() takes ($method, $uri, $parameters) before its server vars, so
-        // a non-standard method still sends the fields as parameters.
         $arguments = $helper === null
             ? [$this->literal($operation['method']), $this->literal($operation['request_path']), '$fields']
             : [$this->literal($operation['request_path']), '$fields'];
@@ -615,6 +623,68 @@ final class StubRenderer
         $lines[] = ');';
 
         return $lines;
+    }
+
+    /**
+     * Custom methods cannot carry form fields as request parameters:
+     * Request::create() only moves the third argument into the request bag for
+     * POST/PUT/PATCH/DELETE/QUERY and routes everything else — an
+     * `additionalOperations` `COPY` or `FETCH` — into the query bag, leaving
+     * the body empty. A urlencoded body survives as raw bytes, which
+     * FormBodyDecoder parses back with parse_str(); multipart has no such
+     * round trip, so the stub says what has to be built by hand.
+     *
+     * @param StubOperation $operation
+     * @param array<string, string> $headers
+     *
+     * @return list<string>
+     */
+    private function laravelCustomMethodFormBody(array $operation, array $headers, string $contentType): array
+    {
+        $headers['Content-Type'] = $contentType;
+        $isMultipart = str_starts_with(ContentTypeMatcher::normalizeMediaType($contentType), 'multipart/');
+
+        $lines = [];
+        if ($isMultipart) {
+            $lines[] = sprintf(
+                '// TODO: %s cannot carry multipart fields through Request::create() —',
+                $operation['method'],
+            );
+            $lines[] = '// it routes parameters to the query bag for non-standard methods.';
+            $lines[] = '// Build the request and files bags on the Request directly.';
+        } else {
+            $lines[] = '// TODO: adjust the fields your application expects.';
+            $lines[] = '// Sent as a raw urlencoded body: Request::create() routes parameters';
+            $lines[] = sprintf('// to the query bag for %s, so they would never reach the body.', $operation['method']);
+        }
+        $lines[] = '$payload = ' . $this->literal($this->urlencode($operation['request_body'])) . ';';
+        $lines[] = '';
+        $lines[] = '$response = $this->call(';
+        $lines[] = '    ' . $this->literal($operation['method']) . ',';
+        $lines[] = '    ' . $this->literal($operation['request_path']) . ',';
+        $lines[] = '    [],';
+        $lines[] = '    [],';
+        $lines[] = '    [],';
+        $lines[] = '    $this->transformHeadersToServerVars(' . $this->literal($headers, 1) . '),';
+        $lines[] = '    $payload,';
+        $lines[] = ');';
+
+        return $lines;
+    }
+
+    /**
+     * Only POST/PUT/PATCH/DELETE/QUERY put Request::create()'s third argument
+     * into the request bag; every other method, including GET, gets it as
+     * query parameters.
+     */
+    private function parametersReachTheRequestBag(string $method): bool
+    {
+        return in_array($method, ['POST', 'PUT', 'PATCH', 'DELETE', 'QUERY'], true);
+    }
+
+    private function urlencode(mixed $fields): string
+    {
+        return is_array($fields) ? http_build_query($fields) : (string) $this->encode($fields);
     }
 
     private function isFormMediaType(string $contentType): bool
@@ -661,9 +731,14 @@ final class StubRenderer
         // reads `$request->request->all()`, and Request::create only fills that
         // bag from the parameters argument. It also sets the urlencoded
         // Content-Type for the write methods, so the media type stays right.
+        // Request::create() only moves $parameters into the request bag for
+        // POST/PUT/PATCH/DELETE/QUERY; a custom method would silently get them
+        // as query parameters and an empty body, so it falls through to the
+        // raw urlencoded body FormBodyDecoder can still parse.
         $isForm = $operation['has_request_body'] &&
             is_array($operation['request_body']) &&
-            $this->isFormMediaType($contentType);
+            $this->isFormMediaType($contentType) &&
+            $this->parametersReachTheRequestBag($operation['method']);
 
         $arguments = [
             $this->literal($operation['request_path']),
@@ -761,9 +836,19 @@ final class StubRenderer
      */
     private function rawBody(mixed $value, string $contentType): string
     {
-        return is_string($value) && !$this->isJsonMediaType($contentType)
-            ? $value
-            : $this->encode($value);
+        if (is_string($value) && !$this->isJsonMediaType($contentType)) {
+            return $value;
+        }
+
+        // A form body reaching the raw path — a custom method, which cannot
+        // carry fields as request parameters — still has to go out as
+        // urlencoded bytes; FormBodyDecoder::toFieldMap() parse_str()s them
+        // back. JSON here would decode to nothing.
+        if (is_array($value) && $this->isFormMediaType($contentType)) {
+            return http_build_query($value);
+        }
+
+        return $this->encode($value);
     }
 
     /** JSON for a body literal embedded in a generated string argument. */
