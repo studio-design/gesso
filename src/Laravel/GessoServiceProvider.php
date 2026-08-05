@@ -8,6 +8,7 @@ use Illuminate\Contracts\Config\Repository;
 use Illuminate\Support\ServiceProvider;
 use LogicException;
 use Studio\Gesso\Laravel\Commands\OpenApiRoutesCommand;
+use Studio\Gesso\Laravel\Commands\OpenApiStubsCommand;
 
 class GessoServiceProvider extends ServiceProvider
 {
@@ -38,7 +39,7 @@ class GessoServiceProvider extends ServiceProvider
         ], self::CONFIG_KEY);
 
         if ($this->app->runningInConsole()) {
-            $this->commands([OpenApiRoutesCommand::class]);
+            $this->commands([OpenApiRoutesCommand::class, OpenApiStubsCommand::class]);
         }
     }
 }

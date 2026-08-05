@@ -8,6 +8,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Studio\Gesso\Cli\CoverageGateCommand;
+use Studio\Gesso\Cli\StubsCommand;
 use Studio\Gesso\Coverage\CoverageMergeCommand;
 
 use function dirname;
@@ -130,6 +131,20 @@ final class GessoCliIntegrationTest extends TestCase
         $this->assertSame(2, $errorExit);
         $this->assertSame('', $errorStdout);
         $this->assertStringContainsString('[Gesso] --base-spec is required.', $errorStderr);
+    }
+
+    #[Test]
+    public function stubs_uses_the_gesso_invocation_in_help_and_usage_errors(): void
+    {
+        [$helpExit, $helpStdout, $helpStderr] = $this->runCli(['stubs', '--help']);
+        [$errorExit, $errorStdout, $errorStderr] = $this->runCli(['stubs']);
+
+        $this->assertSame(0, $helpExit);
+        $this->assertSame('', $helpStderr);
+        $this->assertSame(StubsCommand::usage(), $helpStdout);
+        $this->assertSame(2, $errorExit);
+        $this->assertSame('', $errorStdout);
+        $this->assertStringContainsString('[Gesso] --spec is required.', $errorStderr);
     }
 
     #[Test]

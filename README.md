@@ -48,7 +48,7 @@ when upgrading from `studio-design/openapi-contract-testing` v1.10.
 Choose based on the workflow you need rather than on a single yes/no feature count:
 
 - Choose **this library** when you need response-level coverage at `(method, path, status, content-type)` granularity, several CI report formats, OpenAPI 3.1/3.2 JSON Schema semantics, schema-driven exploration, or drift detection across a framework-agnostic core and Laravel, Symfony, and Pest adapters.
-- Choose **[Spectator][spectator]** for a Laravel 12 application when generated test stubs or JSON assertion failures matter more than response-level coverage granularity and broader framework support. (Remote and private-GitHub spec sources are supported here too via [`remoteSpecs`](docs/setup.md#remote-spec-sources-opt-in).)
+- Choose **[Spectator][spectator]** for a Laravel 12 application when JSON assertion failure output matters more than response-level coverage granularity and broader framework support. (Remote and private-GitHub spec sources are supported here too via [`remoteSpecs`](docs/setup.md#remote-spec-sources-opt-in).)
 - Choose **[league/openapi-psr7-validator][league]** when you want a low-level PSR-7 validator or PSR-15 middleware and will build the test/reporting integration yourself.
 - Choose **[osteel/openapi-httpfoundation-testing][osteel]** when you want a small HttpFoundation-to-PSR-7 validation bridge, or **[laravel-openapi-validator][kirschbaum]** when automatic validation around Laravel HTTP tests is the main requirement.
 
@@ -62,7 +62,7 @@ Choose based on the workflow you need rather than on a single yes/no feature cou
 | Coverage outputs | [Markdown, JUnit XML, JSON, HTML, GitHub Step Summary](docs/coverage.md) | [Text, JSON][spectator-coverage] | — | — | — |
 | Parallel coverage merge | [Sidecar + merge CLI](docs/parallel.md) | Not documented | — | — | — |
 | Route/spec parity | [`openapi:routes`](docs/laravel-route-parity.md) with text/JSON and CI gates | [`spectator:routes`][spectator-cli] | — | — | — |
-| CLI diagnostics / scaffolding | [`doctor`](docs/doctor.md), [`openapi:routes`](docs/laravel-route-parity.md), coverage merge; no scaffolding | [`validate`, `coverage`, `routes`, `stubs`][spectator-cli] | — | — | — |
+| CLI diagnostics / scaffolding | [`doctor`](docs/doctor.md), [`openapi:routes`](docs/laravel-route-parity.md), coverage merge/gate, [`stubs` scoped to uncovered responses](docs/stubs.md) | [`validate`, `coverage`, `routes`, `stubs`][spectator-cli] | — | — | — |
 | Structured validation failures | [`issues()` + versioned JSON failure output](docs/validation-json-schema.md) | [JSON `{errors: [...]}`][spectator-errors] | [PHP exception hierarchy][league-errors] | [Wrapper exception][osteel-readme] | [PHPUnit failure text][kirschbaum-failure-source] |
 | Schema-driven exploration | [Deterministic endpoint + whole-spec generation](docs/fuzzing.md) | — | — | — | — |
 | Drift / under-description checks | [Enum drift](docs/enum-drift.md), [strict required](docs/strict-required.md) | — | — | — | — |
@@ -239,6 +239,7 @@ To validate every response automatically, set `'auto_assert' => true` and drop t
 | Coverage baseline: gate the set of uncovered responses instead of a percentage | [`docs/coverage-baseline.md`](docs/coverage-baseline.md) |
 | Coverage report modes & threshold gate | [`docs/coverage.md`](docs/coverage.md) |
 | Spec patch coverage: fail a PR that changes an operation no test covers | [`docs/coverage-gate.md`](docs/coverage-gate.md) |
+| Test stub scaffolding for the responses no test covers | [`docs/stubs.md`](docs/stubs.md) |
 | HTML coverage output | [`docs/coverage-html-output.md`](docs/coverage-html-output.md) |
 | JSON coverage output schema | [`docs/coverage-json-schema.md`](docs/coverage-json-schema.md) |
 | JSON validation result output schema | [`docs/validation-json-schema.md`](docs/validation-json-schema.md) |
