@@ -34,11 +34,13 @@ use Studio\Gesso\SkipOpenApiResolver;
 use Studio\Gesso\Spec\OpenApiOperationResolver;
 use Studio\Gesso\Spec\OpenApiPathMatcher;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
+use Studio\Gesso\Symfony\HttpFoundationFormBody;
 use Studio\Gesso\Validation\Request\AcknowledgedSecuritySchemes;
 use Studio\Gesso\Validation\Request\SecuritySchemeIntrospector;
 use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 use Studio\Gesso\Validation\Support\ContentTypeMatcher;
 use Studio\Gesso\Validation\Support\DiscriminatorEnforcement;
+use Studio\Gesso\Validation\Support\FormBodyDecoder;
 use Studio\Gesso\Validation\Support\HeaderNormalizer;
 use Studio\Gesso\ValidationOutput;
 use Studio\Gesso\ValidationOutputFormat;
@@ -1471,12 +1473,27 @@ trait ValidatesOpenApiSchema
         // Symfony does not retain a serialized multipart/form-data body when
         // a request is created from parsed form values or uploaded files.
         // Preserve the wire-presence bit from all three representations so a
-        // required non-JSON body is not mistaken for an empty request. The
-        // value is intentionally null: the validator receives Content-Type
-        // separately and does not evaluate non-JSON schemas (issue #251).
-        if ($contentType !== '' && !ContentTypeMatcher::isJsonContentType(
-            ContentTypeMatcher::normalizeMediaType($contentType),
-        )) {
+        // required non-JSON body is not mistaken for an empty request. Outside
+        // the form media types the value stays null: the validator receives
+        // Content-Type separately and does not evaluate those schemas
+        // (issue #251).
+        $normalizedContentType = $contentType === '' ? '' : ContentTypeMatcher::normalizeMediaType($contentType);
+
+        if ($normalizedContentType !== '' && !ContentTypeMatcher::isJsonContentType($normalizedContentType)) {
+            // Form bodies are handed over as the parsed field map (file parts
+            // as UploadedPart) so the validator can apply the media type's
+            // schema — issue #405. Raw urlencoded bytes are forwarded as-is
+            // for the validator to parse when the bag is empty.
+            if (FormBodyDecoder::isFormMediaType($normalizedContentType)) {
+                $fields = HttpFoundationFormBody::fields($request);
+
+                if ($fields !== null) {
+                    return DecodedBody::present($fields);
+                }
+
+                return $content === '' ? DecodedBody::absent() : DecodedBody::present($content);
+            }
+
             if ($content !== '' || $request->request->all() !== [] || $request->files->all() !== []) {
                 return DecodedBody::present(null);
             }

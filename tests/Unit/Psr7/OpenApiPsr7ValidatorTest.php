@@ -4,10 +4,15 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Tests\Unit\Psr7;
 
+use const UPLOAD_ERR_INI_SIZE;
+use const UPLOAD_ERR_NO_FILE;
+use const UPLOAD_ERR_OK;
+
 use GuzzleHttp\Psr7\NoSeekStream;
 use GuzzleHttp\Psr7\Request;
 use GuzzleHttp\Psr7\Response;
 use GuzzleHttp\Psr7\ServerRequest;
+use GuzzleHttp\Psr7\UploadedFile;
 use GuzzleHttp\Psr7\Utils;
 use Nyholm\Psr7\Request as NyholmRequest;
 use Nyholm\Psr7\Response as NyholmResponse;
@@ -20,6 +25,7 @@ use Studio\Gesso\Psr7\OpenApiPsr7Validator;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 
 use function array_map;
+use function implode;
 
 final class OpenApiPsr7ValidatorTest extends TestCase
 {
@@ -49,6 +55,111 @@ final class OpenApiPsr7ValidatorTest extends TestCase
         yield 'literal null' => ['/body/null', 200, 'null'];
         yield 'scalar' => ['/body/scalar', 200, '42'];
         yield 'empty' => ['/body/empty', 204, ''];
+    }
+
+    /**
+     * @return iterable<string, array{int}>
+     */
+    public static function provideA_failed_upload_does_not_satisfy_a_required_file_partCases(): iterable
+    {
+        yield 'no file sent' => [UPLOAD_ERR_NO_FILE];
+        yield 'size limit' => [UPLOAD_ERR_INI_SIZE];
+    }
+
+    #[Test]
+    public function validates_a_multipart_server_request_from_its_parsed_parts(): void
+    {
+        // Issue #405: a ServerRequest already carries the parsed fields and
+        // uploaded files, so the multipart body reaches its media-type schema.
+        $validator = new OpenApiPsr7Validator('non-json-content-schema');
+
+        $request = (new ServerRequest(
+            'POST',
+            'https://example.test/multipart-encoded',
+            ['Content-Type' => 'multipart/form-data; boundary=----x'],
+        ))
+            ->withParsedBody(['meta' => '{"label": "hero"}'])
+            ->withUploadedFiles([
+                'avatar' => new UploadedFile(Utils::streamFor('png-bytes'), 9, UPLOAD_ERR_OK, 'avatar.png', 'image/png'),
+            ]);
+
+        $result = $validator->validateRequest($request);
+
+        $this->assertTrue($result->isValid(), implode(' | ', $result->errors()));
+
+        $rejected = $request->withUploadedFiles([
+            'avatar' => new UploadedFile(Utils::streamFor('pdf-bytes'), 9, UPLOAD_ERR_OK, 'avatar.pdf', 'application/pdf'),
+        ]);
+
+        $failure = $validator->validateRequest($rejected);
+
+        $this->assertFalse($failure->isValid());
+        $this->assertStringContainsString('application/pdf', implode(' | ', $failure->errors()));
+    }
+
+    #[Test]
+    #[DataProvider('provideA_failed_upload_does_not_satisfy_a_required_file_partCases')]
+    public function a_failed_upload_does_not_satisfy_a_required_file_part(int $uploadError): void
+    {
+        // PSR-7 defines UPLOAD_ERR_OK as the only successful upload. A part
+        // that never arrived (or was truncated by a size limit) must not be
+        // mapped onto a file the schema then counts as present.
+        $validator = new OpenApiPsr7Validator('non-json-content-schema');
+
+        $request = (new ServerRequest(
+            'POST',
+            'https://example.test/multipart-encoded',
+            ['Content-Type' => 'multipart/form-data; boundary=----x'],
+        ))->withUploadedFiles([
+            'avatar' => new UploadedFile(Utils::streamFor(''), 0, $uploadError, 'avatar.png', 'image/png'),
+        ]);
+
+        $result = $validator->validateRequest($request);
+
+        $this->assertFalse($result->isValid());
+        $this->assertStringContainsString('avatar', implode(' | ', $result->errors()));
+    }
+
+    #[Test]
+    public function dropping_a_failed_upload_keeps_the_remaining_files_a_list(): void
+    {
+        // Unsetting `files[0]` would otherwise leave `{1: ...}`, which reaches
+        // the schema as an object and fails `type: array` even though a valid
+        // file is still there.
+        $validator = new OpenApiPsr7Validator('non-json-content-schema');
+
+        $request = (new ServerRequest(
+            'POST',
+            'https://example.test/multipart-file-list',
+            ['Content-Type' => 'multipart/form-data; boundary=----x'],
+        ))->withUploadedFiles([
+            'files' => [
+                new UploadedFile(Utils::streamFor(''), 0, UPLOAD_ERR_INI_SIZE, 'too-big.png', 'image/png'),
+                new UploadedFile(Utils::streamFor('png'), 3, UPLOAD_ERR_OK, 'ok.png', 'image/png'),
+            ],
+        ]);
+
+        $result = $validator->validateRequest($request);
+
+        $this->assertTrue($result->isValid(), implode(' | ', $result->errors()));
+    }
+
+    #[Test]
+    public function parses_a_raw_urlencoded_body_from_a_client_request(): void
+    {
+        // A client RequestInterface has no parsed bag; the raw bytes are
+        // forwarded and parsed by the validator instead of being skipped.
+        $validator = new OpenApiPsr7Validator('non-json-content-schema');
+
+        $result = $validator->validateRequest(new Request(
+            'POST',
+            'https://example.test/form-required',
+            ['Content-Type' => 'application/x-www-form-urlencoded'],
+            'name=Fido&age=three',
+        ));
+
+        $this->assertFalse($result->isValid());
+        $this->assertStringContainsString('/age', implode(' | ', $result->errors()));
     }
 
     #[Test]

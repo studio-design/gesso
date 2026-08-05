@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Tests\Unit\Symfony;
 
+use const UPLOAD_ERR_INI_SIZE;
+use const UPLOAD_ERR_OK;
+
 use PHPUnit\Framework\AssertionFailedError;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
@@ -12,6 +15,7 @@ use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\Exception\InvalidOpenApiSpecException;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Symfony\OpenApiAssertions;
+use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -142,6 +146,81 @@ final class OpenApiAssertionsTest extends TestCase
         // URI's raw query in QUERY_STRING, so the %2C inside the first element
         // stays distinguishable from the literal delimiter commas.
         $request = Request::create('/filter?role=owner%2Cadmin,member', 'GET');
+
+        $this->assertRequestMatchesOpenApiSchema($request);
+    }
+
+    #[Test]
+    #[OpenApiSpec('non-json-content-schema')]
+    public function form_request_body_is_validated_against_its_schema(): void
+    {
+        // Issue #405: HttpFoundation keeps the parsed form values in the
+        // request bag, which is what the schema is applied to.
+        $valid = Request::create(
+            '/form-required',
+            'POST',
+            ['name' => 'Fido', 'age' => '3'],
+            [],
+            [],
+            ['CONTENT_TYPE' => 'application/x-www-form-urlencoded'],
+        );
+
+        $this->assertRequestMatchesOpenApiSchema($valid);
+
+        $invalid = Request::create(
+            '/form-required',
+            'POST',
+            ['name' => 'Fido', 'age' => 'three'],
+            [],
+            [],
+            ['CONTENT_TYPE' => 'application/x-www-form-urlencoded'],
+        );
+
+        $this->expectException(AssertionFailedError::class);
+        $this->expectExceptionMessage('/age');
+
+        $this->assertRequestMatchesOpenApiSchema($invalid);
+    }
+
+    #[Test]
+    #[OpenApiSpec('non-json-content-schema')]
+    public function a_failed_upload_does_not_satisfy_a_required_file_part(): void
+    {
+        // HttpFoundation keeps a failed upload in the files bag with its error
+        // code; mapping it onto a part would let a file the server never
+        // received satisfy `required`.
+        $request = Request::create(
+            '/multipart-encoded',
+            'POST',
+            [],
+            [],
+            ['avatar' => new UploadedFile(__FILE__, 'avatar.png', 'image/png', UPLOAD_ERR_INI_SIZE, true)],
+            ['CONTENT_TYPE' => 'multipart/form-data'],
+        );
+
+        $this->expectException(AssertionFailedError::class);
+        $this->expectExceptionMessage('avatar');
+
+        $this->assertRequestMatchesOpenApiSchema($request);
+    }
+
+    #[Test]
+    #[OpenApiSpec('non-json-content-schema')]
+    public function dropping_a_failed_upload_keeps_the_remaining_files_a_list(): void
+    {
+        $request = Request::create(
+            '/multipart-file-list',
+            'POST',
+            [],
+            [],
+            [
+                'files' => [
+                    new UploadedFile(__FILE__, 'too-big.png', 'image/png', UPLOAD_ERR_INI_SIZE, true),
+                    new UploadedFile(__FILE__, 'ok.png', 'image/png', UPLOAD_ERR_OK, true),
+                ],
+            ],
+            ['CONTENT_TYPE' => 'multipart/form-data'],
+        );
 
         $this->assertRequestMatchesOpenApiSchema($request);
     }

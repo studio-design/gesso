@@ -10,7 +10,7 @@
                 "operationId": "getTextWithSchema",
                 "responses": {
                     "200": {
-                        "description": "text/plain WITH a schema — unvalidatable, must surface a skip",
+                        "description": "text/plain WITH a schema \u2014 unvalidatable, must surface a skip",
                         "content": {
                             "text/plain": {
                                 "schema": {
@@ -45,7 +45,7 @@
                 "operationId": "getTextWithSchemaAndRequiredHeader",
                 "responses": {
                     "200": {
-                        "description": "text/plain WITH a schema AND a required response header — the body skip must not mask a missing-header failure",
+                        "description": "text/plain WITH a schema AND a required response header \u2014 the body skip must not mask a missing-header failure",
                         "headers": {
                             "X-Trace-Id": {
                                 "required": true,
@@ -109,6 +109,9 @@
                                 "properties": {
                                     "name": {
                                         "type": "string"
+                                    },
+                                    "age": {
+                                        "type": "integer"
                                     }
                                 }
                             }
@@ -127,7 +130,7 @@
                 "operationId": "getTextWithoutSchema",
                 "responses": {
                     "200": {
-                        "description": "text/plain with NO schema — nothing to validate, silent success",
+                        "description": "text/plain with NO schema \u2014 nothing to validate, silent success",
                         "content": {
                             "text/plain": {}
                         }
@@ -139,6 +142,86 @@
                 "requestBody": {
                     "content": {
                         "text/plain": {}
+                    }
+                },
+                "responses": {
+                    "204": {
+                        "description": "Accepted"
+                    }
+                }
+            }
+        },
+        "/multipart-encoded": {
+            "post": {
+                "operationId": "postEncodedMultipartBody",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "multipart/form-data": {
+                            "schema": {
+                                "type": "object",
+                                "required": [
+                                    "avatar"
+                                ],
+                                "properties": {
+                                    "avatar": {
+                                        "type": "string",
+                                        "format": "binary"
+                                    },
+                                    "meta": {
+                                        "type": "object",
+                                        "required": [
+                                            "label"
+                                        ],
+                                        "properties": {
+                                            "label": {
+                                                "type": "string"
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            "encoding": {
+                                "avatar": {
+                                    "contentType": "image/*"
+                                },
+                                "meta": {
+                                    "contentType": "application/json"
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "204": {
+                        "description": "Accepted"
+                    }
+                }
+            }
+        },
+        "/multipart-file-list": {
+            "post": {
+                "operationId": "postMultipartFileList",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "multipart/form-data": {
+                            "schema": {
+                                "type": "object",
+                                "required": [
+                                    "files"
+                                ],
+                                "properties": {
+                                    "files": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string",
+                                            "format": "binary"
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 },
                 "responses": {

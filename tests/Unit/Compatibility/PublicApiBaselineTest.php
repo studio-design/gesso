@@ -56,6 +56,7 @@ use Studio\Gesso\Tests\Unit\Compatibility\Fixture\PublicApiPrivateConstructorFix
 use Studio\Gesso\Tests\Unit\Compatibility\Fixture\PublicApiReturnTypeFixture;
 use Studio\Gesso\Tests\Unit\Compatibility\Fixture\PublicApiTraitSurfaceConsumerFixture;
 use Studio\Gesso\Tests\Unit\Compatibility\Fixture\PublicApiTraitSurfaceFixture;
+use Studio\Gesso\UploadedPart;
 use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 use Studio\Gesso\ValidationIssue;
 use Studio\Gesso\ValidationOutput;
@@ -1825,6 +1826,12 @@ final class PublicApiBaselineTest extends TestCase
                 ],
             ],
         ];
+        // #405: form request bodies validate against their media-type schema.
+        // UploadedPart is the new public envelope for a multipart file part;
+        // its exact signature stays pinned by
+        // public_php_api_matches_the_v2_baseline().
+        $expected[UploadedPart::class] = $actual[UploadedPart::class];
+
         ksort($expected);
 
         foreach ([

@@ -26,6 +26,7 @@ use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Spec\OpenApiSpecResolver;
 use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 use Studio\Gesso\Validation\Support\ContentTypeMatcher;
+use Studio\Gesso\Validation\Support\FormBodyDecoder;
 use Studio\Gesso\ValidationOutput;
 use Studio\Gesso\ValidationOutputFormat;
 use Symfony\Component\BrowserKit\Exception\BadMethodCallException;
@@ -209,7 +210,7 @@ trait OpenApiAssertions
 
         $decodeFailureDemoted = false;
         $decodedBody = $this->extractOrRecordBaselineViolation(
-            fn(): DecodedBody => $this->extractSymfonyJsonBody($request->getContent(), $contentType, 'Request'),
+            fn(): DecodedBody => $this->extractSymfonyRequestBody($request, $contentType),
             $specName,
             $method->value,
             $path,
@@ -453,6 +454,32 @@ trait OpenApiAssertions
             maxErrors: ViolationBaselineCollector::uncap($this->openApiMaxErrors()),
             skipRequestValidationResponseCodes: OpenApiRequestValidator::DEFAULT_SKIP_REQUEST_VALIDATION_RESPONSE_CODES,
         );
+    }
+
+    /**
+     * Request-side wrapper around {@see self::extractSymfonyJsonBody()} that
+     * hands form bodies over as their parsed field map so the validator can
+     * apply the media type's schema (issue #405). HttpFoundation keeps no
+     * serialized multipart body, so the `request` / `files` bags are the only
+     * source; a raw urlencoded payload is forwarded for the validator to parse.
+     */
+    private function extractSymfonyRequestBody(Request $request, string $contentType): DecodedBody
+    {
+        $content = $request->getContent();
+
+        if ($contentType !== '' && FormBodyDecoder::isFormMediaType(
+            ContentTypeMatcher::normalizeMediaType($contentType),
+        )) {
+            $fields = HttpFoundationFormBody::fields($request);
+
+            if ($fields !== null) {
+                return DecodedBody::present($fields);
+            }
+
+            return $content === '' ? DecodedBody::absent() : DecodedBody::present($content);
+        }
+
+        return $this->extractSymfonyJsonBody($content, $contentType, 'Request');
     }
 
     /**
