@@ -168,6 +168,39 @@ final class StubRenderer
         return ($studly === '' ? 'Operation' : $studly) . 'Test';
     }
 
+    /**
+     * Why this adapter cannot express the operation's request, or null when it
+     * can.
+     *
+     * A multipart body on an `additionalOperations` method is the one case:
+     * Request::create() routes its parameters argument to the query bag for a
+     * non-standard method, and multipart — unlike urlencoded — has no raw-byte
+     * form FormBodyDecoder can parse back, so neither the field bag nor the
+     * body can be populated. Emitting a stub anyway would produce a request
+     * whose requestBody silently validates as Skipped. The phpunit adapter is
+     * unaffected: it only validates responses and never builds a request.
+     *
+     * @param StubOperation $operation
+     */
+    public function unsupportedReason(array $operation): ?string
+    {
+        if ($this->adapter === 'phpunit' || !$operation['has_request_body']) {
+            return null;
+        }
+
+        $contentType = ContentTypeMatcher::normalizeMediaType((string) ($operation['request_content_type'] ?? ''));
+        if (!str_starts_with($contentType, 'multipart/') || $this->parametersReachTheRequestBag($operation['method'])) {
+            return null;
+        }
+
+        return sprintf(
+            'a %s body on %s cannot be built through Request::create(), which routes '
+            . 'parameters to the query bag for non-standard methods',
+            $contentType,
+            $operation['method'],
+        );
+    }
+
     /** @param StubOperation $operation */
     public function render(array $operation, string $className): string
     {
@@ -449,7 +482,9 @@ final class StubRenderer
             $body,
         ];
         if (!$noContent) {
-            $arguments[] = $this->literal($tuple['content_type']);
+            // The wire value, not the declared key: a range like
+            // `application/*` reads as non-JSON and would skip the schema.
+            $arguments[] = $this->literal($tuple['wire_content_type']);
         }
 
         $lines[] = '$result = (new OpenApiResponseValidator(new StrictRequiredTracker()))->validate(';
@@ -480,7 +515,7 @@ final class StubRenderer
         // helpers array_merge caller headers over their defaults, so an
         // explicit Accept wins.
         if ($tuple['content_type'] !== OpenApiCoverageTracker::ANY_CONTENT_TYPE) {
-            $headers['Accept'] = $tuple['content_type'];
+            $headers['Accept'] = $tuple['wire_content_type'];
         }
 
         $lines = [];
@@ -642,21 +677,13 @@ final class StubRenderer
     private function laravelCustomMethodFormBody(array $operation, array $headers, string $contentType): array
     {
         $headers['Content-Type'] = $contentType;
-        $isMultipart = str_starts_with(ContentTypeMatcher::normalizeMediaType($contentType), 'multipart/');
 
-        $lines = [];
-        if ($isMultipart) {
-            $lines[] = sprintf(
-                '// TODO: %s cannot carry multipart fields through Request::create() —',
-                $operation['method'],
-            );
-            $lines[] = '// it routes parameters to the query bag for non-standard methods.';
-            $lines[] = '// Build the request and files bags on the Request directly.';
-        } else {
-            $lines[] = '// TODO: adjust the fields your application expects.';
-            $lines[] = '// Sent as a raw urlencoded body: Request::create() routes parameters';
-            $lines[] = sprintf('// to the query bag for %s, so they would never reach the body.', $operation['method']);
-        }
+        // Multipart never reaches here: unsupportedReason() takes those
+        // operations out before rendering, because urlencoded bytes under a
+        // multipart Content-Type is a request no decoder can read.
+        $lines = ['// TODO: adjust the fields your application expects.'];
+        $lines[] = '// Sent as a raw urlencoded body: Request::create() routes parameters';
+        $lines[] = sprintf('// to the query bag for %s, so they would never reach the body.', $operation['method']);
         $lines[] = '$payload = ' . $this->literal($this->urlencode($operation['request_body'])) . ';';
         $lines[] = '';
         $lines[] = '$response = $this->call(';
@@ -779,7 +806,7 @@ final class StubRenderer
         $lines[] = '$response = new Response(';
         $lines[] = '    ' . $this->literal($noContent ? '' : $this->encode($tuple['has_example'] ? $tuple['example'] : [])) . ',';
         $lines[] = '    ' . $tuple['status_code'] . ',';
-        $lines[] = '    ' . ($noContent ? '[]' : $this->literal(['Content-Type' => $tuple['content_type']], 1)) . ',';
+        $lines[] = '    ' . ($noContent ? '[]' : $this->literal(['Content-Type' => $tuple['wire_content_type']], 1)) . ',';
         $lines[] = ');';
         $lines[] = '';
         $lines[] = '$this->assertResponseMatchesOpenApiSchema($request, $response);';

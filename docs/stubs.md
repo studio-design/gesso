@@ -89,7 +89,11 @@ Everything the spec pins down is filled in:
   A form body on an `additionalOperations` method goes out as raw urlencoded
   bytes rather than request fields: `Request::create()` only moves its
   parameters into the request bag for POST/PUT/PATCH/DELETE/QUERY, and routes
-  anything else into the query bag.
+  anything else into the query bag. `multipart/form-data` has no raw-byte form
+  the decoder can parse back, so a multipart body on a custom method is
+  reported as not stubbable for the Laravel, Pest, and Symfony adapters rather
+  than emitted as a request that would silently validate as skipped. The
+  `phpunit` adapter is unaffected — it only validates responses.
 - **Status codes.** A range key such as `4XX`, or `default`, is exercised as a
   concrete code with a comment saying which one was picked. The code is chosen
   the way the runtime resolver reads the spec — exact keys win over ranges, and
@@ -103,7 +107,11 @@ Everything the spec pins down is filled in:
   response and gets no stub.
 - **Content negotiation.** Each response media type gets its own `Accept`
   header, so two media types declared under one status do not both resolve to
-  the same response.
+  the same response. As on the request side, a range key (`application/*`) is
+  exercised as a concrete type it covers — sending the range itself would make
+  the validator read the body as non-JSON and skip the schema, so a violating
+  body would pass. The declared key still names the test and the coverage tuple
+  it closes.
 - **Responses without `content`.** These become a single "no content" test, the
   same tuple the coverage tracker records for a 204.
 

@@ -41,7 +41,7 @@ use function usort;
  * contributes a single `(status, '*')` tuple" rule. A stub for a tuple the
  * tracker can never report would be a test that cannot move the coverage number.
  *
- * @phpstan-type StubTuple array{status: string, content_type: string, status_code: null|int, is_range: bool, reason: 'ok'|'unreachable'|'malformed', example: mixed, has_example: bool}
+ * @phpstan-type StubTuple array{status: string, content_type: string, wire_content_type: string, status_code: null|int, is_range: bool, reason: 'ok'|'unreachable'|'malformed', example: mixed, has_example: bool}
  * @phpstan-type StubOperation array{
  *     method: string,
  *     path: string,
@@ -282,7 +282,15 @@ final class StubGenerator
 
         return [
             'status' => $status,
+            // The declared key names the tuple — it is what the coverage
+            // document reports and what the generated method is named after.
+            // What goes on the wire may differ: a range key is not a media
+            // type a response can carry, and sending one makes the validator
+            // read the body as non-JSON and skip the schema entirely.
             'content_type' => $contentType,
+            'wire_content_type' => $contentType === OpenApiCoverageTracker::ANY_CONTENT_TYPE
+                ? $contentType
+                : self::wireMediaType($contentType),
             'status_code' => $statusCode,
             'is_range' => $statusCode !== null && (string) $statusCode !== $status,
             'reason' => match (true) {

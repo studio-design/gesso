@@ -12,8 +12,10 @@ use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Studio\Gesso\Cli\StubsCommand;
 use Studio\Gesso\OpenApiRequestValidator;
+use Studio\Gesso\OpenApiResponseValidator;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Stubs\StubRenderer;
+use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 use Symfony\Component\HttpFoundation\Request as SymfonyRequest;
 
 use function array_map;
@@ -535,6 +537,83 @@ class StubsCommandTest extends TestCase
         $code = (string) file_get_contents($this->workDir . '/out/PostThingsTest.php');
         $this->assertStringNotContainsString('application/*', $code);
         $this->assertStringContainsString("'Content-Type' => 'application/json',", $code);
+    }
+
+    #[Test]
+    public function a_wildcard_response_media_type_is_validated_as_a_concrete_one(): void
+    {
+        $spec = $this->writeInlineSpec('respwildcard', ['/things' => ['get' => ['responses' => ['200' => [
+            'content' => ['application/*' => ['schema' => [
+                'type' => 'object',
+                'required' => ['a'],
+                'properties' => ['a' => ['type' => 'integer']],
+            ]]],
+        ]]]]]);
+
+        foreach (['phpunit' => 'out', 'symfony' => 'sym'] as $adapter => $directory) {
+            $this->command()->run(StubsCommand::parseArgv([
+                '--spec=' . $spec,
+                '--adapter=' . $adapter,
+                '--output=' . $this->workDir . '/' . $directory,
+            ]));
+            $code = (string) file_get_contents($this->workDir . '/' . $directory . '/GetThingsTest.php');
+            $this->assertStringNotContainsString("'application/*'", $code, $adapter);
+            $this->assertStringContainsString("'application/json'", $code, $adapter);
+            // The declared key still names the test, so it maps back to the
+            // coverage tuple it is meant to close.
+            $this->assertStringContainsString('application/*', $code, $adapter);
+        }
+
+        // A range Content-Type makes the validator read the body as non-JSON
+        // and skip the schema, so a violating body would pass.
+        OpenApiSpecLoader::reset();
+        OpenApiSpecLoader::configure($this->workDir);
+        $validator = new OpenApiResponseValidator(new StrictRequiredTracker());
+        $this->assertTrue(
+            $validator->validate('respwildcard', 'GET', '/things', 200, ['a' => 'WRONG'], 'application/*')->isValid(),
+        );
+        $this->assertFalse(
+            $validator->validate('respwildcard', 'GET', '/things', 200, ['a' => 'WRONG'], 'application/json')->isValid(),
+        );
+    }
+
+    #[Test]
+    public function a_custom_method_multipart_body_is_reported_instead_of_stubbed(): void
+    {
+        $spec = $this->writeInlineSpec('custommultipart', ['/things' => ['additionalOperations' => ['COPY' => [
+            'requestBody' => ['required' => true, 'content' => ['multipart/form-data' => [
+                'schema' => ['type' => 'object'],
+                'example' => ['avatar' => 'bytes'],
+            ]]],
+            'responses' => ['200' => ['content' => ['application/json' => ['schema' => ['type' => 'object']]]]],
+        ]]]]);
+
+        foreach (['laravel', 'symfony', 'pest'] as $adapter) {
+            $this->stdout = '';
+            $exit = $this->command()->run(StubsCommand::parseArgv([
+                '--spec=' . $spec,
+                '--adapter=' . $adapter,
+                '--output=' . $this->workDir . '/' . $adapter,
+            ]));
+
+            // Neither bag can be populated for a custom-method multipart body,
+            // so no stub is written rather than one whose requestBody silently
+            // validates as Skipped.
+            $this->assertSame(StubsCommand::EXIT_OK, $exit, $adapter);
+            $this->assertSame([], $this->generatedFiles($adapter), $adapter);
+            $this->assertStringContainsString('not stubbed for this adapter', $this->stdout, $adapter);
+            $this->assertStringContainsString('COPY /things', $this->stdout, $adapter);
+        }
+
+        // The core adapter only validates responses, so it is unaffected.
+        $this->stdout = '';
+        $this->command()->run(StubsCommand::parseArgv([
+            '--spec=' . $spec,
+            '--adapter=phpunit',
+            '--output=' . $this->workDir . '/core',
+        ]));
+        $this->assertSame(['CopyThingsTest.php'], $this->generatedFiles('core'));
+        $this->assertStringNotContainsString('not stubbed for this adapter', $this->stdout);
     }
 
     #[Test]

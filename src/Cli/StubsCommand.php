@@ -209,15 +209,16 @@ final class StubsCommand
         // file that other operation already owns, where the never-overwrite
         // guard would silently drop it.
         $allPlans = (new StubGenerator())->plan($spec, $states);
-        [$plans, $classNames, $unreachable] = $this->partitionStubbable(
-            $allPlans,
-            StubRenderer::classNames($allPlans),
-        );
         $renderer = new StubRenderer(
             $adapter,
             $specName,
             $options['namespace'] ?? StubRenderer::DEFAULT_NAMESPACES[$adapter],
             $options['base_class'] ?? StubRenderer::DEFAULT_BASE_CLASSES[$adapter],
+        );
+        [$plans, $classNames, $unreachable] = $this->partitionStubbable(
+            $allPlans,
+            StubRenderer::classNames($allPlans),
+            $renderer,
         );
         $outputDir = rtrim($options['output'] ?? StubRenderer::DEFAULT_OUTPUT_DIRS[$adapter], '/');
         $dryRun = ($options['dry_run'] ?? false) === true;
@@ -255,13 +256,28 @@ final class StubsCommand
      *
      * @return array{list<StubOperation>, list<string>, list<array{string, string}>}
      */
-    private function partitionStubbable(array $plans, array $classNames): array
+    private function partitionStubbable(array $plans, array $classNames, StubRenderer $renderer): array
     {
         $stubbable = [];
         $names = [];
         $rejected = [];
 
         foreach ($plans as $index => $plan) {
+            // An operation whose request this adapter cannot express is
+            // reported, not approximated: a wrong stub validates as Skipped
+            // and reads as passing.
+            $unsupported = $renderer->unsupportedReason($plan);
+            if ($unsupported !== null && $plan['tuples'] !== []) {
+                $rejected[] = ['unsupported', sprintf(
+                    '%s %s  %s',
+                    $plan['method'],
+                    $plan['path'],
+                    $unsupported,
+                )];
+
+                continue;
+            }
+
             $tuples = [];
             foreach ($plan['tuples'] as $tuple) {
                 if ($tuple['reason'] === 'ok') {
@@ -293,7 +309,7 @@ final class StubsCommand
     /** @param list<array{string, string}> $rejected */
     private function renderUnreachable(array $rejected): string
     {
-        $groups = ['unreachable' => [], 'malformed' => []];
+        $groups = ['unreachable' => [], 'malformed' => [], 'unsupported' => []];
         foreach ($rejected as [$reason, $entry]) {
             $groups[$reason][] = $entry;
         }
@@ -322,6 +338,18 @@ final class StubsCommand
             );
             foreach ($groups['malformed'] as $entry) {
                 $lines[] = '  ? ' . $entry;
+            }
+        }
+        if ($groups['unsupported'] !== []) {
+            $count = count($groups['unsupported']);
+            $lines[] = '';
+            $lines[] = sprintf(
+                '%d operation%s not stubbed for this adapter:',
+                $count,
+                $count === 1 ? ' was' : 's were',
+            );
+            foreach ($groups['unsupported'] as $entry) {
+                $lines[] = '  ~ ' . $entry;
             }
         }
 
