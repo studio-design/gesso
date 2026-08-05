@@ -145,6 +145,100 @@ class CoverageGateCommandTest extends TestCase
     }
 
     #[Test]
+    public function a_path_level_parameter_change_puts_the_operation_in_scope(): void
+    {
+        $base = $this->baseSpec();
+        $base['paths']['/pets/{id}']['parameters'] = [
+            ['name' => 'trace', 'in' => 'query', 'required' => false, 'schema' => ['type' => 'string']],
+        ];
+        $head = $base;
+        $head['paths']['/pets/{id}']['parameters'][0]['required'] = true;
+
+        $this->writeSpec('base.json', $base);
+        $this->writeSpec('openapi.json', $head);
+        $this->writeCoverage([$this->endpoint('PUT', '/pets/{id}', [['200', 'application/json', 'uncovered']])]);
+
+        $this->assertSame(CoverageGateCommand::EXIT_UNCOVERED_CHANGE, $this->gate());
+        $this->assertStringContainsString('  PUT /pets/{id}', $this->stdout);
+        $this->assertStringContainsString('200 application/json    UNCOVERED', $this->stdout);
+    }
+
+    #[Test]
+    public function a_security_scheme_definition_change_puts_the_operation_in_scope(): void
+    {
+        $base = $this->baseSpec();
+        $base['security'] = [['ApiKey' => []]];
+        $base['components'] = ['securitySchemes' => ['ApiKey' => ['type' => 'apiKey', 'name' => 'X-Key', 'in' => 'header']]];
+        $head = $base;
+        $head['components']['securitySchemes']['ApiKey']['in'] = 'query';
+
+        $this->writeSpec('base.json', $base);
+        $this->writeSpec('openapi.json', $head);
+        $this->writeCoverage([$this->endpoint('PUT', '/pets/{id}', [['200', 'application/json', 'uncovered']])]);
+
+        $this->assertSame(CoverageGateCommand::EXIT_UNCOVERED_CHANGE, $this->gate());
+        $this->assertStringContainsString('  PUT /pets/{id}', $this->stdout);
+    }
+
+    #[Test]
+    public function an_operation_level_security_override_shields_it_from_a_root_change(): void
+    {
+        $base = $this->baseSpec();
+        $base['security'] = [['ApiKey' => []]];
+        $base['components'] = ['securitySchemes' => [
+            'ApiKey' => ['type' => 'apiKey', 'name' => 'X-Key', 'in' => 'header'],
+            'Basic' => ['type' => 'http', 'scheme' => 'basic'],
+        ]];
+        $base['paths']['/pets/{id}']['put']['security'] = [['Basic' => []]];
+        $head = $base;
+        $head['components']['securitySchemes']['ApiKey']['in'] = 'query';
+
+        $this->writeSpec('base.json', $base);
+        $this->writeSpec('openapi.json', $head);
+        $this->writeCoverage([]);
+
+        // Only GET /legacy inherits the root requirement, so PUT stays out.
+        $this->assertSame(CoverageGateCommand::EXIT_UNCOVERED_CHANGE, $this->gate());
+        $this->assertStringContainsString('  GET /legacy', $this->stdout);
+        $this->assertStringNotContainsString('  PUT /pets/{id}', $this->stdout);
+    }
+
+    #[Test]
+    public function methods_the_coverage_tracker_never_records_are_out_of_scope(): void
+    {
+        $head = $this->baseSpec();
+        // HEAD / OPTIONS / TRACE never reach a coverage document, so gating
+        // them would demand coverage no report can show.
+        $head['paths']['/pets/{id}']['head'] = ['responses' => ['200' => ['description' => 'ok']]];
+        $head['paths']['/pets/{id}']['options'] = ['responses' => ['204' => ['description' => 'no content']]];
+
+        $this->writeSpec('base.json', $this->baseSpec());
+        $this->writeSpec('openapi.json', $head);
+        $this->writeCoverage([]);
+
+        $this->assertSame(CoverageGateCommand::EXIT_OK, $this->gate());
+        $this->assertSame("[Gesso] No operation changed against the base spec.\n", $this->stdout);
+    }
+
+    #[Test]
+    public function a_deleted_response_is_reported_but_does_not_fail_the_gate(): void
+    {
+        $base = $this->baseSpec();
+        $base['paths']['/pets/{id}']['put']['responses']['404'] = [
+            'description' => 'missing',
+            'content' => ['application/json' => ['schema' => ['type' => 'object']]],
+        ];
+
+        $this->writeSpec('base.json', $base);
+        $this->writeSpec('openapi.json', $this->baseSpec());
+        $this->writeCoverage([]);
+
+        $this->assertSame(CoverageGateCommand::EXIT_OK, $this->gate());
+        $this->assertStringContainsString('[Gesso] 1 operation changed against the base spec:', $this->stdout);
+        $this->assertStringContainsString('404 application/json    removed (not testable)', $this->stdout);
+    }
+
+    #[Test]
     public function a_response_the_coverage_document_never_saw_counts_as_uncovered(): void
     {
         $this->writeSpec('base.json', $this->baseSpec());

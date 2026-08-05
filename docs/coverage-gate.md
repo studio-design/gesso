@@ -42,11 +42,21 @@ each operation is fingerprinted:
   response is in scope.
 - **changed** — the operation exists in both, but its resolved tree differs.
   When only some responses changed, only those are in scope. When the
-  operation's request contract changed (parameters, request body, security,
-  …), every response of that operation is in scope, because a changed request
-  is worth re-exercising end to end.
-- **removed** — listed for information only. A response that no longer exists
-  cannot be tested, so it never fails the gate.
+  operation's request contract changed, every response of that operation is in
+  scope, because a changed request is worth re-exercising end to end.
+- **removed** — listed for information only. An operation or a response that
+  no longer exists cannot be tested, so a removal never fails the gate. A
+  change that only deletes a response still reports the operation, rendering
+  the deleted row as `removed (not testable)`.
+
+The request contract means the **effective** one, not just the operation
+object: the Path Item fields the operation inherits (shared `parameters`,
+`servers`, …) and the security requirement that actually applies —
+operation-level if declared, otherwise the root default — together with the
+`components.securitySchemes` definitions it names. Tightening a path-level
+parameter to `required`, or swapping an API key from a header to a query
+parameter, therefore puts every affected operation in scope even though no
+operation object changed.
 
 The comparison is **structural, not semantic**. The gate does not classify a
 change as breaking or non-breaking — that is the job of a dedicated diff tool
@@ -54,6 +64,14 @@ such as [oasdiff](https://github.com/oasdiff/oasdiff) or
 [pb33f/openapi-changes](https://github.com/pb33f/openapi-changes). Because the
 comparison happens after reference resolution, moving a schema into
 `components` and pointing a `$ref` at it is *not* a change.
+
+## Which operations are gated
+
+The gate covers the methods a coverage document can actually contain: `GET`,
+`POST`, `PUT`, `PATCH`, `DELETE`, `QUERY`, and OpenAPI 3.2
+`additionalOperations`. `OPTIONS`, `HEAD`, and `TRACE` are skipped, because
+the [coverage tracker](coverage.md) never records them — gating them would
+demand coverage no report can ever show.
 
 ## What counts as covered
 

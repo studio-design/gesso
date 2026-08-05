@@ -21,6 +21,7 @@ use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Throwable;
 
 use function array_is_list;
+use function array_key_exists;
 use function array_keys;
 use function array_map;
 use function explode;
@@ -70,7 +71,7 @@ use function usort;
  * the same tree reads as unchanged.
  *
  * @phpstan-type GateOptions array{base_spec?: string, spec?: string, coverage?: string, spec_name?: string, format?: string, help?: bool, invalid_options?: list<string>}
- * @phpstan-type GateResponse array{status: string, content_type: string, state: string, covered: bool}
+ * @phpstan-type GateResponse array{status: string, content_type: string, change: 'added'|'changed'|'removed', state: string, covered: bool}
  * @phpstan-type GateOperation array{endpoint: string, change: 'added'|'changed'|'removed', responses: list<GateResponse>}
  * @phpstan-type IndexedResponse array{status: string, content_type: string, hash: string}
  * @phpstan-type IndexedOperation array{endpoint: string, shape: string, responses: array<string, IndexedResponse>}
@@ -259,10 +260,14 @@ final class CoverageGateCommand
     /**
      * Fingerprint every declared operation and response tuple.
      *
-     * `shape` covers the operation minus its responses (parameters, request
-     * body, security, …) — a request-contract change makes every response of
-     * that operation worth re-testing, even when the response nodes are
-     * untouched.
+     * `shape` covers the operation's *effective* request contract, not just
+     * its own node: the operation minus its responses, plus the Path Item
+     * fields it inherits (shared `parameters`, `servers`, …), plus the
+     * security requirement that actually applies (operation-level, else the
+     * root default) together with the `components.securitySchemes`
+     * definitions it names. Those live outside the operation object but are
+     * part of what the request validator enforces, so a change to any of them
+     * makes every response of that operation worth re-testing.
      *
      * @param array<string, mixed> $spec
      *
@@ -272,11 +277,24 @@ final class CoverageGateCommand
     {
         /** @var array<string, mixed> $paths */
         $paths = is_array($spec['paths'] ?? null) ? $spec['paths'] : [];
+        $rootSecurity = $spec['security'] ?? null;
+        $components = is_array($spec['components'] ?? null) ? $spec['components'] : [];
+        /** @var array<string, mixed> $securitySchemes */
+        $securitySchemes = is_array($components['securitySchemes'] ?? null) ? $components['securitySchemes'] : [];
         $index = [];
 
         foreach ($paths as $path => $pathItem) {
             if (!is_array($pathItem)) {
                 continue;
+            }
+
+            // Path Item fields the operations under it inherit. Everything
+            // that is itself an operation is stripped so a sibling's change
+            // does not leak into this operation's fingerprint.
+            $inherited = $pathItem;
+            unset($inherited['additionalOperations']);
+            foreach (OpenApiOperationResolver::FIXED_OPERATION_FIELDS as $field) {
+                unset($inherited[$field]);
             }
 
             foreach (OpenApiOperationResolver::declaredOperations($pathItem) as $declared) {
@@ -286,9 +304,18 @@ final class CoverageGateCommand
                 }
 
                 $method = $declared['method'];
+                if (!$this->isTrackedMethod($method, $declared['location'])) {
+                    continue;
+                }
+
                 $endpoint = $method . ' ' . (string) $path;
-                $shape = $operation;
-                unset($shape['responses']);
+                $ownShape = $operation;
+                unset($ownShape['responses']);
+                $shape = [
+                    $ownShape,
+                    $inherited,
+                    $this->effectiveSecurity($operation, $rootSecurity, $securitySchemes),
+                ];
 
                 $responses = [];
                 /** @var array<string, mixed> $declaredResponses */
@@ -338,6 +365,48 @@ final class CoverageGateCommand
     }
 
     /**
+     * Only operations {@see OpenApiCoverageTracker} puts in a coverage
+     * document can be gated. It records the baseline methods plus OpenAPI 3.2
+     * `additionalOperations`; `OPTIONS` / `HEAD` / `TRACE` never appear there,
+     * so gating them would mean demanding coverage no report can ever show.
+     */
+    private function isTrackedMethod(string $method, string $location): bool
+    {
+        return in_array($method, ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'QUERY'], true) ||
+            str_starts_with($location, 'additionalOperations[');
+    }
+
+    /**
+     * The security requirement that actually applies, resolved to the scheme
+     * definitions it names. An operation-level `security` — including an
+     * explicit `[]` opting out — overrides the root default, matching how
+     * the request validator selects it.
+     *
+     * @param array<string, mixed> $operation
+     * @param array<string, mixed> $securitySchemes
+     */
+    private function effectiveSecurity(array $operation, mixed $rootSecurity, array $securitySchemes): mixed
+    {
+        $security = array_key_exists('security', $operation) ? $operation['security'] : $rootSecurity;
+        if (!is_array($security)) {
+            return $security;
+        }
+
+        $schemes = [];
+        foreach ($security as $requirement) {
+            if (!is_array($requirement)) {
+                continue;
+            }
+            foreach (array_keys($requirement) as $name) {
+                $name = (string) $name;
+                $schemes[$name] = $securitySchemes[$name] ?? null;
+            }
+        }
+
+        return [$security, $schemes];
+    }
+
+    /**
      * @param array<string, IndexedOperation> $base
      * @param array<string, IndexedOperation> $head
      * @param array<string, string> $states
@@ -362,14 +431,36 @@ final class CoverageGateCommand
                 $touched[] = [
                     'status' => $response['status'],
                     'content_type' => $response['content_type'],
+                    'change' => $before === null ? 'added' : 'changed',
                     'state' => $state,
                     'covered' => $state === 'validated',
+                ];
+            }
+
+            // A tuple the change deletes is still a structural change worth
+            // showing, but it cannot be tested any more, so it never fails
+            // the gate.
+            foreach ($previous['responses'] ?? [] as $key => $response) {
+                if (isset($current['responses'][$key])) {
+                    continue;
+                }
+                $touched[] = [
+                    'status' => $response['status'],
+                    'content_type' => $response['content_type'],
+                    'change' => 'removed',
+                    'state' => 'removed',
+                    'covered' => true,
                 ];
             }
 
             if ($previous !== null && $touched === []) {
                 continue;
             }
+
+            usort($touched, static fn(array $a, array $b): int => strcmp(
+                $a['status'] . ' ' . $a['content_type'],
+                $b['status'] . ' ' . $b['content_type'],
+            ));
 
             $operations[] = [
                 'endpoint' => $endpoint,
@@ -574,7 +665,7 @@ final class CoverageGateCommand
                 $lines[] = sprintf(
                     '| `%s` | %s | `%s` | %s |',
                     $operation['endpoint'],
-                    $operation['change'],
+                    $response['change'],
                     $this->describeResponse($response),
                     $this->describeState($response),
                 );
@@ -598,6 +689,7 @@ final class CoverageGateCommand
         return match ($response['state']) {
             'validated' => 'covered',
             'skipped' => 'SKIPPED',
+            'removed' => 'removed (not testable)',
             default => 'UNCOVERED',
         };
     }
