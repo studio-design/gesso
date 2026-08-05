@@ -94,12 +94,19 @@ Everything the spec pins down is filled in:
   only a dead end when it is `required` *and* no other media type is declared:
   an optional body is simply omitted, and an operation that also offers
   urlencoded is stubbed through that. A body no Content-Type resolves back to
-  at all — a `*/*` key, which the JSON path skips and the non-JSON path cannot
-  evaluate — is the other dead end. Either way the operation is reported as not
-  stubbable for the Laravel, Pest, and Symfony adapters rather than emitted as
-  a request that would silently validate as skipped. The `phpunit` adapter is
-  unaffected by both — it only validates responses and never builds a request,
-  so no `requestBody` can cost it an operation.
+  at all — a `text/*` key, which no JSON type selects and no form type covers —
+  is the other dead end. Either way the operation is reported as not stubbable
+  for the Laravel, Pest, and Symfony adapters rather than emitted as a request
+  that would silently validate as skipped. The `phpunit` adapter is unaffected
+  by both — it only validates responses and never builds a request, so no
+  `requestBody` can cost it an operation.
+
+  A request media type is resolved the way `RequestBodyValidator` does, which
+  is not how responses resolve. Its JSON route has no exact-match preference,
+  so only the first JSON key (or `application/*`) is ever selected by a JSON
+  Content-Type. And forms are the one non-JSON family it still checks against a
+  schema, which makes `multipart/form-data` the way to reach a `multipart/*`
+  range — unreachable through every other route.
 - **Status codes.** A range key such as `4XX`, or `default`, is exercised as a
   concrete code with a comment saying which one was picked. The code is chosen
   the way the runtime resolver reads the spec — exact keys win over ranges, and
@@ -125,6 +132,13 @@ Everything the spec pins down is filled in:
   lands on one is skipped as a contract this engine cannot evaluate. So a
   schema-less range is stubbed with a concrete non-JSON type, and a range
   carrying a schema next to a JSON sibling is reported rather than stubbed.
+- **Responses only a skip can reach.** OpenAPI 3.2 `itemSchema` streaming
+  cannot be checked from a buffered body, and a non-JSON media type carrying a
+  `schema` is a contract this JSON Schema engine does not evaluate. Both still
+  get a stub — it exercises the endpoint and moves the tuple off `uncovered` —
+  but with a `TODO` saying the assertion can only ever pass as Skipped, because
+  the generated `isValid()` is satisfied by a skip and the coverage document
+  will keep reporting the tuple as skipped rather than validated.
 - **Responses without `content`.** These become a single "no content" test, the
   same tuple the coverage tracker records for a 204.
 

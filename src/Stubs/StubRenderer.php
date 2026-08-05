@@ -47,6 +47,7 @@ use function substr;
 use function trim;
 use function ucfirst;
 use function var_export;
+use function wordwrap;
 
 /**
  * Renders one {@see StubGenerator} plan as a test class (or, for Pest, a test
@@ -473,15 +474,7 @@ final class StubRenderer
             $this->literal('Exercise ' . $this->describeTuple($operation, $tuple) . '.'),
         ), ''];
 
-        if ($tuple['is_range']) {
-            $lines[] = sprintf(
-                '// The spec declares `%s`; this stub exercises %d.',
-                $tuple['status'],
-                $tuple['status_code'],
-            );
-        }
-
-        return array_merge($lines, match ($this->adapter) {
+        return array_merge($lines, $this->tupleNotes($tuple), match ($this->adapter) {
             'phpunit' => $this->phpunitBody($operation, $tuple),
             'laravel' => $this->laravelBody($operation, $tuple),
             default => $this->symfonyBody($operation, $tuple),
@@ -870,12 +863,36 @@ final class StubRenderer
             $this->literal($this->specName),
         );
 
+        return array_merge($this->tupleNotes($tuple), $lines);
+    }
+
+    /**
+     * The comments a tuple needs above its call: which concrete status a range
+     * key is being exercised with, and — when the spec puts the response out of
+     * this engine's reach — why the assertion below can only ever pass as
+     * Skipped. Without the second one the stub reads as finished while the
+     * coverage document keeps reporting the tuple as skipped.
+     *
+     * @param StubTuple $tuple
+     *
+     * @return list<string>
+     */
+    private function tupleNotes(array $tuple): array
+    {
+        $lines = [];
+
         if ($tuple['is_range']) {
-            return array_merge([sprintf(
+            $lines[] = sprintf(
                 '// The spec declares `%s`; this stub exercises %d.',
                 $tuple['status'],
                 $tuple['status_code'],
-            )], $lines);
+            );
+        }
+
+        if ($tuple['skip_notice'] !== null) {
+            foreach (explode("\n", wordwrap('TODO: ' . $tuple['skip_notice'] . '.', 68)) as $line) {
+                $lines[] = '// ' . $line;
+            }
         }
 
         return $lines;

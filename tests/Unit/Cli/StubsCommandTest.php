@@ -657,13 +657,74 @@ class StubsCommandTest extends TestCase
     }
 
     #[Test]
+    public function a_form_range_request_body_is_sent_as_the_form_type_it_covers(): void
+    {
+        $spec = $this->writeInlineSpec('formrange', ['/things' => ['post' => [
+            'requestBody' => ['required' => true, 'content' => ['multipart/*' => [
+                'schema' => ['type' => 'object', 'required' => ['a'], 'properties' => ['a' => ['type' => 'integer']]],
+            ]]],
+            'responses' => ['200' => ['content' => ['application/json' => ['schema' => ['type' => 'object']]]]],
+        ]]]);
+
+        $this->command()->run(StubsCommand::parseArgv([
+            '--spec=' . $spec,
+            '--adapter=laravel',
+            '--output=' . $this->workDir . '/out',
+        ]));
+
+        // Forms are the one non-JSON family the request validator checks
+        // against a schema, so `multipart/*` is reachable — through
+        // `multipart/form-data` and nothing else.
+        $this->assertSame(['PostThingsTest.php'], $this->generatedFiles());
+        $this->assertStringNotContainsString('not stubbed', $this->stdout);
+        $code = (string) file_get_contents($this->workDir . '/out/PostThingsTest.php');
+        $this->assertStringContainsString("'Content-Type' => 'multipart/form-data',", $code);
+
+        // Pin the runtime behaviour: the sent type must reach the range's own
+        // schema, not slide past it as an unvalidated body.
+        OpenApiSpecLoader::reset();
+        OpenApiSpecLoader::configure($this->workDir);
+        $result = (new OpenApiRequestValidator())
+            ->validate('formrange', 'POST', '/things', [], [], ['a' => 'not-an-integer'], 'multipart/form-data');
+        $this->assertFalse($result->isValid());
+    }
+
+    #[Test]
+    public function a_response_that_can_only_be_skipped_says_so_in_the_stub(): void
+    {
+        $spec = $this->writeInlineSpec('streaming', ['/events' => ['get' => ['responses' => ['200' => ['content' => [
+            'application/jsonl' => ['itemSchema' => ['type' => 'object']],
+        ]]]]]]);
+
+        $this->command()->run(StubsCommand::parseArgv([
+            '--spec=' . $spec,
+            '--output=' . $this->workDir . '/out',
+        ]));
+
+        // The generated assertion is isValid(), which a Skipped result
+        // satisfies — so the stub would otherwise read as finished while
+        // coverage keeps reporting the tuple as skipped, never validated.
+        $code = (string) file_get_contents($this->workDir . '/out/GetEventsTest.php');
+        $this->assertStringContainsString('itemSchema', $code);
+        $this->assertStringContainsString('can only', $code);
+        $this->assertStringContainsString('validate as Skipped', $code);
+
+        OpenApiSpecLoader::reset();
+        OpenApiSpecLoader::configure($this->workDir);
+        $result = (new OpenApiResponseValidator(new StrictRequiredTracker()))
+            ->validate('streaming', 'GET', '/events', 200, ['a' => 1], 'application/jsonl');
+        $this->assertTrue($result->isSkipped());
+    }
+
+    #[Test]
     public function an_unsendable_request_body_does_not_block_the_response_only_adapter(): void
     {
         $spec = $this->writeInlineSpec('unsendable', ['/things' => ['post' => [
-            // No Content-Type resolves back to `*/*`: a JSON one falls through
-            // to findJsonContentType(), which skips the full wildcard, and a
-            // non-JSON one hits the schema this engine cannot evaluate.
-            'requestBody' => ['required' => true, 'content' => ['*/*' => ['schema' => ['type' => 'object']]]],
+            // Nothing validates against `text/*`: findJsonContentType() only
+            // falls back to `application/*`, so no JSON type selects it, and
+            // the form types the non-JSON route can still check are not
+            // covered by a `text` range either.
+            'requestBody' => ['required' => true, 'content' => ['text/*' => ['schema' => ['type' => 'object']]]],
             'responses' => ['200' => ['content' => ['application/json' => ['schema' => ['type' => 'object']]]]],
         ]]]);
 

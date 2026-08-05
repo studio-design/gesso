@@ -7,8 +7,10 @@ namespace Studio\Gesso\Stubs;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\Spec\OpenApiOperationResolver;
 use Studio\Gesso\Validation\Request\ParameterCollector;
+use Studio\Gesso\Validation\Request\RequestBodyValidator;
 use Studio\Gesso\Validation\Response\ResponseStatusTargetEnumerator;
 use Studio\Gesso\Validation\Support\ContentTypeMatcher;
+use Studio\Gesso\Validation\Support\FormBodyDecoder;
 
 use function array_filter;
 use function array_key_exists;
@@ -41,7 +43,7 @@ use function usort;
  * contributes a single `(status, '*')` tuple" rule. A stub for a tuple the
  * tracker can never report would be a test that cannot move the coverage number.
  *
- * @phpstan-type StubTuple array{status: string, content_type: string, wire_content_type: string, status_code: null|int, is_range: bool, reason: 'ok'|'unreachable'|'malformed', example: mixed, has_example: bool}
+ * @phpstan-type StubTuple array{status: string, content_type: string, wire_content_type: string, status_code: null|int, is_range: bool, reason: 'ok'|'unreachable'|'malformed', skip_notice: null|string, example: mixed, has_example: bool}
  * @phpstan-type StubRequestBody array{content_type: string, wire_content_type: string, body: mixed}
  * @phpstan-type StubOperation array{
  *     method: string,
@@ -190,6 +192,14 @@ final class StubGenerator
      * no `schema`: with one, that route ends in the "non-JSON media type
      * declaring a schema this engine cannot evaluate" skip instead.
      *
+     * The request side differs twice. Its JSON route is
+     * {@see ContentTypeMatcher::findJsonContentType()} with no exact-match
+     * preference, so only the first JSON key (or `application/*`) is ever
+     * selected by a JSON Content-Type. And forms are the one non-JSON family
+     * {@see RequestBodyValidator} still checks against a schema, which makes a
+     * form Content-Type worth trying for a schema-carrying range like
+     * `multipart/*` — unreachable through every other route.
+     *
      * Null means no media type can select the key at all — a `<type>/*` range
      * carrying a schema and declared next to a literal JSON key is the case:
      * the JSON route resolves to the sibling and the non-JSON route cannot
@@ -197,10 +207,13 @@ final class StubGenerator
      * exact 4xx code, and the caller reports those instead of stubbing them.
      *
      * @param array<string, mixed> $siblings the content map the key belongs to
+     * @param bool $forRequest resolve the way RequestBodyValidator does rather
+     *                         than ResponseSchemaResolver
      */
-    private static function wireMediaType(string $declared, array $siblings): ?string
+    private static function wireMediaType(string $declared, array $siblings, bool $forRequest = false): ?string
     {
         $normalized = ContentTypeMatcher::normalizeMediaType($declared);
+        $hasSchema = isset($siblings[$declared]['schema']);
         $candidates = [$declared, 'application/json'];
 
         [$type] = explode('/', $normalized, 2);
@@ -211,7 +224,12 @@ final class StubGenerator
             }
         }
 
-        if (!isset($siblings[$declared]['schema'])) {
+        if ($forRequest && $hasSchema) {
+            $candidates[] = FormBodyDecoder::URLENCODED;
+            $candidates[] = FormBodyDecoder::MULTIPART;
+        }
+
+        if (!$hasSchema) {
             foreach ($prefixes as $prefix) {
                 for ($i = 0; $i < 4; $i++) {
                     $candidates[] = $prefix . '/vnd.gesso-stub' . ($i === 0 ? '' : (string) $i);
@@ -226,15 +244,54 @@ final class StubGenerator
                 continue;
             }
             $normalizedCandidate = ContentTypeMatcher::normalizeMediaType($candidate);
-            $matched = ContentTypeMatcher::isJsonContentType($normalizedCandidate)
-                ? ContentTypeMatcher::findJsonContentTypeForResponse($normalizedCandidate, $siblings)
-                : ContentTypeMatcher::findContentTypeKey($normalizedCandidate, $siblings);
+            $matched = match (true) {
+                !ContentTypeMatcher::isJsonContentType($normalizedCandidate) => ContentTypeMatcher::findContentTypeKey($normalizedCandidate, $siblings),
+                $forRequest => ContentTypeMatcher::findJsonContentType($siblings),
+                default => ContentTypeMatcher::findJsonContentTypeForResponse($normalizedCandidate, $siblings),
+            };
             if ($matched === $declared) {
                 return $candidate;
             }
         }
 
         return null;
+    }
+
+    /**
+     * Why a response tuple can only ever validate as Skipped, or null when the
+     * stub really does exercise a schema.
+     *
+     * The generated assertion is `isValid()`, which a Skipped result satisfies,
+     * so without this the test would read as finished while the coverage
+     * document keeps reporting the tuple as skipped rather than validated. Both
+     * cases are properties of the spec, not of the stub: OpenAPI 3.2
+     * `itemSchema` streaming cannot be checked from a buffered body, and a
+     * non-JSON media type carrying a `schema` is a contract this JSON Schema
+     * engine does not evaluate. The stub is still worth writing — it exercises
+     * the endpoint and moves the tuple off `uncovered` — but the reason belongs
+     * in the file rather than in a surprise.
+     *
+     * @param array<string, mixed> $media the declared media type entry
+     */
+    private static function skipNotice(string $wireContentType, array $media): ?string
+    {
+        $itemSchema = 'the spec declares `itemSchema` here, and stream items cannot be validated '
+            . 'from a buffered body, so this response can only validate as Skipped';
+
+        if (ContentTypeMatcher::isJsonContentType(ContentTypeMatcher::normalizeMediaType($wireContentType))) {
+            // The JSON route reads `schema` first and only falls back to the
+            // streaming skip when there is none.
+            return isset($media['schema']) || !isset($media['itemSchema']) ? null : $itemSchema;
+        }
+
+        // The non-JSON route checks `itemSchema` first, then rejects any other
+        // schema as unevaluatable.
+        return match (true) {
+            isset($media['itemSchema']) => $itemSchema,
+            isset($media['schema']) => 'a non-JSON media type declaring a `schema` is a contract this validator '
+                . 'cannot evaluate, so this response can only validate as Skipped',
+            default => null,
+        };
     }
 
     private function isTrackedMethod(string $method, string $location): bool
@@ -348,6 +405,9 @@ final class StubGenerator
                 self::isStatusKey($status) => 'unreachable',
                 default => 'malformed',
             },
+            'skip_notice' => $wireContentType === null || $contentType === OpenApiCoverageTracker::ANY_CONTENT_TYPE
+                ? null
+                : self::skipNotice($wireContentType, $media),
             'example' => $example,
             'has_example' => $hasExample,
         ];
@@ -450,7 +510,7 @@ final class StubGenerator
         foreach ($keys as $key) {
             $media = $content[$key] ?? null;
             [$example, $hasExample] = $this->example(is_array($media) ? $media : []);
-            $wire = self::wireMediaType($key, $content);
+            $wire = self::wireMediaType($key, $content, forRequest: true);
             if ($wire === null) {
                 continue;
             }
