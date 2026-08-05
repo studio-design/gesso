@@ -40,7 +40,7 @@ final class OpenApiStubsCommand extends Command
         {--spec= : Spec name resolved under gesso.spec_base_path, or a path to a spec file}
         {--coverage= : Coverage JSON (schema_version 3); only uncovered responses are stubbed}
         {--adapter=laravel : Generated test idiom: phpunit, laravel, symfony or pest}
-        {--output= : Directory to write into (default: tests/Feature/Contract)}
+        {--output= : Directory to write into; defaults to the conventional location for the adapter}
         {--namespace= : Namespace for the generated classes}
         {--base-class= : Test class the generated classes extend}
         {--dry-run : Report what would be written without writing it}';
@@ -80,8 +80,6 @@ final class OpenApiStubsCommand extends Command
                 $options[str_replace('-', '_', $option)] = trim($value);
             }
         }
-        $options['output'] ??= 'tests/Feature/Contract';
-
         $write = function (string $message): void {
             $this->line(rtrim($message, "\n"));
         };

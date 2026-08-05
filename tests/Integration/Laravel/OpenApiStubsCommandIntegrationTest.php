@@ -57,7 +57,8 @@ final class OpenApiStubsCommandIntegrationTest extends TestCase
         $code = (string) file_get_contents($this->outputDir . '/GetV1PetsTest.php');
         $this->assertStringContainsString("#[OpenApiSpec('petstore-3.0')]", $code);
         $this->assertStringContainsString('use ValidatesOpenApiSchema;', $code);
-        $this->assertStringContainsString("\$this->getJson('/v1/pets')", $code);
+        $this->assertStringContainsString('$response = $this->getJson(', $code);
+        $this->assertStringContainsString("    '/v1/pets',", $code);
     }
 
     #[Test]

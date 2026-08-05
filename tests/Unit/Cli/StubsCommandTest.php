@@ -28,6 +28,7 @@ use function rmdir;
 use function scandir;
 use function sort;
 use function str_contains;
+use function substr_count;
 use function sys_get_temp_dir;
 use function uniqid;
 use function unlink;
@@ -271,6 +272,180 @@ class StubsCommandTest extends TestCase
     }
 
     #[Test]
+    public function paths_that_normalize_to_the_same_class_name_both_get_a_file(): void
+    {
+        // `/foo-bar` and `/foo/bar` both studly-case to GetFooBarTest; without
+        // disambiguation the second would be reported as an existing file and
+        // its uncovered responses would be lost.
+        $spec = $this->writeInlineSpec('collide', [
+            '/foo-bar' => ['get' => ['responses' => ['200' => ['content' => ['application/json' => ['schema' => ['type' => 'object']]]]]]],
+            '/foo/bar' => ['get' => ['responses' => ['200' => ['content' => ['application/json' => ['schema' => ['type' => 'object']]]]]]],
+        ]);
+
+        $this->command()->run(StubsCommand::parseArgv([
+            '--spec=' . $spec,
+            '--output=' . $this->workDir . '/out',
+        ]));
+
+        $files = $this->generatedFiles();
+        $this->assertCount(2, $files);
+        $this->assertStringNotContainsString('already exists', $this->stdout);
+
+        // Each colliding name carries a digest of its own endpoint, so it does
+        // not shift when an unrelated operation joins or leaves the spec.
+        $this->assertSame($files, $this->rerunClassNamesFor($spec));
+    }
+
+    #[Test]
+    public function each_response_media_type_asks_for_its_own_content_type(): void
+    {
+        $spec = $this->writeInlineSpec('negotiated', ['/pets' => ['get' => ['responses' => ['200' => ['content' => [
+            'application/json' => ['schema' => ['type' => 'object']],
+            'application/xml' => ['schema' => ['type' => 'object']],
+        ]]]]]]);
+
+        $this->command()->run(StubsCommand::parseArgv([
+            '--spec=' . $spec,
+            '--adapter=laravel',
+            '--output=' . $this->workDir . '/out',
+        ]));
+
+        // getJson() pins Accept: application/json, so without an explicit
+        // Accept both tests would resolve to the same response.
+        $code = (string) file_get_contents($this->workDir . '/out/GetPetsTest.php');
+        $this->assertStringContainsString("'Accept' => 'application/json',", $code);
+        $this->assertStringContainsString("'Accept' => 'application/xml',", $code);
+    }
+
+    #[Test]
+    public function a_range_key_avoids_the_status_an_exact_key_already_claims(): void
+    {
+        $spec = $this->writeInlineSpec('ranges', ['/pets' => ['get' => ['responses' => [
+            '400' => ['content' => ['application/json' => ['schema' => ['type' => 'object']]]],
+            '4XX' => ['content' => ['application/json' => ['schema' => ['type' => 'object']]]],
+            'default' => ['content' => ['application/json' => ['schema' => ['type' => 'object']]]],
+        ]]]]);
+
+        $this->command()->run(StubsCommand::parseArgv([
+            '--spec=' . $spec,
+            '--output=' . $this->workDir . '/out',
+        ]));
+
+        $code = (string) file_get_contents($this->workDir . '/out/GetPetsTest.php');
+        // The resolver prefers exact over range over default, so 4XX must not
+        // reuse 400 and default must avoid the whole 4xx class.
+        $this->assertStringContainsString('The spec declares `4XX`; this stub exercises 401.', $code);
+        $this->assertStringContainsString('The spec declares `default`; this stub exercises 100.', $code);
+        $this->assertSame(1, substr_count($code, "            400,\n"));
+    }
+
+    #[Test]
+    public function a_response_key_no_status_can_reach_is_reported_instead_of_stubbed(): void
+    {
+        $responses = ['4XX' => ['content' => ['application/json' => ['schema' => ['type' => 'object']]]]];
+        for ($status = 400; $status <= 499; $status++) {
+            $responses[(string) $status] = ['content' => ['application/json' => ['schema' => ['type' => 'object']]]];
+        }
+        $spec = $this->writeInlineSpec('exhausted', ['/pets' => ['get' => ['responses' => $responses]]]);
+
+        $exit = $this->command()->run(StubsCommand::parseArgv([
+            '--spec=' . $spec,
+            '--output=' . $this->workDir . '/out',
+        ]));
+
+        $this->assertSame(StubsCommand::EXIT_OK, $exit);
+        $this->assertStringContainsString('1 declared response was not stubbed', $this->stdout);
+        $this->assertStringContainsString('GET /pets  4XX application/json', $this->stdout);
+        $this->assertStringNotContainsString('4XX', (string) file_get_contents($this->workDir . '/out/GetPetsTest.php'));
+    }
+
+    #[Test]
+    public function a_non_array_or_non_json_request_body_uses_the_raw_call(): void
+    {
+        $spec = $this->writeInlineSpec('rawbody', ['/pets' => ['post' => [
+            'requestBody' => ['content' => ['application/xml' => [
+                'schema' => ['type' => 'string'],
+                'example' => '<pet name="Fido"/>',
+            ]]],
+            'responses' => ['201' => ['content' => ['application/json' => ['schema' => ['type' => 'object']]]]],
+        ]]]);
+
+        $this->command()->run(StubsCommand::parseArgv([
+            '--spec=' . $spec,
+            '--adapter=laravel',
+            '--output=' . $this->workDir . '/out',
+        ]));
+
+        $code = (string) file_get_contents($this->workDir . '/out/PostPetsTest.php');
+        // postJson() would json_encode a scalar and send it as application/json.
+        $this->assertStringNotContainsString('postJson', $code);
+        $this->assertStringContainsString('$this->call(', $code);
+        $this->assertStringContainsString("'Content-Type' => 'application/xml',", $code);
+        $this->assertStringContainsString('transformHeadersToServerVars', $code);
+        // The XML example is already the wire body; JSON-encoding it would
+        // send the quoted string "<pet name=\"Fido\"/>" instead.
+        $this->assertStringContainsString('$payload = \'<pet name="Fido"/>\';', $code);
+    }
+
+    #[Test]
+    public function a_summary_cannot_terminate_the_generated_docblock(): void
+    {
+        $spec = $this->writeInlineSpec('comment', ['/pets' => ['get' => [
+            'summary' => "Ends the comment */ and\ncontinues on a new line",
+            'responses' => ['200' => ['content' => ['application/json' => ['schema' => ['type' => 'object']]]]],
+        ]]]);
+
+        $exit = $this->command()->run(StubsCommand::parseArgv([
+            '--spec=' . $spec,
+            '--output=' . $this->workDir . '/out',
+        ]));
+
+        $this->assertSame(StubsCommand::EXIT_OK, $exit);
+        $file = $this->workDir . '/out/GetPetsTest.php';
+        $code = (string) file_get_contents($file);
+        $this->assertStringContainsString('*\\/', $code);
+        $this->assertStringContainsString(' * continues on a new line', $code);
+        $this->assertSame(0, $this->lint($file));
+    }
+
+    #[Test]
+    public function a_shadowing_entry_document_is_rejected(): void
+    {
+        // The loader resolves a name and searches .json before .yaml, so
+        // stubbing the requested YAML would silently use the JSON instead.
+        $this->writeInlineSpec('petstore', ['/pets' => ['get' => ['responses' => ['200' => ['description' => 'ok']]]]]);
+        file_put_contents($this->workDir . '/petstore.yaml', "openapi: 3.0.3\n");
+
+        $exit = $this->command()->run(StubsCommand::parseArgv([
+            '--spec=' . $this->workDir . '/petstore.yaml',
+            '--output=' . $this->workDir . '/out',
+        ]));
+
+        $this->assertSame(StubsCommand::EXIT_USAGE, $exit);
+        $this->assertStringContainsString('selects', $this->stderr);
+        $this->assertStringContainsString('petstore.json', $this->stderr);
+    }
+
+    #[Test]
+    public function pest_stubs_default_into_the_laravel_harness_directory(): void
+    {
+        // Pest generates Laravel HTTP calls, which only work where the
+        // project's uses(TestCase::class, ...)->in('Feature') binding reaches.
+        $this->assertSame('tests/Feature/Contract', StubRenderer::DEFAULT_OUTPUT_DIRS['pest']);
+
+        $this->command()->run(StubsCommand::parseArgv([
+            '--spec=' . $this->writeSpec(),
+            '--adapter=pest',
+            '--output=' . $this->workDir . '/out',
+        ]));
+
+        $this->assertStringContainsString(
+            'uses(TestCase::class, ValidatesOpenApiSchema::class)',
+            (string) file_get_contents($this->workDir . '/out/GetPetsTest.php'),
+        );
+    }
+
+    #[Test]
     public function fills_path_parameters_required_query_and_headers_from_the_spec(): void
     {
         $spec = $this->workDir . '/params.json';
@@ -417,6 +592,53 @@ class StubsCommandTest extends TestCase
             },
             'gesso stubs',
         );
+    }
+
+    /**
+     * @param array<string, mixed> $paths
+     */
+    private function writeInlineSpec(string $name, array $paths): string
+    {
+        $path = $this->workDir . '/' . $name . '.json';
+        file_put_contents($path, json_encode([
+            'openapi' => '3.0.3',
+            'info' => ['title' => $name, 'version' => '1.0.0'],
+            'paths' => $paths,
+        ], JSON_THROW_ON_ERROR));
+
+        return $path;
+    }
+
+    /**
+     * Regenerate into a second directory to confirm names are stable.
+     *
+     * @return list<string>
+     */
+    private function rerunClassNamesFor(string $spec): array
+    {
+        $this->command()->run(StubsCommand::parseArgv([
+            '--spec=' . $spec,
+            '--output=' . $this->workDir . '/rerun',
+        ]));
+
+        $files = [];
+        foreach (scandir($this->workDir . '/rerun') ?: [] as $entry) {
+            if (str_contains($entry, '.php')) {
+                $files[] = $entry;
+            }
+        }
+        sort($files);
+
+        return $files;
+    }
+
+    private function lint(string $file): int
+    {
+        $output = [];
+        $status = 0;
+        exec(escapeshellarg(PHP_BINARY) . ' -l ' . escapeshellarg($file) . ' 2>&1', $output, $status);
+
+        return $status;
     }
 
     /** A two-operation spec: one GET and one POST, each with a single response. */

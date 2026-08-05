@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Stubs;
 
+use InvalidArgumentException;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\Spec\OpenApiOperationResolver;
 use Studio\Gesso\Validation\Request\ParameterCollector;
+use Studio\Gesso\Validation\Response\ResponseStatusTargetEnumerator;
 
 use function array_filter;
 use function array_key_exists;
@@ -21,7 +23,6 @@ use function is_float;
 use function is_int;
 use function is_string;
 use function ksort;
-use function preg_match;
 use function rawurlencode;
 use function str_contains;
 use function str_replace;
@@ -38,7 +39,7 @@ use function usort;
  * contributes a single `(status, '*')` tuple" rule. A stub for a tuple the
  * tracker can never report would be a test that cannot move the coverage number.
  *
- * @phpstan-type StubTuple array{status: string, content_type: string, status_code: int, is_range: bool, example: mixed, has_example: bool}
+ * @phpstan-type StubTuple array{status: string, content_type: string, status_code: null|int, is_range: bool, example: mixed, has_example: bool}
  * @phpstan-type StubOperation array{
  *     method: string,
  *     path: string,
@@ -173,6 +174,7 @@ final class StubGenerator
         /** @var array<string, mixed> $responses */
         $responses = is_array($operation['responses'] ?? null) ? $operation['responses'] : [];
         $endpoint = $method . ' ' . $path;
+        $wireStatuses = $this->wireStatuses($responses);
         $tuples = [];
 
         foreach ($responses as $status => $response) {
@@ -183,7 +185,14 @@ final class StubGenerator
 
             $content = is_array($response['content'] ?? null) ? $response['content'] : [];
             if ($content === []) {
-                $tuples[] = $this->tuple($endpoint, $status, OpenApiCoverageTracker::ANY_CONTENT_TYPE, [], $states);
+                $tuples[] = $this->tuple(
+                    $endpoint,
+                    $status,
+                    OpenApiCoverageTracker::ANY_CONTENT_TYPE,
+                    [],
+                    $states,
+                    $wireStatuses,
+                );
 
                 continue;
             }
@@ -195,6 +204,7 @@ final class StubGenerator
                     (string) $contentType,
                     is_array($media) ? $media : [],
                     $states,
+                    $wireStatuses,
                 );
             }
         }
@@ -212,47 +222,67 @@ final class StubGenerator
     /**
      * @param array<string, mixed> $media
      * @param null|array<string, string> $states
+     * @param array<string, null|int> $wireStatuses
      *
      * @return null|StubTuple null when the tuple is already validated
      */
-    private function tuple(string $endpoint, string $status, string $contentType, array $media, ?array $states): ?array
-    {
+    private function tuple(
+        string $endpoint,
+        string $status,
+        string $contentType,
+        array $media,
+        ?array $states,
+        array $wireStatuses,
+    ): ?array {
         if ($states !== null && ($states[$endpoint . "\x1f" . $status . "\x1f" . $contentType] ?? 'uncovered') === 'validated') {
             return null;
         }
 
         [$example, $hasExample] = $this->example($media);
-        [$statusCode, $isRange] = $this->statusCode($status);
+        $statusCode = $wireStatuses[$status] ?? null;
 
         return [
             'status' => $status,
             'content_type' => $contentType,
             'status_code' => $statusCode,
-            'is_range' => $isRange,
+            'is_range' => $statusCode !== null && (string) $statusCode !== $status,
             'example' => $example,
             'has_example' => $hasExample,
         ];
     }
 
     /**
-     * A concrete status code to exercise. `default` and the OpenAPI range keys
-     * (`2XX`, `4XX`, …) are not codes a client can return, so the stub picks
-     * the first code in the range and flags it for the generated comment.
+     * The wire status that actually selects each declared response key.
      *
-     * @return array{int, bool}
+     * Reuses {@see ResponseStatusTargetEnumerator} rather than mapping `4XX`
+     * to 400 directly: the runtime resolver prefers an exact key over a range
+     * over `default`, so a spec declaring both `400` and `4XX` needs the range
+     * stub to send some *other* 4xx code, otherwise the generated test would
+     * silently validate the `400` schema. A key no wire status can reach
+     * (`4XX` alongside all 100 exact 4xx codes) yields null and is dropped by
+     * the caller with a report, because no test could ever cover it.
+     *
+     * @param array<string, mixed> $responses
+     *
+     * @return array<string, null|int>
      */
-    private function statusCode(string $status): array
+    private function wireStatuses(array $responses): array
     {
-        if (preg_match('/^[1-5]\d{2}$/', $status) === 1) {
-            return [(int) $status, false];
-        }
-        if (preg_match('/^([1-5])[xX]{2}$/', $status, $matches) === 1) {
-            return [(int) $matches[1] * 100, true];
+        try {
+            $targets = ResponseStatusTargetEnumerator::enumerate($responses);
+        } catch (InvalidArgumentException) {
+            // A key the enumerator rejects (`"ok"`, `"20x"`) is a malformed
+            // spec node. `gesso doctor` is the loud path for those; here every
+            // key of the operation simply becomes unreachable.
+            return [];
         }
 
-        // `default` covers whatever the declared codes do not; 200 is only a
-        // starting point, hence the range flag.
-        return [200, true];
+        $wireStatuses = [];
+        foreach ($targets as $target) {
+            $wireStatuses[$target['declaredStatusKey']] = $target['wireStatus'];
+        }
+
+        return $wireStatuses;
     }
 
     /**

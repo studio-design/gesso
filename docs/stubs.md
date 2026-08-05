@@ -42,7 +42,7 @@ php artisan openapi:stubs --coverage=build/coverage.json
 | `--coverage=<path>` | — | Coverage JSON (`schema_version` 3). Omit to scaffold the whole spec. |
 | `--spec-name=<name>` | `--spec` filename | Key under `specs` in the coverage document, and the spec name written into the generated tests. |
 | `--adapter=<name>` | `phpunit` | `phpunit`, `laravel`, `symfony`, or `pest`. |
-| `--output=<dir>` | per adapter | Where to write. `tests/Contract`, or `tests/Feature/Contract` for `laravel`. |
+| `--output=<dir>` | per adapter | Where to write. `tests/Contract`, or `tests/Feature/Contract` for `laravel` and `pest`. |
 | `--namespace=<ns>` | per adapter | Namespace for the generated classes. Ignored by `pest`. |
 | `--base-class=<fqcn>` | per adapter | Test class to extend — `PHPUnit\Framework\TestCase`, or `Tests\TestCase` for `laravel`. Ignored by `pest`. |
 | `--dry-run` | off | Report what would be written without writing it. |
@@ -72,7 +72,15 @@ Everything the spec pins down is filled in:
   `examples`) becomes the literal in the stub. Without one you get `[]` under a
   `// TODO` comment.
 - **Status codes.** A range key such as `4XX`, or `default`, is exercised as a
-  concrete code with a comment saying which one was picked.
+  concrete code with a comment saying which one was picked. The code is chosen
+  the way the runtime resolver reads the spec — exact keys win over ranges, and
+  ranges over `default` — so an operation declaring both `400` and `4XX` gets a
+  `4XX` stub sending 401, not one that would silently validate the `400` schema.
+  A key no status can reach (a `4XX` alongside all 100 exact 4xx codes) is
+  reported rather than stubbed, because no test could ever cover it.
+- **Content negotiation.** Each response media type gets its own `Accept`
+  header, so two media types declared under one status do not both resolve to
+  the same response.
 - **Responses without `content`.** These become a single "no content" test, the
   same tuple the coverage tracker records for a 204.
 
@@ -91,7 +99,13 @@ final class PostPetsTest extends TestCase
             'name' => 'Fido',
         ];
 
-        $response = $this->postJson('/pets', $payload);
+        $response = $this->postJson(
+            '/pets',
+            $payload,
+            [
+                'Accept' => 'application/json',
+            ],
+        );
 
         $response->assertStatus(201);
         $this->assertResponseMatchesOpenApiSchema($response);
@@ -101,6 +115,15 @@ final class PostPetsTest extends TestCase
 
 Each adapter follows its own [quickstart](quickstarts/laravel.md) idiom, so
 generated code reads like the documented usage rather than a dialect of its own.
+A request body that Laravel's JSON helpers cannot carry — a scalar, or a
+non-JSON media type — is sent through `call()` with an explicit `Content-Type`
+instead of `postJson()`.
+
+Pest stubs default into `tests/Feature/Contract` because they generate Laravel
+HTTP calls: they need the
+`uses(TestCase::class, ValidatesOpenApiSchema::class)->in('Feature')` binding
+from [the Pest guide](pest-plugin.md) to have a harness once `->todo()` comes
+off. Point `--output` elsewhere only if your `uses(...)` reaches there.
 
 ## Re-running it
 
@@ -120,7 +143,15 @@ vendor/bin/gesso stubs --spec=openapi.json --coverage=build/coverage.json
 
 Class names come from the method and path — `GET /pets/{petId}` becomes
 `GetPetsPetIdTest` — not from `operationId`, so a document that reuses an
-`operationId` cannot collide two operations into one file.
+`operationId` cannot collide two operations into one file. Where two paths do
+normalise to the same name (`/foo-bar` and `/foo/bar`), each gets a suffix
+derived from its own endpoint, so neither is dropped and neither name shifts
+when an unrelated operation joins the spec.
+
+`--spec` is loaded through the runtime loader, which resolves a *name* and
+searches `.json` before `.yaml` before `.yml`. Passing `--spec=openapi.yaml`
+next to an `openapi.json` fails rather than silently stubbing the JSON —
+the same shadowing check [`gesso doctor`](doctor.md) makes.
 
 ## Scope
 

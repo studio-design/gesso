@@ -13,6 +13,7 @@ use const STDERR;
 use JsonException;
 use RuntimeException;
 use Studio\Gesso\Coverage\JsonCoverageRenderer;
+use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Stubs\StubGenerator;
 use Studio\Gesso\Stubs\StubRenderer;
@@ -201,7 +202,7 @@ final class StubsCommand
             return $this->usageError($e->getMessage());
         }
 
-        $plans = (new StubGenerator())->plan($spec, $states);
+        [$plans, $unreachable] = $this->partitionReachable((new StubGenerator())->plan($spec, $states));
         $renderer = new StubRenderer(
             $adapter,
             $specName,
@@ -212,29 +213,97 @@ final class StubsCommand
         $dryRun = ($options['dry_run'] ?? false) === true;
 
         if ($plans === []) {
-            $this->writeStdout($states === null
+            $this->writeStdout(($states === null
                 ? "[Gesso] The spec declares no operation to stub.\n"
-                : "[Gesso] Every declared response is already covered; nothing to stub.\n");
+                : "[Gesso] Every declared response is already covered; nothing to stub.\n")
+                . $this->renderUnreachable($unreachable));
 
             return self::EXIT_OK;
         }
 
         try {
-            return $this->write($plans, $renderer, $outputDir, $dryRun);
+            return $this->write($plans, $renderer, $outputDir, $dryRun, $unreachable);
         } catch (Throwable $e) {
             return $this->usageError($e->getMessage());
         }
     }
 
-    /** @param list<StubOperation> $plans */
-    private function write(array $plans, StubRenderer $renderer, string $outputDir, bool $dryRun): int
+    /**
+     * Split off the responses no wire status can select — a `4XX` declared
+     * alongside all 100 exact 4xx codes, or a `default` on an operation that
+     * already declares every status. They stay uncovered forever, so a stub
+     * for one would be a test that cannot pass; they are reported instead of
+     * dropped silently.
+     *
+     * @param list<StubOperation> $plans
+     *
+     * @return array{list<StubOperation>, list<string>}
+     */
+    private function partitionReachable(array $plans): array
+    {
+        $reachable = [];
+        $unreachable = [];
+
+        foreach ($plans as $plan) {
+            $tuples = [];
+            foreach ($plan['tuples'] as $tuple) {
+                if ($tuple['status_code'] === null) {
+                    $unreachable[] = sprintf(
+                        '%s %s  %s',
+                        $plan['method'],
+                        $plan['path'],
+                        $tuple['content_type'] === OpenApiCoverageTracker::ANY_CONTENT_TYPE
+                            ? $tuple['status'] . ' (no content)'
+                            : $tuple['status'] . ' ' . $tuple['content_type'],
+                    );
+
+                    continue;
+                }
+                $tuples[] = $tuple;
+            }
+
+            if ($tuples !== []) {
+                $plan['tuples'] = $tuples;
+                $reachable[] = $plan;
+            }
+        }
+
+        return [$reachable, $unreachable];
+    }
+
+    /** @param list<string> $unreachable */
+    private function renderUnreachable(array $unreachable): string
+    {
+        if ($unreachable === []) {
+            return '';
+        }
+
+        $lines = ['', sprintf(
+            '%d declared response%s not stubbed: no HTTP status selects %s over the operation\'s other keys.',
+            count($unreachable),
+            count($unreachable) === 1 ? ' was' : 's were',
+            count($unreachable) === 1 ? 'it' : 'them',
+        )];
+        foreach ($unreachable as $entry) {
+            $lines[] = '  ! ' . $entry;
+        }
+
+        return implode("\n", $lines) . "\n";
+    }
+
+    /**
+     * @param list<StubOperation> $plans
+     * @param list<string> $unreachable
+     */
+    private function write(array $plans, StubRenderer $renderer, string $outputDir, bool $dryRun, array $unreachable): int
     {
         $written = [];
         $skipped = [];
         $tuples = 0;
+        $classNames = StubRenderer::classNames($plans);
 
-        foreach ($plans as $plan) {
-            $className = StubRenderer::className($plan['method'], $plan['path']);
+        foreach ($plans as $index => $plan) {
+            $className = $classNames[$index];
             $file = $outputDir . '/' . $className . '.php';
 
             if (file_exists($this->absolutise($file))) {
@@ -283,7 +352,7 @@ final class StubsCommand
             }
         }
 
-        $this->writeStdout(implode("\n", $lines) . "\n");
+        $this->writeStdout(implode("\n", $lines) . "\n" . $this->renderUnreachable($unreachable));
 
         return self::EXIT_OK;
     }
@@ -317,6 +386,29 @@ final class StubsCommand
         $extension = pathinfo($path, PATHINFO_EXTENSION);
         if (!in_array($extension, ['json', 'yaml', 'yml'], true)) {
             throw new RuntimeException("Unsupported spec extension: .{$extension} ({$inputPath})");
+        }
+
+        // The loader resolves a *name*, searching .json before .yaml before
+        // .yml, so `--spec=openapi.yaml` next to an openapi.json would silently
+        // stub the JSON document instead. Fail the way `gesso doctor` does
+        // rather than generate stubs from a file the user did not name.
+        $directory = pathinfo($path, PATHINFO_DIRNAME);
+        $name = pathinfo($path, PATHINFO_FILENAME);
+        foreach (['json', 'yaml', 'yml'] as $candidateExtension) {
+            $candidate = $directory . '/' . $name . '.' . $candidateExtension;
+            if (!is_file($candidate)) {
+                continue;
+            }
+            if (realpath($candidate) !== realpath($path)) {
+                throw new RuntimeException(sprintf(
+                    'The runtime loader selects %s before the requested %s. '
+                    . 'Remove or rename the shadowing entry document.',
+                    $candidate,
+                    $inputPath,
+                ));
+            }
+
+            break;
         }
 
         try {
