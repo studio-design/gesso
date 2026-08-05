@@ -586,18 +586,29 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
             $this->writeStderr("[OpenAPI Coverage] WARNING: failed to write sidecar (token={$token}): {$e->getMessage()}\n");
             CoverageSidecarWriter::writeFailureMarker($dir, $token, $e->getMessage());
 
-            // Issue #417: a generation worker demoted its failures on the
-            // promise that the merge unions this sidecar; a lost sidecar
-            // cannot be recovered by the marker alone — the marker write is
-            // itself best-effort, and when it also fails (full disk,
-            // revoked permissions) the merge would see N-1 complete
-            // baseline halves and write an incomplete baseline. Fail the
-            // worker so the parallel run cannot end green with staged
-            // violations silently dropped.
-            if ($baselineDocument !== null) {
-                $this->writeStderr(
-                    "[Gesso] FATAL: baseline generation could not stage this worker's violations in the sidecar; failing the worker so the parallel run does not produce an incomplete baseline.\n",
-                );
+            // Issue #417 / #481: a lost sidecar cannot be recovered by the
+            // marker alone — the marker write is itself best-effort, and
+            // when it also fails (full disk, revoked permissions) the merge
+            // sees N-1 complete halves and writes an incomplete baseline.
+            // For the violation baseline that silently drops failures this
+            // worker already demoted; for the coverage baseline it records
+            // this worker's covered responses as uncovered, permanently
+            // loosening the ratchet. Either way, fail the worker so the
+            // parallel run cannot end green.
+            //
+            // Only generation runs need this: an enforcing worker stages
+            // nothing, and a merge missing one worker's coverage fails loudly
+            // with the "newly uncovered" listing instead of writing a file.
+            $lostGeneration = match (true) {
+                $baselineDocument !== null => "this worker's violations",
+                $this->coverageBaselineGeneratePath !== null => "this worker's covered responses",
+                default => null,
+            };
+            if ($lostGeneration !== null) {
+                $this->writeStderr(sprintf(
+                    "[Gesso] FATAL: baseline generation could not stage %s in the sidecar; failing the worker so the parallel run does not produce an incomplete baseline.\n",
+                    $lostGeneration,
+                ));
                 $this->exitNonZero();
             }
         }

@@ -175,6 +175,38 @@ class CoverageMergeCommandCoverageBaselineTest extends TestCase
     }
 
     #[Test]
+    public function a_failed_gate_keeps_the_sidecars_for_a_retry(): void
+    {
+        // Recovery from any coverage-baseline failure re-runs *this command*
+        // — fix the path, free disk, or accept the regressions with
+        // OPENAPI_BASELINE_GENERATE=1. Cleaning up would make each of those
+        // cost a full parallel suite run.
+        $this->writeGeneratedBaseline([['GET', '/v1/pets', '200', 'application/json']]);
+        $this->writeWorkerSidecar('1', [['GET', '/v1/pets/search', '200', 'application/json']]);
+
+        $stderr = '';
+        $exit = $this->merge($stderr, $this->baselinePath, cleanup: true);
+
+        $this->assertSame(1, $exit);
+        $this->assertNotSame([], glob($this->sidecarDir . '/*') ?: []);
+        $this->assertStringContainsString('Sidecars kept in', $stderr);
+    }
+
+    #[Test]
+    public function a_passing_gate_still_cleans_up_the_sidecars(): void
+    {
+        $this->writeGeneratedBaseline([['GET', '/v1/pets', '200', 'application/json']]);
+        $this->writeWorkerSidecar('1', [['GET', '/v1/pets', '200', 'application/json']]);
+
+        $stderr = '';
+        $exit = $this->merge($stderr, $this->baselinePath, cleanup: true);
+
+        $this->assertSame(0, $exit);
+        $this->assertSame([], glob($this->sidecarDir . '/*') ?: []);
+        $this->assertStringNotContainsString('Sidecars kept in', $stderr);
+    }
+
+    #[Test]
     public function no_sidecars_fails_instead_of_passing_the_gate_vacuously(): void
     {
         $stderr = '';
@@ -218,8 +250,12 @@ class CoverageMergeCommandCoverageBaselineTest extends TestCase
         $this->assertStringContainsString('--coverage-baseline-stale is set but --coverage-baseline-file', $stderr);
     }
 
-    private function merge(string &$stderr, ?string $baselineFile = null, ?string $staleMode = null): int
-    {
+    private function merge(
+        string &$stderr,
+        ?string $baselineFile = null,
+        ?string $staleMode = null,
+        bool $cleanup = false,
+    ): int {
         $command = new CoverageMergeCommand(
             stdoutWriter: static fn(string $msg): null => null,
             stderrWriter: static function (string $msg) use (&$stderr): void {
@@ -231,7 +267,7 @@ class CoverageMergeCommandCoverageBaselineTest extends TestCase
             'sidecar_dir' => $this->sidecarDir,
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
             'specs' => ['petstore-3.0'],
-            'cleanup' => false,
+            'cleanup' => $cleanup,
         ];
         if ($baselineFile !== null) {
             $options['coverage_baseline_file'] = $baselineFile;

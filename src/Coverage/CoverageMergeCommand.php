@@ -587,7 +587,21 @@ final class CoverageMergeCommand
             $results,
         );
 
-        $cleanupFailure = $cleanup && !$this->cleanupSafely($sidecarDir);
+        // Issue #481, mirroring the violation baseline's fail-before-cleanup
+        // contract: keep the sidecars when the coverage baseline step failed.
+        // Every recovery re-runs *this command*, not the suite — fixing a
+        // typo'd path, freeing disk for the write, or accepting the reported
+        // regressions with `OPENAPI_BASELINE_GENERATE=1`. Deleting the
+        // sidecars would make each of those cost a full parallel run.
+        $cleanupFailure = $cleanup &&
+            !$coverageBaselineFailure &&
+            !$this->cleanupSafely($sidecarDir);
+        if ($coverageBaselineFailure && $cleanup) {
+            $this->writeStderr(sprintf(
+                "[Gesso] Sidecars kept in %s so the merge can be retried without re-running the suite.\n",
+                $sidecarDir,
+            ));
+        }
 
         return $writeFailures > 0 ||
             $thresholdFailure ||

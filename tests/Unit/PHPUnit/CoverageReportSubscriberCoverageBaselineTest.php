@@ -24,6 +24,7 @@ use Studio\Gesso\PHPUnit\CoverageReportSubscriber;
 use Studio\Gesso\PHPUnit\TestRunCompletionTracer;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 
+use function file_put_contents;
 use function getenv;
 use function glob;
 use function is_dir;
@@ -345,6 +346,78 @@ class CoverageReportSubscriberCoverageBaselineTest extends TestCase
         $this->assertFileDoesNotExist($path);
         $this->assertNull($exitCode);
         $this->assertStringNotContainsString('coverage baseline', $stderr);
+    }
+
+    #[Test]
+    public function a_generation_worker_exits_non_zero_when_the_sidecar_write_fails(): void
+    {
+        // Worst case: the sidecar write fails AND the failure marker cannot
+        // be dropped either (the sidecar dir path is an existing file, so
+        // ensureDir fails for both). The merge would then generate a
+        // baseline from N-1 workers, recording this worker's covered
+        // responses as uncovered and permanently loosening the ratchet.
+        $this->recordCoveredPetsList();
+        putenv('TEST_TOKEN=5');
+        $blocker = $this->tmpDir . '/not-a-dir';
+        file_put_contents($blocker, 'blocks the sidecar dir');
+
+        $stderr = '';
+        $exitCode = null;
+        $subscriber = new CoverageReportSubscriber(
+            specs: ['petstore-3.0'],
+            outputFile: null,
+            consoleOutput: ConsoleOutput::DEFAULT,
+            githubSummaryPath: null,
+            stderrWriter: static function (string $msg) use (&$stderr): void {
+                $stderr .= $msg;
+            },
+            sidecarDir: $blocker,
+            exitHandler: static function (int $code) use (&$exitCode): void {
+                $exitCode = $code;
+            },
+            coverageBaselineGeneratePath: $this->tmpDir . '/gesso-coverage-baseline.json',
+        );
+        $this->notify($subscriber);
+
+        $this->assertStringContainsString('[Gesso] FATAL', $stderr);
+        $this->assertStringContainsString("this worker's covered responses", $stderr);
+        $this->assertStringContainsString('incomplete baseline', $stderr);
+        $this->assertSame(1, $exitCode, 'a generation worker that lost its sidecar must fail the run');
+    }
+
+    #[Test]
+    public function an_enforcing_worker_stays_green_when_the_sidecar_write_fails(): void
+    {
+        // Nothing is staged for enforcement, and a merge missing one
+        // worker's coverage fails loudly with its "newly uncovered" listing
+        // rather than writing a file — so this worker must keep the
+        // coverage-only sidecar contract of staying green on I/O errors.
+        $this->recordCoveredPetsList();
+        $baseline = $this->generatedBaseline();
+        putenv('TEST_TOKEN=6');
+        $blocker = $this->tmpDir . '/not-a-dir-enforcing';
+        file_put_contents($blocker, 'blocks the sidecar dir');
+
+        $stderr = '';
+        $exitCode = null;
+        $subscriber = new CoverageReportSubscriber(
+            specs: ['petstore-3.0'],
+            outputFile: null,
+            consoleOutput: ConsoleOutput::DEFAULT,
+            githubSummaryPath: null,
+            stderrWriter: static function (string $msg) use (&$stderr): void {
+                $stderr .= $msg;
+            },
+            sidecarDir: $blocker,
+            exitHandler: static function (int $code) use (&$exitCode): void {
+                $exitCode = $code;
+            },
+            coverageBaseline: $baseline,
+        );
+        $this->notify($subscriber);
+
+        $this->assertNull($exitCode);
+        $this->assertStringNotContainsString('[Gesso] FATAL', $stderr);
     }
 
     #[Test]

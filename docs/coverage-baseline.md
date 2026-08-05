@@ -161,6 +161,16 @@ found, when no coverage was recorded, or when the baseline file cannot be
 read; it exits 2 for usage errors (an unknown `--coverage-baseline-stale`
 value, or that flag without `--coverage-baseline-file`).
 
+On any of those failures the sidecars are **kept** instead of cleaned up, as
+the violation baseline does. Every recovery re-runs the merge, not the suite:
+fix a typo'd path, free disk space for the write, or accept the reported
+regressions by re-running with `OPENAPI_BASELINE_GENERATE=1`.
+
+A generation worker that cannot write its sidecar — and cannot drop a failure
+marker either — fails the parallel run rather than letting the merge build a
+baseline from the surviving workers, which would record the lost worker's
+covered responses as uncovered and loosen the ratchet for good.
+
 Unlike the sequential path, the merge has no view of whether the suite passed,
 so a red parallel run can report responses of failed tests as newly uncovered.
 Check the test run's own exit code first — the same caveat the threshold gate
