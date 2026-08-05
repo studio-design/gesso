@@ -18,8 +18,6 @@ use function is_string;
 use function json_decode;
 use function parse_str;
 use function sprintf;
-use function str_ends_with;
-use function str_starts_with;
 use function trim;
 
 /**
@@ -199,18 +197,18 @@ final class FormBodyDecoder
     /**
      * Whether a property describes raw bytes the wire carries as a file part.
      *
-     * Three shapes qualify, all of them ways OpenAPI describes binary content:
-     * OAS 3.0's `format: binary`; OAS 3.1's `contentMediaType` naming a media
-     * type that cannot travel as UTF-8 text (`image/png`, the octet stream,
-     * …), with `type` typically omitted; and the empty schema, whose default
-     * media type is `application/octet-stream` — that is what makes the OAS
-     * 3.2 multi-file example `type: array, items: {}` a list of files. An
-     * array of any of them qualifies too.
+     * OAS 3.1 writes raw binary as a `contentMediaType` with **no** `type`,
+     * precisely because a JSON string cannot hold arbitrary bytes; OAS 3.0
+     * wrote the same thing as `format: binary`. The empty schema counts too —
+     * its default media type is `application/octet-stream`, which is what
+     * makes the OAS 3.2 multi-file example `type: array, items: {}` a list of
+     * files. An array of any of them qualifies.
      *
-     * A textual `contentMediaType` does not: JSON Schema 2020-12 defines a
-     * string with no `contentEncoding` as identity-encoded UTF-8 text, so
-     * `contentMediaType: text/plain` is an ordinary field. `format: byte` and
-     * an explicit `contentEncoding` such as `base64` are likewise text.
+     * A declared `type` rules binary out: per JSON Schema 2020-12 a string
+     * with a `contentMediaType` and no `contentEncoding` is identity-encoded
+     * UTF-8 text, so `type: string, contentMediaType: application/sql` is an
+     * ordinary field whatever its media type. `format: byte` and an explicit
+     * `contentEncoding` such as `base64` are text on the wire as well.
      *
      * @param null|array<string, mixed> $propertySchema
      */
@@ -218,6 +216,10 @@ final class FormBodyDecoder
     {
         if ($propertySchema === null) {
             return false;
+        }
+
+        if ($propertySchema === []) {
+            return true;
         }
 
         $type = $propertySchema['type'] ?? null;
@@ -231,40 +233,15 @@ final class FormBodyDecoder
             return is_array($items) && self::expectsFileParts($items);
         }
 
-        // The empty schema accepts any value and defaults to the octet
-        // stream. Only a literally empty one — a schema carrying any other
-        // keyword is described well enough not to be guessed at.
-        if ($propertySchema === []) {
-            return true;
-        }
-
         if (isset($propertySchema['contentEncoding'])) {
             return false;
         }
 
-        if (($propertySchema['format'] ?? null) === 'binary') {
-            return true;
+        if ($type !== null) {
+            return ($propertySchema['format'] ?? null) === 'binary';
         }
 
-        $contentMediaType = $propertySchema['contentMediaType'] ?? null;
-
-        return is_string($contentMediaType) &&
-            !self::isTextualMediaType(ContentTypeMatcher::normalizeMediaType($contentMediaType));
-    }
-
-    /**
-     * Whether a media type carries content a form field can hold as text.
-     * Everything else (images, audio, archives, the octet stream) is binary.
-     */
-    private static function isTextualMediaType(string $normalizedMediaType): bool
-    {
-        return str_starts_with($normalizedMediaType, 'text/') ||
-            ContentTypeMatcher::isJsonContentType($normalizedMediaType) ||
-            $normalizedMediaType === 'application/xml' ||
-            str_ends_with($normalizedMediaType, '+xml') ||
-            $normalizedMediaType === 'application/yaml' ||
-            str_ends_with($normalizedMediaType, '+yaml') ||
-            $normalizedMediaType === 'application/x-www-form-urlencoded';
+        return isset($propertySchema['contentMediaType']);
     }
 
     /**
@@ -361,10 +338,7 @@ final class FormBodyDecoder
             return is_array($items) ? self::defaultContentTypes($items) : [];
         }
 
-        // A schema with no `type` but object-shaped keywords is still an
-        // object part; composition keywords stay unclassified rather than
-        // guessing a media type for a schema that may accept several shapes.
-        if ($type === 'object' || ($type === null && isset($propertySchema['properties']))) {
+        if ($type === 'object') {
             return ['application/json'];
         }
 
@@ -376,13 +350,13 @@ final class FormBodyDecoder
             return ['text/plain'];
         }
 
-        // A schema that does not say what it holds defaults to the octet
-        // stream. `contentMediaType` is deliberately not consulted here: the
+        // A schema that does not declare a type defaults to the octet stream,
+        // whatever else it says — an object-shaped `properties` block with no
+        // `type` is not a licence to read the part as JSON.
+        // `contentMediaType` is deliberately not consulted either: the
         // Encoding Object's default is computed from the property type alone,
         // and OpenAPI says to ignore `contentMediaType` when the two disagree.
-        return $propertySchema === [] || self::expectsFileParts($propertySchema)
-            ? ['application/octet-stream']
-            : [];
+        return ['application/octet-stream'];
     }
 
     /**

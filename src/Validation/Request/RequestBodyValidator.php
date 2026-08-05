@@ -16,6 +16,7 @@ use Studio\Gesso\Validation\Support\FormBodyDecoder;
 use Studio\Gesso\Validation\Support\MalformedSpecNode;
 use Studio\Gesso\Validation\Support\ObjectConverter;
 use Studio\Gesso\Validation\Support\SchemaValidatorRunner;
+use Studio\Gesso\Validation\Support\SchemaViolation;
 
 use function array_filter;
 use function array_key_exists;
@@ -26,6 +27,8 @@ use function in_array;
 use function is_array;
 use function is_string;
 use function sprintf;
+use function str_replace;
+use function str_starts_with;
 
 /**
  * @internal Not part of the package's public API. Do not use from user code.
@@ -358,6 +361,41 @@ final class RequestBodyValidator
         );
     }
 
+    /**
+     * Drop the violations whose instance pointer addresses one of the named
+     * top-level properties (or anything below it). Violations reported at the
+     * object itself — `required`, `minProperties`, `additionalProperties` —
+     * keep their pointer at the parent and therefore survive.
+     *
+     * @param list<SchemaViolation> $violations
+     * @param list<string> $partNames
+     *
+     * @return list<SchemaViolation>
+     */
+    private static function withoutViolationsInside(array $violations, array $partNames): array
+    {
+        $pointers = [];
+        foreach ($partNames as $partName) {
+            // RFC 6901 escaping, so a part literally named `a/b` is matched
+            // as the single property it is rather than as a nested path.
+            $pointers[] = '/' . str_replace(['~', '/'], ['~0', '~1'], $partName);
+        }
+
+        return array_values(array_filter(
+            $violations,
+            static function (SchemaViolation $violation) use ($pointers): bool {
+                foreach ($pointers as $pointer) {
+                    if ($violation->instancePath === $pointer ||
+                        str_starts_with($violation->instancePath, $pointer . '/')) {
+                        return false;
+                    }
+                }
+
+                return true;
+            },
+        ));
+    }
+
     private static function missingRequiredBodyResult(
         string $specName,
         string $method,
@@ -463,23 +501,6 @@ final class RequestBodyValidator
 
         [$data, $errors, $unverifiable] = FormBodyDecoder::prepare($fields, $schema, $encoding, $normalizedType);
 
-        // A part whose media type cannot be resolved is dropped from the
-        // schema pass — its raw value is not necessarily the shape the
-        // subschema describes, so validating it would invent a violation.
-        // The rest of the body is still checked: an unverifiable part must
-        // not become a blanket excuse that hides a missing required field
-        // elsewhere.
-        foreach ($unverifiable as $partName => $_reason) {
-            unset($data[$partName], $schema['properties'][$partName]);
-
-            if (is_array($schema['required'] ?? null)) {
-                $schema['required'] = array_values(array_filter(
-                    $schema['required'],
-                    static fn(mixed $required): bool => $required !== $partName,
-                ));
-            }
-        }
-
         $jsonSchema = OpenApiSchemaConverter::convert($schema, $version, SchemaContext::Request, $discriminatorContext, $jsonSchemaDialect);
 
         // An empty field map is an empty JSON object, not an empty array —
@@ -487,6 +508,18 @@ final class RequestBodyValidator
         $dataObject = ObjectConverter::convert($data === [] ? new stdClass() : $data);
 
         $violations = $this->runner->validateStructured(ObjectConverter::convert($jsonSchema), $dataObject);
+
+        // The body is validated exactly as written — the data and the schema
+        // are never rewritten around an unverifiable part, which would change
+        // what `minProperties` / `maxProperties` / `additionalProperties` and
+        // a composed `required` are counting. Only the violations that point
+        // *into* such a part are withheld: its raw value is not necessarily
+        // the shape its own subschema describes, while every constraint the
+        // surrounding object states still holds on the real data.
+        if ($unverifiable !== []) {
+            $violations = self::withoutViolationsInside($violations, array_keys($unverifiable));
+        }
+
         foreach ($violations as $violation) {
             $errors[] = "[{$violation->displayPath()}] {$violation->message}";
         }

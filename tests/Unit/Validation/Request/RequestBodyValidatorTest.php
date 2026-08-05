@@ -1305,13 +1305,13 @@ class RequestBodyValidatorTest extends TestCase
     }
 
     #[Test]
-    public function validate_rejects_an_octet_stream_part_that_arrived_as_a_plain_field(): void
+    public function validate_rejects_a_typeless_octet_stream_part_that_arrived_as_a_plain_field(): void
     {
-        // OAS 3.1's documented replacement for `format: binary` still means a
-        // file part.
+        // OAS 3.1's replacement for `format: binary` omits `type`, because a
+        // JSON string cannot hold arbitrary bytes.
         $operation = self::multipartOperation();
         $operation['requestBody']['content']['multipart/form-data']['schema']['properties']['avatar']
-            = ['type' => 'string', 'contentMediaType' => 'application/octet-stream'];
+            = ['contentMediaType' => 'application/octet-stream'];
         unset($operation['requestBody']['content']['multipart/form-data']['encoding']['avatar']);
 
         $result = $this->validator->validate(
@@ -1329,66 +1329,124 @@ class RequestBodyValidatorTest extends TestCase
     }
 
     #[Test]
-    public function validate_treats_a_part_without_a_content_type_as_text_plain(): void
+    public function validate_treats_a_typed_string_with_any_content_media_type_as_a_plain_field(): void
     {
-        // RFC 7578 §4.4: an absent part Content-Type means text/plain, which
-        // does not satisfy `image/*`. Passing unknown types would make the
-        // constraint opt-out for any adapter that cannot report a part type.
-        $result = $this->validator->validate(
-            'spec',
-            'POST',
-            '/uploads',
-            self::multipartOperation(),
-            DecodedBody::present(['avatar' => new UploadedPart(null, 'avatar.bin')]),
-            'multipart/form-data',
-            OpenApiVersion::V3_0,
-        );
-
-        $this->assertCount(1, $result->errors);
-        $this->assertStringContainsString('image/*', $result->errors[0]);
-    }
-
-    #[Test]
-    public function validate_rejects_a_malformed_encoding_object_even_without_a_body(): void
-    {
-        // A broken spec node is broken whether or not this request carried a
-        // body that would reach it — same rule as `content` / `schema`.
+        // JSON Schema 2020-12: `type: string` with a `contentMediaType` and no
+        // `contentEncoding` is identity-encoded UTF-8 text, whatever the media
+        // type happens to be.
         $operation = self::multipartOperation();
-        $operation['requestBody']['required'] = false;
-        $operation['requestBody']['content']['multipart/form-data']['encoding'] = 'oops';
+        $operation['requestBody']['content']['multipart/form-data']['schema']['properties']['avatar']
+            = ['type' => 'string', 'contentMediaType' => 'application/sql; charset=UTF-8'];
+        unset($operation['requestBody']['content']['multipart/form-data']['encoding']['avatar']);
 
         $result = $this->validator->validate(
             'spec',
             'POST',
             '/uploads',
             $operation,
-            DecodedBody::absent(),
+            DecodedBody::present(['avatar' => 'SELECT 1']),
             'multipart/form-data',
-            OpenApiVersion::V3_0,
+            OpenApiVersion::V3_1,
         );
 
-        $this->assertCount(1, $result->errors);
-        $this->assertStringContainsString("encoding'", $result->errors[0]);
+        $this->assertSame([], $result->errors);
+        $this->assertNull($result->skipReason);
     }
 
     #[Test]
-    public function validate_rejects_a_malformed_encoding_entry(): void
+    public function validate_does_not_read_a_typeless_part_as_json(): void
     {
+        // OAS 3.1: a schema with no `type` defaults to application/octet-stream
+        // in the Encoding Object, so an object-shaped `properties` block is not
+        // a licence to decode the part as JSON and call it validated.
         $operation = self::multipartOperation();
-        $operation['requestBody']['content']['multipart/form-data']['encoding']['avatar'] = 'oops';
+        $operation['requestBody']['content']['multipart/form-data']['schema']['properties']['meta']
+            = ['properties' => ['label' => ['type' => 'string']]];
+        unset($operation['requestBody']['content']['multipart/form-data']['encoding']['meta']);
 
         $result = $this->validator->validate(
             'spec',
             'POST',
             '/uploads',
             $operation,
-            DecodedBody::present(['avatar' => new UploadedPart('image/png', 'avatar.png')]),
+            DecodedBody::present([
+                'avatar' => new UploadedPart('image/png', 'avatar.png'),
+                'meta' => '{"label": 7}',
+            ]),
+            'multipart/form-data',
+            OpenApiVersion::V3_1,
+        );
+
+        $this->assertSame([], $result->errors);
+        $this->assertNotNull($result->skipReason);
+        $this->assertStringContainsString('meta', $result->skipReason);
+    }
+
+    #[Test]
+    public function validate_keeps_object_level_constraints_intact_around_an_unverifiable_part(): void
+    {
+        // The part is neither removed from the data nor from the schema, so
+        // the object still counts two properties for `minProperties` and the
+        // composed `required` still sees the field that is there.
+        $operation = self::multipartOperation();
+        $operation['requestBody']['content']['multipart/form-data']['schema'] = [
+            'type' => 'object',
+            'minProperties' => 2,
+            'allOf' => [['required' => ['note']]],
+            'properties' => [
+                'note' => ['type' => 'string'],
+                'label' => ['type' => 'string'],
+            ],
+        ];
+        $operation['requestBody']['content']['multipart/form-data']['encoding'] = [
+            'note' => ['contentType' => 'image/png'],
+        ];
+
+        $result = $this->validator->validate(
+            'spec',
+            'POST',
+            '/uploads',
+            $operation,
+            DecodedBody::present(['note' => 'hello', 'label' => 'ok']),
             'multipart/form-data',
             OpenApiVersion::V3_0,
         );
 
+        $this->assertSame([], $result->errors);
+        $this->assertNotNull($result->skipReason);
+    }
+
+    #[Test]
+    public function validate_reports_an_object_level_violation_beside_an_unverifiable_part(): void
+    {
+        // The mirror image: a constraint the object states about itself is
+        // still evaluated on the real data, so a body that breaks it fails
+        // instead of hiding behind the skip.
+        $operation = self::multipartOperation();
+        $operation['requestBody']['content']['multipart/form-data']['schema'] = [
+            'type' => 'object',
+            'maxProperties' => 1,
+            'properties' => [
+                'note' => ['type' => 'string'],
+                'label' => ['type' => 'string'],
+            ],
+        ];
+        $operation['requestBody']['content']['multipart/form-data']['encoding'] = [
+            'note' => ['contentType' => 'image/png'],
+        ];
+
+        $result = $this->validator->validate(
+            'spec',
+            'POST',
+            '/uploads',
+            $operation,
+            DecodedBody::present(['note' => 'hello', 'label' => 'ok']),
+            'multipart/form-data',
+            OpenApiVersion::V3_0,
+        );
+
+        $this->assertNull($result->skipReason);
         $this->assertCount(1, $result->errors);
-        $this->assertStringContainsString('encoding["avatar"]', $result->errors[0]);
     }
 
     #[Test]
