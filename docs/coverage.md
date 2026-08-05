@@ -86,6 +86,9 @@ Legend: ✓=validated  ⚠=skipped  ✗=uncovered  ◐=partial  ·=request-only 
       ✗ 404    application/problem+json          uncovered
 ```
 
+To turn that list into pre-written tests, feed the same run's JSON output to
+[`gesso stubs`](stubs.md).
+
 ### `active_only` mode
 
 Useful for the local TDD loop with a multi-spec setup (e.g. `specs="front,store,admin"`). Specs that no test in this run touched are collapsed to a single line, so a focused single-test run no longer has to scroll past hundreds of `✗ uncovered` rows for unrelated specs. Specs with at least one validated, skipped, or request-only observation render the same one-line-per-endpoint view as `default`:

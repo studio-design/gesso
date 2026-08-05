@@ -90,9 +90,9 @@ This library follows [Semantic Versioning 2.0](https://semver.org/). v1.0.0 is t
   output where applicable):
   - v1.x: `bin/openapi-contract`, `bin/openapi-coverage-merge`, and the v1.10
     `bin/gesso` entry point
-  - v2.x: the `doctor`, `coverage:merge`, and `coverage:gate` subcommands of
-    `bin/gesso`; the legacy standalone binaries are not shipped
-- The Laravel `openapi:routes` command surface (flags, exit codes, and versioned JSON output)
+  - v2.x: the `doctor`, `coverage:merge`, `coverage:gate`, and `stubs`
+    subcommands of `bin/gesso`; the legacy standalone binaries are not shipped
+- The Laravel `openapi:routes` and `openapi:stubs` command surfaces (flags, exit codes, and versioned JSON output)
 - The `OpenApiCoverageExtension` PHPUnit configuration parameters (`spec_base_path`, `strip_prefixes`, `specs`, `output_file`, `console_output`, `validation_output`, `baseline_file`, `coverage_baseline_file`, `strict_required`, `strict_additional_properties`, `strict_additional_properties_per_call`, …)
 - The Laravel `ValidatesOpenApiSchema` trait's public methods
 - The category prefixes used in `E_USER_WARNING` messages (`[security]`, `[OpenAPI Schema]`, and the `[OpenAPI 3.2 ...]` categories)
@@ -162,7 +162,7 @@ written by `json_output` has its own `schema_version` contract documented in
 
 ## What's NOT covered by SemVer
 
-- Anything marked `@internal` — including the `Internal\` and `Validation\Support\` namespaces, the per-validator helpers under `Validation\Request\` / `Validation\Response\`, `Spec\OpenApiSchemaConverter` / `Spec\OpenApiPathMatcher` / `Spec\OpenApiRefResolver` / `Spec\OpenApiPathSuggester`, the PHPUnit `CoverageReportSubscriber`, `Cli\DoctorCommand`, `Cli\CoverageGateCommand`, `Coverage\CoverageMergeCommand` (the `gesso doctor`, `gesso coverage:gate`, and `gesso coverage:merge` CLI surfaces remain covered — these classes are their implementation details), and test seams (`*::resetWarningStateForTesting()`, `OpenApiSpecLoader::reset()`, `OpenApiCoverageTracker::reset()` / `exportState()` / `importState()`).
+- Anything marked `@internal` — including the `Internal\` and `Validation\Support\` namespaces, the per-validator helpers under `Validation\Request\` / `Validation\Response\`, `Spec\OpenApiSchemaConverter` / `Spec\OpenApiPathMatcher` / `Spec\OpenApiRefResolver` / `Spec\OpenApiPathSuggester`, the PHPUnit `CoverageReportSubscriber`, `Cli\DoctorCommand`, `Cli\CoverageGateCommand`, `Cli\StubsCommand`, the `Stubs\` namespace, `Coverage\CoverageMergeCommand` (the `gesso doctor`, `gesso coverage:gate`, `gesso coverage:merge`, and `gesso stubs` CLI surfaces remain covered — these classes are their implementation details), and test seams (`*::resetWarningStateForTesting()`, `OpenApiSpecLoader::reset()`, `OpenApiCoverageTracker::reset()` / `exportState()` / `importState()`).
 - Validator error message wording (we may improve them; assert on presence/category, not on exact strings).
 - The text-mode assertion failure layout — the header line, the error list,
   and the trailing `Reproduce:` curl line (including its redaction details).
