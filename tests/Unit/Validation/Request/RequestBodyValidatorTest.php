@@ -1593,6 +1593,85 @@ class RequestBodyValidatorTest extends TestCase
     }
 
     #[Test]
+    public function validate_keeps_a_reading_independent_violation_past_the_reading_ceiling(): void
+    {
+        // Same seven unresolved parts, but `must` is required unconditionally:
+        // no Content-Type any part could have puts it back, so the violation
+        // is a failure even though the readings went unenumerated.
+        $encoding = [];
+        $fields = [];
+        foreach (['a', 'b', 'c', 'd', 'e', 'f', 'g'] as $part) {
+            $encoding[$part] = ['contentType' => 'application/json, text/plain'];
+            $fields[$part] = '{"x": 1}';
+        }
+
+        $operation = self::multipartOperation();
+        $operation['requestBody']['content']['multipart/form-data']['schema'] = [
+            'type' => 'object',
+            'properties' => ['must' => ['type' => 'string']],
+            'required' => ['must'],
+        ];
+        $operation['requestBody']['content']['multipart/form-data']['encoding'] = $encoding;
+
+        $result = $this->validator->validate(
+            'spec',
+            'POST',
+            '/uploads',
+            $operation,
+            DecodedBody::present($fields),
+            'multipart/form-data',
+            OpenApiVersion::V3_1,
+        );
+
+        $this->assertNull($result->skipReason);
+        $this->assertCount(1, $result->errors);
+        $this->assertStringContainsString('must', $result->errors[0]);
+    }
+
+    #[Test]
+    public function validate_separates_conditional_from_unconditional_violations_past_the_ceiling(): void
+    {
+        // One schema carrying both: `must` is required outright, `fallback`
+        // only through a branch keyed on two unresolved parts. Past the
+        // ceiling the first is still reported and the second is not.
+        $encoding = [];
+        $fields = [];
+        foreach (['a', 'b', 'c', 'd', 'e', 'f', 'g'] as $part) {
+            $encoding[$part] = ['contentType' => 'application/json, text/plain'];
+            $fields[$part] = '{"x": 1}';
+        }
+
+        $operation = self::multipartOperation();
+        $operation['requestBody']['content']['multipart/form-data']['schema'] = [
+            'type' => 'object',
+            'properties' => ['must' => ['type' => 'string'], 'fallback' => ['type' => 'string']],
+            'required' => ['must'],
+            'if' => [
+                'required' => ['a', 'b'],
+                'properties' => ['a' => ['type' => 'object'], 'b' => ['type' => 'object']],
+            ],
+            'then' => true,
+            'else' => ['required' => ['fallback']],
+        ];
+        $operation['requestBody']['content']['multipart/form-data']['encoding'] = $encoding;
+
+        $result = $this->validator->validate(
+            'spec',
+            'POST',
+            '/uploads',
+            $operation,
+            DecodedBody::present($fields),
+            'multipart/form-data',
+            OpenApiVersion::V3_1,
+        );
+
+        $this->assertNull($result->skipReason);
+        $this->assertCount(1, $result->errors);
+        $this->assertStringContainsString('must', $result->errors[0]);
+        $this->assertStringNotContainsString('fallback', $result->errors[0]);
+    }
+
+    #[Test]
     public function validate_does_not_apply_one_parts_probes_to_another(): void
     {
         // `a` may be an image, so its value is unknown; `b` may only be JSON

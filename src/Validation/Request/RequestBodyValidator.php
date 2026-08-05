@@ -47,10 +47,32 @@ final class RequestBodyValidator
      * unresolved part multiplies the count, and a form with more than a
      * handful of them is far outside what a real spec declares. Past the
      * ceiling nothing is enumerated: a partially checked product cannot tell a
-     * real violation from one an unchecked combination would excuse, so the
-     * body is reported as unchecked instead.
+     * real violation from one an unchecked combination would excuse, so only
+     * what no reading can reach ({@see self::unconditionalSchema()}) is still
+     * reported and the rest is left unconfirmed.
      */
     private const MAX_BODY_READINGS = 64;
+
+    /**
+     * The keywords through which one property's value can decide a violation
+     * reported elsewhere in the object, and the reference keywords that can
+     * hide one out of reach ({@see self::unconditionalSchema()}).
+     */
+    private const CONDITIONAL_KEYWORDS = [
+        'if',
+        'then',
+        'else',
+        'anyOf',
+        'oneOf',
+        'not',
+        'unevaluatedProperties',
+        'unevaluatedItems',
+    ];
+
+    private const REFERENCE_KEYWORDS = ['$ref', '$dynamicRef', '$recursiveRef'];
+
+    /** Keywords whose value is a map of name => schema, not a schema. */
+    private const SCHEMA_MAP_KEYWORDS = ['properties', 'patternProperties', 'dependentSchemas', '$defs', 'definitions'];
 
     public function __construct(
         private readonly SchemaValidatorRunner $runner,
@@ -518,6 +540,81 @@ final class RequestBodyValidator
     }
 
     /**
+     * The schema reduced to the keywords no part's reading can influence.
+     *
+     * `if` / `then` / `else`, `anyOf`, `oneOf`, `not` and the `unevaluated*`
+     * pair are the keywords whose outcome one property's value can decide for
+     * the whole object, and they are the only route by which reading an
+     * unresolved part differently changes a violation reported outside that
+     * part. What the schema without them still reports — an unconditional
+     * `required`, `minProperties`, `additionalProperties`, a plain field's own
+     * type — holds under every reading.
+     *
+     * null when a reference keyword is in the way: the referenced schema is
+     * not reachable here, so nothing about it can be called unconditional.
+     *
+     * @param array<string, mixed> $schema
+     *
+     * @return null|array<array-key, mixed>
+     */
+    private static function unconditionalSchema(array $schema): ?array
+    {
+        return self::containsReference($schema) ? null : self::withoutConditionalKeywords($schema);
+    }
+
+    /**
+     * @param array<array-key, mixed> $node
+     */
+    private static function containsReference(array $node): bool
+    {
+        foreach ($node as $key => $value) {
+            if (in_array($key, self::REFERENCE_KEYWORDS, true)) {
+                return true;
+            }
+
+            if (is_array($value) && self::containsReference($value)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Drop the conditional keywords everywhere below `$node`. Schema-valued
+     * maps (`properties`, `$defs`, …) are descended into as maps, so a
+     * property literally named `if` keeps its subschema.
+     *
+     * @param array<array-key, mixed> $node
+     *
+     * @return array<array-key, mixed>
+     */
+    private static function withoutConditionalKeywords(array $node): array
+    {
+        $stripped = [];
+        foreach ($node as $key => $value) {
+            if (in_array($key, self::CONDITIONAL_KEYWORDS, true)) {
+                continue;
+            }
+
+            if (in_array($key, self::SCHEMA_MAP_KEYWORDS, true) && is_array($value)) {
+                $subschemas = [];
+                foreach ($value as $name => $subschema) {
+                    $subschemas[$name] = is_array($subschema) ? self::withoutConditionalKeywords($subschema) : $subschema;
+                }
+
+                $stripped[$key] = $subschemas;
+
+                continue;
+            }
+
+            $stripped[$key] = is_array($value) ? self::withoutConditionalKeywords($value) : $value;
+        }
+
+        return $stripped;
+    }
+
+    /**
      * Keep only the violations another reading produces too. A violation one
      * reading reports and another does not is decided by the part's
      * unresolved media type, and reporting it would fail a request that an
@@ -718,18 +815,29 @@ final class RequestBodyValidator
             $readings = self::alternativeReadings($data, $unverifiable);
 
             if ($readings === null) {
-                // Too many combinations to enumerate: an unchecked one may be
-                // the reading that excuses what is left, so none of it is
-                // confirmed and the body is reported as unchecked.
-                if ($violations !== []) {
+                // Too many combinations to enumerate, so a reading nobody
+                // checked may be the one that excuses a violation. Only the
+                // violations a reading can reach are withheld: the schema
+                // stripped of every keyword whose outcome another property's
+                // value can decide still reports what no part can explain
+                // away — an unconditional `required`, `minProperties`, a
+                // plain field's own type — and those stay failures.
+                $unconditional = self::unconditionalSchema($jsonSchema);
+                $confirmed = $unconditional === null ? [] : self::violationsEveryReadingAgreesOn(
+                    $violations,
+                    $this->runner->validateStructured(ObjectConverter::convert($unconditional), $dataObject),
+                );
+
+                if (count($confirmed) !== count($violations)) {
                     $reasons[] = sprintf(
                         'the media types of %d unresolved parts combine into more readings than the %d this '
                         . 'validator enumerates, so the violations depending on them were left unconfirmed',
                         count($unverifiable),
                         self::MAX_BODY_READINGS,
                     );
-                    $violations = [];
                 }
+
+                $violations = $confirmed;
             } else {
                 foreach ($readings as $reading) {
                     if ($violations === []) {
