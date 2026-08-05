@@ -1128,18 +1128,21 @@ class RequestBodyValidatorTest extends TestCase
             OpenApiVersion::V3_0,
         );
 
+        // Not a pass either: the part could have been JSON, so the body is
+        // reported as unchecked rather than silently validated as a string.
         $this->assertSame([], $result->errors);
+        $this->assertNotNull($result->skipReason);
     }
 
     #[Test]
-    public function validate_decodes_a_mixed_list_part_whose_schema_cannot_hold_a_string(): void
+    public function validate_skips_an_object_part_that_may_be_json_or_xml(): void
     {
-        // The text alternative of a mixed list could never satisfy an object
-        // schema, so JSON is the only readable choice — a contract-driven
-        // selection rather than a guess from the content.
+        // A non-JSON media type can carry an object too, so an XML part must
+        // not be rejected as "invalid JSON". Without the part's Content-Type
+        // there is no way to choose between the declared types — skip.
         $operation = self::multipartOperation();
         $operation['requestBody']['content']['multipart/form-data']['encoding']['meta']['contentType']
-            = 'text/plain, application/json';
+            = 'application/json, application/xml';
 
         $result = $this->validator->validate(
             'spec',
@@ -1148,14 +1151,15 @@ class RequestBodyValidatorTest extends TestCase
             $operation,
             DecodedBody::present([
                 'avatar' => new UploadedPart('image/png', 'avatar.png'),
-                'meta' => '{"label": 7}',
+                'meta' => '<meta><label>hero</label></meta>',
             ]),
             'multipart/form-data',
             OpenApiVersion::V3_0,
         );
 
-        $this->assertCount(1, $result->errors);
-        $this->assertStringContainsString('/meta/label', $result->errors[0]);
+        $this->assertSame([], $result->errors);
+        $this->assertNotNull($result->skipReason);
+        $this->assertStringContainsString('meta', $result->skipReason);
     }
 
     #[Test]
@@ -1202,15 +1206,16 @@ class RequestBodyValidatorTest extends TestCase
     }
 
     #[Test]
-    public function validate_keeps_a_non_json_part_when_the_encoding_list_allows_another_type(): void
+    public function validate_skips_a_plain_field_whose_declared_content_type_cannot_be_confirmed(): void
     {
-        // A mixed list plus a string schema means the part is never read as
-        // JSON, so unparseable content is not an encoding error either.
+        // `encoding.contentType` on a non-file part is unverifiable: form
+        // parsing keeps no per-part headers. Reporting success would claim a
+        // constraint was checked when it was not.
         $operation = self::multipartOperation();
         $operation['requestBody']['content']['multipart/form-data']['schema']['properties']['note']
             = ['type' => 'string'];
         $operation['requestBody']['content']['multipart/form-data']['encoding']['note']
-            = ['contentType' => 'application/json, text/plain'];
+            = ['contentType' => 'image/png'];
 
         $result = $this->validator->validate(
             'spec',
@@ -1219,13 +1224,108 @@ class RequestBodyValidatorTest extends TestCase
             $operation,
             DecodedBody::present([
                 'avatar' => new UploadedPart('image/png', 'avatar.png'),
-                'note' => 'just words',
+                'note' => 'hello',
             ]),
             'multipart/form-data',
             OpenApiVersion::V3_0,
         );
 
         $this->assertSame([], $result->errors);
+        $this->assertNotNull($result->skipReason);
+        $this->assertStringContainsString('image/png', $result->skipReason);
+        $this->assertSame('multipart/form-data', $result->matchedContentType);
+    }
+
+    #[Test]
+    public function validate_rejects_binary_array_items_that_arrived_as_plain_strings(): void
+    {
+        // A multi-file upload is an array of binary items; the per-item
+        // declaration must be honoured, not just the top-level property.
+        $operation = self::multipartOperation();
+        $operation['requestBody']['content']['multipart/form-data']['schema']['properties']['avatar']
+            = ['type' => 'array', 'items' => ['type' => 'string', 'format' => 'binary']];
+
+        $result = $this->validator->validate(
+            'spec',
+            'POST',
+            '/uploads',
+            $operation,
+            DecodedBody::present(['avatar' => ['one', 'two']]),
+            'multipart/form-data',
+            OpenApiVersion::V3_0,
+        );
+
+        $this->assertCount(1, $result->errors);
+        $this->assertStringContainsString('did not arrive as a file part', $result->errors[0]);
+    }
+
+    #[Test]
+    public function validate_rejects_a_binary_array_with_one_plain_element(): void
+    {
+        $operation = self::multipartOperation();
+        $operation['requestBody']['content']['multipart/form-data']['schema']['properties']['avatar']
+            = ['type' => 'array', 'items' => ['type' => 'string', 'format' => 'binary']];
+
+        $result = $this->validator->validate(
+            'spec',
+            'POST',
+            '/uploads',
+            $operation,
+            DecodedBody::present(['avatar' => [new UploadedPart('image/png', 'a.png'), 'not-a-file']]),
+            'multipart/form-data',
+            OpenApiVersion::V3_0,
+        );
+
+        $this->assertCount(1, $result->errors);
+        $this->assertStringContainsString('did not arrive as a file part', $result->errors[0]);
+    }
+
+    #[Test]
+    public function validate_accepts_a_content_media_type_string_part_as_a_plain_field(): void
+    {
+        // JSON Schema 2020-12: a string with `contentMediaType` and no
+        // `contentEncoding` is identity-encoded UTF-8 text, not raw bytes.
+        $operation = self::multipartOperation();
+        $operation['requestBody']['content']['multipart/form-data']['schema']['properties']['avatar']
+            = ['type' => 'string', 'contentMediaType' => 'text/plain'];
+        unset($operation['requestBody']['content']['multipart/form-data']['encoding']['avatar']);
+
+        $result = $this->validator->validate(
+            'spec',
+            'POST',
+            '/uploads',
+            $operation,
+            DecodedBody::present(['avatar' => 'just text']),
+            'multipart/form-data',
+            OpenApiVersion::V3_1,
+        );
+
+        $this->assertSame([], $result->errors);
+        $this->assertNull($result->skipReason);
+    }
+
+    #[Test]
+    public function validate_rejects_an_octet_stream_part_that_arrived_as_a_plain_field(): void
+    {
+        // OAS 3.1's documented replacement for `format: binary` still means a
+        // file part.
+        $operation = self::multipartOperation();
+        $operation['requestBody']['content']['multipart/form-data']['schema']['properties']['avatar']
+            = ['type' => 'string', 'contentMediaType' => 'application/octet-stream'];
+        unset($operation['requestBody']['content']['multipart/form-data']['encoding']['avatar']);
+
+        $result = $this->validator->validate(
+            'spec',
+            'POST',
+            '/uploads',
+            $operation,
+            DecodedBody::present(['avatar' => 'not-a-file']),
+            'multipart/form-data',
+            OpenApiVersion::V3_1,
+        );
+
+        $this->assertCount(1, $result->errors);
+        $this->assertStringContainsString('did not arrive as a file part', $result->errors[0]);
     }
 
     #[Test]

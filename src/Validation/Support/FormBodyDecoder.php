@@ -84,11 +84,14 @@ final class FormBodyDecoder
      * @param array<string, mixed> $schema the media type's OpenAPI schema
      * @param array<string, mixed> $encoding the media type's `encoding` object
      * @param string $normalizedMediaType the request's form media type; only
-     *                                    a multipart body can carry file parts
+     *                                    a multipart body carries parts whose own Content-Type the
+     *                                    encoding object talks about
      *
-     * @return array{array<string, mixed>, list<string>} the prepared data and any
-     *                                                   encoding-level errors (JSON parts that do not parse, part
-     *                                                   content types the encoding object forbids)
+     * @return array{array<string, mixed>, list<string>, list<string>} the prepared
+     *                                                                 data, encoding-level errors (parts that contradict the
+     *                                                                 contract), and the reasons a part could not be checked at
+     *                                                                 all — the caller turns those into a body-level skip so an
+     *                                                                 unverifiable part is never counted as a clean pass
      */
     public static function prepare(
         array $fields,
@@ -98,6 +101,8 @@ final class FormBodyDecoder
     ): array {
         $properties = is_array($schema['properties'] ?? null) ? $schema['properties'] : [];
         $errors = [];
+        $unverifiable = [];
+        $isMultipart = $normalizedMediaType === self::MULTIPART;
 
         foreach ($fields as $name => $value) {
             $propertySchema = is_array($properties[$name] ?? null) ? $properties[$name] : null;
@@ -106,6 +111,24 @@ final class FormBodyDecoder
                 ? $partEncoding['contentType']
                 : null;
 
+            // A property declaring raw bytes must arrive as a file part —
+            // including every element of an array property, which is how
+            // OpenAPI describes a multi-file upload. Checked from the schema
+            // because it is decidable without the part's Content-Type header.
+            if ($isMultipart && self::expectsFileParts($propertySchema) && self::hasNonFileLeaf($value)) {
+                $errors[] = sprintf(
+                    '[/%s] part is declared as binary content but did not arrive as a file part.',
+                    $name,
+                );
+
+                // Still normalize any real file parts alongside it, so the
+                // schema pass does not pile a second, confusing violation on
+                // top of this one.
+                $fields[$name] = self::substituteParts($value);
+
+                continue;
+            }
+
             if ($value instanceof UploadedPart || self::containsPart($value)) {
                 $errors = [...$errors, ...self::checkPartContentTypes((string) $name, $value, $declaredContentType)];
                 $fields[$name] = self::substituteParts($value);
@@ -113,22 +136,8 @@ final class FormBodyDecoder
                 continue;
             }
 
-            // A part the schema describes as raw bytes must arrive as a file
-            // part. This is the one part-shape mismatch that is decidable
-            // without the part's own Content-Type header — which no supported
-            // adapter preserves for non-file parts — so it is checked from the
-            // schema rather than guessed at from the value.
-            if ($normalizedMediaType === self::MULTIPART && self::declaresBinaryContent($propertySchema)) {
-                $errors[] = sprintf(
-                    '[/%s] part is declared as binary content but did not arrive as a file part.',
-                    $name,
-                );
-
-                continue;
-            }
-
             // Which media types this part may carry. An explicit
-            // `encoding.<part>.contentType` wins; otherwise OAS 3.0.3's
+            // `encoding.<part>.contentType` wins; otherwise the OAS
             // per-property default applies, which is what makes an `object`
             // part JSON without any encoding entry at all.
             $candidates = $declaredContentType !== null
@@ -137,26 +146,10 @@ final class FormBodyDecoder
 
             // league/openapi-psr7-validator#234: a JSON part arrives as a
             // string and must be decoded before its subschema means anything.
-            //
-            // Only when the contract admits nothing but JSON, though. OAS 3.2
-            // §4.15.4.1 selects among several declared media types by the
-            // part's own Content-Type and forbids media-type sniffing as the
-            // default behaviour; since that header does not survive any
-            // adapter's form parsing, a mixed list like
-            // `application/json, text/plain` is left undecoded rather than
-            // resolved by "it happened to parse". Ordering is irrelevant
-            // either way.
-            // With several declared media types the part's own Content-Type
-            // would decide, so JSON is only forced when nothing else could
-            // satisfy the property schema anyway (a plain-text alternative
-            // cannot produce an object or an array). That keeps the choice
-            // driven by the contract instead of by what happens to parse.
-            $jsonOnly = self::allJsonCandidates($candidates);
-            $jsonForced = !$jsonOnly &&
-                self::hasJsonCandidate($candidates) &&
-                self::rejectsPlainString($propertySchema);
-
-            if (is_string($value) && $candidates !== [] && ($jsonOnly || $jsonForced)) {
+            // Parsing it is not sniffing — when JSON is all the contract
+            // allows, a successful parse confirms the declared type and a
+            // failed one contradicts it.
+            if (is_string($value) && $candidates !== [] && self::allJsonCandidates($candidates)) {
                 try {
                     /** @var mixed $decoded */
                     $decoded = json_decode($value, true, flags: JSON_THROW_ON_ERROR);
@@ -175,34 +168,107 @@ final class FormBodyDecoder
                 }
             }
 
+            // Anything else needs the part's own Content-Type to resolve: to
+            // choose between several declared media types (OAS 3.2 §4.15.4.1
+            // — sniffing is not a substitute) or to confirm a single non-text
+            // one. No adapter preserves that header for a non-file part, so
+            // the honest outcome is a skip, not a pass and not a guess.
+            if ($isMultipart && !self::triviallySatisfied($candidates)) {
+                $unverifiable[] = sprintf(
+                    "part '%s' declares %s, which cannot be confirmed because the part's own Content-Type "
+                    . 'is not preserved by form parsing',
+                    $name,
+                    implode(', ', $candidates),
+                );
+
+                continue;
+            }
+
             if ($propertySchema !== null) {
                 $fields[$name] = TypeCoercer::coerceQuery($value, $propertySchema);
             }
         }
 
-        return [$fields, $errors];
+        return [$fields, $errors, $unverifiable];
     }
 
     /**
-     * Whether a property schema describes raw bytes rather than a value the
-     * form encoding can carry as text: OAS 3.0's `format: binary`, or the
-     * 3.1+ replacement of a `contentMediaType` with no text `contentEncoding`.
-     * `format: byte` (base64) is deliberately excluded — it travels fine as a
-     * plain field.
+     * Whether a property describes raw bytes the wire carries as a file part.
+     *
+     * OAS 3.0's `format: binary` and its documented OAS 3.1 replacement
+     * `contentMediaType: application/octet-stream` qualify; an array of them
+     * does too, since that is how a multi-file upload is described. A bare
+     * `contentMediaType` does not: JSON Schema 2020-12 defines a string with
+     * no `contentEncoding` as identity-encoded UTF-8 text, so
+     * `contentMediaType: text/plain` is an ordinary field. `format: byte` and
+     * `contentEncoding: base64` are likewise text on the wire.
      *
      * @param null|array<string, mixed> $propertySchema
      */
-    private static function declaresBinaryContent(?array $propertySchema): bool
+    private static function expectsFileParts(?array $propertySchema): bool
     {
         if ($propertySchema === null) {
             return false;
         }
 
-        if (($propertySchema['format'] ?? null) === 'binary') {
+        $type = $propertySchema['type'] ?? null;
+        if (is_array($type)) {
+            $type = TypeCoercer::firstPrimitiveType($type);
+        }
+
+        if ($type === 'array') {
+            $items = $propertySchema['items'] ?? null;
+
+            return is_array($items) && self::expectsFileParts($items);
+        }
+
+        if (isset($propertySchema['contentEncoding'])) {
+            return false;
+        }
+
+        return ($propertySchema['format'] ?? null) === 'binary' ||
+            ($propertySchema['contentMediaType'] ?? null) === 'application/octet-stream';
+    }
+
+    /**
+     * Whether the value carries anything that is not a file part — the scalar
+     * itself, or any element of an array that is not an {@see UploadedPart}.
+     */
+    private static function hasNonFileLeaf(mixed $value): bool
+    {
+        if ($value instanceof UploadedPart) {
+            return false;
+        }
+
+        if (!is_array($value)) {
             return true;
         }
 
-        return isset($propertySchema['contentMediaType']) && !isset($propertySchema['contentEncoding']);
+        foreach ($value as $item) {
+            if (self::hasNonFileLeaf($item)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Whether every candidate media type is satisfied by any text a form field
+     * can carry, so nothing is left to confirm. An empty candidate list means
+     * the spec declares no content type for the part at all.
+     *
+     * @param list<string> $candidates
+     */
+    private static function triviallySatisfied(array $candidates): bool
+    {
+        foreach ($candidates as $candidate) {
+            if ($candidate !== 'text/plain') {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**
@@ -264,46 +330,17 @@ final class FormBodyDecoder
         }
 
         if ($type === 'string') {
+            // OAS 3.1+ expresses a part's media type with `contentMediaType`;
+            // 3.0's `format: binary` means the octet stream.
+            $contentMediaType = $propertySchema['contentMediaType'] ?? null;
+            if (is_string($contentMediaType)) {
+                return [ContentTypeMatcher::normalizeMediaType($contentMediaType)];
+            }
+
             return [($propertySchema['format'] ?? null) === 'binary' ? 'application/octet-stream' : 'text/plain'];
         }
 
         return $type === null ? [] : ['text/plain'];
-    }
-
-    /**
-     * @param list<string> $candidates
-     */
-    private static function hasJsonCandidate(array $candidates): bool
-    {
-        foreach ($candidates as $candidate) {
-            if (ContentTypeMatcher::isJsonContentType($candidate)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * Whether the property schema can hold a plain string at all. A part whose
-     * schema is an object or an array cannot be the text alternative of a
-     * mixed `contentType` list, which makes JSON the only readable choice
-     * without inspecting the part's content.
-     *
-     * @param null|array<string, mixed> $propertySchema
-     */
-    private static function rejectsPlainString(?array $propertySchema): bool
-    {
-        if ($propertySchema === null) {
-            return false;
-        }
-
-        $type = $propertySchema['type'] ?? null;
-        if (is_array($type)) {
-            $type = TypeCoercer::firstPrimitiveType($type);
-        }
-
-        return $type === 'object' || $type === 'array';
     }
 
     /**

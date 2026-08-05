@@ -459,7 +459,28 @@ final class RequestBodyValidator
         /** @var array<string, mixed> $encoding */
         $encoding = is_array($mediaTypeSpec['encoding'] ?? null) ? $mediaTypeSpec['encoding'] : [];
 
-        [$data, $errors] = FormBodyDecoder::prepare($fields, $schema, $encoding, $normalizedType);
+        [$data, $errors, $unverifiable] = FormBodyDecoder::prepare($fields, $schema, $encoding, $normalizedType);
+
+        // A part whose media type cannot be resolved makes the whole body
+        // unreliable: its value may not even be the shape the subschema
+        // expects. Report a real contradiction if one was already found,
+        // otherwise skip loudly rather than validate around the hole.
+        if ($unverifiable !== []) {
+            if ($errors !== []) {
+                return new RequestBodyValidationResult($errors, matchedContentType: $matchedKey);
+            }
+
+            return new RequestBodyValidationResult(
+                [],
+                sprintf(
+                    "request Content-Type '%s' matched spec media type '%s', but its body schema was not applied: %s",
+                    $normalizedType,
+                    $matchedKey,
+                    implode('; ', $unverifiable),
+                ),
+                $matchedKey,
+            );
+        }
 
         $jsonSchema = OpenApiSchemaConverter::convert($schema, $version, SchemaContext::Request, $discriminatorContext, $jsonSchemaDialect);
 
