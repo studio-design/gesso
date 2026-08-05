@@ -1417,6 +1417,74 @@ class RequestBodyValidatorTest extends TestCase
     }
 
     #[Test]
+    public function validate_skips_a_root_violation_that_hinges_on_an_unverifiable_part(): void
+    {
+        // OAS 3.2 "Handling multiple contentType values": with the part's own
+        // Content-Type lost, an `if` keyed on that part branches on the raw
+        // string and demands a `fallback` that a JSON reading would not. The
+        // verdict depends on a header the wire did not preserve, so it is a
+        // skip — not a `[/] required` failure.
+        $operation = self::multipartOperation();
+        $operation['requestBody']['content']['multipart/form-data']['schema'] = [
+            'type' => 'object',
+            'properties' => ['fallback' => ['type' => 'string']],
+            'if' => ['required' => ['meta'], 'properties' => ['meta' => ['type' => 'string']]],
+            'then' => ['required' => ['fallback']],
+        ];
+        $operation['requestBody']['content']['multipart/form-data']['encoding'] = [
+            'meta' => ['contentType' => 'application/json, application/xml'],
+        ];
+
+        $result = $this->validator->validate(
+            'spec',
+            'POST',
+            '/uploads',
+            $operation,
+            DecodedBody::present(['meta' => '{"label": "hero"}']),
+            'multipart/form-data',
+            OpenApiVersion::V3_1,
+        );
+
+        $this->assertSame([], $result->errors);
+        $this->assertNotNull($result->skipReason);
+        $this->assertStringContainsString('meta', $result->skipReason);
+    }
+
+    #[Test]
+    public function validate_still_reports_a_root_violation_both_readings_agree_on(): void
+    {
+        // The counterpart: a `required` the object states unconditionally
+        // fails under either reading of the unverifiable part, so it is a real
+        // failure rather than an artifact.
+        $operation = self::multipartOperation();
+        $operation['requestBody']['content']['multipart/form-data']['schema'] = [
+            'type' => 'object',
+            'required' => ['fallback'],
+            'properties' => [
+                'meta' => ['type' => 'object'],
+                'fallback' => ['type' => 'string'],
+            ],
+        ];
+        $operation['requestBody']['content']['multipart/form-data']['encoding'] = [
+            'meta' => ['contentType' => 'application/json, application/xml'],
+        ];
+
+        $result = $this->validator->validate(
+            'spec',
+            'POST',
+            '/uploads',
+            $operation,
+            DecodedBody::present(['meta' => '{"label": "hero"}']),
+            'multipart/form-data',
+            OpenApiVersion::V3_1,
+        );
+
+        $this->assertNull($result->skipReason);
+        $this->assertCount(1, $result->errors);
+        $this->assertStringContainsString('fallback', $result->errors[0]);
+    }
+
+    #[Test]
     public function validate_reports_an_object_level_violation_beside_an_unverifiable_part(): void
     {
         // The mirror image: a constraint the object states about itself is

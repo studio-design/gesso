@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Validation\Request;
 
+use const JSON_THROW_ON_ERROR;
+
+use JsonException;
 use stdClass;
 use Studio\Gesso\DecodedBody;
 use Studio\Gesso\OpenApiVersion;
@@ -26,6 +29,7 @@ use function implode;
 use function in_array;
 use function is_array;
 use function is_string;
+use function json_decode;
 use function sprintf;
 use function str_replace;
 use function str_starts_with;
@@ -362,6 +366,78 @@ final class RequestBodyValidator
     }
 
     /**
+     * A second reading of the body, with every unverifiable part replaced by
+     * a different plausible interpretation of the same bytes: the JSON value
+     * the raw string decodes to when that changes its JSON type, otherwise an
+     * object — the shape a part whose real media type was structured would
+     * have had. The keys stay in place so property counts do not move.
+     *
+     * @param array<string, mixed> $data
+     * @param list<string> $partNames
+     *
+     * @return array<string, mixed>
+     */
+    private static function withAlternativeReadings(array $data, array $partNames): array
+    {
+        foreach ($partNames as $partName) {
+            if (!array_key_exists($partName, $data)) {
+                continue;
+            }
+
+            $data[$partName] = self::alternativeReading($data[$partName]);
+        }
+
+        return $data;
+    }
+
+    private static function alternativeReading(mixed $value): mixed
+    {
+        if (is_string($value)) {
+            try {
+                /** @var mixed $decoded */
+                $decoded = json_decode($value, true, flags: JSON_THROW_ON_ERROR);
+
+                if (!is_string($decoded)) {
+                    return $decoded;
+                }
+            } catch (JsonException) {
+                // Not JSON; fall through to the structured probe below.
+            }
+        }
+
+        return new stdClass();
+    }
+
+    /**
+     * Keep only the violations both readings produce. A violation that one
+     * reading reports and the other does not is decided by the part's
+     * unresolved media type, and reporting it would fail a request that a
+     * different — equally permitted — reading validates.
+     *
+     * @param list<SchemaViolation> $violations
+     * @param list<SchemaViolation> $alternative
+     *
+     * @return list<SchemaViolation>
+     */
+    private static function violationsBothReadingsAgreeOn(array $violations, array $alternative): array
+    {
+        $fingerprints = [];
+        foreach ($alternative as $violation) {
+            $fingerprints[self::violationFingerprint($violation)] = true;
+        }
+
+        return array_values(array_filter(
+            $violations,
+            static fn(SchemaViolation $violation): bool => isset($fingerprints[self::violationFingerprint($violation)]),
+        ));
+    }
+
+    private static function violationFingerprint(SchemaViolation $violation): string
+    {
+        return $violation->instancePath . "\0" . ($violation->keyword ?? '') . "\0" . $violation->message;
+    }
+
+    /**
      * Drop the violations whose instance pointer addresses one of the named
      * top-level properties (or anything below it). Violations reported at the
      * object itself — `required`, `minProperties`, `additionalProperties` —
@@ -507,17 +583,37 @@ final class RequestBodyValidator
         // same coercion the JSON path applies so `type: object` still matches.
         $dataObject = ObjectConverter::convert($data === [] ? new stdClass() : $data);
 
-        $violations = $this->runner->validateStructured(ObjectConverter::convert($jsonSchema), $dataObject);
+        $schemaObject = ObjectConverter::convert($jsonSchema);
+        $violations = $this->runner->validateStructured($schemaObject, $dataObject);
 
         // The body is validated exactly as written — the data and the schema
         // are never rewritten around an unverifiable part, which would change
         // what `minProperties` / `maxProperties` / `additionalProperties` and
-        // a composed `required` are counting. Only the violations that point
-        // *into* such a part are withheld: its raw value is not necessarily
-        // the shape its own subschema describes, while every constraint the
-        // surrounding object states still holds on the real data.
+        // a composed `required` are counting. Two classes of violation are
+        // withheld instead:
+        //
+        //  * those pointing *into* such a part — its raw value is not
+        //    necessarily the shape its own subschema describes;
+        //  * those the part's reading decides. A `if` / `oneOf` /
+        //    `dependentRequired` branch keyed on the part reports at the
+        //    object, not at the part, so a `required` failure at the root can
+        //    be an artifact of reading an unresolved part as a raw string
+        //    (OAS 3.2 "Handling multiple contentType values"). Re-running the
+        //    schema with the part read differently tells the two apart: what
+        //    both readings agree on is a real violation, what they disagree
+        //    on hinges on a Content-Type the wire did not preserve.
         if ($unverifiable !== []) {
             $violations = self::withoutViolationsInside($violations, array_keys($unverifiable));
+
+            if ($violations !== []) {
+                $violations = self::violationsBothReadingsAgreeOn(
+                    $violations,
+                    $this->runner->validateStructured(
+                        $schemaObject,
+                        ObjectConverter::convert(self::withAlternativeReadings($data, array_keys($unverifiable))),
+                    ),
+                );
+            }
         }
 
         foreach ($violations as $violation) {
