@@ -134,7 +134,9 @@ Default is **warn-only**: a miss prints `[OpenAPI Coverage] WARN: …` to stderr
 > [coverage baseline](coverage-baseline.md): it gates the set of uncovered
 > responses instead of a percentage, so there is no threshold to keep raising
 > by hand, documenting a new response cannot fail an unrelated PR, and a
-> failure names the offending rows.
+> failure names the offending rows. To gate only what the pull request
+> actually touched, add the
+> [spec patch coverage gate](coverage-gate.md).
 
 ```xml
 <extensions>

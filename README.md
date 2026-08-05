@@ -238,6 +238,7 @@ To validate every response automatically, set `'auto_assert' => true` and drop t
 | Violation baseline: adopt on a legacy API, fail only on new violations | [`docs/baseline.md`](docs/baseline.md) |
 | Coverage baseline: gate the set of uncovered responses instead of a percentage | [`docs/coverage-baseline.md`](docs/coverage-baseline.md) |
 | Coverage report modes & threshold gate | [`docs/coverage.md`](docs/coverage.md) |
+| Spec patch coverage: fail a PR that changes an operation no test covers | [`docs/coverage-gate.md`](docs/coverage-gate.md) |
 | HTML coverage output | [`docs/coverage-html-output.md`](docs/coverage-html-output.md) |
 | JSON coverage output schema | [`docs/coverage-json-schema.md`](docs/coverage-json-schema.md) |
 | JSON validation result output schema | [`docs/validation-json-schema.md`](docs/validation-json-schema.md) |

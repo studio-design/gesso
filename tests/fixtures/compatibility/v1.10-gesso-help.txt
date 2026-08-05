@@ -6,5 +6,6 @@ Usage:
 Commands:
   doctor           Check whether Gesso can load and enforce a contract.
   coverage:merge   Combine parallel-worker coverage sidecars.
+  coverage:gate    Fail when a spec change touches an uncovered operation.
 
 Run `gesso <command> --help` for command-specific options.
