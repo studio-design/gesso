@@ -53,6 +53,8 @@ vendor/bin/gesso coverage:merge \
 | `--strict-required=<mode>` | `off` | `off` / `warn` / `fail`. Assert no schema under-description drift across worker observations. See [`strict-required.md`](strict-required.md#paratest) |
 | `--strict-additional-properties=<mode>` | `off` | `off` / `warn` / `fail`. Report returned response properties absent from schema declarations. See [`strict-additional-properties.md`](strict-additional-properties.md#parallel-test-runners) |
 | `--baseline-file=<path>` | — | Union the violation-baseline halves staged by an `OPENAPI_BASELINE_GENERATE=1` parallel run and write the merged baseline. See [`baseline.md`](baseline.md#generating-under-parallel-runners) |
+| `--coverage-baseline-file=<path>` | — | Gate the merged coverage against a committed set of known-uncovered responses; writes the file instead when `OPENAPI_BASELINE_GENERATE=1` is set. See [`coverage-baseline.md`](coverage-baseline.md#parallel-runners) |
+| `--coverage-baseline-stale=<mode>` | `note` | `off` / `note` / `fail`. How baseline entries that are covered now are reported |
 | `--no-cleanup` | (cleanup is on by default) | Keep sidecar files after merge |
 
 Sidecar dir defaults are deliberately stable — workers and the merge CLI

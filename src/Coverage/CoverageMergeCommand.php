@@ -8,6 +8,9 @@ use const FILE_APPEND;
 
 use InvalidArgumentException;
 use RuntimeException;
+use Studio\Gesso\Baseline\BaselineStaleMode;
+use Studio\Gesso\Baseline\CoverageBaselineEvaluator;
+use Studio\Gesso\Baseline\CoverageBaselineFile;
 use Studio\Gesso\Baseline\ViolationBaseline;
 use Studio\Gesso\Baseline\ViolationBaselineFile;
 use Studio\Gesso\Exception\InvalidOpenApiSpecException;
@@ -41,7 +44,9 @@ use function str_contains;
 use function str_replace;
 use function str_starts_with;
 use function strlen;
+use function strtolower;
 use function substr;
+use function trim;
 use function unlink;
 
 /**
@@ -81,6 +86,8 @@ use function unlink;
  *     strict_required?: string,
  *     strict_additional_properties?: string,
  *     baseline_file?: string,
+ *     coverage_baseline_file?: string,
+ *     coverage_baseline_stale?: string,
  *     help?: bool,
  * }
  *
@@ -212,6 +219,15 @@ final class CoverageMergeCommand
               --baseline-file=<path>        Union the violation-baseline halves staged by a
                                             parallel `OPENAPI_BASELINE_GENERATE=1` run and
                                             write the merged baseline here (Issue #417).
+              --coverage-baseline-file=<path>
+                                            Gate the merged coverage against a committed set of
+                                            known-uncovered responses: any uncovered response
+                                            missing from the file fails the merge by name
+                                            (Issue #481). With OPENAPI_BASELINE_GENERATE=1 set,
+                                            the file is (re)written instead of enforced.
+              --coverage-baseline-stale=<mode>
+                                            off | note | fail. How baseline entries that are
+                                            covered now are reported. Defaults to note.
               --no-cleanup                  Keep sidecar files after merge (default: cleanup).
               --help                        Show this message.
 
@@ -299,6 +315,33 @@ final class CoverageMergeCommand
             ? $this->absolutise($options['baseline_file'])
             : null;
 
+        // Issue #481: the coverage baseline gate for parallel runs. Unlike
+        // the violation baseline — whose entries are staged per worker — the
+        // merged coverage state already is the whole-suite view, so this
+        // command both generates and enforces from it.
+        $coverageBaselineFile = isset($options['coverage_baseline_file']) && $options['coverage_baseline_file'] !== ''
+            ? $this->absolutise($options['coverage_baseline_file'])
+            : null;
+        $coverageBaselineGenerate = $coverageBaselineFile !== null && self::baselineGenerationRequested();
+
+        try {
+            $coverageBaselineStaleMode = BaselineStaleMode::fromConfigValue($options['coverage_baseline_stale'] ?? null);
+        } catch (InvalidArgumentException $e) {
+            // Same severity as a malformed threshold (exit 2): a typo here
+            // silently changes the gate the user opted into.
+            $this->writeStderr(sprintf("[Gesso] FATAL: %s\n", $e->getMessage()));
+
+            return 2;
+        }
+
+        if ($coverageBaselineFile === null && isset($options['coverage_baseline_stale'])) {
+            $this->writeStderr(
+                "[Gesso] FATAL: --coverage-baseline-stale is set but --coverage-baseline-file was not given; there is no baseline to evaluate staleness against.\n",
+            );
+
+            return 2;
+        }
+
         if ($specBasePath === null) {
             $this->writeStderr("[OpenAPI Coverage] FATAL: --spec-base-path is required\n");
 
@@ -336,6 +379,16 @@ final class CoverageMergeCommand
                 $this->writeStderr(sprintf(
                     "[Gesso] FATAL: --baseline-file requested but no sidecars were found in %s; no baseline was written. Run the parallel suite with OPENAPI_BASELINE_GENERATE=1 first.\n",
                     $sidecarDir,
+                ));
+
+                return 1;
+            }
+
+            if ($coverageBaselineFile !== null) {
+                $this->writeStderr(sprintf(
+                    "[Gesso] FATAL: --coverage-baseline-file was given but no sidecars were found in %s; the coverage baseline cannot be %s.\n",
+                    $sidecarDir,
+                    $coverageBaselineGenerate ? 'generated' : 'evaluated',
                 ));
 
                 return 1;
@@ -479,11 +532,20 @@ final class CoverageMergeCommand
                     : 'no coverage recorded across sidecars',
             ));
 
+            if ($coverageBaselineFile !== null) {
+                // The uncovered set would be empty for lack of data, not for
+                // lack of gaps — enforcing it would pass a run that validated
+                // nothing, generating it would write an empty baseline.
+                $this->writeStderr(
+                    "[Gesso] FATAL: no contract test coverage was recorded; the coverage baseline cannot be evaluated.\n",
+                );
+            }
+
             if ($cleanup && !$this->cleanupSafely($sidecarDir)) {
                 return 1;
             }
 
-            return $strictGated || $strictAdditionalPropertiesFailure ? 1 : 0;
+            return $strictGated || $strictAdditionalPropertiesFailure || $coverageBaselineFile !== null ? 1 : 0;
         }
 
         $this->writeStdout(ConsoleCoverageRenderer::render($results, $consoleOutput, $sdkResults));
@@ -518,15 +580,39 @@ final class CoverageMergeCommand
             $sidecarsWithoutStrictAdditionalProperties,
         );
 
+        $coverageBaselineFailure = $coverageBaselineFile !== null && !$this->handleCoverageBaseline(
+            $coverageBaselineFile,
+            $coverageBaselineGenerate,
+            $coverageBaselineStaleMode,
+            $results,
+        );
+
         $cleanupFailure = $cleanup && !$this->cleanupSafely($sidecarDir);
 
         return $writeFailures > 0 ||
             $thresholdFailure ||
             $strictFailure ||
             $strictAdditionalPropertiesFailure ||
+            $coverageBaselineFailure ||
             $cleanupFailure
             ? 1
             : 0;
+    }
+
+    /**
+     * Issue #481: whether this merge should (re)write the coverage baseline
+     * instead of enforcing it. Truthy semantics mirror the PHPUnit
+     * extension's reading of the same variable, so one env var drives both
+     * halves of a parallel generation run.
+     */
+    private static function baselineGenerationRequested(): bool
+    {
+        $value = getenv('OPENAPI_BASELINE_GENERATE');
+        if ($value === false || trim($value) === '') {
+            return false;
+        }
+
+        return !in_array(strtolower(trim($value)), ['0', 'false', 'no'], true);
     }
 
     /**
@@ -590,6 +676,91 @@ final class CoverageMergeCommand
         ));
 
         return true;
+    }
+
+    /**
+     * Issue #481: generate or enforce the coverage baseline against the
+     * merged whole-suite coverage state. Returns `false` when the merge must
+     * exit non-zero.
+     *
+     * Unlike the sequential path this has no view of whether the suite
+     * passed, so a red parallel run can report responses of failed tests as
+     * newly uncovered. That is the same blind spot the threshold gate has
+     * here, and the merge already runs after a suite whose exit code CI
+     * checks separately.
+     *
+     * @param array<string, CoverageResult> $results
+     */
+    private function handleCoverageBaseline(
+        string $baselineFile,
+        bool $generate,
+        BaselineStaleMode $staleMode,
+        array $results,
+    ): bool {
+        if ($results === []) {
+            $this->writeStderr(
+                "[Gesso] FATAL: no contract test coverage was recorded; the coverage baseline cannot be evaluated.\n",
+            );
+
+            return false;
+        }
+
+        if ($generate) {
+            $collected = CoverageBaselineEvaluator::collect($results);
+
+            try {
+                CoverageBaselineFile::write($baselineFile, $collected);
+            } catch (RuntimeException $e) {
+                $this->writeStderr("[Gesso] FATAL: {$e->getMessage()}\n");
+
+                return false;
+            }
+
+            $this->writeStderr(sprintf(
+                "[Gesso] Coverage baseline written: %d uncovered response(s) → %s\n",
+                $collected->count(),
+                $baselineFile,
+            ));
+
+            return true;
+        }
+
+        try {
+            $baseline = CoverageBaselineFile::read($baselineFile);
+        } catch (InvalidArgumentException $e) {
+            $this->writeStderr(
+                "[Gesso] FATAL: --coverage-baseline-file could not be loaded: {$e->getMessage()}\n",
+            );
+
+            return false;
+        }
+
+        $verdict = CoverageBaselineEvaluator::evaluate($baseline, $results);
+
+        $this->writeStderr(sprintf(
+            "[Gesso] coverage baseline: %d entries, %d uncovered response(s) in this run, %d covered now.\n",
+            $baseline->count(),
+            $verdict['uncovered'],
+            count($verdict['stale']),
+        ));
+
+        if ($verdict['regressions'] !== []) {
+            $this->writeStderr(CoverageBaselineEvaluator::renderRegressionMessage(
+                $verdict['regressions'],
+                'OPENAPI_BASELINE_GENERATE=1 ' . $this->invocation,
+            ));
+
+            return false;
+        }
+
+        if ($verdict['stale'] === [] || $staleMode === BaselineStaleMode::Off) {
+            return true;
+        }
+
+        $isFatal = $staleMode === BaselineStaleMode::Fail;
+        $this->writeStderr(CoverageBaselineEvaluator::renderStaleMessage($verdict['stale'], $isFatal));
+
+        return !$isFatal;
     }
 
     /**

@@ -14,6 +14,8 @@ use PHPUnit\Runner\Extension\Facade;
 use PHPUnit\Runner\Extension\ParameterCollection;
 use PHPUnit\TextUI\Configuration\Configuration;
 use Studio\Gesso\Baseline\BaselineStaleMode;
+use Studio\Gesso\Baseline\CoverageBaseline;
+use Studio\Gesso\Baseline\CoverageBaselineFile;
 use Studio\Gesso\Baseline\InvalidBaselineConfigurationException;
 use Studio\Gesso\Baseline\ViolationBaselineCollector;
 use Studio\Gesso\Baseline\ViolationBaselineEnforcer;
@@ -379,44 +381,69 @@ final class OpenApiCoverageExtension implements Extension
         // the committed baseline; the run only demotes failures when the
         // user explicitly asked for a generation run via the environment
         // variable, so a plain `vendor/bin/phpunit` never masks violations.
-        $baselineFile = null;
-        if ($parameters->has('baseline_file') && trim($parameters->get('baseline_file')) !== '') {
-            $baselineFile = trim($parameters->get('baseline_file'));
-            if (!str_starts_with($baselineFile, '/')) {
-                $baselineFile = getcwd() . '/' . $baselineFile;
-            }
-        }
+        $baselineFile = self::resolveBaselineFileParameter($parameters, 'baseline_file');
+
+        // Issue #481: the coverage baseline is the set-based counterpart —
+        // same generation entry point, its own committed file.
+        $coverageBaselineFile = self::resolveBaselineFileParameter($parameters, 'coverage_baseline_file');
 
         // Resolve baseline_stale before any baseline wiring so a typo'd or
         // orphaned parameter aborts bootstrap first (fail-loud policy).
-        $baselineStaleMode = self::resolveBaselineStaleMode($parameters, $baselineFile !== null);
+        $baselineStaleMode = self::resolveBaselineStaleMode(
+            $parameters,
+            'baseline_stale',
+            'baseline_file',
+            $baselineFile !== null,
+        );
+        $coverageBaselineStaleMode = self::resolveBaselineStaleMode(
+            $parameters,
+            'coverage_baseline_stale',
+            'coverage_baseline_file',
+            $coverageBaselineFile !== null,
+        );
+
+        $generationRequested = self::baselineGenerationRequested();
+        if ($generationRequested && $baselineFile === null && $coverageBaselineFile === null) {
+            // A generation run with nowhere to write would complete "green"
+            // (all failures demoted) and then drop every recorded violation
+            // on the floor — abort bootstrap instead.
+            self::writeStderr(
+                "[Gesso] FATAL: OPENAPI_BASELINE_GENERATE is set but neither `baseline_file` nor `coverage_baseline_file` is configured.\n"
+                . "  Action: add <parameter name=\"baseline_file\" value=\"gesso-baseline.json\"/> (violations) or\n"
+                . "          <parameter name=\"coverage_baseline_file\" value=\"gesso-coverage-baseline.json\"/> (coverage)\n"
+                . "          to the extension bootstrap.\n",
+            );
+
+            throw new InvalidBaselineConfigurationException(
+                'OPENAPI_BASELINE_GENERATE requires the baseline_file or coverage_baseline_file extension parameter.',
+            );
+        }
+
+        // Issue #481: enforcement loads and validates the committed file at
+        // bootstrap for the same fail-loud reason as the violation baseline.
+        // Worker processes load it too and then never evaluate it (the
+        // subscriber's worker branch returns early) — `gesso coverage:merge`
+        // is the gate for parallel runs.
+        $coverageBaseline = null;
+        $coverageBaselineGeneratePath = null;
+        if ($generationRequested) {
+            $coverageBaselineGeneratePath = $coverageBaselineFile;
+        } elseif ($coverageBaselineFile !== null) {
+            $coverageBaseline = self::readCoverageBaseline($coverageBaselineFile);
+        }
 
         ViolationBaselineCollector::resetCurrent();
         ViolationBaselineEnforcer::resetCurrent();
         $baselineGeneratePath = null;
-        if (self::baselineGenerationRequested()) {
+        if ($generationRequested && $baselineFile !== null) {
             // Issue #417: paratest workers (TEST_TOKEN set) run generation
             // like a sequential run — the collector demotes failures and the
             // subscriber's worker branch stages the fingerprints in the
             // sidecar envelope for `gesso coverage:merge --baseline-file`
             // to union into the committed file.
-            if ($baselineFile === null) {
-                // A generation run with nowhere to write would complete
-                // "green" (all failures demoted) and then drop every
-                // recorded violation on the floor — abort bootstrap instead.
-                self::writeStderr(
-                    "[Gesso] FATAL: OPENAPI_BASELINE_GENERATE is set but no `baseline_file` extension parameter is configured.\n"
-                    . "  Action: add <parameter name=\"baseline_file\" value=\"gesso-baseline.json\"/> to the extension bootstrap.\n",
-                );
-
-                throw new InvalidBaselineConfigurationException(
-                    'OPENAPI_BASELINE_GENERATE requires the baseline_file extension parameter.',
-                );
-            }
-
             ViolationBaselineCollector::setCurrent(new ViolationBaselineCollector());
             $baselineGeneratePath = $baselineFile;
-        } elseif ($baselineFile !== null) {
+        } elseif (!$generationRequested && $baselineFile !== null) {
             // Issue #402: enforcement. A configured baseline_file that cannot
             // be loaded is FATAL — swallowing a typo'd path or a corrupted
             // file would silently disable suppression (all-red run) or, worse,
@@ -525,8 +552,13 @@ final class OpenApiCoverageExtension implements Extension
         // finished with no defects — the stale gate must not report unhit
         // entries as removable when later assertions never ran (truncated
         // --stop-on-* runs, hook failures, failed/skipped tests).
+        //
+        // Issue #481: the coverage baseline needs the same proof for the
+        // opposite reason — a test that never reached its contract assertion
+        // leaves its responses uncovered, which would be reported as a
+        // regression on top of the failure the user is already looking at.
         $baselineCompletionTracer = null;
-        if (ViolationBaselineEnforcer::current() !== null) {
+        if (ViolationBaselineEnforcer::current() !== null || $coverageBaseline !== null) {
             $baselineCompletionTracer = new TestRunCompletionTracer();
             $facade->registerTracer($baselineCompletionTracer);
         }
@@ -554,33 +586,84 @@ final class OpenApiCoverageExtension implements Extension
             baselineGeneratePath: $baselineGeneratePath,
             baselineStaleMode: $baselineStaleMode,
             baselineCompletionTracer: $baselineCompletionTracer,
+            coverageBaseline: $coverageBaseline,
+            coverageBaselineGeneratePath: $coverageBaselineGeneratePath,
+            coverageBaselineStaleMode: $coverageBaselineStaleMode,
         ));
     }
 
     /**
-     * Issue #402: read the `baseline_stale` parameter. Missing and empty
-     * values resolve to {@see BaselineStaleMode::Note}; unrecognised values
-     * and a `baseline_stale` without a `baseline_file` (nothing to evaluate
-     * staleness against) are FATAL — silently dropping the parameter would
-     * defeat the opt-in fail-loud policy this extension enforces.
+     * Read a baseline path parameter, resolving a relative value against the
+     * working directory. Empty values are treated as "not configured" so a
+     * blank `value=""` does not point the baseline at the cwd itself.
+     */
+    private static function resolveBaselineFileParameter(
+        ParameterCollection $parameters,
+        string $name,
+    ): ?string {
+        if (!$parameters->has($name) || trim($parameters->get($name)) === '') {
+            return null;
+        }
+
+        $path = trim($parameters->get($name));
+
+        return str_starts_with($path, '/') ? $path : getcwd() . '/' . $path;
+    }
+
+    /**
+     * Issue #481: enforcement counterpart of the violation baseline's
+     * bootstrap read. A typo'd path or a corrupted file must not silently
+     * disable the gate.
+     */
+    private static function readCoverageBaseline(string $path): CoverageBaseline
+    {
+        try {
+            return CoverageBaselineFile::read($path);
+        } catch (InvalidArgumentException $e) {
+            self::writeStderr(
+                "[Gesso] FATAL: coverage_baseline_file could not be loaded: {$e->getMessage()}\n"
+                . "  Action: generate it with `OPENAPI_BASELINE_GENERATE=1 vendor/bin/phpunit`, fix the path, or remove the `coverage_baseline_file` parameter.\n",
+            );
+
+            throw new InvalidBaselineConfigurationException(
+                'coverage_baseline_file could not be loaded: ' . $e->getMessage(),
+                previous: $e,
+            );
+        }
+    }
+
+    /**
+     * Issue #402 / #481: read a `*_stale` parameter. Missing and empty values
+     * resolve to {@see BaselineStaleMode::Note}; unrecognised values and a
+     * stale mode without its baseline file (nothing to evaluate staleness
+     * against) are FATAL — silently dropping the parameter would defeat the
+     * opt-in fail-loud policy this extension enforces.
      */
     private static function resolveBaselineStaleMode(
         ParameterCollection $parameters,
+        string $name,
+        string $fileName,
         bool $hasBaselineFile,
     ): BaselineStaleMode {
-        if (!$parameters->has('baseline_stale')) {
+        if (!$parameters->has($name)) {
             return BaselineStaleMode::Note;
         }
 
         if (!$hasBaselineFile) {
-            $reason = 'baseline_stale is set but no `baseline_file` extension parameter is configured. '
-                . 'Stale evaluation needs a baseline to compare against; set `baseline_file` or remove `baseline_stale`.';
+            $reason = sprintf(
+                '%s is set but no `%s` extension parameter is configured. '
+                . 'Stale evaluation needs a baseline to compare against; set `%s` or remove `%s`.',
+                $name,
+                $fileName,
+                $fileName,
+                $name,
+            );
             self::writeStderr("[Gesso] FATAL: {$reason}\n");
 
             throw new InvalidBaselineConfigurationException($reason);
         }
 
-        $raw = $parameters->get('baseline_stale');
+        $raw = $parameters->get($name);
 
         try {
             return BaselineStaleMode::fromConfigValue($raw);

@@ -64,6 +64,22 @@ This library follows [Semantic Versioning 2.0](https://semver.org/). v1.0.0 is t
   baselined, and entries that no longer occur during a full run are reported
   as stale per `baseline_stale`. Unknown `baseline_version` values are
   rejected.
+- The coverage baseline file (`coverage_baseline_version` 1): the
+  `uncovered_responses` entry fields (`spec`, `method`, `path`, `status`,
+  `content_type`) and what they identify — one declared response the run did
+  not validate, at `(method, path, status, content-type)` granularity, where
+  `status` is the spec response key and `content_type` is `*` for responses
+  without a `content` block; fixed HTTP methods normalize to uppercase while
+  OpenAPI 3.2 custom `additionalOperations` methods stay case-sensitive. The
+  `coverage_baseline_file` / `coverage_baseline_stale` extension parameters
+  (same values as `baseline_stale`), the matching
+  `--coverage-baseline-file` / `--coverage-baseline-stale` merge flags, and
+  the shared `OPENAPI_BASELINE_GENERATE` generation switch are covered too.
+  The enforcement semantics are part of the contract: responses that were not
+  validated — including responses skipped by `skip_response_codes` — are
+  baselined, an uncovered response absent from the file fails the run, and
+  entries that are covered now are reported per the stale mode. Unknown
+  `coverage_baseline_version` values are rejected.
 - Named contract checks: `ContractCheck` names and default expected statuses
   and status classes, the `OpenApiContractChecks`/`ContractCheckPlan` fluent
   surface, and the
@@ -77,7 +93,7 @@ This library follows [Semantic Versioning 2.0](https://semver.org/). v1.0.0 is t
   - v2.x: the `doctor` and `coverage:merge` subcommands of `bin/gesso`; the
     legacy standalone binaries are not shipped
 - The Laravel `openapi:routes` command surface (flags, exit codes, and versioned JSON output)
-- The `OpenApiCoverageExtension` PHPUnit configuration parameters (`spec_base_path`, `strip_prefixes`, `specs`, `output_file`, `console_output`, `validation_output`, `baseline_file`, `strict_required`, `strict_additional_properties`, `strict_additional_properties_per_call`, …)
+- The `OpenApiCoverageExtension` PHPUnit configuration parameters (`spec_base_path`, `strip_prefixes`, `specs`, `output_file`, `console_output`, `validation_output`, `baseline_file`, `coverage_baseline_file`, `strict_required`, `strict_additional_properties`, `strict_additional_properties_per_call`, …)
 - The Laravel `ValidatesOpenApiSchema` trait's public methods
 - The category prefixes used in `E_USER_WARNING` messages (`[security]`, `[OpenAPI Schema]`, and the `[OpenAPI 3.2 ...]` categories)
 

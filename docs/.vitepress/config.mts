@@ -269,6 +269,7 @@ export default defineConfig({
         items: [
           { text: 'Doctor command', link: '/doctor' },
           { text: 'Violation baseline', link: '/baseline' },
+          { text: 'Coverage baseline', link: '/coverage-baseline' },
           { text: 'PSR-7 validation', link: '/psr7' },
           { text: 'Laravel route parity', link: '/laravel-route-parity' },
           { text: 'Schema-driven fuzzing', link: '/fuzzing' },

@@ -126,6 +126,10 @@ selection signal, mirroring the `strict_required` skip:
 Run the full suite to evaluate the gate.
 ```
 
+The [coverage baseline](coverage-baseline.md) gate is skipped on the same
+signals, for the same reason, and additionally on any run that did not
+complete cleanly.
+
 This means a CI matrix that shards by `--testsuite` can keep the gate
 configured in the shared `phpunit.xml`: shard jobs skip it, and only a
 full-suite run (or the `coverage:merge` step for parallel runs) evaluates
