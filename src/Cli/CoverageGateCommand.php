@@ -245,6 +245,29 @@ final class CoverageGateCommand
             throw new RuntimeException("Unsupported spec extension: .{$extension} ({$inputPath})");
         }
 
+        // The loader resolves a *name*, searching .json before .yaml before
+        // .yml, so `--spec=openapi.yaml` next to an openapi.json would silently
+        // gate the JSON document instead. Fail the way `gesso doctor` does
+        // rather than report a verdict on a spec the user did not name.
+        $directory = pathinfo($path, PATHINFO_DIRNAME);
+        $name = pathinfo($path, PATHINFO_FILENAME);
+        foreach (['json', 'yaml', 'yml'] as $candidateExtension) {
+            $candidate = $directory . '/' . $name . '.' . $candidateExtension;
+            if (!is_file($candidate)) {
+                continue;
+            }
+            if (realpath($candidate) !== realpath($path)) {
+                throw new RuntimeException(sprintf(
+                    'The runtime loader selects %s before the requested %s. '
+                    . 'Remove or rename the shadowing entry document.',
+                    $candidate,
+                    $inputPath,
+                ));
+            }
+
+            break;
+        }
+
         try {
             // The loader caches by spec name, so a base and a head document
             // sharing a filename (the common `openapi.json` case) would

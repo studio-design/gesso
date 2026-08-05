@@ -390,14 +390,50 @@ class CoverageGateCommandTest extends TestCase
         $this->assertStringContainsString('Spec is not a readable file', $this->stderr);
     }
 
-    private function gate(string $format = 'text', ?string $specName = null): int
+    #[Test]
+    public function a_spec_shadowed_by_a_json_sibling_is_a_usage_error(): void
     {
+        // The loader resolves a *name* and searches .json before .yaml, so
+        // gating --spec=openapi.yaml would silently diff the JSON document.
+        $this->writeSpec('base.json', $this->baseSpec());
+        $this->writeSpec('openapi.json', $this->headSpec());
+        file_put_contents($this->workDir . '/openapi.yaml', "openapi: 3.0.3\n");
+        $this->writeCoverage([]);
+
+        $this->assertSame(CoverageGateCommand::EXIT_USAGE, $this->gate(spec: $this->workDir . '/openapi.yaml'));
+        $this->assertStringContainsString(
+            'selects ' . $this->workDir . '/openapi.json before the requested ' . $this->workDir . '/openapi.yaml',
+            $this->stderr,
+        );
+    }
+
+    #[Test]
+    public function a_base_spec_shadowed_by_a_json_sibling_is_a_usage_error(): void
+    {
+        $this->writeSpec('base.json', $this->baseSpec());
+        $this->writeSpec('openapi.json', $this->headSpec());
+        file_put_contents($this->workDir . '/base.yaml', "openapi: 3.0.3\n");
+        $this->writeCoverage([]);
+
+        $this->assertSame(CoverageGateCommand::EXIT_USAGE, $this->gate(baseSpec: $this->workDir . '/base.yaml'));
+        $this->assertStringContainsString(
+            'selects ' . $this->workDir . '/base.json before the requested ' . $this->workDir . '/base.yaml',
+            $this->stderr,
+        );
+    }
+
+    private function gate(
+        string $format = 'text',
+        ?string $specName = null,
+        ?string $spec = null,
+        ?string $baseSpec = null,
+    ): int {
         $this->stdout = '';
         $this->stderr = '';
 
         $options = [
-            'base_spec' => $this->workDir . '/base.json',
-            'spec' => $this->workDir . '/openapi.json',
+            'base_spec' => $baseSpec ?? $this->workDir . '/base.json',
+            'spec' => $spec ?? $this->workDir . '/openapi.json',
             'coverage' => $this->workDir . '/coverage.json',
             'format' => $format,
             'invalid_options' => [],
