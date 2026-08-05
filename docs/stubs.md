@@ -106,7 +106,10 @@ Everything the spec pins down is filled in:
   so only the first JSON key (or `application/*`) is ever selected by a JSON
   Content-Type. And forms are the one non-JSON family it still checks against a
   schema, which makes `multipart/form-data` the way to reach a `multipart/*`
-  range — unreachable through every other route.
+  range — unreachable through every other route. Where several media types are
+  declared, the one whose schema is actually enforced wins: an operation
+  offering both `application/xml` and `multipart/form-data` is stubbed through
+  the form, because the XML would validate as Skipped whatever the body is.
 - **Status codes.** A range key such as `4XX`, or `default`, is exercised as a
   concrete code with a comment saying which one was picked. The code is chosen
   the way the runtime resolver reads the spec — exact keys win over ranges, and
@@ -132,13 +135,15 @@ Everything the spec pins down is filled in:
   lands on one is skipped as a contract this engine cannot evaluate. So a
   schema-less range is stubbed with a concrete non-JSON type, and a range
   carrying a schema next to a JSON sibling is reported rather than stubbed.
-- **Responses only a skip can reach.** OpenAPI 3.2 `itemSchema` streaming
-  cannot be checked from a buffered body, and a non-JSON media type carrying a
+- **Bodies only a skip can reach.** OpenAPI 3.2 `itemSchema` streaming cannot
+  be checked from a buffered body, and a non-JSON media type carrying a
   `schema` is a contract this JSON Schema engine does not evaluate. Both still
   get a stub — it exercises the endpoint and moves the tuple off `uncovered` —
   but with a `TODO` saying the assertion can only ever pass as Skipped, because
   the generated `isValid()` is satisfied by a skip and the coverage document
-  will keep reporting the tuple as skipped rather than validated.
+  will keep reporting the tuple as skipped rather than validated. This applies
+  to the request body as well as the response, except for the `phpunit` adapter,
+  which never sends a body.
 - **Responses without `content`.** These become a single "no content" test, the
   same tuple the coverage tracker records for a 204.
 

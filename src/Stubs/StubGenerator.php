@@ -15,8 +15,9 @@ use Studio\Gesso\Validation\Support\FormBodyDecoder;
 use function array_filter;
 use function array_key_exists;
 use function array_keys;
-use function array_map;
+use function array_merge;
 use function array_values;
+use function count;
 use function explode;
 use function implode;
 use function in_array;
@@ -44,7 +45,7 @@ use function usort;
  * tracker can never report would be a test that cannot move the coverage number.
  *
  * @phpstan-type StubTuple array{status: string, content_type: string, wire_content_type: string, status_code: null|int, is_range: bool, reason: 'ok'|'unreachable'|'malformed', skip_notice: null|string, example: mixed, has_example: bool}
- * @phpstan-type StubRequestBody array{content_type: string, wire_content_type: string, body: mixed}
+ * @phpstan-type StubRequestBody array{content_type: string, wire_content_type: string, body: mixed, skip_notice: null|string}
  * @phpstan-type StubOperation array{
  *     method: string,
  *     path: string,
@@ -218,11 +219,26 @@ final class StubGenerator
 
         [$type] = explode('/', $normalized, 2);
         $prefixes = $type === '*' || $type === '' ? ['application', 'text'] : [$type];
-        foreach ($prefixes as $prefix) {
-            for ($i = 0; $i < 4; $i++) {
-                $candidates[] = $prefix . '/vnd.gesso-stub' . ($i === 0 ? '' : (string) $i) . '+json';
+
+        // Every way a made-up type can lose to a sibling goes through an exact
+        // key match, so one more attempt than there are siblings always leaves
+        // an unclaimed name. A fixed handful does not: a document declaring
+        // `application/vnd.gesso-stub` through `-stub3` would make the range
+        // next to them read as unreachable when `application/xml` selects it
+        // perfectly well.
+        $attempts = count($siblings) + 1;
+        $stubTypes = static function (string $suffix) use ($prefixes, $attempts): array {
+            $types = [];
+            foreach ($prefixes as $prefix) {
+                for ($i = 0; $i < $attempts; $i++) {
+                    $types[] = $prefix . '/vnd.gesso-stub' . ($i === 0 ? '' : (string) $i) . $suffix;
+                }
             }
-        }
+
+            return $types;
+        };
+
+        $candidates = array_merge($candidates, $stubTypes('+json'));
 
         if ($forRequest && $hasSchema) {
             $candidates[] = FormBodyDecoder::URLENCODED;
@@ -230,11 +246,7 @@ final class StubGenerator
         }
 
         if (!$hasSchema) {
-            foreach ($prefixes as $prefix) {
-                for ($i = 0; $i < 4; $i++) {
-                    $candidates[] = $prefix . '/vnd.gesso-stub' . ($i === 0 ? '' : (string) $i);
-                }
-            }
+            $candidates = array_merge($candidates, $stubTypes(''));
         }
 
         foreach ($candidates as $candidate) {
@@ -258,39 +270,45 @@ final class StubGenerator
     }
 
     /**
-     * Why a response tuple can only ever validate as Skipped, or null when the
-     * stub really does exercise a schema.
+     * Why a request body or a response tuple can only ever validate as Skipped,
+     * or null when the stub really does exercise a schema.
      *
-     * The generated assertion is `isValid()`, which a Skipped result satisfies,
-     * so without this the test would read as finished while the coverage
-     * document keeps reporting the tuple as skipped rather than validated. Both
-     * cases are properties of the spec, not of the stub: OpenAPI 3.2
-     * `itemSchema` streaming cannot be checked from a buffered body, and a
-     * non-JSON media type carrying a `schema` is a contract this JSON Schema
-     * engine does not evaluate. The stub is still worth writing — it exercises
-     * the endpoint and moves the tuple off `uncovered` — but the reason belongs
-     * in the file rather than in a surprise.
+     * The generated assertions are satisfied by a Skipped result, so without
+     * this the test would read as finished while the coverage document keeps
+     * reporting the tuple as skipped rather than validated. Both cases are
+     * properties of the spec, not of the stub: OpenAPI 3.2 `itemSchema`
+     * streaming cannot be checked from a buffered body, and a non-JSON media
+     * type carrying a `schema` is a contract this JSON Schema engine does not
+     * evaluate — the one exception being a form request body, which
+     * {@see RequestBodyValidator} still checks field by field. The stub is
+     * still worth writing — it exercises the endpoint and moves the tuple off
+     * `uncovered` — but the reason belongs in the file rather than in a
+     * surprise.
      *
      * @param array<string, mixed> $media the declared media type entry
      */
-    private static function skipNotice(string $wireContentType, array $media): ?string
+    private static function skipNotice(string $wireContentType, array $media, bool $forRequest = false): ?string
     {
+        $subject = $forRequest ? 'this request body' : 'this response';
         $itemSchema = 'the spec declares `itemSchema` here, and stream items cannot be validated '
-            . 'from a buffered body, so this response can only validate as Skipped';
+            . 'from a buffered body, so ' . $subject . ' can only validate as Skipped';
+        $normalized = ContentTypeMatcher::normalizeMediaType($wireContentType);
 
-        if (ContentTypeMatcher::isJsonContentType(ContentTypeMatcher::normalizeMediaType($wireContentType))) {
+        if (ContentTypeMatcher::isJsonContentType($normalized)) {
             // The JSON route reads `schema` first and only falls back to the
             // streaming skip when there is none.
             return isset($media['schema']) || !isset($media['itemSchema']) ? null : $itemSchema;
         }
 
         // The non-JSON route checks `itemSchema` first, then rejects any other
-        // schema as unevaluatable.
+        // schema as unevaluatable — bar a form body, whose fields are coerced
+        // and validated against the declared schema.
         return match (true) {
             isset($media['itemSchema']) => $itemSchema,
-            isset($media['schema']) => 'a non-JSON media type declaring a `schema` is a contract this validator '
-                . 'cannot evaluate, so this response can only validate as Skipped',
-            default => null,
+            !isset($media['schema']) => null,
+            $forRequest && FormBodyDecoder::isFormMediaType($normalized) => null,
+            default => 'a non-JSON media type declaring a `schema` is a contract this validator '
+                . 'cannot evaluate, so ' . $subject . ' can only validate as Skipped',
         };
     }
 
@@ -492,24 +510,17 @@ final class StubGenerator
             return [false, []];
         }
 
-        // Every declared media type is kept, most-expressible first. Which one
-        // a stub can actually send depends on the adapter and the HTTP method
-        // — a decision this class is deliberately blind to — and an operation
-        // offering both multipart and urlencoded is stubbable through the
-        // latter even where the former is not.
-        $keys = array_map(static fn(mixed $key): string => (string) $key, array_keys($content));
+        // Every declared media type is kept: which one a stub can actually send
+        // depends on the adapter and the HTTP method — a decision this class is
+        // deliberately blind to — and an operation offering both multipart and
+        // urlencoded is stubbable through the latter even where the former is
+        // not.
         $json = ContentTypeMatcher::findJsonContentType($content);
-        $rank = static fn(string $key): int => match (true) {
-            $key === $json => 0,
-            ContentTypeMatcher::normalizeMediaType($key) === 'application/x-www-form-urlencoded' => 1,
-            default => 2,
-        };
-        usort($keys, static fn(string $a, string $b): int => $rank($a) <=> $rank($b));
-
         $candidates = [];
-        foreach ($keys as $key) {
-            $media = $content[$key] ?? null;
-            [$example, $hasExample] = $this->example(is_array($media) ? $media : []);
+        foreach (array_keys($content) as $key) {
+            $key = (string) $key;
+            $media = is_array($content[$key] ?? null) ? $content[$key] : [];
+            [$example, $hasExample] = $this->example($media);
             $wire = self::wireMediaType($key, $content, forRequest: true);
             if ($wire === null) {
                 continue;
@@ -518,8 +529,24 @@ final class StubGenerator
                 'content_type' => $key,
                 'wire_content_type' => $wire,
                 'body' => $hasExample ? $example : [],
+                'skip_notice' => self::skipNotice($wire, $media, forRequest: true),
             ];
         }
+
+        // Most-expressible first, but a media type the validator actually
+        // checks outranks all of them: an operation declaring both
+        // `application/xml` and `multipart/form-data` should be stubbed
+        // through the form, whose schema is enforced, not through the XML that
+        // validates as Skipped whatever the body is.
+        $rank = static fn(array $candidate): array => [
+            $candidate['skip_notice'] === null ? 0 : 1,
+            match (true) {
+                $candidate['content_type'] === $json => 0,
+                ContentTypeMatcher::normalizeMediaType($candidate['content_type']) === FormBodyDecoder::URLENCODED => 1,
+                default => 2,
+            },
+        ];
+        usort($candidates, static fn(array $a, array $b): int => $rank($a) <=> $rank($b));
 
         return [($requestBody['required'] ?? false) === true, $candidates];
     }

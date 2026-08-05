@@ -19,6 +19,7 @@ use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 use Symfony\Component\HttpFoundation\Request as SymfonyRequest;
 
 use function array_map;
+use function count;
 use function escapeshellarg;
 use function exec;
 use function explode;
@@ -28,6 +29,7 @@ use function implode;
 use function is_dir;
 use function json_encode;
 use function mkdir;
+use function preg_replace;
 use function rmdir;
 use function scandir;
 use function sort;
@@ -690,6 +692,104 @@ class StubsCommandTest extends TestCase
     }
 
     #[Test]
+    public function a_request_body_that_can_only_be_skipped_loses_to_one_that_validates(): void
+    {
+        $schema = ['type' => 'object', 'required' => ['a'], 'properties' => ['a' => ['type' => 'integer']]];
+        $spec = $this->writeInlineSpec('skippablebody', ['/things' => ['post' => [
+            'requestBody' => ['required' => true, 'content' => [
+                'application/xml' => ['schema' => $schema],
+                'multipart/form-data' => ['schema' => $schema],
+            ]],
+            'responses' => ['200' => ['content' => ['application/json' => ['schema' => ['type' => 'object']]]]],
+        ]]]);
+
+        $this->command()->run(StubsCommand::parseArgv([
+            '--spec=' . $spec,
+            '--adapter=laravel',
+            '--output=' . $this->workDir . '/out',
+        ]));
+
+        // `application/xml` is declared first, but a non-JSON media type
+        // carrying a schema validates as Skipped whatever the body is. The
+        // form's schema is enforced field by field, so it wins.
+        $code = (string) file_get_contents($this->workDir . '/out/PostThingsTest.php');
+        $this->assertStringContainsString("'Content-Type' => 'multipart/form-data',", $code);
+        $this->assertStringNotContainsString('application/xml', $code);
+        $this->assertStringNotContainsString('can only validate as Skipped', $this->unwrapComments($code));
+
+        OpenApiSpecLoader::reset();
+        OpenApiSpecLoader::configure($this->workDir);
+        $validator = new OpenApiRequestValidator();
+        $this->assertTrue(
+            $validator->validate('skippablebody', 'POST', '/things', [], [], ['a' => 'nope'], 'application/xml')->isSkipped(),
+        );
+        $this->assertFalse(
+            $validator->validate('skippablebody', 'POST', '/things', [], [], ['a' => 'nope'], 'multipart/form-data')->isValid(),
+        );
+    }
+
+    #[Test]
+    public function a_request_body_with_no_validatable_media_type_says_so_in_the_stub(): void
+    {
+        $spec = $this->writeInlineSpec('onlyxml', ['/things' => ['post' => [
+            'requestBody' => ['required' => true, 'content' => [
+                'application/xml' => ['schema' => ['type' => 'object']],
+            ]],
+            'responses' => ['200' => ['content' => ['application/json' => ['schema' => ['type' => 'object']]]]],
+        ]]]);
+
+        foreach (['laravel' => 'out', 'phpunit' => 'core'] as $adapter => $directory) {
+            $this->command()->run(StubsCommand::parseArgv([
+                '--spec=' . $spec,
+                '--adapter=' . $adapter,
+                '--output=' . $this->workDir . '/' . $directory,
+            ]));
+        }
+
+        // With nothing better on offer the stub is still written — it exercises
+        // the endpoint — but the request assertion cannot fail, so it says so.
+        $this->assertStringContainsString(
+            'this request body can only validate as Skipped',
+            $this->unwrapComments((string) file_get_contents($this->workDir . '/out/PostThingsTest.php')),
+        );
+        // The core adapter never sends the body, so the note would be noise.
+        $this->assertStringNotContainsString(
+            'can only validate as Skipped',
+            $this->unwrapComments((string) file_get_contents($this->workDir . '/core/PostThingsTest.php')),
+        );
+    }
+
+    #[Test]
+    public function a_range_survives_stub_media_types_the_spec_already_claims(): void
+    {
+        $content = ['application/json' => ['schema' => ['type' => 'object']], 'application/*' => []];
+        for ($i = 0; $i < 6; $i++) {
+            $content['application/vnd.gesso-stub' . ($i === 0 ? '' : (string) $i)] = [];
+        }
+        $spec = $this->writeInlineSpec('claimed', ['/things' => ['get' => ['responses' => ['200' => [
+            'content' => $content,
+        ]]]]]);
+
+        $this->command()->run(StubsCommand::parseArgv([
+            '--spec=' . $spec,
+            '--output=' . $this->workDir . '/out',
+        ]));
+
+        // Every substitute the generator reaches for is declared here, so a
+        // fixed handful of them would report the range as unreachable — while
+        // any other concrete `application/*` type selects it perfectly well.
+        $this->assertStringNotContainsString('not stubbed', $this->stdout);
+        $code = (string) file_get_contents($this->workDir . '/out/GetThingsTest.php');
+        $this->assertSame(count($content), substr_count($code, 'public function test_'));
+
+        OpenApiSpecLoader::reset();
+        OpenApiSpecLoader::configure($this->workDir);
+        $result = (new OpenApiResponseValidator(new StrictRequiredTracker()))
+            ->validate('claimed', 'GET', '/things', 200, ['a' => 1], 'application/vnd.gesso-stub6');
+        $this->assertSame('application/*', $result->matchedContentType());
+    }
+
+    #[Test]
     public function a_response_that_can_only_be_skipped_says_so_in_the_stub(): void
     {
         $spec = $this->writeInlineSpec('streaming', ['/events' => ['get' => ['responses' => ['200' => ['content' => [
@@ -704,10 +804,11 @@ class StubsCommandTest extends TestCase
         // The generated assertion is isValid(), which a Skipped result
         // satisfies — so the stub would otherwise read as finished while
         // coverage keeps reporting the tuple as skipped, never validated.
-        $code = (string) file_get_contents($this->workDir . '/out/GetEventsTest.php');
-        $this->assertStringContainsString('itemSchema', $code);
-        $this->assertStringContainsString('can only', $code);
-        $this->assertStringContainsString('validate as Skipped', $code);
+        $this->assertStringContainsString(
+            'the spec declares `itemSchema` here, and stream items cannot be validated '
+            . 'from a buffered body, so this response can only validate as Skipped',
+            $this->unwrapComments((string) file_get_contents($this->workDir . '/out/GetEventsTest.php')),
+        );
 
         OpenApiSpecLoader::reset();
         OpenApiSpecLoader::configure($this->workDir);
@@ -1335,6 +1436,15 @@ class StubsCommandTest extends TestCase
         ], JSON_THROW_ON_ERROR));
 
         return $path;
+    }
+
+    /**
+     * Join the continuation lines of a wrapped `//` comment, so an assertion
+     * can name the whole sentence without pinning where wordwrap() broke it.
+     */
+    private function unwrapComments(string $code): string
+    {
+        return (string) preg_replace('/\n\s*\/\/ /', ' ', $code);
     }
 
     /** @return list<string> */

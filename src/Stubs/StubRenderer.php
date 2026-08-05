@@ -474,7 +474,7 @@ final class StubRenderer
             $this->literal('Exercise ' . $this->describeTuple($operation, $tuple) . '.'),
         ), ''];
 
-        return array_merge($lines, $this->tupleNotes($tuple), match ($this->adapter) {
+        return array_merge($lines, $this->tupleNotes($operation, $tuple), match ($this->adapter) {
             'phpunit' => $this->phpunitBody($operation, $tuple),
             'laravel' => $this->laravelBody($operation, $tuple),
             default => $this->symfonyBody($operation, $tuple),
@@ -863,21 +863,23 @@ final class StubRenderer
             $this->literal($this->specName),
         );
 
-        return array_merge($this->tupleNotes($tuple), $lines);
+        return array_merge($this->tupleNotes($operation, $tuple), $lines);
     }
 
     /**
      * The comments a tuple needs above its call: which concrete status a range
-     * key is being exercised with, and — when the spec puts the response out of
-     * this engine's reach — why the assertion below can only ever pass as
-     * Skipped. Without the second one the stub reads as finished while the
-     * coverage document keeps reporting the tuple as skipped.
+     * key is being exercised with, and — when the spec puts the request body or
+     * the response out of this engine's reach — why the assertions below can
+     * only ever pass as Skipped. Without the second kind the stub reads as
+     * finished while the coverage document keeps reporting the tuple as
+     * skipped.
      *
+     * @param StubOperation $operation
      * @param StubTuple $tuple
      *
      * @return list<string>
      */
-    private function tupleNotes(array $tuple): array
+    private function tupleNotes(array $operation, array $tuple): array
     {
         $lines = [];
 
@@ -889,8 +891,18 @@ final class StubRenderer
             );
         }
 
-        if ($tuple['skip_notice'] !== null) {
-            foreach (explode("\n", wordwrap('TODO: ' . $tuple['skip_notice'] . '.', 68)) as $line) {
+        $notices = [$tuple['skip_notice']];
+        if ($this->adapter !== 'phpunit') {
+            // The core adapter never sends the request body, so its skip is
+            // not something the generated test could run into.
+            $notices[] = $this->selectRequestBody($operation)['skip_notice'] ?? null;
+        }
+
+        foreach ($notices as $notice) {
+            if ($notice === null) {
+                continue;
+            }
+            foreach (explode("\n", wordwrap('TODO: ' . $notice . '.', 68)) as $line) {
                 $lines[] = '// ' . $line;
             }
         }
