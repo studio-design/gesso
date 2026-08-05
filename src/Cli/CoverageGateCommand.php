@@ -353,6 +353,11 @@ final class CoverageGateCommand
                 $declaredResponses = is_array($operation['responses'] ?? null) ? $operation['responses'] : [];
                 foreach ($declaredResponses as $status => $response) {
                     $status = (string) $status;
+                    // Specification extensions are not responses; skipping them
+                    // keeps this index aligned with the coverage tracker.
+                    if (str_starts_with($status, 'x-')) {
+                        continue;
+                    }
                     if (!is_array($response)) {
                         continue;
                     }

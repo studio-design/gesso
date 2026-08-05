@@ -516,6 +516,12 @@ final class DoctorCommand
                 }
 
                 foreach ($responses as $status => $response) {
+                    // Specification extensions are legal on a Responses Object
+                    // and are skipped at runtime; inspecting them would report
+                    // a structure error against a valid document.
+                    if (str_starts_with((string) $status, 'x-')) {
+                        continue;
+                    }
                     if ($this->inspectResponseDefinition($response, $declared['method'], (string) $path, (string) $status, $label, $issues)) {
                         $responseCount++;
                     }

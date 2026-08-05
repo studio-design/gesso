@@ -659,6 +659,26 @@ class DoctorCommandTest extends TestCase
     }
 
     #[Test]
+    public function ignores_specification_extensions_on_a_responses_object(): void
+    {
+        // Issue #493: `x-` keys are legal on a Responses Object and are skipped
+        // at runtime; doctor must neither count nor structurally reject them.
+        $spec = $this->writeSpec('response-extensions.json', (string) json_encode([
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'Test', 'version' => '1'],
+            'paths' => ['/pets' => ['get' => ['responses' => [
+                '200' => ['description' => 'ok'],
+                'x-doc' => ['owner' => 'platform-team'],
+                'x-owner' => 'platform-team',
+            ]]]],
+        ], JSON_THROW_ON_ERROR));
+        $report = $this->runJsonDoctor($spec, $exit);
+
+        $this->assertSame(DoctorCommand::EXIT_OK, $exit);
+        $this->assertSame(1, $report['summary']['responses']);
+    }
+
+    #[Test]
     public function rejects_nested_response_nodes_using_runtime_malformed_node_rules(): void
     {
         $cases = [

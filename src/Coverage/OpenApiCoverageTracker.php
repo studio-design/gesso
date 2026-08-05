@@ -866,6 +866,13 @@ final class OpenApiCoverageTracker
                 $responsePairs = [];
                 foreach ($responses as $statusKey => $responseSpec) {
                     $statusKeyStr = (string) $statusKey;
+                    // Specification extensions are legal on a Responses Object in
+                    // 3.0/3.1/3.2 and are not responses. SpecResponseKeyResolver
+                    // skips them at runtime, so counting them here would declare
+                    // a tuple nothing can ever cover.
+                    if (str_starts_with($statusKeyStr, 'x-')) {
+                        continue;
+                    }
                     if (!is_array($responseSpec)) {
                         self::warnMalformed($specName, sprintf('response %s %s %s is not an object (got %s); omitted from coverage', $upper, (string) $path, $statusKeyStr, get_debug_type($responseSpec)));
 

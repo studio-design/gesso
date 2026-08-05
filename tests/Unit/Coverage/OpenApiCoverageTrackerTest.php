@@ -737,6 +737,41 @@ class OpenApiCoverageTrackerTest extends TestCase
     }
 
     #[Test]
+    public function response_object_extensions_are_not_declared_responses(): void
+    {
+        // Issue #493: `x-` keys on a Responses Object are specification
+        // extensions, not responses. Counting them left a tuple no recording
+        // could ever cover (SpecResponseKeyResolver skips them), and a
+        // scalar-valued one tripped the malformed-response warning.
+        $captured = [];
+        set_error_handler(static function (int $errno, string $message) use (&$captured): bool {
+            $captured[] = $message;
+
+            return true;
+        });
+
+        try {
+            $this->tracker->recordResponseOn(
+                'response-extensions',
+                'GET',
+                '/widgets',
+                '200',
+                'application/json',
+                schemaValidated: true,
+            );
+            $endpoint = $this->endpointSummary('response-extensions', 'GET /widgets');
+        } finally {
+            restore_error_handler();
+        }
+
+        $this->assertSame([], $captured);
+        $this->assertSame(1, $endpoint['totalResponseCount']);
+        $this->assertSame(1, $endpoint['coveredResponseCount']);
+        $this->assertSame(EndpointCoverageState::AllCovered, $endpoint['state']);
+        $this->assertSame(['200'], array_column($endpoint['responses'], 'statusKey'));
+    }
+
+    #[Test]
     public function openapi_32_query_and_additional_operations_appear_in_coverage(): void
     {
         $this->tracker->recordResponseOn(
