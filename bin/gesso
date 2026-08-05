@@ -3,6 +3,7 @@
 
 declare(strict_types=1);
 
+use Studio\Gesso\Cli\CoverageGateCommand;
 use Studio\Gesso\Cli\DoctorCommand;
 use Studio\Gesso\Coverage\CoverageMergeCommand;
 
@@ -36,6 +37,7 @@ $usage = <<<'USAGE'
     Commands:
       doctor           Check whether Gesso can load and enforce a contract.
       coverage:merge   Combine parallel-worker coverage sidecars.
+      coverage:gate    Fail when a spec change touches an uncovered operation.
 
     Run `gesso <command> --help` for command-specific options.
 
@@ -58,6 +60,11 @@ if ($commandName === 'doctor') {
 if ($commandName === 'coverage:merge') {
     $command = new CoverageMergeCommand(invocation: 'gesso coverage:merge');
     exit($command->run(CoverageMergeCommand::parseArgv($argv)));
+}
+
+if ($commandName === 'coverage:gate') {
+    $command = new CoverageGateCommand(invocation: 'gesso coverage:gate');
+    exit($command->run(CoverageGateCommand::parseArgv($argv)));
 }
 
 fwrite(STDERR, "[Gesso] Unknown command: {$commandName}\n\n{$usage}");

@@ -3,6 +3,7 @@
 - [GitHub Actions Step Summary](#github-actions-step-summary)
 - [Markdown output file](#markdown-output-file)
 - [Coverage output formats](#coverage-output-formats)
+- [Spec patch coverage gate](#spec-patch-coverage-gate)
 
 ## GitHub Actions Step Summary
 
@@ -92,6 +93,68 @@ vendor/bin/gesso coverage:merge \
 > the file as Markdown, so an HTML/JUnit/JSON payload would be escaped. Use
 > the per-format flags above for artifact uploads and `output_file` /
 > `github_step_summary` for the in-PR summary.
+
+## Spec patch coverage gate
+
+`gesso coverage:gate` fails the build when a pull request changes an operation
+that no test exercises — see [Spec patch coverage gate](coverage-gate.md) for
+the full behaviour and exit codes.
+
+It needs the base branch's copy of the spec **including whatever that copy
+`$ref`s**: the gate resolves local references relative to the base document's
+own directory, exactly like the runtime loader. Materialise the base revision
+as a `git worktree` rather than redirecting a single `git show`, so a split
+spec (`root.yaml` → `./schemas/*.yaml`) resolves there too:
+
+```yaml
+name: Spec patch coverage
+
+on: pull_request
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+
+      - run: composer install --prefer-dist --no-progress
+
+      - name: Run tests with JSON coverage
+        run: vendor/bin/phpunit
+
+      - name: Check out the base spec tree
+        run: |
+          git fetch --no-tags origin "${{ github.base_ref }}"
+          git worktree add "${RUNNER_TEMP}/base" FETCH_HEAD
+
+      - name: Gate the changed operations
+        run: |
+          set -o pipefail
+          vendor/bin/gesso coverage:gate \
+            --base-spec="${RUNNER_TEMP}/base/openapi.json" \
+            --spec=openapi.json \
+            --coverage=build/coverage.json \
+            --format=markdown | tee -a "${GITHUB_STEP_SUMMARY}"
+```
+
+The PHPUnit run must emit `build/coverage.json`; add the `json_output`
+parameter (or `coverage:merge --json-output` for parallel runs) as shown in
+[Coverage output formats](#coverage-output-formats).
+
+> **Note:** `set -o pipefail` is required. GitHub Actions runs `run:` blocks
+> under `bash -e` without it, so the step would take `tee`'s exit code and the
+> gate's failure would be swallowed.
+
+A single-file spec with no local `$ref` needs no worktree —
+`git show "origin/${{ github.base_ref }}:openapi.json" > "${RUNNER_TEMP}/base.json"`
+is enough. If you already publish a bundled artifact, point `--base-spec` at
+the base branch's bundle instead.
 
 ## Partial test runs (`--filter`, `--testsuite`, path args, …)
 

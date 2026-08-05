@@ -7,6 +7,7 @@ namespace Studio\Gesso\Tests\Integration;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+use Studio\Gesso\Cli\CoverageGateCommand;
 use Studio\Gesso\Coverage\CoverageMergeCommand;
 
 use function dirname;
@@ -115,6 +116,20 @@ final class GessoCliIntegrationTest extends TestCase
             ),
             $errorStderr,
         );
+    }
+
+    #[Test]
+    public function coverage_gate_uses_the_gesso_invocation_in_help_and_usage_errors(): void
+    {
+        [$helpExit, $helpStdout, $helpStderr] = $this->runCli(['coverage:gate', '--help']);
+        [$errorExit, $errorStdout, $errorStderr] = $this->runCli(['coverage:gate', '--spec=openapi.json']);
+
+        $this->assertSame(0, $helpExit);
+        $this->assertSame('', $helpStderr);
+        $this->assertSame(CoverageGateCommand::usage(), $helpStdout);
+        $this->assertSame(2, $errorExit);
+        $this->assertSame('', $errorStdout);
+        $this->assertStringContainsString('[Gesso] --base-spec is required.', $errorStderr);
     }
 
     #[Test]
