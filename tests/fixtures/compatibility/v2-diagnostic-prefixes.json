@@ -1,10 +1,11 @@
 {
     "[Gesso]": {
-        "src/Coverage/CoverageMergeCommand.php": 5,
+        "src/Baseline/CoverageBaselineEvaluator.php": 2,
+        "src/Coverage/CoverageMergeCommand.php": 15,
         "src/Fuzz/SchemaDataGenerator.php": 1,
         "src/Laravel/ValidatesOpenApiSchema.php": 1,
-        "src/PHPUnit/CoverageReportSubscriber.php": 11,
-        "src/PHPUnit/OpenApiCoverageExtension.php": 6,
+        "src/PHPUnit/CoverageReportSubscriber.php": 19,
+        "src/PHPUnit/OpenApiCoverageExtension.php": 7,
         "src/Validation/Request/SecurityValidator.php": 2,
         "src/ValidationOutput.php": 1
     },

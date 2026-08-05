@@ -236,6 +236,7 @@ To validate every response automatically, set `'auto_assert' => true` and drop t
 | Schema under-description detection (`strict_required`) | [`docs/strict-required.md`](docs/strict-required.md) |
 | Undocumented response-property detection (`strict_additional_properties`) | [`docs/strict-additional-properties.md`](docs/strict-additional-properties.md) |
 | Violation baseline: adopt on a legacy API, fail only on new violations | [`docs/baseline.md`](docs/baseline.md) |
+| Coverage baseline: gate the set of uncovered responses instead of a percentage | [`docs/coverage-baseline.md`](docs/coverage-baseline.md) |
 | Coverage report modes & threshold gate | [`docs/coverage.md`](docs/coverage.md) |
 | HTML coverage output | [`docs/coverage-html-output.md`](docs/coverage-html-output.md) |
 | JSON coverage output schema | [`docs/coverage-json-schema.md`](docs/coverage-json-schema.md) |

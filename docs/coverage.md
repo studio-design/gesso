@@ -130,6 +130,12 @@ configured SDK gate fails as unevaluable when that denominator is empty.
 
 Default is **warn-only**: a miss prints `[OpenAPI Coverage] WARN: …` to stderr but the run exits 0. Flip `min_coverage_strict=true` to make a miss fail-fast with exit 1.
 
+> To stop coverage from *regressing*, prefer the
+> [coverage baseline](coverage-baseline.md): it gates the set of uncovered
+> responses instead of a percentage, so there is no threshold to keep raising
+> by hand, documenting a new response cannot fail an unrelated PR, and a
+> failure names the offending rows.
+
 ```xml
 <extensions>
     <bootstrap class="Studio\Gesso\PHPUnit\OpenApiCoverageExtension">

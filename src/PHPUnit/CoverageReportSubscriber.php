@@ -11,6 +11,9 @@ use PHPUnit\Event\TestRunner\ExecutionFinished;
 use PHPUnit\Event\TestRunner\ExecutionFinishedSubscriber;
 use RuntimeException;
 use Studio\Gesso\Baseline\BaselineStaleMode;
+use Studio\Gesso\Baseline\CoverageBaseline;
+use Studio\Gesso\Baseline\CoverageBaselineEvaluator;
+use Studio\Gesso\Baseline\CoverageBaselineFile;
 use Studio\Gesso\Baseline\ViolationBaselineCollector;
 use Studio\Gesso\Baseline\ViolationBaselineEnforcer;
 use Studio\Gesso\Baseline\ViolationBaselineFile;
@@ -116,6 +119,16 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
      *                                            fail every suite-selecting CI shard. Console rendering is
      *                                            unaffected — it reads in-memory state and is transient. `null`
      *                                            (the backwards-compat default) means full-run behavior.
+     * @param null|CoverageBaseline $coverageBaseline Issue #481: the committed set of known-uncovered responses,
+     *                                                loaded and validated by the extension. Non-null puts the run in
+     *                                                coverage-baseline enforcement — an uncovered response missing
+     *                                                from the set fails the run by name, independent of any
+     *                                                percentage.
+     * @param null|string $coverageBaselineGeneratePath Issue #481: destination of a coverage-baseline generation run
+     *                                                  (`OPENAPI_BASELINE_GENERATE`, shared with the violation
+     *                                                  baseline). Mutually exclusive with $coverageBaseline.
+     * @param BaselineStaleMode $coverageBaselineStaleMode Issue #481: how entries that are covered now — the
+     *                                                     ratchet-down signal — are reported.
      */
     public function __construct(
         private array $specs,
@@ -142,6 +155,9 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
         ?StrictAdditionalPropertiesTracker $strictAdditionalPropertiesTracker = null,
         private StrictAdditionalPropertiesMode $strictAdditionalPropertiesMode = StrictAdditionalPropertiesMode::Off,
         ?SdkExerciseCoverageTracker $sdkExerciseCoverageTracker = null,
+        private ?CoverageBaseline $coverageBaseline = null,
+        private ?string $coverageBaselineGeneratePath = null,
+        private BaselineStaleMode $coverageBaselineStaleMode = BaselineStaleMode::Note,
     ) {
         // Eager resolution at construction time keeps the readonly invariant
         // honest: by the time any other method runs, $coverageTracker and
@@ -202,6 +218,7 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
             $this->failOnEmptyResultsIfGated();
             $this->writeBaselineFile();
             $this->reportBaselineEnforcement();
+            $this->handleCoverageBaseline($results);
             $this->evaluateStrictRequiredGate();
             $this->evaluateStrictAdditionalPropertiesGate();
 
@@ -224,6 +241,8 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
         } else {
             $this->evaluateThresholdGate($results, $sdkResults);
         }
+
+        $this->handleCoverageBaseline($results);
 
         // Issue #224: schema under-description detection runs after coverage
         // rendering so a strict-mode fail does not suppress the coverage
@@ -567,18 +586,29 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
             $this->writeStderr("[OpenAPI Coverage] WARNING: failed to write sidecar (token={$token}): {$e->getMessage()}\n");
             CoverageSidecarWriter::writeFailureMarker($dir, $token, $e->getMessage());
 
-            // Issue #417: a generation worker demoted its failures on the
-            // promise that the merge unions this sidecar; a lost sidecar
-            // cannot be recovered by the marker alone — the marker write is
-            // itself best-effort, and when it also fails (full disk,
-            // revoked permissions) the merge would see N-1 complete
-            // baseline halves and write an incomplete baseline. Fail the
-            // worker so the parallel run cannot end green with staged
-            // violations silently dropped.
-            if ($baselineDocument !== null) {
-                $this->writeStderr(
-                    "[Gesso] FATAL: baseline generation could not stage this worker's violations in the sidecar; failing the worker so the parallel run does not produce an incomplete baseline.\n",
-                );
+            // Issue #417 / #481: a lost sidecar cannot be recovered by the
+            // marker alone — the marker write is itself best-effort, and
+            // when it also fails (full disk, revoked permissions) the merge
+            // sees N-1 complete halves and writes an incomplete baseline.
+            // For the violation baseline that silently drops failures this
+            // worker already demoted; for the coverage baseline it records
+            // this worker's covered responses as uncovered, permanently
+            // loosening the ratchet. Either way, fail the worker so the
+            // parallel run cannot end green.
+            //
+            // Only generation runs need this: an enforcing worker stages
+            // nothing, and a merge missing one worker's coverage fails loudly
+            // with the "newly uncovered" listing instead of writing a file.
+            $lostGeneration = match (true) {
+                $baselineDocument !== null => "this worker's violations",
+                $this->coverageBaselineGeneratePath !== null => "this worker's covered responses",
+                default => null,
+            };
+            if ($lostGeneration !== null) {
+                $this->writeStderr(sprintf(
+                    "[Gesso] FATAL: baseline generation could not stage %s in the sidecar; failing the worker so the parallel run does not produce an incomplete baseline.\n",
+                    $lostGeneration,
+                ));
                 $this->exitNonZero();
             }
         }
@@ -722,6 +752,145 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
         if ($isFatal) {
             $this->exitNonZero();
         }
+    }
+
+    /**
+     * Issue #481: generate or enforce the coverage baseline — the set-based
+     * replacement for `min_response_coverage`. Generation writes today's
+     * uncovered responses; enforcement fails the run for any uncovered
+     * response the committed file does not list, and reports entries that
+     * are covered now as stale.
+     *
+     * Both halves need the full suite: a subset run leaves most responses
+     * uncovered, which would either bake a bogus baseline or report every
+     * filtered-out response as a regression. Partial runs are skipped with a
+     * NOTE, mirroring the threshold gate. Enforcement additionally requires
+     * the run to have completed cleanly — a failed or truncated test never
+     * reached its contract assertion, so its responses would be reported as
+     * newly uncovered on top of the failure the user is already looking at.
+     *
+     * @param array<string, CoverageResult> $results
+     */
+    private function handleCoverageBaseline(array $results): void
+    {
+        if ($this->coverageBaselineGeneratePath !== null) {
+            $this->writeCoverageBaselineFile($results);
+
+            return;
+        }
+
+        $baseline = $this->coverageBaseline;
+        if ($baseline === null) {
+            return;
+        }
+
+        if ($this->partialRun !== null) {
+            $this->writeStderr(sprintf(
+                '[Gesso] NOTE: the coverage baseline gate is skipped on partial runs (%s) '
+                . "because a subset run leaves responses uncovered that the full suite covers. Run the full suite to evaluate the gate.\n",
+                $this->partialRun->reason,
+            ));
+
+            return;
+        }
+
+        if ($this->baselineCompletionTracer !== null && !$this->baselineCompletionTracer->completedCleanly()) {
+            $this->writeStderr(sprintf(
+                "[Gesso] NOTE: the coverage baseline gate is skipped because the run did not complete cleanly (%s); responses of tests that never reached their contract assertion would be reported as newly uncovered. Re-run with all tests passing to evaluate the gate.\n",
+                $this->baselineCompletionTracer->describe(),
+            ));
+
+            return;
+        }
+
+        if ($results === []) {
+            // Same hazard as the threshold gate's empty-results branch: the
+            // uncovered set would be empty for lack of data, not for lack of
+            // gaps, and the gate would pass a run that validated nothing.
+            $this->writeStderr(
+                "[Gesso] FATAL: no contract test coverage was recorded; the coverage baseline gate cannot be evaluated.\n",
+            );
+            $this->exitNonZero();
+
+            return;
+        }
+
+        $verdict = CoverageBaselineEvaluator::evaluate($baseline, $results);
+
+        $this->writeStderr(sprintf(
+            "[Gesso] coverage baseline: %d entries, %d uncovered response(s) in this run, %d covered now.\n",
+            $baseline->count(),
+            $verdict['uncovered'],
+            count($verdict['stale']),
+        ));
+
+        if ($verdict['regressions'] !== []) {
+            $this->writeStderr(CoverageBaselineEvaluator::renderRegressionMessage(
+                $verdict['regressions'],
+                'OPENAPI_BASELINE_GENERATE=1 vendor/bin/phpunit',
+            ));
+            $this->exitNonZero();
+
+            return;
+        }
+
+        if ($verdict['stale'] === [] || $this->coverageBaselineStaleMode === BaselineStaleMode::Off) {
+            return;
+        }
+
+        $isFatal = $this->coverageBaselineStaleMode === BaselineStaleMode::Fail;
+        $this->writeStderr(CoverageBaselineEvaluator::renderStaleMessage($verdict['stale'], $isFatal));
+
+        if ($isFatal) {
+            $this->exitNonZero();
+        }
+    }
+
+    /**
+     * @param array<string, CoverageResult> $results
+     */
+    private function writeCoverageBaselineFile(array $results): void
+    {
+        $path = $this->coverageBaselineGeneratePath;
+        if ($path === null) {
+            return;
+        }
+
+        if ($this->partialRun !== null) {
+            $this->writeStderr(sprintf(
+                "[Gesso] WARNING: coverage baseline generation refused on a partial run (%s) — a subset run would record responses the full suite covers. No file was written.\n",
+                $this->partialRun->reason,
+            ));
+            $this->exitNonZero();
+
+            return;
+        }
+
+        if ($results === []) {
+            $this->writeStderr(
+                "[Gesso] WARNING: coverage baseline generation refused because no contract test coverage was recorded; the file would list every declared response. No file was written.\n",
+            );
+            $this->exitNonZero();
+
+            return;
+        }
+
+        $baseline = CoverageBaselineEvaluator::collect($results);
+
+        try {
+            CoverageBaselineFile::write($path, $baseline);
+        } catch (RuntimeException $e) {
+            $this->writeStderr("[Gesso] WARNING: {$e->getMessage()}\n");
+            $this->exitNonZero();
+
+            return;
+        }
+
+        $this->writeStderr(sprintf(
+            "[Gesso] Coverage baseline written: %d uncovered response(s) → %s\n",
+            $baseline->count(),
+            $path,
+        ));
     }
 
     /**

@@ -7,6 +7,10 @@ and Psalm baselines work: record today's violations in a committed file, keep
 CI green, and fail only on **new** violations. The debt stays enumerated in
 one reviewable file and can be ratcheted down entry by entry.
 
+Its counterpart for *untested* responses is the
+[coverage baseline](coverage-baseline.md), which shares the same generation
+command.
+
 ## Quick start
 
 1. Point the PHPUnit extension at a baseline file:
