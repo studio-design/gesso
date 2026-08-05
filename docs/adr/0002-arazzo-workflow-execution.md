@@ -126,16 +126,30 @@ diagnostics are generalized. It must then:
 
 - accept the supported `arazzo` feature family and validate required root
   fields;
-- preserve the Arazzo document URI as the base for relative source URLs;
+- establish the base URI as Arazzo's "Establishing the Base URI" section
+  requires: an absolute `$self` is the base URI, a relative `$self` is first
+  resolved against the retrieval URI, and the retrieval URI of the Arazzo
+  document is the base only when `$self` is absent;
 - map every unique `sourceDescriptions[].name` to a typed source handle;
 - load local OpenAPI sources through the same canonical-path and traversal
   protections as the OpenAPI loader;
-- apply the existing opt-in, exact-host allowlist, byte limit, redirect, and
-  private-network protections to remote sources;
+- apply the existing opt-in, exact-host allowlist, byte-limit, and redirect
+  protections to remote sources. There is no address-level protection to
+  reuse: `HttpRefLoader::assertHostAllowed()` compares the normalized hostname
+  against the configured list and nothing else, and `docs/setup.md` states
+  that DNS and network-layer controls remain the application's responsibility
+  because PSR-18 does not expose connection-level address policy. If Arazzo
+  needs more than the OpenAPI loader offers here, that is new work to scope,
+  not an existing guarantee;
 - reject `asyncapi` and nested `arazzo` sources until their execution semantics
   are implemented;
-- index `operationId` values across sources and require source qualification
-  when Arazzo says an unqualified ID is ambiguous; and
+- index `operationId` values across sources and require the runtime-expression
+  form `$sourceDescriptions.<name>.<operationId>` whenever more than one
+  non-`arazzo` source description is defined. Arazzo makes that a MUST from
+  the second source onwards, independently of whether the IDs actually clash,
+  so the check is on the source count, not on collision detection. The same
+  rule governs `workflowId` inside an `arazzo` source, which phase 4 inherits;
+  and
 - retain enough source identity that request/response validation and coverage
   are attributed to the correct OpenAPI description.
 
