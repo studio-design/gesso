@@ -1391,6 +1391,108 @@ class RequestBodyValidatorTest extends TestCase
         $this->assertStringContainsString('encoding["avatar"]', $result->errors[0]);
     }
 
+    #[Test]
+    public function validate_still_reports_violations_beside_an_unverifiable_part(): void
+    {
+        // An unverifiable part is dropped from the schema pass, not used as a
+        // blanket excuse: the missing required file is still a failure, and a
+        // failure outranks the skip.
+        $operation = self::multipartOperation();
+        $operation['requestBody']['content']['multipart/form-data']['schema']['properties']['note']
+            = ['type' => 'string'];
+        $operation['requestBody']['content']['multipart/form-data']['encoding']['note']
+            = ['contentType' => 'image/png'];
+
+        $result = $this->validator->validate(
+            'spec',
+            'POST',
+            '/uploads',
+            $operation,
+            DecodedBody::present(['note' => 'hello']),
+            'multipart/form-data',
+            OpenApiVersion::V3_0,
+        );
+
+        $this->assertNull($result->skipReason);
+        $this->assertCount(1, $result->errors);
+        $this->assertStringContainsString('avatar', $result->errors[0]);
+    }
+
+    #[Test]
+    public function validate_rejects_a_typeless_content_media_type_part_that_arrived_as_a_plain_field(): void
+    {
+        // OAS 3.1 writes raw binary as a `contentMediaType` with no `type` at
+        // all, and the media type is whatever the bytes are — not necessarily
+        // the octet stream.
+        $operation = self::multipartOperation();
+        $operation['requestBody']['content']['multipart/form-data']['schema']['properties']['avatar']
+            = ['contentMediaType' => 'image/png'];
+        unset($operation['requestBody']['content']['multipart/form-data']['encoding']['avatar']);
+
+        $result = $this->validator->validate(
+            'spec',
+            'POST',
+            '/uploads',
+            $operation,
+            DecodedBody::present(['avatar' => 'not-a-file']),
+            'multipart/form-data',
+            OpenApiVersion::V3_1,
+        );
+
+        $this->assertCount(1, $result->errors);
+        $this->assertStringContainsString('did not arrive as a file part', $result->errors[0]);
+    }
+
+    #[Test]
+    public function validate_rejects_plain_strings_for_an_empty_item_schema_file_list(): void
+    {
+        // The OAS 3.2 multi-file example is `type: array, items: {}`; an empty
+        // schema defaults to application/octet-stream, so those items are
+        // files.
+        $operation = self::multipartOperation();
+        $operation['requestBody']['content']['multipart/form-data']['schema']['properties']['avatar']
+            = ['type' => 'array', 'items' => []];
+        unset($operation['requestBody']['content']['multipart/form-data']['encoding']['avatar']);
+
+        $result = $this->validator->validate(
+            'spec',
+            'POST',
+            '/uploads',
+            $operation,
+            DecodedBody::present(['avatar' => ['one', 'two']]),
+            'multipart/form-data',
+            OpenApiVersion::V3_2,
+        );
+
+        $this->assertCount(1, $result->errors);
+        $this->assertStringContainsString('did not arrive as a file part', $result->errors[0]);
+    }
+
+    #[Test]
+    public function validate_does_not_derive_the_encoding_default_from_content_media_type(): void
+    {
+        // OpenAPI computes the Encoding Object default from the property type
+        // alone and ignores `contentMediaType` where the two disagree, so this
+        // part defaults to text/plain and must not be parsed as JSON.
+        $operation = self::multipartOperation();
+        $operation['requestBody']['content']['multipart/form-data']['schema']['properties']['avatar']
+            = ['type' => 'string', 'contentMediaType' => 'application/json'];
+        unset($operation['requestBody']['content']['multipart/form-data']['encoding']['avatar']);
+
+        $result = $this->validator->validate(
+            'spec',
+            'POST',
+            '/uploads',
+            $operation,
+            DecodedBody::present(['avatar' => 'hello']),
+            'multipart/form-data',
+            OpenApiVersion::V3_1,
+        );
+
+        $this->assertSame([], $result->errors);
+        $this->assertNull($result->skipReason);
+    }
+
     /** @return array<string, mixed> */
     private static function formOperation(): array
     {

@@ -17,8 +17,10 @@ use Studio\Gesso\Validation\Support\MalformedSpecNode;
 use Studio\Gesso\Validation\Support\ObjectConverter;
 use Studio\Gesso\Validation\Support\SchemaValidatorRunner;
 
+use function array_filter;
 use function array_key_exists;
 use function array_keys;
+use function array_values;
 use function implode;
 use function in_array;
 use function is_array;
@@ -461,25 +463,21 @@ final class RequestBodyValidator
 
         [$data, $errors, $unverifiable] = FormBodyDecoder::prepare($fields, $schema, $encoding, $normalizedType);
 
-        // A part whose media type cannot be resolved makes the whole body
-        // unreliable: its value may not even be the shape the subschema
-        // expects. Report a real contradiction if one was already found,
-        // otherwise skip loudly rather than validate around the hole.
-        if ($unverifiable !== []) {
-            if ($errors !== []) {
-                return new RequestBodyValidationResult($errors, matchedContentType: $matchedKey);
-            }
+        // A part whose media type cannot be resolved is dropped from the
+        // schema pass — its raw value is not necessarily the shape the
+        // subschema describes, so validating it would invent a violation.
+        // The rest of the body is still checked: an unverifiable part must
+        // not become a blanket excuse that hides a missing required field
+        // elsewhere.
+        foreach ($unverifiable as $partName => $_reason) {
+            unset($data[$partName], $schema['properties'][$partName]);
 
-            return new RequestBodyValidationResult(
-                [],
-                sprintf(
-                    "request Content-Type '%s' matched spec media type '%s', but its body schema was not applied: %s",
-                    $normalizedType,
-                    $matchedKey,
-                    implode('; ', $unverifiable),
-                ),
-                $matchedKey,
-            );
+            if (is_array($schema['required'] ?? null)) {
+                $schema['required'] = array_values(array_filter(
+                    $schema['required'],
+                    static fn(mixed $required): bool => $required !== $partName,
+                ));
+            }
         }
 
         $jsonSchema = OpenApiSchemaConverter::convert($schema, $version, SchemaContext::Request, $discriminatorContext, $jsonSchemaDialect);
@@ -491,6 +489,22 @@ final class RequestBodyValidator
         $violations = $this->runner->validateStructured(ObjectConverter::convert($jsonSchema), $dataObject);
         foreach ($violations as $violation) {
             $errors[] = "[{$violation->displayPath()}] {$violation->message}";
+        }
+
+        // A genuine contradiction outranks the skip; only an otherwise clean
+        // body is reported as unchecked, so the unverifiable part is never
+        // counted as a pass either.
+        if ($errors === [] && $unverifiable !== []) {
+            return new RequestBodyValidationResult(
+                [],
+                sprintf(
+                    "request Content-Type '%s' matched spec media type '%s', but part of its body schema was not applied: %s",
+                    $normalizedType,
+                    $matchedKey,
+                    implode('; ', $unverifiable),
+                ),
+                $matchedKey,
+            );
         }
 
         return new RequestBodyValidationResult(

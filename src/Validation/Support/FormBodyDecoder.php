@@ -18,6 +18,8 @@ use function is_string;
 use function json_decode;
 use function parse_str;
 use function sprintf;
+use function str_ends_with;
+use function str_starts_with;
 use function trim;
 
 /**
@@ -87,11 +89,13 @@ final class FormBodyDecoder
      *                                    a multipart body carries parts whose own Content-Type the
      *                                    encoding object talks about
      *
-     * @return array{array<string, mixed>, list<string>, list<string>} the prepared
-     *                                                                 data, encoding-level errors (parts that contradict the
-     *                                                                 contract), and the reasons a part could not be checked at
-     *                                                                 all — the caller turns those into a body-level skip so an
-     *                                                                 unverifiable part is never counted as a clean pass
+     * @return array{array<string, mixed>, list<string>, array<string, string>} the
+     *                                                                          prepared data, encoding-level errors (parts that contradict
+     *                                                                          the contract), and, keyed by field name, the reason a part
+     *                                                                          could not be checked at all — the caller drops those parts
+     *                                                                          from the schema pass and turns them into a body-level skip,
+     *                                                                          so an unverifiable part is neither counted as a clean pass
+     *                                                                          nor allowed to mask a violation elsewhere in the body
      */
     public static function prepare(
         array $fields,
@@ -174,7 +178,7 @@ final class FormBodyDecoder
             // one. No adapter preserves that header for a non-file part, so
             // the honest outcome is a skip, not a pass and not a guess.
             if ($isMultipart && !self::triviallySatisfied($candidates)) {
-                $unverifiable[] = sprintf(
+                $unverifiable[(string) $name] = sprintf(
                     "part '%s' declares %s, which cannot be confirmed because the part's own Content-Type "
                     . 'is not preserved by form parsing',
                     $name,
@@ -195,13 +199,18 @@ final class FormBodyDecoder
     /**
      * Whether a property describes raw bytes the wire carries as a file part.
      *
-     * OAS 3.0's `format: binary` and its documented OAS 3.1 replacement
-     * `contentMediaType: application/octet-stream` qualify; an array of them
-     * does too, since that is how a multi-file upload is described. A bare
-     * `contentMediaType` does not: JSON Schema 2020-12 defines a string with
-     * no `contentEncoding` as identity-encoded UTF-8 text, so
+     * Three shapes qualify, all of them ways OpenAPI describes binary content:
+     * OAS 3.0's `format: binary`; OAS 3.1's `contentMediaType` naming a media
+     * type that cannot travel as UTF-8 text (`image/png`, the octet stream,
+     * …), with `type` typically omitted; and the empty schema, whose default
+     * media type is `application/octet-stream` — that is what makes the OAS
+     * 3.2 multi-file example `type: array, items: {}` a list of files. An
+     * array of any of them qualifies too.
+     *
+     * A textual `contentMediaType` does not: JSON Schema 2020-12 defines a
+     * string with no `contentEncoding` as identity-encoded UTF-8 text, so
      * `contentMediaType: text/plain` is an ordinary field. `format: byte` and
-     * `contentEncoding: base64` are likewise text on the wire.
+     * an explicit `contentEncoding` such as `base64` are likewise text.
      *
      * @param null|array<string, mixed> $propertySchema
      */
@@ -222,12 +231,40 @@ final class FormBodyDecoder
             return is_array($items) && self::expectsFileParts($items);
         }
 
+        // The empty schema accepts any value and defaults to the octet
+        // stream. Only a literally empty one — a schema carrying any other
+        // keyword is described well enough not to be guessed at.
+        if ($propertySchema === []) {
+            return true;
+        }
+
         if (isset($propertySchema['contentEncoding'])) {
             return false;
         }
 
-        return ($propertySchema['format'] ?? null) === 'binary' ||
-            ($propertySchema['contentMediaType'] ?? null) === 'application/octet-stream';
+        if (($propertySchema['format'] ?? null) === 'binary') {
+            return true;
+        }
+
+        $contentMediaType = $propertySchema['contentMediaType'] ?? null;
+
+        return is_string($contentMediaType) &&
+            !self::isTextualMediaType(ContentTypeMatcher::normalizeMediaType($contentMediaType));
+    }
+
+    /**
+     * Whether a media type carries content a form field can hold as text.
+     * Everything else (images, audio, archives, the octet stream) is binary.
+     */
+    private static function isTextualMediaType(string $normalizedMediaType): bool
+    {
+        return str_starts_with($normalizedMediaType, 'text/') ||
+            ContentTypeMatcher::isJsonContentType($normalizedMediaType) ||
+            $normalizedMediaType === 'application/xml' ||
+            str_ends_with($normalizedMediaType, '+xml') ||
+            $normalizedMediaType === 'application/yaml' ||
+            str_ends_with($normalizedMediaType, '+yaml') ||
+            $normalizedMediaType === 'application/x-www-form-urlencoded';
     }
 
     /**
@@ -293,9 +330,11 @@ final class FormBodyDecoder
 
     /**
      * The media types a part carries when `encoding.<part>.contentType` is
-     * omitted, per the OAS 3.0.3 Encoding Object: `application/json` for an
-     * object, `application/octet-stream` for a binary string, `text/plain`
-     * for the other primitives, and the inner type's default for an array.
+     * omitted, per the OAS Encoding Object: `application/json` for an object,
+     * `application/octet-stream` for a binary string or a schema that does
+     * not say what it holds, `text/plain` for the other primitives, and the
+     * inner type's default for an array. `contentMediaType` is not part of
+     * this computation — OpenAPI says to ignore it where the two disagree.
      *
      * Only used to decide whether a part is JSON — an omitted `contentType`
      * is a default for the sender, not a constraint, so it is never matched
@@ -330,17 +369,20 @@ final class FormBodyDecoder
         }
 
         if ($type === 'string') {
-            // OAS 3.1+ expresses a part's media type with `contentMediaType`;
-            // 3.0's `format: binary` means the octet stream.
-            $contentMediaType = $propertySchema['contentMediaType'] ?? null;
-            if (is_string($contentMediaType)) {
-                return [ContentTypeMatcher::normalizeMediaType($contentMediaType)];
-            }
-
             return [($propertySchema['format'] ?? null) === 'binary' ? 'application/octet-stream' : 'text/plain'];
         }
 
-        return $type === null ? [] : ['text/plain'];
+        if ($type !== null) {
+            return ['text/plain'];
+        }
+
+        // A schema that does not say what it holds defaults to the octet
+        // stream. `contentMediaType` is deliberately not consulted here: the
+        // Encoding Object's default is computed from the property type alone,
+        // and OpenAPI says to ignore `contentMediaType` when the two disagree.
+        return $propertySchema === [] || self::expectsFileParts($propertySchema)
+            ? ['application/octet-stream']
+            : [];
     }
 
     /**
