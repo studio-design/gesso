@@ -10,6 +10,25 @@ the README for the full surface contract.
 
 ## Unreleased
 
+## [2.4.0](https://github.com/studio-design/gesso/compare/v2.3.0...v2.4.0) (2026-08-05)
+
+
+### Features
+
+* **cli:** add coverage:gate for spec patch coverage ([#490](https://github.com/studio-design/gesso/issues/490)) ([601a86a](https://github.com/studio-design/gesso/commit/601a86aca5178b8753406e9a4c22b6da8ff70e91))
+* **cli:** scaffold test stubs for uncovered operations ([#491](https://github.com/studio-design/gesso/issues/491)) ([8f9d957](https://github.com/studio-design/gesso/commit/8f9d9576e82b339e8a5e145ae5039c6d52efccd4))
+* **coverage:** gate the set of uncovered responses with a committed baseline ([#489](https://github.com/studio-design/gesso/issues/489)) ([4a210d5](https://github.com/studio-design/gesso/commit/4a210d556f38804e9897ba4ba8bf500899eded91))
+* **fuzz:** add ignored_auth and missing_required_header contract checks ([#484](https://github.com/studio-design/gesso/issues/484)) ([9445ab3](https://github.com/studio-design/gesso/commit/9445ab34f468ace904660597f315ed9d5038393b))
+* **validation:** validate form request bodies against their schemas ([#486](https://github.com/studio-design/gesso/issues/486)) ([b3254a5](https://github.com/studio-design/gesso/commit/b3254a5939871363585509a94eba44f2f06cf719))
+
+
+### Bug Fixes
+
+* **cli:** accept OpenAPI 3.1+ documents that omit paths or responses ([#479](https://github.com/studio-design/gesso/issues/479)) ([c8bb5b5](https://github.com/studio-design/gesso/commit/c8bb5b563fab3317f57654a0f30a71f0bac6e316))
+* **cli:** reject a spec shadowed by a sibling entry document in coverage:gate ([#494](https://github.com/studio-design/gesso/issues/494)) ([34d12d0](https://github.com/studio-design/gesso/commit/34d12d07e86d8e7517e8c8b28939bc88f5cd677a))
+* **coverage:** skip responses object extensions in the declared set ([#495](https://github.com/studio-design/gesso/issues/495)) ([2fccd0b](https://github.com/studio-design/gesso/commit/2fccd0b95144b037fb3fb73144585888a54cd3e7))
+* **schema:** read an empty Schema Object as "any value" instead of an array ([#483](https://github.com/studio-design/gesso/issues/483)) ([fc096ac](https://github.com/studio-design/gesso/commit/fc096acbdf95f639e4cfbae857535666215d87eb))
+
 ## [2.3.0](https://github.com/studio-design/gesso/compare/v2.2.0...v2.3.0) (2026-08-03)
 
 
