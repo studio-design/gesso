@@ -790,6 +790,36 @@ class StubsCommandTest extends TestCase
     }
 
     #[Test]
+    public function the_full_wildcard_survives_sibling_type_ranges(): void
+    {
+        $spec = $this->writeInlineSpec('wildcards', ['/any' => ['get' => ['responses' => ['200' => ['content' => [
+            'application/*' => [],
+            'text/*' => [],
+            '*/*' => [],
+        ]]]]]]);
+
+        $this->command()->run(StubsCommand::parseArgv([
+            '--spec=' . $spec,
+            '--output=' . $this->workDir . '/out',
+        ]));
+
+        // `*/*` is only reached by findContentTypeKey()'s third pass, so the
+        // siblings claim every `application/…` and `text/…` substitute first.
+        // One more name than there are siblings does not help — the search has
+        // to leave the primary type behind too.
+        $this->assertStringNotContainsString('not stubbed', $this->stdout);
+        $code = (string) file_get_contents($this->workDir . '/out/GetAnyTest.php');
+        $this->assertSame(3, substr_count($code, 'public function test_'));
+        $this->assertStringContainsString("'image/vnd.gesso-stub',", $code);
+
+        OpenApiSpecLoader::reset();
+        OpenApiSpecLoader::configure($this->workDir);
+        $result = (new OpenApiResponseValidator(new StrictRequiredTracker()))
+            ->validate('wildcards', 'GET', '/any', 200, ['a' => 1], 'image/vnd.gesso-stub');
+        $this->assertSame('*/*', $result->matchedContentType());
+    }
+
+    #[Test]
     public function a_response_that_can_only_be_skipped_says_so_in_the_stub(): void
     {
         $spec = $this->writeInlineSpec('streaming', ['/events' => ['get' => ['responses' => ['200' => ['content' => [

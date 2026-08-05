@@ -217,16 +217,15 @@ final class StubGenerator
         $hasSchema = isset($siblings[$declared]['schema']);
         $candidates = [$declared, 'application/json'];
 
-        [$type] = explode('/', $normalized, 2);
-        $prefixes = $type === '*' || $type === '' ? ['application', 'text'] : [$type];
-
         // Every way a made-up type can lose to a sibling goes through an exact
-        // key match, so one more attempt than there are siblings always leaves
-        // an unclaimed name. A fixed handful does not: a document declaring
+        // key match or a `<type>/*` one, so one more attempt than there are
+        // siblings — on both halves of the media type — always leaves an
+        // unclaimed name. A fixed handful does not: a document declaring
         // `application/vnd.gesso-stub` through `-stub3` would make the range
         // next to them read as unreachable when `application/xml` selects it
         // perfectly well.
         $attempts = count($siblings) + 1;
+        $prefixes = self::primaryTypes($normalized, $attempts);
         $stubTypes = static function (string $suffix) use ($prefixes, $attempts): array {
             $types = [];
             foreach ($prefixes as $prefix) {
@@ -267,6 +266,38 @@ final class StubGenerator
         }
 
         return null;
+    }
+
+    /**
+     * The top-level types a substitute for `$normalized` may be built under.
+     *
+     * A concrete key pins its own — only `<type>/<subtype>` matches
+     * `<type>/*`. `*&#47;*` does not: it is only reached by
+     * {@see ContentTypeMatcher::findContentTypeKey()}'s third pass, so a
+     * sibling `application/*` claims every `application/…` candidate before it
+     * gets there, and a document ranging over both `application/*` and
+     * `text/*` needs something like `image/…` to reach the full wildcard at
+     * all. Registered top-level types come first because a generated stub
+     * reads better with one; `x-gesso-stub…` only appears for a content map
+     * that somehow ranges over every one of them.
+     *
+     * @return list<string>
+     */
+    private static function primaryTypes(string $normalized, int $attempts): array
+    {
+        [$type] = explode('/', $normalized, 2);
+        if ($type !== '*' && $type !== '') {
+            return [$type];
+        }
+
+        // `multipart` and `message` are left out: both carry framing a stub
+        // would have to fabricate for the Content-Type not to be a lie.
+        $types = ['application', 'text', 'image', 'audio', 'video', 'font', 'model'];
+        for ($i = count($types); $i < $attempts; $i++) {
+            $types[] = 'x-gesso-stub' . $i;
+        }
+
+        return $types;
     }
 
     /**

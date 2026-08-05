@@ -135,6 +135,11 @@ Everything the spec pins down is filled in:
   lands on one is skipped as a contract this engine cannot evaluate. So a
   schema-less range is stubbed with a concrete non-JSON type, and a range
   carrying a schema next to a JSON sibling is reported rather than stubbed.
+  The substitute is searched for rather than guessed, on both halves of the
+  media type: a spec is free to declare the invented type the stub would have
+  reached for, and `*/*` is only matched after every `<type>/*` sibling, so a
+  document ranging over `application/*` and `text/*` gets something like
+  `image/…` for its full wildcard.
 - **Bodies only a skip can reach.** OpenAPI 3.2 `itemSchema` streaming cannot
   be checked from a buffered body, and a non-JSON media type carrying a
   `schema` is a contract this JSON Schema engine does not evaluate. Both still
