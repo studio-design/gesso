@@ -87,13 +87,13 @@ final class FormBodyDecoder
      *                                    a multipart body carries parts whose own Content-Type the
      *                                    encoding object talks about
      *
-     * @return array{array<string, mixed>, list<string>, array<string, string>} the
-     *                                                                          prepared data, encoding-level errors (parts that contradict
-     *                                                                          the contract), and, keyed by field name, the reason a part
-     *                                                                          could not be checked at all — the caller drops those parts
-     *                                                                          from the schema pass and turns them into a body-level skip,
-     *                                                                          so an unverifiable part is neither counted as a clean pass
-     *                                                                          nor allowed to mask a violation elsewhere in the body
+     * @return array{array<string, mixed>, list<string>, array<string, array{reason: string, candidates: list<string>}>}
+     *                                                                                                                   the prepared data, encoding-level errors (parts that contradict
+     *                                                                                                                   the contract), and, keyed by field name, why a part could not be
+     *                                                                                                                   checked plus the media types it may have carried. The caller
+     *                                                                                                                   re-reads those parts every way the contract allows, so an
+     *                                                                                                                   unverifiable part is neither counted as a clean pass nor allowed
+     *                                                                                                                   to mask — or fabricate — a violation elsewhere in the body
      */
     public static function prepare(
         array $fields,
@@ -153,8 +153,10 @@ final class FormBodyDecoder
             // failed one contradicts it.
             if (is_string($value) && $candidates !== [] && self::allJsonCandidates($candidates)) {
                 try {
+                    // Objects stay objects: `json_decode(..., true)` would turn
+                    // `{}` into `[]`, which then fails its own `type: object`.
                     /** @var mixed $decoded */
-                    $decoded = json_decode($value, true, flags: JSON_THROW_ON_ERROR);
+                    $decoded = json_decode($value, false, flags: JSON_THROW_ON_ERROR);
                     $fields[$name] = $decoded;
 
                     continue;
@@ -176,12 +178,15 @@ final class FormBodyDecoder
             // one. No adapter preserves that header for a non-file part, so
             // the honest outcome is a skip, not a pass and not a guess.
             if ($isMultipart && !self::triviallySatisfied($candidates)) {
-                $unverifiable[(string) $name] = sprintf(
-                    "part '%s' declares %s, which cannot be confirmed because the part's own Content-Type "
-                    . 'is not preserved by form parsing',
-                    $name,
-                    implode(', ', $candidates),
-                );
+                $unverifiable[(string) $name] = [
+                    'reason' => sprintf(
+                        "part '%s' declares %s, which cannot be confirmed because the part's own Content-Type "
+                        . 'is not preserved by form parsing',
+                        $name,
+                        implode(', ', $candidates),
+                    ),
+                    'candidates' => $candidates,
+                ];
 
                 continue;
             }

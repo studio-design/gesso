@@ -1451,6 +1451,98 @@ class RequestBodyValidatorTest extends TestCase
     }
 
     #[Test]
+    public function validate_keeps_a_decoded_json_part_an_object(): void
+    {
+        // `json_decode(..., true)` would hand `{}` to the schema as an empty
+        // array and fail its own `type: object`.
+        $operation = self::multipartOperation();
+        $operation['requestBody']['content']['multipart/form-data']['schema']['properties']['meta'] = [
+            'type' => 'object',
+            'properties' => ['nested' => ['type' => 'object']],
+        ];
+
+        $result = $this->validator->validate(
+            'spec',
+            'POST',
+            '/uploads',
+            $operation,
+            DecodedBody::present([
+                'avatar' => new UploadedPart('image/png', 'avatar.png'),
+                'meta' => '{"nested": {}}',
+            ]),
+            'multipart/form-data',
+            OpenApiVersion::V3_0,
+        );
+
+        $this->assertSame([], $result->errors);
+        $this->assertNull($result->skipReason);
+    }
+
+    #[Test]
+    public function validate_reads_an_unverifiable_part_as_a_json_string_too(): void
+    {
+        // With `application/json, text/plain` the part may be the six-byte
+        // text `"hello"` or the JSON string `hello`. A branch that fires only
+        // for the text reading must not be reported: the JSON reading — just
+        // as permitted — never asks for `fallback`.
+        $operation = self::multipartOperation();
+        $operation['requestBody']['content']['multipart/form-data']['schema'] = [
+            'type' => 'object',
+            'properties' => ['fallback' => ['type' => 'string']],
+            'if' => ['required' => ['meta'], 'not' => ['properties' => ['meta' => ['const' => 'hello']]]],
+            'then' => ['required' => ['fallback']],
+        ];
+        $operation['requestBody']['content']['multipart/form-data']['encoding'] = [
+            'meta' => ['contentType' => 'application/json, text/plain'],
+        ];
+
+        $result = $this->validator->validate(
+            'spec',
+            'POST',
+            '/uploads',
+            $operation,
+            DecodedBody::present(['meta' => '"hello"']),
+            'multipart/form-data',
+            OpenApiVersion::V3_1,
+        );
+
+        $this->assertSame([], $result->errors);
+        $this->assertNotNull($result->skipReason);
+    }
+
+    #[Test]
+    public function validate_keeps_an_array_part_an_array_in_every_reading(): void
+    {
+        // `encoding` applies to an array property's items, so the container is
+        // an array under every reading. A branch keyed on that must therefore
+        // hold under every reading too, and stay a failure.
+        $operation = self::multipartOperation();
+        $operation['requestBody']['content']['multipart/form-data']['schema'] = [
+            'type' => 'object',
+            'properties' => ['fallback' => ['type' => 'string']],
+            'if' => ['required' => ['items'], 'properties' => ['items' => ['type' => 'array']]],
+            'then' => ['required' => ['fallback']],
+        ];
+        $operation['requestBody']['content']['multipart/form-data']['encoding'] = [
+            'items' => ['contentType' => 'application/json, application/xml'],
+        ];
+
+        $result = $this->validator->validate(
+            'spec',
+            'POST',
+            '/uploads',
+            $operation,
+            DecodedBody::present(['items' => ['{"a": 1}', '{"b": 2}']]),
+            'multipart/form-data',
+            OpenApiVersion::V3_1,
+        );
+
+        $this->assertNull($result->skipReason);
+        $this->assertCount(1, $result->errors);
+        $this->assertStringContainsString('fallback', $result->errors[0]);
+    }
+
+    #[Test]
     public function validate_still_reports_a_root_violation_both_readings_agree_on(): void
     {
         // The counterpart: a `required` the object states unconditionally

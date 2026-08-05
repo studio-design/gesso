@@ -6,6 +6,7 @@ namespace Studio\Gesso\Validation\Request;
 
 use const JSON_THROW_ON_ERROR;
 
+use Closure;
 use JsonException;
 use stdClass;
 use Studio\Gesso\DecodedBody;
@@ -21,6 +22,7 @@ use Studio\Gesso\Validation\Support\ObjectConverter;
 use Studio\Gesso\Validation\Support\SchemaValidatorRunner;
 use Studio\Gesso\Validation\Support\SchemaViolation;
 
+use function array_column;
 use function array_filter;
 use function array_key_exists;
 use function array_keys;
@@ -366,60 +368,109 @@ final class RequestBodyValidator
     }
 
     /**
-     * A second reading of the body, with every unverifiable part replaced by
-     * a different plausible interpretation of the same bytes: the JSON value
-     * the raw string decodes to when that changes its JSON type, otherwise an
-     * object — the shape a part whose real media type was structured would
-     * have had. The keys stay in place so property counts do not move.
+     * Every other reading of the body the contract still allows, one per
+     * plausible interpretation of the unverifiable parts' bytes.
+     *
+     * Two readings are always available: the raw string the adapter handed
+     * over (the text reading, already validated by the caller) and the JSON
+     * value it decodes to when it parses — a JSON part whose content is the
+     * string `"hello"` really does read as the string `hello`, which is why
+     * the decoded value is used whatever its type. When a candidate media
+     * type cannot be materialised here at all (XML, an image, the octet
+     * stream), the value is genuinely unknown, so two shape probes stand in
+     * for "could be anything".
+     *
+     * A part declared as an array keeps its container: `encoding` applies to
+     * the items, so only the leaves are re-read.
      *
      * @param array<string, mixed> $data
-     * @param list<string> $partNames
+     * @param array<string, array{reason: string, candidates: list<string>}> $unverifiable
      *
-     * @return array<string, mixed>
+     * @return list<array<string, mixed>>
      */
-    private static function withAlternativeReadings(array $data, array $partNames): array
+    private static function alternativeReadings(array $data, array $unverifiable): array
     {
-        foreach ($partNames as $partName) {
-            if (!array_key_exists($partName, $data)) {
-                continue;
-            }
+        $transforms = [self::jsonReading(...)];
 
-            $data[$partName] = self::alternativeReading($data[$partName]);
-        }
+        foreach ($unverifiable as $part) {
+            foreach ($part['candidates'] as $candidate) {
+                if (!ContentTypeMatcher::isJsonContentType($candidate) && $candidate !== 'text/plain') {
+                    $transforms[] = static fn(mixed $_leaf): mixed => new stdClass();
+                    $transforms[] = static fn(mixed $_leaf): mixed => 0;
 
-        return $data;
-    }
-
-    private static function alternativeReading(mixed $value): mixed
-    {
-        if (is_string($value)) {
-            try {
-                /** @var mixed $decoded */
-                $decoded = json_decode($value, true, flags: JSON_THROW_ON_ERROR);
-
-                if (!is_string($decoded)) {
-                    return $decoded;
+                    break 2;
                 }
-            } catch (JsonException) {
-                // Not JSON; fall through to the structured probe below.
             }
         }
 
-        return new stdClass();
+        $readings = [];
+        foreach ($transforms as $transform) {
+            $reading = $data;
+            foreach ($unverifiable as $partName => $_part) {
+                if (array_key_exists($partName, $data)) {
+                    $reading[$partName] = self::readLeaves($data[$partName], $transform);
+                }
+            }
+
+            // A transform that changed nothing would re-run the validation the
+            // caller already has.
+            if ($reading !== $data) {
+                $readings[] = $reading;
+            }
+        }
+
+        return $readings;
     }
 
     /**
-     * Keep only the violations both readings produce. A violation that one
-     * reading reports and the other does not is decided by the part's
-     * unresolved media type, and reporting it would fail a request that a
-     * different — equally permitted — reading validates.
+     * Apply a reading to the value's leaves, leaving array containers in place
+     * — a multipart array property stays an array however its items are read.
+     *
+     * @param Closure(mixed): mixed $transform
+     */
+    private static function readLeaves(mixed $value, Closure $transform): mixed
+    {
+        if (is_array($value)) {
+            foreach ($value as $key => $item) {
+                $value[$key] = self::readLeaves($item, $transform);
+            }
+
+            return $value;
+        }
+
+        return $transform($value);
+    }
+
+    /**
+     * The JSON reading of a leaf: the value its bytes decode to, or the leaf
+     * unchanged when they are not JSON at all. Decoded with objects left as
+     * objects so an empty `{}` does not arrive as an empty array.
+     */
+    private static function jsonReading(mixed $value): mixed
+    {
+        if (!is_string($value)) {
+            return $value;
+        }
+
+        try {
+            return json_decode($value, false, flags: JSON_THROW_ON_ERROR);
+        } catch (JsonException) {
+            return $value;
+        }
+    }
+
+    /**
+     * Keep only the violations another reading produces too. A violation one
+     * reading reports and another does not is decided by the part's
+     * unresolved media type, and reporting it would fail a request that an
+     * equally permitted reading validates.
      *
      * @param list<SchemaViolation> $violations
      * @param list<SchemaViolation> $alternative
      *
      * @return list<SchemaViolation>
      */
-    private static function violationsBothReadingsAgreeOn(array $violations, array $alternative): array
+    private static function violationsEveryReadingAgreesOn(array $violations, array $alternative): array
     {
         $fingerprints = [];
         foreach ($alternative as $violation) {
@@ -605,13 +656,14 @@ final class RequestBodyValidator
         if ($unverifiable !== []) {
             $violations = self::withoutViolationsInside($violations, array_keys($unverifiable));
 
-            if ($violations !== []) {
-                $violations = self::violationsBothReadingsAgreeOn(
+            foreach (self::alternativeReadings($data, $unverifiable) as $reading) {
+                if ($violations === []) {
+                    break;
+                }
+
+                $violations = self::violationsEveryReadingAgreesOn(
                     $violations,
-                    $this->runner->validateStructured(
-                        $schemaObject,
-                        ObjectConverter::convert(self::withAlternativeReadings($data, array_keys($unverifiable))),
-                    ),
+                    $this->runner->validateStructured($schemaObject, ObjectConverter::convert($reading)),
                 );
             }
         }
@@ -630,7 +682,7 @@ final class RequestBodyValidator
                     "request Content-Type '%s' matched spec media type '%s', but part of its body schema was not applied: %s",
                     $normalizedType,
                     $matchedKey,
-                    implode('; ', $unverifiable),
+                    implode('; ', array_column($unverifiable, 'reason')),
                 ),
                 $matchedKey,
             );
