@@ -58,6 +58,7 @@ use function var_export;
  * the one edit that tells the user they have finished filling the stub in.
  *
  * @phpstan-import-type StubOperation from StubGenerator
+ * @phpstan-import-type StubRequestBody from StubGenerator
  * @phpstan-import-type StubTuple from StubGenerator
  *
  * @internal The `gesso stubs` / `openapi:stubs` CLI surface is the supported API.
@@ -184,19 +185,22 @@ final class StubRenderer
      */
     public function unsupportedReason(array $operation): ?string
     {
-        if ($this->adapter === 'phpunit' || !$operation['has_request_body']) {
+        // Only a *required* body with no expressible media type is a dead
+        // end. An optional one can simply be omitted, and an operation that
+        // also offers urlencoded is stubbable through that.
+        if (!$operation['request_required'] || $this->selectRequestBody($operation) !== null) {
             return null;
         }
 
-        $contentType = ContentTypeMatcher::normalizeMediaType((string) ($operation['request_content_type'] ?? ''));
-        if (!str_starts_with($contentType, 'multipart/') || $this->parametersReachTheRequestBag($operation['method'])) {
-            return null;
-        }
+        $declared = array_map(
+            static fn(array $candidate): string => $candidate['content_type'],
+            $operation['request_candidates'],
+        );
 
         return sprintf(
-            'a %s body on %s cannot be built through Request::create(), which routes '
-            . 'parameters to the query bag for non-standard methods',
-            $contentType,
+            'its required %s body cannot be built through Request::create(), which routes '
+            . 'parameters to the query bag for non-standard methods like %s',
+            implode(' / ', $declared),
             $operation['method'],
         );
     }
@@ -208,6 +212,34 @@ final class StubRenderer
             'pest' => $this->renderPest($operation),
             default => $this->renderClass($operation, $className),
         };
+    }
+
+    /**
+     * The first declared request media type this adapter can actually put on
+     * the wire, or null when the operation declares no body or none of its
+     * media types is expressible.
+     *
+     * @param StubOperation $operation
+     *
+     * @return null|StubRequestBody
+     */
+    private function selectRequestBody(array $operation): ?array
+    {
+        foreach ($operation['request_candidates'] as $candidate) {
+            // The core adapter only validates responses, so it never has to
+            // build a request at all.
+            if ($this->adapter === 'phpunit') {
+                return $candidate;
+            }
+
+            $normalized = ContentTypeMatcher::normalizeMediaType($candidate['content_type']);
+            if (!str_starts_with($normalized, 'multipart/') ||
+                $this->parametersReachTheRequestBag($operation['method'])) {
+                return $candidate;
+            }
+        }
+
+        return null;
     }
 
     /** @param StubOperation $operation */
@@ -519,14 +551,15 @@ final class StubRenderer
         }
 
         $lines = [];
-        $contentType = (string) ($operation['request_content_type'] ?? '');
+        $body = $this->selectRequestBody($operation);
+        $contentType = $body === null ? '' : $body['wire_content_type'];
 
         // The JSON helpers take an array and encode it themselves. A scalar or
         // null JSON example, or a non-JSON media type, has to go through
         // another call shape — passing either to postJson() is a TypeError or
         // a body sent under the wrong Content-Type.
-        $usesJsonHelper = !$operation['has_request_body'] || (
-            $this->isJsonMediaType($contentType) && is_array($operation['request_body'])
+        $usesJsonHelper = $body === null || (
+            $this->isJsonMediaType($contentType) && is_array($body['body'])
         );
 
         // A form body goes through the plain helpers, which hand the array to
@@ -534,11 +567,11 @@ final class StubRenderer
         // FormBodyDecoder / HttpFoundationFormBody reading the decoded
         // parameter bag, expect. JSON-encoding it under a form Content-Type
         // would produce a request no decoder can read.
-        if (!$usesJsonHelper && is_array($operation['request_body']) && $this->isFormMediaType($contentType)) {
+        if (!$usesJsonHelper && is_array($body['body']) && $this->isFormMediaType($contentType)) {
             return array_merge(
                 $this->parametersReachTheRequestBag($operation['method'])
-                    ? $this->laravelFormBody($operation, $headers, $contentType)
-                    : $this->laravelCustomMethodFormBody($operation, $headers, $contentType),
+                    ? $this->laravelFormBody($operation, $body['body'], $headers, $contentType)
+                    : $this->laravelCustomMethodFormBody($operation, $body['body'], $headers, $contentType),
                 $this->laravelAssertions($tuple),
             );
         }
@@ -546,7 +579,7 @@ final class StubRenderer
         if (!$usesJsonHelper) {
             $headers['Content-Type'] = $contentType;
             $lines[] = '// TODO: adjust the payload your application expects.';
-            $lines[] = '$payload = ' . $this->literal($this->rawBody($operation['request_body'], $contentType)) . ';';
+            $lines[] = '$payload = ' . $this->literal($this->rawBody($body['body'], $contentType)) . ';';
             $lines[] = '';
             $lines[] = '$response = $this->call(';
             $lines[] = '    ' . $this->literal($operation['method']) . ',';
@@ -565,7 +598,7 @@ final class StubRenderer
         // rather than $data, so a GET carrying a body has to go through
         // `json()` instead.
         $helper = match (true) {
-            $operation['method'] === 'GET' && !$operation['has_request_body'] => 'getJson',
+            $operation['method'] === 'GET' && $body === null => 'getJson',
             $operation['method'] === 'POST' => 'postJson',
             $operation['method'] === 'PUT' => 'putJson',
             $operation['method'] === 'PATCH' => 'patchJson',
@@ -573,13 +606,13 @@ final class StubRenderer
             default => null,
         };
 
-        if ($operation['has_request_body']) {
+        if ($body !== null) {
             // json() defaults CONTENT_TYPE to application/json, which does not
             // match a declared `application/vnd.acme+json` — the caller's
             // headers are merged over the defaults, so declaring it wins.
             $headers['Content-Type'] = $contentType;
             $lines[] = '// TODO: adjust the payload your application expects.';
-            $lines[] = '$payload = ' . $this->literal($operation['request_body']) . ';';
+            $lines[] = '$payload = ' . $this->literal($body['body']) . ';';
             $lines[] = '';
         }
 
@@ -590,7 +623,7 @@ final class StubRenderer
         // Every helper but getJson() takes $data before $headers; the slot has
         // to be filled even when the operation declares no request body.
         if ($helper !== 'getJson') {
-            $arguments[] = $operation['has_request_body'] ? '$payload' : '[]';
+            $arguments[] = $body === null ? '[]' : '$payload';
         }
         if ($headers !== []) {
             $arguments[] = $this->literal($headers, 1);
@@ -617,7 +650,7 @@ final class StubRenderer
      *
      * @return list<string>
      */
-    private function laravelFormBody(array $operation, array $headers, string $contentType): array
+    private function laravelFormBody(array $operation, mixed $fields, array $headers, string $contentType): array
     {
         // Request::create() defaults the write methods to
         // application/x-www-form-urlencoded and leaves PATCH without a
@@ -632,7 +665,7 @@ final class StubRenderer
         } else {
             $lines[] = '// TODO: adjust the fields your application expects.';
         }
-        $lines[] = '$fields = ' . $this->literal($operation['request_body']) . ';';
+        $lines[] = '$fields = ' . $this->literal($fields) . ';';
         $lines[] = '';
 
         $helper = match ($operation['method']) {
@@ -674,7 +707,7 @@ final class StubRenderer
      *
      * @return list<string>
      */
-    private function laravelCustomMethodFormBody(array $operation, array $headers, string $contentType): array
+    private function laravelCustomMethodFormBody(array $operation, mixed $fields, array $headers, string $contentType): array
     {
         $headers['Content-Type'] = $contentType;
 
@@ -684,7 +717,7 @@ final class StubRenderer
         $lines = ['// TODO: adjust the fields your application expects.'];
         $lines[] = '// Sent as a raw urlencoded body: Request::create() routes parameters';
         $lines[] = sprintf('// to the query bag for %s, so they would never reach the body.', $operation['method']);
-        $lines[] = '$payload = ' . $this->literal($this->urlencode($operation['request_body'])) . ';';
+        $lines[] = '$payload = ' . $this->literal($this->urlencode($fields)) . ';';
         $lines[] = '';
         $lines[] = '$response = $this->call(';
         $lines[] = '    ' . $this->literal($operation['method']) . ',';
@@ -753,7 +786,8 @@ final class StubRenderer
      */
     private function symfonyBody(array $operation, array $tuple): array
     {
-        $contentType = (string) ($operation['request_content_type'] ?? '');
+        $body = $this->selectRequestBody($operation);
+        $contentType = $body === null ? '' : $body['wire_content_type'];
         // A form body belongs in $parameters, not $content: HttpFoundationFormBody
         // reads `$request->request->all()`, and Request::create only fills that
         // bag from the parameters argument. It also sets the urlencoded
@@ -762,8 +796,8 @@ final class StubRenderer
         // POST/PUT/PATCH/DELETE/QUERY; a custom method would silently get them
         // as query parameters and an empty body, so it falls through to the
         // raw urlencoded body FormBodyDecoder can still parse.
-        $isForm = $operation['has_request_body'] &&
-            is_array($operation['request_body']) &&
+        $isForm = $body !== null &&
+            is_array($body['body']) &&
             $this->isFormMediaType($contentType) &&
             $this->parametersReachTheRequestBag($operation['method']);
 
@@ -772,14 +806,14 @@ final class StubRenderer
             $this->literal($operation['method']),
         ];
         if ($isForm) {
-            $arguments[] = 'parameters: ' . $this->literal($operation['request_body'], 1);
+            $arguments[] = 'parameters: ' . $this->literal($body['body'], 1);
         }
-        if ($operation['headers'] !== [] || $operation['has_request_body']) {
+        if ($operation['headers'] !== [] || $body !== null) {
             $server = [];
             foreach ($operation['headers'] as $name => $value) {
                 $server['HTTP_' . strtoupper(str_replace('-', '_', $name))] = $value;
             }
-            if ($operation['has_request_body']) {
+            if ($body !== null) {
                 // Declared for the form branch too: Request::create() would
                 // otherwise default it to urlencoded (or, for PATCH, leave it
                 // unset), and a multipart operation would never match its own
@@ -788,8 +822,8 @@ final class StubRenderer
             }
             $arguments[] = 'server: ' . $this->literal($server, 1);
         }
-        if ($operation['has_request_body'] && !$isForm) {
-            $arguments[] = 'content: ' . $this->literal($this->rawBody($operation['request_body'], $contentType));
+        if ($body !== null && !$isForm) {
+            $arguments[] = 'content: ' . $this->literal($this->rawBody($body['body'], $contentType));
         }
 
         $lines = ['$request = Request::create('];

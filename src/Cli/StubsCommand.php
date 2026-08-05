@@ -319,7 +319,8 @@ final class StubsCommand
             $count = count($groups['unreachable']);
             $lines[] = '';
             $lines[] = sprintf(
-                '%d declared response%s not stubbed: no HTTP status selects %s over the operation\'s other keys.',
+                '%d declared response%s not stubbed: no status code and media type select %s '
+                . 'over the operation\'s other keys.',
                 $count,
                 $count === 1 ? ' was' : 's were',
                 $count === 1 ? 'it' : 'them',

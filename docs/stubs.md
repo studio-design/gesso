@@ -90,7 +90,10 @@ Everything the spec pins down is filled in:
   bytes rather than request fields: `Request::create()` only moves its
   parameters into the request bag for POST/PUT/PATCH/DELETE/QUERY, and routes
   anything else into the query bag. `multipart/form-data` has no raw-byte form
-  the decoder can parse back, so a multipart body on a custom method is
+  the decoder can parse back. A multipart body on a custom method is therefore
+  only a dead end when it is `required` *and* no other media type is declared:
+  an optional body is simply omitted, and an operation that also offers
+  urlencoded is stubbed through that. When it is a dead end the operation is
   reported as not stubbable for the Laravel, Pest, and Symfony adapters rather
   than emitted as a request that would silently validate as skipped. The
   `phpunit` adapter is unaffected — it only validates responses.
@@ -107,11 +110,13 @@ Everything the spec pins down is filled in:
   response and gets no stub.
 - **Content negotiation.** Each response media type gets its own `Accept`
   header, so two media types declared under one status do not both resolve to
-  the same response. As on the request side, a range key (`application/*`) is
-  exercised as a concrete type it covers — sending the range itself would make
-  the validator read the body as non-JSON and skip the schema, so a violating
-  body would pass. The declared key still names the test and the coverage tuple
-  it closes.
+  the same response. A range key (`application/*`) is exercised as a concrete
+  type it covers — sending the range itself would make the validator read the
+  body as non-JSON and skip the schema, so a violating body would pass. The
+  declared key still names the test and the coverage tuple it closes. A range
+  declared *alongside* a literal JSON key is reported rather than stubbed: the
+  resolver takes an exact match first and otherwise the first JSON entry, so no
+  Content-Type can ever select the range.
 - **Responses without `content`.** These become a single "no content" test, the
   same tuple the coverage tracker records for a 204.
 

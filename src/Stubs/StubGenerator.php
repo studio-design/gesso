@@ -12,8 +12,8 @@ use Studio\Gesso\Validation\Support\ContentTypeMatcher;
 
 use function array_filter;
 use function array_key_exists;
-use function array_key_first;
 use function array_keys;
+use function array_map;
 use function array_values;
 use function explode;
 use function implode;
@@ -42,6 +42,7 @@ use function usort;
  * tracker can never report would be a test that cannot move the coverage number.
  *
  * @phpstan-type StubTuple array{status: string, content_type: string, wire_content_type: string, status_code: null|int, is_range: bool, reason: 'ok'|'unreachable'|'malformed', example: mixed, has_example: bool}
+ * @phpstan-type StubRequestBody array{content_type: string, wire_content_type: string, body: mixed}
  * @phpstan-type StubOperation array{
  *     method: string,
  *     path: string,
@@ -49,9 +50,8 @@ use function usort;
  *     operation_id: null|string,
  *     summary: null|string,
  *     headers: array<string, string>,
- *     request_body: mixed,
- *     has_request_body: bool,
- *     request_content_type: null|string,
+ *     request_required: bool,
+ *     request_candidates: list<StubRequestBody>,
  *     tuples: list<StubTuple>,
  * }
  *
@@ -133,7 +133,7 @@ final class StubGenerator
                 // See StubRenderer::classNames().
                 $tuples = $this->tuples($method, $path, $operation, $states);
                 $parameters = ParameterCollector::collect($method, $path, $pathItem, $operation)->parameters;
-                [$requestBody, $hasRequestBody, $requestContentType] = $this->requestBody($operation);
+                [$requestRequired, $requestCandidates] = $this->requestBody($operation);
 
                 $plans[] = [
                     'method' => $method,
@@ -142,9 +142,8 @@ final class StubGenerator
                     'operation_id' => is_string($operation['operationId'] ?? null) ? $operation['operationId'] : null,
                     'summary' => is_string($operation['summary'] ?? null) ? $operation['summary'] : null,
                     'headers' => $this->requiredHeaders($parameters),
-                    'request_body' => $requestBody,
-                    'has_request_body' => $hasRequestBody,
-                    'request_content_type' => $requestContentType,
+                    'request_required' => $requestRequired,
+                    'request_candidates' => $requestCandidates,
                     'tuples' => $tuples,
                 ];
             }
@@ -168,29 +167,55 @@ final class StubGenerator
     }
 
     /**
-     * The media type the generated request actually sends.
+     * The media type the generated request or response actually carries.
      *
      * A spec key may be a *range* (`application/*`, `*&#47;*`) rather than a
-     * media type. Ranges are legal on the spec side — the request validator
-     * matches a concrete type against them — but a client cannot put one on
-     * the wire, so the stub substitutes a concrete type the range covers.
-     * Concrete keys, including `+json` suffixes, are sent verbatim: sending
-     * `application/json` for a declared `application/vnd.acme+json` would not
-     * match the spec's content map.
+     * media type. Ranges are legal on the spec side — the validator matches a
+     * concrete type against them — but a client cannot put one on the wire,
+     * and a range Content-Type reads as non-JSON, which makes the body
+     * validator skip the schema entirely.
+     *
+     * The substitute is checked against the runtime resolver rather than
+     * guessed: whatever is sent must come back as *this* key, or the stub
+     * would validate a sibling's schema and leave its own tuple uncovered.
+     *
+     * Null means no media type can select the key at all. That happens to a
+     * `<type>/*` range declared next to a literal JSON key:
+     * {@see ContentTypeMatcher::findJsonContentTypeForResponse()} takes an
+     * exact match first and otherwise falls back to the first literal JSON
+     * entry, so the range is never selected however the Content-Type is
+     * spelled — the media-type twin of a `4XX` declared alongside every exact
+     * 4xx code. The caller reports those instead of stubbing them.
+     *
+     * @param array<string, mixed> $siblings the content map the key belongs to
      */
-    private static function wireMediaType(string $declared): string
+    private static function wireMediaType(string $declared, array $siblings): ?string
     {
         $normalized = ContentTypeMatcher::normalizeMediaType($declared);
-        if (!str_contains($normalized, '*')) {
-            return $declared;
-        }
-        if ($normalized === '*/*' || $normalized === 'application/*') {
-            return 'application/json';
-        }
+        $candidates = [$declared, 'application/json'];
 
         [$type] = explode('/', $normalized, 2);
+        foreach ($type === '*' || $type === '' ? ['application', 'text'] : [$type] as $prefix) {
+            for ($i = 0; $i < 4; $i++) {
+                $candidates[] = $prefix . '/vnd.gesso-stub' . ($i === 0 ? '' : (string) $i) . '+json';
+            }
+        }
 
-        return $type . '/plain';
+        foreach ($candidates as $candidate) {
+            if (str_contains($candidate, '*')) {
+                // A range cannot go on the wire, and reads as non-JSON, which
+                // makes the body validator skip the schema entirely.
+                continue;
+            }
+            if (ContentTypeMatcher::findJsonContentTypeForResponse(
+                ContentTypeMatcher::normalizeMediaType($candidate),
+                $siblings,
+            ) === $declared) {
+                return $candidate;
+            }
+        }
+
+        return null;
     }
 
     private function isTrackedMethod(string $method, string $location): bool
@@ -229,6 +254,7 @@ final class StubGenerator
                     $status,
                     OpenApiCoverageTracker::ANY_CONTENT_TYPE,
                     [],
+                    [],
                     $states,
                     $wireStatuses,
                 );
@@ -242,6 +268,7 @@ final class StubGenerator
                     $status,
                     (string) $contentType,
                     is_array($media) ? $media : [],
+                    $content,
                     $states,
                     $wireStatuses,
                 );
@@ -260,6 +287,7 @@ final class StubGenerator
 
     /**
      * @param array<string, mixed> $media
+     * @param array<string, mixed> $siblings
      * @param null|array<string, string> $states
      * @param array<string, null|int> $wireStatuses
      *
@@ -270,6 +298,7 @@ final class StubGenerator
         string $status,
         string $contentType,
         array $media,
+        array $siblings,
         ?array $states,
         array $wireStatuses,
     ): ?array {
@@ -279,6 +308,9 @@ final class StubGenerator
 
         [$example, $hasExample] = $this->example($media);
         $statusCode = $wireStatuses[$status] ?? null;
+        $wireContentType = $contentType === OpenApiCoverageTracker::ANY_CONTENT_TYPE
+            ? $contentType
+            : self::wireMediaType($contentType, $siblings);
 
         return [
             'status' => $status,
@@ -288,13 +320,12 @@ final class StubGenerator
             // type a response can carry, and sending one makes the validator
             // read the body as non-JSON and skip the schema entirely.
             'content_type' => $contentType,
-            'wire_content_type' => $contentType === OpenApiCoverageTracker::ANY_CONTENT_TYPE
-                ? $contentType
-                : self::wireMediaType($contentType),
+            'wire_content_type' => $wireContentType ?? $contentType,
             'status_code' => $statusCode,
             'is_range' => $statusCode !== null && (string) $statusCode !== $status,
             'reason' => match (true) {
-                $statusCode !== null => 'ok',
+                $statusCode !== null && $wireContentType !== null => 'ok',
+                $statusCode !== null => 'unreachable',
                 self::isStatusKey($status) => 'unreachable',
                 default => 'malformed',
             },
@@ -368,31 +399,50 @@ final class StubGenerator
     /**
      * @param array<string, mixed> $operation
      *
-     * @return array{mixed, bool, null|string}
+     * @return array{bool, list<StubRequestBody>}
      */
     private function requestBody(array $operation): array
     {
         $requestBody = is_array($operation['requestBody'] ?? null) ? $operation['requestBody'] : null;
         if ($requestBody === null) {
-            return [null, false, null];
+            return [false, []];
         }
 
         $content = is_array($requestBody['content'] ?? null) ? $requestBody['content'] : [];
         if ($content === []) {
-            return [null, false, null];
+            return [false, []];
         }
 
-        // A JSON media type keeps the generated call on the framework's JSON
-        // helpers; anything else still gets a stub, just with its own type.
-        // ContentTypeMatcher decides which is which, so the stub agrees with
-        // the validator that will judge it — a substring test would read
-        // `application/notjson` as JSON.
-        $declared = ContentTypeMatcher::findJsonContentType($content) ?? (string) array_key_first($content);
+        // Every declared media type is kept, most-expressible first. Which one
+        // a stub can actually send depends on the adapter and the HTTP method
+        // — a decision this class is deliberately blind to — and an operation
+        // offering both multipart and urlencoded is stubbable through the
+        // latter even where the former is not.
+        $keys = array_map(static fn(mixed $key): string => (string) $key, array_keys($content));
+        $json = ContentTypeMatcher::findJsonContentType($content);
+        $rank = static fn(string $key): int => match (true) {
+            $key === $json => 0,
+            ContentTypeMatcher::normalizeMediaType($key) === 'application/x-www-form-urlencoded' => 1,
+            default => 2,
+        };
+        usort($keys, static fn(string $a, string $b): int => $rank($a) <=> $rank($b));
 
-        $media = $content[$declared] ?? null;
-        [$example, $hasExample] = $this->example(is_array($media) ? $media : []);
+        $candidates = [];
+        foreach ($keys as $key) {
+            $media = $content[$key] ?? null;
+            [$example, $hasExample] = $this->example(is_array($media) ? $media : []);
+            $wire = self::wireMediaType($key, $content);
+            if ($wire === null) {
+                continue;
+            }
+            $candidates[] = [
+                'content_type' => $key,
+                'wire_content_type' => $wire,
+                'body' => $hasExample ? $example : [],
+            ];
+        }
 
-        return [$hasExample ? $example : [], true, self::wireMediaType($declared)];
+        return [($requestBody['required'] ?? false) === true, $candidates];
     }
 
     /**

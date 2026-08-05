@@ -578,6 +578,96 @@ class StubsCommandTest extends TestCase
     }
 
     #[Test]
+    public function a_range_response_key_shadowed_by_a_json_sibling_is_reported_not_stubbed(): void
+    {
+        $spec = $this->writeInlineSpec('siblings', ['/things' => ['get' => ['responses' => ['200' => [
+            'content' => [
+                'application/json' => ['schema' => ['type' => 'object', 'required' => ['exact'], 'properties' => ['exact' => ['type' => 'integer']]]],
+                'application/*' => ['schema' => ['type' => 'object', 'required' => ['range'], 'properties' => ['range' => ['type' => 'integer']]]],
+            ],
+        ]]]]]);
+
+        $exit = $this->command()->run(StubsCommand::parseArgv([
+            '--spec=' . $spec,
+            '--output=' . $this->workDir . '/out',
+        ]));
+        $code = (string) file_get_contents($this->workDir . '/out/GetThingsTest.php');
+
+        // findJsonContentTypeForResponse() takes an exact match first and
+        // otherwise the first literal JSON entry, so no Content-Type can ever
+        // select the range. Stubbing it would validate the sibling's schema
+        // and leave its own tuple uncovered, so it is reported instead.
+        $this->assertSame(StubsCommand::EXIT_OK, $exit);
+        $this->assertSame(1, substr_count($code, 'public function test_'));
+        $this->assertStringContainsString("'application/json',", $code);
+        $this->assertStringContainsString('no status code and media type select', $this->stdout);
+        $this->assertStringContainsString('GET /things  200 application/*', $this->stdout);
+
+        // Pin the resolver behaviour the decision rests on.
+        OpenApiSpecLoader::reset();
+        OpenApiSpecLoader::configure($this->workDir);
+        $validator = new OpenApiResponseValidator(new StrictRequiredTracker());
+        foreach (['application/json', 'application/vnd.acme+json'] as $contentType) {
+            $this->assertTrue(
+                $validator->validate('siblings', 'GET', '/things', 200, ['exact' => 1], $contentType)->isValid(),
+                $contentType,
+            );
+            $this->assertFalse(
+                $validator->validate('siblings', 'GET', '/things', 200, ['range' => 1], $contentType)->isValid(),
+                $contentType,
+            );
+        }
+    }
+
+    #[Test]
+    public function an_optional_custom_method_multipart_body_is_stubbed_without_one(): void
+    {
+        $spec = $this->writeInlineSpec('optionalmultipart', ['/things' => ['additionalOperations' => ['COPY' => [
+            'requestBody' => ['content' => ['multipart/form-data' => [
+                'schema' => ['type' => 'object'],
+                'example' => ['avatar' => 'bytes'],
+            ]]],
+            'responses' => ['200' => ['content' => ['application/json' => ['schema' => ['type' => 'object']]]]],
+        ]]]]);
+
+        $this->command()->run(StubsCommand::parseArgv([
+            '--spec=' . $spec,
+            '--adapter=laravel',
+            '--output=' . $this->workDir . '/out',
+        ]));
+
+        // The body is optional, so omitting it is a valid request — rejecting
+        // the whole operation would lose a stubbable response.
+        $this->assertSame(['CopyThingsTest.php'], $this->generatedFiles());
+        $this->assertStringNotContainsString('not stubbed for this adapter', $this->stdout);
+        $this->assertStringNotContainsString('$payload', (string) file_get_contents($this->workDir . '/out/CopyThingsTest.php'));
+    }
+
+    #[Test]
+    public function a_custom_method_falls_back_to_the_form_media_type_it_can_send(): void
+    {
+        $spec = $this->writeInlineSpec('altmedia', ['/things' => ['additionalOperations' => ['COPY' => [
+            'requestBody' => ['required' => true, 'content' => [
+                'multipart/form-data' => ['schema' => ['type' => 'object'], 'example' => ['a' => 'x']],
+                'application/x-www-form-urlencoded' => ['schema' => ['type' => 'object'], 'example' => ['a' => 'x']],
+            ]],
+            'responses' => ['200' => ['content' => ['application/json' => ['schema' => ['type' => 'object']]]]],
+        ]]]]);
+
+        $this->command()->run(StubsCommand::parseArgv([
+            '--spec=' . $spec,
+            '--adapter=laravel',
+            '--output=' . $this->workDir . '/out',
+        ]));
+
+        // multipart is unbuildable for COPY, but urlencoded is declared too.
+        $this->assertSame(['CopyThingsTest.php'], $this->generatedFiles());
+        $code = (string) file_get_contents($this->workDir . '/out/CopyThingsTest.php');
+        $this->assertStringContainsString("'Content-Type' => 'application/x-www-form-urlencoded',", $code);
+        $this->assertStringNotContainsString('multipart', $code);
+    }
+
+    #[Test]
     public function a_custom_method_multipart_body_is_reported_instead_of_stubbed(): void
     {
         $spec = $this->writeInlineSpec('custommultipart', ['/things' => ['additionalOperations' => ['COPY' => [
