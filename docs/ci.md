@@ -152,7 +152,7 @@ parameter (or `coverage:merge --json-output` for parallel runs) as shown in
 > gate's failure would be swallowed.
 
 A single-file spec with no local `$ref` needs no worktree —
-`git show "origin/${{ github.base_ref }}:openapi.json" > "${RUNNER_TEMP}/base.json"`
+<code v-pre>git show "origin/${{ github.base_ref }}:openapi.json" > "${RUNNER_TEMP}/base.json"</code>
 is enough. If you already publish a bundled artifact, point `--base-spec` at
 the base branch's bundle instead.
 
