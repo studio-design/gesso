@@ -115,16 +115,19 @@ The baseline-generation protocol introduced `envelopeVersion: 3` — the v2
 shape plus a `baseline` key holding the violation-baseline document
 (`baseline_version: 1`). It remains an accepted compatibility input.
 
-The current writer emits `envelopeVersion: 6` for plain worker runs. It carries
+The current writer emits `envelopeVersion: 8` for plain worker runs. It carries
 coverage state `version: 1`, strict-required state `version: 2`,
-strict-additional-properties state `version: 1`, and SDK exercise state
-`version: 1`. A baseline-generation worker emits `envelopeVersion: 7`, which
-adds the `baseline` document to the v6 tracker halves.
+strict-additional-properties state `version: 1`, SDK exercise state
+`version: 1`, and deprecation state `version: 1`. A baseline-generation worker
+emits `envelopeVersion: 9`, which adds the `baseline` document to the v8
+tracker halves.
 
-The reader accepts envelopes 2–7 and the legacy bare coverage state. Versions
+The reader accepts envelopes 2–9 and the legacy bare coverage state. Versions
 4/5 are the older strict-additional-properties shapes; versions 2/3 contribute
-no strict-additional-properties state, and versions 2–5 contribute no SDK
-exercise state. A plain envelope carrying a `baseline` key or a baseline
+no strict-additional-properties state, versions 2–5 contribute no SDK
+exercise state, and versions 2–7 contribute no deprecation state — for which
+the merge reports that its count is a lower bound rather than treating a
+missing half as "this worker used none". A plain envelope carrying a `baseline` key or a baseline
 envelope missing one is rejected as malformed; `coverage:merge
 --baseline-file` refuses to write a union when any sidecar lacks the baseline
 half. Likewise, a strict parallel SDK exercise threshold rejects any worker
@@ -195,7 +198,8 @@ Deprecations are announced at runtime, not only in a docblock. Each one emits a
 one-shot `E_USER_DEPRECATED` carrying the `[Gesso deprecation]` prefix, the
 replacement, and the removal version; the PHPUnit extension writes a single
 end-of-run STDERR line counting how many deprecated surfaces the suite still
-uses. See [diagnostic
+uses. Under paratest that line comes from `gesso coverage:merge`, summed over
+the worker sidecars. See [diagnostic
 channels](supported-features.md#diagnostic-channels-e_user_warning-and-e_user_deprecated).
 
 **If a run on the final minor of a major reports zero Gesso deprecations,

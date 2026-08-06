@@ -572,12 +572,18 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
         // workers. The strict_required half is always exported, independent
         // of the worker's `strict_required` mode — the merge CLI decides
         // whether to assert (Issue #226).
+        //
+        // Issue #499: the deprecation half travels the same way. A worker
+        // returns before the end-of-run report, so without this the residual
+        // count would be empty for every parallel run — and an empty count is
+        // exactly the "ready for the next major" signal.
         $envelope = CoverageSidecarEnvelope::build(
             coverageState: $this->coverageTracker->exportStateOn(),
             strictRequiredState: $this->strictRequiredTracker->exportStateOn(),
             baselineDocument: $baselineDocument,
             strictAdditionalPropertiesState: $this->strictAdditionalPropertiesTracker->exportStateOn(),
             sdkExerciseState: $this->sdkExerciseCoverageTracker->exportStateOn(),
+            deprecationsState: Deprecations::exportState(),
         );
 
         try {
