@@ -61,44 +61,84 @@ an ADR that supersedes this one.
 | OpenAPI 3.0 / 3.1 / 3.2 are each validated under their own JSON Schema dialect: 3.0 through the Draft 07 compatibility pipeline, 3.1/3.2 under 2020-12, and an unknown dialect is rejected rather than guessed | `src/OpenApiVersion.php:19-21`; `src/Spec/OpenApiSchemaDialect.php:34` (3.0 → Draft 07), `:38` (default OAS 3.1 base), `:57` (`assertSupported()`) | No — the class is `@internal` |
 | Validation is tri-state. `Skipped` is a distinct outcome, never folded into success or failure | `src/OpenApiValidationOutcome.php:15-17` | Yes — `docs/versioning.md:18-19` |
 | Discriminator enforcement is on by default | `src/Validation/Support/DiscriminatorEnforcement.php:36` (`private static bool $enabled = true`) | No — the class is `@internal` |
-| The named contract checks and their default expected statuses | `src/Fuzz/ContractCheck.php:13-15` (`ignored_auth`, `missing_required_header`, `unsupported_method`) | Yes — `docs/versioning.md:83-88` |
+| The named contract checks, their default expected statuses, and their default status classes | `src/Fuzz/ContractCheck.php:13-15` (`ignored_auth`, `missing_required_header`, `unsupported_method`), `:23-30` (`defaultExpectedStatuses()`), `:46-52` (`defaultExpectedStatusClasses()` — `missing_required_header` passes on any 4xx, deliberately, so framework choice does not read as contract drift) | Yes — `docs/versioning.md:83-88` |
 | Coverage and gating are measured at `(method, path, status, content-type)` granularity | `src/Validation/Response/ResponseSchemaResolver.php:27`, `src/Coverage/OpenApiCoverageTracker.php:232`, `src/Cli/CoverageGateCommand.php:64` | Partly — only through the coverage baseline entry, `docs/versioning.md:67-82` |
 | Doctor diagnostics and runtime validation agree: a malformed spec node must not pass one path and fail the other | `AGENTS.md:66-68`; mirrored in code at `src/Cli/DoctorCommand.php:537` (response guards) and `:747` (security-scheme classification) | No |
 | Both upstream corpora stay pinned by commit SHA and stay measured | `composer.json` `repositories[].package.dist.reference`; asserted by `tests/Integration/Conformance/` | No — test fixtures |
 
-The three uncovered rows are the reason this ADR exists. `@internal` means the
-symbol may be renamed, moved, or merged without a major bump; it does not mean
-the behaviour behind it is negotiable.
+Six rows are behaviours; the seventh is how we find out whether the other six
+still hold. Unpinning a corpus, or dropping either conformance test, is a
+protected-core change even though no runtime behaviour moves — it removes the
+measurement, which is what makes the rest of this document enforceable. That row
+is therefore protected core *and* the mechanism the acceptance rule below relies
+on, not one or the other.
+
+Four rows are not SemVer-covered: dialect selection, the
+discriminator-enforcement default, doctor ⇄ runtime consistency, and the pinned
+corpora. Those four are why this ADR exists. `@internal` means the symbol may be
+renamed, moved, or merged without a major bump; it does not mean the behaviour
+behind it is negotiable. The `Partly` row is covered only through the coverage
+baseline entry, so the granularity is contractual where a baseline file names it
+and policy-protected everywhere else.
 
 ## Inclusion criterion
 
-> Anything that must keep running after the PHPUnit or Pest process exits does
-> not belong in Gesso.
+> Anything that must stay resident after the command that started it exits, or
+> that is not part of checking an implementation against its spec, does not
+> belong in Gesso.
 
-Gesso is a test-time library. Its unit of work is one assertion inside one test,
-and its lifetime is the test process. Everything in the package today satisfies
-that; the criterion exists to keep it that way.
+Two halves, and both are needed. The first excludes anything that has to be
+started, waited for, and torn down — a service. The second excludes work that
+terminates but is not a contract check.
+
+The first half is deliberately about *residency*, not about the test process.
+Gesso already does work outside a test run and must keep being allowed to:
+`gesso doctor` is a preflight that runs before the suite, and `coverage:merge`,
+`coverage:gate`, and `stubs` are batch steps that run after it —
+`CoverageMergeCommand` says so in its own docblock
+(`src/Coverage/CoverageMergeCommand.php:56-58`: *"Designed to be invoked as a
+separate step after the parallel test run finishes"*). Each is a short-lived
+process that reads files, writes files, and exits. That is in scope. A component
+that stays up between invocations, holds state across them, or has to be
+health-checked is not.
 
 ## Non-goals
 
-Each entry names the half of the criterion it fails.
+Most of these fail one half of the criterion. Three do not, and are recorded here
+anyway so they are not relitigated — with their real reason rather than a forced
+one, because a criterion that stretches to cover everything stops deciding
+anything.
+
+**Fails the first half — stays resident.**
 
 | Non-goal | Why it is out |
 | --- | --- |
-| An MCP server | Long-running process. It would outlive the test run by definition. |
-| A mock server | Long-running process, and it inverts the direction: Gesso checks a real implementation against the spec, it does not stand in for one. |
-| An Overlay merge engine | Not a test-time contract check. Applying an Overlay produces a spec; that is a spec-authoring or build step, and its output is what Gesso should be handed. |
-| oasdiff-style spec diffing | Not a test-time contract check. `CoverageGateCommand` already draws this line explicitly — its diff is structural ("did the resolved node change?"), never semantic ("is the change backwards-incompatible?"), and the semantic classification needs a rule catalogue that belongs to a dedicated tool (`src/Cli/CoverageGateCommand.php:67-70`). |
-| An official GitHub Action | Not a test-time contract check. It is a distribution wrapper around one, and `bin/gesso` already runs unmodified in any CI job. |
-| A general-purpose spec linter | Not a test-time contract check. `docs/doctor.md` states this for `gesso doctor` already: it is not a replacement for Spectral or Redocly. |
-| Spec generation | Not a test-time contract check. Generating the spec from code makes the spec a mirror of the implementation, which removes the thing Gesso is testing against. |
-| Gesso calling an LLM | Not a test-time contract check. A nondeterministic network call inside a test run cannot produce a verdict a test can rely on. Gesso's output is consumed by agents; nothing inside it consults one. |
-| OpenAPI 4.0 / Moonwalk support | This one does not fail the criterion. It is out because there is no stable specification to validate against yet. Revisit when there is; it needs its own ADR, not an extension of this one. |
+| An MCP server | A process that has to be started and kept up so a client can call it. |
+| A mock server | Same, and it inverts the direction: Gesso checks a real implementation against the spec, it does not stand in for one. |
 
-## Reduction-PR acceptance gate
+**Fails the second half — not part of checking an implementation against its
+spec.**
+
+| Non-goal | Why it is out |
+| --- | --- |
+| An Overlay merge engine | Applying an Overlay produces a spec. That is a spec-authoring or build step, and its output is what Gesso should be handed. |
+| oasdiff-style spec diffing | Spec versus spec, with no implementation in the comparison. `CoverageGateCommand` already draws this line — its diff is structural ("did the resolved node change?"), never semantic ("is the change backwards-incompatible?"), and the semantic classification needs a rule catalogue that belongs to a dedicated tool (`src/Cli/CoverageGateCommand.php:67-70`). |
+| A general-purpose spec linter | Spec style, no implementation. `docs/doctor.md:5` states this for `gesso doctor` already: it is not a replacement for Spectral or Redocly. |
+| Spec generation | Derives the spec from the implementation, which removes the independent thing Gesso tests against. |
+
+**Out for other reasons.** These pass both halves; they are excluded on their own
+terms.
+
+| Non-goal | Why it is out |
+| --- | --- |
+| An official GitHub Action | A second distribution surface — its own versioning, marketplace listing, and update cadence — for something `bin/gesso` already does in one `run:` line. Duplicated maintenance, no new capability. |
+| Gesso calling an LLM | A nondeterministic remote call cannot produce a verdict a test can rely on. Gesso's output is consumed by agents; nothing inside it consults one. |
+| OpenAPI 4.0 / Moonwalk support | There is no stable specification to validate against yet. Revisit when there is; it needs its own ADR, not an extension of this one. |
+
+## Reduction-PR acceptance rule
 
 A PR whose stated purpose is reducing surface area must leave both conformance
-baselines byte-identical:
+baselines unchanged:
 
 - `tests/fixtures/compatibility/v1-json-schema-conversion-delta.json` —
   `format_version: 1`, **11 deltas** (9 `unsupported-dialect`, 2
@@ -117,8 +157,39 @@ Either baseline moving means the PR changed meaning, not shape. That is not
 forbidden — it needs its own decision record and its own review, and it stops
 being a reduction PR.
 
-Both gates run in the `Integration` suite, which every CI matrix job executes
-(`.github/workflows/ci.yml:59-60`), so no extra step is required to enforce this.
+**This is a review rule, not an automated gate.** Be precise about what the
+conformance tests do and do not catch, because the difference is where a
+regression would slip through:
+
+- They catch *unintentional* drift. Both tests compare the current observation
+  against the committed fixture, and both first assert that the installed corpus
+  SHA matches the one the baseline was recorded against
+  (`JsonSchemaConversionDeltaTest.php:112-117`,
+  `OasExampleDocumentTest.php:122-127`), so an implementation change that moves a
+  verdict fails CI, and so does a corpus bump without a regenerated baseline.
+- They do **not** catch a deliberate co-update. A PR that changes the converter
+  and regenerates the fixture in the same commit is green. Nothing compares the
+  fixture against the base branch.
+- The JSON Schema comparison is narrower than the file. Only the verdict triple
+  (`expected` / `bare` / `converted`) per case key is asserted;
+  `JsonSchemaConversionDeltaTest.php:119-129` deliberately excludes the `reason`
+  prose so rewording an explanation cannot read as a conformance regression.
+  "Unchanged" in this rule means the verdict set, not the bytes.
+
+So the mechanical step belongs to the reviewer, and it is one command:
+
+```bash
+git diff origin/main -- \
+  tests/fixtures/compatibility/v1-json-schema-conversion-delta.json \
+  tests/fixtures/compatibility/v1-oas-example-documents.json
+```
+
+Empty output on a PR that claims to be reducing surface area. Non-empty means
+the PR is something else and needs its own decision record. A CI job that failed
+on any diff to these files was considered and rejected: it cannot tell a
+reduction PR from a deliberate conformance change or a corpus re-pin, so it
+would need a label protocol, which is its own decision rather than a detail of
+this one.
 
 ## What v3 does not delete
 
@@ -152,9 +223,11 @@ on their own terms; this ADR extends the device rather than replacing it.
 
 ## Consequences
 
-Three behaviours that SemVer does not cover become policy-protected: dialect
-selection, the discriminator-enforcement default, and doctor ⇄ runtime
-consistency. Their carriers stay `@internal` and freely renameable.
+Four things that SemVer does not cover become policy-protected: dialect
+selection, the discriminator-enforcement default, doctor ⇄ runtime consistency,
+and the pinned conformance corpora. The first three keep `@internal` carriers
+that stay freely renameable; the fourth is a commitment to keep measuring, so
+unpinning a corpus or deleting a conformance test now needs a superseding ADR.
 
 Three surfaces that SemVer *does* cover become protected beyond it — the
 `OpenApiValidationOutcome` cases (`docs/versioning.md:18-19`), the `ContractCheck`
@@ -162,9 +235,9 @@ names and default statuses (`:83-88`), and the coverage baseline granularity
 (`:67-82`). They may not be dropped even at a major boundary without a
 superseding ADR.
 
-The reduction gate makes "did this change meaning?" a mechanical question rather
-than a review judgement, which is what lets the v3 renames be reviewed as
-renames.
+The reduction rule gives "did this change meaning?" a fixed place to look — two
+fixture paths and one `git diff` — instead of leaving it to be re-derived per
+review. It does not make the question automatic, and the section above says so.
 
 ADR 0002's phases and ADR 0003's phase list stay open. In particular this ADR
 does not retract ADR 0003 phase 6, the SDK exercise coverage that already
