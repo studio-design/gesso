@@ -454,6 +454,6 @@ final class PackageArchivePolicyTest extends TestCase
             $this->markTestSkipped('git ls-files is unavailable; cannot enumerate tracked paths.');
         }
 
-        return array_values($output);
+        return $output;
     }
 }
