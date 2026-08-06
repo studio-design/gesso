@@ -12,7 +12,7 @@ The schema-conversion behaviour described here is measured against the official 
 - [Schema features](#schema-features)
 - [HTTP methods](#http-methods)
 - [Spec features not consulted](#spec-features-not-consulted)
-- [Warning channel (`E_USER_WARNING` contract)](#warning-channel-e_user_warning-contract)
+- [Diagnostic channels (`E_USER_WARNING` and `E_USER_DEPRECATED`)](#diagnostic-channels-e_user_warning-and-e_user_deprecated)
 
 ## OpenAPI 3.0, 3.1, and 3.2
 
@@ -106,17 +106,22 @@ The PHPUnit coverage report counts `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, Open
 ## Spec features not consulted
 Webhooks (3.1+), Callbacks, Response `Links`, Server URL templating (`servers` with `variables`), Examples (`example` / `examples`, including 3.2 `dataValue` / `serializedValue` — not used for fuzzing or validation), 3.2 tag hierarchy (`summary` / `parent` / `kind`), `externalDocs`, and vendor extensions (`x-*` keys, ignored harmlessly). OAuth2 device authorization and other OAuth/OpenID schemes remain on the existing `[security]` warning path.
 
-## Warning channel (`E_USER_WARNING` contract)
+## Diagnostic channels (`E_USER_WARNING` and `E_USER_DEPRECATED`)
 
 The library uses PHP's native `trigger_error(..., E_USER_WARNING)` as the loud-signal channel for silent-pass conditions the validator cannot enforce. **This is the v1.0 official API**: warnings are dedup'd per-process and prefixed with a category tag so callers can route or filter them mechanically.
 
-| Category prefix | Source | Dedup key |
-|---|---|---|
-| `[security]` | `SecurityValidator` (`oauth2`, `openIdConnect`, `mutualTLS`, `http-basic`, `http-digest`) | scheme name |
-| `[OpenAPI Schema]` | `OpenApiSchemaConverter` (3.0-only `unevaluated*` / `dependent*`, unknown / malformed `format`) | per-keyword / per-format-value |
-| `[OpenAPI 3.2 querystring]` | `QueryParameterValidator` (serialized query media type cannot be reconstructed) | declared media-type set |
-| `[OpenAPI 3.2 discriminator]` | `OpenApiSchemaConverter` (`defaultMapping` with implicit mappings only) | process-wide limitation key |
-| `[OpenAPI 3.2 $self]` | `OpenApiSpecLoader` (`$self` base URI is not applied) | spec load/cache |
+A second channel, `trigger_error(..., E_USER_DEPRECATED)`, carries migration notices for surfaces that a future major removes. It follows the same dedup and category-prefix contract, but uses a distinct error level and a distinct prefix so an error handler can route migration work separately from operational signals. The `Level` column below says which channel each prefix arrives on.
+
+| Category prefix | Level | Source | Dedup key |
+|---|---|---|---|
+| `[security]` | `E_USER_WARNING` | `SecurityValidator` (`oauth2`, `openIdConnect`, `mutualTLS`, `http-basic`, `http-digest`) | scheme name |
+| `[OpenAPI Schema]` | `E_USER_WARNING` | `OpenApiSchemaConverter` (3.0-only `unevaluated*` / `dependent*`, unknown / malformed `format`) | per-keyword / per-format-value |
+| `[OpenAPI 3.2 querystring]` | `E_USER_WARNING` | `QueryParameterValidator` (serialized query media type cannot be reconstructed) | declared media-type set |
+| `[OpenAPI 3.2 discriminator]` | `E_USER_WARNING` | `OpenApiSchemaConverter` (`defaultMapping` with implicit mappings only) | process-wide limitation key |
+| `[OpenAPI 3.2 $self]` | `E_USER_WARNING` | `OpenApiSpecLoader` (`$self` base URI is not applied) | spec load/cache |
+| `[Gesso deprecation]` | `E_USER_DEPRECATED` | `Internal\Deprecations` (every deprecated configuration key, CLI flag, and PHP symbol) | deprecation id |
+
+**Deprecation notices:** each notice names what to use instead and the version that removes the surface, because the emitter cannot represent one that does not. Under the PHPUnit extension, one summary line is written to STDERR after the run listing every deprecated surface still in use with its call count; nothing is written when the run used none. Under paratest each worker stages its counts in the sidecar and `gesso coverage:merge` writes the one summed line, so the report survives a parallel run. See [Deprecations in `UPGRADING.md`](https://github.com/studio-design/gesso/blob/main/UPGRADING.md#deprecations) for the current list and [versioning](versioning.md) for the rule that ties a removal to a prior deprecation.
 
 **How to consume:**
 

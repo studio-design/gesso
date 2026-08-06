@@ -273,7 +273,9 @@ class CoverageSidecarEnvelopeTest extends TestCase
             ['envelopeVersion' => 6, ...$base, 'sdkExercise' => 'invalid'],
             ['envelopeVersion' => 4, ...$base, 'sdkExercise' => ['version' => 1, 'observations' => []]],
             ['envelopeVersion' => 7, ...$base, 'sdkExercise' => ['version' => 1, 'observations' => []]],
-            ['envelopeVersion' => 8, ...$base, 'sdkExercise' => ['version' => 1, 'observations' => []]],
+            // Still an unknown version. v8/v9 became known when the
+            // deprecation half landed, so the unknown-version row moved up.
+            ['envelopeVersion' => 10, ...$base, 'sdkExercise' => ['version' => 1, 'observations' => []]],
         ] as $payload) {
             try {
                 CoverageSidecarEnvelope::parse($payload);
@@ -294,6 +296,127 @@ class CoverageSidecarEnvelopeTest extends TestCase
             'version' => 1,
             'specs' => [],
             'sdkExercise' => ['version' => 1, 'observations' => []],
+        ]);
+    }
+
+    #[Test]
+    public function build_with_deprecations_emits_v8_and_v9_envelopes(): void
+    {
+        $coverage = ['version' => 1, 'specs' => []];
+        $strictRequired = ['version' => 2, 'observations' => []];
+        $strictAdditional = ['version' => 1, 'evaluations' => 0, 'observations' => []];
+        $sdkExercise = ['version' => 1, 'observations' => []];
+        $deprecations = ['version' => 1, 'deprecations' => []];
+
+        $plain = CoverageSidecarEnvelope::build(
+            coverageState: $coverage,
+            strictRequiredState: $strictRequired,
+            strictAdditionalPropertiesState: $strictAdditional,
+            sdkExerciseState: $sdkExercise,
+            deprecationsState: $deprecations,
+        );
+        $baseline = CoverageSidecarEnvelope::build(
+            coverageState: $coverage,
+            strictRequiredState: $strictRequired,
+            baselineDocument: ['baseline_version' => 1, 'violations' => []],
+            strictAdditionalPropertiesState: $strictAdditional,
+            sdkExerciseState: $sdkExercise,
+            deprecationsState: $deprecations,
+        );
+
+        $this->assertSame(8, $plain['envelopeVersion']);
+        $this->assertSame($deprecations, $plain['deprecations']);
+        $this->assertArrayNotHasKey('baseline', $plain);
+        $this->assertSame(9, $baseline['envelopeVersion']);
+        $this->assertSame($deprecations, $baseline['deprecations']);
+        $this->assertSame(['baseline_version' => 1, 'violations' => []], $baseline['baseline']);
+    }
+
+    #[Test]
+    public function build_rejects_deprecations_without_the_earlier_halves(): void
+    {
+        // Every version implies the halves below it, so an envelope with
+        // deprecation state but no SDK exercise state is one no reader can
+        // represent — building it would produce a v8 whose own parse() rejects.
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('require SDK exercise state');
+
+        CoverageSidecarEnvelope::build(
+            coverageState: ['version' => 1, 'specs' => []],
+            strictRequiredState: ['version' => 2, 'observations' => []],
+            strictAdditionalPropertiesState: ['version' => 1, 'evaluations' => 0, 'observations' => []],
+            deprecationsState: ['version' => 1, 'deprecations' => []],
+        );
+    }
+
+    #[Test]
+    public function parse_routes_deprecations_and_returns_null_for_legacy_versions(): void
+    {
+        $deprecations = ['version' => 1, 'deprecations' => ['a' => ['count' => 2, 'removed_in' => '3.0']]];
+        $parsed = CoverageSidecarEnvelope::parse([
+            'envelopeVersion' => 8,
+            'coverage' => ['version' => 1, 'specs' => []],
+            'strictRequired' => ['version' => 2, 'observations' => []],
+            'strictAdditionalProperties' => ['version' => 1, 'evaluations' => 0, 'observations' => []],
+            'sdkExercise' => ['version' => 1, 'observations' => []],
+            'deprecations' => $deprecations,
+        ]);
+
+        $this->assertSame($deprecations, $parsed['deprecations']);
+
+        $legacy = CoverageSidecarEnvelope::parse([
+            'envelopeVersion' => 6,
+            'coverage' => ['version' => 1, 'specs' => []],
+            'strictRequired' => ['version' => 2, 'observations' => []],
+            'strictAdditionalProperties' => ['version' => 1, 'evaluations' => 0, 'observations' => []],
+            'sdkExercise' => ['version' => 1, 'observations' => []],
+        ]);
+
+        // Null, not an empty map: the merge has to be able to tell "this worker
+        // recorded none" from "this worker could not record any".
+        $this->assertNull($legacy['deprecations']);
+    }
+
+    #[Test]
+    public function parse_rejects_missing_misplaced_or_stray_deprecation_halves(): void
+    {
+        $base = [
+            'coverage' => ['version' => 1, 'specs' => []],
+            'strictRequired' => ['version' => 2, 'observations' => []],
+            'strictAdditionalProperties' => ['version' => 1, 'evaluations' => 0, 'observations' => []],
+            'sdkExercise' => ['version' => 1, 'observations' => []],
+        ];
+        $deprecations = ['version' => 1, 'deprecations' => []];
+
+        foreach ([
+            // v8 declares the half; omitting it is malformed, not "none used".
+            ['envelopeVersion' => 8, ...$base],
+            ['envelopeVersion' => 8, ...$base, 'deprecations' => 'invalid'],
+            // v9 additionally declares the baseline half.
+            ['envelopeVersion' => 9, ...$base, 'deprecations' => $deprecations],
+            // A version that does not declare the half must not smuggle it.
+            ['envelopeVersion' => 6, ...$base, 'deprecations' => $deprecations],
+            ['envelopeVersion' => 8, ...$base, 'deprecations' => $deprecations, 'baseline' => ['baseline_version' => 1, 'violations' => []]],
+        ] as $payload) {
+            try {
+                CoverageSidecarEnvelope::parse($payload);
+                $this->fail('Malformed deprecation envelope shape must be rejected.');
+            } catch (InvalidArgumentException) {
+                $this->addToAssertionCount(1);
+            }
+        }
+    }
+
+    #[Test]
+    public function legacy_bare_payload_rejects_a_stray_deprecations_half(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('deprecations');
+
+        CoverageSidecarEnvelope::parse([
+            'version' => 1,
+            'specs' => [],
+            'deprecations' => ['version' => 1, 'deprecations' => []],
         ]);
     }
 }

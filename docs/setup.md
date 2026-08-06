@@ -642,7 +642,7 @@ Notes:
 
 ## Acknowledging an unvalidatable security scheme
 
-The validator cannot enforce `oauth2`, `openIdConnect`, `mutualTLS`, or `http` schemes other than `bearer` (basic, digest, …). Requests secured only by such a scheme silently pass the security check, and the first encounter per scheme emits a one-shot `E_USER_WARNING` so the silent pass does not stay invisible (see the [warning channel](supported-features.md#warning-channel-e_user_warning-contract)).
+The validator cannot enforce `oauth2`, `openIdConnect`, `mutualTLS`, or `http` schemes other than `bearer` (basic, digest, …). Requests secured only by such a scheme silently pass the security check, and the first encounter per scheme emits a one-shot `E_USER_WARNING` so the silent pass does not stay invisible (see the [warning channel](supported-features.md#diagnostic-channels-e_user_warning-and-e_user_deprecated)).
 
 Under Laravel that warning is converted into a test failure by the framework's error handler — and because it is one-shot, *which* test fails depends on execution order. When the scheme genuinely cannot be avoided (e.g. RFC 7009 / RFC 7662 mandate HTTP Basic client authentication for token revocation / introspection endpoints) and the authentication is covered by a dedicated test, acknowledge the scheme **by name** instead of filtering `E_USER_WARNING` globally:
 

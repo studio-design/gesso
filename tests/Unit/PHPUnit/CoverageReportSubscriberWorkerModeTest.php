@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Tests\Unit\PHPUnit;
 
+use const E_USER_DEPRECATED;
+
 use PHPUnit\Event\TestRunner\ExecutionFinished;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
@@ -12,6 +14,7 @@ use Studio\Gesso\Coverage\CoverageSidecarEnvelope;
 use Studio\Gesso\Coverage\CoverageSidecarReader;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\Coverage\SdkExerciseCoverageTracker;
+use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\PHPUnit\ConsoleOutput;
 use Studio\Gesso\PHPUnit\CoverageReportSubscriber;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
@@ -29,7 +32,9 @@ use function mkdir;
 use function ob_get_clean;
 use function ob_start;
 use function putenv;
+use function restore_error_handler;
 use function rmdir;
+use function set_error_handler;
 use function sys_get_temp_dir;
 use function uniqid;
 use function unlink;
@@ -53,6 +58,7 @@ class CoverageReportSubscriberWorkerModeTest extends TestCase
         SdkExerciseCoverageTracker::resetCurrent();
         OpenApiSpecLoader::reset();
         OpenApiSpecLoader::configure(__DIR__ . '/../../fixtures/specs');
+        Deprecations::resetForTesting();
 
         $this->tmpDir = sys_get_temp_dir() . '/openapi-coverage-subscriber-' . uniqid('', true);
 
@@ -81,6 +87,7 @@ class CoverageReportSubscriberWorkerModeTest extends TestCase
         OpenApiCoverageTracker::reset();
         SdkExerciseCoverageTracker::resetCurrent();
         OpenApiSpecLoader::reset();
+        Deprecations::resetForTesting();
         parent::tearDown();
     }
 
@@ -136,9 +143,10 @@ class CoverageReportSubscriberWorkerModeTest extends TestCase
 
         $loaded = CoverageSidecarReader::readDir($this->tmpDir);
         $this->assertCount(1, $loaded);
-        // v6 envelope: coverage, strict trackers, and SDK exercise are nested.
+        // v8 envelope: coverage, strict trackers, SDK exercise, and the
+        // deprecation counts are nested.
         $this->assertSame(
-            CoverageSidecarEnvelope::ENVELOPE_VERSION_WITH_SDK_EXERCISE,
+            CoverageSidecarEnvelope::ENVELOPE_VERSION_WITH_DEPRECATIONS,
             $loaded[0]['envelopeVersion'],
         );
         $this->assertSame(1, $loaded[0]['coverage']['version']);
@@ -146,6 +154,58 @@ class CoverageReportSubscriberWorkerModeTest extends TestCase
         $this->assertSame(
             1,
             $loaded[0]['sdkExercise']['observations']['petstore-3.0']['GET /v1/pets'][200]['application/json'],
+        );
+        // Issue #499: staged even when empty. A missing half and "this worker
+        // used none" must stay distinguishable in the merged report.
+        $this->assertSame(
+            ['version' => 1, 'deprecations' => []],
+            $loaded[0]['deprecations'],
+        );
+    }
+
+    #[Test]
+    public function worker_mode_stages_its_deprecation_counts_in_the_sidecar(): void
+    {
+        // A worker returns before the end-of-run report, so the sidecar is the
+        // only path by which its counts can reach `gesso coverage:merge`.
+        set_error_handler(static fn(int $errno): bool => $errno === E_USER_DEPRECATED);
+
+        try {
+            for ($i = 0; $i < 2; $i++) {
+                Deprecations::notice(
+                    id: 'laravel.config.auto_inject_dummy_bearer',
+                    subject: "The Laravel config key 'auto_inject_dummy_bearer'",
+                    replacement: "'auto_inject_dummy_credentials'",
+                    removedIn: '3.0',
+                );
+            }
+        } finally {
+            restore_error_handler();
+        }
+
+        putenv('TEST_TOKEN=3');
+        $subscriber = new CoverageReportSubscriber(
+            specs: ['petstore-3.0'],
+            outputFile: null,
+            consoleOutput: ConsoleOutput::DEFAULT,
+            githubSummaryPath: null,
+            sidecarDir: $this->tmpDir,
+        );
+
+        ob_start();
+        $subscriber->notify($this->fakeExecutionFinished());
+        ob_get_clean();
+
+        $loaded = CoverageSidecarReader::readDir($this->tmpDir);
+        $this->assertCount(1, $loaded);
+        $this->assertSame(
+            [
+                'version' => 1,
+                'deprecations' => [
+                    'laravel.config.auto_inject_dummy_bearer' => ['count' => 2, 'removed_in' => '3.0'],
+                ],
+            ],
+            $loaded[0]['deprecations'],
         );
     }
 

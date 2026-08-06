@@ -15,6 +15,7 @@ use Studio\Gesso\Baseline\ViolationBaseline;
 use Studio\Gesso\Baseline\ViolationBaselineFile;
 use Studio\Gesso\Exception\InvalidOpenApiSpecException;
 use Studio\Gesso\Exception\SpecFileNotFoundException;
+use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\PHPUnit\ConsoleOutput;
 use Studio\Gesso\PHPUnit\CoverageReportSubscriber;
 use Studio\Gesso\PHPUnit\OpenApiCoverageExtension;
@@ -455,6 +456,8 @@ final class CoverageMergeCommand
         $sidecarsWithoutBaseline = 0;
         $sidecarsWithoutStrictAdditionalProperties = 0;
         $sidecarsWithoutSdkExercise = 0;
+        $sidecarsWithoutDeprecations = 0;
+        $deprecationStates = [];
         foreach ($payloads as $payload) {
             try {
                 $parsed = CoverageSidecarEnvelope::parse($payload);
@@ -472,6 +475,11 @@ final class CoverageMergeCommand
                 } else {
                     $sidecarsWithoutSdkExercise++;
                 }
+                if ($parsed['deprecations'] !== null) {
+                    $deprecationStates[] = $parsed['deprecations'];
+                } else {
+                    $sidecarsWithoutDeprecations++;
+                }
                 if ($parsed['baseline'] !== null) {
                     // parseDocument re-validates the embedded document
                     // (unknown baseline_version fails loudly — the
@@ -488,6 +496,12 @@ final class CoverageMergeCommand
                 return 1;
             }
         }
+
+        // Reported before the gates below, and before any of them can return
+        // non-zero: a parallel run's deprecation report is the only place the
+        // residual count surfaces at all, so it must not depend on the merge
+        // succeeding. Issue #499.
+        $this->reportDeprecations($deprecationStates, $sidecarsWithoutDeprecations, count($payloads));
 
         if (!$this->handleBaseline($baselineFile, $mergedBaseline, $sidecarsWithoutBaseline, count($payloads))) {
             return 1;
@@ -627,6 +641,58 @@ final class CoverageMergeCommand
         }
 
         return !in_array(strtolower(trim($value)), ['0', 'false', 'no'], true);
+    }
+
+    /**
+     * Issue #499: report the deprecation counts the workers staged, summed
+     * across the fleet. Silence means no worker used a deprecated surface —
+     * the documented "ready for the next major" signal — so a fleet that
+     * cannot prove that has to say so instead of printing nothing.
+     *
+     * A sidecar written by a pre-#499 worker carries no deprecation half,
+     * which is indistinguishable from "that worker used none". The note is
+     * therefore emitted whether or not the merged count is empty: an
+     * incomplete zero and an incomplete non-zero are both unsafe to read as
+     * the readiness verdict.
+     *
+     * @param list<array<string, mixed>> $states
+     */
+    private function reportDeprecations(array $states, int $sidecarsWithoutDeprecations, int $sidecarCount): void
+    {
+        try {
+            $merged = Deprecations::mergeStates($states);
+        } catch (InvalidArgumentException $e) {
+            // Never fatal: a malformed deprecation half must not fail a merge
+            // whose coverage and gate data parsed cleanly. Report it instead,
+            // because the alternative is silence that reads as "no
+            // deprecations".
+            $this->writeStderr(sprintf(
+                "%s WARNING: could not read the staged deprecation state: %s The residual count is not reported for this run.\n",
+                Deprecations::PREFIX,
+                $e->getMessage(),
+            ));
+
+            return;
+        }
+
+        $summary = Deprecations::renderSummary($merged);
+        if ($summary !== null) {
+            $this->writeStderr($summary);
+        }
+
+        if ($sidecarsWithoutDeprecations === 0) {
+            return;
+        }
+
+        $this->writeStderr(sprintf(
+            "%s NOTE: %d of %d worker sidecar(s) carry no deprecation state (written by a Gesso version older than the deprecation channel), so %s. Upgrade every worker to the same version before reading this as a v3-readiness verdict.\n",
+            Deprecations::PREFIX,
+            $sidecarsWithoutDeprecations,
+            $sidecarCount,
+            $summary === null
+                ? 'the absence of a deprecation report above does not prove the suite uses none'
+                : 'the counts above are a lower bound',
+        ));
     }
 
     /**

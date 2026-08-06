@@ -32,6 +32,7 @@ use Studio\Gesso\Coverage\SdkExerciseCoverageTracker;
 use Studio\Gesso\Exception\InvalidOpenApiSpecException;
 use Studio\Gesso\Exception\InvalidOpenApiSpecReason;
 use Studio\Gesso\Exception\SpecFileNotFoundException;
+use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\Internal\PartialRunDecision;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Validation\Strict\StrictAdditionalPropertiesAsserter;
@@ -204,6 +205,11 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
         }
 
         $this->restoreSpecLoaderConfigurationIfReset();
+
+        // Written before the gates below because `strict_*` in fail mode can
+        // terminate the process; the residual count is the migration signal for
+        // the next major and must not depend on the run passing.
+        $this->reportDeprecations();
 
         $results = $this->computeAllResults();
         $sdkResults = $this->computeAllSdkResults();
@@ -566,12 +572,18 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
         // workers. The strict_required half is always exported, independent
         // of the worker's `strict_required` mode — the merge CLI decides
         // whether to assert (Issue #226).
+        //
+        // Issue #499: the deprecation half travels the same way. A worker
+        // returns before the end-of-run report, so without this the residual
+        // count would be empty for every parallel run — and an empty count is
+        // exactly the "ready for the next major" signal.
         $envelope = CoverageSidecarEnvelope::build(
             coverageState: $this->coverageTracker->exportStateOn(),
             strictRequiredState: $this->strictRequiredTracker->exportStateOn(),
             baselineDocument: $baselineDocument,
             strictAdditionalPropertiesState: $this->strictAdditionalPropertiesTracker->exportStateOn(),
             sdkExerciseState: $this->sdkExerciseCoverageTracker->exportStateOn(),
+            deprecationsState: Deprecations::exportState(),
         );
 
         try {
@@ -660,6 +672,22 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
             $collector->baseline()->count(),
             $this->baselineGeneratePath,
         ));
+    }
+
+    /**
+     * Write the one-line residual deprecation count, or nothing when no
+     * deprecated surface was used in this run. {@see Deprecations::summaryLine()}
+     * owns the wording; the subscriber only decides where it goes and that it
+     * is stderr, for the reason recorded on `writeStderr()`.
+     */
+    private function reportDeprecations(): void
+    {
+        $line = Deprecations::summaryLine();
+        if ($line === null) {
+            return;
+        }
+
+        $this->writeStderr($line);
     }
 
     /**
