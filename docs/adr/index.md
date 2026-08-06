@@ -10,6 +10,7 @@ just a pull request.
 | [0002 — Phase Arazzo workflow execution behind shared runtime expressions](0002-arazzo-workflow-execution.md) | Accepted | 2026-07-30 | Arazzo support lands in phases, starting from a runtime-expression evaluator shared with the existing validators. |
 | [0003 — Branch-complete response payloads and an SDK round-trip harness](0003-sdk-roundtrip-harness.md) | Accepted | 2026-07-31 | Close the SDK ⇄ spec gap by feeding spec-derived payloads through a generated decoder. |
 | [0004 — v3 consistency policy and protected core](0004-v3-consistency-policy-and-protected-core.md) | Accepted | 2026-08-06 | v3 changes shape, not capability: the invariants that may not regress, the inclusion criterion and its non-goals, and the rule a reduction PR is held to. |
+| [0005 — v3 configuration and CLI naming](0005-v3-configuration-and-cli-naming.md) | Accepted | 2026-08-06 | Resolves the naming conflicts between the four v3 rename issues, and fixes the `gesso.php` key set and the `coverage:merge` flag set they all target. |
 
 ## Writing one
 
