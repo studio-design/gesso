@@ -27,7 +27,7 @@ class OpenApiCoverageExtensionValidationOutputTest extends TestCase
     {
         parent::setUp();
         OpenApiSpecLoader::reset();
-        putenv('OPENAPI_VALIDATION_OUTPUT');
+        putenv('GESSO_VALIDATION_FORMAT');
         ValidationOutput::reset();
 
         $buffer = fopen('php://memory', 'w+');
@@ -46,7 +46,7 @@ class OpenApiCoverageExtensionValidationOutputTest extends TestCase
             $this->stderrBuffer = null;
         }
         OpenApiSpecLoader::reset();
-        putenv('OPENAPI_VALIDATION_OUTPUT');
+        putenv('GESSO_VALIDATION_FORMAT');
         ValidationOutput::reset();
         parent::tearDown();
     }
@@ -101,7 +101,7 @@ class OpenApiCoverageExtensionValidationOutputTest extends TestCase
     #[Test]
     public function environment_variable_still_wins_over_the_parameter(): void
     {
-        putenv('OPENAPI_VALIDATION_OUTPUT=text');
+        putenv('GESSO_VALIDATION_FORMAT=text');
 
         $this->setupExtension(['validation_output' => 'json']);
 

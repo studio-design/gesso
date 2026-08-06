@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Route;
 use Orchestra\Testbench\TestCase;
 use PHPUnit\Framework\Attributes\Test;
+use Studio\Gesso\Internal\LegacyIdentity;
 use Studio\Gesso\Laravel\GessoServiceProvider;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 
@@ -29,6 +30,7 @@ final class OpenApiRoutesCommandIntegrationTest extends TestCase
     {
         parent::setUp();
         OpenApiSpecLoader::reset();
+        LegacyIdentity::resetForTesting();
         config()->set('gesso.default_spec', 'route-parity');
         config()->set('gesso.spec_base_path', dirname(__DIR__, 2) . '/fixtures/specs');
         config()->set('gesso.strip_prefixes', ['/api']);
@@ -39,13 +41,39 @@ final class OpenApiRoutesCommandIntegrationTest extends TestCase
     protected function tearDown(): void
     {
         OpenApiSpecLoader::reset();
+        LegacyIdentity::resetForTesting();
         parent::tearDown();
+    }
+
+    /**
+     * Issue #504: `openapi:routes` keeps working through v3. The two paths have
+     * to be indistinguishable apart from the one deprecation line, so this
+     * compares them rather than asserting a shape twice.
+     */
+    #[Test]
+    public function the_legacy_command_name_is_an_alias_with_identical_output(): void
+    {
+        $options = ['--prefix' => 'api', '--format' => 'json'];
+
+        $currentExit = Artisan::call('gesso:routes', $options);
+        $currentOutput = Artisan::output();
+        $this->assertSame([], LegacyIdentity::warnings());
+
+        $legacyExit = Artisan::call('openapi:routes', $options);
+
+        $this->assertSame($currentExit, $legacyExit);
+        $this->assertSame($currentOutput, Artisan::output());
+        $this->assertSame(
+            ['[Gesso] WARNING: openapi:routes is deprecated and will be removed in Gesso '
+                . LegacyIdentity::REMOVED_IN . '. Use gesso:routes.'],
+            LegacyIdentity::warnings(),
+        );
     }
 
     #[Test]
     public function command_is_registered_and_renders_route_parity(): void
     {
-        $exitCode = Artisan::call('openapi:routes', [
+        $exitCode = Artisan::call('gesso:routes', [
             '--prefix' => 'api',
             '--middleware' => ['api'],
             '--domain' => ['api.example.test'],
@@ -64,7 +92,7 @@ final class OpenApiRoutesCommandIntegrationTest extends TestCase
     #[Test]
     public function json_output_is_versioned_and_supports_multiple_specs(): void
     {
-        $exitCode = Artisan::call('openapi:routes', [
+        $exitCode = Artisan::call('gesso:routes', [
             '--spec' => ['route-parity', 'route-parity-admin'],
             '--prefix' => 'api',
             '--middleware' => ['api'],
@@ -87,7 +115,7 @@ final class OpenApiRoutesCommandIntegrationTest extends TestCase
     #[Test]
     public function json_output_matches_the_v2_compatibility_fixture(): void
     {
-        $exitCode = Artisan::call('openapi:routes', [
+        $exitCode = Artisan::call('gesso:routes', [
             '--spec' => ['route-parity', 'route-parity-admin'],
             '--prefix' => 'api',
             '--middleware' => ['api'],
@@ -113,7 +141,7 @@ final class OpenApiRoutesCommandIntegrationTest extends TestCase
                 ->name("undocumented.{$index}");
         }
 
-        $exitCode = Artisan::call('openapi:routes', [
+        $exitCode = Artisan::call('gesso:routes', [
             '--format' => 'json',
         ]);
 
@@ -138,11 +166,11 @@ final class OpenApiRoutesCommandIntegrationTest extends TestCase
             '--format' => 'json',
         ];
 
-        $this->assertSame(1, Artisan::call('openapi:routes', [
+        $this->assertSame(1, Artisan::call('gesso:routes', [
             ...$options,
             '--fail-on-undocumented' => true,
         ]));
-        $this->assertSame(1, Artisan::call('openapi:routes', [
+        $this->assertSame(1, Artisan::call('gesso:routes', [
             ...$options,
             '--fail-on-unimplemented' => true,
         ]));
@@ -151,7 +179,7 @@ final class OpenApiRoutesCommandIntegrationTest extends TestCase
     #[Test]
     public function documented_side_exclusions_are_reported_and_ignored_by_the_strict_gate(): void
     {
-        $exitCode = Artisan::call('openapi:routes', [
+        $exitCode = Artisan::call('gesso:routes', [
             '--prefix' => 'api',
             '--middleware' => ['api'],
             '--domain' => ['api.example.test'],
@@ -175,7 +203,7 @@ final class OpenApiRoutesCommandIntegrationTest extends TestCase
         config()->set('gesso.route_parity.external_operation_ids', ['does-not-match']);
         config()->set('gesso.route_parity.external_openapi_paths', ['/v1/miss*']);
 
-        $exitCode = Artisan::call('openapi:routes', [
+        $exitCode = Artisan::call('gesso:routes', [
             '--prefix' => 'api',
             '--middleware' => ['api'],
             '--domain' => ['api.example.test'],
@@ -196,7 +224,7 @@ final class OpenApiRoutesCommandIntegrationTest extends TestCase
     {
         config()->set('gesso.route_parity.external_operation_ids', 'forms.*');
 
-        $this->assertSame(1, Artisan::call('openapi:routes'));
+        $this->assertSame(1, Artisan::call('gesso:routes'));
         $this->assertStringContainsString(
             'gesso.route_parity.external_operation_ids must be an array of strings',
             Artisan::output(),
@@ -206,7 +234,7 @@ final class OpenApiRoutesCommandIntegrationTest extends TestCase
     #[Test]
     public function invalid_format_returns_invalid_exit_code(): void
     {
-        $this->assertSame(2, Artisan::call('openapi:routes', ['--format' => 'xml']));
+        $this->assertSame(2, Artisan::call('gesso:routes', ['--format' => 'xml']));
         $this->assertStringContainsString('Unsupported format', Artisan::output());
     }
 

@@ -27,7 +27,7 @@ command.
 2. Generate the baseline (full suite, no `--filter`):
 
    ```bash
-   OPENAPI_BASELINE_GENERATE=1 vendor/bin/phpunit
+   GESSO_BASELINE_GENERATE=1 vendor/bin/phpunit
    ```
 
    Every contract violation is recorded instead of failing, and the sorted,
@@ -85,7 +85,7 @@ the merge step unions them into the committed file:
 ```bash
 # 1. Run the parallel suite in generation mode — failures are demoted,
 #    fingerprints ride the worker sidecars.
-OPENAPI_BASELINE_GENERATE=1 vendor/bin/paratest --processes=4
+GESSO_BASELINE_GENERATE=1 vendor/bin/paratest --processes=4
 
 # 2. Union the worker halves and write the baseline.
 vendor/bin/gesso coverage:merge \

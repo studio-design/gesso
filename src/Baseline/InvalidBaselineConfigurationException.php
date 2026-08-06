@@ -8,7 +8,7 @@ use RuntimeException;
 use Studio\Gesso\PHPUnit\OpenApiCoverageExtension;
 
 /**
- * Thrown by {@see OpenApiCoverageExtension} when `OPENAPI_BASELINE_GENERATE`
+ * Thrown by {@see OpenApiCoverageExtension} when `GESSO_BASELINE_GENERATE`
  * is set but no `baseline_file` parameter names the output path. A
  * generation run that silently produced nothing would look like "zero
  * violations", so the misconfiguration must abort bootstrap; bootstrap()

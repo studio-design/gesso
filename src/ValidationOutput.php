@@ -6,8 +6,9 @@ namespace Studio\Gesso;
 
 use const STDERR;
 
+use Studio\Gesso\Internal\LegacyIdentity;
+
 use function fwrite;
-use function getenv;
 use function mb_strtolower;
 use function trim;
 
@@ -18,14 +19,15 @@ use function trim;
  * {@see format()} when composing an assertion failure message, so one switch
  * selects the same mode everywhere. Resolution priority:
  *
- * 1. environment variable `OPENAPI_VALIDATION_OUTPUT` (`text` | `json`);
+ * 1. environment variable `GESSO_VALIDATION_FORMAT` (`text` | `json`), or the
+ *    pre-v3 spelling {@see LegacyIdentity} still accepts for it;
  * 2. the format selected via {@see use()} (directly or through the PHPUnit
  *    extension's `validation_output` parameter);
  * 3. {@see ValidationOutputFormat::Text} (the historical default).
  *
  * An unrecognised environment value warns on STDERR once per process and
  * falls through to the next source, mirroring the coverage extension's
- * `OPENAPI_CONSOLE_OUTPUT` handling.
+ * `GESSO_CONSOLE_OUTPUT` handling.
  */
 final class ValidationOutput
 {
@@ -36,7 +38,7 @@ final class ValidationOutput
 
     public static function format(): ValidationOutputFormat
     {
-        $envValue = getenv('OPENAPI_VALIDATION_OUTPUT');
+        $envValue = LegacyIdentity::env('GESSO_VALIDATION_FORMAT');
 
         if ($envValue !== false && trim($envValue) !== '') {
             $resolved = ValidationOutputFormat::tryFrom(mb_strtolower(trim($envValue)));
@@ -47,7 +49,7 @@ final class ValidationOutput
 
             if (!self::$warnedInvalidEnv) {
                 self::$warnedInvalidEnv = true;
-                fwrite(STDERR, "[Gesso] WARNING: Invalid OPENAPI_VALIDATION_OUTPUT value '{$envValue}'. Valid values: text, json. Falling back to the configured format.\n");
+                fwrite(STDERR, "[Gesso] WARNING: Invalid GESSO_VALIDATION_FORMAT value '{$envValue}'. Valid values: text, json. Falling back to the configured format.\n");
             }
         }
 

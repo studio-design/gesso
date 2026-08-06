@@ -7,8 +7,8 @@ php artisan vendor:publish --tag=gesso
 
 Register the extension in `phpunit.xml`. This is what configures the spec loader
 for the runtime validator; `gesso.spec_base_path` in the published
-`config/gesso.php` does not — it only feeds the `openapi:routes` and
-`openapi:stubs` Artisan commands:
+`config/gesso.php` does not — it only feeds the `gesso:routes` and
+`gesso:stubs` Artisan commands:
 
 ```xml
 <extensions>

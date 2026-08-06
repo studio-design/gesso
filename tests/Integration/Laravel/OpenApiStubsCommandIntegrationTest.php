@@ -7,6 +7,7 @@ namespace Studio\Gesso\Tests\Integration\Laravel;
 use Illuminate\Support\Facades\Artisan;
 use Orchestra\Testbench\TestCase;
 use PHPUnit\Framework\Attributes\Test;
+use Studio\Gesso\Internal\LegacyIdentity;
 use Studio\Gesso\Laravel\GessoServiceProvider;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 
@@ -28,6 +29,7 @@ final class OpenApiStubsCommandIntegrationTest extends TestCase
         $this->outputDir = sys_get_temp_dir() . '/gesso-artisan-stubs-' . uniqid('', true);
         parent::setUp();
         OpenApiSpecLoader::reset();
+        LegacyIdentity::resetForTesting();
         config()->set('gesso.default_spec', 'petstore-3.0');
         config()->set('gesso.spec_base_path', dirname(__DIR__, 2) . '/fixtures/specs');
     }
@@ -41,13 +43,33 @@ final class OpenApiStubsCommandIntegrationTest extends TestCase
         }
         @rmdir($this->outputDir);
         OpenApiSpecLoader::reset();
+        LegacyIdentity::resetForTesting();
         parent::tearDown();
+    }
+
+    /** Issue #504: `openapi:stubs` keeps working through v3, with one extra line. */
+    #[Test]
+    public function the_legacy_command_name_is_an_alias_with_identical_output(): void
+    {
+        $currentExit = Artisan::call('gesso:stubs', ['--output' => $this->outputDir, '--dry-run' => true]);
+        $currentOutput = Artisan::output();
+        $this->assertSame([], LegacyIdentity::warnings());
+
+        $legacyExit = Artisan::call('openapi:stubs', ['--output' => $this->outputDir, '--dry-run' => true]);
+
+        $this->assertSame($currentExit, $legacyExit);
+        $this->assertSame($currentOutput, Artisan::output());
+        $this->assertSame(
+            ['[Gesso] WARNING: openapi:stubs is deprecated and will be removed in Gesso '
+                . LegacyIdentity::REMOVED_IN . '. Use gesso:stubs.'],
+            LegacyIdentity::warnings(),
+        );
     }
 
     #[Test]
     public function command_is_registered_and_resolves_the_spec_from_config(): void
     {
-        $exitCode = Artisan::call('openapi:stubs', ['--output' => $this->outputDir]);
+        $exitCode = Artisan::call('gesso:stubs', ['--output' => $this->outputDir]);
 
         $this->assertSame(0, $exitCode);
         $this->assertStringContainsString('GetV1PetsTest.php', Artisan::output());
@@ -64,7 +86,7 @@ final class OpenApiStubsCommandIntegrationTest extends TestCase
     #[Test]
     public function a_dry_run_writes_nothing(): void
     {
-        $exitCode = Artisan::call('openapi:stubs', ['--output' => $this->outputDir, '--dry-run' => true]);
+        $exitCode = Artisan::call('gesso:stubs', ['--output' => $this->outputDir, '--dry-run' => true]);
 
         $this->assertSame(0, $exitCode);
         $this->assertStringContainsString('Would write', Artisan::output());
@@ -74,7 +96,7 @@ final class OpenApiStubsCommandIntegrationTest extends TestCase
     #[Test]
     public function an_unsupported_adapter_is_a_usage_error(): void
     {
-        $exitCode = Artisan::call('openapi:stubs', ['--adapter' => 'codeception']);
+        $exitCode = Artisan::call('gesso:stubs', ['--adapter' => 'codeception']);
 
         $this->assertSame(2, $exitCode);
         $this->assertStringContainsString('Unsupported adapter', Artisan::output());
@@ -85,7 +107,7 @@ final class OpenApiStubsCommandIntegrationTest extends TestCase
     {
         config()->set('gesso.default_spec', 'does-not-exist');
 
-        $exitCode = Artisan::call('openapi:stubs', ['--output' => $this->outputDir]);
+        $exitCode = Artisan::call('gesso:stubs', ['--output' => $this->outputDir]);
 
         $this->assertSame(2, $exitCode);
         $this->assertStringContainsString('does-not-exist.json', Artisan::output());

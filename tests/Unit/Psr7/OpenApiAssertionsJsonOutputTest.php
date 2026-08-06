@@ -31,7 +31,7 @@ final class OpenApiAssertionsJsonOutputTest extends TestCase
         parent::setUp();
         OpenApiSpecLoader::reset();
         OpenApiCoverageTracker::reset();
-        putenv('OPENAPI_VALIDATION_OUTPUT');
+        putenv('GESSO_VALIDATION_FORMAT');
         ValidationOutput::reset();
         OpenApiSpecLoader::configure(__DIR__ . '/../../fixtures/specs');
     }
@@ -40,7 +40,7 @@ final class OpenApiAssertionsJsonOutputTest extends TestCase
     {
         OpenApiSpecLoader::reset();
         OpenApiCoverageTracker::reset();
-        putenv('OPENAPI_VALIDATION_OUTPUT');
+        putenv('GESSO_VALIDATION_FORMAT');
         ValidationOutput::reset();
         parent::tearDown();
     }
@@ -78,7 +78,7 @@ final class OpenApiAssertionsJsonOutputTest extends TestCase
     #[Test]
     public function json_mode_is_selected_by_the_environment_variable(): void
     {
-        putenv('OPENAPI_VALIDATION_OUTPUT=json');
+        putenv('GESSO_VALIDATION_FORMAT=json');
         $request = new Request('GET', 'https://example.test/body/scalar');
         $response = new Response(200, ['Content-Type' => 'application/json'], '"wrong"');
 

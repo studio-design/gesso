@@ -39,7 +39,7 @@ This library follows [Semantic Versioning 2.0](https://semver.org/). v1.0.0 is t
   bump `schema_version`).
 - The validation failure output selection: the `ValidationOutputFormat` enum
   (`text` | `json`), the `ValidationOutput` methods (`format()`, `use()`,
-  `reset()`), the `OPENAPI_VALIDATION_OUTPUT` environment variable, and the
+  `reset()`), the `GESSO_VALIDATION_FORMAT` environment variable, and the
   json-mode failure shape (one header line followed by the versioned JSON
   document; for the PSR-7 exchange assertion, one `[request]` / `[response]`
   labelled document per failing side).
@@ -57,7 +57,7 @@ This library follows [Semantic Versioning 2.0](https://semver.org/). v1.0.0 is t
   `keyword: required` (credentials absent) or `keyword: format` (present but
   unusable), and adapter body-decode failures (unparseable JSON, unreadable
   stream) carry `keyword: parse` so they stay distinct from a genuinely empty
-  body), the `OPENAPI_BASELINE_GENERATE` environment variable, and the
+  body), the `GESSO_BASELINE_GENERATE` environment variable, and the
   `baseline_file` / `baseline_stale` extension parameters (`baseline_stale`
   values: `off` | `note` | `fail`, default `note`). The enforcement semantics
   are part of the contract too: with `baseline_file` configured, a failing
@@ -75,7 +75,7 @@ This library follows [Semantic Versioning 2.0](https://semver.org/). v1.0.0 is t
   `coverage_baseline_file` / `coverage_baseline_stale` extension parameters
   (same values as `baseline_stale`), the matching
   `--coverage-baseline-file` / `--coverage-baseline-stale` merge flags, and
-  the shared `OPENAPI_BASELINE_GENERATE` generation switch are covered too.
+  the shared `GESSO_BASELINE_GENERATE` generation switch are covered too.
   The enforcement semantics are part of the contract: responses that were not
   validated — including responses skipped by `skip_response_codes` — are
   baselined, an uncovered response absent from the file fails the run, and
@@ -93,7 +93,11 @@ This library follows [Semantic Versioning 2.0](https://semver.org/). v1.0.0 is t
     `bin/gesso` entry point
   - v2.x: the `doctor`, `coverage:merge`, `coverage:gate`, and `stubs`
     subcommands of `bin/gesso`; the legacy standalone binaries are not shipped
-- The Laravel `openapi:routes` and `openapi:stubs` command surfaces (flags, exit codes, and versioned JSON output)
+- The Laravel `gesso:routes` and `gesso:stubs` command surfaces (flags, exit codes, and versioned JSON output)
+- The three environment variables Gesso owns — `GESSO_VALIDATION_FORMAT`,
+  `GESSO_CONSOLE_OUTPUT`, and `GESSO_BASELINE_GENERATE` — and the values each
+  accepts. `TEST_TOKEN` and `GITHUB_STEP_SUMMARY` are read but belong to
+  paratest and GitHub Actions; they are not Gesso's to version.
 - The `OpenApiCoverageExtension` PHPUnit configuration parameters (`spec_base_path`, `strip_prefixes`, `specs`, `output_file`, `console_output`, `validation_output`, `baseline_file`, `coverage_baseline_file`, `strict_required`, `strict_additional_properties`, `strict_additional_properties_per_call`, …)
 - The Laravel `ValidatesOpenApiSchema` trait's public methods
 - The category prefixes used in `E_USER_WARNING` messages (`[security]`, `[OpenAPI Schema]`, and the `[OpenAPI 3.2 ...]` categories) and in `E_USER_DEPRECATED` messages (`[Gesso deprecation]`). Adding a category is a minor change; renaming or removing one is major.
@@ -213,6 +217,27 @@ Conventional Commit types — so the constraint is an ordering one: every v2
 release must ship before the first breaking commit reaches `main`, because that
 commit turns the pending release into `3.0.0` and no further v2 release can be
 cut from the branch.
+
+### Renamed spellings still accepted
+
+A rename that keeps the old spelling working is not a removal, so it does not go
+through the `E_USER_DEPRECATED` channel above: a suite running PHPUnit's
+`failOnDeprecation` would fail for spelling a name that still works. These names
+warn once per process on STDERR instead, under the `[Gesso]` prefix, and each
+warning names its replacement and its removal version.
+
+| Accepted spelling | Use instead | Accepted through | Removed in |
+| --- | --- | --- | --- |
+| `OPENAPI_VALIDATION_OUTPUT` | `GESSO_VALIDATION_FORMAT` | v3.x | v4.0 |
+| `OPENAPI_CONSOLE_OUTPUT` | `GESSO_CONSOLE_OUTPUT` | v3.x | v4.0 |
+| `OPENAPI_BASELINE_GENERATE` | `GESSO_BASELINE_GENERATE` | v3.x | v4.0 |
+| `openapi:routes` | `gesso:routes` | v3.x | v4.0 |
+| `openapi:stubs` | `gesso:stubs` | v3.x | v4.0 |
+
+The current spelling wins when both are set, and setting only the accepted one
+resolves to the same value with no behaviour difference. The map lives in
+`Studio\Gesso\Internal\LegacyIdentity`; its removal is tracked by
+[#523](https://github.com/studio-design/gesso/issues/523).
 
 ## Support policy
 

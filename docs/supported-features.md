@@ -121,6 +121,8 @@ A second channel, `trigger_error(..., E_USER_DEPRECATED)`, carries migration not
 | `[OpenAPI 3.2 $self]` | `E_USER_WARNING` | `OpenApiSpecLoader` (`$self` base URI is not applied) | spec load/cache |
 | `[Gesso deprecation]` | `E_USER_DEPRECATED` | `Internal\Deprecations` (every deprecated configuration key, CLI flag, and PHP symbol) | deprecation id |
 
+**Not on either channel:** a rename whose old spelling still works writes a plain `[Gesso] WARNING:` line to STDERR instead — going through `E_USER_DEPRECATED` would make a `failOnDeprecation` suite fail for using a name that is still supported. The three `OPENAPI_*` environment variables and the `openapi:routes` / `openapi:stubs` Artisan commands are the current members; see [renamed spellings still accepted](versioning.md#renamed-spellings-still-accepted).
+
 **Deprecation notices:** each notice names what to use instead and the version that removes the surface, because the emitter cannot represent one that does not. Under the PHPUnit extension, one summary line is written to STDERR after the run listing every deprecated surface still in use with its call count; nothing is written when the run used none. Under paratest each worker stages its counts in the sidecar and `gesso coverage:merge` writes the one summed line, so the report survives a parallel run. See [Deprecations in `UPGRADING.md`](https://github.com/studio-design/gesso/blob/main/UPGRADING.md#deprecations) for the current list and [versioning](versioning.md) for the rule that ties a removal to a prior deprecation.
 
 **How to consume:**

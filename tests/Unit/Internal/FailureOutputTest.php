@@ -24,13 +24,13 @@ class FailureOutputTest extends TestCase
     {
         parent::setUp();
 
-        putenv('OPENAPI_VALIDATION_OUTPUT');
+        putenv('GESSO_VALIDATION_FORMAT');
         ValidationOutput::reset();
     }
 
     protected function tearDown(): void
     {
-        putenv('OPENAPI_VALIDATION_OUTPUT');
+        putenv('GESSO_VALIDATION_FORMAT');
         ValidationOutput::reset();
 
         parent::tearDown();
@@ -81,7 +81,7 @@ class FailureOutputTest extends TestCase
     #[Test]
     public function json_mode_follows_the_environment_variable(): void
     {
-        putenv('OPENAPI_VALIDATION_OUTPUT=json');
+        putenv('GESSO_VALIDATION_FORMAT=json');
 
         $message = FailureOutput::compose(
             'OpenAPI request validation failed for POST /v1/pets (spec: front)',

@@ -11,6 +11,7 @@ use Illuminate\Contracts\Foundation\Application;
 use InvalidArgumentException;
 use RuntimeException;
 use Studio\Gesso\Cli\StubsCommand;
+use Studio\Gesso\Internal\LegacyIdentity;
 use Studio\Gesso\Stubs\StubRenderer;
 
 use function config;
@@ -31,12 +32,14 @@ use function trim;
  * path comes from `gesso.spec_base_path` + `gesso.default_spec` so a Laravel
  * user does not have to repeat what the published config already states.
  *
- * @internal Registered by GessoServiceProvider. Use the `openapi:stubs` Artisan
+ * @internal Registered by GessoServiceProvider. Use the `gesso:stubs` Artisan
  *           command rather than constructing this class directly.
  */
 final class OpenApiStubsCommand extends Command
 {
-    protected $signature = 'openapi:stubs
+    /** Issue #504: the pre-v3 spelling, accepted through v3 and removed in v4. */
+    protected $aliases = ['openapi:stubs'];
+    protected $signature = 'gesso:stubs
         {--spec= : Spec name resolved under gesso.spec_base_path, or a path to a spec file}
         {--coverage= : Coverage JSON (schema_version 3); only uncovered responses are stubbed}
         {--adapter=laravel : Generated test idiom: phpunit, laravel, symfony or pest}
@@ -48,6 +51,8 @@ final class OpenApiStubsCommand extends Command
 
     public function handle(Application $application): int
     {
+        LegacyIdentity::warnIfLegacyCommand((string) $this->input->getFirstArgument());
+
         $adapter = trim((string) $this->option('adapter'));
         if (!in_array($adapter, StubRenderer::ADAPTERS, true)) {
             $this->components->error(sprintf(
@@ -86,7 +91,7 @@ final class OpenApiStubsCommand extends Command
         $command = new StubsCommand(
             stdoutWriter: $write,
             stderrWriter: $write,
-            invocation: 'php artisan openapi:stubs',
+            invocation: 'php artisan gesso:stubs',
         );
 
         return $command->run($options) === StubsCommand::EXIT_OK ? self::SUCCESS : self::INVALID;

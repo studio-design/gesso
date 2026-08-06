@@ -52,8 +52,8 @@ vendor/bin/gesso coverage:merge \
 | `--min-coverage-strict` | `false` (warn-only) | Treat threshold misses as exit non-zero |
 | `--strict-required=<mode>` | `off` | `off` / `warn` / `fail`. Assert no schema under-description drift across worker observations. See [`strict-required.md`](strict-required.md#paratest) |
 | `--strict-additional-properties=<mode>` | `off` | `off` / `warn` / `fail`. Report returned response properties absent from schema declarations. See [`strict-additional-properties.md`](strict-additional-properties.md#parallel-test-runners) |
-| `--baseline-file=<path>` | — | Union the violation-baseline halves staged by an `OPENAPI_BASELINE_GENERATE=1` parallel run and write the merged baseline. See [`baseline.md`](baseline.md#generating-under-parallel-runners) |
-| `--coverage-baseline-file=<path>` | — | Gate the merged coverage against a committed set of known-uncovered responses; writes the file instead when `OPENAPI_BASELINE_GENERATE=1` is set. See [`coverage-baseline.md`](coverage-baseline.md#parallel-runners) |
+| `--baseline-file=<path>` | — | Union the violation-baseline halves staged by an `GESSO_BASELINE_GENERATE=1` parallel run and write the merged baseline. See [`baseline.md`](baseline.md#generating-under-parallel-runners) |
+| `--coverage-baseline-file=<path>` | — | Gate the merged coverage against a committed set of known-uncovered responses; writes the file instead when `GESSO_BASELINE_GENERATE=1` is set. See [`coverage-baseline.md`](coverage-baseline.md#parallel-runners) |
 | `--coverage-baseline-stale=<mode>` | `note` | `off` / `note` / `fail`. How baseline entries that are covered now are reported |
 | `--no-cleanup` | (cleanup is on by default) | Keep sidecar files after merge |
 
@@ -81,7 +81,7 @@ report produced by `json_output`. The current writer emits an
 strict-required state `version: 2`, and strict-additional-properties state
 `version: 1`, plus SDK exercise state `version: 1` and deprecation state
 `version: 1`. A baseline-generation run
-(`OPENAPI_BASELINE_GENERATE=1`) emits `envelopeVersion: 9` and adds the violation-baseline document
+(`GESSO_BASELINE_GENERATE=1`) emits `envelopeVersion: 9` and adds the violation-baseline document
 (`baseline_version: 1`).
 
 The merge reader also accepts envelopes 2–7 and the older bare coverage state
@@ -124,7 +124,7 @@ changing a sidecar shape or filename pattern.
   `strict_required` parameter on the PHPUnit extension does not propagate
   to the merge step. See [`strict-required.md`](strict-required.md#paratest).
 - **Baseline generation aggregates across workers too.** An
-  `OPENAPI_BASELINE_GENERATE=1` parallel run stages fingerprints in the
+  `GESSO_BASELINE_GENERATE=1` parallel run stages fingerprints in the
   sidecars; pass `--baseline-file=<path>` to the merge to write the union.
   See [`baseline.md`](baseline.md#generating-under-parallel-runners).
 - **Worker counts are not exposed by paratest.** A child cannot reliably
@@ -136,7 +136,7 @@ changing a sidecar shape or filename pattern.
 - **A failed sidecar write does not fail the test run.** Workers log a
   warning to `STDERR` and let the suite finish — your contract assertions
   already passed; sidecar I/O is a CI artifact concern. The exception is a
-  baseline-generation run (`OPENAPI_BASELINE_GENERATE=1`): the worker
+  baseline-generation run (`GESSO_BASELINE_GENERATE=1`): the worker
   demoted its failures on the promise that the merge unions its sidecar, so
   losing the sidecar fails the worker — otherwise the merge could write an
   incomplete baseline from the remaining workers.

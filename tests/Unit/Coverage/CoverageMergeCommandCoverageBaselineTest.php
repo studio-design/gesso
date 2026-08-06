@@ -12,6 +12,7 @@ use Studio\Gesso\Coverage\CoverageMergeCommand;
 use Studio\Gesso\Coverage\CoverageSidecarEnvelope;
 use Studio\Gesso\Coverage\CoverageSidecarWriter;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
+use Studio\Gesso\Internal\LegacyIdentity;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 
@@ -43,7 +44,9 @@ class CoverageMergeCommandCoverageBaselineTest extends TestCase
         OpenApiCoverageTracker::reset();
         StrictRequiredTracker::reset();
         OpenApiSpecLoader::reset();
+        putenv('GESSO_BASELINE_GENERATE');
         putenv('OPENAPI_BASELINE_GENERATE');
+        LegacyIdentity::resetForTesting();
 
         $base = sys_get_temp_dir() . '/gesso-merge-coverage-baseline-' . uniqid('', true);
         $this->sidecarDir = $base . '/sidecars';
@@ -53,7 +56,9 @@ class CoverageMergeCommandCoverageBaselineTest extends TestCase
 
     protected function tearDown(): void
     {
+        putenv('GESSO_BASELINE_GENERATE');
         putenv('OPENAPI_BASELINE_GENERATE');
+        LegacyIdentity::resetForTesting();
         foreach (glob($this->sidecarDir . '/*') ?: [] as $path) {
             @unlink($path);
         }
@@ -92,7 +97,7 @@ class CoverageMergeCommandCoverageBaselineTest extends TestCase
         // union, not either slice.
         $this->writeWorkerSidecar('1', [['GET', '/v1/pets', '200', 'application/json']]);
         $this->writeWorkerSidecar('2', [['GET', '/v1/pets/search', '200', 'application/json']]);
-        putenv('OPENAPI_BASELINE_GENERATE=1');
+        putenv('GESSO_BASELINE_GENERATE=1');
 
         $stderr = '';
         $exit = $this->merge($stderr, $this->baselinePath);
@@ -103,6 +108,25 @@ class CoverageMergeCommandCoverageBaselineTest extends TestCase
         $this->assertFalse($written->contains($this->entry('GET', '/v1/pets', '200', 'application/json')));
         $this->assertFalse($written->contains($this->entry('GET', '/v1/pets/search', '200', 'application/json')));
         $this->assertTrue($written->contains($this->entry('GET', '/v1/pets', '500', 'application/json')));
+    }
+
+    /** Issue #504: this read site goes through {@see LegacyIdentity}, not bare getenv(). */
+    #[Test]
+    public function the_legacy_generation_env_name_still_writes_the_baseline(): void
+    {
+        $this->writeWorkerSidecar('1', [['GET', '/v1/pets', '200', 'application/json']]);
+        putenv('OPENAPI_BASELINE_GENERATE=1');
+
+        $stderr = '';
+        $exit = $this->merge($stderr, $this->baselinePath);
+
+        $this->assertSame(0, $exit);
+        $this->assertStringContainsString('[Gesso] Coverage baseline written:', $stderr);
+        $this->assertSame(
+            ['[Gesso] WARNING: OPENAPI_BASELINE_GENERATE is deprecated and will be removed in Gesso '
+                . LegacyIdentity::REMOVED_IN . '. Use GESSO_BASELINE_GENERATE.'],
+            LegacyIdentity::warnings(),
+        );
     }
 
     #[Test]
@@ -135,7 +159,7 @@ class CoverageMergeCommandCoverageBaselineTest extends TestCase
             '  - [petstore-3.0] GET /v1/pets status=200 content-type=application/json',
             $stderr,
         );
-        $this->assertStringContainsString('OPENAPI_BASELINE_GENERATE=1 gesso coverage:merge', $stderr);
+        $this->assertStringContainsString('GESSO_BASELINE_GENERATE=1 gesso coverage:merge', $stderr);
     }
 
     #[Test]
@@ -179,7 +203,7 @@ class CoverageMergeCommandCoverageBaselineTest extends TestCase
     {
         // Recovery from any coverage-baseline failure re-runs *this command*
         // — fix the path, free disk, or accept the regressions with
-        // OPENAPI_BASELINE_GENERATE=1. Cleaning up would make each of those
+        // GESSO_BASELINE_GENERATE=1. Cleaning up would make each of those
         // cost a full parallel suite run.
         $this->writeGeneratedBaseline([['GET', '/v1/pets', '200', 'application/json']]);
         $this->writeWorkerSidecar('1', [['GET', '/v1/pets/search', '200', 'application/json']]);
@@ -287,10 +311,12 @@ class CoverageMergeCommandCoverageBaselineTest extends TestCase
     private function writeGeneratedBaseline(array $covered): void
     {
         $this->writeWorkerSidecar('9', $covered);
-        putenv('OPENAPI_BASELINE_GENERATE=1');
+        putenv('GESSO_BASELINE_GENERATE=1');
         $stderr = '';
         $this->merge($stderr, $this->baselinePath);
+        putenv('GESSO_BASELINE_GENERATE');
         putenv('OPENAPI_BASELINE_GENERATE');
+        LegacyIdentity::resetForTesting();
 
         foreach (glob($this->sidecarDir . '/*') ?: [] as $path) {
             @unlink($path);

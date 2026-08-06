@@ -1,6 +1,6 @@
 # Coverage Report
 
-After running tests, the PHPUnit extension prints a coverage report. The output format is controlled by the `console_output` parameter (or `OPENAPI_CONSOLE_OUTPUT` environment variable).
+After running tests, the PHPUnit extension prints a coverage report. The output format is controlled by the `console_output` parameter (or `GESSO_CONSOLE_OUTPUT` environment variable).
 
 Coverage is tracked at **`(method, path, statusCode, contentType)` granularity**: a `GET /v1/pets` test that only exercises `200 application/json` does not count `404` or `application/problem+json` as covered. Per-endpoint markers reflect the resolved state across all declared response definitions:
 
@@ -117,7 +117,7 @@ You can set the mode via `phpunit.xml`:
 Or via environment variable (takes priority over `phpunit.xml`):
 
 ```bash
-OPENAPI_CONSOLE_OUTPUT=uncovered_only vendor/bin/phpunit
+GESSO_CONSOLE_OUTPUT=uncovered_only vendor/bin/phpunit
 ```
 
 ## Coverage threshold gate

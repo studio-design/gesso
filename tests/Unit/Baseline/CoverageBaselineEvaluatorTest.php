@@ -171,13 +171,13 @@ class CoverageBaselineEvaluatorTest extends TestCase
                 ['front', 'DELETE', '/pets/{id}', '204', '*'],
                 ['front', 'GET', '/pets', '500', 'application/json'],
             ])->sorted(),
-            'OPENAPI_BASELINE_GENERATE=1 vendor/bin/phpunit',
+            'GESSO_BASELINE_GENERATE=1 vendor/bin/phpunit',
         );
 
         $this->assertStringContainsString('[Gesso] FATAL: 2 response(s) are not covered', $message);
         $this->assertStringContainsString("  - [front] DELETE /pets/{id} status=204 content-type=*\n", $message);
         $this->assertStringContainsString('  - [front] GET /pets status=500 content-type=application/json', $message);
-        $this->assertStringContainsString('OPENAPI_BASELINE_GENERATE=1 vendor/bin/phpunit', $message);
+        $this->assertStringContainsString('GESSO_BASELINE_GENERATE=1 vendor/bin/phpunit', $message);
         $this->assertStringEndsWith("\n", $message);
     }
 

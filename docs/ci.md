@@ -25,13 +25,13 @@ Use the `output_file` parameter to write a Markdown report to a file. This is us
 </extensions>
 ```
 
-You can also use the `OPENAPI_CONSOLE_OUTPUT` environment variable in CI to show uncovered endpoints in the job log:
+You can also use the `GESSO_CONSOLE_OUTPUT` environment variable in CI to show uncovered endpoints in the job log:
 
 ```yaml
 - name: Run tests (show uncovered endpoints)
   run: vendor/bin/phpunit
   env:
-    OPENAPI_CONSOLE_OUTPUT: uncovered_only
+    GESSO_CONSOLE_OUTPUT: uncovered_only
 ```
 
 Example GitHub Actions workflow step to post the report as a PR comment:

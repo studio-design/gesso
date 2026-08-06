@@ -180,7 +180,7 @@ class CoverageReportSubscriberCoverageBaselineTest extends TestCase
             '  - [petstore-3.0] GET /v1/pets status=200 content-type=application/json',
             $stderr,
         );
-        $this->assertStringContainsString('OPENAPI_BASELINE_GENERATE=1 vendor/bin/phpunit', $stderr);
+        $this->assertStringContainsString('GESSO_BASELINE_GENERATE=1 vendor/bin/phpunit', $stderr);
     }
 
     #[Test]
