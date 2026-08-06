@@ -18,16 +18,12 @@ class ConsoleOutputTest extends TestCase
         parent::setUp();
 
         // Clear both spellings before each test
-        putenv('GESSO_CONSOLE_OUTPUT');
-        putenv('OPENAPI_CONSOLE_OUTPUT');
-        LegacyIdentity::resetForTesting();
+        LegacyIdentity::resetEnvForTesting('GESSO_CONSOLE_OUTPUT');
     }
 
     protected function tearDown(): void
     {
-        putenv('GESSO_CONSOLE_OUTPUT');
-        putenv('OPENAPI_CONSOLE_OUTPUT');
-        LegacyIdentity::resetForTesting();
+        LegacyIdentity::resetEnvForTesting('GESSO_CONSOLE_OUTPUT');
 
         parent::tearDown();
     }

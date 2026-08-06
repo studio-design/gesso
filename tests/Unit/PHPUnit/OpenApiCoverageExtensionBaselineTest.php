@@ -39,9 +39,7 @@ class OpenApiCoverageExtensionBaselineTest extends TestCase
     {
         parent::setUp();
         OpenApiSpecLoader::reset();
-        putenv('GESSO_BASELINE_GENERATE');
-        putenv('OPENAPI_BASELINE_GENERATE');
-        LegacyIdentity::resetForTesting();
+        LegacyIdentity::resetEnvForTesting('GESSO_BASELINE_GENERATE');
         ViolationBaselineCollector::resetCurrent();
         ViolationBaselineEnforcer::resetCurrent();
 
@@ -65,9 +63,7 @@ class OpenApiCoverageExtensionBaselineTest extends TestCase
             $this->stderrBuffer = null;
         }
         OpenApiSpecLoader::reset();
-        putenv('GESSO_BASELINE_GENERATE');
-        putenv('OPENAPI_BASELINE_GENERATE');
-        LegacyIdentity::resetForTesting();
+        LegacyIdentity::resetEnvForTesting('GESSO_BASELINE_GENERATE');
         ViolationBaselineCollector::resetCurrent();
         ViolationBaselineEnforcer::resetCurrent();
         if ($this->baselineFilePath !== null) {

@@ -41,9 +41,7 @@ class OpenApiCoverageExtensionCoverageBaselineTest extends TestCase
     {
         parent::setUp();
         OpenApiSpecLoader::reset();
-        putenv('GESSO_BASELINE_GENERATE');
-        putenv('OPENAPI_BASELINE_GENERATE');
-        LegacyIdentity::resetForTesting();
+        LegacyIdentity::resetEnvForTesting('GESSO_BASELINE_GENERATE');
 
         $buffer = fopen('php://memory', 'w+');
         if ($buffer === false) {
@@ -65,9 +63,7 @@ class OpenApiCoverageExtensionCoverageBaselineTest extends TestCase
         }
         $this->tempFiles = [];
         OpenApiSpecLoader::reset();
-        putenv('GESSO_BASELINE_GENERATE');
-        putenv('OPENAPI_BASELINE_GENERATE');
-        LegacyIdentity::resetForTesting();
+        LegacyIdentity::resetEnvForTesting('GESSO_BASELINE_GENERATE');
         parent::tearDown();
     }
 

@@ -12,6 +12,7 @@ use PHPUnit\Framework\AssertionFailedError;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
+use Studio\Gesso\Internal\LegacyIdentity;
 use Studio\Gesso\Psr7\OpenApiAssertions;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\ValidationOutput;
@@ -31,7 +32,7 @@ final class OpenApiAssertionsJsonOutputTest extends TestCase
         parent::setUp();
         OpenApiSpecLoader::reset();
         OpenApiCoverageTracker::reset();
-        putenv('GESSO_VALIDATION_FORMAT');
+        LegacyIdentity::resetEnvForTesting('GESSO_VALIDATION_FORMAT');
         ValidationOutput::reset();
         OpenApiSpecLoader::configure(__DIR__ . '/../../fixtures/specs');
     }
@@ -40,7 +41,7 @@ final class OpenApiAssertionsJsonOutputTest extends TestCase
     {
         OpenApiSpecLoader::reset();
         OpenApiCoverageTracker::reset();
-        putenv('GESSO_VALIDATION_FORMAT');
+        LegacyIdentity::resetEnvForTesting('GESSO_VALIDATION_FORMAT');
         ValidationOutput::reset();
         parent::tearDown();
     }

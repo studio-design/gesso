@@ -18,17 +18,13 @@ class ValidationOutputTest extends TestCase
     {
         parent::setUp();
 
-        putenv('GESSO_VALIDATION_FORMAT');
-        putenv('OPENAPI_VALIDATION_OUTPUT');
-        LegacyIdentity::resetForTesting();
+        LegacyIdentity::resetEnvForTesting('GESSO_VALIDATION_FORMAT');
         ValidationOutput::reset();
     }
 
     protected function tearDown(): void
     {
-        putenv('GESSO_VALIDATION_FORMAT');
-        putenv('OPENAPI_VALIDATION_OUTPUT');
-        LegacyIdentity::resetForTesting();
+        LegacyIdentity::resetEnvForTesting('GESSO_VALIDATION_FORMAT');
         ValidationOutput::reset();
 
         parent::tearDown();

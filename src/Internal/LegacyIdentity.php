@@ -12,6 +12,7 @@ use function array_search;
 use function fwrite;
 use function getenv;
 use function in_array;
+use function putenv;
 use function sprintf;
 use function trim;
 
@@ -121,6 +122,28 @@ final class LegacyIdentity
     /** Clear the once-per-process dedup. Call from tests that trigger a warning. */
     public static function resetForTesting(): void
     {
+        self::$warnings = [];
+    }
+
+    /**
+     * Unset `$name` *and* the spelling {@see env()} would fall back to, then
+     * clear the dedup.
+     *
+     * Test lifecycles call this instead of `putenv($name)`: clearing only the
+     * current name leaves a legacy name in the ambient environment able to
+     * steer a test that asserts default behaviour, and the leak is invisible
+     * until someone runs the suite on a machine that exports the old spelling.
+     */
+    public static function resetEnvForTesting(string $name): void
+    {
+        putenv($name);
+
+        $legacy = array_search($name, self::ENV_NAMES, true);
+
+        if ($legacy !== false) {
+            putenv($legacy);
+        }
+
         self::$warnings = [];
     }
 

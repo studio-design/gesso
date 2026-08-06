@@ -44,9 +44,7 @@ class CoverageMergeCommandCoverageBaselineTest extends TestCase
         OpenApiCoverageTracker::reset();
         StrictRequiredTracker::reset();
         OpenApiSpecLoader::reset();
-        putenv('GESSO_BASELINE_GENERATE');
-        putenv('OPENAPI_BASELINE_GENERATE');
-        LegacyIdentity::resetForTesting();
+        LegacyIdentity::resetEnvForTesting('GESSO_BASELINE_GENERATE');
 
         $base = sys_get_temp_dir() . '/gesso-merge-coverage-baseline-' . uniqid('', true);
         $this->sidecarDir = $base . '/sidecars';
@@ -56,9 +54,7 @@ class CoverageMergeCommandCoverageBaselineTest extends TestCase
 
     protected function tearDown(): void
     {
-        putenv('GESSO_BASELINE_GENERATE');
-        putenv('OPENAPI_BASELINE_GENERATE');
-        LegacyIdentity::resetForTesting();
+        LegacyIdentity::resetEnvForTesting('GESSO_BASELINE_GENERATE');
         foreach (glob($this->sidecarDir . '/*') ?: [] as $path) {
             @unlink($path);
         }
@@ -314,9 +310,7 @@ class CoverageMergeCommandCoverageBaselineTest extends TestCase
         putenv('GESSO_BASELINE_GENERATE=1');
         $stderr = '';
         $this->merge($stderr, $this->baselinePath);
-        putenv('GESSO_BASELINE_GENERATE');
-        putenv('OPENAPI_BASELINE_GENERATE');
-        LegacyIdentity::resetForTesting();
+        LegacyIdentity::resetEnvForTesting('GESSO_BASELINE_GENERATE');
 
         foreach (glob($this->sidecarDir . '/*') ?: [] as $path) {
             @unlink($path);

@@ -8,12 +8,19 @@ use const E_USER_DEPRECATED;
 
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+use RecursiveDirectoryIterator;
+use RecursiveIteratorIterator;
+use SplFileInfo;
 use Studio\Gesso\Internal\LegacyIdentity;
 
 use function array_keys;
+use function dirname;
+use function file_get_contents;
+use function preg_match;
 use function putenv;
 use function restore_error_handler;
 use function set_error_handler;
+use function str_replace;
 
 /**
  * Issue #504: the legacy `OPENAPI_*` / `openapi:*` spellings keep working for
@@ -178,6 +185,53 @@ final class LegacyIdentityTest extends TestCase
         LegacyIdentity::warnIfLegacyCommand('migrate');
 
         $this->assertSame([], LegacyIdentity::warnings());
+    }
+
+    /**
+     * A lifecycle that clears only the current name leaves the legacy spelling
+     * in the ambient environment able to steer a test that asserts default
+     * behaviour — a leak that stays invisible until the suite runs on a machine
+     * exporting the old name. Every clear therefore has to go through
+     * {@see LegacyIdentity::resetEnvForTesting()}, which clears both.
+     */
+    #[Test]
+    public function no_test_clears_a_renamed_variable_without_its_legacy_spelling(): void
+    {
+        $offenders = [];
+
+        foreach ($this->suiteSources() as $file => $contents) {
+            foreach (LegacyIdentity::ENV_NAMES as $current) {
+                if (preg_match('/putenv\(\s*([\'"])' . $current . '\1\s*\)/', $contents) === 1) {
+                    $offenders[] = "{$file}: putenv('{$current}')";
+                }
+            }
+        }
+
+        $this->assertSame([], $offenders, "Use LegacyIdentity::resetEnvForTesting('<name>') instead.");
+    }
+
+    /** @return array<string, string> */
+    private function suiteSources(): array
+    {
+        $iterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator(dirname(__DIR__, 2)),
+        );
+        $sources = [];
+
+        /** @var SplFileInfo $file */
+        foreach ($iterator as $file) {
+            if (!$file->isFile() || $file->getExtension() !== 'php') {
+                continue;
+            }
+
+            $contents = file_get_contents($file->getPathname());
+
+            if ($contents !== false) {
+                $sources['tests/' . str_replace(dirname(__DIR__, 2) . '/', '', $file->getPathname())] = $contents;
+            }
+        }
+
+        return $sources;
     }
 
     private function clearEnv(): void
