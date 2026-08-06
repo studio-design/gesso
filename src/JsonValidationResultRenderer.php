@@ -9,10 +9,8 @@ use const JSON_PRETTY_PRINT;
 use const JSON_UNESCAPED_SLASHES;
 use const JSON_UNESCAPED_UNICODE;
 
-use Composer\InstalledVersions;
 use RuntimeException;
-use Studio\Gesso\Coverage\JsonCoverageRenderer;
-use Throwable;
+use Studio\Gesso\Internal\ToolVersion;
 
 use function json_encode;
 use function json_last_error_msg;
@@ -41,8 +39,6 @@ use function sprintf;
 final class JsonValidationResultRenderer
 {
     public const SCHEMA_VERSION = 1;
-    private const COMPOSER_PACKAGE_NAME = 'studio-design/gesso';
-    private const TOOL_NAME = 'studio-design/gesso';
 
     /**
      * @return string A pretty-printed JSON document terminated by a single
@@ -74,8 +70,8 @@ final class JsonValidationResultRenderer
         $payload = [
             'schema_version' => self::SCHEMA_VERSION,
             'tool' => [
-                'name' => self::TOOL_NAME,
-                'version' => self::resolveToolVersion(),
+                'name' => ToolVersion::PACKAGE,
+                'version' => ToolVersion::resolve(),
             ],
             'outcome' => $result->outcome()->value,
             'matched' => [
@@ -103,23 +99,5 @@ final class JsonValidationResultRenderer
         }
 
         return $encoded . "\n";
-    }
-
-    /**
-     * Resolve the running tool version. The field is cosmetic — any failure
-     * here must never abort the document, so the catch is intentionally broad
-     * (mirrors {@see JsonCoverageRenderer}): corrupted
-     * Composer metadata or stripped vendor directories surface as `'unknown'`
-     * rather than an exception.
-     */
-    private static function resolveToolVersion(): string
-    {
-        try {
-            $version = InstalledVersions::getVersion(self::COMPOSER_PACKAGE_NAME);
-        } catch (Throwable) {
-            return 'unknown';
-        }
-
-        return $version ?? 'unknown';
     }
 }

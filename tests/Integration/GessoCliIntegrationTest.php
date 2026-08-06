@@ -54,9 +54,36 @@ final class GessoCliIntegrationTest extends TestCase
         $this->assertSame(0, $exit);
         $this->assertSame('', $stderr);
         $this->assertSame(
-            file_get_contents($this->repoRoot . '/tests/fixtures/compatibility/v1.10-gesso-help.txt'),
+            file_get_contents($this->repoRoot . '/tests/fixtures/compatibility/v2-gesso-help.txt'),
             $stdout,
         );
+        // The global-options section is additive, so every v1.10 help line must
+        // survive it — containment against the frozen capture, not equality.
+        foreach (explode("\n", (string) file_get_contents($this->repoRoot . '/tests/fixtures/compatibility/v1.10-gesso-help.txt')) as $line) {
+            if (trim($line) === '') {
+                continue;
+            }
+            $this->assertStringContainsString($line, $stdout, 'v1.10 help line must be retained');
+        }
+    }
+
+    #[Test]
+    public function version_prints_the_installed_version_and_exits_zero(): void
+    {
+        [$exit, $stdout, $stderr] = $this->runCli(['--version']);
+
+        $this->assertSame(0, $exit);
+        $this->assertSame('', $stderr);
+        $this->assertMatchesRegularExpression('/^gesso \S+\n$/', $stdout);
+    }
+
+    #[Test]
+    public function help_documents_the_version_flag(): void
+    {
+        [, $stdout] = $this->runCli(['--help']);
+
+        $this->assertStringContainsString('Global options:', $stdout);
+        $this->assertStringContainsString('--version', $stdout);
     }
 
     #[Test]
@@ -156,7 +183,7 @@ final class GessoCliIntegrationTest extends TestCase
         $this->assertSame('', $stdout);
         $this->assertSame(
             '[Gesso] Unknown command: unknown' . "\n\n"
-                . file_get_contents($this->repoRoot . '/tests/fixtures/compatibility/v1.10-gesso-help.txt'),
+                . file_get_contents($this->repoRoot . '/tests/fixtures/compatibility/v2-gesso-help.txt'),
             $stderr,
         );
     }

@@ -8,10 +8,9 @@ use const JSON_PRETTY_PRINT;
 use const JSON_UNESCAPED_SLASHES;
 use const JSON_UNESCAPED_UNICODE;
 
-use Composer\InstalledVersions;
 use DateTimeImmutable;
 use RuntimeException;
-use Throwable;
+use Studio\Gesso\Internal\ToolVersion;
 
 use function array_keys;
 use function array_unique;
@@ -91,8 +90,6 @@ use function sprintf;
 final class JsonCoverageRenderer
 {
     public const SCHEMA_VERSION = 3;
-    private const COMPOSER_PACKAGE_NAME = 'studio-design/gesso';
-    private const TOOL_NAME = 'studio-design/gesso';
 
     /**
      * @param array<string, CoverageResult> $results
@@ -117,8 +114,8 @@ final class JsonCoverageRenderer
             'schema_version' => self::SCHEMA_VERSION,
             'generated_at' => ($generatedAt ?? new DateTimeImmutable())->format(DateTimeImmutable::ATOM),
             'tool' => [
-                'name' => self::TOOL_NAME,
-                'version' => self::resolveToolVersion(),
+                'name' => ToolVersion::PACKAGE,
+                'version' => ToolVersion::resolve(),
             ],
             'aggregate' => [
                 ...self::aggregate($results),
@@ -331,25 +328,5 @@ final class JsonCoverageRenderer
         }
 
         return $rows;
-    }
-
-    /**
-     * Resolve the running tool version. The field is cosmetic — any failure
-     * here must never abort the report, so the catch is intentionally broad:
-     * `OutOfBoundsException` is the documented Composer 2.x "package not
-     * installed" path, but corrupted `installed.php`, Composer 1.x/2.x metadata
-     * mismatches, or stripped vendor directories can surface as other throwables.
-     * Silent by design — `'unknown'` is the documented sentinel and the schema
-     * forbids null, so emitting a string is enough.
-     */
-    private static function resolveToolVersion(): string
-    {
-        try {
-            $version = InstalledVersions::getVersion(self::COMPOSER_PACKAGE_NAME);
-        } catch (Throwable) {
-            return 'unknown';
-        }
-
-        return $version ?? 'unknown';
     }
 }

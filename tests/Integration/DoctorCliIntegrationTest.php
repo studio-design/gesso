@@ -9,6 +9,7 @@ use const JSON_THROW_ON_ERROR;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 
+use function array_keys;
 use function dirname;
 use function escapeshellarg;
 use function fclose;
@@ -46,6 +47,25 @@ class DoctorCliIntegrationTest extends TestCase
         $this->assertSame(1, $report['schemaVersion']);
         $this->assertSame(2, $report['summary']['specs']);
         $this->assertGreaterThan(0, $report['summary']['operations']);
+    }
+
+    #[Test]
+    public function json_report_identifies_the_producing_tool(): void
+    {
+        [, $stdout] = $this->runCli([
+            'doctor',
+            '--spec=tests/fixtures/specs/petstore-3.0.json',
+            '--format=json',
+        ]);
+
+        $report = json_decode($stdout, true, flags: JSON_THROW_ON_ERROR);
+
+        // Byte-shape-identical to the `tool` block in coverage JSON and
+        // validation JSON: exactly `name` then `version`, both strings.
+        $this->assertSame(['name', 'version'], array_keys($report['tool']));
+        $this->assertSame('studio-design/gesso', $report['tool']['name']);
+        $this->assertIsString($report['tool']['version']);
+        $this->assertNotSame('', $report['tool']['version']);
     }
 
     #[Test]
@@ -119,7 +139,9 @@ class DoctorCliIntegrationTest extends TestCase
      */
     private function runCli(array $args): array
     {
-        $command = sprintf('php %s doctor', escapeshellarg($this->repoRoot . '/bin/gesso'));
+        // Every caller passes `doctor` as the first argument; the binary takes
+        // it as the subcommand and `DoctorCommand::parseArgv()` skips it.
+        $command = sprintf('php %s', escapeshellarg($this->repoRoot . '/bin/gesso'));
         foreach ($args as $arg) {
             $command .= ' ' . escapeshellarg($arg);
         }
