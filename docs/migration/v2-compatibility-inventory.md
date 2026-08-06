@@ -32,7 +32,7 @@ authoritative in the v1.9 source; this list prevents a type from disappearing
 during the namespace migration.
 
 The machine-readable baseline lives at
-[`tests/fixtures/compatibility/v1.9-public-api.json`](../../tests/fixtures/compatibility/v1.9-public-api.json).
+[`tests/fixtures/compatibility/v1.9-public-api.json`](https://github.com/studio-design/gesso/blob/main/tests/fixtures/compatibility/v1.9-public-api.json).
 `PublicApiBaselineTest` compares it with the current source. After an
 intentional, documented API change, regenerate it with:
 
