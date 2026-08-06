@@ -75,6 +75,17 @@ vendor/bin/gesso doctor \
 
 The command automatically uses an installed Guzzle (`guzzlehttp/guzzle` plus `guzzlehttp/psr7`) or Symfony HttpClient PSR-18 implementation. Every permitted host must be listed with `--remote-ref-host`; repeat the option when a trusted contract intentionally spans hosts. A nested `$ref` that switches to an unlisted host is rejected before any request is sent. Each remote document is limited to 10 MiB by default; use `--remote-ref-max-bytes=<positive integer>` only when a trusted contract requires a larger bound. Without `--allow-remote-refs`, an HTTP(S) `$ref` is reported as a reference error with an actionable hint. Network failures, oversized or malformed remote documents, content-type mismatches, and reference cycles also exit non-zero.
 
+## Installed version
+
+`gesso --version` is a global flag on the binary, matched before any subcommand:
+
+```bash
+$ vendor/bin/gesso --version
+gesso 2.4.0
+```
+
+It writes to STDOUT, writes nothing to STDERR, and exits `0`. When Composer's `InstalledVersions` metadata cannot be read it prints `gesso unknown` — the same sentinel the JSON documents emit — and still exits `0`, so a CI script or an agent probing for the version always gets an answer rather than a usage error. `gesso --help` lists it under `Global options:`.
+
 ## Machine-readable output
 
 Use `--format=json` for CI and tooling. The top-level `schemaVersion` is currently `1` and will change if the machine-readable contract requires an incompatible revision.
@@ -82,6 +93,10 @@ Use `--format=json` for CI and tooling. The top-level `schemaVersion` is current
 ```json
 {
     "schemaVersion": 1,
+    "tool": {
+        "name": "studio-design/gesso",
+        "version": "2.4.0"
+    },
     "status": "ok",
     "summary": {
         "specs": 1,
@@ -96,6 +111,10 @@ Use `--format=json` for CI and tooling. The top-level `schemaVersion` is current
     "phpunit": null
 }
 ```
+
+`tool` is `{ "name": "studio-design/gesso", "version": "<composer version or 'unknown'>" }`, the same block the [coverage JSON](coverage-json-schema.md) and [validation JSON](validation-json-schema.md) documents carry. `"unknown"` is emitted when Composer's `InstalledVersions` metadata is unavailable; the field is always a string.
+
+Additive changes — a new field such as `tool`, or a new `category` slug — keep `schemaVersion` at `1`. Removals, renames, and type changes bump it.
 
 Every issue has a stable `severity`, `category`, `spec`, `message`, and nullable `suggestion` field. Severities are:
 

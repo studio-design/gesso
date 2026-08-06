@@ -26,6 +26,7 @@ use Studio\Gesso\Exception\InvalidOpenApiSpecException;
 use Studio\Gesso\Exception\MalformedDiscriminatorException;
 use Studio\Gesso\Exception\SpecFileNotFoundException;
 use Studio\Gesso\Internal\HttpRefLoader;
+use Studio\Gesso\Internal\ToolVersion;
 use Studio\Gesso\OpenApiVersion;
 use Studio\Gesso\Spec\OpenApiOperationResolver;
 use Studio\Gesso\Spec\OpenApiSchemaConverter;
@@ -841,6 +842,13 @@ final class DoctorCommand
 
         return [
             'schemaVersion' => self::JSON_SCHEMA_VERSION,
+            // Same shape and same `unknown` semantics as the `tool` block in
+            // coverage JSON and validation JSON, so a consumer reading two
+            // Gesso documents does not have to special-case this one.
+            'tool' => [
+                'name' => ToolVersion::PACKAGE,
+                'version' => ToolVersion::resolve(),
+            ],
             'status' => $counts['errors'] > 0 ? 'error' : ($counts['warnings'] > 0 || $counts['skipped'] > 0 ? 'warning' : 'ok'),
             'summary' => [
                 'specs' => count($specs),

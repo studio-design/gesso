@@ -7,6 +7,7 @@ use Studio\Gesso\Cli\CoverageGateCommand;
 use Studio\Gesso\Cli\DoctorCommand;
 use Studio\Gesso\Cli\StubsCommand;
 use Studio\Gesso\Coverage\CoverageMergeCommand;
+use Studio\Gesso\Internal\ToolVersion;
 
 $autoloadCandidates = [
     __DIR__ . '/../vendor/autoload.php',
@@ -41,6 +42,10 @@ $usage = <<<'USAGE'
       coverage:gate    Fail when a spec change touches an uncovered operation.
       stubs            Write test stubs for the responses no test covers.
 
+    Global options:
+      --version        Print the installed Gesso version and exit.
+      --help, -h       Print this message and exit.
+
     Run `gesso <command> --help` for command-specific options.
 
     USAGE;
@@ -51,6 +56,15 @@ $commandName = array_shift($argv);
 
 if ($commandName === null || $commandName === 'list' || $commandName === '--help' || $commandName === '-h') {
     fwrite(STDOUT, $usage);
+    exit(0);
+}
+
+// Matched before subcommand dispatch so `gesso --version` can never fall
+// through to the unknown-command branch below. `unknown` is the same sentinel
+// the JSON documents emit when Composer metadata is unreadable, and it still
+// exits 0 — a probe asking "which version" got an answer either way.
+if ($commandName === '--version') {
+    fwrite(STDOUT, 'gesso ' . ToolVersion::resolve() . "\n");
     exit(0);
 }
 
