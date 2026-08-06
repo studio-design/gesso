@@ -83,7 +83,7 @@ all of them green — not just the two conformance baselines:
 | Discriminator enforcement default | `tests/Unit/Validation/Response/ResponseSchemaResolverTest.php`, `tests/Unit/PHPUnit/OpenApiCoverageExtensionTest.php`, `tests/Unit/ValidatesOpenApiSchemaEnforceDiscriminatorTest.php` |
 | Contract-check names and defaults | The public-API baseline records the `cases` map and the two method signatures, but **not** their return values; the values are pinned by `tests/Unit/Fuzz/ContractCheckSummaryTest.php:22` (`[405]`) and `tests/Unit/Fuzz/OpenApiContractChecksTest.php:464` (`[401, 403]`), `:683` (the 4xx family) |
 | Coverage granularity | `tests/Unit/Compatibility/MachineReadableFormatsBaselineTest.php` against `tests/fixtures/compatibility/v3-coverage-report.json`, plus the coverage tracker unit tests |
-| Doctor ⇄ runtime consistency | `tests/Integration/Conformance/OasExampleDocumentTest.php` for the corpus half, `tests/Unit/Cli/DoctorCommandTest.php` for the mirrored guards |
+| Doctor ⇄ runtime consistency | Both sides, since agreement is the invariant. Doctor: `tests/Integration/Conformance/OasExampleDocumentTest.php` (corpus) and `tests/Unit/Cli/DoctorCommandTest.php`. Runtime: `tests/Unit/OpenApiRequestValidatorTest.php:3101` (`security_scheme_missing_type_is_hard_spec_error`, the counterpart to `DoctorCommand.php:747`) and `tests/Unit/OpenApiResponseValidatorTest.php:2404` (`malformed_response_status_entry_returns_failure`, the counterpart to `:537`) |
 | Pinned corpora | The two conformance tests themselves |
 
 Three invariants — tri-state outcome, contract-check defaults, coverage
@@ -159,8 +159,8 @@ baselines unchanged. **This is necessary, not sufficient** — the two corpora
 cover schema conversion and the loader/doctor path only, so an unchanged
 baseline is evidence about those two areas and about nothing else. The full
 condition is that every row of the verification table above stays green; the
-baselines are singled out here because they are the only ones a reviewer cannot
-read off a failing test.
+baselines are singled out because their expected values live in a data file the
+same PR can regenerate, so a green suite stays compatible with a moved verdict.
 
 The two baselines:
 
@@ -264,17 +264,20 @@ names and default statuses (`:83-88`), and the coverage baseline granularity
 superseding ADR.
 
 The reduction rule gives "did this change meaning?" a fixed place to look — the
-verification table, plus one `git diff` for the two baselines no failing test
-would surface — instead of leaving it to be re-derived per review. It does not
-make the question automatic, and the section above says so.
+verification table, plus one `git diff` — instead of leaving it to be re-derived
+per review. The `git diff` is not there because the tests are weak: an
+implementation change alone fails them. It is there for the one case they cannot
+see, an implementation change and a regenerated baseline in the same commit.
 
-Writing the verification table also exposed a gap worth recording: three
-invariants (tri-state outcome, contract-check defaults, coverage granularity)
-rest on ordinary unit tests rather than on a compatibility fixture. That is
-adequate — they are asserted, and the public-API baseline pins the enum cases —
-but it means a reviewer checking a reduction PR has to trust the suite rather
-than read a single artifact, which is why the rule is explicit about being
-necessary rather than sufficient.
+Writing the verification table also exposed a gap worth recording. Most
+invariants have a committed artifact a reviewer can read directly — the enum
+cases in `v2-public-api.json`, the coverage document shape in
+`v3-coverage-report.json`, the two conformance baselines. The contract-check
+*default return values* do not: the public-API baseline records the `cases` map
+and both method signatures, so a change from `[401, 403]` to something else
+would move no fixture and would be caught only by the unit assertions in
+`tests/Unit/Fuzz/`. That is adequate coverage, but it is the one row of the
+table where "read the diff" does not work and the suite has to be trusted.
 
 ADR 0002's phases and ADR 0003's phase list stay open. In particular this ADR
 does not retract ADR 0003 phase 6, the SDK exercise coverage that already
