@@ -7,6 +7,30 @@ full record.
 Sections are ordered newest-first. If you are jumping multiple minors,
 read each intermediate section in order — behavioural changes compose.
 
+## Deprecations
+
+Every surface v3 removes or renames is deprecated in a v2 minor first, per the
+[deprecation policy](docs/versioning.md#deprecation-policy). Using one emits a
+one-shot `E_USER_DEPRECATED` naming the replacement and the removal version,
+and the PHPUnit extension prints a single end-of-run STDERR line:
+
+```text
+[Gesso deprecation] 2 deprecated surface(s) still in use, 45 call(s): laravel.config.auto_inject_dummy_bearer (31), phpunit.enum_spec_base_path (14). All are removed in Gesso 3.0.
+```
+
+**If your suite prints no such line on the final v2 minor, upgrading to v3.0
+needs no changes to your code, configuration, or CLI invocations.** Work through
+the table below until it does.
+
+| Deprecated in | Surface | Replacement | Removed in |
+| --- | --- | --- | --- |
+| — | Nothing is deprecated yet. | — | — |
+
+The table mirrors `tests/fixtures/compatibility/v2-deprecations.json`, which a
+test keeps in sync with the emitters in `src/`. The `Deprecated in` column names
+the release that started warning, not the release that introduced the
+replacement.
+
 ## Within v2.x
 
 The v2.x line is covered end-to-end by SemVer (see `docs/versioning.md` for the

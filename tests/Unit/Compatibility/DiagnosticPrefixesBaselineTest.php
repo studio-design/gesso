@@ -78,7 +78,7 @@ final class DiagnosticPrefixesBaselineTest extends TestCase
     #[Test]
     public function identity_neutral_prefixes_retain_v1_9_parity(): void
     {
-        $brandedPrefixes = ['[openapi-contract-testing]', '[Gesso]'];
+        $brandedPrefixes = ['[openapi-contract-testing]', '[Gesso]', '[Gesso deprecation]'];
         $v1 = array_filter(
             $this->fixture('v1.9-diagnostic-prefixes.json'),
             static fn(string $prefix): bool => !in_array($prefix, $brandedPrefixes, true),

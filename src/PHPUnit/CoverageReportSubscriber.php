@@ -32,6 +32,7 @@ use Studio\Gesso\Coverage\SdkExerciseCoverageTracker;
 use Studio\Gesso\Exception\InvalidOpenApiSpecException;
 use Studio\Gesso\Exception\InvalidOpenApiSpecReason;
 use Studio\Gesso\Exception\SpecFileNotFoundException;
+use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\Internal\PartialRunDecision;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Validation\Strict\StrictAdditionalPropertiesAsserter;
@@ -204,6 +205,11 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
         }
 
         $this->restoreSpecLoaderConfigurationIfReset();
+
+        // Written before the gates below because `strict_*` in fail mode can
+        // terminate the process; the residual count is the migration signal for
+        // the next major and must not depend on the run passing.
+        $this->reportDeprecations();
 
         $results = $this->computeAllResults();
         $sdkResults = $this->computeAllSdkResults();
@@ -660,6 +666,22 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
             $collector->baseline()->count(),
             $this->baselineGeneratePath,
         ));
+    }
+
+    /**
+     * Write the one-line residual deprecation count, or nothing when no
+     * deprecated surface was used in this run. {@see Deprecations::summaryLine()}
+     * owns the wording; the subscriber only decides where it goes and that it
+     * is stderr, for the reason recorded on `writeStderr()`.
+     */
+    private function reportDeprecations(): void
+    {
+        $line = Deprecations::summaryLine();
+        if ($line === null) {
+            return;
+        }
+
+        $this->writeStderr($line);
     }
 
     /**

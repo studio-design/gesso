@@ -4,6 +4,7 @@ This library follows [Semantic Versioning 2.0](https://semver.org/). v1.0.0 is t
 
 - [What's covered by SemVer](#whats-covered-by-semver)
 - [What's NOT covered by SemVer](#whats-not-covered-by-semver)
+- [Deprecation policy](#deprecation-policy)
 - [Support policy](#support-policy)
 - [v1 maintenance lifecycle](#v1-maintenance-lifecycle)
 - [Release checklist](#release-checklist)
@@ -95,7 +96,7 @@ This library follows [Semantic Versioning 2.0](https://semver.org/). v1.0.0 is t
 - The Laravel `openapi:routes` and `openapi:stubs` command surfaces (flags, exit codes, and versioned JSON output)
 - The `OpenApiCoverageExtension` PHPUnit configuration parameters (`spec_base_path`, `strip_prefixes`, `specs`, `output_file`, `console_output`, `validation_output`, `baseline_file`, `coverage_baseline_file`, `strict_required`, `strict_additional_properties`, `strict_additional_properties_per_call`, …)
 - The Laravel `ValidatesOpenApiSchema` trait's public methods
-- The category prefixes used in `E_USER_WARNING` messages (`[security]`, `[OpenAPI Schema]`, and the `[OpenAPI 3.2 ...]` categories)
+- The category prefixes used in `E_USER_WARNING` messages (`[security]`, `[OpenAPI Schema]`, and the `[OpenAPI 3.2 ...]` categories) and in `E_USER_DEPRECATED` messages (`[Gesso deprecation]`). Adding a category is a minor change; renaming or removing one is major.
 
 ### Versioned sidecar compatibility
 
@@ -175,6 +176,40 @@ written by `json_output` has its own `schema_version` contract documented in
 
 See [UPGRADING.md](https://github.com/studio-design/gesso/blob/main/UPGRADING.md) for migration notes between versions.
 
+## Deprecation policy
+
+SemVer requires a minor bump when public API is deprecated and a major bump for
+its incompatible removal. This project adds one standing rule on top:
+
+> A surface covered by this document is removed or renamed in a major release
+> only if a deprecation for it shipped in a minor release of the preceding
+> major. The last minor of a major is therefore the last chance to deprecate
+> anything for the next one.
+
+The rule covers every surface listed under "What's covered by SemVer" — not
+just PHP symbols, but configuration keys, CLI flags, environment variables, and
+Artisan command names. It does not apply to `@internal` symbols or to anything
+in the "NOT covered by SemVer" list.
+
+Deprecations are announced at runtime, not only in a docblock. Each one emits a
+one-shot `E_USER_DEPRECATED` carrying the `[Gesso deprecation]` prefix, the
+replacement, and the removal version; the PHPUnit extension writes a single
+end-of-run STDERR line counting how many deprecated surfaces the suite still
+uses. See [diagnostic
+channels](supported-features.md#diagnostic-channels-e_user_warning-and-e_user_deprecated).
+
+**If a run on the final minor of a major reports zero Gesso deprecations,
+upgrading to the next major requires no consumer code, configuration, or CLI
+changes.** That is what the rule buys: the deprecation report, not the upgrade
+guide, is the authoritative answer to "am I ready?".
+
+For the v2 → v3 transition, the deprecation-carrying release is the final v2
+minor. Its number is not chosen by hand — release-please derives it from
+Conventional Commit types — so the constraint is an ordering one: every v2
+release must ship before the first breaking commit reaches `main`, because that
+commit turns the pending release into `3.0.0` and no further v2 release can be
+cut from the branch.
+
 ## Support policy
 
 | Component | Supported |
@@ -193,11 +228,10 @@ receive fixes.
 
 v1.10.0 is the final planned feature minor of the original
 `studio-design/openapi-contract-testing` package. It may add backward-compatible
-migration aids and deprecations for Gesso 2.0. SemVer requires a minor bump when
-public API is deprecated and a major bump for its incompatible removal. This
-project additionally requires migration deprecations to ship in v1.10.0 before
-removal in v2. After v1.10.0, the v1 line receives patches from the `1.x`
-maintenance branch:
+migration aids and deprecations for Gesso 2.0. Under the [deprecation
+policy](#deprecation-policy), v1.10.0 is the last release that can carry a
+deprecation for a surface v2 removes. After v1.10.0, the v1 line receives
+patches from the `1.x` maintenance branch:
 
 V1.10.0 also provides lazy `Studio\Gesso\` aliases for all non-`@internal`
 public PHP types. Consumers should use these aliases to migrate imports before
