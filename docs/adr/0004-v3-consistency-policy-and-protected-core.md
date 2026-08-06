@@ -66,12 +66,29 @@ an ADR that supersedes this one.
 | Doctor diagnostics and runtime validation agree: a malformed spec node must not pass one path and fail the other | `AGENTS.md:66-68`; mirrored in code at `src/Cli/DoctorCommand.php:537` (response guards) and `:747` (security-scheme classification) | No |
 | Both upstream corpora stay pinned by commit SHA and stay measured | `composer.json` `repositories[].package.dist.reference`; asserted by `tests/Integration/Conformance/` | No — test fixtures |
 
-Six rows are behaviours; the seventh is how we find out whether the other six
-still hold. Unpinning a corpus, or dropping either conformance test, is a
-protected-core change even though no runtime behaviour moves — it removes the
-measurement, which is what makes the rest of this document enforceable. That row
-is therefore protected core *and* the mechanism the acceptance rule below relies
-on, not one or the other.
+Six rows are behaviours; the seventh is a measurement commitment. The two
+corpora do not cover the other six — they exercise schema conversion and the
+loader/doctor path, and nothing else. Unpinning a corpus or dropping either
+conformance test is still a protected-core change, because it removes the only
+independent evidence Gesso has about those two areas, but it must not be read as
+"the corpora prove the protected core".
+
+Each invariant has its own verification source, and a reduction PR has to keep
+all of them green — not just the two conformance baselines:
+
+| Invariant | Verified by |
+| --- | --- |
+| Dialect selection | `tests/Integration/Conformance/JsonSchemaConversionDeltaTest.php` (the delta set *is* the conversion pipeline's observable output), `tests/Unit/Spec/OpenApiSchemaDialectTest.php`, `tests/Unit/Spec/OpenApiSchemaConverterTest.php` |
+| Tri-state outcome | `tests/Unit/Compatibility/PublicApiBaselineTest.php` against `tests/fixtures/compatibility/v2-public-api.json`, which records the enum's `cases` map; plus `tests/Unit/OpenApiValidationResultTest.php` |
+| Discriminator enforcement default | `tests/Unit/Validation/Response/ResponseSchemaResolverTest.php`, `tests/Unit/PHPUnit/OpenApiCoverageExtensionTest.php`, `tests/Unit/ValidatesOpenApiSchemaEnforceDiscriminatorTest.php` |
+| Contract-check names and defaults | The public-API baseline records the `cases` map and the two method signatures, but **not** their return values; the values are pinned by `tests/Unit/Fuzz/ContractCheckSummaryTest.php:22` (`[405]`) and `tests/Unit/Fuzz/OpenApiContractChecksTest.php:464` (`[401, 403]`), `:683` (the 4xx family) |
+| Coverage granularity | `tests/Unit/Compatibility/MachineReadableFormatsBaselineTest.php` against `tests/fixtures/compatibility/v3-coverage-report.json`, plus the coverage tracker unit tests |
+| Doctor ⇄ runtime consistency | `tests/Integration/Conformance/OasExampleDocumentTest.php` for the corpus half, `tests/Unit/Cli/DoctorCommandTest.php` for the mirrored guards |
+| Pinned corpora | The two conformance tests themselves |
+
+Three invariants — tri-state outcome, contract-check defaults, coverage
+granularity — can be broken without either corpus baseline moving. That is the
+reason the rule below is stated as necessary, not sufficient.
 
 Four rows are not SemVer-covered: dialect selection, the
 discriminator-enforcement default, doctor ⇄ runtime consistency, and the pinned
@@ -138,7 +155,14 @@ terms.
 ## Reduction-PR acceptance rule
 
 A PR whose stated purpose is reducing surface area must leave both conformance
-baselines unchanged:
+baselines unchanged. **This is necessary, not sufficient** — the two corpora
+cover schema conversion and the loader/doctor path only, so an unchanged
+baseline is evidence about those two areas and about nothing else. The full
+condition is that every row of the verification table above stays green; the
+baselines are singled out here because they are the only ones a reviewer cannot
+read off a failing test.
+
+The two baselines:
 
 - `tests/fixtures/compatibility/v1-json-schema-conversion-delta.json` —
   `format_version: 1`, **11 deltas** (9 `unsupported-dialect`, 2
@@ -179,10 +203,14 @@ regression would slip through:
 So the mechanical step belongs to the reviewer, and it is one command:
 
 ```bash
-git diff origin/main -- \
+git diff origin/main...HEAD -- \
   tests/fixtures/compatibility/v1-json-schema-conversion-delta.json \
   tests/fixtures/compatibility/v1-oas-example-documents.json
 ```
+
+Three dots, not two: `origin/main...HEAD` diffs against the merge base, so a
+branch that has not been rebased does not report main's own commits as if the PR
+had made them.
 
 Empty output on a PR that claims to be reducing surface area. Non-empty means
 the PR is something else and needs its own decision record. A CI job that failed
@@ -235,9 +263,18 @@ names and default statuses (`:83-88`), and the coverage baseline granularity
 (`:67-82`). They may not be dropped even at a major boundary without a
 superseding ADR.
 
-The reduction rule gives "did this change meaning?" a fixed place to look — two
-fixture paths and one `git diff` — instead of leaving it to be re-derived per
-review. It does not make the question automatic, and the section above says so.
+The reduction rule gives "did this change meaning?" a fixed place to look — the
+verification table, plus one `git diff` for the two baselines no failing test
+would surface — instead of leaving it to be re-derived per review. It does not
+make the question automatic, and the section above says so.
+
+Writing the verification table also exposed a gap worth recording: three
+invariants (tri-state outcome, contract-check defaults, coverage granularity)
+rest on ordinary unit tests rather than on a compatibility fixture. That is
+adequate — they are asserted, and the public-API baseline pins the enum cases —
+but it means a reviewer checking a reduction PR has to trust the suite rather
+than read a single artifact, which is why the rule is explicit about being
+necessary rather than sufficient.
 
 ADR 0002's phases and ADR 0003's phase list stay open. In particular this ADR
 does not retract ADR 0003 phase 6, the SDK exercise coverage that already
