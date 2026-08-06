@@ -303,7 +303,8 @@ export default defineConfig({
           { text: 'Coverage', link: '/coverage' },
           { text: 'Supported features', link: '/supported-features' },
           { text: 'Conformance', link: '/conformance' },
-          { text: 'API reference', link: '/api-reference' }
+          { text: 'API reference', link: '/api-reference' },
+          { text: 'Decision records', link: '/adr/' }
         ]
       }
     ],
