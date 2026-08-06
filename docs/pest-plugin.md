@@ -14,7 +14,7 @@ Pest tests can use the same validator pipeline as PHPUnit through a custom-expec
 composer require --dev pestphp/pest:^4.0
 ```
 
-The plugin is auto-loaded via Composer's `autoload.files`. No further wiring needed at install time. Pest 4 uses PHPUnit 12; PHPUnit 13 remains supported by Gesso's PHPUnit integration but is not compatible with the Pest runner.
+The plugin is auto-loaded via Composer's `autoload.files`, so the expectations need no registration. The spec loader still does: register `OpenApiCoverageExtension` in `phpunit.xml` with a `spec_base_path` parameter, as shown in the [Pest quickstart](quickstarts/pest.md). Pest 4 uses PHPUnit 12; PHPUnit 13 remains supported by Gesso's PHPUnit integration but is not compatible with the Pest runner.
 
 ## Wiring the trait into Pest tests
 
