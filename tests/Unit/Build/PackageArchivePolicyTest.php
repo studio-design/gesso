@@ -12,18 +12,22 @@ use PHPUnit\Framework\TestCase;
 use function array_diff;
 use function array_filter;
 use function array_map;
+use function array_pop;
 use function array_unique;
 use function array_values;
 use function dirname;
 use function escapeshellarg;
 use function exec;
 use function explode;
+use function file_exists;
 use function file_get_contents;
 use function implode;
 use function in_array;
 use function json_decode;
 use function preg_match;
+use function preg_match_all;
 use function sort;
+use function str_ends_with;
 use function str_starts_with;
 use function trim;
 
@@ -221,9 +225,131 @@ final class PackageArchivePolicyTest extends TestCase
         );
     }
 
+    /**
+     * A relative link that resolves inside the repository still dangles once
+     * the target is `export-ignore`d, and `npm run docs:links` cannot see it
+     * because it walks the repository rather than the archive.
+     */
+    #[Test]
+    public function shipped_documentation_never_links_into_excluded_paths(): void
+    {
+        $dangling = [];
+
+        foreach ($this->shippedMarkdownFiles() as $file) {
+            foreach ($this->relativeLinksIn($file) as $link) {
+                $target = $this->resolveAgainst($file, $link);
+
+                if ($target === null) {
+                    continue;
+                }
+                if (!$this->isExcluded('/' . $target) && file_exists($this->root() . '/' . $target)) {
+                    continue;
+                }
+
+                $dangling[] = $file . ' -> ' . $link;
+            }
+        }
+
+        $this->assertSame(
+            [],
+            $dangling,
+            "Shipped documentation links to paths the package does not ship:\n  "
+            . implode("\n  ", $dangling)
+            . "\nUse an absolute https://github.com/studio-design/gesso/... URL, "
+            . 'or ship the target.',
+        );
+    }
+
     private function root(): string
     {
         return dirname(__DIR__, 3);
+    }
+
+    /**
+     * Repository-relative paths of every Markdown file that ends up in the
+     * archive.
+     *
+     * @return list<string>
+     */
+    private function shippedMarkdownFiles(): array
+    {
+        $files = [];
+
+        foreach ($this->trackedFiles() as $path) {
+            if (!str_ends_with($path, '.md')) {
+                continue;
+            }
+            if ($this->isExcluded('/' . $path)) {
+                continue;
+            }
+
+            $files[] = $path;
+        }
+
+        sort($files);
+
+        return $files;
+    }
+
+    /**
+     * Markdown link targets plus `src` / `href` attributes from the inline
+     * HTML the README uses for its logo, minus anything that is not a
+     * repository-relative path.
+     *
+     * @return list<string>
+     */
+    private function relativeLinksIn(string $file): array
+    {
+        $contents = (string) file_get_contents($this->root() . '/' . $file);
+
+        preg_match_all('#\[[^\]]*\]\(([^)\s]+)#', $contents, $markdown);
+        preg_match_all('#(?:src|href)="([^"]+)"#', $contents, $html);
+
+        $links = [];
+        foreach ([...$markdown[1], ...$html[1]] as $link) {
+            if (preg_match('#^(?:[a-z][a-z0-9+.-]*:|//|\#)#i', $link) === 1) {
+                continue;
+            }
+
+            $links[] = $link;
+        }
+
+        return $links;
+    }
+
+    /**
+     * Repository-relative target of `$link` as written in `$file`, or null
+     * when the link is a bare fragment or escapes the repository.
+     */
+    private function resolveAgainst(string $file, string $link): ?string
+    {
+        $link = explode('#', explode('?', $link, 2)[0], 2)[0];
+        if ($link === '') {
+            return null;
+        }
+
+        $segments = explode('/', dirname($file));
+        if ($segments === ['.']) {
+            $segments = [];
+        }
+
+        foreach (explode('/', $link) as $segment) {
+            if ($segment === '' || $segment === '.') {
+                continue;
+            }
+            if ($segment === '..') {
+                if ($segments === []) {
+                    return null;
+                }
+                array_pop($segments);
+
+                continue;
+            }
+
+            $segments[] = $segment;
+        }
+
+        return $segments === [] ? null : implode('/', $segments);
     }
 
     /**
@@ -306,6 +432,20 @@ final class PackageArchivePolicyTest extends TestCase
      */
     private function trackedTopLevelPaths(): array
     {
+        $top = array_map(
+            static fn(string $path): string => explode('/', $path)[0],
+            $this->trackedFiles(),
+        );
+
+        $top = array_values(array_unique(array_filter($top, static fn(string $p): bool => $p !== '')));
+        sort($top);
+
+        return $top;
+    }
+
+    /** @return list<string> */
+    private function trackedFiles(): array
+    {
         $output = [];
         $status = 0;
         exec('git -C ' . escapeshellarg($this->root()) . ' ls-files 2>/dev/null', $output, $status);
@@ -314,14 +454,6 @@ final class PackageArchivePolicyTest extends TestCase
             $this->markTestSkipped('git ls-files is unavailable; cannot enumerate tracked paths.');
         }
 
-        $top = array_map(
-            static fn(string $path): string => explode('/', $path)[0],
-            $output,
-        );
-
-        $top = array_values(array_unique(array_filter($top, static fn(string $p): bool => $p !== '')));
-        sort($top);
-
-        return $top;
+        return array_values($output);
     }
 }

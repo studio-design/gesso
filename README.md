@@ -1,5 +1,5 @@
 <p align="center">
-  <img alt="Gesso logo" src="images/gesso-logo.png" width="220">
+  <img alt="Gesso logo" src="https://raw.githubusercontent.com/studio-design/gesso/main/images/gesso-logo.png" width="220">
 </p>
 
 # Gesso
@@ -120,11 +120,11 @@ Choose the CI-tested five-minute path matching your stack:
 
 | Stack | Passing example | What it demonstrates |
 | --- | --- | --- |
-| Framework-independent PHPUnit | [`examples/core`](examples/core) | Direct response validation and coverage |
-| Laravel | [`examples/laravel`](examples/laravel) | Explicit assertion, `auto_assert`, and request validation |
-| Symfony | [`examples/symfony`](examples/symfony) | HttpFoundation request/response assertions |
-| Pest | [`examples/pest`](examples/pest) | Laravel response and request expectations |
-| PSR-7 | [`examples/psr7`](examples/psr7) | Request/response exchange validation |
+| Framework-independent PHPUnit | [`examples/core`](https://github.com/studio-design/gesso/tree/main/examples/core) | Direct response validation and coverage |
+| Laravel | [`examples/laravel`](https://github.com/studio-design/gesso/tree/main/examples/laravel) | Explicit assertion, `auto_assert`, and request validation |
+| Symfony | [`examples/symfony`](https://github.com/studio-design/gesso/tree/main/examples/symfony) | HttpFoundation request/response assertions |
+| Pest | [`examples/pest`](https://github.com/studio-design/gesso/tree/main/examples/pest) | Laravel response and request expectations |
+| PSR-7 | [`examples/psr7`](https://github.com/studio-design/gesso/tree/main/examples/psr7) | Request/response exchange validation |
 
 All paths start with the same development dependency:
 
