@@ -367,12 +367,56 @@ class ResponseSchemaResolverTest extends TestCase
     }
 
     #[Test]
+    public function resolve_notes_an_undeclared_json_content_type_that_fell_back(): void
+    {
+        // Issue #435: the fallback is kept, but the resolution now carries the
+        // media type that triggered it so the body failure can name it.
+        $resolution = $this->resolver->resolve(
+            'petstore-3.1',
+            'GET',
+            '/v1/v31/multi-content',
+            200,
+            'application/vnd.example.v1+json',
+        );
+
+        $this->assertSame(ResponseSchemaResolutionOutcome::Resolved, $resolution->outcome);
+        $this->assertSame('application/json', $resolution->contentType);
+        $this->assertSame(
+            "Note: response Content-Type 'application/vnd.example.v1+json' is not defined for "
+            . "GET /v1/v31/multi-content (status 200) in 'petstore-3.1' spec; the reported body errors "
+            . "come from validating it against 'application/json'. "
+            . 'Defined content types: application/json, application/problem+json, text/plain',
+            $resolution->contentTypeNote,
+        );
+    }
+
+    #[Test]
+    public function resolve_does_not_note_a_content_type_the_spec_declares(): void
+    {
+        // An exact key needs no note, and neither does one covered by an
+        // `application/*` range — `findContentTypeKey()` treats both as
+        // declared, so the fallback never fired.
+        $exact = $this->resolver->resolve('petstore-3.1', 'GET', '/v1/v31/multi-content', 200, 'application/problem+json');
+        $this->assertSame('application/problem+json', $exact->contentType);
+        $this->assertNull($exact->contentTypeNote);
+
+        $ranged = $this->resolver->resolve('response-negotiation-edge', 'GET', '/wildcard-schema', 200, 'application/vnd.example+json');
+        $this->assertSame(ResponseSchemaResolutionOutcome::Resolved, $ranged->outcome);
+        $this->assertSame('application/*', $ranged->contentType);
+        $this->assertNull($ranged->contentTypeNote);
+    }
+
+    #[Test]
     public function resolve_falls_back_to_first_json_content_type(): void
     {
         $resolution = $this->resolver->resolve('petstore-3.1', 'GET', '/v1/v31/multi-content', 200);
 
         $this->assertSame(ResponseSchemaResolutionOutcome::Resolved, $resolution->outcome);
         $this->assertSame('application/json', $resolution->contentType);
+
+        // No actual Content-Type was supplied, so nothing is known to be
+        // undeclared — the note stays absent.
+        $this->assertNull($resolution->contentTypeNote);
 
         // 3.1 documents convert through their declared dialect, not Draft 07.
         $this->assertSame(OpenApiSchemaDialect::DRAFT_2020_12, $resolution->convertedSchema()['$schema']);

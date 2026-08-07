@@ -94,7 +94,7 @@ final class ViolationBaselineCollector
     ): void {
         $artifactCategories = ViolationFingerprint::decodeFailureCategories($result->issues());
         foreach ($result->issues() as $issue) {
-            if ($issue->category === $excludeCategory) {
+            if ($issue->category === $excludeCategory || ViolationFingerprint::isContextOnly($issue)) {
                 continue;
             }
             if (

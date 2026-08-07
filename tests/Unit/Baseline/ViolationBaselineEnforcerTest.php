@@ -117,6 +117,32 @@ class ViolationBaselineEnforcerTest extends TestCase
     }
 
     #[Test]
+    public function the_undeclared_content_type_note_does_not_block_suppression(): void
+    {
+        // Issue #435: the note explains the body errors, it is not one of
+        // them. A baseline recorded before the note existed still covers the
+        // same failure, so an upgrade that changed no verdict must not turn
+        // a suppressed result into a reported one.
+        $baseline = new ViolationBaseline();
+        $baseline->add(new ViolationFingerprint('front', 'GET', '/v1/pets', '200', 'application/json', 'response.body', '', 'required'));
+        $enforcer = new ViolationBaselineEnforcer($baseline);
+
+        $result = OpenApiValidationResult::failure(
+            ['[/] The required properties (data) are missing', "Note: response Content-Type 'application/problem+json' is not defined …"],
+            '/v1/pets',
+            '200',
+            'application/json',
+            [
+                new ValidationIssue('response.body', '[/] The required properties (data) are missing', instancePath: '', keyword: 'required', method: 'GET', path: '/v1/pets', statusCode: '200', contentType: 'application/json'),
+                new ValidationIssue('response.content_type', "Note: response Content-Type 'application/problem+json' is not defined …", method: 'GET', path: '/v1/pets', statusCode: '200', contentType: 'application/json'),
+            ],
+        );
+
+        $this->assertTrue($enforcer->suppressesResult('front', $result, 'GET', '/v1/pets'));
+        $this->assertSame(1, $enforcer->hitCount());
+    }
+
+    #[Test]
     public function excluded_category_issues_do_not_block_suppression(): void
     {
         $baseline = new ViolationBaseline();

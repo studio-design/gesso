@@ -281,6 +281,23 @@ final class OpenApiResponseValidator
                 contentType: $bodyResult->matchedContentType,
             );
         }
+        // The response arrived as a JSON media type the spec does not declare
+        // for this status, so the body was checked against the first JSON key
+        // instead (issue #435). Alone, the resulting mismatch reads as "the
+        // body is wrong"; the note names the undeclared media type as a
+        // candidate cause. It rides along only when the body actually failed —
+        // the fallback itself stays a pass, which is the documented behaviour.
+        $contentTypeNote = $bodyResult->errors !== [] ? $resolution->contentTypeNote : null;
+        if ($contentTypeNote !== null) {
+            $issues[] = new ValidationIssue(
+                'response.content_type',
+                $contentTypeNote,
+                method: $method,
+                path: $matchedPath,
+                statusCode: $statusCodeStr,
+                contentType: $bodyResult->matchedContentType,
+            );
+        }
         foreach ($headerErrors as $headerError) {
             // No contentType: header validation is independent of the response
             // media type, and the documented contract reserves that context
@@ -291,6 +308,7 @@ final class OpenApiResponseValidator
         }
         $errors = array_merge(
             $bodyResult->errors,
+            $contentTypeNote !== null ? [$contentTypeNote] : [],
             array_map(static fn(NamedError $headerError): string => $headerError->message, $headerErrors),
         );
 

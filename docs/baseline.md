@@ -133,6 +133,12 @@ baseline.
   own body verdicts are treated as artifacts of the decode failure: they are
   neither recorded at generation time nor required to be baselined at
   enforcement time.
+- The `response.content_type` note — emitted when an undeclared `+json`
+  Content-Type fell through to the first JSON key, see
+  [supported-features.md](supported-features.md#body-validation) — explains
+  the body errors beside it rather than being a violation of its own. It is
+  neither recorded nor required to be baselined, so a baseline written before
+  the note existed keeps suppressing the same failure.
 - While a baseline is active the `max_errors` cap is lifted: a truncated
   error list could hide a new violation behind baselined ones. Failure output
   may therefore list more errors than the configured cap.

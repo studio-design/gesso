@@ -102,7 +102,7 @@ Each entry serialises one `ValidationIssue` field-for-field (snake_case). The
 | `method` | `string \| null` | HTTP method of the validated operation. |
 | `path` | `string \| null` | Matched spec path template. |
 | `status_code` | `string \| null` | Spec response key. Always `null` on request-side issues. |
-| `content_type` | `string \| null` | Resolved spec media-type key. Set only on body issues. |
+| `content_type` | `string \| null` | Resolved spec media-type key. Set only on body issues and on the `response.content_type` note (where it is still the key the body was validated against — the undeclared Content-Type that triggered the note appears in `message`). |
 
 ## Versioning
 
