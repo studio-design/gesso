@@ -894,11 +894,13 @@ trait ValidatesOpenApiSchema
             // replacement is the behaviour-equivalent 'bearer' value ADR 0005
             // gives the superset key in 3.0, not `=> true` — the boolean also
             // injects apiKey schemes, which flips missing-apiKey failures into
-            // passes (see UPGRADING.md#deprecations for the v2 options).
+            // passes — spelled as the full v3 path because #501 nests
+            // Laravel-only keys under gesso.php's `laravel` section (see
+            // UPGRADING.md#deprecations for the v2 options).
             Deprecations::notice(
                 id: 'laravel.config.auto_inject_dummy_bearer',
                 subject: "The Laravel config key 'auto_inject_dummy_bearer'",
-                replacement: "'auto_inject_dummy_credentials' => 'bearer' (accepted from Gesso 3.0)",
+                replacement: "laravel.auto_inject_dummy_credentials = 'bearer' (accepted from Gesso 3.0)",
                 removedIn: '3.0',
             );
         }

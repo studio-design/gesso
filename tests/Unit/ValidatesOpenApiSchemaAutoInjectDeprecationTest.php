@@ -86,8 +86,11 @@ class ValidatesOpenApiSchemaAutoInjectDeprecationTest extends TestCase
         // The behaviour-equivalent replacement is the 'bearer' value ADR 0005
         // gives the superset key in 3.0 — pointing at `=> true` would steer
         // suites into the wider apiKey injection as a silent behavior change.
+        // Spelled as the full v3 config path: #501 nests Laravel-only keys
+        // under gesso.php's `laravel` section, so the top-level spelling
+        // would be an unknown key there.
         $this->assertStringContainsString(
-            "Use 'auto_inject_dummy_credentials' => 'bearer' (accepted from Gesso 3.0) instead",
+            "Use laravel.auto_inject_dummy_credentials = 'bearer' (accepted from Gesso 3.0) instead",
             $this->captured[0],
         );
         $this->assertStringContainsString('removed in Gesso 3.0', $this->captured[0]);
