@@ -100,7 +100,11 @@ final class OpenApiPsr7Validator
 
         $rawQueryString = $request->getUri()->getQuery();
 
-        $result = $this->requestValidator->validate(
+        // validateWithoutRecording(): withAdapterErrors() below can promote
+        // the outcome (a decode failure turns Skipped into Failure), so this
+        // adapter owns the exchange's single coverage record and takes it
+        // from the FINAL result (issue #535 review).
+        $result = $this->requestValidator->validateWithoutRecording(
             $this->specName,
             $method,
             $path,
@@ -112,6 +116,7 @@ final class OpenApiPsr7Validator
             $responseStatusCode,
             $rawQueryString === '' ? null : $rawQueryString,
         );
+
         $result = self::withAdapterErrors(
             $result,
             $decoded['errors'],
@@ -157,7 +162,11 @@ final class OpenApiPsr7Validator
     ): OpenApiValidationResult {
         $contentType = self::contentType($response);
         $decoded = $this->decodeBody($response->getBody(), $contentType, 'Response');
-        $result = $this->responseValidator->validate(
+        // validateWithoutRecording(): withAdapterErrors() below can promote
+        // the outcome (a decode failure turns Skipped into Failure), so this
+        // adapter owns the exchange's single coverage record and takes it
+        // from the FINAL result (issue #535 review).
+        $result = $this->responseValidator->validateWithoutRecording(
             $this->specName,
             $method,
             $requestPath,
@@ -166,6 +175,7 @@ final class OpenApiPsr7Validator
             $contentType,
             $response->getHeaders(),
         );
+
         $result = self::withAdapterErrors(
             $result,
             $decoded['errors'],

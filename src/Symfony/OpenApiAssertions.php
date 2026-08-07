@@ -164,17 +164,8 @@ trait OpenApiAssertions
             $response->headers->all(),
         );
 
-        if ($result->matchedPath() !== null) {
-            OpenApiCoverageTracker::recordResponse(
-                $specName,
-                $method->value,
-                $result->matchedPath(),
-                $result->matchedStatusCode() ?? (string) $response->getStatusCode(),
-                $result->matchedContentType(),
-                schemaValidated: !$result->isSkipped(),
-                skipReason: $result->skipReason(),
-            );
-        }
+        // Coverage recording happens inside OpenApiResponseValidator
+        // (issue #535); the adapter no longer records a second observation.
 
         $this->assertSymfonyOpenApiResult(
             $result,
@@ -237,14 +228,8 @@ trait OpenApiAssertions
             $rawQueryString,
         );
 
-        if ($result->matchedPath() !== null) {
-            OpenApiCoverageTracker::recordRequest(
-                $specName,
-                $method->value,
-                $result->matchedPath(),
-                $result->isSkipped() ? $result->skipReason() : null,
-            );
-        }
+        // Coverage recording happens inside OpenApiRequestValidator
+        // (issue #535); the adapter no longer records a second observation.
 
         $this->assertSymfonyOpenApiResult(
             $result,

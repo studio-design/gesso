@@ -389,6 +389,12 @@ final class OpenApiCoverageTracker
 
     /**
      * Instance counterpart of {@see self::recordResponse()} (Issue #229).
+     *
+     * Every call counts one observation. The tuple carries no exchange
+     * identity, so the tracker never infers that a manual record refers to
+     * an exchange a validator already recorded (issue #535 review): the
+     * validators are the single recording site for validated exchanges, and
+     * this method is for observations that never went through `validate()`.
      */
     public function recordResponseOn(
         string $specName,

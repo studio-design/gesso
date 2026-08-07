@@ -317,6 +317,69 @@ final class OpenApiPsr7ValidatorTest extends TestCase
     }
 
     #[Test]
+    public function response_validation_records_coverage_exactly_once(): void
+    {
+        // Issue #535: recording moved into OpenApiResponseValidator; the
+        // adapter must not record a second observation on top of it.
+        $response = new Response(200, ['Content-Type' => 'application/json'], '7');
+
+        $this->validator->validateResponseForOperation('GET', '/body/scalar', $response);
+
+        $state = OpenApiCoverageTracker::exportState();
+        $this->assertSame(
+            ['state' => 'validated', 'hits' => 1, 'skipReason' => null],
+            $state['specs']['psr7']['GET /body/scalar']['responses']['200:application/json'] ?? null,
+        );
+    }
+
+    #[Test]
+    public function coverage_state_follows_the_final_result_when_adapter_errors_promote_a_skip(): void
+    {
+        // 500 matches the default skip pattern, so the inner validator
+        // returns Skipped — but the unparseable body adds adapter errors and
+        // the public result is a Failure. Coverage must describe the result
+        // the caller saw (a checked, failing exchange), not the raw inner
+        // outcome, and the exchange still counts once.
+        $response = new Response(500, ['Content-Type' => 'application/json'], '{oops');
+
+        $result = $this->validator->validateResponseForOperation('GET', '/body/scalar', $response);
+
+        $this->assertFalse($result->isValid());
+        $this->assertFalse($result->isSkipped());
+        $state = OpenApiCoverageTracker::exportState();
+        $this->assertSame(
+            ['state' => 'validated', 'hits' => 1, 'skipReason' => null],
+            $state['specs']['psr7']['GET /body/scalar']['responses']['500:*'] ?? null,
+        );
+    }
+
+    #[Test]
+    public function request_skip_reason_follows_the_final_result_when_adapter_errors_promote_a_downgrade(): void
+    {
+        // The documented-422 downgrade turns the missing-body failure into
+        // Skipped inside the validator, but the unparseable body promotes the
+        // public result back to Failure. The recorded requestSkipReason must
+        // match the public (non-skipped) result: null.
+        $validator = new OpenApiPsr7Validator('psr7-request-downgrade');
+        $request = new Request(
+            'POST',
+            '/notes',
+            ['Content-Type' => 'application/json'],
+            '{oops',
+        );
+
+        $result = $validator->validateRequest($request, 422);
+
+        $this->assertFalse($result->isValid());
+        $this->assertFalse($result->isSkipped());
+        $state = OpenApiCoverageTracker::exportState();
+        $endpoint = $state['specs']['psr7-request-downgrade']['POST /notes'] ?? null;
+        $this->assertNotNull($endpoint);
+        $this->assertTrue($endpoint['requestReached']);
+        $this->assertNull($endpoint['requestSkipReason']);
+    }
+
+    #[Test]
     public function validates_a_response_with_an_explicit_operation_address(): void
     {
         $response = new Response(

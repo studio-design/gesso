@@ -7,6 +7,7 @@ namespace Studio\Gesso;
 use InvalidArgumentException;
 use LogicException;
 use RuntimeException;
+use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\PHPUnit\OpenApiCoverageExtension;
 use Studio\Gesso\Spec\OpenApiOperationResolver;
 use Studio\Gesso\Validation\Response\ResponseBodyValidationResult;
@@ -90,6 +91,61 @@ final class OpenApiResponseValidator
      *                                                      headers but the response sent none.
      */
     public function validate(
+        string $specName,
+        string $method,
+        string $requestPath,
+        int $statusCode,
+        mixed $responseBody,
+        ?string $responseContentType = null,
+        ?array $responseHeaders = null,
+    ): OpenApiValidationResult {
+        $result = $this->validateWithoutRecording(
+            $specName,
+            $method,
+            $requestPath,
+            $statusCode,
+            $responseBody,
+            $responseContentType,
+            $responseHeaders,
+        );
+
+        // Issue #535: the validator records its own coverage observation, so
+        // the framework-independent path feeds the coverage table without a
+        // manual recordResponse() call. One exchange gets exactly one
+        // recording site: adapters that post-process results before returning
+        // them (PSR-7) call validateWithoutRecording() and record their final
+        // result themselves; everything else records here.
+        // Recording follows the result, not the outcome: any result whose
+        // path matched the spec is an observation, including failures
+        // (schemaValidated means "the body was actually checked", which a
+        // schema-violating response still satisfies). The literal wire status
+        // stands in when status resolution never produced a spec key.
+        $matchedPath = $result->matchedPath();
+        if ($matchedPath !== null) {
+            OpenApiCoverageTracker::recordResponse(
+                $specName,
+                $method,
+                $matchedPath,
+                $result->matchedStatusCode() ?? (string) $statusCode,
+                $result->matchedContentType(),
+                schemaValidated: !$result->isSkipped(),
+                skipReason: $result->skipReason(),
+            );
+        }
+
+        return $result;
+    }
+
+    /**
+     * {@see self::validate()} without the coverage recording, for adapters
+     * that post-process the result and record the final version themselves.
+     *
+     * @internal adapter wiring, not a consumer API
+     *
+     * @param mixed $responseBody see {@see self::validate()}
+     * @param null|array<array-key, mixed> $responseHeaders see {@see self::validate()}
+     */
+    public function validateWithoutRecording(
         string $specName,
         string $method,
         string $requestPath,

@@ -21,7 +21,6 @@ use Studio\Gesso\Attribute\SkipOpenApi;
 use Studio\Gesso\Baseline\ViolationBaselineCollector;
 use Studio\Gesso\Baseline\ViolationBaselineEnforcer;
 use Studio\Gesso\Baseline\ViolationFingerprint;
-use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\DecodedBody;
 use Studio\Gesso\HttpMethod;
 use Studio\Gesso\Internal\CurlCommandFormatter;
@@ -571,31 +570,10 @@ trait ValidatesOpenApiSchema
             $response->headers->all(),
         );
 
-        // Record coverage for any matched endpoint, including those where body
-        // validation was skipped (e.g. non-JSON content types). "Covered" means
-        // the endpoint was exercised in a test, not that its body was validated.
-        // Note: under auto_assert, this records coverage for every Laravel HTTP
-        // call — including responses with no explicit contract-test intent.
-        //
-        // matchedStatusCode falls back to the literal status string when the
-        // validator could not pick a spec key (e.g. "Status code N not defined"
-        // failures) so the recording still pins the actually-exercised status.
-        // Such recordings surface in `unexpectedObservations` rather than
-        // counting toward coverage of declared spec entries.
-        //
-        // 204 and non-JSON still count as validated; only skip_response_codes
-        // matches (isSkipped() === true) suppress body validation.
-        if ($result->matchedPath() !== null) {
-            OpenApiCoverageTracker::recordResponse(
-                $specName,
-                $resolvedMethod,
-                $result->matchedPath(),
-                $result->matchedStatusCode() ?? (string) $response->getStatusCode(),
-                $result->matchedContentType(),
-                schemaValidated: !$result->isSkipped(),
-                skipReason: $result->skipReason(),
-            );
-        }
+        // Coverage recording happens inside OpenApiResponseValidator
+        // (issue #535); the adapter no longer records a second observation.
+        // Under auto_assert this still means every Laravel HTTP call with a
+        // matched path records coverage, because every call runs the validator.
 
         $this->assertLaravelOpenApiResult(
             $result,
@@ -768,21 +746,8 @@ trait ValidatesOpenApiSchema
             $rawQueryString,
         );
 
-        // Record coverage when the request matched a spec path, same
-        // tracking semantics as the response-side hook. The tracker is a set,
-        // so this does not double-count when response auto-assert also fires.
-        // When the validator downgraded to Skipped (documented-4xx case from
-        // issue #179), forward the skip reason so the coverage report
-        // surfaces the downgrade rather than reporting a clean validated
-        // request.
-        if ($result->matchedPath() !== null) {
-            OpenApiCoverageTracker::recordRequest(
-                $specName,
-                $resolvedMethod,
-                $result->matchedPath(),
-                $result->isSkipped() ? $result->skipReason() : null,
-            );
-        }
+        // Coverage recording happens inside OpenApiRequestValidator
+        // (issue #535); the adapter no longer records a second observation.
 
         $this->assertLaravelOpenApiResult(
             $result,
