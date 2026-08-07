@@ -282,3 +282,55 @@ table where "read the diff" does not work and the suite has to be trusted.
 ADR 0002's phases and ADR 0003's phase list stay open. In particular this ADR
 does not retract ADR 0003 phase 6, the SDK exercise coverage that already
 shipped.
+
+## Amendments
+
+### 2026-08-07 — #508 is a sanctioned exception to "shape, not capability"
+
+The Decision above says nothing is added and nothing is removed, and that a
+change altering what Gesso decides about a request, a response, or a schema is
+not a v3 change. Applied mechanically, that test fails one milestone issue:
+[#508](https://github.com/studio-design/gesso/issues/508) re-keys enum-drift
+bindings from file-path attributes to spec component names, which changes the
+compared set (its measured table: 17 of 19 existing bindings resolve by short
+class name alone, and one consumer gains 10 newly compared bindings), and adds
+a doctor warning for enum components no operation references. It is also the
+only milestone issue labelled `enhancement` rather than `epic:dx`.
+
+It stays in v3 because deleting the second filesystem root
+(`enum_spec_base_path` and the private spec-reading pipeline behind it) is a
+precondition for the single configuration entry point (#501), and shipping the
+re-keying separately would migrate the same user-facing binding surface twice.
+Consequences: the reduction-PR acceptance rule does not cover #508 — its PR
+changes meaning by design and is reviewed against the issue's binding table,
+not the conformance baselines.
+
+This exception is closed. Any further v3 issue that fails the "shape, not
+capability" test needs its own amendment here before implementation starts.
+
+### 2026-08-07 — release sequencing: the v2 minors carry the value, v3.0 deletes
+
+The milestone's adopter-visible value ships in the final v2 minors, not in
+v3.0:
+
+- #501 steps 1–5 (single `gesso.php`, `--config`, `doctor --emit-config`) are
+  v2-compatible by design and ship in a v2 minor.
+- #502's additive half ships in a v2 minor, as that issue already instructs.
+- #507's additive flags (`--format` / `--output-file` on every subcommand)
+  ship in a v2 minor; the unknown-flag rejection and exit-code change wait.
+- #503's namespace move lands in a v2 minor behind the lazy alias; v3.0
+  removes the alias only.
+- Every rename ships its deprecation through the #499 channel in a v2 minor
+  before the first breaking commit reaches `main`
+  ([docs/versioning.md:216-221](../versioning.md) already requires this
+  ordering; the channel itself shipped in v2.5.0).
+
+v3.0 itself is then a deletion release: the old names, #505's envelope cutoff,
+#506, #524, and #508's breaking half. It is time-boxed; an issue that does not
+fit moves to v3.1 rather than extending the window.
+
+During the v3 window, no new configuration parameter, CLI flag, or output key
+is added under an old naming scheme — every flat addition grows the
+deprecation surface this milestone exists to shrink (observed: the sidecar
+envelope grew from six versions to eight while #505 sat open). New surfaces
+carry their ADR 0005 names from the start.
