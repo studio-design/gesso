@@ -94,6 +94,12 @@ final class SchemaDataGenerator
     private static array $warnedFakerFormats = [];
 
     /**
+     * The one faker generator this process ever builds — see
+     * {@see self::createFaker()} for why a per-call instance is unsafe.
+     */
+    private static ?Generator $faker = null;
+
+    /**
      * @param array<string, mixed> $schema
      *
      * @return list<mixed>
@@ -150,9 +156,19 @@ final class SchemaDataGenerator
     }
 
     /**
-     * Build a faker generator when the package is installed; null otherwise.
-     * The null branch is documented and exercised by tests — see the class
-     * docblock for the determinism contract in either case.
+     * Return the process-wide faker generator when the package is installed;
+     * null otherwise. The null branch is documented and exercised by tests —
+     * see the class docblock for the determinism contract in either case.
+     *
+     * The instance is reused rather than rebuilt per call because
+     * `Faker\Generator::__destruct()` calls `seed()` with no argument, i.e.
+     * `mt_srand()` reseeding the global Mt19937 from entropy. A generator
+     * holds a reference cycle with its providers, so a discarded one is not
+     * freed at scope exit — it waits for PHP's cycle collector, which fires
+     * at a point that depends on everything that ran before it. A collection
+     * landing mid-run therefore moves the rest of that run onto a different
+     * stream and silently breaks the seeded-output contract (issue #517).
+     * Never handing out a disposable generator leaves nothing to collect.
      */
     public static function createFaker(?int $seed): ?Generator
     {
@@ -160,12 +176,12 @@ final class SchemaDataGenerator
             return null;
         }
 
-        $faker = Factory::create();
+        self::$faker ??= Factory::create();
         if ($seed !== null) {
-            $faker->seed($seed);
+            self::$faker->seed($seed);
         }
 
-        return $faker;
+        return self::$faker;
     }
 
     /**
