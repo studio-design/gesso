@@ -120,7 +120,7 @@ final class OpenApiResponseValidator
         // stands in when status resolution never produced a spec key.
         $matchedPath = $result->matchedPath();
         if ($matchedPath !== null) {
-            OpenApiCoverageTracker::recordResponse(
+            OpenApiCoverageTracker::recordValidatorResponse(
                 $specName,
                 $method,
                 $matchedPath,

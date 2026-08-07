@@ -304,7 +304,7 @@ OpenApiSpecLoader::reset(); // For testing
 
 ## `OpenApiCoverageTracker`
 
-Tracks which endpoints have been exercised, at `(method, path, statusCode, contentType)` granularity. `OpenApiRequestValidator` and `OpenApiResponseValidator` record automatically for every result whose path matched the spec, so every entry point — the framework traits, the PSR-7 adapter, and direct validator calls — feeds the tracker without an explicit call. Manual recording remains available for observations that never went through a validator; do not pair it with a `validate()` call for the same exchange, or `hits` counts double.
+Tracks which endpoints have been exercised, at `(method, path, statusCode, contentType)` granularity. `OpenApiRequestValidator` and `OpenApiResponseValidator` record automatically for every result whose path matched the spec, so every entry point — the framework traits, the PSR-7 adapter, and direct validator calls — feeds the tracker without an explicit call. Manual recording remains available for observations that never went through a validator. Suites written against the pre-2.6 quickstart — validate, then `recordResponse()` by hand — keep reporting one hit per exchange: the first manual re-record of the observation the validator just made is folded into it (`hits` unchanged, states reconciled by the normal promotion rules).
 
 ```php
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;

@@ -15,6 +15,7 @@ use Psr\Http\Message\StreamInterface;
 use Psr\Http\Message\UploadedFileInterface;
 use RuntimeException;
 use Studio\Gesso\Baseline\ViolationFingerprint;
+use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\DecodedBody;
 use Studio\Gesso\OpenApiRequestValidator;
 use Studio\Gesso\OpenApiResponseValidator;
@@ -112,7 +113,7 @@ final class OpenApiPsr7Validator
             $rawQueryString === '' ? null : $rawQueryString,
         );
 
-        return self::withAdapterErrors(
+        $result = self::withAdapterErrors(
             $result,
             $decoded['errors'],
             'request.body',
@@ -121,8 +122,22 @@ final class OpenApiPsr7Validator
             contentType: self::requestBodyIssueContentType($result),
         );
 
-        // Coverage recording happens inside OpenApiRequestValidator
-        // (issue #535); the adapter no longer records a second observation.
+        // withAdapterErrors() can promote the validator's outcome (a decode
+        // failure turns Skipped into Failure), so coverage must be recorded
+        // from the FINAL result here — the validator's own recording saw the
+        // raw outcome. recordRequest() is idempotent for requestReached and
+        // a clean re-record promotes a stale skipReason to null, so this
+        // re-record reconciles rather than duplicates (issue #535 review).
+        if ($result->matchedPath() !== null) {
+            OpenApiCoverageTracker::recordRequest(
+                $this->specName,
+                $method,
+                $result->matchedPath(),
+                $result->isSkipped() ? $result->skipReason() : null,
+            );
+        }
+
+        return $result;
     }
 
     /**
@@ -159,7 +174,7 @@ final class OpenApiPsr7Validator
             $response->getHeaders(),
         );
 
-        return self::withAdapterErrors(
+        $result = self::withAdapterErrors(
             $result,
             $decoded['errors'],
             'response.body',
@@ -168,8 +183,24 @@ final class OpenApiPsr7Validator
             contentType: $result->matchedContentType(),
         );
 
-        // Coverage recording happens inside OpenApiResponseValidator
-        // (issue #535); the adapter no longer records a second observation.
+        // withAdapterErrors() can promote the validator's outcome (a decode
+        // failure turns Skipped into Failure), so coverage must be recorded
+        // from the FINAL result here. The tracker folds this re-record into
+        // the observation the validator just made — hits stay at one and the
+        // state reconciles to the final outcome (issue #535 review).
+        if ($result->matchedPath() !== null) {
+            OpenApiCoverageTracker::recordResponse(
+                $this->specName,
+                $method,
+                $result->matchedPath(),
+                $result->matchedStatusCode() ?? (string) $response->getStatusCode(),
+                $result->matchedContentType(),
+                schemaValidated: !$result->isSkipped(),
+                skipReason: $result->skipReason(),
+            );
+        }
+
+        return $result;
     }
 
     /**

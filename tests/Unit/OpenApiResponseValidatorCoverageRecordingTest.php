@@ -154,6 +154,57 @@ final class OpenApiResponseValidatorCoverageRecordingTest extends TestCase
     }
 
     #[Test]
+    public function manual_record_after_validate_does_not_double_count(): void
+    {
+        // The pre-#535 core quickstart pattern: validate, then record the
+        // observation by hand. Suites written against that quickstart must
+        // keep reporting hits=1 per exchange after the validator started
+        // recording on its own.
+        $result = $this->validator->validate(
+            'petstore-3.0',
+            'GET',
+            '/v1/pets',
+            200,
+            ['data' => [['id' => 1, 'name' => 'Fido']]],
+            'application/json',
+        );
+
+        OpenApiCoverageTracker::recordResponse(
+            'petstore-3.0',
+            'GET',
+            $result->matchedPath() ?? '/v1/pets',
+            $result->matchedStatusCode() ?? '200',
+            $result->matchedContentType(),
+            schemaValidated: true,
+        );
+
+        $this->assertSame(
+            ['200:application/json' => ['state' => 'validated', 'hits' => 1, 'skipReason' => null]],
+            $this->recordedResponses('GET /v1/pets'),
+        );
+    }
+
+    #[Test]
+    public function manual_record_alone_still_counts(): void
+    {
+        // Manual recording without a validator call (observations that never
+        // went through validate()) must keep working unchanged.
+        OpenApiCoverageTracker::recordResponse(
+            'petstore-3.0',
+            'GET',
+            '/v1/pets',
+            '200',
+            'application/json',
+            schemaValidated: true,
+        );
+
+        $this->assertSame(
+            ['200:application/json' => ['state' => 'validated', 'hits' => 1, 'skipReason' => null]],
+            $this->recordedResponses('GET /v1/pets'),
+        );
+    }
+
+    #[Test]
     public function two_validations_of_the_same_operation_accumulate_hits(): void
     {
         $body = ['data' => [['id' => 1, 'name' => 'Fido']]];

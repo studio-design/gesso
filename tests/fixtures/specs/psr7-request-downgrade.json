@@ -1,0 +1,38 @@
+{
+    "openapi": "3.0.3",
+    "info": {
+        "title": "PSR-7 request downgrade fixture",
+        "version": "1.0.0"
+    },
+    "paths": {
+        "/notes": {
+            "post": {
+                "operationId": "createNote",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": ["text"],
+                                "properties": {
+                                    "text": {
+                                        "type": "string"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "created"
+                    },
+                    "422": {
+                        "description": "validation error"
+                    }
+                }
+            }
+        }
+    }
+}
