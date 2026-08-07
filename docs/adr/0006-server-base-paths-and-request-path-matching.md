@@ -20,9 +20,10 @@ A spec written the normal way declares its base path once:
 
 Served by an application mounted at `/api`, a contract test against `/api/pets`
 fails out of the box, and the fix is to write `/api` into `strip_prefixes` — a
-value the spec has already stated. `servers` is read nowhere in the validation
-path; the only `src/` reader is `CoverageGateCommand`, which fingerprints it
-per operation so a server change invalidates that operation's coverage.
+value the spec has already stated. `servers` was read nowhere in the validation
+path before this ADR; its only `src/` reader was `CoverageGateCommand`, which
+fingerprints it per operation so a server change invalidates that operation's
+coverage.
 
 Nothing in the documentation says either way, and a reader who knows OpenAPI
 assumes the opposite. Both [#511](https://github.com/studio-design/gesso/issues/511)
@@ -61,11 +62,23 @@ path is needed for. Any derivation could therefore honour root `servers` only,
 so it would silently disagree with the document exactly where the document is
 most explicit.
 
-**Multiple entries and server variables have no non-arbitrary resolution.**
-`[{"url": "/v1"}, {"url": "/v2"}]` is legal; taking the first is a guess, and
-taking both makes a request match two operations. `https://{env}.example.com/{basePath}`
-needs variable values Gesso does not have. Degrading loudly on each of these
-means a warning on specs that are entirely correct.
+**Multiple entries have no non-arbitrary resolution.** `[{"url": "/v1"},
+{"url": "/v2"}]` is legal; taking the first is a guess, and taking both makes one
+request match two operations. Degrading loudly means warning on a spec that is
+entirely correct.
+
+Server variables are deliberately *not* part of this reason. `default` is
+REQUIRED on a Server Variable Object and is defined as the value that "SHALL be
+sent if an alternate value is not supplied"
+— identically in [3.0.4](https://spec.openapis.org/oas/v3.0.4.html#server-variable-object)
+and [3.2.0](https://spec.openapis.org/oas/v3.2.0.html#server-variable-object) —
+so `https://{env}.example.com/{basePath}` does have one concrete reading, and
+the diagnostic below substitutes it. What a substituted default cannot promise
+is that the deployment under test uses it. That is survivable for a hint that
+confirms the result against the matcher before it says anything, and not
+survivable for a strip applied before matching, which would act on the guess
+unverified. The asymmetry is the reason the hint may read `servers` and the
+matcher may not.
 
 Compatibility settles what the reasons leave: deriving the prefix changes the
 meaning of an unset `strip_prefixes` for every consumer whose spec declares
@@ -89,7 +102,27 @@ No matching path found in 'petstore' spec for GET /api/pets
 
 Root `servers` only, for the reason in (1): at the point the diagnostic renders,
 no operation has been selected. That is a limit on how often the hint fires, not
-on whether it is correct — it never fires unless the stripped path matches.
+on whether it is correct.
+
+The invariant it is held to is stronger than "the stripped path matches": it
+fires only where **adding the prefix it names to `strip_prefixes` would actually
+work**. Three things enforce that, because `strip_prefixes` removes at most one
+prefix per request and takes the first entry that matches:
+
+- The removal is applied to the raw request path, not the normalized one, since
+  that is what `strip_prefixes` is handed — prefix first, trailing slash second.
+  Removing `/api` from `/api/` leaves the root path `/`; removing it from `/api`
+  leaves nothing that matches. Both are right.
+- The result is confirmed against the matcher with prefix stripping disabled, so
+  a candidate that only matched because an already-configured prefix came off a
+  *second* time cannot be reported.
+- The hint is skipped entirely when a configured prefix already matched the raw
+  path. That prefix and the server base path would both start at offset zero,
+  one containing the other, so which of them wins is a question of list order —
+  advice a one-line hint cannot give.
+
+Templated URLs are read with their required `default` substituted, so a spec
+that parameterises its base path is not excluded.
 
 The hint is additive on an already-failing path, so it ships in a v2 minor. It
 does not touch `gesso doctor`, which does not match request paths.

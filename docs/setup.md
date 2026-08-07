@@ -106,6 +106,8 @@ test mounts its routes. They diverge whenever a gateway terminates the prefix,
 the test harness boots the app at the root, or the spec's `servers` carries a
 hostname and no path. `servers` is also overridable per path item and per
 operation, and reading an override requires having already matched the path.
+A templated `url` resolves through its required variable `default`s, which say
+what is served absent an alternate value — not what your test deployment uses.
 [ADR 0006](adr/0006-server-base-paths-and-request-path-matching.md) records the
 full reasoning.
 
