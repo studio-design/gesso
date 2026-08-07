@@ -100,7 +100,11 @@ final class OpenApiPsr7Validator
 
         $rawQueryString = $request->getUri()->getQuery();
 
-        $result = $this->requestValidator->validate(
+        // validateWithoutRecording(): withAdapterErrors() below can promote
+        // the outcome (a decode failure turns Skipped into Failure), so this
+        // adapter owns the exchange's single coverage record and takes it
+        // from the FINAL result (issue #535 review).
+        $result = $this->requestValidator->validateWithoutRecording(
             $this->specName,
             $method,
             $path,
@@ -122,12 +126,6 @@ final class OpenApiPsr7Validator
             contentType: self::requestBodyIssueContentType($result),
         );
 
-        // withAdapterErrors() can promote the validator's outcome (a decode
-        // failure turns Skipped into Failure), so coverage must be recorded
-        // from the FINAL result here — the validator's own recording saw the
-        // raw outcome. recordRequest() is idempotent for requestReached and
-        // a clean re-record promotes a stale skipReason to null, so this
-        // re-record reconciles rather than duplicates (issue #535 review).
         if ($result->matchedPath() !== null) {
             OpenApiCoverageTracker::recordRequest(
                 $this->specName,
@@ -164,7 +162,11 @@ final class OpenApiPsr7Validator
     ): OpenApiValidationResult {
         $contentType = self::contentType($response);
         $decoded = $this->decodeBody($response->getBody(), $contentType, 'Response');
-        $result = $this->responseValidator->validate(
+        // validateWithoutRecording(): withAdapterErrors() below can promote
+        // the outcome (a decode failure turns Skipped into Failure), so this
+        // adapter owns the exchange's single coverage record and takes it
+        // from the FINAL result (issue #535 review).
+        $result = $this->responseValidator->validateWithoutRecording(
             $this->specName,
             $method,
             $requestPath,
@@ -183,11 +185,6 @@ final class OpenApiPsr7Validator
             contentType: $result->matchedContentType(),
         );
 
-        // withAdapterErrors() can promote the validator's outcome (a decode
-        // failure turns Skipped into Failure), so coverage must be recorded
-        // from the FINAL result here. The tracker folds this re-record into
-        // the observation the validator just made — hits stay at one and the
-        // state reconciles to the final outcome (issue #535 review).
         if ($result->matchedPath() !== null) {
             OpenApiCoverageTracker::recordResponse(
                 $this->specName,

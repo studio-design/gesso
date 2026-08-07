@@ -7,7 +7,6 @@ namespace Studio\Gesso\Coverage;
 use const E_USER_WARNING;
 
 use InvalidArgumentException;
-use Studio\Gesso\OpenApiResponseValidator;
 use Studio\Gesso\Spec\OpenApiOperationResolver;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
@@ -132,14 +131,6 @@ final class OpenApiCoverageTracker
      * @var array<string, array<string, EndpointCoverage>>
      */
     private array $covered = [];
-
-    /**
-     * Fingerprint of the response observation the validator recorded last,
-     * armed by {@see self::recordValidatorResponseOn()} and consumed by the
-     * fold in {@see self::recordResponseOn()}. Transient bookkeeping — not
-     * part of exported state.
-     */
-    private ?string $pendingValidatorResponse = null;
 
     public function __construct() {}
 
@@ -353,23 +344,6 @@ final class OpenApiCoverageTracker
     }
 
     /**
-     * Static facade for {@see self::recordValidatorResponseOn()}.
-     *
-     * @internal validator wiring, not a consumer API
-     */
-    public static function recordValidatorResponse(
-        string $specName,
-        string $method,
-        string $path,
-        string $statusKey,
-        ?string $contentTypeKey,
-        bool $schemaValidated,
-        ?string $skipReason = null,
-    ): void {
-        self::current()->recordValidatorResponseOn($specName, $method, $path, $statusKey, $contentTypeKey, $schemaValidated, $skipReason);
-    }
-
-    /**
      * Instance counterpart of {@see self::recordRequest()} (Issue #229).
      */
     public function recordRequestOn(
@@ -416,15 +390,11 @@ final class OpenApiCoverageTracker
     /**
      * Instance counterpart of {@see self::recordResponse()} (Issue #229).
      *
-     * When the incoming observation is identical (same spec, endpoint,
-     * status key, and content-type key) to the one the validator itself just
-     * recorded (issue #535), it is folded into that record instead of
-     * counting again: `hits` stays put and the state is reconciled by the
-     * normal promotion rules. This keeps the pre-#535 pattern — validate,
-     * then record the observation by hand — at one hit per exchange, and it
-     * is what lets an adapter re-record its post-processed final result
-     * without inflating counts. The fold arms once per validator record; a
-     * second identical call counts normally.
+     * Every call counts one observation. The tuple carries no exchange
+     * identity, so the tracker never infers that a manual record refers to
+     * an exchange a validator already recorded (issue #535 review): the
+     * validators are the single recording site for validated exchanges, and
+     * this method is for observations that never went through `validate()`.
      */
     public function recordResponseOn(
         string $specName,
@@ -435,41 +405,17 @@ final class OpenApiCoverageTracker
         bool $schemaValidated,
         ?string $skipReason = null,
     ): void {
-        $fingerprint = self::responseFingerprint($specName, $method, $path, $statusKey, $contentTypeKey);
-        $folded = $fingerprint === $this->pendingValidatorResponse;
-        $this->pendingValidatorResponse = null;
+        $endpointKey = self::endpointKey($method, $path);
+        $contentKey = $contentTypeKey ?? self::ANY_CONTENT_TYPE;
+        $responseKey = $statusKey . ':' . $contentKey;
 
-        $this->reconcileResponseObservation(
-            $specName,
-            $method,
-            $path,
-            $statusKey,
-            $contentTypeKey,
-            $schemaValidated,
+        $this->covered[$specName][$endpointKey] ??= ['requestReached' => false, 'requestSkipReason' => null, 'responses' => []];
+        $this->covered[$specName][$endpointKey]['responses'][$responseKey] = self::reconcileResponse(
+            $this->covered[$specName][$endpointKey]['responses'][$responseKey] ?? null,
+            $schemaValidated ? ResponseCoverageState::Validated : ResponseCoverageState::Skipped,
+            1,
             $skipReason,
-            hits: $folded ? 0 : 1,
         );
-    }
-
-    /**
-     * Recording entry point for {@see OpenApiResponseValidator}
-     * (issue #535). Behaves like {@see self::recordResponseOn()} with one
-     * addition: it arms the fold described there, so an immediately following
-     * identical {@see self::recordResponse()} call does not double-count.
-     *
-     * @internal validator wiring, not a consumer API
-     */
-    public function recordValidatorResponseOn(
-        string $specName,
-        string $method,
-        string $path,
-        string $statusKey,
-        ?string $contentTypeKey,
-        bool $schemaValidated,
-        ?string $skipReason = null,
-    ): void {
-        $this->reconcileResponseObservation($specName, $method, $path, $statusKey, $contentTypeKey, $schemaValidated, $skipReason, hits: 1);
-        $this->pendingValidatorResponse = self::responseFingerprint($specName, $method, $path, $statusKey, $contentTypeKey);
     }
 
     /**
@@ -480,7 +426,6 @@ final class OpenApiCoverageTracker
     public function resetOn(): void
     {
         $this->covered = [];
-        $this->pendingValidatorResponse = null;
     }
 
     /**
@@ -687,16 +632,6 @@ final class OpenApiCoverageTracker
             'responseSkipped' => $responseSkipped,
             'responseUncovered' => $responseTotal - $responseCovered - $responseSkipped,
         ];
-    }
-
-    private static function responseFingerprint(
-        string $specName,
-        string $method,
-        string $path,
-        string $statusKey,
-        ?string $contentTypeKey,
-    ): string {
-        return $specName . "\0" . self::endpointKey($method, $path) . "\0" . $statusKey . ':' . ($contentTypeKey ?? self::ANY_CONTENT_TYPE);
     }
 
     /**
@@ -1221,28 +1156,5 @@ final class OpenApiCoverageTracker
         }
 
         return [substr($key, 0, $colonPos), substr($key, $colonPos + 1)];
-    }
-
-    private function reconcileResponseObservation(
-        string $specName,
-        string $method,
-        string $path,
-        string $statusKey,
-        ?string $contentTypeKey,
-        bool $schemaValidated,
-        ?string $skipReason,
-        int $hits,
-    ): void {
-        $endpointKey = self::endpointKey($method, $path);
-        $contentKey = $contentTypeKey ?? self::ANY_CONTENT_TYPE;
-        $responseKey = $statusKey . ':' . $contentKey;
-
-        $this->covered[$specName][$endpointKey] ??= ['requestReached' => false, 'requestSkipReason' => null, 'responses' => []];
-        $this->covered[$specName][$endpointKey]['responses'][$responseKey] = self::reconcileResponse(
-            $this->covered[$specName][$endpointKey]['responses'][$responseKey] ?? null,
-            $schemaValidated ? ResponseCoverageState::Validated : ResponseCoverageState::Skipped,
-            $hits,
-            $skipReason,
-        );
     }
 }

@@ -99,7 +99,7 @@ final class OpenApiResponseValidator
         ?string $responseContentType = null,
         ?array $responseHeaders = null,
     ): OpenApiValidationResult {
-        $result = $this->doValidate(
+        $result = $this->validateWithoutRecording(
             $specName,
             $method,
             $requestPath,
@@ -111,8 +111,10 @@ final class OpenApiResponseValidator
 
         // Issue #535: the validator records its own coverage observation, so
         // the framework-independent path feeds the coverage table without a
-        // manual recordResponse() call. This is the single recording site —
-        // the framework adapters no longer record responses themselves.
+        // manual recordResponse() call. One exchange gets exactly one
+        // recording site: adapters that post-process results before returning
+        // them (PSR-7) call validateWithoutRecording() and record their final
+        // result themselves; everything else records here.
         // Recording follows the result, not the outcome: any result whose
         // path matched the spec is an observation, including failures
         // (schemaValidated means "the body was actually checked", which a
@@ -120,7 +122,7 @@ final class OpenApiResponseValidator
         // stands in when status resolution never produced a spec key.
         $matchedPath = $result->matchedPath();
         if ($matchedPath !== null) {
-            OpenApiCoverageTracker::recordValidatorResponse(
+            OpenApiCoverageTracker::recordResponse(
                 $specName,
                 $method,
                 $matchedPath,
@@ -135,10 +137,15 @@ final class OpenApiResponseValidator
     }
 
     /**
+     * {@see self::validate()} without the coverage recording, for adapters
+     * that post-process the result and record the final version themselves.
+     *
+     * @internal adapter wiring, not a consumer API
+     *
      * @param mixed $responseBody see {@see self::validate()}
      * @param null|array<array-key, mixed> $responseHeaders see {@see self::validate()}
      */
-    private function doValidate(
+    public function validateWithoutRecording(
         string $specName,
         string $method,
         string $requestPath,

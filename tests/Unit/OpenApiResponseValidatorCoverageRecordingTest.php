@@ -154,12 +154,17 @@ final class OpenApiResponseValidatorCoverageRecordingTest extends TestCase
     }
 
     #[Test]
-    public function manual_record_after_validate_does_not_double_count(): void
+    public function manual_record_after_validate_counts_as_its_own_observation(): void
     {
-        // The pre-#535 core quickstart pattern: validate, then record the
-        // observation by hand. Suites written against that quickstart must
-        // keep reporting hits=1 per exchange after the validator started
-        // recording on its own.
+        // recordResponse() carries no exchange identity — only the coverage
+        // tuple — so the tracker cannot tell "the pre-2.6 quickstart
+        // re-recording the exchange validate() just saw" apart from "a second
+        // exchange of the same operation recorded by hand". Guessing folded
+        // real exchanges and missed batched re-records, so every call counts:
+        // validate() records once, and a manual call is always one more
+        // observation. Suites still carrying the pre-2.6 manual call see
+        // doubled hits (display only — covered/skipped states and gates do
+        // not read hits) until they delete that line.
         $result = $this->validator->validate(
             'petstore-3.0',
             'GET',
@@ -179,9 +184,59 @@ final class OpenApiResponseValidatorCoverageRecordingTest extends TestCase
         );
 
         $this->assertSame(
-            ['200:application/json' => ['state' => 'validated', 'hits' => 1, 'skipReason' => null]],
+            ['200:application/json' => ['state' => 'validated', 'hits' => 2, 'skipReason' => null]],
             $this->recordedResponses('GET /v1/pets'),
         );
+    }
+
+    #[Test]
+    public function batched_manual_records_after_repeated_validates_all_count(): void
+    {
+        // validate() twice, then record twice by hand: four observations,
+        // four hits. No pairing is inferred between validator records and
+        // later manual records.
+        $body = ['data' => [['id' => 1, 'name' => 'Fido']]];
+        $this->validator->validate('petstore-3.0', 'GET', '/v1/pets', 200, $body, 'application/json');
+        $this->validator->validate('petstore-3.0', 'GET', '/v1/pets', 200, $body, 'application/json');
+        OpenApiCoverageTracker::recordResponse('petstore-3.0', 'GET', '/v1/pets', '200', 'application/json', schemaValidated: true);
+        OpenApiCoverageTracker::recordResponse('petstore-3.0', 'GET', '/v1/pets', '200', 'application/json', schemaValidated: true);
+
+        $this->assertSame(
+            ['200:application/json' => ['state' => 'validated', 'hits' => 4, 'skipReason' => null]],
+            $this->recordedResponses('GET /v1/pets'),
+        );
+    }
+
+    #[Test]
+    public function validate_without_recording_records_nothing(): void
+    {
+        $result = $this->validator->validateWithoutRecording(
+            'petstore-3.0',
+            'GET',
+            '/v1/pets',
+            200,
+            ['data' => [['id' => 1, 'name' => 'Fido']]],
+            'application/json',
+        );
+
+        $this->assertTrue($result->isValid());
+        $this->assertSame([], OpenApiCoverageTracker::exportState()['specs']);
+    }
+
+    #[Test]
+    public function request_validate_without_recording_records_nothing(): void
+    {
+        $result = (new OpenApiRequestValidator())->validateWithoutRecording(
+            'petstore-3.0',
+            'GET',
+            '/v1/pets',
+            [],
+            [],
+            null,
+        );
+
+        $this->assertTrue($result->isValid(), $result->errorMessage());
+        $this->assertSame([], OpenApiCoverageTracker::exportState()['specs']);
     }
 
     #[Test]

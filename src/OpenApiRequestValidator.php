@@ -131,7 +131,7 @@ final class OpenApiRequestValidator
         ?int $responseStatusCode = null,
         ?string $rawQueryString = null,
     ): OpenApiValidationResult {
-        $result = $this->doValidate(
+        $result = $this->validateWithoutRecording(
             $specName,
             $method,
             $requestPath,
@@ -160,56 +160,17 @@ final class OpenApiRequestValidator
     }
 
     /**
-     * Lift plain message strings into the named-error shape the issue loop
-     * consumes, with no name attached — spec-level and body errors are not
-     * about a single named parameter (body issues carry `instancePath`
-     * instead).
+     * {@see self::validate()} without the coverage recording, for adapters
+     * that post-process the result and record the final version themselves.
      *
-     * @param string[] $messages
+     * @internal adapter wiring, not a consumer API
      *
-     * @return list<NamedError>
-     */
-    private static function withoutNames(array $messages): array
-    {
-        $named = [];
-        foreach ($messages as $message) {
-            $named[] = new NamedError(null, $message);
-        }
-
-        return $named;
-    }
-
-    /**
-     * Media-type key for the synthetic boundary error above. A
-     * `RuntimeException` can only originate on the JSON schema path — schema
-     * conversion and validation run after {@see RequestBodyValidator} resolved
-     * the JSON media-type key (the non-JSON and malformed-spec paths return
-     * before touching the converter) — so re-resolving the key from the same
-     * `content` map reproduces exactly what the validator matched before it
-     * threw.
-     *
-     * @param array<string, mixed> $operation
-     */
-    private static function thrownBodyContentType(array $operation): ?string
-    {
-        $requestBody = $operation['requestBody'] ?? null;
-        if (!is_array($requestBody) || !is_array($requestBody['content'] ?? null)) {
-            return null;
-        }
-
-        /** @var array<string, mixed> $content */
-        $content = $requestBody['content'];
-
-        return ContentTypeMatcher::findJsonContentType($content);
-    }
-
-    /**
      * @param array<string, mixed> $queryParams see {@see self::validate()}
      * @param array<array-key, mixed> $headers see {@see self::validate()}
      * @param mixed $requestBody see {@see self::validate()}
      * @param array<string, mixed> $cookies see {@see self::validate()}
      */
-    private function doValidate(
+    public function validateWithoutRecording(
         string $specName,
         string $method,
         string $requestPath,
@@ -489,6 +450,50 @@ final class OpenApiRequestValidator
             matchedContentType: $bodyResult->matchedContentType,
             issues: $issues,
         );
+    }
+
+    /**
+     * Lift plain message strings into the named-error shape the issue loop
+     * consumes, with no name attached — spec-level and body errors are not
+     * about a single named parameter (body issues carry `instancePath`
+     * instead).
+     *
+     * @param string[] $messages
+     *
+     * @return list<NamedError>
+     */
+    private static function withoutNames(array $messages): array
+    {
+        $named = [];
+        foreach ($messages as $message) {
+            $named[] = new NamedError(null, $message);
+        }
+
+        return $named;
+    }
+
+    /**
+     * Media-type key for the synthetic boundary error above. A
+     * `RuntimeException` can only originate on the JSON schema path — schema
+     * conversion and validation run after {@see RequestBodyValidator} resolved
+     * the JSON media-type key (the non-JSON and malformed-spec paths return
+     * before touching the converter) — so re-resolving the key from the same
+     * `content` map reproduces exactly what the validator matched before it
+     * threw.
+     *
+     * @param array<string, mixed> $operation
+     */
+    private static function thrownBodyContentType(array $operation): ?string
+    {
+        $requestBody = $operation['requestBody'] ?? null;
+        if (!is_array($requestBody) || !is_array($requestBody['content'] ?? null)) {
+            return null;
+        }
+
+        /** @var array<string, mixed> $content */
+        $content = $requestBody['content'];
+
+        return ContentTypeMatcher::findJsonContentType($content);
     }
 
     /**
