@@ -80,7 +80,7 @@ final class ViolationBaselineEnforcer
         $artifactCategories = ViolationFingerprint::decodeFailureCategories($result->issues());
         $allBaselined = true;
         foreach ($result->issues() as $issue) {
-            if ($issue->category === $excludeCategory) {
+            if ($issue->category === $excludeCategory || ViolationFingerprint::isContextOnly($issue)) {
                 continue;
             }
             if (

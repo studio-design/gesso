@@ -148,6 +148,117 @@ class OpenApiResponseValidatorTest extends TestCase
     }
 
     #[Test]
+    public function undeclared_json_content_type_is_named_on_a_body_failure(): void
+    {
+        // Issue #435: a `+json` variant the status does not enumerate still
+        // falls through to the first JSON key, so the body is judged against
+        // an unrelated schema. Without the note, the output reads as "the
+        // body is wrong" and the real cause — the undocumented media type —
+        // takes a manual Content-Type/spec comparison to find.
+        $result = $this->validator->validate(
+            'petstore-3.1',
+            'GET',
+            '/v1/v31/multi-content',
+            200,
+            ['title' => 'Too Many Requests'],
+            'application/vnd.example.v1+json',
+        );
+
+        $this->assertFalse($result->isValid());
+
+        // The note is the last line, after the schema errors it explains, and
+        // the body issues keep their structured pointer / keyword.
+        $errors = $result->errors();
+        $this->assertGreaterThan(1, count($errors));
+        $this->assertStringStartsWith('[/] ', $errors[0]);
+        $this->assertSame(
+            "Note: response Content-Type 'application/vnd.example.v1+json' is not defined for "
+            . "GET /v1/v31/multi-content (status 200) in 'petstore-3.1' spec; the reported body errors "
+            . "come from validating it against 'application/json'. "
+            . 'Defined content types: application/json, application/problem+json, text/plain',
+            $errors[count($errors) - 1],
+        );
+
+        $issues = $result->issues();
+        $this->assertSame(
+            $errors,
+            array_map(static fn($issue) => $issue->message, $issues),
+        );
+        $noteIssue = $issues[count($issues) - 1];
+        $this->assertSame('response.content_type', $noteIssue->category);
+        $this->assertSame('GET', $noteIssue->method);
+        $this->assertSame('/v1/v31/multi-content', $noteIssue->path);
+        $this->assertSame('200', $noteIssue->statusCode);
+        // The spec key the body was actually checked against, matching the
+        // documented meaning of the field everywhere else.
+        $this->assertSame('application/json', $noteIssue->contentType);
+        // The extra note must not knock the body issues out of alignment with
+        // their violations — that is what carries instancePath / keyword.
+        $this->assertSame('required', $issues[0]->keyword);
+        $this->assertSame('', $issues[0]->instancePath);
+    }
+
+    #[Test]
+    public function the_undeclared_content_type_note_stays_last_behind_header_errors(): void
+    {
+        // The note explains the whole failure, so it must not be buried
+        // between the body errors it annotates and an unrelated header error.
+        // psr7 POST /widgets/{id} 201 declares only `application/json` and a
+        // required `X-Trace` header — a `+json` variant with a wrong body and
+        // no header fails on all three channels at once.
+        $result = $this->validator->validate(
+            'psr7',
+            'POST',
+            '/widgets/42',
+            201,
+            ['id' => 'not-an-integer'],
+            'application/vnd.example.v1+json',
+            [],
+        );
+
+        $this->assertFalse($result->isValid());
+
+        $errors = $result->errors();
+        $this->assertCount(3, $errors);
+        $this->assertStringStartsWith('[/id] ', $errors[0]);
+        $this->assertStringContainsString('X-Trace', $errors[1]);
+        $this->assertStringStartsWith(
+            "Note: response Content-Type 'application/vnd.example.v1+json' is not defined for ",
+            $errors[2],
+        );
+
+        // issues() mirrors errors() one-to-one, so the categories move with
+        // the messages.
+        $this->assertSame(
+            ['response.body', 'response.header', 'response.content_type'],
+            array_map(static fn($issue) => $issue->category, $result->issues()),
+        );
+        $this->assertSame(
+            $errors,
+            array_map(static fn($issue) => $issue->message, $result->issues()),
+        );
+    }
+
+    #[Test]
+    public function undeclared_json_content_type_stays_silent_when_the_body_passes(): void
+    {
+        // The fallback itself remains a documented pass — the note is context
+        // for a failure, not a failure of its own.
+        $result = $this->validator->validate(
+            'petstore-3.1',
+            'GET',
+            '/v1/v31/multi-content',
+            200,
+            ['data' => 'ok'],
+            'application/vnd.example.v1+json',
+        );
+
+        $this->assertTrue($result->isValid());
+        $this->assertSame([], $result->errors());
+        $this->assertSame('application/json', $result->matchedContentType());
+    }
+
+    #[Test]
     public function undefined_status_issue_is_categorized_with_status(): void
     {
         $result = $this->validator->validate('psr7', 'GET', '/body/scalar', 418, 5, 'application/json');

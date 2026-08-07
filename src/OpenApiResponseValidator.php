@@ -260,8 +260,11 @@ final class OpenApiResponseValidator
             );
         }
 
-        // Order is body errors first, headers second. Tests that pin
-        // specific positions rely on this; reordering would silently
+        // Order is body errors first, headers second, and the
+        // undeclared-Content-Type note (issue #435) last of all — it explains
+        // the whole failure, so it must not be buried between the errors it
+        // annotates and a header error that has nothing to do with it. Tests
+        // that pin specific positions rely on this; reordering would silently
         // change diagnostic flow without breaking behaviour. Category tags
         // mirror the producing sub-validator (#282, stage 1).
         $issues = [];
@@ -289,9 +292,27 @@ final class OpenApiResponseValidator
             // violations on one operation apart (#402).
             $issues[] = new ValidationIssue('response.header', $headerError->message, instancePath: $headerError->instancePath, keyword: $headerError->keyword, method: $method, path: $matchedPath, statusCode: $statusCodeStr, parameter: $headerError->name);
         }
+        // The response arrived as a JSON media type the spec does not declare
+        // for this status, so the body was checked against the first JSON key
+        // instead (issue #435). Alone, the resulting mismatch reads as "the
+        // body is wrong"; the note names the undeclared media type as a
+        // candidate cause. It rides along only when the body actually failed —
+        // the fallback itself stays a pass, which is the documented behaviour.
+        $contentTypeNote = $bodyResult->errors !== [] ? $resolution->contentTypeNote : null;
+        if ($contentTypeNote !== null) {
+            $issues[] = new ValidationIssue(
+                'response.content_type',
+                $contentTypeNote,
+                method: $method,
+                path: $matchedPath,
+                statusCode: $statusCodeStr,
+                contentType: $bodyResult->matchedContentType,
+            );
+        }
         $errors = array_merge(
             $bodyResult->errors,
             array_map(static fn(NamedError $headerError): string => $headerError->message, $headerErrors),
+            $contentTypeNote !== null ? [$contentTypeNote] : [],
         );
 
         if ($errors === []) {

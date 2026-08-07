@@ -49,7 +49,8 @@ same `message` plus a stable `category` slug (e.g. `request.security`,
 context the validator resolved (`method`, `path`, `statusCode`,
 `contentType`). A context field is `null` when that dimension does not apply
 or was not resolved — request-side issues never carry a `statusCode`, and
-`contentType` is set only on body issues (the resolved spec media-type key).
+`contentType` is set only on body issues and on the `response.content_type`
+note (the resolved spec media-type key in both cases).
 Assert on `category` and context instead of message wording —
 the prose is not a compatibility surface. On schema violations,
 `instancePath` carries the RFC 6901 JSON Pointer (`''` = document root —

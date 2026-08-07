@@ -22,7 +22,8 @@ This library follows [Semantic Versioning 2.0](https://semver.org/). v1.0.0 is t
   `request.path_match`, `request.method`, `request.parameter.path`,
   `request.parameter.query`, `request.parameter.header`, `request.security`,
   `request.body`, `response.spec`, `response.request_context`,
-  `response.status`, `response.body`, `response.header`, and the legacy
+  `response.status`, `response.body`, `response.header`,
+  `response.content_type`, and the legacy
   fallback `unknown`). New categories may be added in minor releases;
   renaming or removing one is major. `instancePath` / `keyword` are populated
   on schema violations — for body issues the pointer is into the validated

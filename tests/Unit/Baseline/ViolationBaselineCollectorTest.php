@@ -10,6 +10,10 @@ use Studio\Gesso\Baseline\ViolationBaseline;
 use Studio\Gesso\Baseline\ViolationBaselineCollector;
 use Studio\Gesso\Baseline\ViolationBaselineEnforcer;
 use Studio\Gesso\Baseline\ViolationFingerprint;
+use Studio\Gesso\OpenApiValidationResult;
+use Studio\Gesso\ValidationIssue;
+
+use function array_map;
 
 class ViolationBaselineCollectorTest extends TestCase
 {
@@ -24,6 +28,33 @@ class ViolationBaselineCollectorTest extends TestCase
     public function no_collector_is_installed_by_default(): void
     {
         $this->assertNull(ViolationBaselineCollector::current());
+    }
+
+    #[Test]
+    public function the_undeclared_content_type_note_is_not_recorded(): void
+    {
+        // Issue #435: the note is context for the body errors, not a
+        // violation. Recording it would write an entry the enforcer never
+        // hits, which the stale-entry gate then reports on every run.
+        $collector = new ViolationBaselineCollector();
+        $result = OpenApiValidationResult::failure(
+            ['[/] The required properties (data) are missing', "Note: response Content-Type 'application/problem+json' is not defined …"],
+            '/v1/pets',
+            '200',
+            'application/json',
+            [
+                new ValidationIssue('response.body', '[/] The required properties (data) are missing', instancePath: '', keyword: 'required', method: 'GET', path: '/v1/pets', statusCode: '200', contentType: 'application/json'),
+                new ValidationIssue('response.content_type', "Note: response Content-Type 'application/problem+json' is not defined …", method: 'GET', path: '/v1/pets', statusCode: '200', contentType: 'application/json'),
+            ],
+        );
+
+        $collector->recordResult('front', $result, 'GET', '/v1/pets');
+
+        $categories = array_map(
+            static fn(ViolationFingerprint $fingerprint): string => $fingerprint->category,
+            $collector->baseline()->sorted(),
+        );
+        $this->assertSame(['response.body'], $categories);
     }
 
     #[Test]

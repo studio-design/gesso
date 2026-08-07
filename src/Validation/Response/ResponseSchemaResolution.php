@@ -29,6 +29,11 @@ use function sprintf;
  *    the entry resolved as an object (content-level outcomes and later).
  *  - `schema` is the raw media-type `schema` node on `Resolved` only;
  *    {@see convertedSchema()} lowers it on demand.
+ *  - `contentTypeNote` is set on `Resolved` only, and only when the response's
+ *    JSON-flavoured Content-Type is not declared for the matched status so the
+ *    first-JSON-key fallback picked `contentType` instead (issue #435). It is
+ *    context for a body failure, not a failure of its own: the fallback stays
+ *    a pass when the body satisfies the schema it landed on.
  *
  * Conversion is deliberately lazy: the response validator reports an absent
  * body *before* converting the schema, so an eagerly-converted (and
@@ -55,6 +60,7 @@ final readonly class ResponseSchemaResolution
         private ?OpenApiVersion $version,
         private ?string $jsonSchemaDialect,
         private ?DiscriminatorContext $discriminatorContext,
+        public ?string $contentTypeNote = null,
     ) {}
 
     /**
@@ -207,6 +213,7 @@ final readonly class ResponseSchemaResolution
         OpenApiVersion $version,
         string $jsonSchemaDialect,
         DiscriminatorContext $discriminatorContext,
+        ?string $contentTypeNote = null,
     ): self {
         return new self(
             ResponseSchemaResolutionOutcome::Resolved,
@@ -220,6 +227,7 @@ final readonly class ResponseSchemaResolution
             version: $version,
             jsonSchemaDialect: $jsonSchemaDialect,
             discriminatorContext: $discriminatorContext,
+            contentTypeNote: $contentTypeNote,
         );
     }
 

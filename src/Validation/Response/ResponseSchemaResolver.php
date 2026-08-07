@@ -324,6 +324,7 @@ final class ResponseSchemaResolver
         // `application/problem+json` for the same status) resolve each
         // Content-Type to its own schema.
         $jsonContentType = null;
+        $undeclaredJsonType = null;
         if ($responseContentType !== null) {
             $normalizedType = ContentTypeMatcher::normalizeMediaType($responseContentType);
 
@@ -377,6 +378,18 @@ final class ResponseSchemaResolver
             }
 
             $jsonContentType = ContentTypeMatcher::findJsonContentTypeForResponse($normalizedType, $content);
+
+            // The fallback above is deliberate (a `+json` variant the spec
+            // does not enumerate still validates against the first JSON key),
+            // but it can only produce a meaningful verdict when the two
+            // schemas agree. Remember that it fired so the validator can name
+            // the undeclared media type instead of reporting the resulting
+            // shape mismatch alone (issue #435). `findContentTypeKey()` is the
+            // "declared at all" question: an exact key, an `application/*`
+            // range, or a full wildcard all count as declared.
+            if (ContentTypeMatcher::findContentTypeKey($normalizedType, $content) === null) {
+                $undeclaredJsonType = $normalizedType;
+            }
         }
 
         if ($jsonContentType === null) {
@@ -434,6 +447,17 @@ final class ResponseSchemaResolver
             $operation->version,
             $operation->jsonSchemaDialect,
             $discriminatorContext,
+            $undeclaredJsonType === null ? null : sprintf(
+                "Note: response Content-Type '%s' is not defined for %s %s (status %d) in '%s' spec; "
+                . "the reported body errors come from validating it against '%s'. Defined content types: %s",
+                $undeclaredJsonType,
+                $method,
+                $matchedPath,
+                $statusCode,
+                $specName,
+                $jsonContentType,
+                implode(', ', array_keys($content)),
+            ),
         );
     }
 

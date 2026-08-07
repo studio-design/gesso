@@ -157,6 +157,19 @@ final readonly class ViolationFingerprint
     }
 
     /**
+     * Whether an issue explains a failure rather than being one. The
+     * undeclared-Content-Type note (issue #435) rides along with the body
+     * errors it accounts for, so fingerprinting it would make a baseline that
+     * already covers those errors stop suppressing them the moment the note
+     * appeared — a green suite turning red on an upgrade that changed no
+     * verdict. Context issues still reach `issues()` and the JSON document.
+     */
+    public static function isContextOnly(ValidationIssue $issue): bool
+    {
+        return $issue->category === 'response.content_type';
+    }
+
+    /**
      * Replace purely numeric RFC 6901 segments with `*`. A property whose
      * name is itself a digit string collapses too — a documented trade-off
      * for baseline stability across test-data changes.
