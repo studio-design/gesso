@@ -80,7 +80,7 @@ Choose based on the workflow you need rather than on a single yes/no feature cou
 [spectator-errors]: https://github.com/hotmeteor/spectator/tree/v3.0.2#machine-readable-error-output
 [spectator-composer]: https://github.com/hotmeteor/spectator/blob/v3.0.2/composer.json
 [league]: https://github.com/thephpleague/openapi-psr7-validator/tree/0.24
-[league-readme]: https://github.com/thephpleague/openapi-psr7-validator/tree/0.24#openapi-psr-7-message-httprequestresponse-validator
+[league-readme]: https://github.com/thephpleague/openapi-psr7-validator/tree/0.24#openapi-psr-7-message-http-requestresponse-validator
 [league-errors]: https://github.com/thephpleague/openapi-psr7-validator/tree/0.24#exceptions
 [league-middleware]: https://github.com/thephpleague/openapi-psr7-validator/tree/0.24#psr-15-middleware
 [league-composer]: https://github.com/thephpleague/openapi-psr7-validator/blob/0.24/composer.json

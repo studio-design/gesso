@@ -1,5 +1,7 @@
 import { defineConfig } from 'vitepress'
 
+import { githubSlug } from './github-slug.mjs'
+
 const version = process.env.DOCS_VERSION ?? 'next'
 const repository = process.env.GITHUB_REPOSITORY ?? 'studio-design/gesso'
 const repositoryName = repository.split('/').at(-1) ?? 'gesso'
@@ -206,6 +208,9 @@ export default defineConfig({
   vite: { define: { __DOCS_VERSION__: JSON.stringify(version) } },
   markdown: {
     lineNumbers: true,
+    // Publish GitHub's anchors, not VitePress's, so one `#fragment` resolves
+    // both here and on github.com. See docs/.vitepress/github-slug.mjs.
+    anchor: { slugify: githubSlug },
     config(markdown) {
       markdown.renderer.rules.table_open = (tokens, index, options, _env, renderer) => {
         tokens[index].attrJoin('class', 'tombo-table')

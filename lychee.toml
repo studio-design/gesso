@@ -2,12 +2,12 @@
 # Run it with `npm run docs:links`; CI runs the same file through
 # `lycheeverse/lychee-action` in the "Documentation site" job.
 
-# Fragment checking is deliberately OFF, matching what markdown-link-check did.
-# lychee slugs headings the way GitHub does, while the published site slugs them
-# the way VitePress does, and the two disagree for any heading carrying
-# punctuation — 59 of this repo's 135 headings. Turning it on would demand
-# GitHub-correct anchors and break the same links on the site. Tracked by #528.
-include_fragments = "none"
+# Verify that a `#fragment` names a heading that exists, not just that the file
+# does. lychee resolves fragments the way GitHub does, and the published site
+# agrees because `markdown.anchor.slugify` is overridden to match — see
+# docs/.vitepress/github-slug.mjs. `anchor-only` skips `#:~:text=` directives,
+# which lychee can only approximate on pages it did not render.
+include_fragments = "anchor-only"
 
 # `403` is here because Cloudflare and similar front ends answer a HEAD from a
 # CI runner with it; `206` because a few hosts answer ranged requests that way.

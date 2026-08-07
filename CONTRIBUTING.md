@@ -17,15 +17,31 @@ PHPUnit 12/13.
 
 ## Local checks
 
-| Command                | What it does                                  |
-| ---------------------- | --------------------------------------------- |
-| `composer test`        | Run the full test suite (PHPUnit)             |
-| `composer stan`        | PHPStan level 6 over `src/` and `tests/`      |
-| `composer cs-check`    | PHP-CS-Fixer dry-run                          |
-| `composer cs`          | PHP-CS-Fixer apply (rewrites files)           |
-| `composer ci`          | All of the above, in CI order                 |
-| `npm run docs:build`   | Build the documentation site (VitePress)      |
-| `npm run docs:links`   | Check documentation links (lychee)            |
+| Command                       | What it does                                       |
+| ----------------------------- | -------------------------------------------------- |
+| `composer test`               | Run the full test suite (PHPUnit)                  |
+| `composer stan`               | PHPStan level 6 over `src/` and `tests/`           |
+| `composer cs-check`           | PHP-CS-Fixer dry-run                               |
+| `composer cs`                 | PHP-CS-Fixer apply (rewrites files)                |
+| `composer ci`                 | All of the above, in CI order                      |
+| `npm run docs:build`          | Build the documentation site (VitePress)           |
+| `npm run docs:anchor-probe`   | List the built heading anchors for `docs:links`    |
+| `npm run docs:links`          | Check documentation links (lychee)                 |
+
+Heading links have to resolve on two surfaces: GitHub renders these Markdown
+files directly, and VitePress publishes them. VitePress's own slugifier
+disagrees with GitHub's for em dashes, underscores, leading digits, and
+`--flags`, so `docs/.vitepress/github-slug.mjs` overrides it. Write `#fragment`
+links the way GitHub spells them; `docs:links` checks them.
+
+Run `docs:build` and `docs:anchor-probe` before `docs:links` to also check the
+published anchors — the probe points every built anchor back at the heading it
+came from, so lychee, rather than a second copy of GitHub's rules, decides
+whether the two agree. On a clean checkout `docs:links` runs on its own and
+checks every link, just not the site's ids: it takes the probe as the glob
+`docs/.vitepress/dist/*.md`, which lychee skips with a warning when nothing
+matches. Naming the file directly would abort the whole run instead, so keep it
+a glob.
 
 `docs:links` needs [lychee](https://github.com/lycheeverse/lychee) on your
 `PATH` — it is a standalone binary rather than an npm package, so it is not
@@ -93,8 +109,8 @@ If `composer cs-check` fails, run `composer cs` and commit the result.
 
 Releases are automated by [release-please](https://github.com/googleapis/release-please).
 Maintainers do **not** edit `CHANGELOG.md` or push tags by hand. The
-contract for what each version bump promises is in the README's
-[Versioning and support policy](README.md#versioning-and-support-policy);
+contract for what each version bump promises is in
+[Versioning and support policy](docs/versioning.md#whats-covered-by-semver);
 this section covers the mechanical flow.
 
 How it works:
