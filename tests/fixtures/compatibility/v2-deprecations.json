@@ -1,4 +1,10 @@
 {
     "$comment": "Registry of every surface deprecated in v2 for removal in a later major (issue #499). One entry per Deprecations::notice() id in src/, checked by tests/Unit/Compatibility/DeprecationRegistryTest.php. A major that removes a surface deletes its entry in the same change; a removal with no entry here never shipped a deprecation and violates docs/versioning.md.",
-    "deprecations": {}
+    "deprecations": {
+        "laravel.config.auto_inject_dummy_bearer": {
+            "surface": "Laravel config key `auto_inject_dummy_bearer`",
+            "replacement": "`auto_inject_dummy_credentials`",
+            "removed_in": "3.0"
+        }
+    }
 }

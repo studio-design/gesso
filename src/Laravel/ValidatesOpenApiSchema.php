@@ -24,6 +24,7 @@ use Studio\Gesso\Baseline\ViolationFingerprint;
 use Studio\Gesso\DecodedBody;
 use Studio\Gesso\HttpMethod;
 use Studio\Gesso\Internal\CurlCommandFormatter;
+use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\Internal\FailureOutput;
 use Studio\Gesso\Internal\StackTraceFilter;
 use Studio\Gesso\OpenApiRequestValidator;
@@ -885,6 +886,18 @@ trait ValidatesOpenApiSchema
     ): array {
         $credentialsEnabled = $this->isAutoInjectDummyCredentialsEnabled();
         $legacyBearerEnabled = $this->isAutoInjectDummyBearerEnabled();
+
+        if ($legacyBearerEnabled) {
+            // Recorded even when the superset flag wins below: the deprecation
+            // is about the config key being set, and 3.0 deletes the key
+            // whether or not its code path was the one taken.
+            Deprecations::notice(
+                id: 'laravel.config.auto_inject_dummy_bearer',
+                subject: "The Laravel config key 'auto_inject_dummy_bearer'",
+                replacement: "'auto_inject_dummy_credentials'",
+                removedIn: '3.0',
+            );
+        }
 
         if (!$credentialsEnabled && !$legacyBearerEnabled) {
             return [];

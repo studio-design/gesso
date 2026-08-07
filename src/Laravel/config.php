@@ -64,11 +64,12 @@ return [
     // Defaults to false for backward compatibility.
     'auto_inject_dummy_credentials' => false,
 
-    // Bearer-only predecessor of `auto_inject_dummy_credentials`, kept for
-    // existing consumers. Same gating (auto_validate_request must also be
-    // on) and same view-only injection, but limited to endpoints whose spec
-    // security requires `http` + `bearer`. Bypassed when the superset key
-    // above is true.
+    // Deprecated bearer-only predecessor of `auto_inject_dummy_credentials`.
+    // Same gating (auto_validate_request must also be on) and same view-only
+    // injection, but limited to endpoints whose spec security requires
+    // `http` + `bearer`. Bypassed when the superset key above is true.
+    // Enabling it emits an E_USER_DEPRECATED notice; removed in Gesso 3.0
+    // (see UPGRADING.md#deprecations).
     'auto_inject_dummy_bearer' => false,
 
     // Security scheme names (components.securitySchemes keys) the suite

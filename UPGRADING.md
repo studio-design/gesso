@@ -22,9 +22,29 @@ and the PHPUnit extension prints a single end-of-run STDERR line:
 needs no changes to your code, configuration, or CLI invocations.** Work through
 the table below until it does.
 
+The summary line is the signal to trust: it is rendered from recorded
+per-process counts by the PHPUnit extension (and by `gesso coverage:merge` for
+parallel runs), so it survives environments that mute the raw notice — inside
+a booted Laravel app the framework's test error handler absorbs
+`E_USER_DEPRECATED`, so `failOnDeprecation` does not trip on these and a
+custom error handler sees nothing. A suite that registers neither the
+extension nor the merge CLI never prints the line, so its absence proves
+nothing there.
+
 | Deprecated in | Surface | Replacement | Removed in |
 | --- | --- | --- | --- |
-| — | Nothing is deprecated yet. | — | — |
+| 2.6.0 | `auto_inject_dummy_bearer` (Laravel config) | `auto_inject_dummy_credentials` | 3.0 |
+
+`auto_inject_dummy_credentials` is a superset: it also fills dummy values for
+every `apiKey` scheme (header / cookie / query) the operation declares, so an
+endpoint secured by bearer *and* apiKey passes the security check instead of
+failing on the missing key. The one configuration the legacy flag expressed
+that the superset does not — inject bearer while deliberately leaving `apiKey`
+slots empty so the missing-key failure stays visible — has no superset
+equivalent: a non-empty test-set value satisfies the presence check, and an
+empty one counts as absent and is injected over, matching the validator's own
+missing-credential rule. Keep the flag off (it can be set per test) where that
+failure is the behavior under test.
 
 The table mirrors `tests/fixtures/compatibility/v2-deprecations.json`, which a
 test keeps in sync with the emitters in `src/`. The `Deprecated in` column names

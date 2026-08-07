@@ -11,6 +11,7 @@ use Orchestra\Testbench\TestCase;
 use PHPUnit\Framework\AssertionFailedError;
 use PHPUnit\Framework\Attributes\Test;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
+use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\Laravel\GessoServiceProvider;
 use Studio\Gesso\Laravel\ValidatesOpenApiSchema;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
@@ -42,6 +43,9 @@ class AutoValidateRequestIntegrationTest extends TestCase
         self::resetValidatorCache();
         OpenApiSpecLoader::reset();
         OpenApiCoverageTracker::reset();
+        // The auto_inject_dummy_bearer tests below exercise a deprecated key,
+        // which records into the process-wide deprecations channel.
+        Deprecations::resetForTesting();
         parent::tearDown();
     }
 
