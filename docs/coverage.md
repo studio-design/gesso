@@ -166,7 +166,7 @@ Failure looks like:
 
 Out-of-range or non-numeric values produce a `WARNING` to stderr and skip that gate (rather than silently treating the misconfiguration as `0%`).
 
-On a partial run (`--filter`, `--testsuite`, path args, …) the gate is skipped with a one-line NOTE instead of evaluating — a subset cannot prove a suite-wide coverage rate. See [Partial test runs](ci.md#partial-test-runs-filter-testsuite-path-args-) for details.
+On a partial run (`--filter`, `--testsuite`, path args, …) the gate is skipped with a one-line NOTE instead of evaluating — a subset cannot prove a suite-wide coverage rate. See [Partial test runs](ci.md#partial-test-runs-filter-testsuite-path-args) for details.
 
 For paratest / `pest --parallel`, the merge CLI accepts the same options as flags:
 

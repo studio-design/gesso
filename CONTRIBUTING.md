@@ -24,6 +24,20 @@ PHPUnit 12/13.
 | `composer cs-check`    | PHP-CS-Fixer dry-run                          |
 | `composer cs`          | PHP-CS-Fixer apply (rewrites files)           |
 | `composer ci`          | All of the above, in CI order                 |
+| `npm run docs:build`   | Build the documentation site (VitePress)      |
+| `npm run docs:links`   | Check documentation links (lychee)            |
+
+`docs:links` needs [lychee](https://github.com/lycheeverse/lychee) on your
+`PATH` — it is a standalone binary rather than an npm package, so it is not
+installed by `npm ci`:
+
+```sh
+brew install lychee     # or: cargo install lychee
+```
+
+CI runs the same `lychee.toml` through `lycheeverse/lychee-action`, so a local
+run and the `Documentation site` job check the same links with the same rules.
+Skipping the install is fine; CI will catch a broken link.
 
 ## Workflow
 

@@ -89,7 +89,7 @@ blocks sharing the same `reproduce_command`.
 
 Each entry serialises one `ValidationIssue` field-for-field (snake_case). The
 `category` slugs and null-ness semantics are the same as the PHP API — see
-[api-reference.md](api-reference.md#openapivalidationresult) and
+[api-reference.md](api-reference.md#openapiresponsevalidator) and
 [versioning.md](versioning.md#whats-covered-by-semver).
 
 | Field | Type | Description |

@@ -10,10 +10,9 @@
     "docs:verify-base": "node scripts/verify-docs-base.mjs",
     "docs:verify-tombo": "node scripts/verify-tombo-vendor.mjs",
     "docs:verify-version": "node scripts/verify-docs-version.mjs",
-    "docs:links": "markdown-link-check --config .markdown-link-check.json README.md docs/*.md docs/**/*.md examples/*/README.md"
+    "docs:links": "lychee --no-progress README.md 'docs/*.md' 'docs/**/*.md' 'examples/*/README.md'"
   },
   "devDependencies": {
-    "markdown-link-check": "3.14.2",
     "vitepress": "1.6.4"
   },
   "overrides": {
