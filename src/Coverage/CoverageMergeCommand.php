@@ -33,6 +33,7 @@ use function array_filter;
 use function array_map;
 use function array_values;
 use function count;
+use function ctype_digit;
 use function explode;
 use function file_put_contents;
 use function getcwd;
@@ -40,6 +41,7 @@ use function getenv;
 use function implode;
 use function in_array;
 use function is_callable;
+use function is_int;
 use function is_numeric;
 use function sprintf;
 use function str_contains;
@@ -90,6 +92,7 @@ use function unlink;
  *     baseline_file?: string,
  *     coverage_baseline_file?: string,
  *     coverage_baseline_stale?: string,
+ *     expect_sidecars?: int|string,
  *     help?: bool,
  * }
  *
@@ -171,6 +174,16 @@ final class CoverageMergeCommand
                     $opts['min_coverage_strict'] = !in_array($value, ['0', 'false', 'no'], true);
 
                     break;
+                case 'expect_sidecars':
+                    // Same shape as the thresholds above: cast so run() can
+                    // compare an int, but pass anything else through so the
+                    // single validation point reports the typo instead of
+                    // silently dropping the guard. `ctype_digit` rather than
+                    // `is_numeric` — `--expect-sidecars=3.7` is a mistake, not
+                    // a request for three shards.
+                    $opts['expect_sidecars'] = ctype_digit($value) ? (int) $value : $value;
+
+                    break;
                 default:
                     $opts[$name] = $value;
             }
@@ -230,6 +243,11 @@ final class CoverageMergeCommand
               --coverage-baseline-stale=<mode>
                                             off | note | fail. How baseline entries that are
                                             covered now are reported. Defaults to note.
+              --expect-sidecars=<n>         Fail unless exactly <n> sidecars are present. Use it
+                                            when the shard count is known up front (a CI matrix):
+                                            a cancelled or failed job writes no sidecar at all,
+                                            and the merge would otherwise under-count silently
+                                            (Issue #434).
               --no-cleanup                  Keep sidecar files after merge (default: cleanup).
               --help                        Show this message.
 
@@ -350,6 +368,24 @@ final class CoverageMergeCommand
             return 2;
         }
 
+        // Issue #434: the expected shard count, validated alongside the other
+        // configuration errors. A typo has to exit 2 rather than quietly drop
+        // the guard — the flag exists precisely to catch a shard that never
+        // reported, so a silently inert one is worse than none.
+        $expectSidecars = null;
+        if (isset($options['expect_sidecars'])) {
+            $rawExpectSidecars = $options['expect_sidecars'];
+            if (!is_int($rawExpectSidecars) || $rawExpectSidecars < 1) {
+                $this->writeStderr(sprintf(
+                    "[Gesso] FATAL: --expect-sidecars=%s is not a positive integer.\n",
+                    (string) $rawExpectSidecars,
+                ));
+
+                return 2;
+            }
+            $expectSidecars = $rawExpectSidecars;
+        }
+
         // Detect worker failure markers BEFORE attempting the merge: even
         // one missing worker means the report under-counts coverage, which
         // is exactly the silent failure parallel-mode introduced. Fail
@@ -369,6 +405,27 @@ final class CoverageMergeCommand
             $payloads = CoverageSidecarReader::readDir($sidecarDir);
         } catch (RuntimeException $e) {
             $this->writeStderr(sprintf("[OpenAPI Coverage] FATAL: %s\n", $e->getMessage()));
+
+            return 1;
+        }
+
+        // Issue #434: a shard that was cancelled, or that died before
+        // ExecutionFinished, leaves neither a sidecar nor a failure marker —
+        // the marker only covers "ran but could not write". Comparing against
+        // a count the user knows up front is the only way that absence is
+        // visible from here. Evaluated before the empty-payloads branch below
+        // so "every shard died" fails for the same reason as "one shard did",
+        // and before cleanup so the surviving sidecars stay for a retry.
+        if ($expectSidecars !== null && count($payloads) !== $expectSidecars) {
+            $this->writeStderr(sprintf(
+                "[Gesso] FATAL: expected %d sidecar(s) in %s but found %d; the merged report would %s. Check for a cancelled or failed shard, or correct --expect-sidecars.\n",
+                $expectSidecars,
+                $sidecarDir,
+                count($payloads),
+                count($payloads) < $expectSidecars
+                    ? 'under-count coverage'
+                    : 'include sidecars from another run',
+            ));
 
             return 1;
         }

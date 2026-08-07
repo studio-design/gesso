@@ -6,7 +6,7 @@
         "src/Baseline/CoverageBaselineEvaluator.php": 2,
         "src/Cli/CoverageGateCommand.php": 3,
         "src/Cli/StubsCommand.php": 4,
-        "src/Coverage/CoverageMergeCommand.php": 15,
+        "src/Coverage/CoverageMergeCommand.php": 17,
         "src/Fuzz/SchemaDataGenerator.php": 1,
         "src/Internal/LegacyIdentity.php": 1,
         "src/Laravel/ValidatesOpenApiSchema.php": 1,

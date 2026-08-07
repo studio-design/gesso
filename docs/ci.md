@@ -197,7 +197,10 @@ This means a CI matrix that shards by `--testsuite` can keep the gate
 configured in the shared `phpunit.xml`: shard jobs skip it, and only a
 full-suite run (or the `coverage:merge` step for parallel runs) evaluates
 it. If a `--testsuite` selection *is* your canonical full run, see the
-`default_testsuite_as_full` opt-in below.
+`default_testsuite_as_full` opt-in below. To evaluate the gate once for the
+whole matrix instead of running the suite twice, have each shard export its
+slice with `GESSO_SIDECAR_TOKEN` and merge them — see
+[Sharded CI jobs](parallel.md#sharded-ci-jobs).
 
 ```text
 $ vendor/bin/phpunit --filter UserTest
@@ -208,9 +211,10 @@ are not written on partial runs to avoid overwriting persistent docs with
 subset data. Re-run the full suite to refresh.
 ```
 
-Paratest workers (`TEST_TOKEN` set) are unaffected — they always write
-their sidecar so the merge CLI can aggregate. The persistent-write skip
-only fires on the sequential (or merge) rendering path.
+Exporting processes are unaffected — a paratest worker (`TEST_TOKEN` set) or
+a CI shard (`GESSO_SIDECAR_TOKEN` set) always writes its sidecar so the merge
+CLI can aggregate. The persistent-write skip only fires on the sequential (or
+merge) rendering path.
 
 ### default_testsuite_as_full opt-in
 

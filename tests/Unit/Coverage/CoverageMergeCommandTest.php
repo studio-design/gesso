@@ -362,6 +362,149 @@ class CoverageMergeCommandTest extends TestCase
     }
 
     #[Test]
+    public function expect_sidecars_fails_the_merge_when_a_shard_never_reported(): void
+    {
+        // Issue #434: a cancelled or crashed CI job writes neither a sidecar
+        // nor a `failed-*.json` marker — the marker only covers "ran but
+        // could not write" — so a count declared up front is the only
+        // evidence the shard is missing. Without it the merge under-counts
+        // coverage and exits 0.
+        $this->writeSidecar('Unit', 'GET', '/v1/pets', '200');
+
+        $stderr = '';
+        $command = new CoverageMergeCommand(
+            stderrWriter: static function (string $msg) use (&$stderr): void {
+                $stderr .= $msg;
+            },
+            stdoutWriter: static fn(string $msg): null => null,
+        );
+
+        $exit = $command->run([
+            'sidecar_dir' => $this->sidecarDir,
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => ['petstore-3.0'],
+            'output_file' => $this->outputFile,
+            'expect_sidecars' => 3,
+            'cleanup' => true,
+        ]);
+
+        $this->assertSame(1, $exit);
+        $this->assertStringContainsString('FATAL', $stderr);
+        $this->assertStringContainsString('expected 3 sidecar(s)', $stderr);
+        $this->assertStringContainsString('under-count coverage', $stderr);
+        // The surviving sidecars stay put: the fix is to re-upload the missing
+        // shard's artifact and re-run this command, not the whole suite.
+        $this->assertCount(1, $this->sidecars());
+    }
+
+    #[Test]
+    public function expect_sidecars_fails_the_merge_when_no_shard_reported_at_all(): void
+    {
+        // An empty sidecar dir is a WARNING + exit 0 by design. With a
+        // declared shard count, "every shard died" has to fail for the same
+        // reason "one shard died" does.
+        $stderr = '';
+        $command = new CoverageMergeCommand(
+            stderrWriter: static function (string $msg) use (&$stderr): void {
+                $stderr .= $msg;
+            },
+            stdoutWriter: static fn(string $msg): null => null,
+        );
+
+        $exit = $command->run([
+            'sidecar_dir' => $this->sidecarDir,
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => ['petstore-3.0'],
+            'output_file' => $this->outputFile,
+            'expect_sidecars' => 2,
+        ]);
+
+        $this->assertSame(1, $exit);
+        $this->assertStringContainsString('expected 2 sidecar(s)', $stderr);
+        $this->assertStringNotContainsString('no sidecars found', $stderr);
+    }
+
+    #[Test]
+    public function expect_sidecars_reports_a_surplus_as_a_stale_sidecar_dir(): void
+    {
+        // More sidecars than shards means the dir carries leftovers from a
+        // previous run, which inflates coverage just as silently as a missing
+        // shard deflates it.
+        $this->writeSidecar('Unit', 'GET', '/v1/pets', '200');
+        $this->writeSidecar('Feature', 'POST', '/v1/pets', '201');
+
+        $stderr = '';
+        $command = new CoverageMergeCommand(
+            stderrWriter: static function (string $msg) use (&$stderr): void {
+                $stderr .= $msg;
+            },
+            stdoutWriter: static fn(string $msg): null => null,
+        );
+
+        $exit = $command->run([
+            'sidecar_dir' => $this->sidecarDir,
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => ['petstore-3.0'],
+            'output_file' => $this->outputFile,
+            'expect_sidecars' => 1,
+        ]);
+
+        $this->assertSame(1, $exit);
+        $this->assertStringContainsString('include sidecars from another run', $stderr);
+    }
+
+    #[Test]
+    public function expect_sidecars_merges_normally_when_the_count_matches(): void
+    {
+        $this->writeSidecar('Unit', 'GET', '/v1/pets', '200');
+        $this->writeSidecar('Feature', 'POST', '/v1/pets', '201');
+
+        $command = new CoverageMergeCommand(stdoutWriter: static fn(string $msg): null => null);
+        $exit = $command->run([
+            'sidecar_dir' => $this->sidecarDir,
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => ['petstore-3.0'],
+            'output_file' => $this->outputFile,
+            'expect_sidecars' => 2,
+        ]);
+
+        $this->assertSame(0, $exit);
+        $report = (string) file_get_contents($this->outputFile);
+        $this->assertStringContainsString('GET /v1/pets', $report);
+        $this->assertStringContainsString('POST /v1/pets', $report);
+    }
+
+    #[Test]
+    public function expect_sidecars_rejects_a_value_that_is_not_a_positive_integer(): void
+    {
+        // Exit 2 (misconfiguration), never a dropped guard: the flag exists
+        // to catch a shard that never reported, so an inert one is worse than
+        // no flag at all.
+        $this->assertSame(3, CoverageMergeCommand::parseArgv(['--expect-sidecars=3'])['expect_sidecars']);
+        $this->assertSame('3.7', CoverageMergeCommand::parseArgv(['--expect-sidecars=3.7'])['expect_sidecars']);
+
+        foreach (['3.7', 'three', 0] as $value) {
+            $stderr = '';
+            $command = new CoverageMergeCommand(
+                stderrWriter: static function (string $msg) use (&$stderr): void {
+                    $stderr .= $msg;
+                },
+                stdoutWriter: static fn(string $msg): null => null,
+            );
+
+            $exit = $command->run([
+                'sidecar_dir' => $this->sidecarDir,
+                'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+                'specs' => ['petstore-3.0'],
+                'expect_sidecars' => $value,
+            ]);
+
+            $this->assertSame(2, $exit, "--expect-sidecars={$value} must be a configuration error");
+            $this->assertStringContainsString('is not a positive integer', $stderr);
+        }
+    }
+
+    #[Test]
     public function parse_argv_decodes_long_options(): void
     {
         $opts = CoverageMergeCommand::parseArgv([
@@ -2472,6 +2615,25 @@ class CoverageMergeCommandTest extends TestCase
             strictAdditionalPropertiesState: (new StrictAdditionalPropertiesTracker())->exportStateOn(),
             sdkExerciseState: $sdk->exportStateOn(),
         );
+    }
+
+    /**
+     * One shard's coverage sidecar, named by its token the way an
+     * `GESSO_SIDECAR_TOKEN` run names it (issue #434).
+     */
+    private function writeSidecar(string $token, string $method, string $path, string $status): void
+    {
+        $tracker = new OpenApiCoverageTracker();
+        $tracker->recordResponseOn(
+            'petstore-3.0',
+            $method,
+            $path,
+            $status,
+            'application/json',
+            schemaValidated: true,
+        );
+
+        CoverageSidecarWriter::write($this->sidecarDir, $token, $tracker->exportStateOn());
     }
 
     /** @return list<string> */

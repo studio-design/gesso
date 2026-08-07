@@ -50,6 +50,7 @@ class CoverageReportSubscriberWorkerModeTest extends TestCase
 {
     private string $tmpDir = '';
     private ?string $previousTestToken;
+    private ?string $previousSidecarToken;
 
     protected function setUp(): void
     {
@@ -66,6 +67,10 @@ class CoverageReportSubscriberWorkerModeTest extends TestCase
         $current = getenv('TEST_TOKEN');
         $this->previousTestToken = $current === false ? null : $current;
         putenv('TEST_TOKEN');
+
+        $currentSidecarToken = getenv('GESSO_SIDECAR_TOKEN');
+        $this->previousSidecarToken = $currentSidecarToken === false ? null : $currentSidecarToken;
+        putenv('GESSO_SIDECAR_TOKEN');
     }
 
     protected function tearDown(): void
@@ -74,6 +79,12 @@ class CoverageReportSubscriberWorkerModeTest extends TestCase
             putenv('TEST_TOKEN');
         } else {
             putenv('TEST_TOKEN=' . $this->previousTestToken);
+        }
+
+        if ($this->previousSidecarToken === null) {
+            putenv('GESSO_SIDECAR_TOKEN');
+        } else {
+            putenv('GESSO_SIDECAR_TOKEN=' . $this->previousSidecarToken);
         }
 
         if (is_dir($this->tmpDir)) {
@@ -316,6 +327,104 @@ class CoverageReportSubscriberWorkerModeTest extends TestCase
         $loaded = CoverageSidecarReader::readDir($this->tmpDir);
         $this->assertCount(1, $loaded);
         $this->assertSame([], $loaded[0]['coverage']['specs']);
+    }
+
+    #[Test]
+    public function an_explicit_sidecar_token_exports_state_without_paratest(): void
+    {
+        // Issue #434: sharding a suite across CI *jobs* puts each runner in
+        // the same "one slice per process" position as a paratest worker,
+        // but nothing in the environment says so. Naming the shard is the
+        // opt-in, and the name is what keeps the uploaded artifacts apart.
+        OpenApiCoverageTracker::recordResponse(
+            'petstore-3.0',
+            'GET',
+            '/v1/pets',
+            '200',
+            'application/json',
+            schemaValidated: true,
+        );
+        putenv('GESSO_SIDECAR_TOKEN=Feature');
+
+        $subscriber = new CoverageReportSubscriber(
+            specs: ['petstore-3.0'],
+            outputFile: $this->tmpDir . '/coverage-report.md',
+            consoleOutput: ConsoleOutput::DEFAULT,
+            githubSummaryPath: null,
+            sidecarDir: $this->tmpDir,
+        );
+
+        ob_start();
+        $subscriber->notify($this->fakeExecutionFinished());
+        $stdout = (string) ob_get_clean();
+
+        $this->assertSame('', $stdout, 'an exporting shard must not emit console output');
+        $this->assertFileDoesNotExist($this->tmpDir . '/coverage-report.md');
+        $this->assertFileExists(
+            $this->tmpDir . '/part-Feature-' . (string) getmypid() . '.json',
+            'the shard name must reach the filename so artifacts from other shards cannot collide',
+        );
+
+        $loaded = CoverageSidecarReader::readDir($this->tmpDir);
+        $this->assertCount(1, $loaded);
+        $this->assertArrayHasKey('petstore-3.0', $loaded[0]['coverage']['specs']);
+    }
+
+    #[Test]
+    public function an_explicit_sidecar_token_wins_over_the_paratest_token(): void
+    {
+        // A sharded job may also run paratest inside it. The shard name has
+        // to namespace the sidecars — paratest's 1..N slot index repeats in
+        // every job, so `part-1-<pid>.json` from two runners can collide once
+        // the artifacts are downloaded into one directory. The pid keeps the
+        // workers within a shard apart.
+        putenv('TEST_TOKEN=1');
+        putenv('GESSO_SIDECAR_TOKEN=E2E');
+
+        $subscriber = new CoverageReportSubscriber(
+            specs: ['petstore-3.0'],
+            outputFile: null,
+            consoleOutput: ConsoleOutput::DEFAULT,
+            githubSummaryPath: null,
+            sidecarDir: $this->tmpDir,
+        );
+
+        $subscriber->notify($this->fakeExecutionFinished());
+
+        $this->assertFileExists($this->tmpDir . '/part-E2E-' . (string) getmypid() . '.json');
+        $this->assertFileDoesNotExist($this->tmpDir . '/part-1-' . (string) getmypid() . '.json');
+    }
+
+    #[Test]
+    public function a_blank_sidecar_token_leaves_the_run_rendering_in_process(): void
+    {
+        // `GESSO_SIDECAR_TOKEN=` in a CI matrix that only fills the variable
+        // for some jobs must not silently swallow the report of the others.
+        OpenApiCoverageTracker::recordResponse(
+            'petstore-3.0',
+            'GET',
+            '/v1/pets',
+            '200',
+            'application/json',
+            schemaValidated: true,
+        );
+        putenv('GESSO_SIDECAR_TOKEN= ');
+        mkdir($this->tmpDir, 0o755, recursive: true);
+
+        $subscriber = new CoverageReportSubscriber(
+            specs: ['petstore-3.0'],
+            outputFile: null,
+            consoleOutput: ConsoleOutput::DEFAULT,
+            githubSummaryPath: null,
+            sidecarDir: $this->tmpDir,
+        );
+
+        ob_start();
+        $subscriber->notify($this->fakeExecutionFinished());
+        $stdout = (string) ob_get_clean();
+
+        $this->assertNotSame('', $stdout);
+        $this->assertSame([], CoverageSidecarReader::readDir($this->tmpDir));
     }
 
     #[Test]
