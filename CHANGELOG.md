@@ -10,6 +10,24 @@ the README for the full surface contract.
 
 ## Unreleased
 
+## [2.5.0](https://github.com/studio-design/gesso/compare/v2.4.0...v2.5.0) (2026-08-07)
+
+
+### Features
+
+* **cli:** add `gesso --version` and a `tool` identity block to doctor JSON ([#518](https://github.com/studio-design/gesso/issues/518)) ([62ae2ee](https://github.com/studio-design/gesso/commit/62ae2ee37e23ff045a06a06286c75f7bad693c8a))
+* **coverage:** allow explicit state export so sharded CI jobs can be merged like paratest workers ([#533](https://github.com/studio-design/gesso/issues/533)) ([4161810](https://github.com/studio-design/gesso/commit/4161810aaa259c38811512a06100829556ee4155))
+* **deprecations:** add the E_USER_DEPRECATED channel and the standing deprecation rule ([#522](https://github.com/studio-design/gesso/issues/522)) ([3dfa3cf](https://github.com/studio-design/gesso/commit/3dfa3cf23264e7fef319410b6fdb56a8818026ea))
+* **identity:** rename the env vars and artisan commands to the gesso brand ([#525](https://github.com/studio-design/gesso/issues/525)) ([c0801a3](https://github.com/studio-design/gesso/commit/c0801a37fcadea5f7144a4031437b528737e7fd9))
+* **spec:** keep servers[].url out of path matching and name it in the failure ([#534](https://github.com/studio-design/gesso/issues/534)) ([2972387](https://github.com/studio-design/gesso/commit/2972387fd2a86450a5a282a226c2c0c044fab09c))
+* **validation:** name the undeclared +json content type on a body failure ([#532](https://github.com/studio-design/gesso/issues/532)) ([c753a46](https://github.com/studio-design/gesso/commit/c753a460dcc1f6e4c654cf15c562f174d87fdd95))
+
+
+### Bug Fixes
+
+* **build:** stop shipping tests, benchmarks, and internal design docs to consumers ([#515](https://github.com/studio-design/gesso/issues/515)) ([4d67894](https://github.com/studio-design/gesso/commit/4d678948f41b2b63d342534842445805ed35431e))
+* **fuzz:** reuse one faker generator so GC cannot reseed a seeded run ([#531](https://github.com/studio-design/gesso/issues/531)) ([12431ed](https://github.com/studio-design/gesso/commit/12431ed01ab20c3221def1d355e368ce92651929))
+
 ## [2.4.0](https://github.com/studio-design/gesso/compare/v2.3.0...v2.4.0) (2026-08-05)
 
 
