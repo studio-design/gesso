@@ -3,7 +3,7 @@
     "deprecations": {
         "laravel.config.auto_inject_dummy_bearer": {
             "surface": "Laravel config key `auto_inject_dummy_bearer`",
-            "replacement": "`auto_inject_dummy_credentials`",
+            "replacement": "`auto_inject_dummy_credentials` => `'bearer'` (accepted from Gesso 3.0 per ADR 0005; the v2 key is boolean-only, and `true` also injects apiKey schemes)",
             "removed_in": "3.0"
         }
     }

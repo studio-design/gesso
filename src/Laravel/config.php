@@ -68,8 +68,10 @@ return [
     // Same gating (auto_validate_request must also be on) and same view-only
     // injection, but limited to endpoints whose spec security requires
     // `http` + `bearer`. Bypassed when the superset key above is true.
-    // Enabling it emits an E_USER_DEPRECATED notice; removed in Gesso 3.0
-    // (see UPGRADING.md#deprecations).
+    // Enabling it emits an E_USER_DEPRECATED notice; removed in Gesso 3.0,
+    // where the bearer-only behaviour survives as
+    // `auto_inject_dummy_credentials => 'bearer'` (not accepted in v2 —
+    // see UPGRADING.md#deprecations).
     'auto_inject_dummy_bearer' => false,
 
     // Security scheme names (components.securitySchemes keys) the suite

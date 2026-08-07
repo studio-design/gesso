@@ -83,7 +83,13 @@ class ValidatesOpenApiSchemaAutoInjectDeprecationTest extends TestCase
 
         $this->assertCount(1, $this->captured);
         $this->assertStringContainsString("'auto_inject_dummy_bearer' is deprecated", $this->captured[0]);
-        $this->assertStringContainsString("Use 'auto_inject_dummy_credentials' instead", $this->captured[0]);
+        // The behaviour-equivalent replacement is the 'bearer' value ADR 0005
+        // gives the superset key in 3.0 — pointing at `=> true` would steer
+        // suites into the wider apiKey injection as a silent behavior change.
+        $this->assertStringContainsString(
+            "Use 'auto_inject_dummy_credentials' => 'bearer' (accepted from Gesso 3.0) instead",
+            $this->captured[0],
+        );
         $this->assertStringContainsString('removed in Gesso 3.0', $this->captured[0]);
         $this->assertSame(['laravel.config.auto_inject_dummy_bearer' => 1], Deprecations::counts());
     }
