@@ -11,7 +11,7 @@
     "docs:verify-base": "node scripts/verify-docs-base.mjs",
     "docs:verify-tombo": "node scripts/verify-tombo-vendor.mjs",
     "docs:verify-version": "node scripts/verify-docs-version.mjs",
-    "docs:links": "lychee --no-progress README.md CONTRIBUTING.md UPGRADING.md SECURITY.md 'docs/*.md' 'docs/**/*.md' 'examples/*/README.md' 'docs/.vitepress/dist/anchor-probe.md'"
+    "docs:links": "lychee --no-progress README.md CONTRIBUTING.md UPGRADING.md SECURITY.md 'docs/*.md' 'docs/**/*.md' 'examples/*/README.md' 'docs/.vitepress/dist/*.md'"
   },
   "devDependencies": {
     "vitepress": "1.6.4"

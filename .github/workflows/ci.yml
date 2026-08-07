@@ -222,10 +222,13 @@ jobs:
         run: npm run docs:anchor-probe
 
       # Reads lychee.toml, the same file `npm run docs:links` uses locally.
+      # The probe is passed as a glob so a run without a build skips it with a
+      # warning; naming the file directly aborts lychee before it checks
+      # anything. The step above is what guarantees it exists here.
       - name: Check documentation links
         uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
         with:
-          args: --no-progress README.md CONTRIBUTING.md UPGRADING.md SECURITY.md 'docs/*.md' 'docs/**/*.md' 'examples/*/README.md' 'docs/.vitepress/dist/anchor-probe.md'
+          args: --no-progress README.md CONTRIBUTING.md UPGRADING.md SECURITY.md 'docs/*.md' 'docs/**/*.md' 'examples/*/README.md' 'docs/.vitepress/dist/*.md'
           fail: true
           failIfEmpty: true
           jobSummary: true

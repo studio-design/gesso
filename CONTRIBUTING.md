@@ -37,8 +37,11 @@ links the way GitHub spells them; `docs:links` checks them.
 Run `docs:build` and `docs:anchor-probe` before `docs:links` to also check the
 published anchors — the probe points every built anchor back at the heading it
 came from, so lychee, rather than a second copy of GitHub's rules, decides
-whether the two agree. Without it `docs:links` still checks every link, just not
-the site's ids.
+whether the two agree. On a clean checkout `docs:links` runs on its own and
+checks every link, just not the site's ids: it takes the probe as the glob
+`docs/.vitepress/dist/*.md`, which lychee skips with a warning when nothing
+matches. Naming the file directly would abort the whole run instead, so keep it
+a glob.
 
 `docs:links` needs [lychee](https://github.com/lycheeverse/lychee) on your
 `PATH` — it is a standalone binary rather than an npm package, so it is not
