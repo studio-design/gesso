@@ -387,7 +387,7 @@ Gesso 2.0 is not ready for stable release until all of the following pass:
 - [Semantic Versioning 2.0.0](https://semver.org/)
 - [PHP supported versions](https://www.php.net/supported-versions.php)
 - [PHPUnit supported versions](https://phpunit.de/supported-versions.html)
-- [PHPUnit extension XML configuration](https://docs.phpunit.de/en/12.5/configuration.html#the-extensions-element)
+- [PHPUnit extension XML configuration](https://docs.phpunit.de/en/12.5/extending-phpunit.html#registering-an-extension)
 - [PHPUnit configuration migration option](https://docs.phpunit.de/en/12.5/cli-options.html#configuration)
 - [Pest support policy](https://pestphp.com/docs/support-policy)
 - [Pest 4 upgrade guide](https://pestphp.com/docs/upgrade-guide)

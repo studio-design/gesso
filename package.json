@@ -7,10 +7,11 @@
     "docs:build": "vitepress build docs",
     "docs:preview": "vitepress preview docs",
     "docs:verify-accessibility": "node scripts/verify-docs-accessibility.mjs",
+    "docs:verify-anchors": "node scripts/verify-docs-anchors.mjs",
     "docs:verify-base": "node scripts/verify-docs-base.mjs",
     "docs:verify-tombo": "node scripts/verify-tombo-vendor.mjs",
     "docs:verify-version": "node scripts/verify-docs-version.mjs",
-    "docs:links": "lychee --no-progress README.md 'docs/*.md' 'docs/**/*.md' 'examples/*/README.md'"
+    "docs:links": "lychee --no-progress README.md CONTRIBUTING.md UPGRADING.md SECURITY.md 'docs/*.md' 'docs/**/*.md' 'examples/*/README.md'"
   },
   "devDependencies": {
     "vitepress": "1.6.4"

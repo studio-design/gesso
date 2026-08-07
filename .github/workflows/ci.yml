@@ -216,11 +216,14 @@ jobs:
       - name: Verify documentation base path
         run: npm run docs:verify-base
 
+      - name: Verify documentation heading anchors
+        run: npm run docs:verify-anchors
+
       # Reads lychee.toml, the same file `npm run docs:links` uses locally.
       - name: Check documentation links
         uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
         with:
-          args: --no-progress README.md 'docs/*.md' 'docs/**/*.md' 'examples/*/README.md'
+          args: --no-progress README.md CONTRIBUTING.md UPGRADING.md SECURITY.md 'docs/*.md' 'docs/**/*.md' 'examples/*/README.md'
           fail: true
           failIfEmpty: true
           jobSummary: true

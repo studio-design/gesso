@@ -156,7 +156,7 @@ A single-file spec with no local `$ref` needs no worktree —
 is enough. If you already publish a bundled artifact, point `--base-spec` at
 the base branch's bundle instead.
 
-## Partial test runs (`--filter`, `--testsuite`, path args, …)
+## Partial test runs (filter, testsuite, path args)
 
 If you commit your coverage doc to the repo (e.g. `docs/openapi-coverage.md`
 under `output_file`), running a subset of the suite locally is no longer a
