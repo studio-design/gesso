@@ -11,13 +11,13 @@ use Studio\Gesso\Validation\Support\SchemaValidatorRunner;
  * Run-level recorder for baseline generation (issue #402).
  *
  * Installed by the PHPUnit extension only when the run is a baseline
- * generation run (`OPENAPI_BASELINE_GENERATE`). Unlike the tracker seams,
+ * generation run (`GESSO_BASELINE_GENERATE`). Unlike the tracker seams,
  * {@see current()} is nullable on purpose: a `null` collector means
  * "generate mode is off" and adapters take the normal assertion path, so
  * no lazy default instance may ever exist.
  *
  * @internal Implementation detail of the violation baseline; the
- *           `OPENAPI_BASELINE_GENERATE` env var and `baseline_file`
+ *           `GESSO_BASELINE_GENERATE` env var and `baseline_file`
  *           extension parameter are the supported surface.
  */
 final class ViolationBaselineCollector

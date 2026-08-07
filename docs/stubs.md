@@ -31,7 +31,7 @@ Laravel users can run the same thing through Artisan, which takes the spec from
 `gesso.default_spec` / `gesso.spec_base_path`:
 
 ```bash
-php artisan openapi:stubs --coverage=build/coverage.json
+php artisan gesso:stubs --coverage=build/coverage.json
 ```
 
 ## Options

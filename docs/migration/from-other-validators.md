@@ -4,7 +4,7 @@ Adopt this package incrementally: keep the existing validator for untouched test
 
 ## Spectator
 
-Replace Spectator response assertions with `ValidatesOpenApiSchema`. Set `default_spec` once in Laravel config. Compare route coverage using `php artisan openapi:routes`, then enable `auto_assert` only after explicit assertions pass.
+Replace Spectator response assertions with `ValidatesOpenApiSchema`. Set `default_spec` once in Laravel config. Compare route coverage using `php artisan gesso:routes`, then enable `auto_assert` only after explicit assertions pass.
 
 ## league/openapi-psr7-validator
 

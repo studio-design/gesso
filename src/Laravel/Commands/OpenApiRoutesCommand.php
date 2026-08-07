@@ -13,6 +13,7 @@ use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Routing\Router;
 use InvalidArgumentException;
 use JsonException;
+use Studio\Gesso\Internal\LegacyIdentity;
 use Studio\Gesso\Laravel\RouteParity\LaravelRouteParityAnalyzer;
 use Studio\Gesso\Laravel\RouteParity\RouteParityResult;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
@@ -34,12 +35,14 @@ use function str_starts_with;
 use function trim;
 
 /**
- * @internal Registered by GessoServiceProvider. Use the `openapi:routes`
+ * @internal Registered by GessoServiceProvider. Use the `gesso:routes`
  *           Artisan command rather than constructing this class directly.
  */
 final class OpenApiRoutesCommand extends Command
 {
-    protected $signature = 'openapi:routes
+    /** Issue #504: the pre-v3 spelling, accepted through v3 and removed in v4. */
+    protected $aliases = ['openapi:routes'];
+    protected $signature = 'gesso:routes
         {--spec=* : Spec name to compare; repeat for multiple specs}
         {--prefix= : Only include Laravel routes under this URI prefix}
         {--middleware=* : Only include routes using all of these middleware names}
@@ -57,6 +60,8 @@ final class OpenApiRoutesCommand extends Command
         Router $router,
         LaravelRouteParityAnalyzer $analyzer,
     ): int {
+        LegacyIdentity::warnIfLegacyCommand((string) $this->input->getFirstArgument());
+
         $format = trim((string) $this->option('format'));
         if (!in_array($format, ['text', 'json'], true)) {
             $this->components->error("Unsupported format '{$format}'. Use text or json.");

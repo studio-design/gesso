@@ -12,7 +12,7 @@ use function count;
  * Stable result returned by the Laravel route-parity analyzer.
  *
  * @internal Not part of the package's public API. The versioned JSON emitted
- *           by `openapi:routes` is the supported machine-readable contract.
+ *           by `gesso:routes` is the supported machine-readable contract.
  *
  * @phpstan-type MatchedEntry array{spec: string, method: string, openapi_path: string, operation_id: ?string, route_uri: string, route_name: ?string, domain: ?string}
  * @phpstan-type OpenApiOnlyEntry array{spec: string, method: string, openapi_path: string, operation_id: ?string}

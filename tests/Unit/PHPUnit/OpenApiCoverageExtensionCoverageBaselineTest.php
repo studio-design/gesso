@@ -11,6 +11,7 @@ use Studio\Gesso\Baseline\CoverageBaseline;
 use Studio\Gesso\Baseline\CoverageBaselineEntry;
 use Studio\Gesso\Baseline\CoverageBaselineFile;
 use Studio\Gesso\Baseline\InvalidBaselineConfigurationException;
+use Studio\Gesso\Internal\LegacyIdentity;
 use Studio\Gesso\PHPUnit\OpenApiCoverageExtension;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 
@@ -40,7 +41,7 @@ class OpenApiCoverageExtensionCoverageBaselineTest extends TestCase
     {
         parent::setUp();
         OpenApiSpecLoader::reset();
-        putenv('OPENAPI_BASELINE_GENERATE');
+        LegacyIdentity::resetEnvForTesting('GESSO_BASELINE_GENERATE');
 
         $buffer = fopen('php://memory', 'w+');
         if ($buffer === false) {
@@ -62,7 +63,7 @@ class OpenApiCoverageExtensionCoverageBaselineTest extends TestCase
         }
         $this->tempFiles = [];
         OpenApiSpecLoader::reset();
-        putenv('OPENAPI_BASELINE_GENERATE');
+        LegacyIdentity::resetEnvForTesting('GESSO_BASELINE_GENERATE');
         parent::tearDown();
     }
 
@@ -106,7 +107,7 @@ class OpenApiCoverageExtensionCoverageBaselineTest extends TestCase
     {
         // The file is about to be overwritten; a missing or stale one must
         // not abort the very run that would fix it.
-        putenv('OPENAPI_BASELINE_GENERATE=1');
+        putenv('GESSO_BASELINE_GENERATE=1');
 
         $this->setupExtension([
             'coverage_baseline_file' => sys_get_temp_dir() . '/gesso-missing-' . uniqid() . '.json',
@@ -118,10 +119,10 @@ class OpenApiCoverageExtensionCoverageBaselineTest extends TestCase
     #[Test]
     public function generation_with_only_a_coverage_baseline_file_is_allowed(): void
     {
-        // Issue #481: `OPENAPI_BASELINE_GENERATE` drives both baselines, so
+        // Issue #481: `GESSO_BASELINE_GENERATE` drives both baselines, so
         // configuring only the coverage half must not trip the violation
         // baseline's "nowhere to write" guard.
-        putenv('OPENAPI_BASELINE_GENERATE=1');
+        putenv('GESSO_BASELINE_GENERATE=1');
 
         $this->setupExtension(['coverage_baseline_file' => 'gesso-coverage-baseline.json']);
 
@@ -131,7 +132,7 @@ class OpenApiCoverageExtensionCoverageBaselineTest extends TestCase
     #[Test]
     public function generation_without_either_baseline_file_is_fatal(): void
     {
-        putenv('OPENAPI_BASELINE_GENERATE=1');
+        putenv('GESSO_BASELINE_GENERATE=1');
 
         try {
             $this->setupExtension([]);

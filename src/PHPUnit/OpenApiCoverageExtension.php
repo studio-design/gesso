@@ -30,6 +30,7 @@ use Studio\Gesso\Exception\EnumDriftException;
 use Studio\Gesso\Exception\InvalidOpenApiSpecException;
 use Studio\Gesso\Exception\SpecFileNotFoundException;
 use Studio\Gesso\Internal\EnumScanner;
+use Studio\Gesso\Internal\LegacyIdentity;
 use Studio\Gesso\Internal\PartialRunDecision;
 use Studio\Gesso\Schema\EnumDriftAsserter;
 use Studio\Gesso\Schema\EnumDriftReport;
@@ -408,14 +409,14 @@ final class OpenApiCoverageExtension implements Extension
             // (all failures demoted) and then drop every recorded violation
             // on the floor — abort bootstrap instead.
             self::writeStderr(
-                "[Gesso] FATAL: OPENAPI_BASELINE_GENERATE is set but neither `baseline_file` nor `coverage_baseline_file` is configured.\n"
+                "[Gesso] FATAL: GESSO_BASELINE_GENERATE is set but neither `baseline_file` nor `coverage_baseline_file` is configured.\n"
                 . "  Action: add <parameter name=\"baseline_file\" value=\"gesso-baseline.json\"/> (violations) or\n"
                 . "          <parameter name=\"coverage_baseline_file\" value=\"gesso-coverage-baseline.json\"/> (coverage)\n"
                 . "          to the extension bootstrap.\n",
             );
 
             throw new InvalidBaselineConfigurationException(
-                'OPENAPI_BASELINE_GENERATE requires the baseline_file or coverage_baseline_file extension parameter.',
+                'GESSO_BASELINE_GENERATE requires the baseline_file or coverage_baseline_file extension parameter.',
             );
         }
 
@@ -453,7 +454,7 @@ final class OpenApiCoverageExtension implements Extension
             } catch (InvalidArgumentException $e) {
                 self::writeStderr(
                     "[Gesso] FATAL: baseline_file could not be loaded: {$e->getMessage()}\n"
-                    . "  Action: generate it with `OPENAPI_BASELINE_GENERATE=1 vendor/bin/phpunit`, fix the path, or remove the `baseline_file` parameter.\n",
+                    . "  Action: generate it with `GESSO_BASELINE_GENERATE=1 vendor/bin/phpunit`, fix the path, or remove the `baseline_file` parameter.\n",
                 );
 
                 throw new InvalidBaselineConfigurationException(
@@ -622,7 +623,7 @@ final class OpenApiCoverageExtension implements Extension
         } catch (InvalidArgumentException $e) {
             self::writeStderr(
                 "[Gesso] FATAL: coverage_baseline_file could not be loaded: {$e->getMessage()}\n"
-                . "  Action: generate it with `OPENAPI_BASELINE_GENERATE=1 vendor/bin/phpunit`, fix the path, or remove the `coverage_baseline_file` parameter.\n",
+                . "  Action: generate it with `GESSO_BASELINE_GENERATE=1 vendor/bin/phpunit`, fix the path, or remove the `coverage_baseline_file` parameter.\n",
             );
 
             throw new InvalidBaselineConfigurationException(
@@ -681,7 +682,7 @@ final class OpenApiCoverageExtension implements Extension
      */
     private static function baselineGenerationRequested(): bool
     {
-        $value = getenv('OPENAPI_BASELINE_GENERATE');
+        $value = LegacyIdentity::env('GESSO_BASELINE_GENERATE');
         if ($value === false || trim($value) === '') {
             return false;
         }

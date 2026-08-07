@@ -76,9 +76,9 @@ Add the coverage extension to your `phpunit.xml`:
 | `junit_output` | No | — | File path to write JUnit XML coverage report (for CI dashboards — GitLab CI, Jenkins, SonarQube, Bitrise). A missing parent directory is created automatically at bootstrap (applies to `json_output` / `html_output` too); an empty value, a failed creation, or an unwritable parent directory is FATAL at bootstrap. See [Coverage output formats](ci.md#coverage-output-formats) |
 | `json_output` | No | — | File path to write machine-readable JSON coverage report (custom dashboards, analytics, scripted gating). Schema: [`coverage-json-schema.md`](coverage-json-schema.md) |
 | `html_output` | No | — | File path to write self-contained HTML coverage report (PR comments, CI artifact preview, offline review). See [`coverage-html-output.md`](coverage-html-output.md) |
-| `console_output` | No | `default` | Console output mode: `default`, `all`, `uncovered_only`, or `active_only` (overridden by `OPENAPI_CONSOLE_OUTPUT` env var) |
-| `validation_output` | No | `text` | Validation failure output format for all framework adapters: `text` or `json` (overridden by `OPENAPI_VALIDATION_OUTPUT` env var). See [Validation JSON schema](validation-json-schema.md#selecting-json-failure-output-in-adapters) |
-| `baseline_file` | No | — | Violation baseline file path (relative paths resolve from `getcwd()`). Running the suite with `OPENAPI_BASELINE_GENERATE=1` records every contract violation instead of failing and writes the sorted, versioned baseline here at run end (refused on partial runs; parallel workers stage their fingerprints in sidecars for `gesso coverage:merge --baseline-file` to union — see [Generating under parallel runners](baseline.md#generating-under-parallel-runners)). On normal runs the file is loaded (missing or malformed file is FATAL) and failures whose every violation is baselined are suppressed — only **new** violations fail. See the [baseline adoption guide](baseline.md) |
+| `console_output` | No | `default` | Console output mode: `default`, `all`, `uncovered_only`, or `active_only` (overridden by `GESSO_CONSOLE_OUTPUT` env var) |
+| `validation_output` | No | `text` | Validation failure output format for all framework adapters: `text` or `json` (overridden by `GESSO_VALIDATION_FORMAT` env var). See [Validation JSON schema](validation-json-schema.md#selecting-json-failure-output-in-adapters) |
+| `baseline_file` | No | — | Violation baseline file path (relative paths resolve from `getcwd()`). Running the suite with `GESSO_BASELINE_GENERATE=1` records every contract violation instead of failing and writes the sorted, versioned baseline here at run end (refused on partial runs; parallel workers stage their fingerprints in sidecars for `gesso coverage:merge --baseline-file` to union — see [Generating under parallel runners](baseline.md#generating-under-parallel-runners)). On normal runs the file is loaded (missing or malformed file is FATAL) and failures whose every violation is baselined are suppressed — only **new** violations fail. See the [baseline adoption guide](baseline.md) |
 | `baseline_stale` | No | `note` | How baseline entries that no longer occur during a full run are reported: `off` (not evaluated), `note` (listed as removable), or `fail` (listed and the run exits non-zero). Requires `baseline_file`; skipped on partial runs. See [Ratcheting down](baseline.md#ratcheting-down) |
 | `sidecar_dir` | No | `sys_get_temp_dir()/openapi-coverage-sidecars` | Directory paratest workers drop per-worker JSON sidecars into. Used only under parallel test runners — see [Parallel test runners](parallel.md) |
 | `min_endpoint_coverage` | No | — | Minimum fully covered endpoint percentage (`0`–`100`). See [Coverage threshold gate](coverage.md#coverage-threshold-gate) |
@@ -109,7 +109,7 @@ This creates `config/gesso.php`:
 return [
     'default_spec' => '', // e.g., 'front'
 
-    // Used by Laravel Artisan commands such as openapi:routes.
+    // Used by Laravel Artisan commands such as gesso:routes.
     'spec_base_path' => base_path('openapi'),
 
     // Keep aligned with the PHPUnit extension's strip_prefixes parameter.
@@ -140,7 +140,7 @@ return [
 Set `default_spec` to your spec name, then use the trait — no per-class override needed:
 
 The Laravel config and PHPUnit extension are separate entry points. Configure
-the same spec directory and prefixes in both so `openapi:routes` and runtime
+the same spec directory and prefixes in both so `gesso:routes` and runtime
 validation compare the same paths. See [Laravel route parity](laravel-route-parity.md)
 for filters, JSON output, and CI exit codes.
 

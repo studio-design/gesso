@@ -13,6 +13,7 @@ use Studio\Gesso\Baseline\ViolationBaselineCollector;
 use Studio\Gesso\Baseline\ViolationBaselineEnforcer;
 use Studio\Gesso\Baseline\ViolationBaselineFile;
 use Studio\Gesso\Baseline\ViolationFingerprint;
+use Studio\Gesso\Internal\LegacyIdentity;
 use Studio\Gesso\PHPUnit\OpenApiCoverageExtension;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 
@@ -38,7 +39,7 @@ class OpenApiCoverageExtensionBaselineTest extends TestCase
     {
         parent::setUp();
         OpenApiSpecLoader::reset();
-        putenv('OPENAPI_BASELINE_GENERATE');
+        LegacyIdentity::resetEnvForTesting('GESSO_BASELINE_GENERATE');
         ViolationBaselineCollector::resetCurrent();
         ViolationBaselineEnforcer::resetCurrent();
 
@@ -62,7 +63,7 @@ class OpenApiCoverageExtensionBaselineTest extends TestCase
             $this->stderrBuffer = null;
         }
         OpenApiSpecLoader::reset();
-        putenv('OPENAPI_BASELINE_GENERATE');
+        LegacyIdentity::resetEnvForTesting('GESSO_BASELINE_GENERATE');
         ViolationBaselineCollector::resetCurrent();
         ViolationBaselineEnforcer::resetCurrent();
         if ($this->baselineFilePath !== null) {
@@ -80,11 +81,39 @@ class OpenApiCoverageExtensionBaselineTest extends TestCase
     #[Test]
     public function generation_env_with_a_baseline_file_installs_the_collector(): void
     {
+        putenv('GESSO_BASELINE_GENERATE=1');
+
+        $this->setupExtension(['baseline_file' => 'gesso-baseline.json']);
+
+        $this->assertNotNull(ViolationBaselineCollector::current());
+    }
+
+    /** Issue #504: this read site goes through {@see LegacyIdentity}, not bare getenv(). */
+    #[Test]
+    public function the_legacy_generation_env_name_still_installs_the_collector(): void
+    {
         putenv('OPENAPI_BASELINE_GENERATE=1');
 
         $this->setupExtension(['baseline_file' => 'gesso-baseline.json']);
 
         $this->assertNotNull(ViolationBaselineCollector::current());
+        $this->assertSame(
+            ['[Gesso] WARNING: OPENAPI_BASELINE_GENERATE is deprecated and will be removed in Gesso '
+                . LegacyIdentity::REMOVED_IN . '. Use GESSO_BASELINE_GENERATE.'],
+            LegacyIdentity::warnings(),
+        );
+    }
+
+    #[Test]
+    public function the_current_generation_env_name_beats_the_legacy_one(): void
+    {
+        putenv('OPENAPI_BASELINE_GENERATE=1');
+        putenv('GESSO_BASELINE_GENERATE=0');
+
+        $this->setupExtension(['baseline_file' => $this->writeBaselineFixture()]);
+
+        $this->assertNull(ViolationBaselineCollector::current());
+        $this->assertSame([], LegacyIdentity::warnings());
     }
 
     #[Test]
@@ -100,7 +129,7 @@ class OpenApiCoverageExtensionBaselineTest extends TestCase
     #[Test]
     public function a_falsy_generation_env_value_installs_no_collector(): void
     {
-        putenv('OPENAPI_BASELINE_GENERATE=0');
+        putenv('GESSO_BASELINE_GENERATE=0');
 
         $this->setupExtension(['baseline_file' => $this->writeBaselineFixture()]);
 
@@ -110,7 +139,7 @@ class OpenApiCoverageExtensionBaselineTest extends TestCase
     #[Test]
     public function generation_env_without_a_baseline_file_is_fatal(): void
     {
-        putenv('OPENAPI_BASELINE_GENERATE=1');
+        putenv('GESSO_BASELINE_GENERATE=1');
 
         try {
             $this->setupExtension([]);
@@ -129,7 +158,7 @@ class OpenApiCoverageExtensionBaselineTest extends TestCase
         // sequential run — the subscriber's worker branch stages the
         // collected fingerprints in the sidecar envelope for
         // `gesso coverage:merge --baseline-file` instead of writing a file.
-        putenv('OPENAPI_BASELINE_GENERATE=1');
+        putenv('GESSO_BASELINE_GENERATE=1');
         putenv('TEST_TOKEN=3');
 
         try {
@@ -172,7 +201,7 @@ class OpenApiCoverageExtensionBaselineTest extends TestCase
         } catch (InvalidBaselineConfigurationException) {
             $this->assertStringContainsString('[Gesso] FATAL', $this->capturedStderr());
             $this->assertStringContainsString('baseline_file', $this->capturedStderr());
-            $this->assertStringContainsString('OPENAPI_BASELINE_GENERATE', $this->capturedStderr());
+            $this->assertStringContainsString('GESSO_BASELINE_GENERATE', $this->capturedStderr());
             $this->assertNull(ViolationBaselineEnforcer::current());
         }
     }
@@ -196,7 +225,7 @@ class OpenApiCoverageExtensionBaselineTest extends TestCase
     #[Test]
     public function a_generation_run_never_installs_the_enforcer(): void
     {
-        putenv('OPENAPI_BASELINE_GENERATE=1');
+        putenv('GESSO_BASELINE_GENERATE=1');
         $path = $this->writeBaselineFixture();
 
         $this->setupExtension(['baseline_file' => $path]);

@@ -37,7 +37,7 @@ use function sprintf;
  * ```
  *
  * Wire shape (v3, issue #417) adds the violation-baseline half collected
- * during a parallel generation run (`OPENAPI_BASELINE_GENERATE` under
+ * during a parallel generation run (`GESSO_BASELINE_GENERATE` under
  * paratest). Its value is the baseline-file document verbatim
  * ({@see ViolationBaselineFile}), so the inner
  * `baseline_version` stays owned by the baseline format:
@@ -131,7 +131,7 @@ final class CoverageSidecarEnvelope
     /**
      * Every accepted envelope version, in the order they were introduced.
      * The pairs alternate plain / with-baseline because the baseline half is
-     * present only during an `OPENAPI_BASELINE_GENERATE` run, so it is
+     * present only during an `GESSO_BASELINE_GENERATE` run, so it is
      * orthogonal to the tracker half that raised the version.
      */
     private const ACCEPTED_VERSIONS = [

@@ -62,7 +62,7 @@ use function wordwrap;
  * @phpstan-import-type StubRequestBody from StubGenerator
  * @phpstan-import-type StubTuple from StubGenerator
  *
- * @internal The `gesso stubs` / `openapi:stubs` CLI surface is the supported API.
+ * @internal The `gesso stubs` / `gesso:stubs` CLI surface is the supported API.
  */
 final class StubRenderer
 {

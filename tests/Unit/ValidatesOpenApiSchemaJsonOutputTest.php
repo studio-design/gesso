@@ -11,6 +11,7 @@ use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\HttpMethod;
+use Studio\Gesso\Internal\LegacyIdentity;
 use Studio\Gesso\Laravel\ValidatesOpenApiSchema;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Tests\Helpers\CreatesTestResponse;
@@ -35,7 +36,7 @@ class ValidatesOpenApiSchemaJsonOutputTest extends TestCase
         OpenApiSpecLoader::reset();
         OpenApiSpecLoader::configure(__DIR__ . '/../fixtures/specs');
         OpenApiCoverageTracker::reset();
-        putenv('OPENAPI_VALIDATION_OUTPUT');
+        LegacyIdentity::resetEnvForTesting('GESSO_VALIDATION_FORMAT');
         ValidationOutput::reset();
     }
 
@@ -44,7 +45,7 @@ class ValidatesOpenApiSchemaJsonOutputTest extends TestCase
         self::resetValidatorCache();
         OpenApiSpecLoader::reset();
         OpenApiCoverageTracker::reset();
-        putenv('OPENAPI_VALIDATION_OUTPUT');
+        LegacyIdentity::resetEnvForTesting('GESSO_VALIDATION_FORMAT');
         ValidationOutput::reset();
         parent::tearDown();
     }
@@ -83,7 +84,7 @@ class ValidatesOpenApiSchemaJsonOutputTest extends TestCase
     #[Test]
     public function json_mode_is_selected_by_the_environment_variable(): void
     {
-        putenv('OPENAPI_VALIDATION_OUTPUT=json');
+        putenv('GESSO_VALIDATION_FORMAT=json');
         $body = (string) json_encode(['wrong_key' => 'value'], JSON_THROW_ON_ERROR);
         $response = $this->makeTestResponse($body, 200);
 

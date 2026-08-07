@@ -31,6 +31,51 @@ test keeps in sync with the emitters in `src/`. The `Deprecated in` column names
 the release that started warning, not the release that introduced the
 replacement.
 
+### Renamed environment variables and Artisan commands
+
+The three environment variables and two Artisan commands Gesso owns moved to the
+`gesso` brand. **The old spellings keep working through all of v3** and are
+removed in v4.0, so this is not an upgrade blocker — but a run that uses one
+prints a line like:
+
+```text
+[Gesso] WARNING: OPENAPI_BASELINE_GENERATE is deprecated and will be removed in Gesso 4.0.0. Use GESSO_BASELINE_GENERATE.
+```
+
+These do **not** raise `E_USER_DEPRECATED`, so `failOnDeprecation` suites are
+unaffected. They are absent from the deprecation table above for the same
+reason.
+
+| Old | New |
+| --- | --- |
+| `OPENAPI_VALIDATION_OUTPUT` | `GESSO_VALIDATION_FORMAT` |
+| `OPENAPI_CONSOLE_OUTPUT` | `GESSO_CONSOLE_OUTPUT` |
+| `OPENAPI_BASELINE_GENERATE` | `GESSO_BASELINE_GENERATE` |
+| `openapi:routes` | `gesso:routes` |
+| `openapi:stubs` | `gesso:stubs` |
+
+`OPENAPI_VALIDATION_OUTPUT` becomes `GESSO_VALIDATION_FORMAT`, not
+`GESSO_VALIDATION_OUTPUT`: its values are formats (`text` | `json`), and v3
+renames the matching extension parameter to `validation.format` — see
+[ADR 0005](docs/adr/0005-v3-configuration-and-cli-naming.md). The
+`validation_output` and `console_output` **extension parameters** are untouched
+by this change.
+
+To migrate CI env blocks and Artisan calls:
+
+```sh
+rg -l 'OPENAPI_(VALIDATION_OUTPUT|CONSOLE_OUTPUT|BASELINE_GENERATE)|openapi:(routes|stubs)' \
+  | xargs sed -i '' \
+    -e 's/OPENAPI_VALIDATION_OUTPUT/GESSO_VALIDATION_FORMAT/g' \
+    -e 's/OPENAPI_CONSOLE_OUTPUT/GESSO_CONSOLE_OUTPUT/g' \
+    -e 's/OPENAPI_BASELINE_GENERATE/GESSO_BASELINE_GENERATE/g' \
+    -e 's/openapi:routes/gesso:routes/g' \
+    -e 's/openapi:stubs/gesso:stubs/g'
+```
+
+(Drop the `''` after `-i` on GNU sed.) No config file, `phpunit.xml` parameter,
+or PHP code change is required.
+
 ## Within v2.x
 
 The v2.x line is covered end-to-end by SemVer (see `docs/versioning.md` for the

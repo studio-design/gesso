@@ -27,7 +27,7 @@ Every framework adapter (Laravel, Symfony, Pest, PSR-7) can emit this document
 in its assertion failure message instead of the plain text shape. One
 process-wide switch selects the mode everywhere, resolved in priority order:
 
-1. the `OPENAPI_VALIDATION_OUTPUT` environment variable (`text` | `json`);
+1. the `GESSO_VALIDATION_FORMAT` environment variable (`text` | `json`);
 2. `ValidationOutput::use(ValidationOutputFormat::Json)` — call it from your
    test bootstrap, or set the `validation_output` parameter on the PHPUnit
    extension, which calls it for you:

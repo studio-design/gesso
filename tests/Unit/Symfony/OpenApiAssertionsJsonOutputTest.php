@@ -11,6 +11,7 @@ use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Studio\Gesso\Attribute\OpenApiSpec;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
+use Studio\Gesso\Internal\LegacyIdentity;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Symfony\OpenApiAssertions;
 use Studio\Gesso\ValidationOutput;
@@ -33,7 +34,7 @@ final class OpenApiAssertionsJsonOutputTest extends TestCase
         OpenApiSpecLoader::reset();
         OpenApiSpecLoader::configure(__DIR__ . '/../../fixtures/specs');
         OpenApiCoverageTracker::reset();
-        putenv('OPENAPI_VALIDATION_OUTPUT');
+        LegacyIdentity::resetEnvForTesting('GESSO_VALIDATION_FORMAT');
         ValidationOutput::reset();
     }
 
@@ -41,7 +42,7 @@ final class OpenApiAssertionsJsonOutputTest extends TestCase
     {
         OpenApiSpecLoader::reset();
         OpenApiCoverageTracker::reset();
-        putenv('OPENAPI_VALIDATION_OUTPUT');
+        LegacyIdentity::resetEnvForTesting('GESSO_VALIDATION_FORMAT');
         ValidationOutput::reset();
         parent::tearDown();
     }
@@ -76,7 +77,7 @@ final class OpenApiAssertionsJsonOutputTest extends TestCase
     #[Test]
     public function request_assertion_failure_renders_the_json_document_after_the_header(): void
     {
-        putenv('OPENAPI_VALIDATION_OUTPUT=json');
+        putenv('GESSO_VALIDATION_FORMAT=json');
         $request = Request::create('/v1/pets/search?limit=not-an-integer', 'GET');
 
         try {

@@ -33,7 +33,7 @@ today's gaps, fail on new ones by name, and let the ratchet show up as a diff.
 2. Generate it from a full run (no `--filter`):
 
    ```bash
-   OPENAPI_BASELINE_GENERATE=1 vendor/bin/phpunit
+   GESSO_BASELINE_GENERATE=1 vendor/bin/phpunit
    ```
 
    ```text
@@ -42,7 +42,7 @@ today's gaps, fail on new ones by name, and let the ratchet show up as a diff.
 
 3. Commit the file. Every later run compares its uncovered set against it.
 
-`OPENAPI_BASELINE_GENERATE` drives both baselines: if `baseline_file` is
+`GESSO_BASELINE_GENERATE` drives both baselines: if `baseline_file` is
 configured too, one command regenerates both. Configuring only
 `coverage_baseline_file` is fine — the violation baseline stays uninvolved.
 
@@ -91,7 +91,7 @@ An uncovered response that is **not** in the file fails the run and is named:
 [Gesso] FATAL: 2 response(s) are not covered and are not listed in the coverage baseline:
   - [front] DELETE /v1/pets/{id} status=204 content-type=*
   - [front] GET /v1/pets status=500 content-type=application/json
-  Action: cover them with a test, or accept them by regenerating the baseline with `OPENAPI_BASELINE_GENERATE=1 vendor/bin/phpunit`.
+  Action: cover them with a test, or accept them by regenerating the baseline with `GESSO_BASELINE_GENERATE=1 vendor/bin/phpunit`.
 ```
 
 Because the gate compares sets, documenting a new response in the spec does
@@ -143,8 +143,8 @@ already renders reports from:
 
 ```bash
 # Generate
-OPENAPI_BASELINE_GENERATE=1 vendor/bin/paratest --processes=4
-OPENAPI_BASELINE_GENERATE=1 vendor/bin/gesso coverage:merge \
+GESSO_BASELINE_GENERATE=1 vendor/bin/paratest --processes=4
+GESSO_BASELINE_GENERATE=1 vendor/bin/gesso coverage:merge \
     --spec-base-path=openapi/bundled \
     --coverage-baseline-file=gesso-coverage-baseline.json
 
@@ -164,7 +164,7 @@ value, or that flag without `--coverage-baseline-file`).
 On any of those failures the sidecars are **kept** instead of cleaned up, as
 the violation baseline does. Every recovery re-runs the merge, not the suite:
 fix a typo'd path, free disk space for the write, or accept the reported
-regressions by re-running with `OPENAPI_BASELINE_GENERATE=1`.
+regressions by re-running with `GESSO_BASELINE_GENERATE=1`.
 
 A generation worker that cannot write its sidecar — and cannot drop a failure
 marker either — fails the parallel run rather than letting the merge build a

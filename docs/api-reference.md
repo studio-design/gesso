@@ -81,7 +81,7 @@ The document shape (`schema_version` 1) is a compatibility surface — see
 
 Framework adapters (Laravel, Symfony, Pest, PSR-7) can emit the same document
 in their assertion failure messages instead of the plain text shape. Select
-the mode process-wide with the `OPENAPI_VALIDATION_OUTPUT` environment
+the mode process-wide with the `GESSO_VALIDATION_FORMAT` environment
 variable (`text` | `json`), programmatically, or via the PHPUnit extension's
 `validation_output` parameter — the environment variable wins when set:
 

@@ -16,6 +16,7 @@ use Studio\Gesso\Baseline\ViolationBaselineFile;
 use Studio\Gesso\Exception\InvalidOpenApiSpecException;
 use Studio\Gesso\Exception\SpecFileNotFoundException;
 use Studio\Gesso\Internal\Deprecations;
+use Studio\Gesso\Internal\LegacyIdentity;
 use Studio\Gesso\PHPUnit\ConsoleOutput;
 use Studio\Gesso\PHPUnit\CoverageReportSubscriber;
 use Studio\Gesso\PHPUnit\OpenApiCoverageExtension;
@@ -218,13 +219,13 @@ final class CoverageMergeCommand
                                             off | warn | fail. Report response properties
                                             absent from schema declarations. Defaults to off.
               --baseline-file=<path>        Union the violation-baseline halves staged by a
-                                            parallel `OPENAPI_BASELINE_GENERATE=1` run and
+                                            parallel `GESSO_BASELINE_GENERATE=1` run and
                                             write the merged baseline here (Issue #417).
               --coverage-baseline-file=<path>
                                             Gate the merged coverage against a committed set of
                                             known-uncovered responses: any uncovered response
                                             missing from the file fails the merge by name
-                                            (Issue #481). With OPENAPI_BASELINE_GENERATE=1 set,
+                                            (Issue #481). With GESSO_BASELINE_GENERATE=1 set,
                                             the file is (re)written instead of enforced.
               --coverage-baseline-stale=<mode>
                                             off | note | fail. How baseline entries that are
@@ -378,7 +379,7 @@ final class CoverageMergeCommand
             // failure, so returning 0 without a file would hide all of them.
             if ($baselineFile !== null) {
                 $this->writeStderr(sprintf(
-                    "[Gesso] FATAL: --baseline-file requested but no sidecars were found in %s; no baseline was written. Run the parallel suite with OPENAPI_BASELINE_GENERATE=1 first.\n",
+                    "[Gesso] FATAL: --baseline-file requested but no sidecars were found in %s; no baseline was written. Run the parallel suite with GESSO_BASELINE_GENERATE=1 first.\n",
                     $sidecarDir,
                 ));
 
@@ -605,7 +606,7 @@ final class CoverageMergeCommand
         // contract: keep the sidecars when the coverage baseline step failed.
         // Every recovery re-runs *this command*, not the suite — fixing a
         // typo'd path, freeing disk for the write, or accepting the reported
-        // regressions with `OPENAPI_BASELINE_GENERATE=1`. Deleting the
+        // regressions with `GESSO_BASELINE_GENERATE=1`. Deleting the
         // sidecars would make each of those cost a full parallel run.
         $cleanupFailure = $cleanup &&
             !$coverageBaselineFailure &&
@@ -635,7 +636,7 @@ final class CoverageMergeCommand
      */
     private static function baselineGenerationRequested(): bool
     {
-        $value = getenv('OPENAPI_BASELINE_GENERATE');
+        $value = LegacyIdentity::env('GESSO_BASELINE_GENERATE');
         if ($value === false || trim($value) === '') {
             return false;
         }
@@ -723,7 +724,7 @@ final class CoverageMergeCommand
             }
 
             $this->writeStderr(sprintf(
-                "[Gesso] FATAL: %d of %d sidecar(s) carry violation-baseline data from an OPENAPI_BASELINE_GENERATE run, but --baseline-file was not given; discarding it would silently hide the demoted violations. Re-run the merge with --baseline-file=<path>.\n",
+                "[Gesso] FATAL: %d of %d sidecar(s) carry violation-baseline data from an GESSO_BASELINE_GENERATE run, but --baseline-file was not given; discarding it would silently hide the demoted violations. Re-run the merge with --baseline-file=<path>.\n",
                 $sidecarsWithBaseline,
                 $sidecarCount,
             ));
@@ -733,7 +734,7 @@ final class CoverageMergeCommand
 
         if ($sidecarsWithoutBaseline > 0) {
             $this->writeStderr(sprintf(
-                "[Gesso] FATAL: --baseline-file requested but %d of %d sidecar(s) carry no baseline data; the union would be an incomplete baseline. Ensure every worker ran with OPENAPI_BASELINE_GENERATE=1 on a library version that stages baseline sidecars. No baseline was written.\n",
+                "[Gesso] FATAL: --baseline-file requested but %d of %d sidecar(s) carry no baseline data; the union would be an incomplete baseline. Ensure every worker ran with GESSO_BASELINE_GENERATE=1 on a library version that stages baseline sidecars. No baseline was written.\n",
                 $sidecarsWithoutBaseline,
                 $sidecarCount,
             ));
@@ -827,7 +828,7 @@ final class CoverageMergeCommand
         if ($verdict['regressions'] !== []) {
             $this->writeStderr(CoverageBaselineEvaluator::renderRegressionMessage(
                 $verdict['regressions'],
-                'OPENAPI_BASELINE_GENERATE=1 ' . $this->invocation,
+                'GESSO_BASELINE_GENERATE=1 ' . $this->invocation,
             ));
 
             return false;

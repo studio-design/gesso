@@ -101,7 +101,7 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
      * @param null|callable(int): void $exitHandler Test seam for the strict-miss exit. Defaults to native `exit()`
      *                                              so production behavior matches PHPUnit's own coverage gate.
      * @param null|string $baselineGeneratePath Issue #402: destination of a violation-baseline generation run
-     *                                          (`OPENAPI_BASELINE_GENERATE`). When non-null the subscriber writes the
+     *                                          (`GESSO_BASELINE_GENERATE`). When non-null the subscriber writes the
      *                                          collected fingerprints here at run end; partial runs refuse the write
      *                                          (an incomplete baseline would hide violations). Worker mode instead
      *                                          stages the fingerprints in the sidecar envelope for
@@ -126,7 +126,7 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
      *                                                from the set fails the run by name, independent of any
      *                                                percentage.
      * @param null|string $coverageBaselineGeneratePath Issue #481: destination of a coverage-baseline generation run
-     *                                                  (`OPENAPI_BASELINE_GENERATE`, shared with the violation
+     *                                                  (`GESSO_BASELINE_GENERATE`, shared with the violation
      *                                                  baseline). Mutually exclusive with $coverageBaseline.
      * @param BaselineStaleMode $coverageBaselineStaleMode Issue #481: how entries that are covered now — the
      *                                                     ratchet-down signal — are reported.
@@ -855,7 +855,7 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
         if ($verdict['regressions'] !== []) {
             $this->writeStderr(CoverageBaselineEvaluator::renderRegressionMessage(
                 $verdict['regressions'],
-                'OPENAPI_BASELINE_GENERATE=1 vendor/bin/phpunit',
+                'GESSO_BASELINE_GENERATE=1 vendor/bin/phpunit',
             ));
             $this->exitNonZero();
 

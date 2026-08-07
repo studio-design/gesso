@@ -1,6 +1,6 @@
 # Laravel route parity
 
-`openapi:routes` compares Laravel's registered routes with the operations in
+`gesso:routes` compares Laravel's registered routes with the operations in
 one or more OpenAPI specs. It catches drift before runtime coverage can: a
 documented operation may have no application route, or an application route
 may never have been documented.
@@ -42,13 +42,13 @@ rules, so the static result matches request/response validation.
 Use the configured `default_spec`:
 
 ```bash
-php artisan openapi:routes
+php artisan gesso:routes
 ```
 
 Select multiple specs and narrow the Laravel route collection:
 
 ```bash
-php artisan openapi:routes \
+php artisan gesso:routes \
   --spec=front \
   --spec=admin \
   --prefix=api/v2 \
@@ -94,8 +94,8 @@ By default, discovered differences are reported but the command exits `0`.
 Enable either gate independently:
 
 ```bash
-php artisan openapi:routes --fail-on-undocumented
-php artisan openapi:routes --fail-on-unimplemented
+php artisan gesso:routes --fail-on-undocumented
+php artisan gesso:routes --fail-on-unimplemented
 ```
 
 - `--fail-on-undocumented` exits `1` for registered-but-undocumented routes or
@@ -109,7 +109,7 @@ php artisan openapi:routes --fail-on-unimplemented
 Use stable machine-readable output in CI:
 
 ```bash
-php artisan openapi:routes --format=json
+php artisan gesso:routes --format=json
 ```
 
 For large applications, capture the formatted JSON as a CI artifact instead
@@ -117,7 +117,7 @@ of relying only on the job log:
 
 ```yaml
 - name: Compare Laravel routes with OpenAPI
-  run: php artisan openapi:routes --format=json > route-parity.json
+  run: php artisan gesso:routes --format=json > route-parity.json
 
 - name: Upload route parity report
   uses: actions/upload-artifact@v4

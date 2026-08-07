@@ -9,6 +9,7 @@ use const JSON_THROW_ON_ERROR;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Studio\Gesso\Internal\FailureOutput;
+use Studio\Gesso\Internal\LegacyIdentity;
 use Studio\Gesso\OpenApiValidationResult;
 use Studio\Gesso\ValidationIssue;
 use Studio\Gesso\ValidationOutput;
@@ -24,13 +25,13 @@ class FailureOutputTest extends TestCase
     {
         parent::setUp();
 
-        putenv('OPENAPI_VALIDATION_OUTPUT');
+        LegacyIdentity::resetEnvForTesting('GESSO_VALIDATION_FORMAT');
         ValidationOutput::reset();
     }
 
     protected function tearDown(): void
     {
-        putenv('OPENAPI_VALIDATION_OUTPUT');
+        LegacyIdentity::resetEnvForTesting('GESSO_VALIDATION_FORMAT');
         ValidationOutput::reset();
 
         parent::tearDown();
@@ -81,7 +82,7 @@ class FailureOutputTest extends TestCase
     #[Test]
     public function json_mode_follows_the_environment_variable(): void
     {
-        putenv('OPENAPI_VALIDATION_OUTPUT=json');
+        putenv('GESSO_VALIDATION_FORMAT=json');
 
         $message = FailureOutput::compose(
             'OpenAPI request validation failed for POST /v1/pets (spec: front)',

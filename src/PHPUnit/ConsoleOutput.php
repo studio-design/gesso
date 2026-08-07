@@ -6,8 +6,9 @@ namespace Studio\Gesso\PHPUnit;
 
 use const STDERR;
 
+use Studio\Gesso\Internal\LegacyIdentity;
+
 use function fwrite;
-use function getenv;
 use function mb_strtolower;
 use function trim;
 
@@ -28,13 +29,13 @@ enum ConsoleOutput: string
      */
     public static function resolve(?string $parameterValue): self
     {
-        $envValue = getenv('OPENAPI_CONSOLE_OUTPUT');
+        $envValue = LegacyIdentity::env('GESSO_CONSOLE_OUTPUT');
 
         if ($envValue !== false && trim($envValue) !== '') {
             $resolved = self::tryFrom(mb_strtolower(trim($envValue)));
 
             if ($resolved === null) {
-                fwrite(STDERR, "[OpenAPI Coverage] WARNING: Invalid OPENAPI_CONSOLE_OUTPUT value '{$envValue}'. Valid values: default, all, uncovered_only, active_only. Falling back to 'default'.\n");
+                fwrite(STDERR, "[OpenAPI Coverage] WARNING: Invalid GESSO_CONSOLE_OUTPUT value '{$envValue}'. Valid values: default, all, uncovered_only, active_only. Falling back to 'default'.\n");
             }
 
             return $resolved ?? self::DEFAULT;

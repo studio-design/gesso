@@ -29,7 +29,7 @@ when upgrading from `studio-design/openapi-contract-testing` v1.10.
 - **OpenAPI 3.0, 3.1 & 3.2 support** — Explicit version detection, including 3.2 `QUERY`, custom `additionalOperations`, form `querystring`, `discriminator.defaultMapping`, and observable streaming limitations
 - **Response & request validation** — dialect-aware JSON Schema via opis/json-schema: Draft 07 compatibility for OpenAPI 3.0 and native 2020-12 semantics for OpenAPI 3.1/3.2; `application/json` and any `+json` content type
 - **Endpoint coverage tracking** — Unique PHPUnit extension that reports which spec endpoints are covered by tests, at `(method, path, status, content-type)` granularity
-- **Laravel route/spec parity** — `openapi:routes` finds documented operations without routes and registered routes without OpenAPI operations, with filters, stable JSON, and independent CI gates
+- **Laravel route/spec parity** — `gesso:routes` finds documented operations without routes and registered routes without OpenAPI operations, with filters, stable JSON, and independent CI gates
 - **Schema-driven request fuzzing** — Valid boundaries, composition branches, targeted negative cases with explicit expected status classes, deterministic replay/reduction, whole-spec filters, lifecycle/auth hooks, and explicit skip reasons
 - **Named negative contract checks** — Opt-in `ignored_auth` (does the API actually enforce declared `security`?), `missing_required_header`, and `unsupported_method` probes for the protocol-level holes schema validation cannot see, with deterministic replay and collect-then-assert reporting. See [`docs/fuzzing.md`](docs/fuzzing.md#named-contract-checks).
 - **Enum drift detection** — Static comparison between PHP backed enums and their `enum:` spec arrays, with PHPUnit-extension auto-discovery
@@ -61,8 +61,8 @@ Choose based on the workflow you need rather than on a single yes/no feature cou
 | Coverage granularity | [`method, path, status, content-type`](docs/coverage.md) | [`method, path` operation][spectator-coverage-source] | — | — | — |
 | Coverage outputs | [Markdown, JUnit XML, JSON, HTML, GitHub Step Summary](docs/coverage.md) | [Text, JSON][spectator-coverage] | — | — | — |
 | Parallel coverage merge | [Sidecar + merge CLI](docs/parallel.md) | Not documented | — | — | — |
-| Route/spec parity | [`openapi:routes`](docs/laravel-route-parity.md) with text/JSON and CI gates | [`spectator:routes`][spectator-cli] | — | — | — |
-| CLI diagnostics / scaffolding | [`doctor`](docs/doctor.md), [`openapi:routes`](docs/laravel-route-parity.md), coverage merge/gate, [`stubs` scoped to uncovered responses](docs/stubs.md) | [`validate`, `coverage`, `routes`, `stubs`][spectator-cli] | — | — | — |
+| Route/spec parity | [`gesso:routes`](docs/laravel-route-parity.md) with text/JSON and CI gates | [`spectator:routes`][spectator-cli] | — | — | — |
+| CLI diagnostics / scaffolding | [`doctor`](docs/doctor.md), [`gesso:routes`](docs/laravel-route-parity.md), coverage merge/gate, [`stubs` scoped to uncovered responses](docs/stubs.md) | [`validate`, `coverage`, `routes`, `stubs`][spectator-cli] | — | — | — |
 | Structured validation failures | [`issues()` + versioned JSON failure output](docs/validation-json-schema.md) | [JSON `{errors: [...]}`][spectator-errors] | [PHP exception hierarchy][league-errors] | [Wrapper exception][osteel-readme] | [PHPUnit failure text][kirschbaum-failure-source] |
 | Schema-driven exploration | [Deterministic endpoint + whole-spec generation](docs/fuzzing.md) | — | — | — | — |
 | Drift / under-description checks | [Enum drift](docs/enum-drift.md), [strict required](docs/strict-required.md) | — | — | — | — |
@@ -217,7 +217,7 @@ class GetPetsTest extends TestCase
 Before running tests, compare Laravel's registered routes with the spec:
 
 ```bash
-php artisan openapi:routes --fail-on-undocumented --fail-on-unimplemented
+php artisan gesso:routes --fail-on-undocumented --fail-on-unimplemented
 ```
 
 To validate every response automatically, set `'auto_assert' => true` and drop the explicit assert call. To also catch request-side drift, set `'auto_validate_request' => true`. See [`docs/setup.md`](docs/setup.md) for the full configuration and opt-out reference.
@@ -229,7 +229,7 @@ To validate every response automatically, set `'auto_assert' => true` and drop t
 | PSR-7 request / response / exchange validation and PSR-15 test recipe | [`docs/psr7.md`](docs/psr7.md) |
 | Full setup, Laravel / Symfony / framework-agnostic adapters, auto-assert, opt-out attributes, request validation, HTTP `$ref` | [`docs/setup.md`](docs/setup.md) |
 | Pre-test compatibility diagnostics (`gesso doctor`) | [`docs/doctor.md`](docs/doctor.md) |
-| Laravel route/spec parity (`openapi:routes`) | [`docs/laravel-route-parity.md`](docs/laravel-route-parity.md) |
+| Laravel route/spec parity (`gesso:routes`) | [`docs/laravel-route-parity.md`](docs/laravel-route-parity.md) |
 | Pest plugin: `expect()->toMatchOpenApiResponseSchema()` and friends | [`docs/pest-plugin.md`](docs/pest-plugin.md) |
 | Schema-driven request fuzzing & named contract checks | [`docs/fuzzing.md`](docs/fuzzing.md) |
 | Enum drift detection | [`docs/enum-drift.md`](docs/enum-drift.md) |
