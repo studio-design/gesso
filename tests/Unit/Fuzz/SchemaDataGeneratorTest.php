@@ -27,6 +27,7 @@ use function array_unique;
 use function array_values;
 use function count;
 use function fmod;
+use function gc_collect_cycles;
 use function json_decode;
 use function json_encode;
 use function preg_match;
@@ -260,6 +261,41 @@ class SchemaDataGeneratorTest extends TestCase
     }
 
     #[Test]
+    public function a_collected_faker_generator_does_not_reseed_a_seeded_run(): void
+    {
+        // `Faker\Generator::__destruct()` calls `seed()` with no argument —
+        // `mt_srand()`, reseeding the global Mt19937 from entropy — and the
+        // generator is a reference cycle, so a discarded one is freed by PHP's
+        // cycle collector at a point that depends on everything that ran
+        // before it, not at scope exit. Issue #517: a collection landing
+        // between two iterations moved the rest of the run onto a different
+        // stream, so `composer test` failed or passed depending on the
+        // `.phpunit.cache` result order.
+        gc_collect_cycles();
+
+        $schema = [
+            'type' => 'object',
+            'required' => ['name'],
+            'properties' => [
+                'name' => ['type' => 'string'],
+                'tag' => ['type' => 'string'],
+            ],
+        ];
+
+        $expected = json_encode(SchemaDataGenerator::generate($schema, 5, seed: 12345));
+
+        // Drive the loop by hand so the collector runs *inside* the run.
+        $faker = SchemaDataGenerator::createFaker(12345);
+        $values = [];
+        for ($i = 0; $i < 5; $i++) {
+            $values[] = SchemaDataGenerator::generateOne($schema, $faker, $i);
+            gc_collect_cycles();
+        }
+
+        $this->assertSame($expected, json_encode($values));
+    }
+
+    #[Test]
     public function generated_values_pass_opis_schema_validation(): void
     {
         $schema = [
@@ -321,8 +357,8 @@ class SchemaDataGeneratorTest extends TestCase
     public function different_seeds_produce_different_output(): void
     {
         // Without this test, dropping `$faker->seed($seed)` would silently
-        // pass — same_seed_produces_same_output would still hold because
-        // `Faker\Factory::create()` is only called once per generate().
+        // pass — same_seed_produces_same_output would still hold, because the
+        // generator is process-wide and both calls would read the same stream.
         $schema = ['type' => 'string', 'minLength' => 8, 'maxLength' => 8];
 
         $first = SchemaDataGenerator::generate($schema, 4, seed: 1);
