@@ -17,7 +17,7 @@ the coverage report; without it the first validation call throws
 </extensions>
 ```
 
-Copy the minimal [`examples/core`](https://github.com/studio-design/gesso/tree/main/examples/core) project. Its test validates a JSON response without a framework adapter, then records the observation — the framework-independent validator never touches the coverage tracker, so a suite that only validates prints no endpoint coverage table at all. The Laravel, Symfony, and Pest adapters record it for you:
+Copy the minimal [`examples/core`](https://github.com/studio-design/gesso/tree/main/examples/core) project. Its test validates a JSON response without a framework adapter. The validator records the coverage observation itself, so this is the whole test — the endpoint coverage table appears without any tracker call:
 
 ```php
 $result = (new OpenApiResponseValidator(new StrictRequiredTracker()))->validate(
@@ -27,15 +27,6 @@ $result = (new OpenApiResponseValidator(new StrictRequiredTracker()))->validate(
 );
 
 self::assertTrue($result->isValid(), $result->errorMessage());
-
-OpenApiCoverageTracker::recordResponse(
-    'petstore',
-    'GET',
-    $result->matchedPath() ?? '/pets',
-    $result->matchedStatusCode() ?? '200',
-    $result->matchedContentType(),
-    schemaValidated: true,
-);
 ```
 
 Run it:

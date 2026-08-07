@@ -15,7 +15,6 @@ use Psr\Http\Message\StreamInterface;
 use Psr\Http\Message\UploadedFileInterface;
 use RuntimeException;
 use Studio\Gesso\Baseline\ViolationFingerprint;
-use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\DecodedBody;
 use Studio\Gesso\OpenApiRequestValidator;
 use Studio\Gesso\OpenApiResponseValidator;
@@ -112,7 +111,8 @@ final class OpenApiPsr7Validator
             $responseStatusCode,
             $rawQueryString === '' ? null : $rawQueryString,
         );
-        $result = self::withAdapterErrors(
+
+        return self::withAdapterErrors(
             $result,
             $decoded['errors'],
             'request.body',
@@ -121,16 +121,8 @@ final class OpenApiPsr7Validator
             contentType: self::requestBodyIssueContentType($result),
         );
 
-        if ($result->matchedPath() !== null) {
-            OpenApiCoverageTracker::recordRequest(
-                $this->specName,
-                $method,
-                $result->matchedPath(),
-                $result->isSkipped() ? $result->skipReason() : null,
-            );
-        }
-
-        return $result;
+        // Coverage recording happens inside OpenApiRequestValidator
+        // (issue #535); the adapter no longer records a second observation.
     }
 
     /**
@@ -166,7 +158,8 @@ final class OpenApiPsr7Validator
             $contentType,
             $response->getHeaders(),
         );
-        $result = self::withAdapterErrors(
+
+        return self::withAdapterErrors(
             $result,
             $decoded['errors'],
             'response.body',
@@ -175,19 +168,8 @@ final class OpenApiPsr7Validator
             contentType: $result->matchedContentType(),
         );
 
-        if ($result->matchedPath() !== null) {
-            OpenApiCoverageTracker::recordResponse(
-                $this->specName,
-                $method,
-                $result->matchedPath(),
-                $result->matchedStatusCode() ?? (string) $response->getStatusCode(),
-                $result->matchedContentType(),
-                schemaValidated: !$result->isSkipped(),
-                skipReason: $result->skipReason(),
-            );
-        }
-
-        return $result;
+        // Coverage recording happens inside OpenApiResponseValidator
+        // (issue #535); the adapter no longer records a second observation.
     }
 
     /**

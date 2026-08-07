@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Studio\Gesso;
 
 use RuntimeException;
+use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\Spec\OpenApiOperationResolver;
 use Studio\Gesso\Spec\OpenApiPathMatcher;
 use Studio\Gesso\Spec\OpenApiSchemaDialect;
@@ -119,6 +120,96 @@ final class OpenApiRequestValidator
      * @param null|string $rawQueryString the request's percent-encoded query string as sent on the wire (e.g. `role=owner%2Cadmin,member`). Optional: when supplied, non-exploded query styles (`form` + `explode: false`, `pipeDelimited`, `spaceDelimited`) are split before percent-decoding. For `form` this keeps a `%2C` inside a value data; the `pipeDelimited` / `spaceDelimited` delimiters cannot be represented inside a value (OAS Appendix E leaves that undefined) — both their encoded and literal forms split. The raw value is only consulted when it decodes to the parsed value in `$queryParams`. Without it the decoded value is split as a best effort.
      */
     public function validate(
+        string $specName,
+        string $method,
+        string $requestPath,
+        array $queryParams,
+        array $headers,
+        mixed $requestBody,
+        ?string $contentType = null,
+        array $cookies = [],
+        ?int $responseStatusCode = null,
+        ?string $rawQueryString = null,
+    ): OpenApiValidationResult {
+        $result = $this->doValidate(
+            $specName,
+            $method,
+            $requestPath,
+            $queryParams,
+            $headers,
+            $requestBody,
+            $contentType,
+            $cookies,
+            $responseStatusCode,
+            $rawQueryString,
+        );
+
+        // Issue #535: request coverage is recorded here, mirroring the
+        // response side — the framework adapters no longer record it.
+        $matchedPath = $result->matchedPath();
+        if ($matchedPath !== null) {
+            OpenApiCoverageTracker::recordRequest(
+                $specName,
+                $method,
+                $matchedPath,
+                $result->isSkipped() ? $result->skipReason() : null,
+            );
+        }
+
+        return $result;
+    }
+
+    /**
+     * Lift plain message strings into the named-error shape the issue loop
+     * consumes, with no name attached — spec-level and body errors are not
+     * about a single named parameter (body issues carry `instancePath`
+     * instead).
+     *
+     * @param string[] $messages
+     *
+     * @return list<NamedError>
+     */
+    private static function withoutNames(array $messages): array
+    {
+        $named = [];
+        foreach ($messages as $message) {
+            $named[] = new NamedError(null, $message);
+        }
+
+        return $named;
+    }
+
+    /**
+     * Media-type key for the synthetic boundary error above. A
+     * `RuntimeException` can only originate on the JSON schema path — schema
+     * conversion and validation run after {@see RequestBodyValidator} resolved
+     * the JSON media-type key (the non-JSON and malformed-spec paths return
+     * before touching the converter) — so re-resolving the key from the same
+     * `content` map reproduces exactly what the validator matched before it
+     * threw.
+     *
+     * @param array<string, mixed> $operation
+     */
+    private static function thrownBodyContentType(array $operation): ?string
+    {
+        $requestBody = $operation['requestBody'] ?? null;
+        if (!is_array($requestBody) || !is_array($requestBody['content'] ?? null)) {
+            return null;
+        }
+
+        /** @var array<string, mixed> $content */
+        $content = $requestBody['content'];
+
+        return ContentTypeMatcher::findJsonContentType($content);
+    }
+
+    /**
+     * @param array<string, mixed> $queryParams see {@see self::validate()}
+     * @param array<array-key, mixed> $headers see {@see self::validate()}
+     * @param mixed $requestBody see {@see self::validate()}
+     * @param array<string, mixed> $cookies see {@see self::validate()}
+     */
+    private function doValidate(
         string $specName,
         string $method,
         string $requestPath,
@@ -398,50 +489,6 @@ final class OpenApiRequestValidator
             matchedContentType: $bodyResult->matchedContentType,
             issues: $issues,
         );
-    }
-
-    /**
-     * Lift plain message strings into the named-error shape the issue loop
-     * consumes, with no name attached — spec-level and body errors are not
-     * about a single named parameter (body issues carry `instancePath`
-     * instead).
-     *
-     * @param string[] $messages
-     *
-     * @return list<NamedError>
-     */
-    private static function withoutNames(array $messages): array
-    {
-        $named = [];
-        foreach ($messages as $message) {
-            $named[] = new NamedError(null, $message);
-        }
-
-        return $named;
-    }
-
-    /**
-     * Media-type key for the synthetic boundary error above. A
-     * `RuntimeException` can only originate on the JSON schema path — schema
-     * conversion and validation run after {@see RequestBodyValidator} resolved
-     * the JSON media-type key (the non-JSON and malformed-spec paths return
-     * before touching the converter) — so re-resolving the key from the same
-     * `content` map reproduces exactly what the validator matched before it
-     * threw.
-     *
-     * @param array<string, mixed> $operation
-     */
-    private static function thrownBodyContentType(array $operation): ?string
-    {
-        $requestBody = $operation['requestBody'] ?? null;
-        if (!is_array($requestBody) || !is_array($requestBody['content'] ?? null)) {
-            return null;
-        }
-
-        /** @var array<string, mixed> $content */
-        $content = $requestBody['content'];
-
-        return ContentTypeMatcher::findJsonContentType($content);
     }
 
     /**

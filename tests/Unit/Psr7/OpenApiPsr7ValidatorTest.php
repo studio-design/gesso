@@ -317,6 +317,22 @@ final class OpenApiPsr7ValidatorTest extends TestCase
     }
 
     #[Test]
+    public function response_validation_records_coverage_exactly_once(): void
+    {
+        // Issue #535: recording moved into OpenApiResponseValidator; the
+        // adapter must not record a second observation on top of it.
+        $response = new Response(200, ['Content-Type' => 'application/json'], '7');
+
+        $this->validator->validateResponseForOperation('GET', '/body/scalar', $response);
+
+        $state = OpenApiCoverageTracker::exportState();
+        $this->assertSame(
+            ['state' => 'validated', 'hits' => 1, 'skipReason' => null],
+            $state['specs']['psr7']['GET /body/scalar']['responses']['200:application/json'] ?? null,
+        );
+    }
+
+    #[Test]
     public function validates_a_response_with_an_explicit_operation_address(): void
     {
         $response = new Response(
