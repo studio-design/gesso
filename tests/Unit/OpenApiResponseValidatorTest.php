@@ -199,6 +199,47 @@ class OpenApiResponseValidatorTest extends TestCase
     }
 
     #[Test]
+    public function the_undeclared_content_type_note_stays_last_behind_header_errors(): void
+    {
+        // The note explains the whole failure, so it must not be buried
+        // between the body errors it annotates and an unrelated header error.
+        // psr7 POST /widgets/{id} 201 declares only `application/json` and a
+        // required `X-Trace` header — a `+json` variant with a wrong body and
+        // no header fails on all three channels at once.
+        $result = $this->validator->validate(
+            'psr7',
+            'POST',
+            '/widgets/42',
+            201,
+            ['id' => 'not-an-integer'],
+            'application/vnd.example.v1+json',
+            [],
+        );
+
+        $this->assertFalse($result->isValid());
+
+        $errors = $result->errors();
+        $this->assertCount(3, $errors);
+        $this->assertStringStartsWith('[/id] ', $errors[0]);
+        $this->assertStringContainsString('X-Trace', $errors[1]);
+        $this->assertStringStartsWith(
+            "Note: response Content-Type 'application/vnd.example.v1+json' is not defined for ",
+            $errors[2],
+        );
+
+        // issues() mirrors errors() one-to-one, so the categories move with
+        // the messages.
+        $this->assertSame(
+            ['response.body', 'response.header', 'response.content_type'],
+            array_map(static fn($issue) => $issue->category, $result->issues()),
+        );
+        $this->assertSame(
+            $errors,
+            array_map(static fn($issue) => $issue->message, $result->issues()),
+        );
+    }
+
+    #[Test]
     public function undeclared_json_content_type_stays_silent_when_the_body_passes(): void
     {
         // The fallback itself remains a documented pass — the note is context
