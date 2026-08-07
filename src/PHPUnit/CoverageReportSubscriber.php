@@ -88,10 +88,11 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
      * @param null|callable(string): void $stderrWriter Optional sink for warnings (stale/invalid specs,
      *                                                  failed file_put_contents). Falls back to {@see OpenApiCoverageExtension::writeStderr()} when
      *                                                  null. Injected for testability — the extension stays the default backstop in production.
-     * @param null|string $sidecarDir Directory the worker-mode branch will drop its JSON sidecar into. When the
-     *                                subscriber detects `TEST_TOKEN` (set by paratest in every child process) it
-     *                                short-circuits rendering and writes the tracker state here for the merge CLI
-     *                                to pick up. `null` falls back to a default under `sys_get_temp_dir()`.
+     * @param null|string $sidecarDir Directory the worker-mode branch will drop its JSON sidecar into. When
+     *                                {@see self::resolveWorkerToken()} finds a token — `TEST_TOKEN` from paratest,
+     *                                or `GESSO_SIDECAR_TOKEN` naming a CI shard — the subscriber short-circuits
+     *                                rendering and writes the tracker state here for the merge CLI to pick up.
+     *                                `null` falls back to a default under `sys_get_temp_dir()`.
      * @param null|float $minEndpointCoverage Optional gate: when not null and `endpointFullyCovered/endpointTotal`
      *                                        (rolled across `$specs`) is below this percent, the subscriber prints
      *                                        a FAIL/WARN line. See issue #135.
@@ -258,23 +259,36 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
     }
 
     /**
-     * Resolve the paratest worker token from the environment. Paratest sets
-     * `TEST_TOKEN` for every worker process (currently a 1..N slot index)
-     * and unsets it for sequential PHPUnit runs. We treat the presence of
-     * this var as the single signal that puts the subscriber into
-     * sidecar-only mode.
+     * Resolve the token that puts this process into sidecar-only mode, or
+     * `null` for the normal in-process rendering path.
      *
-     * Parallel runners that wrap paratest (e.g. Pest `--parallel`) inherit
-     * the same env var, so no per-runner detection is needed.
+     * Two sources, in priority order:
+     *
+     *  - `GESSO_SIDECAR_TOKEN` (issue #434): the explicit opt-in for any
+     *    process. Sharding a suite across CI *jobs* produces the same "N
+     *    processes each hold a slice" situation paratest produces, but
+     *    nothing in the environment says so — so the user names the shard
+     *    and that name is both the request to export and the sidecar's
+     *    identity. One knob: an export mode with no name could not produce
+     *    distinct filenames across runners, and a name with no export mode
+     *    would do nothing. It wins over `TEST_TOKEN` so a sharded job that
+     *    *also* runs paratest namespaces its sidecars by shard; the pid in
+     *    the filename keeps that job's workers apart.
+     *  - `TEST_TOKEN`: set by paratest in every worker process (currently a
+     *    1..N slot index) and unset for sequential PHPUnit runs. Runners
+     *    that wrap paratest (e.g. Pest `--parallel`) inherit it, so no
+     *    per-runner detection is needed.
      */
     private static function resolveWorkerToken(): ?string
     {
-        $token = getenv('TEST_TOKEN');
-        if ($token === false || trim($token) === '') {
-            return null;
+        foreach (['GESSO_SIDECAR_TOKEN', 'TEST_TOKEN'] as $name) {
+            $token = getenv($name);
+            if ($token !== false && trim($token) !== '') {
+                return $token;
+            }
         }
 
-        return $token;
+        return null;
     }
 
     /**

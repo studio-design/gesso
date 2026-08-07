@@ -13,7 +13,9 @@ The coverage extension solves this with a two-step workflow that mirrors
 1. **Workers** drop a JSON sidecar per process. The extension auto-detects
    paratest by looking at `TEST_TOKEN` (set in every paratest child) and
    short-circuits rendering — no console output, no `output_file` write,
-   no `GITHUB_STEP_SUMMARY` append from the worker.
+   no `GITHUB_STEP_SUMMARY` append from the worker. `GESSO_SIDECAR_TOKEN`
+   requests the same thing explicitly, for runners nothing detects; see
+   [Sharded CI jobs](#sharded-ci-jobs).
 2. **A single merge step** reads the sidecars, union-merges them via the
    same rules `OpenApiCoverageTracker::recordResponse()` applies, and emits
    the combined report.
@@ -55,6 +57,7 @@ vendor/bin/gesso coverage:merge \
 | `--baseline-file=<path>` | — | Union the violation-baseline halves staged by an `GESSO_BASELINE_GENERATE=1` parallel run and write the merged baseline. See [`baseline.md`](baseline.md#generating-under-parallel-runners) |
 | `--coverage-baseline-file=<path>` | — | Gate the merged coverage against a committed set of known-uncovered responses; writes the file instead when `GESSO_BASELINE_GENERATE=1` is set. See [`coverage-baseline.md`](coverage-baseline.md#parallel-runners) |
 | `--coverage-baseline-stale=<mode>` | `note` | `off` / `note` / `fail`. How baseline entries that are covered now are reported |
+| `--expect-sidecars=<n>` | — | Fail unless exactly `n` sidecars are present. See [Sharded CI jobs](#sharded-ci-jobs) |
 | `--no-cleanup` | (cleanup is on by default) | Keep sidecar files after merge |
 
 Sidecar dir defaults are deliberately stable — workers and the merge CLI
@@ -72,6 +75,62 @@ them, and requires each sidecar to be non-group/world-writable. The
 permission-bit checks are not applied on Windows, whose ACL model is not
 represented by POSIX mode bits. Use a dedicated directory rather than `/tmp`
 itself; the default already does this.
+
+## Sharded CI jobs
+
+Splitting a suite across CI *jobs* — one runner per testsuite, to keep each
+job inside a time budget — puts every runner in the same position as a
+paratest worker: it holds one slice of the state and nothing else can see it.
+Nothing in the environment says so, though, so each job has to name itself:
+
+```yaml
+strategy:
+  matrix:
+    suite: [Unit, Feature, E2E]
+steps:
+  - run: vendor/bin/phpunit --testsuite=${{ matrix.suite }}
+    env:
+      GESSO_SIDECAR_TOKEN: ${{ matrix.suite }}
+  - uses: actions/upload-artifact@v4
+    with:
+      name: gesso-sidecars-${{ matrix.suite }}
+      path: /tmp/openapi-coverage-sidecars
+```
+
+`GESSO_SIDECAR_TOKEN` does exactly what `TEST_TOKEN` does for paratest — the
+process writes its sidecar and renders nothing — and its value names the
+sidecar (`part-<token>-<pid>.json`), so artifacts downloaded from several
+runners into one directory cannot collide. It takes priority over
+`TEST_TOKEN`, so a sharded job may still run paratest inside it: the shard
+name namespaces the files and the pid keeps that job's workers apart. A blank
+or unset value leaves the run rendering in process, unchanged.
+
+The merge job then downloads every artifact into one directory and produces
+the single report and the single gate evaluation for the whole suite:
+
+```bash
+vendor/bin/gesso coverage:merge \
+    --spec-base-path=openapi/bundled \
+    --sidecar-dir=sidecars \
+    --expect-sidecars=3 \
+    --strict-required=fail \
+    --min-response-coverage=80
+```
+
+`--expect-sidecars=<n>` is worth setting whenever the shard count is known up
+front. A shard that was cancelled — or that died before PHPUnit finished —
+writes neither a sidecar nor a `failed-*.json` marker, because the marker only
+covers "ran but could not write". The declared count is the only evidence that
+absence leaves, and without it the merge reports the surviving shards' coverage
+as if it were the whole suite. A mismatch in either direction is FATAL (exit 1)
+and leaves the sidecars in place: a surplus means the directory still holds a
+previous run's files, which inflates coverage just as quietly.
+
+Each shard is a partial run on its own, which is why none of them writes
+`output_file` / `json_output` / `GITHUB_STEP_SUMMARY` or evaluates a gate — see
+[Partial test runs](ci.md#partial-test-runs-filter-testsuite-path-args). The
+merge step is the full-suite view, and
+it owns those decisions for the whole matrix.
 
 ## Sidecar compatibility
 
@@ -110,9 +169,9 @@ changing a sidecar shape or filename pattern.
 
 ## Notes
 
-- **Sequential runs are unchanged.** Without `TEST_TOKEN` the extension
-  renders inline as before. There is no need to wire the merge CLI into
-  non-parallel CI jobs.
+- **Sequential runs are unchanged.** Without `TEST_TOKEN` or
+  `GESSO_SIDECAR_TOKEN` the extension renders inline as before. There is no
+  need to wire the merge CLI into non-parallel CI jobs.
 - **Pest plugin works under `--parallel`.** The expectations registered
   by the [Pest plugin](pest-plugin.md) record coverage through the
   same `OpenApiCoverageTracker` static, so each Pest worker drops a
