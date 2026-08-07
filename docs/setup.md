@@ -4,6 +4,7 @@ This guide walks through end-to-end setup, including the configuration knobs, op
 
 - [1. Provide your OpenAPI spec](#1-provide-your-openapi-spec)
 - [2. Configure the PHPUnit extension](#2-configure-the-phpunit-extension)
+  - [Server base paths are not stripped automatically](#server-base-paths-are-not-stripped-automatically)
 - [3. Use in tests](#3-use-in-tests)
   - [With Laravel (recommended)](#with-laravel-recommended)
   - [Framework-agnostic](#framework-agnostic)
@@ -70,7 +71,7 @@ Add the coverage extension to your `phpunit.xml`:
 | Parameter | Required | Default | Description |
 |---|---|---|---|
 | `spec_base_path` | Yes* | — | Path to bundled spec directory (relative paths resolve from `getcwd()`) |
-| `strip_prefixes` | No | `[]` | Comma-separated prefixes to strip from request paths (e.g., `/api`) |
+| `strip_prefixes` | No | `[]` | Comma-separated prefixes to strip from request paths (e.g., `/api`). Required even when the spec declares the same base path in `servers` — see [Server base paths are not stripped automatically](#server-base-paths-are-not-stripped-automatically) |
 | `specs` | No | `front` | Comma-separated spec names for coverage tracking |
 | `output_file` | No | — | File path to write Markdown coverage report (relative paths resolve from `getcwd()`). Skipped on partial runs — see [Partial test runs](ci.md#partial-test-runs-filter-testsuite-path-args) |
 | `junit_output` | No | — | File path to write JUnit XML coverage report (for CI dashboards — GitLab CI, Jenkins, SonarQube, Bitrise). A missing parent directory is created automatically at bootstrap (applies to `json_output` / `html_output` too); an empty value, a failed creation, or an unwritable parent directory is FATAL at bootstrap. See [Coverage output formats](ci.md#coverage-output-formats) |
@@ -92,6 +93,33 @@ Add the coverage extension to your `phpunit.xml`:
 | `acknowledged_unvalidatable_schemes` | No | — | Comma-separated `components.securitySchemes` names acknowledged as unvalidatable. Suppresses the one-shot `[security]` silent-pass warning for exactly those schemes; every other unvalidatable scheme keeps warning. See [Acknowledging an unvalidatable security scheme](#acknowledging-an-unvalidatable-security-scheme) |
 
 *Not required if you call `OpenApiSpecLoader::configure()` manually.
+
+### Server base paths are not stripped automatically
+
+`servers[].url` **does not participate in request-path matching.** A spec that
+declares `servers: [{ url: "/api" }]` alongside a `/pets` path still needs
+`strip_prefixes` set to `/api` for a request to `/api/pets` to match.
+
+The two values look interchangeable and are not: `servers[].url` says where the
+published API is served, while `strip_prefixes` says where the application under
+test mounts its routes. They diverge whenever a gateway terminates the prefix,
+the test harness boots the app at the root, or the spec's `servers` carries a
+hostname and no path. `servers` is also overridable per path item and per
+operation, and reading an override requires having already matched the path.
+[ADR 0006](adr/0006-server-base-paths-and-request-path-matching.md) records the
+full reasoning.
+
+A failed match names the prefix when the spec declares one that would have
+worked, so the value to configure is in the failure output rather than left to
+be derived:
+
+```text
+No matching path found in 'petstore' spec for GET /api/pets
+  servers[0].url declares base path '/api'; '/pets' matches after removing it.
+  Gesso does not strip server base paths automatically — add '/api' to strip_prefixes.
+  closest spec paths:
+    - GET /pets
+```
 
 ## 3. Use in tests
 
