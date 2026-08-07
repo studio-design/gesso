@@ -45,6 +45,7 @@ use Studio\Gesso\Validation\Strict\StrictRequiredPerCallChecker;
 use Studio\Gesso\Validation\Strict\StrictRequiredPerCallMode;
 use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 use Studio\Gesso\Validation\Support\DiscriminatorEnforcement;
+use Studio\Gesso\Validation\Support\StatusCodePatternSet;
 use Studio\Gesso\Validation\Support\ValidationPolicyDefaults;
 use Studio\Gesso\ValidationOutput;
 use Studio\Gesso\ValidationOutputFormat;
@@ -1127,9 +1128,14 @@ final class OpenApiCoverageExtension implements Extension
     /**
      * Issue #502 (additive half): read a comma-separated status-code pattern
      * list (`skip_response_codes` / `skip_request_validation_response_codes`).
-     * Missing and empty values resolve to null (unconfigured — the validators
-     * keep their built-in defaults); a blank entry inside the list is FATAL,
-     * matching the Laravel trait's loud rejection of empty pattern strings.
+     * A missing parameter resolves to null (unconfigured — the validators
+     * keep their built-in defaults); an explicitly empty value resolves to
+     * `[]`, the Laravel config's "no skip patterns" (for
+     * `skip_response_codes` that turns 5xx body validation on). Blank
+     * entries and malformed regex patterns are FATAL at bootstrap — the
+     * throwaway {@see StatusCodePatternSet} runs the same validation the
+     * validators would, so a typo'd pattern cannot surface later as a
+     * constructor error inside the first test that builds one.
      *
      * @return null|string[]
      */
@@ -1143,17 +1149,17 @@ final class OpenApiCoverageExtension implements Extension
 
         $raw = trim($parameters->get($name));
         if ($raw === '') {
-            return null;
+            return [];
         }
 
         $patterns = array_map('trim', explode(',', $raw));
-        foreach ($patterns as $pattern) {
-            if ($pattern === '') {
-                $reason = "Invalid {$name} parameter '{$raw}': blank entry in the comma-separated list.";
-                self::writeStderr("[Gesso] FATAL: {$reason}\n");
 
-                throw new InvalidValidationPolicyConfigurationException($reason);
-            }
+        try {
+            new StatusCodePatternSet($patterns, $name);
+        } catch (InvalidArgumentException $e) {
+            self::writeStderr("[Gesso] FATAL: {$e->getMessage()}\n");
+
+            throw new InvalidValidationPolicyConfigurationException($e->getMessage(), $e);
         }
 
         return $patterns;

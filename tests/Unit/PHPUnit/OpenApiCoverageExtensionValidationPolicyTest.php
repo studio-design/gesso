@@ -123,14 +123,14 @@ class OpenApiCoverageExtensionValidationPolicyTest extends TestCase
     }
 
     #[Test]
-    public function skip_response_codes_parameter_with_an_empty_value_keeps_the_default(): void
+    public function skip_response_codes_parameter_with_an_empty_value_disables_the_skip(): void
     {
+        // An explicitly present empty value is Laravel's `[]` (issue #502
+        // review): no skip patterns, so 5xx bodies are validated too. Only
+        // an absent parameter keeps the built-in `5\d\d` default.
         $this->bootstrap(['skip_response_codes' => '']);
 
-        $this->assertSame(
-            OpenApiResponseValidator::DEFAULT_SKIP_RESPONSE_CODES,
-            ValidationPolicyDefaults::skipResponseCodes(),
-        );
+        $this->assertSame([], ValidationPolicyDefaults::skipResponseCodes());
     }
 
     #[Test]
@@ -140,8 +140,26 @@ class OpenApiCoverageExtensionValidationPolicyTest extends TestCase
             $this->bootstrap(['skip_response_codes' => '422,,404']);
             $this->fail('Expected InvalidValidationPolicyConfigurationException');
         } catch (InvalidValidationPolicyConfigurationException $e) {
-            $this->assertStringContainsString('skip_response_codes', $e->getMessage());
-            $this->assertStringContainsString('blank entry', $e->getMessage());
+            $this->assertStringContainsString('skip_response_codes[1]', $e->getMessage());
+            $this->assertStringContainsString('must not be an empty string', $e->getMessage());
+        }
+
+        $this->assertStringContainsString('FATAL', $this->readStderr());
+    }
+
+    #[Test]
+    public function skip_response_codes_parameter_rejects_an_invalid_regex_at_bootstrap(): void
+    {
+        // Issue #502 review: a malformed pattern must FATAL at bootstrap,
+        // not surface later as a constructor error inside the first test
+        // that builds a validator.
+        try {
+            $this->bootstrap(['skip_response_codes' => '(unclosed']);
+            $this->fail('Expected InvalidValidationPolicyConfigurationException');
+        } catch (InvalidValidationPolicyConfigurationException $e) {
+            $this->assertStringContainsString('skip_response_codes[0]', $e->getMessage());
+            $this->assertStringContainsString('is not a valid regex pattern', $e->getMessage());
+            $this->assertStringContainsString('(unclosed', $e->getMessage());
         }
 
         $this->assertStringContainsString('FATAL', $this->readStderr());

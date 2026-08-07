@@ -425,9 +425,15 @@ trait OpenApiAssertions
 
     private function symfonyResponseValidator(): OpenApiResponseValidator
     {
+        // Pin the default skip set explicitly (issue #502 review): the
+        // process-wide `skip_response_codes` extension parameter targets the
+        // framework-agnostic path only, and an omitted argument would now
+        // consult it. Mirrors the request validator below and the one-off
+        // extraSkipResponseCodes validator above.
         return $this->cachedSymfonyResponseValidator ??= new OpenApiResponseValidator(
             strictRequiredTracker: StrictRequiredTracker::current(),
             maxErrors: ViolationBaselineCollector::uncap($this->openApiMaxErrors()),
+            skipResponseCodes: OpenApiResponseValidator::DEFAULT_SKIP_RESPONSE_CODES,
         );
     }
 
