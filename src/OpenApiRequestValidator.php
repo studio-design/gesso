@@ -26,6 +26,7 @@ use Studio\Gesso\Validation\Support\PathDiagnosticsFormatter;
 use Studio\Gesso\Validation\Support\SchemaValidatorRunner;
 use Studio\Gesso\Validation\Support\SpecResponseKeyResolver;
 use Studio\Gesso\Validation\Support\StatusCodePatternSet;
+use Studio\Gesso\Validation\Support\ValidationPolicyDefaults;
 use Studio\Gesso\Validation\Support\ValidatorErrorBoundary;
 
 use function array_key_exists;
@@ -59,24 +60,30 @@ final class OpenApiRequestValidator
     private readonly StatusCodePatternSet $skipPatterns;
 
     /**
-     * @param string[] $skipRequestValidationResponseCodes Regex patterns
-     *                                                     (without delimiters or anchors) matched against the response status
-     *                                                     code as a string. When the response status matches one of these
-     *                                                     patterns AND the spec documents that status for the operation,
-     *                                                     a request validation failure is downgraded to Skipped instead
-     *                                                     of Failure — the test stops false-failing on intentional
-     *                                                     invalid-input cases. The downgrade does NOT apply when the
-     *                                                     status is undocumented (the spec gap stays loud) nor when
-     *                                                     the request was valid (Success stays Success).
-     *                                                     Defaults to `[]` here so direct callers stay strict; the
-     *                                                     Laravel trait reads the documented `['422', '400']` default
-     *                                                     from {@see self::DEFAULT_SKIP_REQUEST_VALIDATION_RESPONSE_CODES}.
+     * @param null|int $maxErrors Maximum number of reported errors (0 =
+     *                            unlimited). `null` — the default — reads the process-wide value set
+     *                            by the PHPUnit extension's `max_errors` parameter (issue #502),
+     *                            which falls back to 20 when unconfigured.
+     * @param null|string[] $skipRequestValidationResponseCodes Regex patterns
+     *                                                          (without delimiters or anchors) matched against the response status
+     *                                                          code as a string. When the response status matches one of these
+     *                                                          patterns AND the spec documents that status for the operation,
+     *                                                          a request validation failure is downgraded to Skipped instead
+     *                                                          of Failure — the test stops false-failing on intentional
+     *                                                          invalid-input cases. The downgrade does NOT apply when the
+     *                                                          status is undocumented (the spec gap stays loud) nor when
+     *                                                          the request was valid (Success stays Success).
+     *                                                          `null` — the default — reads the process-wide value set by the
+     *                                                          extension's `skip_request_validation_response_codes` parameter,
+     *                                                          which falls back to `[]` so direct callers stay strict; the
+     *                                                          Laravel trait reads the documented `['422', '400']` default
+     *                                                          from {@see self::DEFAULT_SKIP_REQUEST_VALIDATION_RESPONSE_CODES}.
      */
     public function __construct(
-        int $maxErrors = 20,
-        array $skipRequestValidationResponseCodes = [],
+        ?int $maxErrors = null,
+        ?array $skipRequestValidationResponseCodes = null,
     ) {
-        $runner = new SchemaValidatorRunner($maxErrors);
+        $runner = new SchemaValidatorRunner($maxErrors ?? ValidationPolicyDefaults::maxErrors());
 
         $this->pathValidator = new PathParameterValidator($runner);
         $this->queryValidator = new QueryParameterValidator($runner);
@@ -84,7 +91,7 @@ final class OpenApiRequestValidator
         $this->securityValidator = new SecurityValidator();
         $this->bodyValidator = new RequestBodyValidator($runner);
         $this->skipPatterns = new StatusCodePatternSet(
-            $skipRequestValidationResponseCodes,
+            $skipRequestValidationResponseCodes ?? ValidationPolicyDefaults::skipRequestValidationResponseCodes(),
             'skipRequestValidationResponseCodes',
         );
     }

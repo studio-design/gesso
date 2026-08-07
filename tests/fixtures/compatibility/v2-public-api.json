@@ -7915,20 +7915,20 @@
                 "parameters": [
                     {
                         "name": "maxErrors",
-                        "type": "int",
+                        "type": "?int",
                         "optional": true,
                         "variadic": false,
                         "by_reference": false,
-                        "default": 20,
+                        "default": null,
                         "attributes": []
                     },
                     {
                         "name": "skipRequestValidationResponseCodes",
-                        "type": "array",
+                        "type": "?array",
                         "optional": true,
                         "variadic": false,
                         "by_reference": false,
-                        "default": [],
+                        "default": null,
                         "attributes": []
                     }
                 ]
@@ -8091,25 +8091,20 @@
                     },
                     {
                         "name": "maxErrors",
-                        "type": "int",
+                        "type": "?int",
                         "optional": true,
                         "variadic": false,
                         "by_reference": false,
-                        "default": 20,
+                        "default": null,
                         "attributes": []
                     },
                     {
                         "name": "skipResponseCodes",
-                        "type": "array",
+                        "type": "?array",
                         "optional": true,
                         "variadic": false,
                         "by_reference": false,
-                        "default": {
-                            "constant": "self::DEFAULT_SKIP_RESPONSE_CODES",
-                            "value": [
-                                "5\\d\\d"
-                            ]
-                        },
+                        "default": null,
                         "attributes": []
                     }
                 ]
