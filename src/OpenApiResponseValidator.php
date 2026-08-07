@@ -25,6 +25,7 @@ use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 use Studio\Gesso\Validation\Support\NamedError;
 use Studio\Gesso\Validation\Support\SchemaValidatorRunner;
 use Studio\Gesso\Validation\Support\StatusCodePatternSet;
+use Studio\Gesso\Validation\Support\ValidationPolicyDefaults;
 use Studio\Gesso\Validation\Support\ValidatorErrorBoundary;
 
 use function array_map;
@@ -52,11 +53,18 @@ final class OpenApiResponseValidator
     private readonly StrictRequiredTracker $strictRequiredTracker;
 
     /**
-     * @param string[] $skipResponseCodes Regex patterns (without delimiters or
-     *                                    anchors) matched against the response status code as a string. A hit
-     *                                    short-circuits validation and returns an `OpenApiValidationResult::skipped()`
-     *                                    — isValid() stays true, isSkipped() becomes true, and the matched
-     *                                    path is still reported so coverage is recorded.
+     * @param null|int $maxErrors Maximum number of reported errors (0 =
+     *                            unlimited). `null` — the default — reads the process-wide value set
+     *                            by the PHPUnit extension's `max_errors` parameter (issue #502),
+     *                            which falls back to 20 when unconfigured.
+     * @param null|string[] $skipResponseCodes Regex patterns (without delimiters or
+     *                                         anchors) matched against the response status code as a string. A hit
+     *                                         short-circuits validation and returns an `OpenApiValidationResult::skipped()`
+     *                                         — isValid() stays true, isSkipped() becomes true, and the matched
+     *                                         path is still reported so coverage is recorded.
+     *                                         `null` — the default — reads the process-wide value set by the
+     *                                         extension's `skip_response_codes` parameter, which falls back to
+     *                                         {@see self::DEFAULT_SKIP_RESPONSE_CODES} when unconfigured.
      * @param StrictRequiredTracker $strictRequiredTracker Tracker receiving successful response-body
      *                                                     observations. Framework adapters resolve their
      *                                                     run-level tracker at the integration boundary;
@@ -64,12 +72,15 @@ final class OpenApiResponseValidator
      */
     public function __construct(
         StrictRequiredTracker $strictRequiredTracker,
-        int $maxErrors = 20,
-        array $skipResponseCodes = self::DEFAULT_SKIP_RESPONSE_CODES,
+        ?int $maxErrors = null,
+        ?array $skipResponseCodes = null,
     ) {
-        $this->skipPatterns = new StatusCodePatternSet($skipResponseCodes, 'skipResponseCodes');
+        $this->skipPatterns = new StatusCodePatternSet(
+            $skipResponseCodes ?? ValidationPolicyDefaults::skipResponseCodes(),
+            'skipResponseCodes',
+        );
         $this->schemaResolver = new ResponseSchemaResolver();
-        $runner = new SchemaValidatorRunner($maxErrors);
+        $runner = new SchemaValidatorRunner($maxErrors ?? ValidationPolicyDefaults::maxErrors());
         $this->bodyValidator = new ResponseBodyValidator($runner);
         $this->headerValidator = new ResponseHeaderValidator($runner);
         $this->strictRequiredTracker = $strictRequiredTracker;

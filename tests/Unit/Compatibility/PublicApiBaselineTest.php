@@ -63,6 +63,7 @@ use Studio\Gesso\ValidationOutput;
 use Studio\Gesso\ValidationOutputFormat;
 
 use function array_keys;
+use function array_map;
 use function dirname;
 use function file_get_contents;
 use function json_decode;
@@ -352,6 +353,24 @@ final class PublicApiBaselineTest extends TestCase
         $responseValidatorConstructor = $expected[OpenApiResponseValidator::class]['methods']['__construct'];
         $maxErrors = $responseValidatorConstructor['parameters'][0];
         $skipResponseCodes = $responseValidatorConstructor['parameters'][1];
+        // #502 (additive half): the optional validator constructor arguments
+        // widened to nullable — `null` (the new default) reads the
+        // process-wide value configured by the extension's like-named
+        // parameters, which falls back to the previous literal default, so
+        // omitting the argument behaves exactly as before. Behaviour-
+        // preserving widening: every previously valid call stays valid.
+        $widenToProcessDefault = static function (array $parameter): array {
+            $parameter['type'] = '?' . $parameter['type'];
+            $parameter['default'] = null;
+
+            return $parameter;
+        };
+        $maxErrors = $widenToProcessDefault($maxErrors);
+        $skipResponseCodes = $widenToProcessDefault($skipResponseCodes);
+        $expected[OpenApiRequestValidator::class]['methods']['__construct']['parameters'] = array_map(
+            $widenToProcessDefault,
+            $expected[OpenApiRequestValidator::class]['methods']['__construct']['parameters'],
+        );
         $expected[OpenApiResponseValidator::class]['methods']['__construct']['parameters'] = [
             [
                 'name' => 'strictRequiredTracker',

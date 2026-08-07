@@ -45,6 +45,7 @@ use Studio\Gesso\Validation\Strict\StrictRequiredPerCallChecker;
 use Studio\Gesso\Validation\Strict\StrictRequiredPerCallMode;
 use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 use Studio\Gesso\Validation\Support\DiscriminatorEnforcement;
+use Studio\Gesso\Validation\Support\ValidationPolicyDefaults;
 use Studio\Gesso\ValidationOutput;
 use Studio\Gesso\ValidationOutputFormat;
 
@@ -68,6 +69,7 @@ use function is_writable;
 use function mb_strtolower;
 use function method_exists;
 use function mkdir;
+use function preg_match;
 use function sprintf;
 use function str_starts_with;
 use function sys_get_temp_dir;
@@ -236,7 +238,7 @@ final class OpenApiCoverageExtension implements Extension
                 getenv('GITHUB_STEP_SUMMARY') ?: null,
                 self::detectPartialRun($configuration, $parameters),
             );
-        } catch (EnumBindingException|EnumDriftException|InvalidBaselineConfigurationException|InvalidCoverageOutputPathException|InvalidOpenApiSpecException|InvalidStrictRequiredConfigurationException|InvalidThresholdConfigurationException|SpecFileNotFoundException) {
+        } catch (EnumBindingException|EnumDriftException|InvalidBaselineConfigurationException|InvalidCoverageOutputPathException|InvalidOpenApiSpecException|InvalidStrictRequiredConfigurationException|InvalidThresholdConfigurationException|InvalidValidationPolicyConfigurationException|SpecFileNotFoundException) {
             // setupExtension() has already written a FATAL line to stderr and
             // (if GITHUB_STEP_SUMMARY is set) appended a fatal block to it.
             // PHPUnit's ExtensionBootstrapper::bootstrap() wraps this call in
@@ -544,6 +546,31 @@ final class OpenApiCoverageExtension implements Extension
             ));
         }
         AcknowledgedSecuritySchemes::configure($acknowledgedSchemes);
+
+        // Issue #502 (additive half): validation-policy defaults that
+        // previously existed only as Laravel config keys, so a plain PHPUnit
+        // suite can set them at all. Resolve first so a bad value FATALs
+        // before any state mutation; configure() overwrites unconditionally,
+        // so absent parameters reset a process reused across bootstraps.
+        // The validators read these only when a constructor argument is
+        // omitted — framework adapters pass explicit arguments and keep
+        // their own configuration surfaces.
+        $maxErrors = self::resolveMaxErrorsParameter($parameters);
+        $skipResponseCodes = self::resolveStatusCodeListParameter($parameters, 'skip_response_codes');
+        $skipRequestValidationResponseCodes = self::resolveStatusCodeListParameter(
+            $parameters,
+            'skip_request_validation_response_codes',
+        );
+        $defaultSpec = null;
+        if ($parameters->has('default_spec') && trim($parameters->get('default_spec')) !== '') {
+            $defaultSpec = trim($parameters->get('default_spec'));
+        }
+        ValidationPolicyDefaults::configure(
+            maxErrors: $maxErrors,
+            skipResponseCodes: $skipResponseCodes,
+            skipRequestValidationResponseCodes: $skipRequestValidationResponseCodes,
+            defaultSpec: $defaultSpec,
+        );
 
         if ($facade === null) {
             return;
@@ -1068,6 +1095,68 @@ final class OpenApiCoverageExtension implements Extension
         $raw = trim($parameters->get($name));
 
         return !in_array($raw, ['0', 'false', 'no'], true);
+    }
+
+    /**
+     * Issue #502 (additive half): read the `max_errors` parameter. Missing
+     * and empty values resolve to null (unconfigured — the validators keep
+     * their built-in default of 20); anything but a non-negative integer is
+     * FATAL. `0` means unlimited, matching the validator constructors.
+     */
+    private static function resolveMaxErrorsParameter(ParameterCollection $parameters): ?int
+    {
+        if (!$parameters->has('max_errors')) {
+            return null;
+        }
+
+        $raw = trim($parameters->get('max_errors'));
+        if ($raw === '') {
+            return null;
+        }
+
+        if (preg_match('/^\d+$/', $raw) !== 1) {
+            $reason = "Invalid max_errors parameter '{$raw}'. Expected a non-negative integer (0 = unlimited).";
+            self::writeStderr("[Gesso] FATAL: {$reason}\n");
+
+            throw new InvalidValidationPolicyConfigurationException($reason);
+        }
+
+        return (int) $raw;
+    }
+
+    /**
+     * Issue #502 (additive half): read a comma-separated status-code pattern
+     * list (`skip_response_codes` / `skip_request_validation_response_codes`).
+     * Missing and empty values resolve to null (unconfigured — the validators
+     * keep their built-in defaults); a blank entry inside the list is FATAL,
+     * matching the Laravel trait's loud rejection of empty pattern strings.
+     *
+     * @return null|string[]
+     */
+    private static function resolveStatusCodeListParameter(
+        ParameterCollection $parameters,
+        string $name,
+    ): ?array {
+        if (!$parameters->has($name)) {
+            return null;
+        }
+
+        $raw = trim($parameters->get($name));
+        if ($raw === '') {
+            return null;
+        }
+
+        $patterns = array_map('trim', explode(',', $raw));
+        foreach ($patterns as $pattern) {
+            if ($pattern === '') {
+                $reason = "Invalid {$name} parameter '{$raw}': blank entry in the comma-separated list.";
+                self::writeStderr("[Gesso] FATAL: {$reason}\n");
+
+                throw new InvalidValidationPolicyConfigurationException($reason);
+            }
+        }
+
+        return $patterns;
     }
 
     /**

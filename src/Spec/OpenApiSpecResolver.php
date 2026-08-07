@@ -7,6 +7,7 @@ namespace Studio\Gesso\Spec;
 use ReflectionClass;
 use ReflectionMethod;
 use Studio\Gesso\Attribute\OpenApiSpec;
+use Studio\Gesso\Validation\Support\ValidationPolicyDefaults;
 
 /**
  * Resolves which OpenAPI spec name a test case should validate against.
@@ -62,9 +63,16 @@ trait OpenApiSpecResolver
         $this->explicitOpenApiSpec = $spec;
     }
 
+    /**
+     * When no adapter overrides this, the ultimate fallback is the
+     * process-wide `default_spec` set through the PHPUnit extension
+     * parameter (issue #502) — empty string when unconfigured. Adapters
+     * that override this method (Laravel, PSR-7, Symfony) keep their own
+     * configuration surfaces.
+     */
     protected function openApiSpecFallback(): string
     {
-        return '';
+        return ValidationPolicyDefaults::defaultSpec();
     }
 
     private function resolveOpenApiSpec(): string

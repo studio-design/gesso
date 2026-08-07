@@ -79,6 +79,10 @@ Add the coverage extension to your `phpunit.xml`:
 | `html_output` | No | — | File path to write self-contained HTML coverage report (PR comments, CI artifact preview, offline review). See [`coverage-html-output.md`](coverage-html-output.md) |
 | `console_output` | No | `default` | Console output mode: `default`, `all`, `uncovered_only`, or `active_only` (overridden by `GESSO_CONSOLE_OUTPUT` env var) |
 | `validation_output` | No | `text` | Validation failure output format for all framework adapters: `text` or `json` (overridden by `GESSO_VALIDATION_FORMAT` env var). See [Validation JSON schema](validation-json-schema.md#selecting-json-failure-output-in-adapters) |
+| `max_errors` | No | `20` | Maximum validation errors reported per request/response, `0` = unlimited. Process-wide default for validators constructed without an explicit `maxErrors` argument (the [framework-agnostic usage](#framework-agnostic)); the framework adapters keep their own settings, e.g. Laravel's `gesso.max_errors`. See [Controlling the number of validation errors](#controlling-the-number-of-validation-errors) |
+| `skip_response_codes` | No | `5\d\d` | Comma-separated status-code regex patterns whose responses skip body validation (patterns must not contain commas). Same process-wide default rule as `max_errors` |
+| `skip_request_validation_response_codes` | No | — | Comma-separated status-code regex patterns (e.g. `422,400`) enabling the documented-4xx request downgrade: an invalid request that yields a matching, spec-documented status is reported Skipped instead of Failure. Same process-wide default rule as `max_errors` |
+| `default_spec` | No | — | Spec name used by the [framework-agnostic usage](#framework-agnostic) when neither an `#[OpenApiSpec]` attribute nor an `openApiSpec()` override supplies one. Framework adapters keep their own chains, e.g. Laravel's `gesso.default_spec` |
 | `baseline_file` | No | — | Violation baseline file path (relative paths resolve from `getcwd()`). Running the suite with `GESSO_BASELINE_GENERATE=1` records every contract violation instead of failing and writes the sorted, versioned baseline here at run end (refused on partial runs; parallel workers stage their fingerprints in sidecars for `gesso coverage:merge --baseline-file` to union — see [Generating under parallel runners](baseline.md#generating-under-parallel-runners)). On normal runs the file is loaded (missing or malformed file is FATAL) and failures whose every violation is baselined are suppressed — only **new** violations fail. See the [baseline adoption guide](baseline.md) |
 | `baseline_stale` | No | `note` | How baseline entries that no longer occur during a full run are reported: `off` (not evaluated), `note` (listed as removable), or `fail` (listed and the run exits non-zero). Requires `baseline_file`; skipped on partial runs. See [Ratcheting down](baseline.md#ratcheting-down) |
 | `sidecar_dir` | No | `sys_get_temp_dir()/openapi-coverage-sidecars` | Directory exporting processes drop their JSON sidecar into — paratest workers, or CI shards that set `GESSO_SIDECAR_TOKEN`. Used only when the state is merged afterwards; see [Parallel test runners](parallel.md) and [Sharded CI jobs](parallel.md#sharded-ci-jobs) |
@@ -317,7 +321,12 @@ Spec resolution uses the same `#[OpenApiSpec]` attribute / `openApiSpec()` chain
 
 ### Framework-agnostic
 
-You can use the `#[OpenApiSpec]` attribute with the `OpenApiSpecResolver` trait in any PHPUnit test:
+You can use the `#[OpenApiSpec]` attribute with the `OpenApiSpecResolver` trait in any PHPUnit test.
+Validators constructed without explicit arguments pick up the extension's
+`max_errors`, `skip_response_codes`, and `skip_request_validation_response_codes`
+parameters, and when no attribute or `openApiSpec()` override names a spec,
+`resolveOpenApiSpec()` falls back to the `default_spec` parameter — so a plain
+suite can configure the validation policy entirely from `phpunit.xml`:
 
 ```php
 use Studio\Gesso\Attribute\OpenApiSpec;
@@ -389,7 +398,10 @@ $validator = new OpenApiResponseValidator($tracker, maxErrors: 0);
 $validator = new OpenApiResponseValidator($tracker, maxErrors: 1);
 ```
 
-For Laravel, set the `max_errors` key in `config/gesso.php`.
+For Laravel, set the `max_errors` key in `config/gesso.php`. For plain PHPUnit
+suites, the extension's `max_errors` parameter sets the process-wide default
+that validators constructed without an explicit `maxErrors` argument pick up
+— see the [parameter table](#2-configure-the-phpunit-extension).
 
 ## Reproduction commands in failure output
 
