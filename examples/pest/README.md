@@ -1,8 +1,8 @@
 # Pest plugin example
 
 Runnable Laravel + Pest sample for `studio-design/gesso`.
-Mirrors the patterns documented in the main README's
-[Pest plugin (Laravel)](../../README.md#pest-plugin-laravel) section.
+Mirrors the patterns documented in the
+[Pest plugin guide](../../docs/pest-plugin.md).
 
 ## Run it
 
@@ -53,5 +53,5 @@ expect($response)->toMatchOpenApiResponseSchema();
 expect($request)->toMatchOpenApiRequestSchema();
 ```
 
-See the main [Pest plugin (Laravel)](../../README.md#pest-plugin-laravel)
-README section for the full per-call argument reference.
+See the [Pest plugin guide](../../docs/pest-plugin.md) for the full
+per-call argument reference.

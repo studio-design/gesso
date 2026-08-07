@@ -1,0 +1,32 @@
+# Configuration for `lychee`, the documentation link checker.
+# Run it with `npm run docs:links`; CI runs the same file through
+# `lycheeverse/lychee-action` in the "Documentation site" job.
+
+# Fragment checking is deliberately OFF, matching what markdown-link-check did.
+# lychee slugs headings the way GitHub does, while the published site slugs them
+# the way VitePress does, and the two disagree for any heading carrying
+# punctuation — 59 of this repo's 135 headings. Turning it on would demand
+# GitHub-correct anchors and break the same links on the site. Tracked by #528.
+include_fragments = "none"
+
+# `403` is here because Cloudflare and similar front ends answer a HEAD from a
+# CI runner with it; `206` because a few hosts answer ranged requests that way.
+accept = ["200", "206", "403"]
+
+max_retries = 3
+retry_wait_time = 2
+
+exclude = [
+  # Development-only hosts.
+  '^http://localhost',
+  # Run URLs cited as evidence in docs; they expire and are not navigation.
+  '^https://github\.com/studio-design/gesso/actions/runs/',
+  # Directory listings GitHub answers with 404 until the branch is pushed.
+  '^https://github\.com/studio-design/gesso/tree/main/examples/(core|laravel|symfony)$',
+  # The published site itself: checking it from a PR asserts the *previous*
+  # deploy, which says nothing about the branch under test.
+  '^https://studio-design\.github\.io/gesso/',
+  # Badge and metadata services that rate-limit unauthenticated CI traffic.
+  '^https://packages\.tools/',
+  '^https://poser\.pugx\.org/',
+]

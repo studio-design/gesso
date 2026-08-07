@@ -14,7 +14,6 @@
 /.gitattributes                 export-ignore
 /.github                        export-ignore
 /.gitignore                     export-ignore
-/.markdown-link-check.json      export-ignore
 /.markdownlint.jsonc            export-ignore
 /.php-cs-fixer.dist.php         export-ignore
 /.php-cs-fixer.pest.dist.php    export-ignore
@@ -30,6 +29,7 @@
 /docs/superpowers               export-ignore
 /examples                       export-ignore
 /images                         export-ignore
+/lychee.toml                    export-ignore
 /package-lock.json              export-ignore
 /package.json                   export-ignore
 /phpstan.neon.dist              export-ignore
