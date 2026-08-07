@@ -240,13 +240,23 @@ final class OpenApiPathMatcher
             }
         }
 
-        // Keep the root path intact — collapsing `/` to `` would make the
-        // single literal-root entry unreachable.
-        if ($normalizedPath !== '/' && str_ends_with($normalizedPath, '/')) {
-            $normalizedPath = rtrim($normalizedPath, '/');
-        }
+        return ['path' => self::trimTrailingSlash($normalizedPath), 'strippedPrefix' => $strippedPrefix];
+    }
 
-        return ['path' => $normalizedPath, 'strippedPrefix' => $strippedPrefix];
+    /**
+     * Match a request path from which a prefix has *already* been removed,
+     * applying the rest of the normalization policy (trailing-slash trimming)
+     * but not `$stripPrefixes` again.
+     *
+     * Exposed for diagnostics that simulate a prefix the user has not
+     * configured yet. A real request loses at most one prefix — the loop in
+     * {@see self::normalizeRequestPath()} breaks on the first match — so a
+     * simulation that re-entered {@see self::match()} would strip a second
+     * time and could report a match that no `strip_prefixes` value reproduces.
+     */
+    public function matchWithoutPrefixStripping(string $strippedPath): ?string
+    {
+        return $this->lookup(self::trimTrailingSlash($strippedPath))['path'] ?? null;
     }
 
     /**
@@ -265,8 +275,30 @@ final class OpenApiPathMatcher
      */
     public function matchWithVariables(string $requestPath): ?array
     {
-        $normalizedPath = $this->normalizeRequestPath($requestPath)['path'];
+        return $this->lookup($this->normalizeRequestPath($requestPath)['path']);
+    }
 
+    /**
+     * Keep the root path intact — collapsing `/` to `` would make the single
+     * literal-root entry unreachable.
+     */
+    private static function trimTrailingSlash(string $path): string
+    {
+        return $path !== '/' && str_ends_with($path, '/') ? rtrim($path, '/') : $path;
+    }
+
+    private static function segmentCount(string $path): int
+    {
+        return substr_count(trim($path, '/'), '/') + 1;
+    }
+
+    /**
+     * The spec-path lookup itself, on an already-normalized request path.
+     *
+     * @return null|array{path: string, variables: array<string, string>}
+     */
+    private function lookup(string $normalizedPath): ?array
+    {
         if (isset($this->literalPaths[$normalizedPath])) {
             return ['path' => $this->literalPaths[$normalizedPath], 'variables' => []];
         }
@@ -290,10 +322,5 @@ final class OpenApiPathMatcher
         }
 
         return null;
-    }
-
-    private static function segmentCount(string $path): int
-    {
-        return substr_count(trim($path, '/'), '/') + 1;
     }
 }
