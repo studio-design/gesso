@@ -10,10 +10,14 @@ use PHPUnit\Framework\TestCase;
 use RuntimeException;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\HttpMethod;
+use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\Laravel\ValidatesOpenApiSchema;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
+use Studio\Gesso\Tests\Helpers\SwallowsGessoDeprecations;
 use Studio\Gesso\Validation\Request\SecurityValidator;
 use Symfony\Component\HttpFoundation\Request;
+
+use function restore_error_handler;
 
 require_once __DIR__ . '/../Helpers/LaravelConfigMock.php';
 
@@ -27,6 +31,7 @@ require_once __DIR__ . '/../Helpers/LaravelConfigMock.php';
  */
 class ValidatesOpenApiSchemaAutoInjectCredentialsTest extends TestCase
 {
+    use SwallowsGessoDeprecations;
     use ValidatesOpenApiSchema;
 
     protected function setUp(): void
@@ -36,6 +41,13 @@ class ValidatesOpenApiSchemaAutoInjectCredentialsTest extends TestCase
         OpenApiSpecLoader::configure(__DIR__ . '/../fixtures/specs');
         OpenApiCoverageTracker::reset();
         SecurityValidator::resetWarningStateForTesting();
+        // The precedence tests below also enable the deprecated legacy flag,
+        // which records into the process-wide deprecations channel; swallow
+        // the notice and reset the state so this file's focus stays on the
+        // inject behavior. ValidatesOpenApiSchemaAutoInjectDeprecationTest
+        // covers the notice.
+        Deprecations::resetForTesting();
+        $this->swallowGessoDeprecations();
         $GLOBALS['__openapi_testing_config'] = [
             'gesso.default_spec' => 'petstore-3.0',
             'gesso.auto_validate_request' => true,
@@ -44,11 +56,13 @@ class ValidatesOpenApiSchemaAutoInjectCredentialsTest extends TestCase
 
     protected function tearDown(): void
     {
+        restore_error_handler();
         self::resetValidatorCache();
         unset($GLOBALS['__openapi_testing_config']);
         OpenApiSpecLoader::reset();
         OpenApiCoverageTracker::reset();
         SecurityValidator::resetWarningStateForTesting();
+        Deprecations::resetForTesting();
         parent::tearDown();
     }
 

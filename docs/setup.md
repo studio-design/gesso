@@ -16,7 +16,7 @@ This guide walks through end-to-end setup, including the configuration knobs, op
 - [Per-request status-code skip with `skipResponseCode()`](#per-request-status-code-skip-with-skipresponsecode)
 - [Auto-validate every request](#auto-validate-every-request)
 - [Skip request validation when the response is a documented 4xx](#skip-request-validation-when-the-response-is-a-documented-4xx)
-- [Auto-inject dummy bearer](#auto-inject-dummy-bearer)
+- [Auto-inject dummy credentials](#auto-inject-dummy-credentials)
 - [HTTP `$ref` resolution (opt-in)](#http-ref-resolution-opt-in)
 - [Remote spec sources (opt-in)](#remote-spec-sources-opt-in)
 
@@ -618,9 +618,9 @@ Request-side contract drift (missing query params, body-shape divergence, absent
 ```php
 // config/gesso.php
 return [
-    'default_spec'               => 'front',
-    'auto_validate_request'      => true,
-    'auto_inject_dummy_bearer'   => true, // optional — see below
+    'default_spec'                  => 'front',
+    'auto_validate_request'         => true,
+    'auto_inject_dummy_credentials' => true, // optional — see below
 ];
 ```
 
@@ -656,9 +656,9 @@ Notes:
 - **Failure-only**: a request that passes validation cleanly stays Success even if the response is a documented 4xx (legitimate business-logic 422 on a perfectly-shaped payload is not demoted).
 - **Coverage**: downgraded requests are recorded with the skip reason so the coverage report distinguishes "request was validated cleanly" from "request was downgraded because of a documented 4xx".
 
-## Auto-inject dummy bearer
+## Auto-inject dummy credentials
 
-When `auto_validate_request=true`, endpoints whose spec declares `bearerAuth` fail the security check unless the test supplies an `Authorization: Bearer …` header. For test suites that authenticate via `actingAs()` or middleware bypass — and therefore never set the header — set `auto_inject_dummy_bearer=true` to auto-inject `Authorization: Bearer test-token` into the validator's view of the request:
+When `auto_validate_request=true`, endpoints whose spec declares an enforceable security scheme (`http` + `bearer`, or `apiKey` in header / cookie / query) fail the security check unless the test supplies the credential. For test suites that authenticate via `actingAs()` or middleware bypass — and therefore never set real credentials — set `auto_inject_dummy_credentials=true` to auto-inject fixed dummy values into the validator's view of the request:
 
 ```php
 class SecureEndpointTest extends TestCase
@@ -678,9 +678,10 @@ class SecureEndpointTest extends TestCase
 Notes:
 
 - **View-only rewrite**: the Symfony `Request` itself is not modified; Laravel has already dispatched by the time the trait runs. The inject exists purely to prevent the security check from false-failing.
-- **Bearer only**: `apiKey` and `oauth2` endpoints are not affected (the header name for `apiKey` is arbitrary per spec; `oauth2` is classified as unsupported anyway).
-- **Never overrides user values**: if the test already set an `Authorization` header (in any case), the user's value wins.
+- **Injected kinds**: `Authorization: Bearer test-token` for `http` + `bearer`, and a fixed `test-api-key` value for every `apiKey` scheme (header / cookie / query) the operation declares. `oauth2`, `openIdConnect`, `mutualTLS`, and non-bearer `http` schemes are silent-passed by the validator and therefore not injected.
+- **Never overrides non-empty user values**: if the test already set a non-empty value for the credential slot — an `Authorization` header in any case, the named cookie, or the named query / header parameter — the user's value wins, even when it is deliberately malformed. Empty-string values count as absent and are injected over, matching the validator's own missing-credential definition.
 - **Requires `auto_validate_request=true`** — the inject is a sub-feature of request validation. Setting the inject flag alone has no effect.
+- **Deprecated predecessor**: `auto_inject_dummy_bearer` (bearer-only) still works, but enabling it emits a one-shot `E_USER_DEPRECATED` notice and the key is removed in Gesso 3.0. Its exact bearer-only behavior survives in 3.0 as `laravel.auto_inject_dummy_credentials = 'bearer'` in the v3 `gesso.php` — not accepted in v2, where the key is boolean-only and `true` also injects `apiKey` schemes — see [Deprecations in `UPGRADING.md`](https://github.com/studio-design/gesso/blob/main/UPGRADING.md#deprecations) for the migration options. When both flags are set, `auto_inject_dummy_credentials` wins.
 
 ## Acknowledging an unvalidatable security scheme
 

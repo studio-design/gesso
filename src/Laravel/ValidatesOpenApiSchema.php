@@ -24,6 +24,7 @@ use Studio\Gesso\Baseline\ViolationFingerprint;
 use Studio\Gesso\DecodedBody;
 use Studio\Gesso\HttpMethod;
 use Studio\Gesso\Internal\CurlCommandFormatter;
+use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\Internal\FailureOutput;
 use Studio\Gesso\Internal\StackTraceFilter;
 use Studio\Gesso\OpenApiRequestValidator;
@@ -885,6 +886,24 @@ trait ValidatesOpenApiSchema
     ): array {
         $credentialsEnabled = $this->isAutoInjectDummyCredentialsEnabled();
         $legacyBearerEnabled = $this->isAutoInjectDummyBearerEnabled();
+
+        if ($legacyBearerEnabled) {
+            // Recorded even when the superset flag wins below: the deprecation
+            // is about the config key being set, and 3.0 deletes the key
+            // whether or not its code path was the one taken. The named
+            // replacement is the behaviour-equivalent 'bearer' value ADR 0005
+            // gives the superset key in 3.0, not `=> true` — the boolean also
+            // injects apiKey schemes, which flips missing-apiKey failures into
+            // passes — spelled as the full v3 path because #501 nests
+            // Laravel-only keys under gesso.php's `laravel` section (see
+            // UPGRADING.md#deprecations for the v2 options).
+            Deprecations::notice(
+                id: 'laravel.config.auto_inject_dummy_bearer',
+                subject: "The Laravel config key 'auto_inject_dummy_bearer'",
+                replacement: "laravel.auto_inject_dummy_credentials = 'bearer' (accepted from Gesso 3.0)",
+                removedIn: '3.0',
+            );
+        }
 
         if (!$credentialsEnabled && !$legacyBearerEnabled) {
             return [];
