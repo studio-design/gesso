@@ -6,6 +6,8 @@ namespace Studio\Gesso\Validation\Support;
 
 use const FILTER_VALIDATE_INT;
 
+use function array_filter;
+use function array_intersect;
 use function array_key_exists;
 use function array_map;
 use function array_values;
@@ -49,13 +51,7 @@ final class TypeCoercer
      */
     public static function coercePrimitive(mixed $value, array $schema): mixed
     {
-        $type = self::declared($schema, 'type');
-
-        if (is_array($type)) {
-            $type = self::firstPrimitiveType($type);
-        }
-
-        return self::coercePrimitiveFromType($value, $type);
+        return self::coercePrimitiveFromType($value, self::effectiveType($schema));
     }
 
     /**
@@ -95,11 +91,7 @@ final class TypeCoercer
      */
     public static function coerceQuery(mixed $value, array $schema): mixed
     {
-        $type = self::declared($schema, 'type');
-
-        if (is_array($type)) {
-            $type = self::firstPrimitiveType($type);
-        }
+        $type = self::effectiveType($schema);
 
         if ($type === 'array') {
             $value = is_array($value) ? array_values($value) : [$value];
@@ -143,19 +135,83 @@ final class TypeCoercer
     }
 
     /**
-     * Read a keyword from the schema, falling back to its `allOf` branches
-     * when the schema itself does not declare it. `allOf` is an in-place
-     * applicator: every branch constrains this same value, so a `type` only a
-     * branch declares is still the type the value has to be coerced to.
+     * The single type the value must end up as, once every `allOf` branch has
+     * had its say. `allOf` is an in-place applicator: every branch constrains
+     * this same value, so the effective type is the *intersection* of the
+     * declared type sets, not whichever one happens to sit at the top level.
      *
      * Hand-written `{allOf: [{$ref: …}], maximum: 3}` parameter schemas have
-     * always had that shape, and reference resolution now also produces it for
-     * a `$ref` target that declares its own `$schema` and therefore cannot be
-     * merged flat. Without the fallback the raw string reaches opis uncoerced
-     * and a valid request fails with a bogus type error.
+     * always had that shape, and reference resolution also produces it for a
+     * `$ref` target that declares its own `$schema` and therefore cannot be
+     * merged flat. A referrer widening to `type: ["string", "integer"]` over a
+     * branch pinned to `integer` is only satisfiable as an integer — reading
+     * the top level alone leaves the raw string uncoerced, and a valid request
+     * then fails against the branch with a bogus type error.
      *
-     * The schema's own declaration always wins, so this can only add coercion
-     * where there was none.
+     * @param array<string, mixed> $schema
+     */
+    private static function effectiveType(array $schema): ?string
+    {
+        $candidates = self::typeCandidates($schema);
+
+        return $candidates === null ? null : self::firstPrimitiveType($candidates);
+    }
+
+    /**
+     * The type names the schema and its `allOf` branches jointly allow, or
+     * `null` when none of them declares `type` at all. An empty list means the
+     * declarations contradict each other: nothing can satisfy the schema, so
+     * no coercion is appropriate and the validator reports it.
+     *
+     * @param array<string, mixed> $schema
+     *
+     * @return null|list<string>
+     */
+    private static function typeCandidates(array $schema): ?array
+    {
+        $candidates = array_key_exists('type', $schema) ? self::typeNames($schema['type']) : null;
+
+        $branches = $schema['allOf'] ?? null;
+        if (!is_array($branches)) {
+            return $candidates;
+        }
+
+        foreach ($branches as $branch) {
+            if (!is_array($branch)) {
+                continue;
+            }
+
+            $branchCandidates = self::typeCandidates($branch);
+            if ($branchCandidates === null) {
+                continue;
+            }
+
+            $candidates = $candidates === null
+                ? $branchCandidates
+                : array_values(array_intersect($candidates, $branchCandidates));
+        }
+
+        return $candidates;
+    }
+
+    /**
+     * @return null|list<string>
+     */
+    private static function typeNames(mixed $type): ?array
+    {
+        if (is_string($type)) {
+            return [$type];
+        }
+
+        // A malformed `type` constrains nothing we can read; leave the value
+        // alone and let the validator report the schema.
+        return is_array($type) ? array_values(array_filter($type, is_string(...))) : null;
+    }
+
+    /**
+     * Read a keyword from the schema, falling back to its `allOf` branches
+     * when the schema itself does not declare it. Same reasoning as
+     * {@see self::effectiveType()}, for keywords that do not intersect.
      *
      * @param array<string, mixed> $schema
      */

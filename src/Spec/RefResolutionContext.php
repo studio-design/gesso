@@ -44,11 +44,15 @@ final class RefResolutionContext
         public readonly array $allowedLocalRefRoots,
         public readonly ?RemoteAuthorization $remoteAuthorization = null,
         /**
-         * True when Schema Object `$ref` siblings must be applied alongside
-         * the resolved target (OAS 3.1/3.2, JSON Schema 2020-12 in-place
-         * applicator) instead of being dropped (OAS 3.0 Reference Object).
+         * The JSON Schema dialect currently in force — the document's, or a
+         * schema resource's own `$schema` for its subtree. It decides whether
+         * `$ref` siblings are applied alongside the resolved target (2019-09
+         * and later make `$ref` an in-place applicator) and, because dialects
+         * differ in far more than that, whether a `$ref` target that declares
+         * a dialect of its own can be merged into the referring schema at all.
+         * `null` when nothing in the document states one.
          */
-        public readonly bool $applyRefSiblings = false,
+        public readonly ?string $schemaDialect = null,
     ) {}
 
     /**
@@ -60,7 +64,7 @@ final class RefResolutionContext
     public static function filesystemOnly(
         ?string $sourceFile = null,
         array $allowedLocalRefRoots = [],
-        bool $applyRefSiblings = false,
+        ?string $schemaDialect = null,
     ): self {
         return new self(
             $sourceFile,
@@ -71,7 +75,7 @@ final class RefResolutionContext
             HttpRefLoader::DEFAULT_MAX_RESPONSE_BYTES,
             $allowedLocalRefRoots,
             null,
-            $applyRefSiblings,
+            $schemaDialect,
         );
     }
 
@@ -91,7 +95,7 @@ final class RefResolutionContext
         int $maxRemoteRefBytes = HttpRefLoader::DEFAULT_MAX_RESPONSE_BYTES,
         array $allowedLocalRefRoots = [],
         ?RemoteAuthorization $remoteAuthorization = null,
-        bool $applyRefSiblings = false,
+        ?string $schemaDialect = null,
     ): self {
         return new self(
             $sourceFile,
@@ -102,16 +106,26 @@ final class RefResolutionContext
             $maxRemoteRefBytes,
             $allowedLocalRefRoots,
             $remoteAuthorization,
-            $applyRefSiblings,
+            $schemaDialect,
         );
     }
 
     /**
-     * Return a copy with the `$ref`-sibling rule replaced. Used when a Schema
-     * Object declares its own `$schema`, switching dialect — and therefore
-     * `$ref` semantics — for that schema resource's subtree.
+     * True when the dialect in force treats `$ref` as an in-place applicator,
+     * so keywords sitting next to it apply alongside the resolved target.
      */
-    public function withRefSiblings(bool $applyRefSiblings): self
+    public function appliesRefSiblings(): bool
+    {
+        return $this->schemaDialect !== null &&
+            OpenApiSchemaDialect::appliesRefSiblings($this->schemaDialect);
+    }
+
+    /**
+     * Return a copy with the dialect replaced. Used when a Schema Object
+     * declares its own `$schema`, making it the root of a schema resource
+     * whose subtree is read under that dialect instead.
+     */
+    public function withSchemaDialect(?string $schemaDialect): self
     {
         return new self(
             $this->sourceFile,
@@ -122,7 +136,7 @@ final class RefResolutionContext
             $this->maxRemoteRefBytes,
             $this->allowedLocalRefRoots,
             $this->remoteAuthorization,
-            $applyRefSiblings,
+            $schemaDialect,
         );
     }
 
@@ -144,7 +158,7 @@ final class RefResolutionContext
             $this->maxRemoteRefBytes,
             $this->allowedLocalRefRoots,
             $this->remoteAuthorization,
-            $this->applyRefSiblings,
+            $this->schemaDialect,
         );
     }
 }

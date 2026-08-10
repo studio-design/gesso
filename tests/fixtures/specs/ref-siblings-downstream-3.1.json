@@ -237,6 +237,91 @@
         }
       }
     },
+    "/tuple": {
+      "get": {
+        "operationId": "getTuple",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Legacy2019",
+                  "prefixItems": [
+                    false
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/restated-dialect": {
+      "get": {
+        "operationId": "getRestatedDialect",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Restated2020",
+                  "minLength": 4
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/closed": {
+      "get": {
+        "operationId": "getClosed",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Closed",
+                  "properties": {
+                    "foo": true,
+                    "bar": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/widened/{id}": {
+      "get": {
+        "operationId": "getWidened",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ResourceId",
+              "type": [
+                "string",
+                "integer"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          }
+        }
+      }
+    },
     "/resource/{id}": {
       "get": {
         "operationId": "getResourceById",
@@ -365,6 +450,21 @@
         "$schema": "http://json-schema.org/draft-07/schema#",
         "$id": "https://example.com/ResourceId",
         "type": "integer"
+      },
+      "Legacy2019": {
+        "$schema": "https://json-schema.org/draft/2019-09/schema",
+        "type": "array"
+      },
+      "Restated2020": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "string"
+      },
+      "Closed": {
+        "type": "object",
+        "properties": {
+          "foo": false,
+          "bar": true
+        }
       }
     }
   }

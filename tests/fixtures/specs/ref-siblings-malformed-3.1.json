@@ -1,0 +1,35 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Ref siblings — malformed sibling bounds (3.1)",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/bad-bound": {
+      "get": {
+        "operationId": "getBadBound",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadBound",
+                  "minLength": 4
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "BadBound": {
+        "type": "string",
+        "minLength": "3"
+      }
+    }
+  }
+}

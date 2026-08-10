@@ -29,7 +29,8 @@ use function get_object_vars;
 use function implode;
 use function in_array;
 use function is_array;
-use function is_numeric;
+use function is_float;
+use function is_int;
 use function is_string;
 use function max;
 use function min;
@@ -185,6 +186,18 @@ final class OpenApiRefResolver
     ];
 
     /**
+     * The bounds whose value is a number rather than a non-negative integer.
+     *
+     * @var list<string>
+     */
+    private const NUMERIC_BOUND_KEYS = [
+        'minimum',
+        'exclusiveMinimum',
+        'maximum',
+        'exclusiveMaximum',
+    ];
+
+    /**
      * `$ref` siblings that carry no validation weight. A Schema Object whose
      * only siblings are these validates identically with or without them, and
      * `summary` / `description` are exactly the siblings OAS 3.1 permits on a
@@ -285,7 +298,7 @@ final class OpenApiRefResolver
             );
         }
 
-        $applyRefSiblings = self::appliesRefSiblings($spec);
+        $schemaDialect = self::documentDialect($spec);
 
         // After the guard above, allowRemoteRefs:true implies non-null
         // client + factory.
@@ -298,9 +311,9 @@ final class OpenApiRefResolver
                 $maxRemoteRefBytes,
                 $allowedLocalRefRoots,
                 $remoteAuthorization,
-                $applyRefSiblings,
+                $schemaDialect,
             )
-            : RefResolutionContext::filesystemOnly($sourceFile, $allowedLocalRefRoots, $applyRefSiblings);
+            : RefResolutionContext::filesystemOnly($sourceFile, $allowedLocalRefRoots, $schemaDialect);
 
         // $root is a frozen snapshot used for pointer lookups. PHP array
         // copy-on-write keeps it untouched as we mutate $spec via $node refs.
@@ -352,48 +365,45 @@ final class OpenApiRefResolver
     }
 
     /**
-     * Whether the document's Schema Objects apply `$ref` siblings, decided by
-     * the *effective* JSON Schema dialect rather than the OAS version: an OAS
-     * 3.1/3.2 document may declare `jsonSchemaDialect: draft-07`, and Draft
-     * 06/07 require every other member of a `$ref` object to be ignored.
-     * A Schema Object declaring its own `$schema` re-decides this for its own
-     * subtree — see {@see self::walk()}.
+     * The document's *effective* JSON Schema dialect, which is what decides
+     * whether `$ref` siblings apply — not the OAS version: an OAS 3.1/3.2
+     * document may declare `jsonSchemaDialect: draft-07`, and Draft 06/07
+     * require every other member of a `$ref` object to be ignored. A Schema
+     * Object declaring its own `$schema` re-decides this for its own subtree
+     * — see {@see self::walk()}.
      *
      * @see https://spec.openapis.org/oas/v3.0.3#reference-object
      *
      * @param array<string, mixed> $spec
      */
-    private static function appliesRefSiblings(array $spec): bool
+    private static function documentDialect(array $spec): ?string
     {
         try {
-            return OpenApiSchemaDialect::appliesRefSiblings(
-                OpenApiSchemaDialect::fromSpec($spec, OpenApiVersion::fromSpec($spec)),
-            );
+            return OpenApiSchemaDialect::fromSpec($spec, OpenApiVersion::fromSpec($spec));
         } catch (InvalidOpenApiSpecException) {
             // Hand-built fragments handed straight to the resolver carry no
             // `openapi` field, and a malformed `jsonSchemaDialect` is the
             // converter's error to raise, not the resolver's. Either way, keep
             // the historical replace-the-node behavior.
-            return false;
+            return null;
         }
     }
 
     /**
-     * Re-decide the `$ref`-sibling rule for a document root: a JSON Schema
-     * file states its dialect in `$schema`, an OpenAPI document in
-     * `jsonSchemaDialect` (defaulting per version). A document that declares
-     * neither inherits the caller's decision.
+     * Re-decide the dialect for a document root: a JSON Schema file states it
+     * in `$schema`, an OpenAPI document in `jsonSchemaDialect` (defaulting per
+     * version). A document that declares neither inherits the caller's.
      *
      * @param array<string, mixed> $root
      */
     private static function documentContext(array $root, RefResolutionContext $context): RefResolutionContext
     {
         if (is_string($root['$schema'] ?? null)) {
-            return $context->withRefSiblings(OpenApiSchemaDialect::appliesRefSiblings($root['$schema']));
+            return $context->withSchemaDialect($root['$schema']);
         }
 
         if (array_key_exists('openapi', $root)) {
-            return $context->withRefSiblings(self::appliesRefSiblings($root));
+            return $context->withSchemaDialect(self::documentDialect($root));
         }
 
         return $context;
@@ -454,21 +464,22 @@ final class OpenApiRefResolver
      *
      * A target declaring its own `$schema` is a schema resource with a dialect
      * of its own. Merging would put the *siblings* under that dialect, so
-     * unless it agrees with the referring schema's the target is applied whole
-     * as a branch — `TypeCoercer` reads through `allOf`, so the parameter
-     * coercion that depends on its `type` still works.
+     * unless it is the same dialect the referring schema is read under, the
+     * target is applied whole as a branch — `TypeCoercer` reads through
+     * `allOf`, so the parameter coercion that depends on its `type` still
+     * works.
      *
      * @param array<int|string, mixed> $target
      * @param array<int|string, mixed> $siblings
      *
      * @return array<int|string, mixed>
      */
-    private static function mergeRefSiblings(array $target, array $siblings, bool $applyRefSiblings): array
+    private static function mergeRefSiblings(array $target, array $siblings, ?string $dialect): array
     {
         if (
             self::hasMalformedAllOf($target) ||
             self::hasMalformedAllOf($siblings) ||
-            self::declaresForeignDialect($target, $applyRefSiblings)
+            self::declaresForeignDialect($target, $dialect)
         ) {
             // Also the malformed-`allOf` route: it must stay exactly where the
             // author wrote it so the validator still rejects it loudly instead
@@ -485,7 +496,7 @@ final class OpenApiRefResolver
                 continue;
             }
 
-            [$mergeable, $value] = self::mergeKeyword((string) $keyword, $target[$keyword], $siblingValue);
+            [$mergeable, $value] = self::mergeKeyword((string) $keyword, $target[$keyword], $siblingValue, $dialect);
             if (!$mergeable) {
                 return self::applySiblingsAsBranch($target, $siblings);
             }
@@ -502,19 +513,20 @@ final class OpenApiRefResolver
     }
 
     /**
-     * True when the target selects a JSON Schema dialect that reads `$ref`
-     * siblings differently from the schema that referenced it. Same reading —
-     * including a target that simply restates the referrer's dialect — has no
-     * boundary worth keeping.
+     * True when the target is a schema resource under a JSON Schema dialect
+     * other than the one the referring schema is read under. A target that
+     * simply restates the referrer's dialect declares no boundary worth
+     * keeping; anything else does, because the two sides would otherwise end
+     * up in one schema object with only one `$schema` to read it by.
      *
      * @param array<int|string, mixed> $target
      */
-    private static function declaresForeignDialect(array $target, bool $applyRefSiblings): bool
+    private static function declaresForeignDialect(array $target, ?string $dialect): bool
     {
-        $dialect = $target['$schema'] ?? null;
+        $declared = $target['$schema'] ?? null;
 
-        return is_string($dialect) &&
-            OpenApiSchemaDialect::appliesRefSiblings($dialect) !== $applyRefSiblings;
+        return is_string($declared) &&
+            ($dialect === null || !OpenApiSchemaDialect::sameDialect($declared, $dialect));
     }
 
     /**
@@ -524,7 +536,7 @@ final class OpenApiRefResolver
      *
      * @return array{0: bool, 1: mixed}
      */
-    private static function mergeKeyword(string $keyword, mixed $target, mixed $sibling): array
+    private static function mergeKeyword(string $keyword, mixed $target, mixed $sibling, ?string $dialect): array
     {
         // Identical declarations — the same `type`, the same
         // `unevaluatedProperties: false` restated by the reference — collapse
@@ -539,10 +551,8 @@ final class OpenApiRefResolver
         if (in_array($keyword, self::SUBSCHEMA_MAP_KEYS, true) && is_array($target) && is_array($sibling)) {
             $merged = $target;
             foreach ($sibling as $name => $schema) {
-                $merged[$name] = array_key_exists($name, $target) &&
-                    is_array($target[$name]) &&
-                    is_array($schema)
-                    ? self::mergeRefSiblings($target[$name], $schema, true)
+                $merged[$name] = array_key_exists($name, $target)
+                    ? self::mergeSubschemas($target[$name], $schema, $dialect)
                     : $schema;
             }
 
@@ -560,17 +570,70 @@ final class OpenApiRefResolver
         }
 
         // Two bounds on the same value: the tighter one is the effective one.
-        if (is_numeric($target) && is_numeric($sibling)) {
-            if (in_array($keyword, self::LOWER_BOUND_KEYS, true)) {
-                return [true, max($target, $sibling)];
-            }
-
-            if (in_array($keyword, self::UPPER_BOUND_KEYS, true)) {
-                return [true, min($target, $sibling)];
-            }
+        // Only when both are well-formed for their keyword — folding a
+        // malformed `minLength: "3"` into a valid bound would turn a spec the
+        // validator rejects into one it accepts.
+        $lower = in_array($keyword, self::LOWER_BOUND_KEYS, true);
+        if (
+            ($lower || in_array($keyword, self::UPPER_BOUND_KEYS, true)) &&
+            self::isWellFormedBound($keyword, $target) &&
+            self::isWellFormedBound($keyword, $sibling)
+        ) {
+            return [true, $lower ? max($target, $sibling) : min($target, $sibling)];
         }
 
         return [false, null];
+    }
+
+    /**
+     * Whether a bound is well-formed for its keyword: `minimum` and friends
+     * take any number, the size bounds a non-negative integer. `is_numeric()`
+     * is not enough — it also accepts numeric strings.
+     *
+     * @see https://json-schema.org/draft/2020-12/json-schema-validation#name-validation-keywords-for-num
+     */
+    private static function isWellFormedBound(string $keyword, mixed $bound): bool
+    {
+        if (in_array($keyword, self::NUMERIC_BOUND_KEYS, true)) {
+            return is_int($bound) || is_float($bound);
+        }
+
+        return is_int($bound) && $bound >= 0;
+    }
+
+    /**
+     * Combine two schemas that constrain the same instance location — the two
+     * `properties.foo` entries a `$ref` and its siblings both declare, say.
+     *
+     * Boolean schemas are the absorbing and identity elements of that AND:
+     * `false` accepts nothing, so it wins outright, and `true` constrains
+     * nothing, so it drops out. Letting the sibling overwrite instead — what a
+     * plain map merge does — would re-open with `true` a property the target
+     * had closed with `false`.
+     *
+     * @see https://json-schema.org/draft/2020-12/json-schema-core#name-boolean-json-schemas
+     */
+    private static function mergeSubschemas(mixed $target, mixed $sibling, ?string $dialect): mixed
+    {
+        if ($target === false || $sibling === false) {
+            return false;
+        }
+
+        if ($target === true) {
+            return $sibling;
+        }
+
+        if ($sibling === true) {
+            return $target;
+        }
+
+        if (is_array($target) && is_array($sibling)) {
+            return self::mergeRefSiblings($target, $sibling, $dialect);
+        }
+
+        // At least one is not a schema at all. Keep both rather than let the
+        // merge pick a side, so the validator still reports the malformed one.
+        return ['allOf' => [$target, $sibling]];
     }
 
     /**
@@ -694,14 +757,12 @@ final class OpenApiRefResolver
         // apply is a property of that dialect, so re-decide it here and let the
         // answer flow to this subtree only.
         if ($isSchema && !$insideUserNamedMap && is_string($node['$schema'] ?? null)) {
-            $context = $context->withRefSiblings(
-                OpenApiSchemaDialect::appliesRefSiblings($node['$schema']),
-            );
+            $context = $context->withSchemaDialect($node['$schema']);
         }
 
         if (!$insideUserNamedMap && array_key_exists('$ref', $node)) {
             $ref = self::assertStringRef($node['$ref']);
-            $siblings = self::refSiblingsToApply($node, $isSchema && $context->applyRefSiblings);
+            $siblings = self::refSiblingsToApply($node, $isSchema && $context->appliesRefSiblings());
             // Siblings narrow how the alternative validates; they do not change
             // *which* component it names, so the implicit discriminator mapping
             // has to survive them — dropping it would shrink the lowered
@@ -712,7 +773,7 @@ final class OpenApiRefResolver
             self::resolveRef($node, $ref, $root, $chain, $context, $documentCache, $isSchema);
             if ($siblings !== null) {
                 self::walk($siblings, $root, $chain, false, $context, $documentCache, isSchema: true);
-                $node = self::mergeRefSiblings($node, $siblings, $context->applyRefSiblings);
+                $node = self::mergeRefSiblings($node, $siblings, $context->schemaDialect);
             }
             if ($implicitSchemaName !== null) {
                 $node[self::IMPLICIT_SCHEMA_NAME_EXTENSION] = $implicitSchemaName;

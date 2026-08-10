@@ -465,6 +465,124 @@ class RefSiblingKeywordsTest extends TestCase
         $this->assertTrue($result->isValid(), 'TypeCoercer reads the branch the resource was applied as');
     }
 
+    /**
+     * Applying `$ref` siblings is only one of the things a dialect decides.
+     * 2019-09 and 2020-12 agree on that and disagree on array tuples, so a
+     * 2019-09 target has to keep its boundary or the referrer's `prefixItems`
+     * ends up read under a dialect that has never heard of it.
+     */
+    #[Test]
+    public function a_target_under_another_sibling_applying_dialect_keeps_its_boundary(): void
+    {
+        $schema = OpenApiSpecLoader::load('ref-siblings-downstream-3.1')['paths']['/tuple']['get']['responses']['200']['content']['application/json']['schema'];
+
+        $this->assertArrayNotHasKey('$schema', $schema, 'the 2019-09 dialect must not reach the referrer');
+        $this->assertSame([false], $schema['prefixItems']);
+
+        $result = $this->validator->validate(
+            'ref-siblings-downstream-3.1',
+            'GET',
+            '/tuple',
+            200,
+            [1],
+            'application/json',
+        );
+        $this->assertFalse($result->isValid(), 'prefixItems is still read as 2020-12');
+    }
+
+    /**
+     * The boundary is about the dialect, not about the URI: a target that
+     * restates the dialect the referrer is already read under declares no
+     * boundary at all and still merges flat.
+     */
+    #[Test]
+    public function a_target_restating_the_referrers_dialect_still_merges_flat(): void
+    {
+        $schema = OpenApiSpecLoader::load('ref-siblings-downstream-3.1')['paths']['/restated-dialect']['get']['responses']['200']['content']['application/json']['schema'];
+
+        $this->assertArrayNotHasKey('allOf', $schema);
+        $this->assertSame('string', $schema['type']);
+        $this->assertSame(4, $schema['minLength']);
+    }
+
+    /**
+     * `properties` entries merge per name, and two schemas for one name are
+     * ANDed. `false` accepts nothing, so a sibling `true` cannot re-open a
+     * property the target closed.
+     */
+    #[Test]
+    public function a_boolean_property_schema_is_anded_not_overwritten(): void
+    {
+        $schema = OpenApiSpecLoader::load('ref-siblings-downstream-3.1')['paths']['/closed']['get']['responses']['200']['content']['application/json']['schema'];
+
+        $this->assertFalse($schema['properties']['foo'], 'false absorbs');
+        $this->assertSame(['type' => 'integer'], $schema['properties']['bar'], 'true drops out');
+
+        $rejected = $this->validator->validate(
+            'ref-siblings-downstream-3.1',
+            'GET',
+            '/closed',
+            200,
+            ['foo' => 1],
+            'application/json',
+        );
+        $this->assertFalse($rejected->isValid(), 'the target forbade foo');
+
+        $accepted = $this->validator->validate(
+            'ref-siblings-downstream-3.1',
+            'GET',
+            '/closed',
+            200,
+            ['bar' => 1],
+            'application/json',
+        );
+        $this->assertTrue($accepted->isValid());
+    }
+
+    /**
+     * `allOf` ANDs, so a referrer widening the type over a branch pinned to
+     * one is only satisfiable as that one — and the parameter has to be
+     * coerced to it, not to whatever the top level happens to list first.
+     */
+    #[Test]
+    public function a_widened_referrer_type_intersects_with_the_branch(): void
+    {
+        $result = $this->requestValidator->validate(
+            'ref-siblings-downstream-3.1',
+            'GET',
+            '/widened/5',
+            [],
+            [],
+            null,
+        );
+
+        $this->assertTrue($result->isValid(), 'the effective type is the intersection: integer');
+    }
+
+    /**
+     * `minLength: "3"` is a spec error. Tightening it against a sibling bound
+     * would launder it into a valid schema and silence the validator.
+     */
+    #[Test]
+    public function a_malformed_bound_is_not_laundered_by_the_merge(): void
+    {
+        $schema = OpenApiSpecLoader::load('ref-siblings-malformed-3.1')['paths']['/bad-bound']['get']['responses']['200']['content']['application/json']['schema'];
+
+        $this->assertSame('3', $schema['minLength']);
+        $this->assertSame([['minLength' => 4]], $schema['allOf']);
+
+        $result = $this->validator->validate(
+            'ref-siblings-malformed-3.1',
+            'GET',
+            '/bad-bound',
+            200,
+            'abcde',
+            'application/json',
+        );
+        $this->assertFalse($result->isValid());
+        $this->assertStringContainsString('minLength must be a non-negative integer', $result->errors()[0]);
+    }
+
     /** @param array<string, mixed> $body */
     private function validate(string $specName, array $body): OpenApiValidationResult
     {

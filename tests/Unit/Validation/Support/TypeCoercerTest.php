@@ -116,9 +116,29 @@ class TypeCoercerTest extends TestCase
         ]));
     }
 
+    /**
+     * `allOf` ANDs, so the type the value must end up as is the intersection
+     * of every declared type set — not whichever set sits at the top level.
+     */
     #[Test]
-    public function the_schemas_own_type_wins_over_an_allof_branch(): void
+    public function the_effective_type_is_the_intersection_with_the_allof_branches(): void
     {
+        $this->assertSame(5, TypeCoercer::coercePrimitive('5', [
+            'type' => ['string', 'integer'],
+            'allOf' => [['type' => 'integer']],
+        ]));
+
+        $this->assertSame([1, 2], TypeCoercer::coerceQuery(['1', '2'], [
+            'type' => ['string', 'array'],
+            'allOf' => [['type' => 'array', 'items' => ['type' => 'integer']]],
+        ]));
+    }
+
+    #[Test]
+    public function contradicting_types_coerce_nothing(): void
+    {
+        // Nothing satisfies both, so there is no type to coerce towards; the
+        // raw value reaches opis, which reports the schema.
         $this->assertSame('5', TypeCoercer::coercePrimitive('5', [
             'type' => 'string',
             'allOf' => [['type' => 'integer']],

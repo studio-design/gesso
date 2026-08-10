@@ -58,6 +58,33 @@ final class OpenApiSchemaDialectTest extends TestCase
         }
     }
 
+    /**
+     * `$ref`-sibling handling alone cannot tell dialects apart — 2019-09 and
+     * 2020-12 agree there and disagree elsewhere — so the comparison is on the
+     * dialect itself, canonically rather than literally.
+     */
+    #[Test]
+    public function same_dialect_compares_the_dialect_canonically(): void
+    {
+        $this->assertTrue(OpenApiSchemaDialect::sameDialect(
+            OpenApiSchemaDialect::OAS_3_1,
+            OpenApiSchemaDialect::DRAFT_2020_12,
+        ), 'the OAS 3.1 base dialect is validated as 2020-12');
+        $this->assertTrue(OpenApiSchemaDialect::sameDialect(
+            'http://json-schema.org/draft-07/schema#',
+            'https://json-schema.org/draft/07/schema',
+        ), 'scheme, trailing # and draft-/draft- spelling do not change meaning');
+
+        $this->assertFalse(OpenApiSchemaDialect::sameDialect(
+            'https://json-schema.org/draft/2019-09/schema',
+            OpenApiSchemaDialect::DRAFT_2020_12,
+        ));
+        $this->assertFalse(OpenApiSchemaDialect::sameDialect(
+            'http://json-schema.org/draft-06/schema#',
+            OpenApiSchemaDialect::DRAFT_07,
+        ));
+    }
+
     #[Test]
     public function malformed_document_dialect_fails_explicitly(): void
     {
