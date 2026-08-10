@@ -319,12 +319,13 @@ final class OpenApiRefResolver
     }
 
     /**
-     * OAS 3.1/3.2 Schema Objects are JSON Schema 2020-12, where `$ref` is an
-     * in-place applicator: keywords sitting next to it apply alongside the
-     * resolved target. OAS 3.0 has no such rule — its Reference Object
-     * ignores siblings — so replace-the-node stays correct there.
+     * Whether the document's Schema Objects apply `$ref` siblings, decided by
+     * the *effective* JSON Schema dialect rather than the OAS version: an OAS
+     * 3.1/3.2 document may declare `jsonSchemaDialect: draft-07`, and Draft
+     * 06/07 require every other member of a `$ref` object to be ignored.
+     * A Schema Object declaring its own `$schema` re-decides this for its own
+     * subtree — see {@see self::walk()}.
      *
-     * @see https://json-schema.org/draft/2020-12/json-schema-core#name-direct-references-with-ref
      * @see https://spec.openapis.org/oas/v3.0.3#reference-object
      *
      * @param array<string, mixed> $spec
@@ -332,12 +333,14 @@ final class OpenApiRefResolver
     private static function appliesRefSiblings(array $spec): bool
     {
         try {
-            return OpenApiVersion::fromSpec($spec) !== OpenApiVersion::V3_0;
+            return OpenApiSchemaDialect::appliesRefSiblings(
+                OpenApiSchemaDialect::fromSpec($spec, OpenApiVersion::fromSpec($spec)),
+            );
         } catch (InvalidOpenApiSpecException) {
             // Hand-built fragments handed straight to the resolver carry no
-            // `openapi` field. OpenApiSpecLoader validates the version before
-            // calling resolve(), so this only fires for direct callers; keep
-            // the historical replace-the-node behavior for them.
+            // `openapi` field, and a malformed `jsonSchemaDialect` is the
+            // converter's error to raise, not the resolver's. Either way, keep
+            // the historical replace-the-node behavior.
             return false;
         }
     }
@@ -365,6 +368,45 @@ final class OpenApiRefResolver
         }
 
         return null;
+    }
+
+    /**
+     * Fold a resolved `$ref` target into the schema object that carried the
+     * `$ref`, preserving *adjacency*: the siblings stay top-level keywords of
+     * the same schema object and the target moves into that object's `allOf`.
+     *
+     * Wrapping the whole thing as `allOf: [target, siblings]` instead would be
+     * a different schema. `unevaluatedProperties` / `unevaluatedItems` read the
+     * annotations of adjacent in-place applicators, so demoting them into a
+     * branch of their own hides the target's `properties` from them and
+     * rejects instances the original accepted. OAS-only keywords that Gesso
+     * enforces per position (`readOnly` / `writeOnly`) would likewise stop
+     * being the property schema's own keywords.
+     *
+     * @param array<int|string, mixed> $target
+     * @param array<int|string, mixed> $siblings
+     *
+     * @return array<int|string, mixed>
+     */
+    private static function mergeRefSiblings(array $target, array $siblings): array
+    {
+        $existing = $siblings['allOf'] ?? null;
+
+        if ($existing === null) {
+            $siblings['allOf'] = [$target];
+
+            return $siblings;
+        }
+
+        if (is_array($existing) && array_is_list($existing)) {
+            $siblings['allOf'] = [$target, ...$existing];
+
+            return $siblings;
+        }
+
+        // A malformed `allOf` (not a list of schemas) must stay malformed so
+        // the validator rejects it loudly instead of having it overwritten.
+        return ['allOf' => [$target, $siblings]];
     }
 
     /**
@@ -416,6 +458,16 @@ final class OpenApiRefResolver
             );
         }
 
+        // A Schema Object may declare its own `$schema`, making it the root of
+        // a schema resource with a dialect of its own. Whether `$ref` siblings
+        // apply is a property of that dialect, so re-decide it here and let the
+        // answer flow to this subtree only.
+        if ($isSchema && !$insideUserNamedMap && is_string($node['$schema'] ?? null)) {
+            $context = $context->withRefSiblings(
+                OpenApiSchemaDialect::appliesRefSiblings($node['$schema']),
+            );
+        }
+
         if (!$insideUserNamedMap && array_key_exists('$ref', $node)) {
             $ref = self::assertStringRef($node['$ref']);
             $siblings = self::refSiblingsToApply($node, $isSchema && $context->applyRefSiblings);
@@ -428,7 +480,7 @@ final class OpenApiRefResolver
             self::resolveRef($node, $ref, $root, $chain, $context, $documentCache, $isSchema);
             if ($siblings !== null) {
                 self::walk($siblings, $root, $chain, false, $context, $documentCache, isSchema: true);
-                $node = ['allOf' => [$node, $siblings]];
+                $node = self::mergeRefSiblings($node, $siblings);
             }
             if ($implicitSchemaName !== null) {
                 $node[self::IMPLICIT_SCHEMA_NAME_EXTENSION] = $implicitSchemaName;

@@ -8,15 +8,17 @@ use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\OpenApiResponseValidator;
+use Studio\Gesso\OpenApiValidationResult;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 
 /**
- * Issue #536: in OAS 3.1/3.2 a Schema Object `$ref` is a JSON Schema 2020-12
+ * Issue #536: in JSON Schema 2019-09 and later a Schema Object `$ref` is an
  * in-place applicator, so keywords sitting next to it must still be validated.
  * The loader used to substitute the target wholesale and silently drop them,
- * turning an INVALID response into a VALID one. OAS 3.0's Reference Object
- * ignores siblings, so the substitution stays correct there.
+ * turning an INVALID response into a VALID one. Draft 06/07 — which OAS 3.0's
+ * Reference Object matches — require the opposite, so the substitution stays
+ * correct there.
  */
 class RefSiblingKeywordsTest extends TestCase
 {
@@ -45,24 +47,65 @@ class RefSiblingKeywordsTest extends TestCase
         $properties = $spec['components']['schemas']['User']['properties'];
 
         $this->assertSame(
-            ['allOf' => [['type' => 'string'], ['minLength' => 4]]],
+            ['minLength' => 4, 'allOf' => [['type' => 'string']]],
             $properties['name'],
         );
         $this->assertSame(
-            ['allOf' => [['type' => 'string'], ['maxLength' => 2]]],
+            ['maxLength' => 2, 'allOf' => [['type' => 'string']]],
             $properties['tags']['items'],
             'items is a subschema position, so its $ref siblings apply too',
         );
         $this->assertSame(
-            ['allOf' => [['type' => 'integer'], ['maximum' => 100]]],
+            ['maximum' => 100, 'allOf' => [['type' => 'integer']]],
             $spec['paths']['/users/{id}']['get']['parameters'][0]['schema'],
             'a Parameter Object `schema` is a Schema Object position',
         );
         $this->assertSame(
-            ['allOf' => [['type' => 'string'], ['minLength' => 3]]],
+            ['minLength' => 3, 'allOf' => [['type' => 'string']]],
             $properties['address']['properties']['street'],
             'siblings inside a referenced component resolve as well',
         );
+    }
+
+    /**
+     * The target goes into the referring schema's own `allOf` rather than the
+     * whole node being wrapped as `allOf: [target, siblings]`. Adjacency is
+     * load-bearing: `unevaluatedProperties` reads the annotations of adjacent
+     * in-place applicators, and OAS keywords Gesso enforces per position
+     * (`readOnly`) have to stay the property schema's own keywords.
+     */
+    #[Test]
+    public function v31_keeps_ref_siblings_adjacent_to_the_applied_target(): void
+    {
+        $properties = OpenApiSpecLoader::load('ref-siblings-3.1')['components']['schemas']['User']['properties'];
+
+        $this->assertSame(
+            [
+                'unevaluatedProperties' => false,
+                'allOf' => [['type' => 'object', 'properties' => ['bio' => ['type' => 'string']]]],
+            ],
+            $properties['profile'],
+        );
+        $this->assertSame(
+            ['readOnly' => true, 'allOf' => [['type' => 'string']]],
+            $properties['token'],
+        );
+    }
+
+    #[Test]
+    public function v31_lets_unevaluated_properties_see_the_referenced_targets_properties(): void
+    {
+        $accepted = $this->validate(
+            'ref-siblings-3.1',
+            ['id' => 1, 'name' => 'abcd', 'profile' => ['bio' => 'hi']],
+        );
+        $this->assertTrue($accepted->isValid(), 'bio is evaluated by the referenced schema');
+
+        $rejected = $this->validate(
+            'ref-siblings-3.1',
+            ['id' => 1, 'name' => 'abcd', 'profile' => ['bio' => 'hi', 'extra' => 1]],
+        );
+        $this->assertFalse($rejected->isValid(), 'extra is genuinely unevaluated');
     }
 
     #[Test]
@@ -73,7 +116,7 @@ class RefSiblingKeywordsTest extends TestCase
         $this->assertSame(
             ['type' => 'string'],
             $spec['components']['schemas']['User']['properties']['nickname'],
-            'a description sibling changes no validation outcome, so no allOf wrapper is introduced',
+            'a description sibling changes no validation outcome, so no allOf is introduced',
         );
 
         $notFound = $spec['paths']['/users/{id}']['get']['responses']['404'];
@@ -84,14 +127,7 @@ class RefSiblingKeywordsTest extends TestCase
     #[Test]
     public function v31_rejects_a_body_violating_a_ref_sibling_keyword(): void
     {
-        $result = $this->validator->validate(
-            'ref-siblings-3.1',
-            'GET',
-            '/users/1',
-            200,
-            ['id' => 1, 'name' => 'abc'],
-            'application/json',
-        );
+        $result = $this->validate('ref-siblings-3.1', ['id' => 1, 'name' => 'abc']);
 
         $this->assertFalse($result->isValid());
     }
@@ -99,13 +135,9 @@ class RefSiblingKeywordsTest extends TestCase
     #[Test]
     public function v31_accepts_a_body_satisfying_a_ref_sibling_keyword(): void
     {
-        $result = $this->validator->validate(
+        $result = $this->validate(
             'ref-siblings-3.1',
-            'GET',
-            '/users/1',
-            200,
             ['id' => 1, 'name' => 'abcd', 'nickname' => 'ab', 'address' => ['street' => 'Main']],
-            'application/json',
         );
 
         $this->assertTrue($result->isValid());
@@ -120,15 +152,14 @@ class RefSiblingKeywordsTest extends TestCase
             $spec['components']['schemas']['User']['properties']['name'],
         );
 
-        $result = $this->validator->validate(
-            'ref-siblings-3.0',
-            'GET',
-            '/users/1',
-            200,
-            ['id' => 1, 'name' => 'abc'],
-            'application/json',
-        );
+        $result = $this->validate('ref-siblings-3.0', ['id' => 1, 'name' => 'abc']);
 
         $this->assertTrue($result->isValid());
+    }
+
+    /** @param array<string, mixed> $body */
+    private function validate(string $specName, array $body): OpenApiValidationResult
+    {
+        return $this->validator->validate($specName, 'GET', '/users/1', 200, $body, 'application/json');
     }
 }

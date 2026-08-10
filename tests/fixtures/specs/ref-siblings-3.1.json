@@ -34,6 +34,10 @@
     "schemas": {
       "Id": { "type": "integer" },
       "Name": { "type": "string" },
+      "Profile": {
+        "type": "object",
+        "properties": { "bio": { "type": "string" } }
+      },
       "Address": {
         "type": "object",
         "required": ["street"],
@@ -55,7 +59,12 @@
             "type": "array",
             "items": { "$ref": "#/components/schemas/Name", "maxLength": 2 }
           },
-          "address": { "$ref": "#/components/schemas/Address" }
+          "address": { "$ref": "#/components/schemas/Address" },
+          "profile": {
+            "$ref": "#/components/schemas/Profile",
+            "unevaluatedProperties": false
+          },
+          "token": { "$ref": "#/components/schemas/Name", "readOnly": true }
         }
       }
     },

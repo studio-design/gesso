@@ -73,6 +73,32 @@ final class OpenApiSchemaDialect
         );
     }
 
+    /**
+     * True when the dialect treats `$ref` as an in-place applicator, so
+     * keywords adjacent to it apply alongside the resolved target.
+     *
+     * JSON Schema 2019-09 made `$ref` an applicator ("other keywords can
+     * appear alongside of `$ref` in the same schema object"); Draft 06/07
+     * require the opposite ("All other properties in a `$ref` object MUST be
+     * ignored"), and OAS 3.0's Reference Object matches Draft 07 there.
+     * Unrecognised dialects answer `false` — the conservative reading, and
+     * the historical behaviour.
+     *
+     * @see https://json-schema.org/draft/2020-12/json-schema-core#name-direct-references-with-ref
+     * @see https://json-schema.org/draft-07/draft-handrews-json-schema-01#rfc.section.8.3
+     */
+    public static function appliesRefSiblings(string $dialect): bool
+    {
+        if ($dialect === self::OAS_3_1) {
+            return true;
+        }
+
+        return preg_match(
+            '~^https?://json-schema\.org/draft(?:/|-)(?:2019-09|2020-12)/schema#?$~i',
+            $dialect,
+        ) === 1;
+    }
+
     public static function validatorDialect(string $dialect): string
     {
         self::assertSupported($dialect);

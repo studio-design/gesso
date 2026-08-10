@@ -107,6 +107,26 @@ final class RefResolutionContext
     }
 
     /**
+     * Return a copy with the `$ref`-sibling rule replaced. Used when a Schema
+     * Object declares its own `$schema`, switching dialect — and therefore
+     * `$ref` semantics — for that schema resource's subtree.
+     */
+    public function withRefSiblings(bool $applyRefSiblings): self
+    {
+        return new self(
+            $this->sourceFile,
+            $this->httpClient,
+            $this->requestFactory,
+            $this->allowRemoteRefs,
+            $this->allowedRemoteRefHosts,
+            $this->maxRemoteRefBytes,
+            $this->allowedLocalRefRoots,
+            $this->remoteAuthorization,
+            $applyRefSiblings,
+        );
+    }
+
+    /**
      * Return a copy with the source file replaced. Used when the resolver
      * descends into an external document and the relative-path base
      * shifts to that document's directory / URL. All other fields are
