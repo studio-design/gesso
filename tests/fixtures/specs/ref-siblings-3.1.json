@@ -34,6 +34,18 @@
     "schemas": {
       "Id": { "type": "integer" },
       "Name": { "type": "string" },
+      "Positions": {
+        "type": "object",
+        "additionalProperties": { "$ref": "#/components/schemas/Name", "minLength": 5 },
+        "not": { "$ref": "#/components/schemas/Name", "maxLength": 1 },
+        "allOf": [{ "$ref": "#/components/schemas/Name", "minLength": 6 }],
+        "patternProperties": {
+          "^p_": { "$ref": "#/components/schemas/Name", "minLength": 7 }
+        },
+        "$defs": {
+          "Inner": { "$ref": "#/components/schemas/Name", "minLength": 8 }
+        }
+      },
       "Profile": {
         "type": "object",
         "properties": { "bio": { "type": "string" } }
@@ -64,7 +76,9 @@
             "$ref": "#/components/schemas/Profile",
             "unevaluatedProperties": false
           },
-          "token": { "$ref": "#/components/schemas/Name", "readOnly": true }
+          "token": { "$ref": "#/components/schemas/Name", "readOnly": true },
+          "vendor": { "$ref": "#/components/schemas/Name", "x-go-name": "Vendor" },
+          "positions": { "$ref": "#/components/schemas/Positions" }
         }
       }
     },

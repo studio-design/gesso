@@ -434,7 +434,7 @@ class OpenApiRefResolverExternalRefsTest extends TestCase
 
         $schema = $resolved['paths']['/users']['get']['responses']['200']['content']['application/json']['schema'];
         $this->assertSame(
-            ['minLength' => 4, 'allOf' => [['type' => 'string']]],
+            ['type' => 'string', 'minLength' => 4],
             $schema['properties']['name'],
         );
     }

@@ -1,0 +1,103 @@
+{
+  "openapi": "3.1.0",
+  "info": { "title": "Ref siblings — downstream consumers (3.1)", "version": "1.0.0" },
+  "paths": {
+    "/users/{id}": {
+      "get": {
+        "operationId": "getUser",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "$ref": "#/components/schemas/Id", "maximum": 100 }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "secret": { "$ref": "#/components/schemas/Secret", "minLength": 1 }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createUser",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "serverId": { "$ref": "#/components/schemas/ServerId", "minimum": 1 }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "ok" } }
+      }
+    },
+    "/pets": {
+      "get": {
+        "operationId": "listPets",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/Dog",
+                      "required": ["petType", "bark"]
+                    },
+                    { "$ref": "#/components/schemas/Cat" }
+                  ],
+                  "discriminator": {
+                    "propertyName": "petType",
+                    "mapping": { "Cat": "#/components/schemas/Cat" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Id": { "type": "integer" },
+      "Secret": { "type": "string", "writeOnly": true },
+      "ServerId": { "type": "integer", "readOnly": true },
+      "Dog": {
+        "type": "object",
+        "required": ["petType"],
+        "properties": {
+          "petType": { "type": "string" },
+          "bark": { "type": "boolean" }
+        }
+      },
+      "Cat": {
+        "type": "object",
+        "required": ["petType", "meow"],
+        "properties": {
+          "petType": { "type": "string" },
+          "meow": { "type": "boolean" }
+        }
+      }
+    }
+  }
+}

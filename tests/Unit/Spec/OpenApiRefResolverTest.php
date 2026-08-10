@@ -1536,11 +1536,11 @@ class OpenApiRefResolverTest extends TestCase
 
         $schema = $resolved['paths']['/pets']['get']['responses']['200']['content']['application/json']['schema'];
         $this->assertSame(
-            ['minLength' => 4, 'allOf' => [['type' => 'string']]],
+            ['type' => 'string', 'minLength' => 4],
             $schema['properties']['name'],
         );
         $this->assertSame(
-            ['maxLength' => 8, 'allOf' => [['type' => 'string']]],
+            ['type' => 'string', 'maxLength' => 8],
             $resolved['components']['schemas']['Nickname'],
             'components.schemas entries are Schema Object positions too',
         );
@@ -1587,7 +1587,7 @@ class OpenApiRefResolverTest extends TestCase
     }
 
     #[Test]
-    public function drops_implicit_schema_name_when_ref_siblings_are_applied(): void
+    public function keeps_implicit_schema_name_when_ref_siblings_are_applied(): void
     {
         $marker = OpenApiRefResolver::IMPLICIT_SCHEMA_NAME_EXTENSION;
         $resolved = OpenApiRefResolver::resolve([
@@ -1603,11 +1603,10 @@ class OpenApiRefResolverTest extends TestCase
 
         $alternatives = $resolved['paths']['/pets']['get']['responses']['200']['content']['application/json']['schema']['oneOf'];
 
-        $this->assertSame(['required' => ['meow'], 'allOf' => [['type' => 'object']]], $alternatives[0]);
-        $this->assertArrayNotHasKey(
-            $marker,
+        $this->assertSame(
+            ['type' => 'object', 'required' => ['meow'], $marker => 'Cat'],
             $alternatives[0],
-            'a node carrying applied siblings is no longer a direct component reference',
+            'siblings narrow how the branch validates, not which component it names',
         );
         $this->assertSame('Cat', $alternatives[1][$marker]);
     }
@@ -1632,7 +1631,8 @@ class OpenApiRefResolverTest extends TestCase
 
         $this->assertSame(
             [
-                'allOf' => [['type' => 'string'], ['maxLength' => 8]],
+                'type' => 'string',
+                'allOf' => [['maxLength' => 8]],
                 'minLength' => 4,
             ],
             $resolved['paths']['/pets']['get']['responses']['200']['content']['application/json']['schema'],
@@ -1685,7 +1685,7 @@ class OpenApiRefResolverTest extends TestCase
             'the resource dialect governs its own subtree',
         );
         $this->assertSame(
-            ['minLength' => 4, 'allOf' => [['type' => 'string']]],
+            ['type' => 'string', 'minLength' => 4],
             $resolved['components']['schemas']['Default']['properties']['name'],
             'and only its own subtree',
         );

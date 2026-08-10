@@ -14,6 +14,8 @@ use Studio\Gesso\Internal\HttpRefLoader;
 use Studio\Gesso\Internal\RemoteAuthorization;
 use Studio\Gesso\OpenApiVersion;
 
+use function array_diff_key;
+use function array_intersect_key;
 use function array_is_list;
 use function array_key_exists;
 use function array_pop;
@@ -362,6 +364,14 @@ final class OpenApiRefResolver
         unset($node['$ref']);
 
         foreach ($node as $key => $ignored) {
+            // OAS specification extensions carry no validation semantics and
+            // JSON Schema ignores unknown keywords outright, so `{$ref, x-…}`
+            // — the shape most generated 3.1 specs produce — must not be
+            // dragged off the plain-substitution path.
+            if (is_string($key) && str_starts_with($key, 'x-')) {
+                continue;
+            }
+
             if (!in_array($key, self::ANNOTATION_ONLY_SIBLING_KEYS, true)) {
                 return $node;
             }
@@ -371,17 +381,23 @@ final class OpenApiRefResolver
     }
 
     /**
-     * Fold a resolved `$ref` target into the schema object that carried the
-     * `$ref`, preserving *adjacency*: the siblings stay top-level keywords of
-     * the same schema object and the target moves into that object's `allOf`.
+     * Fold a resolved `$ref` target and the siblings that accompanied the
+     * `$ref` into one Schema Object.
      *
-     * Wrapping the whole thing as `allOf: [target, siblings]` instead would be
-     * a different schema. `unevaluatedProperties` / `unevaluatedItems` read the
-     * annotations of adjacent in-place applicators, so demoting them into a
-     * branch of their own hides the target's `properties` from them and
-     * rejects instances the original accepted. OAS-only keywords that Gesso
-     * enforces per position (`readOnly` / `writeOnly`) would likewise stop
-     * being the property schema's own keywords.
+     * A schema object ANDs its keywords, so every target keyword the siblings
+     * do not also declare merges in flat. That matters well beyond tidiness:
+     * `type`, `items`, and `properties` are read at the top level by parameter
+     * coercion, query-style splitting, and form decoding, and `readOnly` /
+     * `writeOnly` are enforced from the property schema's own top level.
+     * Burying them under an `allOf` silently disables all of it.
+     *
+     * Keywords both sides declare cannot share that top level, so the target's
+     * copies go into `allOf` — an in-place applicator *adjacent* to the
+     * siblings, which is what keeps `unevaluatedProperties` /
+     * `unevaluatedItems` able to see the target's annotations. Wrapping the
+     * whole node as `allOf: [target, siblings]` would not: it demotes the
+     * siblings into a branch that cannot see the target at all, and rejects
+     * instances the original accepted.
      *
      * @param array<int|string, mixed> $target
      * @param array<int|string, mixed> $siblings
@@ -390,23 +406,55 @@ final class OpenApiRefResolver
      */
     private static function mergeRefSiblings(array $target, array $siblings): array
     {
-        $existing = $siblings['allOf'] ?? null;
-
-        if ($existing === null) {
-            $siblings['allOf'] = [$target];
-
-            return $siblings;
+        if (self::hasMalformedAllOf($target) || self::hasMalformedAllOf($siblings)) {
+            // A malformed `allOf` must stay exactly where the author wrote it
+            // so the validator still rejects it loudly instead of it being
+            // folded into a merged branch list.
+            return ['allOf' => [$target, $siblings]];
         }
 
-        if (is_array($existing) && array_is_list($existing)) {
-            $siblings['allOf'] = [$target, ...$existing];
+        $overlapping = array_intersect_key($target, $siblings);
+        unset($overlapping['allOf']);
 
-            return $siblings;
+        // Disjoint keys, so `+` is a plain union; target keywords lead for
+        // readability of the resolved document.
+        $merged = array_diff_key($target, $siblings) + $siblings;
+
+        // `allOf` branches are independent in-place applicators, so the two
+        // lists concatenate rather than collide.
+        $branches = [
+            ...($overlapping === [] ? [] : [$overlapping]),
+            ...self::allOfBranches($target),
+            ...self::allOfBranches($siblings),
+        ];
+        if ($branches !== []) {
+            $merged['allOf'] = $branches;
         }
 
-        // A malformed `allOf` (not a list of schemas) must stay malformed so
-        // the validator rejects it loudly instead of having it overwritten.
-        return ['allOf' => [$target, $siblings]];
+        return $merged;
+    }
+
+    /** @param array<int|string, mixed> $schema */
+    private static function hasMalformedAllOf(array $schema): bool
+    {
+        if (!array_key_exists('allOf', $schema)) {
+            return false;
+        }
+
+        return !is_array($schema['allOf']) || !array_is_list($schema['allOf']);
+    }
+
+    /**
+     * @param array<int|string, mixed> $schema
+     *
+     * @return list<mixed>
+     */
+    private static function allOfBranches(array $schema): array
+    {
+        $branches = $schema['allOf'] ?? [];
+
+        // hasMalformedAllOf() has already rejected every other shape.
+        return is_array($branches) && array_is_list($branches) ? $branches : [];
     }
 
     /**
@@ -471,10 +519,11 @@ final class OpenApiRefResolver
         if (!$insideUserNamedMap && array_key_exists('$ref', $node)) {
             $ref = self::assertStringRef($node['$ref']);
             $siblings = self::refSiblingsToApply($node, $isSchema && $context->applyRefSiblings);
-            // A node carrying applied siblings is no longer a *direct*
-            // component reference, so it must not claim the component's name
-            // for implicit discriminator mapping.
-            $implicitSchemaName = $captureImplicitSchemaName && $siblings === null
+            // Siblings narrow how the alternative validates; they do not change
+            // *which* component it names, so the implicit discriminator mapping
+            // has to survive them — dropping it would shrink the lowered
+            // known-value enum and reject legitimate payloads.
+            $implicitSchemaName = $captureImplicitSchemaName
                 ? self::implicitSchemaNameFromRef($ref)
                 : null;
             self::resolveRef($node, $ref, $root, $chain, $context, $documentCache, $isSchema);
