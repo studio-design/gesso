@@ -6,6 +6,7 @@ namespace Studio\Gesso\Validation\Support;
 
 use const FILTER_VALIDATE_INT;
 
+use function array_key_exists;
 use function array_map;
 use function array_values;
 use function filter_var;
@@ -48,7 +49,7 @@ final class TypeCoercer
      */
     public static function coercePrimitive(mixed $value, array $schema): mixed
     {
-        $type = $schema['type'] ?? null;
+        $type = self::declared($schema, 'type');
 
         if (is_array($type)) {
             $type = self::firstPrimitiveType($type);
@@ -94,7 +95,7 @@ final class TypeCoercer
      */
     public static function coerceQuery(mixed $value, array $schema): mixed
     {
-        $type = $schema['type'] ?? null;
+        $type = self::declared($schema, 'type');
 
         if (is_array($type)) {
             $type = self::firstPrimitiveType($type);
@@ -103,7 +104,7 @@ final class TypeCoercer
         if ($type === 'array') {
             $value = is_array($value) ? array_values($value) : [$value];
 
-            $itemSchema = $schema['items'] ?? null;
+            $itemSchema = self::declared($schema, 'items');
             if (is_array($itemSchema)) {
                 return array_map(static fn(mixed $item): mixed => self::coerceQuery($item, $itemSchema), $value);
             }
@@ -139,5 +140,47 @@ final class TypeCoercer
         $result = filter_var($value, FILTER_VALIDATE_INT);
 
         return is_int($result) ? $result : $value;
+    }
+
+    /**
+     * Read a keyword from the schema, falling back to its `allOf` branches
+     * when the schema itself does not declare it. `allOf` is an in-place
+     * applicator: every branch constrains this same value, so a `type` only a
+     * branch declares is still the type the value has to be coerced to.
+     *
+     * Hand-written `{allOf: [{$ref: …}], maximum: 3}` parameter schemas have
+     * always had that shape, and reference resolution now also produces it for
+     * a `$ref` target that declares its own `$schema` and therefore cannot be
+     * merged flat. Without the fallback the raw string reaches opis uncoerced
+     * and a valid request fails with a bogus type error.
+     *
+     * The schema's own declaration always wins, so this can only add coercion
+     * where there was none.
+     *
+     * @param array<string, mixed> $schema
+     */
+    private static function declared(array $schema, string $keyword): mixed
+    {
+        if (array_key_exists($keyword, $schema)) {
+            return $schema[$keyword];
+        }
+
+        $branches = $schema['allOf'] ?? null;
+        if (!is_array($branches)) {
+            return null;
+        }
+
+        foreach ($branches as $branch) {
+            if (!is_array($branch)) {
+                continue;
+            }
+
+            $value = self::declared($branch, $keyword);
+            if ($value !== null) {
+                return $value;
+            }
+        }
+
+        return null;
     }
 }

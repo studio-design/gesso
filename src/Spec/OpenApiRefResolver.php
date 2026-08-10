@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Spec;
 
+use const SORT_REGULAR;
+
 use Psr\Http\Client\ClientInterface;
 use Psr\Http\Message\RequestFactoryInterface;
 use stdClass;
@@ -15,18 +17,22 @@ use Studio\Gesso\Internal\RemoteAuthorization;
 use Studio\Gesso\OpenApiVersion;
 
 use function array_diff_key;
-use function array_flip;
 use function array_intersect_key;
 use function array_is_list;
 use function array_key_exists;
 use function array_pop;
+use function array_unique;
+use function array_values;
 use function explode;
 use function get_debug_type;
 use function get_object_vars;
 use function implode;
 use function in_array;
 use function is_array;
+use function is_numeric;
 use function is_string;
+use function max;
+use function min;
 use function parse_url;
 use function rawurldecode;
 use function sprintf;
@@ -155,13 +161,28 @@ final class OpenApiRefResolver
     ];
 
     /**
-     * Keywords that make a Schema Object the root of a schema resource of its
-     * own — its dialect and its base URI. They cannot be merged into the
-     * schema that referenced it without moving that boundary.
+     * Bounds that both sides may declare; two of them on the same value mean
+     * the tighter one applies.
      *
      * @var list<string>
      */
-    private const SCHEMA_RESOURCE_KEYS = ['$schema', '$id', '$anchor', '$dynamicAnchor'];
+    private const LOWER_BOUND_KEYS = [
+        'minimum',
+        'exclusiveMinimum',
+        'minLength',
+        'minItems',
+        'minProperties',
+        'minContains',
+    ];
+
+    private const UPPER_BOUND_KEYS = [
+        'maximum',
+        'exclusiveMaximum',
+        'maxLength',
+        'maxItems',
+        'maxProperties',
+        'maxContains',
+    ];
 
     /**
      * `$ref` siblings that carry no validation weight. A Schema Object whose
@@ -422,30 +443,32 @@ final class OpenApiRefResolver
      * `writeOnly` are enforced from the property schema's own top level.
      * Burying them under an `allOf` silently disables all of it.
      *
-     * Keywords both sides declare cannot share that top level. It is the
-     * *sibling's* copy that gives way, into an `allOf` branch: the target's
-     * keywords are what the plain-substitution path used to leave there, so
-     * every consumer above keeps reading exactly what it read before this
-     * change, and the sibling only ever adds. `allOf` is an in-place
-     * applicator adjacent to the merged object, so annotations still flow
-     * both ways for `unevaluated*`.
+     * A keyword both sides declare is merged by its own semantics — property
+     * maps merge per name, `required` unions, bounds tighten, and an identical
+     * declaration collapses to one. It cannot simply be lifted out into a
+     * branch of its own: keywords in a schema object work on each other, so
+     * moving a lone `if` away from its `then`, or a lone
+     * `unevaluatedProperties` away from the `properties` it reads, changes what
+     * the schema means. When a collision has no meaning-preserving merge, the
+     * siblings are applied whole as an adjacent `allOf` branch instead.
      *
-     * A target that declares its own `$schema` / `$id` is a schema resource in
-     * its own right. Merging would promote that identity — and that dialect —
-     * onto the referring schema and change how the *siblings* are read, so it
-     * is applied as an intact branch instead.
+     * A target declaring its own `$schema` is a schema resource with a dialect
+     * of its own. Merging would put the *siblings* under that dialect, so
+     * unless it agrees with the referring schema's the target is applied whole
+     * as a branch — `TypeCoercer` reads through `allOf`, so the parameter
+     * coercion that depends on its `type` still works.
      *
      * @param array<int|string, mixed> $target
      * @param array<int|string, mixed> $siblings
      *
      * @return array<int|string, mixed>
      */
-    private static function mergeRefSiblings(array $target, array $siblings): array
+    private static function mergeRefSiblings(array $target, array $siblings, bool $applyRefSiblings): array
     {
         if (
             self::hasMalformedAllOf($target) ||
             self::hasMalformedAllOf($siblings) ||
-            array_intersect_key($target, array_flip(self::SCHEMA_RESOURCE_KEYS)) !== []
+            self::declaresForeignDialect($target, $applyRefSiblings)
         ) {
             // Also the malformed-`allOf` route: it must stay exactly where the
             // author wrote it so the validator still rejects it loudly instead
@@ -453,24 +476,124 @@ final class OpenApiRefResolver
             return self::applyAsBranch($target, $siblings);
         }
 
-        $overlapping = array_intersect_key($siblings, $target);
-        unset($overlapping['allOf']);
-
         // Disjoint keys, so `+` is a plain union.
         $merged = $target + array_diff_key($siblings, $target);
 
-        // `allOf` branches are independent in-place applicators, so the two
-        // lists concatenate rather than collide.
-        $branches = [
-            ...($overlapping === [] ? [] : [$overlapping]),
-            ...self::allOfBranches($target),
-            ...self::allOfBranches($siblings),
-        ];
+        foreach (array_intersect_key($siblings, $target) as $keyword => $siblingValue) {
+            if ($keyword === 'allOf') {
+                // Branch lists are independent applicators; concatenated below.
+                continue;
+            }
+
+            [$mergeable, $value] = self::mergeKeyword((string) $keyword, $target[$keyword], $siblingValue);
+            if (!$mergeable) {
+                return self::applySiblingsAsBranch($target, $siblings);
+            }
+
+            $merged[$keyword] = $value;
+        }
+
+        $branches = [...self::allOfBranches($target), ...self::allOfBranches($siblings)];
         if ($branches !== []) {
             $merged['allOf'] = $branches;
         }
 
         return $merged;
+    }
+
+    /**
+     * True when the target selects a JSON Schema dialect that reads `$ref`
+     * siblings differently from the schema that referenced it. Same reading —
+     * including a target that simply restates the referrer's dialect — has no
+     * boundary worth keeping.
+     *
+     * @param array<int|string, mixed> $target
+     */
+    private static function declaresForeignDialect(array $target, bool $applyRefSiblings): bool
+    {
+        $dialect = $target['$schema'] ?? null;
+
+        return is_string($dialect) &&
+            OpenApiSchemaDialect::appliesRefSiblings($dialect) !== $applyRefSiblings;
+    }
+
+    /**
+     * Merge one keyword both sides declare. Returns `[mergeable, value]`;
+     * `mergeable` false means no single declaration expresses both, and the
+     * caller has to keep the two schema objects apart.
+     *
+     * @return array{0: bool, 1: mixed}
+     */
+    private static function mergeKeyword(string $keyword, mixed $target, mixed $sibling): array
+    {
+        // Identical declarations — the same `type`, the same
+        // `unevaluatedProperties: false` restated by the reference — collapse
+        // to one whatever the keyword is.
+        if ($target === $sibling) {
+            return [true, $target];
+        }
+
+        // Maps of subschemas: entries are independent, and two schemas for the
+        // same name apply to the same instance location, so they merge the way
+        // a $ref and its siblings do.
+        if (in_array($keyword, self::SUBSCHEMA_MAP_KEYS, true) && is_array($target) && is_array($sibling)) {
+            $merged = $target;
+            foreach ($sibling as $name => $schema) {
+                $merged[$name] = array_key_exists($name, $target) &&
+                    is_array($target[$name]) &&
+                    is_array($schema)
+                    ? self::mergeRefSiblings($target[$name], $schema, true)
+                    : $schema;
+            }
+
+            return [true, $merged];
+        }
+
+        // Both lists of names apply, so the union is exactly both.
+        if (in_array($keyword, ['required', 'dependentRequired'], true) &&
+            is_array($target) &&
+            is_array($sibling) &&
+            array_is_list($target) &&
+            array_is_list($sibling)
+        ) {
+            return [true, array_values(array_unique([...$target, ...$sibling], SORT_REGULAR))];
+        }
+
+        // Two bounds on the same value: the tighter one is the effective one.
+        if (is_numeric($target) && is_numeric($sibling)) {
+            if (in_array($keyword, self::LOWER_BOUND_KEYS, true)) {
+                return [true, max($target, $sibling)];
+            }
+
+            if (in_array($keyword, self::UPPER_BOUND_KEYS, true)) {
+                return [true, min($target, $sibling)];
+            }
+        }
+
+        return [false, null];
+    }
+
+    /**
+     * Apply the siblings as an intact `allOf` branch of the target. Used when
+     * a collision has no meaning-preserving merge: the target keeps the top
+     * level that plain substitution used to give it — so nothing that reads a
+     * schema's own keywords regresses — and the siblings stay whole, with
+     * their interacting keywords still together.
+     *
+     * @param array<int|string, mixed> $target
+     * @param array<int|string, mixed> $siblings
+     *
+     * @return array<int|string, mixed>
+     */
+    private static function applySiblingsAsBranch(array $target, array $siblings): array
+    {
+        if (self::hasMalformedAllOf($target)) {
+            return ['allOf' => [$target, $siblings]];
+        }
+
+        $target['allOf'] = [...self::allOfBranches($target), $siblings];
+
+        return $target;
     }
 
     /**
@@ -589,7 +712,7 @@ final class OpenApiRefResolver
             self::resolveRef($node, $ref, $root, $chain, $context, $documentCache, $isSchema);
             if ($siblings !== null) {
                 self::walk($siblings, $root, $chain, false, $context, $documentCache, isSchema: true);
-                $node = self::mergeRefSiblings($node, $siblings);
+                $node = self::mergeRefSiblings($node, $siblings, $context->applyRefSiblings);
             }
             if ($implicitSchemaName !== null) {
                 $node[self::IMPLICIT_SCHEMA_NAME_EXTENSION] = $implicitSchemaName;

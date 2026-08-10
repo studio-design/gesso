@@ -289,18 +289,20 @@ class RefSiblingKeywordsTest extends TestCase
     }
 
     /**
-     * When both sides declare the same keyword, it is the *sibling's* copy that
-     * moves into an `allOf` branch. The target's keywords stay where plain
-     * substitution used to leave them, so form decoding still sees the
-     * referenced schema's `properties` and coerces its fields.
+     * A keyword both sides declare is merged by its own semantics rather than
+     * lifted into a branch — property maps merge per name, so form decoding
+     * still sees the referenced schema's fields and coerces them.
      */
     #[Test]
-    public function a_colliding_keyword_leaves_the_targets_copy_at_the_top_level(): void
+    public function a_colliding_property_map_merges_per_name(): void
     {
         $schema = OpenApiSpecLoader::load('ref-siblings-downstream-3.1')['paths']['/form']['post']['requestBody']['content']['application/x-www-form-urlencoded']['schema'];
 
-        $this->assertSame(['foo' => ['type' => 'integer']], $schema['properties']);
-        $this->assertSame([['properties' => ['bar' => ['type' => 'integer']]]], $schema['allOf']);
+        $this->assertSame(
+            ['foo' => ['type' => 'integer'], 'bar' => ['type' => 'integer']],
+            $schema['properties'],
+        );
+        $this->assertArrayNotHasKey('allOf', $schema);
 
         $coerced = $this->requestValidator->validate(
             'ref-siblings-downstream-3.1',
@@ -323,6 +325,32 @@ class RefSiblingKeywordsTest extends TestCase
             'application/x-www-form-urlencoded',
         );
         $this->assertFalse($rejected->isValid(), 'the sibling unevaluatedProperties still applies');
+    }
+
+    /**
+     * Keywords in a schema object work on each other, so a collision with no
+     * meaning-preserving merge keeps the two objects apart instead of lifting
+     * the lone keyword out: a sibling `if` must stay with its own `then`.
+     */
+    #[Test]
+    public function an_unmergeable_collision_keeps_the_siblings_whole(): void
+    {
+        $schema = OpenApiSpecLoader::load('ref-siblings-downstream-3.1')['paths']['/conditional']['get']['responses']['200']['content']['application/json']['schema'];
+
+        $this->assertSame(
+            [['if' => ['required' => ['kind']], 'then' => ['required' => ['value']]]],
+            $schema['allOf'],
+        );
+
+        $result = $this->validator->validate(
+            'ref-siblings-downstream-3.1',
+            'GET',
+            '/conditional',
+            200,
+            ['kind' => 'x'],
+            'application/json',
+        );
+        $this->assertFalse($result->isValid(), "the sibling's then is still gated by the sibling's if");
     }
 
     /**
@@ -370,6 +398,71 @@ class RefSiblingKeywordsTest extends TestCase
             $schema['properties']['name'],
             'the external root selects Draft 07, which ignores $ref siblings',
         );
+    }
+
+    /**
+     * The same keyword restated identically on both sides collapses to one
+     * declaration. Lifting the duplicate into a branch would strand it away
+     * from the `properties` it reads and reject every declared property.
+     */
+    #[Test]
+    public function an_identically_restated_keyword_collapses_to_one(): void
+    {
+        $schema = OpenApiSpecLoader::load('ref-siblings-downstream-3.1')['paths']['/restated']['get']['responses']['200']['content']['application/json']['schema'];
+
+        $this->assertSame(
+            ['type' => 'object', 'properties' => ['foo' => ['type' => 'string']], 'unevaluatedProperties' => false],
+            $schema,
+        );
+
+        $accepted = $this->validator->validate(
+            'ref-siblings-downstream-3.1',
+            'GET',
+            '/restated',
+            200,
+            ['foo' => 'ok'],
+            'application/json',
+        );
+        $this->assertTrue($accepted->isValid());
+
+        $rejected = $this->validator->validate(
+            'ref-siblings-downstream-3.1',
+            'GET',
+            '/restated',
+            200,
+            ['zzz' => 1],
+            'application/json',
+        );
+        $this->assertFalse($rejected->isValid());
+    }
+
+    #[Test]
+    public function colliding_bounds_tighten_and_required_lists_union(): void
+    {
+        $schema = OpenApiSpecLoader::load('ref-siblings-downstream-3.1')['paths']['/bounds']['get']['responses']['200']['content']['application/json']['schema'];
+
+        $this->assertSame(['a', 'b'], $schema['required']);
+        $this->assertSame(4, $schema['properties']['a']['minLength'], 'the stricter minimum wins');
+        $this->assertSame(6, $schema['properties']['a']['maxLength'], 'the stricter maximum wins');
+    }
+
+    /**
+     * A target that declares a dialect of its own cannot be merged, but the
+     * parameter coercion that depends on its `type` still has to work.
+     */
+    #[Test]
+    public function a_foreign_dialect_target_is_still_reachable_for_coercion(): void
+    {
+        $result = $this->requestValidator->validate(
+            'ref-siblings-downstream-3.1',
+            'GET',
+            '/resource/5',
+            [],
+            [],
+            null,
+        );
+
+        $this->assertTrue($result->isValid(), 'TypeCoercer reads the branch the resource was applied as');
     }
 
     /** @param array<string, mixed> $body */

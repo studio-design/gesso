@@ -98,4 +98,30 @@ class TypeCoercerTest extends TestCase
 
         $this->assertSame(['1', '2'], TypeCoercer::coerceQuery(['1', '2'], $schema));
     }
+
+    #[Test]
+    public function reads_the_type_from_an_allof_branch_when_the_schema_omits_it(): void
+    {
+        $this->assertSame(5, TypeCoercer::coercePrimitive('5', [
+            'maximum' => 100,
+            'allOf' => [['type' => 'integer']],
+        ]));
+    }
+
+    #[Test]
+    public function reads_query_type_and_items_from_an_allof_branch(): void
+    {
+        $this->assertSame([1, 2], TypeCoercer::coerceQuery(['1', '2'], [
+            'allOf' => [['type' => 'array', 'items' => ['type' => 'integer']]],
+        ]));
+    }
+
+    #[Test]
+    public function the_schemas_own_type_wins_over_an_allof_branch(): void
+    {
+        $this->assertSame('5', TypeCoercer::coercePrimitive('5', [
+            'type' => 'string',
+            'allOf' => [['type' => 'integer']],
+        ]));
+    }
 }
