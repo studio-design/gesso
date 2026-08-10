@@ -288,6 +288,90 @@ class RefSiblingKeywordsTest extends TestCase
         );
     }
 
+    /**
+     * When both sides declare the same keyword, it is the *sibling's* copy that
+     * moves into an `allOf` branch. The target's keywords stay where plain
+     * substitution used to leave them, so form decoding still sees the
+     * referenced schema's `properties` and coerces its fields.
+     */
+    #[Test]
+    public function a_colliding_keyword_leaves_the_targets_copy_at_the_top_level(): void
+    {
+        $schema = OpenApiSpecLoader::load('ref-siblings-downstream-3.1')['paths']['/form']['post']['requestBody']['content']['application/x-www-form-urlencoded']['schema'];
+
+        $this->assertSame(['foo' => ['type' => 'integer']], $schema['properties']);
+        $this->assertSame([['properties' => ['bar' => ['type' => 'integer']]]], $schema['allOf']);
+
+        $coerced = $this->requestValidator->validate(
+            'ref-siblings-downstream-3.1',
+            'POST',
+            '/form',
+            [],
+            [],
+            'foo=5',
+            'application/x-www-form-urlencoded',
+        );
+        $this->assertTrue($coerced->isValid(), 'the referenced schema still drives form coercion');
+
+        $rejected = $this->requestValidator->validate(
+            'ref-siblings-downstream-3.1',
+            'POST',
+            '/form',
+            [],
+            [],
+            'zzz=1',
+            'application/x-www-form-urlencoded',
+        );
+        $this->assertFalse($rejected->isValid(), 'the sibling unevaluatedProperties still applies');
+    }
+
+    /**
+     * A target that declares its own `$schema` is a schema resource in its own
+     * right. Merging it would promote that dialect onto the referring schema
+     * and change how the *siblings* are read, so it is applied intact instead.
+     */
+    #[Test]
+    public function a_target_that_is_its_own_schema_resource_keeps_its_dialect_boundary(): void
+    {
+        $schema = OpenApiSpecLoader::load('ref-siblings-downstream-3.1')['paths']['/resource']['get']['responses']['200']['content']['application/json']['schema'];
+
+        $this->assertArrayNotHasKey('$schema', $schema, 'the target dialect must not reach the referrer');
+        $this->assertSame(
+            'http://json-schema.org/draft-07/schema#',
+            $schema['allOf'][0]['$schema'],
+        );
+
+        $result = $this->validator->validate(
+            'ref-siblings-downstream-3.1',
+            'GET',
+            '/resource',
+            200,
+            ['foo' => 'ok', 'extra' => 1],
+            'application/json',
+        );
+        $this->assertFalse(
+            $result->isValid(),
+            "the referrer's own unevaluatedProperties is still read in its own dialect",
+        );
+    }
+
+    /**
+     * An external document is its own schema resource too, and a bare-fragment
+     * walk never sees its root — so its dialect has to be read before anything
+     * under it resolves.
+     */
+    #[Test]
+    public function an_external_documents_own_dialect_governs_its_fragments(): void
+    {
+        $schema = OpenApiSpecLoader::load('ref-siblings-downstream-3.1')['paths']['/external']['get']['responses']['200']['content']['application/json']['schema'];
+
+        $this->assertSame(
+            ['type' => 'string'],
+            $schema['properties']['name'],
+            'the external root selects Draft 07, which ignores $ref siblings',
+        );
+    }
+
     /** @param array<string, mixed> $body */
     private function validate(string $specName, array $body): OpenApiValidationResult
     {

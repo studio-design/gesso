@@ -15,6 +15,7 @@ use Studio\Gesso\Internal\RemoteAuthorization;
 use Studio\Gesso\OpenApiVersion;
 
 use function array_diff_key;
+use function array_flip;
 use function array_intersect_key;
 use function array_is_list;
 use function array_key_exists;
@@ -154,12 +155,21 @@ final class OpenApiRefResolver
     ];
 
     /**
+     * Keywords that make a Schema Object the root of a schema resource of its
+     * own — its dialect and its base URI. They cannot be merged into the
+     * schema that referenced it without moving that boundary.
+     *
+     * @var list<string>
+     */
+    private const SCHEMA_RESOURCE_KEYS = ['$schema', '$id', '$anchor', '$dynamicAnchor'];
+
+    /**
      * `$ref` siblings that carry no validation weight. A Schema Object whose
      * only siblings are these validates identically with or without them, and
      * `summary` / `description` are exactly the siblings OAS 3.1 permits on a
      * Reference Object. Keeping the historical replace-the-node behavior for
-     * them means the (very common) `{$ref, description}` node does not grow an
-     * `allOf` wrapper for zero validation gain.
+     * them means the (very common) `{$ref, description}` node is not rewritten
+     * for zero validation gain.
      *
      * @var list<string>
      */
@@ -348,6 +358,27 @@ final class OpenApiRefResolver
     }
 
     /**
+     * Re-decide the `$ref`-sibling rule for a document root: a JSON Schema
+     * file states its dialect in `$schema`, an OpenAPI document in
+     * `jsonSchemaDialect` (defaulting per version). A document that declares
+     * neither inherits the caller's decision.
+     *
+     * @param array<string, mixed> $root
+     */
+    private static function documentContext(array $root, RefResolutionContext $context): RefResolutionContext
+    {
+        if (is_string($root['$schema'] ?? null)) {
+            return $context->withRefSiblings(OpenApiSchemaDialect::appliesRefSiblings($root['$schema']));
+        }
+
+        if (array_key_exists('openapi', $root)) {
+            return $context->withRefSiblings(self::appliesRefSiblings($root));
+        }
+
+        return $context;
+    }
+
+    /**
      * Return the `$ref` siblings that must be applied alongside the resolved
      * target, or `null` when the node resolves by plain replacement.
      *
@@ -391,13 +422,18 @@ final class OpenApiRefResolver
      * `writeOnly` are enforced from the property schema's own top level.
      * Burying them under an `allOf` silently disables all of it.
      *
-     * Keywords both sides declare cannot share that top level, so the target's
-     * copies go into `allOf` — an in-place applicator *adjacent* to the
-     * siblings, which is what keeps `unevaluatedProperties` /
-     * `unevaluatedItems` able to see the target's annotations. Wrapping the
-     * whole node as `allOf: [target, siblings]` would not: it demotes the
-     * siblings into a branch that cannot see the target at all, and rejects
-     * instances the original accepted.
+     * Keywords both sides declare cannot share that top level. It is the
+     * *sibling's* copy that gives way, into an `allOf` branch: the target's
+     * keywords are what the plain-substitution path used to leave there, so
+     * every consumer above keeps reading exactly what it read before this
+     * change, and the sibling only ever adds. `allOf` is an in-place
+     * applicator adjacent to the merged object, so annotations still flow
+     * both ways for `unevaluated*`.
+     *
+     * A target that declares its own `$schema` / `$id` is a schema resource in
+     * its own right. Merging would promote that identity — and that dialect —
+     * onto the referring schema and change how the *siblings* are read, so it
+     * is applied as an intact branch instead.
      *
      * @param array<int|string, mixed> $target
      * @param array<int|string, mixed> $siblings
@@ -406,19 +442,22 @@ final class OpenApiRefResolver
      */
     private static function mergeRefSiblings(array $target, array $siblings): array
     {
-        if (self::hasMalformedAllOf($target) || self::hasMalformedAllOf($siblings)) {
-            // A malformed `allOf` must stay exactly where the author wrote it
-            // so the validator still rejects it loudly instead of it being
-            // folded into a merged branch list.
-            return ['allOf' => [$target, $siblings]];
+        if (
+            self::hasMalformedAllOf($target) ||
+            self::hasMalformedAllOf($siblings) ||
+            array_intersect_key($target, array_flip(self::SCHEMA_RESOURCE_KEYS)) !== []
+        ) {
+            // Also the malformed-`allOf` route: it must stay exactly where the
+            // author wrote it so the validator still rejects it loudly instead
+            // of being folded into a merged branch list.
+            return self::applyAsBranch($target, $siblings);
         }
 
-        $overlapping = array_intersect_key($target, $siblings);
+        $overlapping = array_intersect_key($siblings, $target);
         unset($overlapping['allOf']);
 
-        // Disjoint keys, so `+` is a plain union; target keywords lead for
-        // readability of the resolved document.
-        $merged = array_diff_key($target, $siblings) + $siblings;
+        // Disjoint keys, so `+` is a plain union.
+        $merged = $target + array_diff_key($siblings, $target);
 
         // `allOf` branches are independent in-place applicators, so the two
         // lists concatenate rather than collide.
@@ -432,6 +471,27 @@ final class OpenApiRefResolver
         }
 
         return $merged;
+    }
+
+    /**
+     * Apply the target as an intact `allOf` branch of the siblings, for the
+     * cases a flat merge cannot serve. The siblings stay at the top level so
+     * they are still read in the referring schema's own dialect.
+     *
+     * @param array<int|string, mixed> $target
+     * @param array<int|string, mixed> $siblings
+     *
+     * @return array<int|string, mixed>
+     */
+    private static function applyAsBranch(array $target, array $siblings): array
+    {
+        if (self::hasMalformedAllOf($siblings)) {
+            return ['allOf' => [$target, $siblings]];
+        }
+
+        $siblings['allOf'] = [$target, ...self::allOfBranches($siblings)];
+
+        return $siblings;
     }
 
     /** @param array<int|string, mixed> $schema */
@@ -1188,6 +1248,12 @@ final class OpenApiRefResolver
         array &$documentCache,
         bool $targetIsSchema = false,
     ): void {
+        // The loaded document is its own schema resource: whether `$ref`
+        // siblings apply inside it is decided by *its* dialect, not the
+        // entry document's. Walking a bare fragment never sees the root's
+        // `$schema`, so read it here, before anything under it resolves.
+        $context = self::documentContext($newRoot, $context);
+
         if ($fragment !== '') {
             $internalRef = '#' . $fragment;
             $chainKey = self::canonicalChainKey($absoluteUri, $internalRef);
