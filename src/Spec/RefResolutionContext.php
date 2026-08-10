@@ -43,6 +43,12 @@ final class RefResolutionContext
         /** @var list<string> */
         public readonly array $allowedLocalRefRoots,
         public readonly ?RemoteAuthorization $remoteAuthorization = null,
+        /**
+         * True when Schema Object `$ref` siblings must be applied alongside
+         * the resolved target (OAS 3.1/3.2, JSON Schema 2020-12 in-place
+         * applicator) instead of being dropped (OAS 3.0 Reference Object).
+         */
+        public readonly bool $applyRefSiblings = false,
     ) {}
 
     /**
@@ -51,9 +57,22 @@ final class RefResolutionContext
      *
      * @param list<string> $allowedLocalRefRoots
      */
-    public static function filesystemOnly(?string $sourceFile = null, array $allowedLocalRefRoots = []): self
-    {
-        return new self($sourceFile, null, null, false, [], HttpRefLoader::DEFAULT_MAX_RESPONSE_BYTES, $allowedLocalRefRoots);
+    public static function filesystemOnly(
+        ?string $sourceFile = null,
+        array $allowedLocalRefRoots = [],
+        bool $applyRefSiblings = false,
+    ): self {
+        return new self(
+            $sourceFile,
+            null,
+            null,
+            false,
+            [],
+            HttpRefLoader::DEFAULT_MAX_RESPONSE_BYTES,
+            $allowedLocalRefRoots,
+            null,
+            $applyRefSiblings,
+        );
     }
 
     /**
@@ -72,6 +91,7 @@ final class RefResolutionContext
         int $maxRemoteRefBytes = HttpRefLoader::DEFAULT_MAX_RESPONSE_BYTES,
         array $allowedLocalRefRoots = [],
         ?RemoteAuthorization $remoteAuthorization = null,
+        bool $applyRefSiblings = false,
     ): self {
         return new self(
             $sourceFile,
@@ -82,6 +102,7 @@ final class RefResolutionContext
             $maxRemoteRefBytes,
             $allowedLocalRefRoots,
             $remoteAuthorization,
+            $applyRefSiblings,
         );
     }
 
@@ -103,6 +124,7 @@ final class RefResolutionContext
             $this->maxRemoteRefBytes,
             $this->allowedLocalRefRoots,
             $this->remoteAuthorization,
+            $this->applyRefSiblings,
         );
     }
 }

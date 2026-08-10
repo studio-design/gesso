@@ -12,6 +12,7 @@ use Studio\Gesso\Exception\InvalidOpenApiSpecReason;
 use Studio\Gesso\Internal\ExternalRefLoader;
 use Studio\Gesso\Internal\HttpRefLoader;
 use Studio\Gesso\Internal\RemoteAuthorization;
+use Studio\Gesso\OpenApiVersion;
 
 use function array_is_list;
 use function array_key_exists;
@@ -108,6 +109,71 @@ final class OpenApiRefResolver
     ];
 
     /**
+     * Schema Object keywords whose value is a single subschema. `items` is
+     * listed here for its 2020-12 / OAS 3.x shape; the Draft 07 tuple form
+     * (`items: [ ... ]`) is detected by shape at the call site.
+     *
+     * @var list<string>
+     */
+    private const SUBSCHEMA_KEYS = [
+        'not',
+        'if',
+        'then',
+        'else',
+        'items',
+        'additionalItems',
+        'contains',
+        'additionalProperties',
+        'propertyNames',
+        'unevaluatedItems',
+        'unevaluatedProperties',
+        'contentSchema',
+    ];
+
+    /**
+     * Schema Object keywords whose value is a list of subschemas.
+     *
+     * @var list<string>
+     */
+    private const SUBSCHEMA_LIST_KEYS = ['allOf', 'anyOf', 'oneOf', 'prefixItems'];
+
+    /**
+     * Schema Object keywords whose value is a map of user-chosen names to
+     * subschemas. Every entry is also in {@see self::USER_NAMED_MAP_KEYS}.
+     *
+     * @var list<string>
+     */
+    private const SUBSCHEMA_MAP_KEYS = [
+        'properties',
+        'patternProperties',
+        'dependentSchemas',
+        '$defs',
+        'definitions',
+    ];
+
+    /**
+     * `$ref` siblings that carry no validation weight. A Schema Object whose
+     * only siblings are these validates identically with or without them, and
+     * `summary` / `description` are exactly the siblings OAS 3.1 permits on a
+     * Reference Object. Keeping the historical replace-the-node behavior for
+     * them means the (very common) `{$ref, description}` node does not grow an
+     * `allOf` wrapper for zero validation gain.
+     *
+     * @var list<string>
+     */
+    private const ANNOTATION_ONLY_SIBLING_KEYS = [
+        'summary',
+        'description',
+        'title',
+        '$comment',
+        'deprecated',
+        'example',
+        'examples',
+        'externalDocs',
+        'xml',
+    ];
+
+    /**
      * Resolve every `$ref` entry in the spec in place and return the same
      * array. Any structural problem with a `$ref` throws
      * `InvalidOpenApiSpecException` so users get one actionable error at
@@ -186,6 +252,8 @@ final class OpenApiRefResolver
             );
         }
 
+        $applyRefSiblings = self::appliesRefSiblings($spec);
+
         // After the guard above, allowRemoteRefs:true implies non-null
         // client + factory.
         $context = $allowRemoteRefs
@@ -197,8 +265,9 @@ final class OpenApiRefResolver
                 $maxRemoteRefBytes,
                 $allowedLocalRefRoots,
                 $remoteAuthorization,
+                $applyRefSiblings,
             )
-            : RefResolutionContext::filesystemOnly($sourceFile, $allowedLocalRefRoots);
+            : RefResolutionContext::filesystemOnly($sourceFile, $allowedLocalRefRoots, $applyRefSiblings);
 
         // $root is a frozen snapshot used for pointer lookups. PHP array
         // copy-on-write keeps it untouched as we mutate $spec via $node refs.
@@ -250,6 +319,55 @@ final class OpenApiRefResolver
     }
 
     /**
+     * OAS 3.1/3.2 Schema Objects are JSON Schema 2020-12, where `$ref` is an
+     * in-place applicator: keywords sitting next to it apply alongside the
+     * resolved target. OAS 3.0 has no such rule — its Reference Object
+     * ignores siblings — so replace-the-node stays correct there.
+     *
+     * @see https://json-schema.org/draft/2020-12/json-schema-core#name-direct-references-with-ref
+     * @see https://spec.openapis.org/oas/v3.0.3#reference-object
+     *
+     * @param array<string, mixed> $spec
+     */
+    private static function appliesRefSiblings(array $spec): bool
+    {
+        try {
+            return OpenApiVersion::fromSpec($spec) !== OpenApiVersion::V3_0;
+        } catch (InvalidOpenApiSpecException) {
+            // Hand-built fragments handed straight to the resolver carry no
+            // `openapi` field. OpenApiSpecLoader validates the version before
+            // calling resolve(), so this only fires for direct callers; keep
+            // the historical replace-the-node behavior for them.
+            return false;
+        }
+    }
+
+    /**
+     * Return the `$ref` siblings that must be applied alongside the resolved
+     * target, or `null` when the node resolves by plain replacement.
+     *
+     * @param array<int|string, mixed> $node
+     *
+     * @return null|array<int|string, mixed>
+     */
+    private static function refSiblingsToApply(array $node, bool $enabled): ?array
+    {
+        if (!$enabled) {
+            return null;
+        }
+
+        unset($node['$ref']);
+
+        foreach ($node as $key => $ignored) {
+            if (!in_array($key, self::ANNOTATION_ONLY_SIBLING_KEYS, true)) {
+                return $node;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * @param array<int|string, mixed> $node
      * @param array<string, mixed> $root currently-walked document's root
      * @param list<string> $chain canonical pointer-refs already on the resolution stack — used to detect cycles
@@ -264,6 +382,17 @@ final class OpenApiRefResolver
      *                                 resets one level deeper, where each
      *                                 named entry is itself an OAS object.
      * @param array<string, array<string, mixed>> $documentCache external document cache for this resolution
+     * @param bool $isSchema true when `$node` is a Schema Object. Only there is
+     *                       `$ref` a JSON Schema in-place applicator whose
+     *                       siblings must survive resolution; everywhere else
+     *                       `$ref` is an OAS Reference Object and siblings are
+     *                       ignored. Tracked positionally so a malformed
+     *                       Reference Object (`{$ref, required: true}` on a
+     *                       Parameter, say) keeps resolving as before instead
+     *                       of being rewritten into a schema-shaped `allOf`.
+     * @param bool $entriesAreSchemas true when every direct child of `$node` is
+     *                                a Schema Object — the `properties` map, the
+     *                                `allOf` list, `components.schemas`, etc.
      */
     private static function walk(
         array &$node,
@@ -273,6 +402,8 @@ final class OpenApiRefResolver
         RefResolutionContext $context,
         array &$documentCache,
         bool $captureImplicitSchemaName = false,
+        bool $isSchema = false,
+        bool $entriesAreSchemas = false,
     ): void {
         // Reserve both provenance fields for resolver-generated data. Keys at
         // the current level of a user-named map are property/component names,
@@ -287,10 +418,18 @@ final class OpenApiRefResolver
 
         if (!$insideUserNamedMap && array_key_exists('$ref', $node)) {
             $ref = self::assertStringRef($node['$ref']);
-            $implicitSchemaName = $captureImplicitSchemaName
+            $siblings = self::refSiblingsToApply($node, $isSchema && $context->applyRefSiblings);
+            // A node carrying applied siblings is no longer a *direct*
+            // component reference, so it must not claim the component's name
+            // for implicit discriminator mapping.
+            $implicitSchemaName = $captureImplicitSchemaName && $siblings === null
                 ? self::implicitSchemaNameFromRef($ref)
                 : null;
-            self::resolveRef($node, $ref, $root, $chain, $context, $documentCache);
+            self::resolveRef($node, $ref, $root, $chain, $context, $documentCache, $isSchema);
+            if ($siblings !== null) {
+                self::walk($siblings, $root, $chain, false, $context, $documentCache, isSchema: true);
+                $node = ['allOf' => [$node, $siblings]];
+            }
             if ($implicitSchemaName !== null) {
                 $node[self::IMPLICIT_SCHEMA_NAME_EXTENSION] = $implicitSchemaName;
             }
@@ -349,7 +488,7 @@ final class OpenApiRefResolver
                 if (in_array($key, ['oneOf', 'anyOf'], true) && array_is_list($child)) {
                     foreach ($child as &$alternative) {
                         if (is_array($alternative)) {
-                            self::walk($alternative, $root, $chain, false, $context, $documentCache, true);
+                            self::walk($alternative, $root, $chain, false, $context, $documentCache, true, true);
                         }
                     }
                     unset($alternative);
@@ -364,9 +503,71 @@ final class OpenApiRefResolver
             $childInsideUserNamedMap = $insideUserNamedMap
                 ? false
                 : in_array($key, self::USER_NAMED_MAP_KEYS, true);
-            self::walk($child, $root, $chain, $childInsideUserNamedMap, $context, $documentCache);
+            [$childIsSchema, $childEntriesAreSchemas] = self::childSchemaPosition(
+                $key,
+                $child,
+                $insideUserNamedMap,
+                $isSchema,
+                $entriesAreSchemas,
+            );
+            self::walk(
+                $child,
+                $root,
+                $chain,
+                $childInsideUserNamedMap,
+                $context,
+                $documentCache,
+                false,
+                $childIsSchema,
+                $childEntriesAreSchemas,
+            );
         }
         unset($child);
+    }
+
+    /**
+     * Classify a child node's Schema Object position from its key and the
+     * parent's position. Returns `[childIsSchema, childEntriesAreSchemas]`
+     * matching the same-named {@see self::walk()} parameters.
+     *
+     * @param array<int|string, mixed> $child
+     *
+     * @return array{0: bool, 1: bool}
+     */
+    private static function childSchemaPosition(
+        int|string $key,
+        array $child,
+        bool $insideUserNamedMap,
+        bool $isSchema,
+        bool $entriesAreSchemas,
+    ): array {
+        if ($entriesAreSchemas) {
+            return [true, false];
+        }
+
+        if ($insideUserNamedMap) {
+            // Entries of a non-schema user-named map (`paths`, `responses`,
+            // `components.parameters`, …) are OAS objects, not schemas.
+            return [false, false];
+        }
+
+        if ($isSchema) {
+            if (in_array($key, self::SUBSCHEMA_MAP_KEYS, true) || in_array($key, self::SUBSCHEMA_LIST_KEYS, true)) {
+                return [false, true];
+            }
+
+            if (in_array($key, self::SUBSCHEMA_KEYS, true)) {
+                // Draft 07 tuple form: `items` may hold a list of subschemas.
+                return array_is_list($child) ? [false, true] : [true, false];
+            }
+
+            return [false, false];
+        }
+
+        // Schema Objects reached from a non-schema OAS object: the `schema`
+        // field of Parameter / Header / MediaType Objects, the OAS 3.2
+        // MediaType `itemSchema`, and the entries of `components.schemas`.
+        return [$key === 'schema' || $key === 'itemSchema', $key === 'schemas'];
     }
 
     private static function implicitSchemaNameFromRef(string $ref): ?string
@@ -468,6 +669,9 @@ final class OpenApiRefResolver
      * @param array<string, mixed> $root
      * @param list<string> $chain
      * @param array<string, array<string, mixed>> $documentCache
+     * @param bool $targetIsSchema the referring node's Schema Object position,
+     *                             which the target inherits — a `$ref` in a
+     *                             schema always points at a schema
      */
     private static function resolveRef(
         array &$node,
@@ -476,6 +680,7 @@ final class OpenApiRefResolver
         array $chain,
         RefResolutionContext $context,
         array &$documentCache,
+        bool $targetIsSchema = false,
     ): void {
         if ($ref === '') {
             throw new InvalidOpenApiSpecException(
@@ -516,13 +721,13 @@ final class OpenApiRefResolver
         if (str_starts_with($ref, 'http://') || str_starts_with($ref, 'https://')) {
             $rawRef = $ref;
             $ref = HttpRefLoader::redactSensitiveUrlData($ref);
-            self::resolveHttpRef($node, $rawRef, $chain, $context, $documentCache);
+            self::resolveHttpRef($node, $rawRef, $chain, $context, $documentCache, $targetIsSchema);
 
             return;
         }
 
         if (str_starts_with($ref, '#/')) {
-            self::resolveInternalRef($node, $ref, $root, $chain, $context, $documentCache);
+            self::resolveInternalRef($node, $ref, $root, $chain, $context, $documentCache, $targetIsSchema);
 
             return;
         }
@@ -555,12 +760,12 @@ final class OpenApiRefResolver
         // the user would see a confusing LocalRefNotFound.
         if (str_starts_with($context->sourceFile, 'http://') || str_starts_with($context->sourceFile, 'https://')) {
             $resolvedUrl = self::resolveRelativeUrl($context->sourceFile, $ref);
-            self::resolveHttpRef($node, $resolvedUrl, $chain, $context, $documentCache);
+            self::resolveHttpRef($node, $resolvedUrl, $chain, $context, $documentCache, $targetIsSchema);
 
             return;
         }
 
-        self::resolveExternalRef($node, $ref, $chain, $context, $documentCache);
+        self::resolveExternalRef($node, $ref, $chain, $context, $documentCache, $targetIsSchema);
     }
 
     /**
@@ -653,6 +858,7 @@ final class OpenApiRefResolver
         array $chain,
         RefResolutionContext $context,
         array &$documentCache,
+        bool $targetIsSchema = false,
     ): void {
         // Canonicalize internal refs against the current document so cycles
         // that span files are detected against per-file pointers, not the
@@ -686,11 +892,11 @@ final class OpenApiRefResolver
         }
 
         // Push canonicalized ref onto the chain before recursing so nested
-        // self-references are detected as cycles; then replace the node
-        // entirely. Sibling keys alongside $ref are dropped per OAS 3.0
-        // ("any sibling elements of a $ref are ignored"), which is a safe
-        // subset of 3.1.
-        self::walk($target, $root, [...$chain, $chainKey], false, $context, $documentCache);
+        // self-references are detected as cycles; then replace the node with
+        // the target. Sibling keys alongside $ref are dropped here per OAS 3.0
+        // ("any sibling elements of a $ref are ignored"); for 3.1/3.2 Schema
+        // Objects the caller re-applies them around this result.
+        self::walk($target, $root, [...$chain, $chainKey], false, $context, $documentCache, isSchema: $targetIsSchema);
         $node = $target;
     }
 
@@ -705,6 +911,7 @@ final class OpenApiRefResolver
         array $chain,
         RefResolutionContext $context,
         array &$documentCache,
+        bool $targetIsSchema = false,
     ): void {
         [$pathPart, $fragment, $hadHash] = self::splitRef($ref);
 
@@ -747,6 +954,7 @@ final class OpenApiRefResolver
             $document->decoded,
             $context->withSourceFile($document->canonicalIdentifier),
             $documentCache,
+            $targetIsSchema,
         );
     }
 
@@ -761,6 +969,7 @@ final class OpenApiRefResolver
         array $chain,
         RefResolutionContext $context,
         array &$documentCache,
+        bool $targetIsSchema = false,
     ): void {
         $rawRef = $ref;
         $ref = HttpRefLoader::redactSensitiveUrlData($ref);
@@ -842,6 +1051,7 @@ final class OpenApiRefResolver
             $document->decoded,
             $context->withSourceFile($document->canonicalIdentifier),
             $documentCache,
+            $targetIsSchema,
         );
     }
 
@@ -875,6 +1085,7 @@ final class OpenApiRefResolver
         array $newRoot,
         RefResolutionContext $context,
         array &$documentCache,
+        bool $targetIsSchema = false,
     ): void {
         if ($fragment !== '') {
             $internalRef = '#' . $fragment;
@@ -906,7 +1117,7 @@ final class OpenApiRefResolver
                 );
             }
 
-            self::walk($target, $newRoot, [...$chain, $chainKey], false, $context, $documentCache);
+            self::walk($target, $newRoot, [...$chain, $chainKey], false, $context, $documentCache, isSchema: $targetIsSchema);
             $node = $target;
 
             return;
@@ -925,7 +1136,7 @@ final class OpenApiRefResolver
         }
 
         $target = $newRoot;
-        self::walk($target, $newRoot, [...$chain, $chainKey], false, $context, $documentCache);
+        self::walk($target, $newRoot, [...$chain, $chainKey], false, $context, $documentCache, isSchema: $targetIsSchema);
         $node = $target;
     }
 

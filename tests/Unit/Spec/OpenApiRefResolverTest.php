@@ -1516,4 +1516,99 @@ class OpenApiRefResolverTest extends TestCase
         // Sanity: value still opaque.
         $this->assertSame(['plain' => 'data'], $entry['value']);
     }
+
+    #[Test]
+    public function applies_schema_ref_siblings_for_openapi_31(): void
+    {
+        $resolved = OpenApiRefResolver::resolve([
+            'openapi' => '3.1.0',
+            'components' => ['schemas' => [
+                'Name' => ['type' => 'string'],
+                'Nickname' => ['$ref' => '#/components/schemas/Name', 'maxLength' => 8],
+            ]],
+            'paths' => ['/pets' => ['get' => ['responses' => ['200' => ['content' => [
+                'application/json' => ['schema' => [
+                    'type' => 'object',
+                    'properties' => ['name' => ['$ref' => '#/components/schemas/Name', 'minLength' => 4]],
+                ]],
+            ]]]]]],
+        ]);
+
+        $schema = $resolved['paths']['/pets']['get']['responses']['200']['content']['application/json']['schema'];
+        $this->assertSame(
+            ['allOf' => [['type' => 'string'], ['minLength' => 4]]],
+            $schema['properties']['name'],
+        );
+        $this->assertSame(
+            ['allOf' => [['type' => 'string'], ['maxLength' => 8]]],
+            $resolved['components']['schemas']['Nickname'],
+            'components.schemas entries are Schema Object positions too',
+        );
+    }
+
+    #[Test]
+    public function ignores_schema_ref_siblings_for_openapi_30(): void
+    {
+        $resolved = OpenApiRefResolver::resolve([
+            'openapi' => '3.0.3',
+            'components' => ['schemas' => ['Name' => ['type' => 'string']]],
+            'paths' => ['/pets' => ['get' => ['responses' => ['200' => ['content' => [
+                'application/json' => ['schema' => [
+                    'type' => 'object',
+                    'properties' => ['name' => ['$ref' => '#/components/schemas/Name', 'minLength' => 4]],
+                ]],
+            ]]]]]],
+        ]);
+
+        $schema = $resolved['paths']['/pets']['get']['responses']['200']['content']['application/json']['schema'];
+        $this->assertSame(['type' => 'string'], $schema['properties']['name']);
+    }
+
+    #[Test]
+    public function keeps_reference_object_substitution_when_a_non_schema_node_has_siblings(): void
+    {
+        $resolved = OpenApiRefResolver::resolve([
+            'openapi' => '3.1.0',
+            'components' => ['parameters' => [
+                'Id' => ['name' => 'id', 'in' => 'query', 'schema' => ['type' => 'integer']],
+            ]],
+            'paths' => ['/pets' => ['get' => ['parameters' => [
+                // Not legal per OAS 3.1 (a Reference Object only permits
+                // summary/description siblings), but common in the wild.
+                // Substitution — not an allOf wrapper — keeps it working.
+                ['$ref' => '#/components/parameters/Id', 'required' => true],
+            ]]]],
+        ]);
+
+        $this->assertSame(
+            ['name' => 'id', 'in' => 'query', 'schema' => ['type' => 'integer']],
+            $resolved['paths']['/pets']['get']['parameters'][0],
+        );
+    }
+
+    #[Test]
+    public function drops_implicit_schema_name_when_ref_siblings_are_applied(): void
+    {
+        $marker = OpenApiRefResolver::IMPLICIT_SCHEMA_NAME_EXTENSION;
+        $resolved = OpenApiRefResolver::resolve([
+            'openapi' => '3.1.0',
+            'components' => ['schemas' => ['Cat' => ['type' => 'object']]],
+            'paths' => ['/pets' => ['get' => ['responses' => ['200' => ['content' => [
+                'application/json' => ['schema' => ['oneOf' => [
+                    ['$ref' => '#/components/schemas/Cat', 'required' => ['meow']],
+                    ['$ref' => '#/components/schemas/Cat', 'description' => 'plain reference'],
+                ]]],
+            ]]]]]],
+        ]);
+
+        $alternatives = $resolved['paths']['/pets']['get']['responses']['200']['content']['application/json']['schema']['oneOf'];
+
+        $this->assertSame(['allOf' => [['type' => 'object'], ['required' => ['meow']]]], $alternatives[0]);
+        $this->assertArrayNotHasKey(
+            $marker,
+            $alternatives[0],
+            'a node carrying applied siblings is no longer a direct component reference',
+        );
+        $this->assertSame('Cat', $alternatives[1][$marker]);
+    }
 }
