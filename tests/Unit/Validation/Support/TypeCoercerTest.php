@@ -134,6 +134,38 @@ class TypeCoercerTest extends TestCase
         ]));
     }
 
+    /**
+     * `integer` is a subset of `number`, not a sibling of it, so the two
+     * narrow to `integer` rather than to nothing.
+     */
+    #[Test]
+    public function integer_and_number_intersect_to_integer(): void
+    {
+        $this->assertSame(5, TypeCoercer::coercePrimitive('5', [
+            'type' => 'integer',
+            'allOf' => [['type' => 'number']],
+        ]));
+
+        $this->assertSame(5, TypeCoercer::coercePrimitive('5', [
+            'type' => 'number',
+            'allOf' => [['type' => 'integer']],
+        ]));
+    }
+
+    /**
+     * Every `items` schema constrains the same elements, so they compose the
+     * same way the array's own keywords do.
+     */
+    #[Test]
+    public function item_schemas_compose_across_allof_branches(): void
+    {
+        $this->assertSame([1, 2], TypeCoercer::coerceQuery(['1', '2'], [
+            'type' => 'array',
+            'items' => ['type' => ['string', 'integer']],
+            'allOf' => [['type' => 'array', 'items' => ['type' => 'integer']]],
+        ]));
+    }
+
     #[Test]
     public function contradicting_types_coerce_nothing(): void
     {

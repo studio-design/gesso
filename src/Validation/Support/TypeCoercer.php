@@ -7,11 +7,13 @@ namespace Studio\Gesso\Validation\Support;
 use const FILTER_VALIDATE_INT;
 
 use function array_filter;
-use function array_intersect;
 use function array_key_exists;
 use function array_map;
+use function array_unique;
 use function array_values;
+use function count;
 use function filter_var;
+use function in_array;
 use function is_array;
 use function is_int;
 use function is_numeric;
@@ -96,12 +98,16 @@ final class TypeCoercer
         if ($type === 'array') {
             $value = is_array($value) ? array_values($value) : [$value];
 
-            $itemSchema = self::declared($schema, 'items');
-            if (is_array($itemSchema)) {
-                return array_map(static fn(mixed $item): mixed => self::coerceQuery($item, $itemSchema), $value);
+            $itemSchemas = self::itemSchemas($schema);
+            if ($itemSchemas === []) {
+                return $value;
             }
 
-            return $value;
+            // Every one of them constrains the same elements, so hand the
+            // conjunction down and let the recursion intersect it.
+            $itemSchema = count($itemSchemas) === 1 ? $itemSchemas[0] : ['allOf' => $itemSchemas];
+
+            return array_map(static fn(mixed $item): mixed => self::coerceQuery($item, $itemSchema), $value);
         }
 
         return self::coercePrimitiveFromType($value, $type);
@@ -188,10 +194,44 @@ final class TypeCoercer
 
             $candidates = $candidates === null
                 ? $branchCandidates
-                : array_values(array_intersect($candidates, $branchCandidates));
+                : self::intersectTypes($candidates, $branchCandidates);
         }
 
         return $candidates;
+    }
+
+    /**
+     * Intersect two type sets. `integer` is a subset of `number`, not a
+     * sibling of it, so a schema that is `integer` on one side and `number`
+     * on the other narrows to `integer` — a plain name comparison would call
+     * that unsatisfiable and leave a perfectly valid request uncoerced.
+     *
+     * @see https://json-schema.org/draft/2020-12/json-schema-validation#name-type
+     *
+     * @param list<string> $first
+     * @param list<string> $second
+     *
+     * @return list<string>
+     */
+    private static function intersectTypes(array $first, array $second): array
+    {
+        $intersection = [];
+
+        foreach ($first as $type) {
+            if (in_array($type, $second, true)) {
+                $intersection[] = $type;
+                continue;
+            }
+
+            if (
+                ($type === 'number' && in_array('integer', $second, true)) ||
+                ($type === 'integer' && in_array('number', $second, true))
+            ) {
+                $intersection[] = 'integer';
+            }
+        }
+
+        return array_values(array_unique($intersection));
     }
 
     /**
@@ -209,34 +249,31 @@ final class TypeCoercer
     }
 
     /**
-     * Read a keyword from the schema, falling back to its `allOf` branches
-     * when the schema itself does not declare it. Same reasoning as
-     * {@see self::effectiveType()}, for keywords that do not intersect.
+     * Every `items` schema that applies to this array — the schema's own and
+     * each `allOf` branch's. They all constrain the same elements, so the
+     * effective item schema is their conjunction; taking whichever one is
+     * found first leaves the elements coerced to the wrong type, or not
+     * coerced at all.
      *
      * @param array<string, mixed> $schema
+     *
+     * @return list<array<string, mixed>>
      */
-    private static function declared(array $schema, string $keyword): mixed
+    private static function itemSchemas(array $schema): array
     {
-        if (array_key_exists($keyword, $schema)) {
-            return $schema[$keyword];
-        }
+        $schemas = is_array($schema['items'] ?? null) ? [$schema['items']] : [];
 
         $branches = $schema['allOf'] ?? null;
         if (!is_array($branches)) {
-            return null;
+            return $schemas;
         }
 
         foreach ($branches as $branch) {
-            if (!is_array($branch)) {
-                continue;
-            }
-
-            $value = self::declared($branch, $keyword);
-            if ($value !== null) {
-                return $value;
+            if (is_array($branch)) {
+                $schemas = [...$schemas, ...self::itemSchemas($branch)];
             }
         }
 
-        return null;
+        return $schemas;
     }
 }

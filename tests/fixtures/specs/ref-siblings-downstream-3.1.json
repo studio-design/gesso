@@ -237,6 +237,23 @@
         }
       }
     },
+    "/embedded": {
+      "get": {
+        "operationId": "getEmbedded",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./ref-siblings-external/embedded.json#/$defs/Legacy/definitions/User"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/tuple": {
       "get": {
         "operationId": "getTuple",

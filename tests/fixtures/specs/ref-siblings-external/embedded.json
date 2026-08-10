@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "Name": { "type": "string" },
+    "Legacy": {
+      "$id": "https://example.com/legacy",
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "definitions": {
+        "User": {
+          "type": "object",
+          "properties": {
+            "name": { "$ref": "#/$defs/Name", "minLength": 4 }
+          }
+        }
+      }
+    }
+  }
+}

@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Spec;
 
-use const SORT_REGULAR;
+use const SORT_STRING;
 
 use Psr\Http\Client\ClientInterface;
 use Psr\Http\Message\RequestFactoryInterface;
@@ -23,12 +23,14 @@ use function array_key_exists;
 use function array_pop;
 use function array_unique;
 use function array_values;
+use function count;
 use function explode;
 use function get_debug_type;
 use function get_object_vars;
 use function implode;
 use function in_array;
 use function is_array;
+use function is_bool;
 use function is_float;
 use function is_int;
 use function is_string;
@@ -390,6 +392,48 @@ final class OpenApiRefResolver
     }
 
     /**
+     * Adopt the dialect of the innermost schema resource that *encloses* the
+     * fragment a `$ref` points at. Jumping straight to the pointer target
+     * skips every embedded resource on the way down, so a document root
+     * declaring 2020-12 would govern a target sitting inside a Draft 07
+     * resource. The target's own `$schema` is left to {@see self::walk()},
+     * which only honours it in a Schema Object position.
+     *
+     * @see https://json-schema.org/draft/2020-12/json-schema-core#name-schema-resources
+     *
+     * @param array<string, mixed> $root
+     */
+    private static function enclosingResourceContext(
+        array $root,
+        string $internalRef,
+        RefResolutionContext $context,
+    ): RefResolutionContext {
+        $pointer = substr($internalRef, 2);
+        if ($pointer === '') {
+            return $context;
+        }
+
+        $segments = explode('/', $pointer);
+        // The last segment is the target itself, not an ancestor.
+        array_pop($segments);
+
+        $node = $root;
+        foreach ($segments as $segment) {
+            $segment = self::unescapePointerSegment($segment);
+            if (!is_array($node) || !array_key_exists($segment, $node)) {
+                return $context;
+            }
+
+            $node = $node[$segment];
+            if (is_array($node) && is_string($node['$schema'] ?? null)) {
+                $context = $context->withSchemaDialect($node['$schema']);
+            }
+        }
+
+        return $context;
+    }
+
+    /**
      * Re-decide the dialect for a document root: a JSON Schema file states it
      * in `$schema`, an OpenAPI document in `jsonSchemaDialect` (defaulting per
      * version). A document that declares neither inherits the caller's.
@@ -548,25 +592,35 @@ final class OpenApiRefResolver
         // Maps of subschemas: entries are independent, and two schemas for the
         // same name apply to the same instance location, so they merge the way
         // a $ref and its siblings do.
-        if (in_array($keyword, self::SUBSCHEMA_MAP_KEYS, true) && is_array($target) && is_array($sibling)) {
+        if (in_array($keyword, self::SUBSCHEMA_MAP_KEYS, true)) {
+            if (!self::isSchemaMap($target) || !self::isSchemaMap($sibling)) {
+                return [false, null];
+            }
+
             $merged = $target;
             foreach ($sibling as $name => $schema) {
-                $merged[$name] = array_key_exists($name, $target)
-                    ? self::mergeSubschemas($target[$name], $schema, $dialect)
-                    : $schema;
+                if (!array_key_exists($name, $target)) {
+                    $merged[$name] = $schema;
+                    continue;
+                }
+
+                [$mergeable, $value] = self::mergeSubschemas($target[$name], $schema, $dialect);
+                if (!$mergeable) {
+                    return [false, null];
+                }
+
+                $merged[$name] = $value;
             }
 
             return [true, $merged];
         }
 
-        // Both lists of names apply, so the union is exactly both.
-        if (in_array($keyword, ['required', 'dependentRequired'], true) &&
-            is_array($target) &&
-            is_array($sibling) &&
-            array_is_list($target) &&
-            array_is_list($sibling)
-        ) {
-            return [true, array_values(array_unique([...$target, ...$sibling], SORT_REGULAR))];
+        // Both lists of names apply, so the union is exactly both. Only when
+        // both are well-formed: `required: [1]` deduped against `['1']` under
+        // loose comparison, quietly dropping the element the validator would
+        // have reported.
+        if ($keyword === 'required' && self::isUniqueStringList($target) && self::isUniqueStringList($sibling)) {
+            return [true, array_values(array_unique([...$target, ...$sibling], SORT_STRING))];
         }
 
         // Two bounds on the same value: the tighter one is the effective one.
@@ -604,6 +658,7 @@ final class OpenApiRefResolver
     /**
      * Combine two schemas that constrain the same instance location — the two
      * `properties.foo` entries a `$ref` and its siblings both declare, say.
+     * Returns `[mergeable, value]` like {@see self::mergeKeyword()}.
      *
      * Boolean schemas are the absorbing and identity elements of that AND:
      * `false` accepts nothing, so it wins outright, and `true` constrains
@@ -612,28 +667,70 @@ final class OpenApiRefResolver
      * had closed with `false`.
      *
      * @see https://json-schema.org/draft/2020-12/json-schema-core#name-boolean-json-schemas
+     *
+     * @return array{0: bool, 1: mixed}
      */
-    private static function mergeSubschemas(mixed $target, mixed $sibling, ?string $dialect): mixed
+    private static function mergeSubschemas(mixed $target, mixed $sibling, ?string $dialect): array
     {
+        // Anything that is not a schema at all has to reach the validator as
+        // written, so the whole merge stands down rather than pick a side.
+        if (!self::isSchemaShaped($target) || !self::isSchemaShaped($sibling)) {
+            return [false, null];
+        }
+
         if ($target === false || $sibling === false) {
-            return false;
+            return [true, false];
         }
 
         if ($target === true) {
-            return $sibling;
+            return [true, $sibling];
         }
 
         if ($sibling === true) {
-            return $target;
+            return [true, $target];
         }
 
-        if (is_array($target) && is_array($sibling)) {
-            return self::mergeRefSiblings($target, $sibling, $dialect);
+        // Both are arrays: isSchemaShaped() has ruled everything else out.
+        return [true, self::mergeRefSiblings((array) $target, (array) $sibling, $dialect)];
+    }
+
+    private static function isSchemaShaped(mixed $schema): bool
+    {
+        return is_array($schema) || is_bool($schema);
+    }
+
+    /**
+     * A JSON object of subschemas. A JSON array decodes to a PHP list too, and
+     * merging one into a real map would turn a malformed `properties: [{…}]`
+     * into a property literally named `0` — a spec error laundered into a
+     * schema the validator happily accepts. (`{}` and `[]` are the same array
+     * after decoding; an empty map merges to the other side either way.)
+     */
+    private static function isSchemaMap(mixed $map): bool
+    {
+        return is_array($map) && ($map === [] || !array_is_list($map));
+    }
+
+    /**
+     * Whether a value is a well-formed `required` list: unique strings. Under
+     * `SORT_REGULAR` a malformed `[1]` compares equal to a valid `['1']`, so a
+     * union would silently repair it — as it would a list with duplicates.
+     *
+     * @phpstan-assert-if-true list<string> $names
+     */
+    private static function isUniqueStringList(mixed $names): bool
+    {
+        if (!is_array($names) || !array_is_list($names)) {
+            return false;
         }
 
-        // At least one is not a schema at all. Keep both rather than let the
-        // merge pick a side, so the validator still reports the malformed one.
-        return ['allOf' => [$target, $sibling]];
+        foreach ($names as $name) {
+            if (!is_string($name)) {
+                return false;
+            }
+        }
+
+        return count($names) === count(array_unique($names, SORT_STRING));
     }
 
     /**
@@ -680,14 +777,34 @@ final class OpenApiRefResolver
         return $siblings;
     }
 
-    /** @param array<int|string, mixed> $schema */
+    /**
+     * `allOf` must be a non-empty array of schemas. Anything else is a spec
+     * error and must survive the merge: concatenating branch lists would turn
+     * an empty or non-schema one into a well-formed list and silence the
+     * validator.
+     *
+     * @see https://json-schema.org/draft/2020-12/json-schema-core#name-allof
+     *
+     * @param array<int|string, mixed> $schema
+     */
     private static function hasMalformedAllOf(array $schema): bool
     {
         if (!array_key_exists('allOf', $schema)) {
             return false;
         }
 
-        return !is_array($schema['allOf']) || !array_is_list($schema['allOf']);
+        $branches = $schema['allOf'];
+        if (!is_array($branches) || !array_is_list($branches) || $branches === []) {
+            return true;
+        }
+
+        foreach ($branches as $branch) {
+            if (!self::isSchemaShaped($branch)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -1468,6 +1585,7 @@ final class OpenApiRefResolver
                 );
             }
 
+            $context = self::enclosingResourceContext($newRoot, $internalRef, $context);
             self::walk($target, $newRoot, [...$chain, $chainKey], false, $context, $documentCache, isSchema: $targetIsSchema);
             $node = $target;
 

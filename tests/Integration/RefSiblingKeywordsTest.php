@@ -51,6 +51,15 @@ class RefSiblingKeywordsTest extends TestCase
         yield '3.2' => ['ref-siblings-3.2'];
     }
 
+    /** @return iterable<string, array{string, array<array-key, mixed>|string, string}> */
+    public static function provideA_malformed_side_of_a_collision_is_not_launderedCases(): iterable
+    {
+        yield 'bound' => ['/bad-bound', 'abcde', 'minLength must be a non-negative integer'];
+        yield 'required' => ['/bad-required', ['1' => 'x'], 'required must be an array of strings'];
+        yield 'properties' => ['/bad-properties', [], 'properties must be an object'];
+        yield 'empty allOf' => ['/empty-allof', ['x' => 1], 'allOf must have at least one element'];
+    }
+
     #[Test]
     public function v31_applies_ref_sibling_keywords_to_the_resolved_target(): void
     {
@@ -560,27 +569,72 @@ class RefSiblingKeywordsTest extends TestCase
     }
 
     /**
-     * `minLength: "3"` is a spec error. Tightening it against a sibling bound
-     * would launder it into a valid schema and silence the validator.
+     * A schema resource embedded inside a document governs everything under
+     * it. A bare-fragment `$ref` jumps straight to its target, so the dialect
+     * of the resources it passes through has to be picked up on the way.
      */
     #[Test]
-    public function a_malformed_bound_is_not_laundered_by_the_merge(): void
+    public function an_enclosing_schema_resource_governs_the_fragment_it_contains(): void
     {
-        $schema = OpenApiSpecLoader::load('ref-siblings-malformed-3.1')['paths']['/bad-bound']['get']['responses']['200']['content']['application/json']['schema'];
+        $schema = OpenApiSpecLoader::load('ref-siblings-downstream-3.1')['paths']['/embedded']['get']['responses']['200']['content']['application/json']['schema'];
 
-        $this->assertSame('3', $schema['minLength']);
-        $this->assertSame([['minLength' => 4]], $schema['allOf']);
+        $this->assertSame(
+            ['type' => 'string'],
+            $schema['properties']['name'],
+            'the enclosing Draft 07 resource ignores $ref siblings, whatever the document root says',
+        );
+    }
 
+    /**
+     * Merging is only ever a rewrite of a well-formed schema. Every malformed
+     * side of a collision has to reach the validator as written — repairing it
+     * turns a spec error into a schema the validator accepts.
+     *
+     * @param array<array-key, mixed>|string $body
+     */
+    #[Test]
+    #[DataProvider('provideA_malformed_side_of_a_collision_is_not_launderedCases')]
+    public function a_malformed_side_of_a_collision_is_not_laundered(
+        string $path,
+        array|string $body,
+        string $expected,
+    ): void {
         $result = $this->validator->validate(
             'ref-siblings-malformed-3.1',
             'GET',
-            '/bad-bound',
+            $path,
             200,
-            'abcde',
+            $body,
             'application/json',
         );
+
         $this->assertFalse($result->isValid());
-        $this->assertStringContainsString('minLength must be a non-negative integer', $result->errors()[0]);
+        $this->assertStringContainsString($expected, $result->errors()[0]);
+    }
+
+    #[Test]
+    public function a_malformed_side_of_a_collision_keeps_both_declarations(): void
+    {
+        $paths = OpenApiSpecLoader::load('ref-siblings-malformed-3.1')['paths'];
+
+        $bound = $paths['/bad-bound']['get']['responses']['200']['content']['application/json']['schema'];
+        $this->assertSame('3', $bound['minLength'], 'the malformed bound is not tightened away');
+        $this->assertSame([['minLength' => 4]], $bound['allOf']);
+
+        $required = $paths['/bad-required']['get']['responses']['200']['content']['application/json']['schema'];
+        $this->assertSame(['1'], $required['required'], 'no loose-comparison union');
+        $this->assertSame([['required' => [1]]], $required['allOf']);
+
+        $properties = $paths['/bad-properties']['get']['responses']['200']['content']['application/json']['schema'];
+        $this->assertSame(
+            ['foo' => ['type' => 'string']],
+            $properties['properties'],
+            'a malformed list never becomes a property named 0',
+        );
+        $this->assertSame([['properties' => [['type' => 'integer']]]], $properties['allOf']);
+
+        $allOf = $paths['/empty-allof']['get']['responses']['200']['content']['application/json']['schema'];
+        $this->assertSame([], $allOf['allOf'][0]['allOf'], 'the empty branch list stays empty');
     }
 
     /** @param array<string, mixed> $body */

@@ -1,7 +1,7 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "Ref siblings — malformed sibling bounds (3.1)",
+    "title": "Ref siblings — malformed sides of a keyword collision (3.1)",
     "version": "1.0.0"
   },
   "paths": {
@@ -22,6 +22,72 @@
           }
         }
       }
+    },
+    "/bad-required": {
+      "get": {
+        "operationId": "getBadRequired",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequired",
+                  "required": [
+                    1
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/bad-properties": {
+      "get": {
+        "operationId": "getBadProperties",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadProperties",
+                  "properties": [
+                    {
+                      "type": "integer"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/empty-allof": {
+      "get": {
+        "operationId": "getEmptyAllOf",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmptyAllOf",
+                  "allOf": [
+                    {
+                      "required": [
+                        "x"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -29,6 +95,29 @@
       "BadBound": {
         "type": "string",
         "minLength": "3"
+      },
+      "BadRequired": {
+        "type": "object",
+        "required": [
+          "1"
+        ],
+        "properties": {
+          "1": {
+            "type": "string"
+          }
+        }
+      },
+      "BadProperties": {
+        "type": "object",
+        "properties": {
+          "foo": {
+            "type": "string"
+          }
+        }
+      },
+      "EmptyAllOf": {
+        "type": "object",
+        "allOf": []
       }
     }
   }
