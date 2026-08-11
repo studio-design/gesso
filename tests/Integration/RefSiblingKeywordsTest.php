@@ -58,6 +58,7 @@ class RefSiblingKeywordsTest extends TestCase
         yield 'required' => ['/bad-required', ['1' => 'x'], 'required must be an array of strings'];
         yield 'properties' => ['/bad-properties', [], 'properties must be an object'];
         yield 'empty allOf' => ['/empty-allof', ['x' => 1], 'allOf must have at least one element'];
+        yield 'list property' => ['/list-property', ['foo' => 'x'], 'must be a json schema'];
     }
 
     #[Test]
@@ -583,6 +584,13 @@ class RefSiblingKeywordsTest extends TestCase
             $schema['properties']['name'],
             'the enclosing Draft 07 resource ignores $ref siblings, whatever the document root says',
         );
+
+        $internal = OpenApiSpecLoader::load('ref-siblings-downstream-3.1')['paths']['/internal-embedded']['get']['responses']['200']['content']['application/json']['schema'];
+        $this->assertSame(
+            ['type' => 'string'],
+            $internal['properties']['name'],
+            'a same-document fragment passes through the same resources',
+        );
     }
 
     /**
@@ -635,6 +643,14 @@ class RefSiblingKeywordsTest extends TestCase
 
         $allOf = $paths['/empty-allof']['get']['responses']['200']['content']['application/json']['schema'];
         $this->assertSame([], $allOf['allOf'][0]['allOf'], 'the empty branch list stays empty');
+
+        $property = $paths['/list-property']['get']['responses']['200']['content']['application/json']['schema'];
+        $this->assertSame(
+            ['type' => 'string'],
+            $property['properties']['foo'],
+            'a property written as a JSON array is not merged in as keywords 0, 1, …',
+        );
+        $this->assertSame([['properties' => ['foo' => [['type' => 'integer']]]]], $property['allOf']);
     }
 
     /** @param array<string, mixed> $body */

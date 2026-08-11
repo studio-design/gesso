@@ -88,6 +88,30 @@
           }
         }
       }
+    },
+    "/list-property": {
+      "get": {
+        "operationId": "getListProperty",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadProperties",
+                  "properties": {
+                    "foo": [
+                      {
+                        "type": "integer"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {

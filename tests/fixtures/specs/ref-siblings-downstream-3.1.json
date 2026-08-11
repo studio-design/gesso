@@ -1,7 +1,7 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "Ref siblings \u2014 downstream consumers (3.1)",
+    "title": "Ref siblings — downstream consumers (3.1)",
     "version": "1.0.0"
   },
   "paths": {
@@ -359,6 +359,23 @@
           }
         }
       }
+    },
+    "/internal-embedded": {
+      "get": {
+        "operationId": "getInternalEmbedded",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LegacyResource/definitions/User"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -481,6 +498,24 @@
         "properties": {
           "foo": false,
           "bar": true
+        }
+      },
+      "PlainName": {
+        "type": "string"
+      },
+      "LegacyResource": {
+        "$id": "https://example.com/legacy-internal",
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "definitions": {
+          "User": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "$ref": "#/components/schemas/PlainName",
+                "minLength": 4
+              }
+            }
+          }
         }
       }
     }

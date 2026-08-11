@@ -166,6 +166,21 @@ class TypeCoercerTest extends TestCase
         ]));
     }
 
+    /**
+     * A union offering both is just `number`; leaving the redundant `integer`
+     * in front of it would coerce `3.14` towards an integer and fail.
+     */
+    #[Test]
+    public function a_union_of_integer_and_number_coerces_as_number(): void
+    {
+        $this->assertSame(3.14, TypeCoercer::coercePrimitive('3.14', ['type' => ['integer', 'number']]));
+
+        $this->assertSame(3.14, TypeCoercer::coercePrimitive('3.14', [
+            'type' => ['integer', 'number'],
+            'allOf' => [['type' => 'number']],
+        ]));
+    }
+
     #[Test]
     public function contradicting_types_coerce_nothing(): void
     {

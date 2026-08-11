@@ -393,11 +393,11 @@ final class OpenApiRefResolver
 
     /**
      * Adopt the dialect of the innermost schema resource that *encloses* the
-     * fragment a `$ref` points at. Jumping straight to the pointer target
-     * skips every embedded resource on the way down, so a document root
-     * declaring 2020-12 would govern a target sitting inside a Draft 07
-     * resource. The target's own `$schema` is left to {@see self::walk()},
-     * which only honours it in a Schema Object position.
+     * pointer a `$ref` names. Jumping straight to the target skips every
+     * embedded resource on the way down, so the document's own dialect would
+     * govern a target sitting inside, say, a Draft 07 resource. The target's
+     * own `$schema` is left to {@see self::walk()}, which only honours it in a
+     * Schema Object position.
      *
      * @see https://json-schema.org/draft/2020-12/json-schema-core#name-schema-resources
      *
@@ -521,6 +521,8 @@ final class OpenApiRefResolver
     private static function mergeRefSiblings(array $target, array $siblings, ?string $dialect): array
     {
         if (
+            !self::isJsonObject($target) ||
+            !self::isJsonObject($siblings) ||
             self::hasMalformedAllOf($target) ||
             self::hasMalformedAllOf($siblings) ||
             self::declaresForeignDialect($target, $dialect)
@@ -593,7 +595,7 @@ final class OpenApiRefResolver
         // same name apply to the same instance location, so they merge the way
         // a $ref and its siblings do.
         if (in_array($keyword, self::SUBSCHEMA_MAP_KEYS, true)) {
-            if (!self::isSchemaMap($target) || !self::isSchemaMap($sibling)) {
+            if (!self::isJsonObject($target) || !self::isJsonObject($sibling)) {
                 return [false, null];
             }
 
@@ -694,21 +696,24 @@ final class OpenApiRefResolver
         return [true, self::mergeRefSiblings((array) $target, (array) $sibling, $dialect)];
     }
 
+    /**
+     * A schema is a JSON object or a boolean. A malformed `[{…}]` merged as
+     * one would have its entries read as the keywords `0`, `1`, … — unknown
+     * keywords, which JSON Schema ignores, so the spec error disappears.
+     */
     private static function isSchemaShaped(mixed $schema): bool
     {
-        return is_array($schema) || is_bool($schema);
+        return is_bool($schema) || self::isJsonObject($schema);
     }
 
     /**
-     * A JSON object of subschemas. A JSON array decodes to a PHP list too, and
-     * merging one into a real map would turn a malformed `properties: [{…}]`
-     * into a property literally named `0` — a spec error laundered into a
-     * schema the validator happily accepts. (`{}` and `[]` are the same array
-     * after decoding; an empty map merges to the other side either way.)
+     * A decoded JSON object — what both a Schema Object and a map of them
+     * have to be. `{}` and `[]` are the same array after decoding, so an
+     * empty one counts; a non-empty list is a JSON array and neither.
      */
-    private static function isSchemaMap(mixed $map): bool
+    private static function isJsonObject(mixed $value): bool
     {
-        return is_array($map) && ($map === [] || !array_is_list($map));
+        return is_array($value) && ($value === [] || !array_is_list($value));
     }
 
     /**
@@ -1358,6 +1363,7 @@ final class OpenApiRefResolver
         // the target. Sibling keys alongside $ref are dropped here per OAS 3.0
         // ("any sibling elements of a $ref are ignored"); for 3.1/3.2 Schema
         // Objects the caller re-applies them around this result.
+        $context = self::enclosingResourceContext($root, $ref, $context);
         self::walk($target, $root, [...$chain, $chainKey], false, $context, $documentCache, isSchema: $targetIsSchema);
         $node = $target;
     }

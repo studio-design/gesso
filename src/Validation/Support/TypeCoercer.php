@@ -231,7 +231,28 @@ final class TypeCoercer
             }
         }
 
-        return array_values(array_unique($intersection));
+        return self::normalizeTypes($intersection);
+    }
+
+    /**
+     * Drop the types another member of the set already covers. A union
+     * offering both `integer` and `number` is just `number`, and leaving the
+     * redundant `integer` in front of it would coerce `3.14` towards an
+     * integer, fail, and reject a value the schema accepts.
+     *
+     * @param list<string> $types
+     *
+     * @return list<string>
+     */
+    private static function normalizeTypes(array $types): array
+    {
+        $types = array_values(array_unique($types));
+
+        if (!in_array('number', $types, true)) {
+            return $types;
+        }
+
+        return array_values(array_filter($types, static fn(string $type): bool => $type !== 'integer'));
     }
 
     /**
@@ -245,7 +266,9 @@ final class TypeCoercer
 
         // A malformed `type` constrains nothing we can read; leave the value
         // alone and let the validator report the schema.
-        return is_array($type) ? array_values(array_filter($type, is_string(...))) : null;
+        return is_array($type)
+            ? self::normalizeTypes(array_values(array_filter($type, is_string(...))))
+            : null;
     }
 
     /**
