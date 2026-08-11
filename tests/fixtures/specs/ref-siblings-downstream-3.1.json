@@ -376,6 +376,40 @@
           }
         }
       }
+    },
+    "/tuple-internal": {
+      "get": {
+        "operationId": "getTupleInternal",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LegacyResource/definitions/Tuple"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tuple-external": {
+      "get": {
+        "operationId": "getTupleExternal",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./ref-siblings-external/embedded.json#/$defs/Legacy/definitions/Tuple"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -515,6 +549,17 @@
                 "minLength": 4
               }
             }
+          },
+          "Tuple": {
+            "type": "array",
+            "items": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ]
           }
         }
       }

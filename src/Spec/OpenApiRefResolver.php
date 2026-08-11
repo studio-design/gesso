@@ -399,6 +399,11 @@ final class OpenApiRefResolver
      * own `$schema` is left to {@see self::walk()}, which only honours it in a
      * Schema Object position.
      *
+     * The pointer is resolved against the document, so the *referring* schema's
+     * resource has no say either: a `#/...` ref out of an embedded Draft 07
+     * resource lands back under the document's dialect unless an ancestor of
+     * the target says otherwise. Hence the reset before the descent.
+     *
      * @see https://json-schema.org/draft/2020-12/json-schema-core#name-schema-resources
      *
      * @param array<string, mixed> $root
@@ -408,6 +413,8 @@ final class OpenApiRefResolver
         string $internalRef,
         RefResolutionContext $context,
     ): RefResolutionContext {
+        $context = self::documentContext($root, $context);
+
         $pointer = substr($internalRef, 2);
         if ($pointer === '') {
             return $context;
@@ -431,6 +438,44 @@ final class OpenApiRefResolver
         }
 
         return $context;
+    }
+
+    /**
+     * Substitution lifts the target out of the resource that governed it, so a
+     * dialect it only *inherited* would be lost — and everything downstream
+     * would then read it under the dialect in force at the reference site. A
+     * Draft 07 tuple `items: [ ... ]` pulled into a 2020-12 document is the
+     * loud case: `items` there takes a single schema, and a valid spec is
+     * rejected. Stamp the inherited dialect on the substituted schema so it
+     * stays a resource of its own.
+     *
+     * @param array<int|string, mixed> $target
+     *
+     * @return array<int|string, mixed>
+     */
+    private static function preserveResourceDialect(
+        array $target,
+        RefResolutionContext $targetContext,
+        RefResolutionContext $context,
+        bool $targetIsSchema,
+    ): array {
+        $dialect = $targetContext->schemaDialect;
+
+        if (!$targetIsSchema || $dialect === null || array_key_exists('$schema', $target)) {
+            return $target;
+        }
+
+        if (
+            !self::isJsonObject($target) ||
+            ($context->schemaDialect !== null &&
+                OpenApiSchemaDialect::sameDialect($dialect, $context->schemaDialect))
+        ) {
+            return $target;
+        }
+
+        $target['$schema'] = $dialect;
+
+        return $target;
     }
 
     /**
@@ -1363,9 +1408,9 @@ final class OpenApiRefResolver
         // the target. Sibling keys alongside $ref are dropped here per OAS 3.0
         // ("any sibling elements of a $ref are ignored"); for 3.1/3.2 Schema
         // Objects the caller re-applies them around this result.
-        $context = self::enclosingResourceContext($root, $ref, $context);
-        self::walk($target, $root, [...$chain, $chainKey], false, $context, $documentCache, isSchema: $targetIsSchema);
-        $node = $target;
+        $targetContext = self::enclosingResourceContext($root, $ref, $context);
+        self::walk($target, $root, [...$chain, $chainKey], false, $targetContext, $documentCache, isSchema: $targetIsSchema);
+        $node = self::preserveResourceDialect($target, $targetContext, $context, $targetIsSchema);
     }
 
     /**
@@ -1559,7 +1604,7 @@ final class OpenApiRefResolver
         // siblings apply inside it is decided by *its* dialect, not the
         // entry document's. Walking a bare fragment never sees the root's
         // `$schema`, so read it here, before anything under it resolves.
-        $context = self::documentContext($newRoot, $context);
+        $documentContext = self::documentContext($newRoot, $context);
 
         if ($fragment !== '') {
             $internalRef = '#' . $fragment;
@@ -1591,9 +1636,9 @@ final class OpenApiRefResolver
                 );
             }
 
-            $context = self::enclosingResourceContext($newRoot, $internalRef, $context);
-            self::walk($target, $newRoot, [...$chain, $chainKey], false, $context, $documentCache, isSchema: $targetIsSchema);
-            $node = $target;
+            $targetContext = self::enclosingResourceContext($newRoot, $internalRef, $documentContext);
+            self::walk($target, $newRoot, [...$chain, $chainKey], false, $targetContext, $documentCache, isSchema: $targetIsSchema);
+            $node = self::preserveResourceDialect($target, $targetContext, $context, $targetIsSchema);
 
             return;
         }
@@ -1611,8 +1656,8 @@ final class OpenApiRefResolver
         }
 
         $target = $newRoot;
-        self::walk($target, $newRoot, [...$chain, $chainKey], false, $context, $documentCache, isSchema: $targetIsSchema);
-        $node = $target;
+        self::walk($target, $newRoot, [...$chain, $chainKey], false, $documentContext, $documentCache, isSchema: $targetIsSchema);
+        $node = self::preserveResourceDialect($target, $documentContext, $context, $targetIsSchema);
     }
 
     private static function normalizeEmptyObjectRefTarget(mixed $target): mixed

@@ -1,7 +1,9 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$defs": {
-    "Name": { "type": "string" },
+    "Name": {
+      "type": "string"
+    },
     "Legacy": {
       "$id": "https://example.com/legacy",
       "$schema": "http://json-schema.org/draft-07/schema#",
@@ -9,8 +11,22 @@
         "User": {
           "type": "object",
           "properties": {
-            "name": { "$ref": "#/$defs/Name", "minLength": 4 }
+            "name": {
+              "$ref": "#/$defs/Name",
+              "minLength": 4
+            }
           }
+        },
+        "Tuple": {
+          "type": "array",
+          "items": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            }
+          ]
         }
       }
     }

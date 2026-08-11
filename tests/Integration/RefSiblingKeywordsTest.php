@@ -61,6 +61,13 @@ class RefSiblingKeywordsTest extends TestCase
         yield 'list property' => ['/list-property', ['foo' => 'x'], 'must be a json schema'];
     }
 
+    /** @return iterable<string, array{string}> */
+    public static function provideAn_inherited_resource_dialect_survives_substitutionCases(): iterable
+    {
+        yield 'same document' => ['internal'];
+        yield 'external document' => ['external'];
+    }
+
     #[Test]
     public function v31_applies_ref_sibling_keywords_to_the_resolved_target(): void
     {
@@ -580,17 +587,44 @@ class RefSiblingKeywordsTest extends TestCase
         $schema = OpenApiSpecLoader::load('ref-siblings-downstream-3.1')['paths']['/embedded']['get']['responses']['200']['content']['application/json']['schema'];
 
         $this->assertSame(
-            ['type' => 'string'],
+            ['type' => 'string', '$schema' => 'https://json-schema.org/draft/2020-12/schema'],
             $schema['properties']['name'],
             'the enclosing Draft 07 resource ignores $ref siblings, whatever the document root says',
         );
 
         $internal = OpenApiSpecLoader::load('ref-siblings-downstream-3.1')['paths']['/internal-embedded']['get']['responses']['200']['content']['application/json']['schema'];
         $this->assertSame(
-            ['type' => 'string'],
+            ['type' => 'string', '$schema' => 'https://spec.openapis.org/oas/3.1/dialect/base'],
             $internal['properties']['name'],
-            'a same-document fragment passes through the same resources',
+            'a same-document fragment resets to the document dialect before the descent',
         );
+    }
+
+    /**
+     * Substitution lifts the target out of its resource, so an inherited
+     * dialect has to travel with it — a Draft 07 tuple `items` read as 2020-12
+     * turns a valid spec into `items must contain a valid json schema`.
+     *
+     * @param 'external'|'internal' $variant
+     */
+    #[Test]
+    #[DataProvider('provideAn_inherited_resource_dialect_survives_substitutionCases')]
+    public function an_inherited_resource_dialect_survives_substitution(string $variant): void
+    {
+        $path = '/tuple-' . $variant;
+        $schema = OpenApiSpecLoader::load('ref-siblings-downstream-3.1')['paths'][$path]['get']['responses']['200']['content']['application/json']['schema'];
+
+        $this->assertSame('http://json-schema.org/draft-07/schema#', $schema['$schema']);
+
+        $result = $this->validator->validate(
+            'ref-siblings-downstream-3.1',
+            'GET',
+            $path,
+            200,
+            ['a', 1],
+            'application/json',
+        );
+        $this->assertTrue($result->isValid(), 'a Draft 07 tuple is still read as a tuple');
     }
 
     /**

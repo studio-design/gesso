@@ -1680,9 +1680,9 @@ class OpenApiRefResolverTest extends TestCase
         ]);
 
         $this->assertSame(
-            ['type' => 'string'],
+            ['type' => 'string', '$schema' => 'https://spec.openapis.org/oas/3.1/dialect/base'],
             $resolved['components']['schemas']['Draft07']['properties']['name'],
-            'the resource dialect governs its own subtree',
+            'the resource dialect governs its own subtree; the target keeps the resource it came from',
         );
         $this->assertSame(
             ['type' => 'string', 'minLength' => 4],
