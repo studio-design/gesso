@@ -300,7 +300,7 @@ final class OpenApiRefResolver
             );
         }
 
-        $schemaDialect = self::documentDialect($spec);
+        $schemaDeclaration = self::documentDeclaration($spec);
 
         // After the guard above, allowRemoteRefs:true implies non-null
         // client + factory.
@@ -313,9 +313,9 @@ final class OpenApiRefResolver
                 $maxRemoteRefBytes,
                 $allowedLocalRefRoots,
                 $remoteAuthorization,
-                $schemaDialect,
+                $schemaDeclaration,
             )
-            : RefResolutionContext::filesystemOnly($sourceFile, $allowedLocalRefRoots, $schemaDialect);
+            : RefResolutionContext::filesystemOnly($sourceFile, $allowedLocalRefRoots, $schemaDeclaration);
 
         // $root is a frozen snapshot used for pointer lookups. PHP array
         // copy-on-write keeps it untouched as we mutate $spec via $node refs.
@@ -466,24 +466,19 @@ final class OpenApiRefResolver
     }
 
     /**
-     * Put a `$schema` declaration into force. A value that is not a URI string
-     * names no dialect anything can read, so it selects none: the conservative
-     * reading, and the one that keeps the resolver from acting on a `$schema`
-     * the converter is about to reject. The declaration itself is not lost —
-     * {@see self::preserveResourceDialect()} carries it to wherever the target
-     * ends up.
+     * Put a `$schema` declaration into force. A document that declares none
+     * inherits the caller's. The declaration is carried whole: a value that is
+     * not a URI string names no dialect anything can read — see
+     * {@see RefResolutionContext::declaresUnreadableDialect()} — but it still
+     * has to reach the converter that rejects it.
      *
      * @param array<string, mixed> $declaration
      */
     private static function dialectContext(array $declaration, RefResolutionContext $context): RefResolutionContext
     {
-        if (!array_key_exists('$schema', $declaration)) {
-            return $context;
-        }
-
-        $declared = $declaration['$schema'];
-
-        return $context->withSchemaDialect(is_string($declared) ? $declared : null);
+        return array_key_exists('$schema', $declaration)
+            ? $context->withSchemaDeclaration($declaration)
+            : $context;
     }
 
     /**
@@ -517,12 +512,17 @@ final class OpenApiRefResolver
             return $target;
         }
 
+        // Inside a resource whose own dialect cannot be read, no boundary can
+        // be asserted either — and stamping one would turn the target into a
+        // resource of its own, shielding the reference site from the
+        // declaration the converter has to reject.
+        if ($context->declaresUnreadableDialect()) {
+            return $target;
+        }
+
         $declared = $declaration['$schema'];
-        if (
-            is_string($declared) &&
-            is_string($context->schemaDialect) &&
-            OpenApiSchemaDialect::sameDialect($declared, $context->schemaDialect)
-        ) {
+        $dialect = $context->schemaDialect();
+        if (is_string($declared) && $dialect !== null && OpenApiSchemaDialect::sameDialect($declared, $dialect)) {
             // No boundary crossed; the reference site already reads it this way.
             return $target;
         }
@@ -977,7 +977,7 @@ final class OpenApiRefResolver
             self::resolveRef($node, $ref, $root, $chain, $context, $documentCache, $isSchema);
             if ($siblings !== null) {
                 self::walk($siblings, $root, $chain, false, $context, $documentCache, isSchema: true);
-                $node = self::mergeRefSiblings($node, $siblings, $context->schemaDialect);
+                $node = self::mergeRefSiblings($node, $siblings, $context->schemaDialect());
             }
             if ($implicitSchemaName !== null) {
                 $node[self::IMPLICIT_SCHEMA_NAME_EXTENSION] = $implicitSchemaName;

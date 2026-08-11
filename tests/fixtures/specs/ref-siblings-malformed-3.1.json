@@ -147,6 +147,40 @@
           }
         }
       }
+    },
+    "/bad-dialect-nested": {
+      "get": {
+        "operationId": "getBadDialectNested",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadDialect/definitions/Ref"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/unsupported-dialect": {
+      "get": {
+        "operationId": "getUnsupportedDialect",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnsupportedDialect/definitions/Ref"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -184,6 +218,23 @@
         "definitions": {
           "Plain": {
             "type": "string"
+          },
+          "Ref": {
+            "$ref": "#/components/schemas/PlainString",
+            "minLength": 4
+          }
+        }
+      },
+      "PlainString": {
+        "type": "string"
+      },
+      "UnsupportedDialect": {
+        "$schema": "https://example.com/custom",
+        "type": "string",
+        "definitions": {
+          "Ref": {
+            "$ref": "#/components/schemas/PlainString",
+            "minLength": 4
           }
         }
       }

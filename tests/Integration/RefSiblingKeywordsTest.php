@@ -61,6 +61,8 @@ class RefSiblingKeywordsTest extends TestCase
         yield 'list property' => ['/list-property', ['foo' => 'x'], 'must be a json schema'];
         yield 'dialect' => ['/bad-dialect', 'abc', 'Unsupported `$schema`: expected a URI string, got int'];
         yield 'dialect sibling' => ['/bad-dialect-sibling', 'abc', 'Unsupported `$schema`: expected a URI string, got int'];
+        yield 'dialect around a ref' => ['/bad-dialect-nested', 'abc', 'Unsupported `$schema`: expected a URI string, got int'];
+        yield 'unsupported dialect' => ['/unsupported-dialect', 'abc', "Unsupported JSON Schema dialect in `jsonSchemaDialect`: 'https://example.com/custom'"];
     }
 
     /** @return iterable<string, array{string}> */
@@ -689,6 +691,15 @@ class RefSiblingKeywordsTest extends TestCase
 
         $sibling = $paths['/bad-dialect-sibling']['get']['responses']['200']['content']['application/json']['schema'];
         $this->assertSame(123, $sibling['allOf'][0]['$schema'], 'an unreadable dialect is a resource boundary');
+
+        // Nothing inside the resource may claim a dialect of its own either:
+        // that would make the target a resource root and shield the reference
+        // site from the declaration the converter has to reject.
+        $nested = $paths['/bad-dialect-nested']['get']['responses']['200']['content']['application/json']['schema'];
+        $this->assertSame(['type' => 'string', '$schema' => 123], $nested);
+
+        $unsupported = $paths['/unsupported-dialect']['get']['responses']['200']['content']['application/json']['schema'];
+        $this->assertSame(['type' => 'string', '$schema' => 'https://example.com/custom'], $unsupported);
 
         $property = $paths['/list-property']['get']['responses']['200']['content']['application/json']['schema'];
         $this->assertSame(

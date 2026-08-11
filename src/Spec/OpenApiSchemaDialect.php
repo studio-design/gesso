@@ -58,12 +58,18 @@ final class OpenApiSchemaDialect
         return $dialect;
     }
 
-    public static function assertSupported(string $dialect, string $location = '$schema'): void
+    /** True when this package can read the dialect at all. */
+    public static function isSupported(string $dialect): bool
     {
-        if ($dialect === self::OAS_3_1 || preg_match(
+        return $dialect === self::OAS_3_1 || preg_match(
             '~^https?://json-schema\.org/draft(?:/|-)(?:06|07|2019-09|2020-12)/schema#?$~i',
             $dialect,
-        ) === 1) {
+        ) === 1;
+    }
+
+    public static function assertSupported(string $dialect, string $location = '$schema'): void
+    {
+        if (self::isSupported($dialect)) {
             return;
         }
 

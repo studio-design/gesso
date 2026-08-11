@@ -9,6 +9,9 @@ use Psr\Http\Message\RequestFactoryInterface;
 use Studio\Gesso\Internal\HttpRefLoader;
 use Studio\Gesso\Internal\RemoteAuthorization;
 
+use function array_key_exists;
+use function is_string;
+
 /**
  * Carries the per-resolution state that `OpenApiRefResolver::walk()` needs
  * but which doesn't change per recursion step (source file, HTTP wiring,
@@ -44,15 +47,17 @@ final class RefResolutionContext
         public readonly array $allowedLocalRefRoots,
         public readonly ?RemoteAuthorization $remoteAuthorization = null,
         /**
-         * The JSON Schema dialect currently in force — the document's, or a
-         * schema resource's own `$schema` for its subtree. It decides whether
-         * `$ref` siblings are applied alongside the resolved target (2019-09
-         * and later make `$ref` an in-place applicator) and, because dialects
-         * differ in far more than that, whether a `$ref` target that declares
-         * a dialect of its own can be merged into the referring schema at all.
-         * `null` when nothing in the document states one.
+         * The `$schema` declaration currently in force — the document's, or a
+         * schema resource's own for its subtree — as `['$schema' => <value>]`,
+         * or `[]` when nothing in the document states one. The *declaration*
+         * rather than the dialect, because a value that is not a URI string is
+         * not an absent one: it selects no dialect anything can read, and it
+         * still has to travel with a target substituted out of that resource
+         * so the converter reports it.
+         *
+         * @var array<string, mixed>
          */
-        public readonly ?string $schemaDialect = null,
+        public readonly array $schemaDeclaration = [],
     ) {}
 
     /**
@@ -60,11 +65,12 @@ final class RefResolutionContext
      * external refs. HTTP refs reject with `RemoteRefDisallowed`.
      *
      * @param list<string> $allowedLocalRefRoots
+     * @param array<string, mixed> $schemaDeclaration
      */
     public static function filesystemOnly(
         ?string $sourceFile = null,
         array $allowedLocalRefRoots = [],
-        ?string $schemaDialect = null,
+        array $schemaDeclaration = [],
     ): self {
         return new self(
             $sourceFile,
@@ -75,7 +81,7 @@ final class RefResolutionContext
             HttpRefLoader::DEFAULT_MAX_RESPONSE_BYTES,
             $allowedLocalRefRoots,
             null,
-            $schemaDialect,
+            $schemaDeclaration,
         );
     }
 
@@ -86,6 +92,7 @@ final class RefResolutionContext
      *
      * @param list<string> $allowedRemoteRefHosts
      * @param list<string> $allowedLocalRefRoots
+     * @param array<string, mixed> $schemaDeclaration
      */
     public static function withRemoteRefs(
         ClientInterface $client,
@@ -95,7 +102,7 @@ final class RefResolutionContext
         int $maxRemoteRefBytes = HttpRefLoader::DEFAULT_MAX_RESPONSE_BYTES,
         array $allowedLocalRefRoots = [],
         ?RemoteAuthorization $remoteAuthorization = null,
-        ?string $schemaDialect = null,
+        array $schemaDeclaration = [],
     ): self {
         return new self(
             $sourceFile,
@@ -106,8 +113,30 @@ final class RefResolutionContext
             $maxRemoteRefBytes,
             $allowedLocalRefRoots,
             $remoteAuthorization,
-            $schemaDialect,
+            $schemaDeclaration,
         );
+    }
+
+    /**
+     * The dialect in force, or `null` when none is declared or the declared
+     * value is not one this package can read — nothing may be assumed about a
+     * resource whose dialect is a spec error the converter is about to report.
+     */
+    public function schemaDialect(): ?string
+    {
+        $declared = $this->schemaDeclaration['$schema'] ?? null;
+
+        return is_string($declared) && OpenApiSchemaDialect::isSupported($declared) ? $declared : null;
+    }
+
+    /**
+     * True when a `$schema` is declared but names no readable dialect. It is
+     * then unknown rather than absent, so nothing that depends on knowing it —
+     * applying `$ref` siblings, asserting a resource boundary — may act.
+     */
+    public function declaresUnreadableDialect(): bool
+    {
+        return array_key_exists('$schema', $this->schemaDeclaration) && $this->schemaDialect() === null;
     }
 
     /**
@@ -116,16 +145,19 @@ final class RefResolutionContext
      */
     public function appliesRefSiblings(): bool
     {
-        return $this->schemaDialect !== null &&
-            OpenApiSchemaDialect::appliesRefSiblings($this->schemaDialect);
+        $dialect = $this->schemaDialect();
+
+        return $dialect !== null && OpenApiSchemaDialect::appliesRefSiblings($dialect);
     }
 
     /**
-     * Return a copy with the dialect replaced. Used when a Schema Object
+     * Return a copy with the declaration replaced. Used when a Schema Object
      * declares its own `$schema`, making it the root of a schema resource
      * whose subtree is read under that dialect instead.
+     *
+     * @param array<string, mixed> $schemaDeclaration
      */
-    public function withSchemaDialect(?string $schemaDialect): self
+    public function withSchemaDeclaration(array $schemaDeclaration): self
     {
         return new self(
             $this->sourceFile,
@@ -136,7 +168,7 @@ final class RefResolutionContext
             $this->maxRemoteRefBytes,
             $this->allowedLocalRefRoots,
             $this->remoteAuthorization,
-            $schemaDialect,
+            $schemaDeclaration,
         );
     }
 
@@ -158,7 +190,7 @@ final class RefResolutionContext
             $this->maxRemoteRefBytes,
             $this->allowedLocalRefRoots,
             $this->remoteAuthorization,
-            $this->schemaDialect,
+            $this->schemaDeclaration,
         );
     }
 }
