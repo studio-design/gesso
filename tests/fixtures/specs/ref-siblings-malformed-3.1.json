@@ -112,6 +112,41 @@
           }
         }
       }
+    },
+    "/bad-dialect": {
+      "get": {
+        "operationId": "getBadDialect",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadDialect/definitions/Plain"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/bad-dialect-sibling": {
+      "get": {
+        "operationId": "getBadDialectSibling",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadDialect",
+                  "minLength": 4
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -142,6 +177,15 @@
       "EmptyAllOf": {
         "type": "object",
         "allOf": []
+      },
+      "BadDialect": {
+        "$schema": 123,
+        "type": "string",
+        "definitions": {
+          "Plain": {
+            "type": "string"
+          }
+        }
       }
     }
   }

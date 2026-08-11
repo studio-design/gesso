@@ -59,6 +59,8 @@ class RefSiblingKeywordsTest extends TestCase
         yield 'properties' => ['/bad-properties', [], 'properties must be an object'];
         yield 'empty allOf' => ['/empty-allof', ['x' => 1], 'allOf must have at least one element'];
         yield 'list property' => ['/list-property', ['foo' => 'x'], 'must be a json schema'];
+        yield 'dialect' => ['/bad-dialect', 'abc', 'Unsupported `$schema`: expected a URI string, got int'];
+        yield 'dialect sibling' => ['/bad-dialect-sibling', 'abc', 'Unsupported `$schema`: expected a URI string, got int'];
     }
 
     /** @return iterable<string, array{string}> */
@@ -677,6 +679,16 @@ class RefSiblingKeywordsTest extends TestCase
 
         $allOf = $paths['/empty-allof']['get']['responses']['200']['content']['application/json']['schema'];
         $this->assertSame([], $allOf['allOf'][0]['allOf'], 'the empty branch list stays empty');
+
+        $dialect = $paths['/bad-dialect']['get']['responses']['200']['content']['application/json']['schema'];
+        $this->assertSame(
+            ['type' => 'string', '$schema' => 123],
+            $dialect,
+            'substitution re-attaches the resource declaration verbatim, malformed or not',
+        );
+
+        $sibling = $paths['/bad-dialect-sibling']['get']['responses']['200']['content']['application/json']['schema'];
+        $this->assertSame(123, $sibling['allOf'][0]['$schema'], 'an unreadable dialect is a resource boundary');
 
         $property = $paths['/list-property']['get']['responses']['200']['content']['application/json']['schema'];
         $this->assertSame(

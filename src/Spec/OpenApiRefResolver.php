@@ -392,52 +392,98 @@ final class OpenApiRefResolver
     }
 
     /**
-     * Adopt the dialect of the innermost schema resource that *encloses* the
-     * pointer a `$ref` names. Jumping straight to the target skips every
+     * The schema resource that governs the pointer a `$ref` names: the context
+     * its target is walked under, plus that resource's `$schema` declaration so
+     * substitution can re-attach it. Jumping straight to the target skips every
      * embedded resource on the way down, so the document's own dialect would
-     * govern a target sitting inside, say, a Draft 07 resource. The target's
-     * own `$schema` is left to {@see self::walk()}, which only honours it in a
-     * Schema Object position.
+     * otherwise govern a target sitting inside, say, a Draft 07 resource. The
+     * target's own `$schema` is left to {@see self::walk()}, which only honours
+     * it in a Schema Object position.
      *
      * The pointer is resolved against the document, so the *referring* schema's
      * resource has no say either: a `#/...` ref out of an embedded Draft 07
      * resource lands back under the document's dialect unless an ancestor of
-     * the target says otherwise. Hence the reset before the descent.
+     * the target says otherwise. Hence starting from the document's own.
      *
      * @see https://json-schema.org/draft/2020-12/json-schema-core#name-schema-resources
      *
      * @param array<string, mixed> $root
+     *
+     * @return array{0: RefResolutionContext, 1: array<string, mixed>}
      */
-    private static function enclosingResourceContext(
+    private static function enclosingResource(
         array $root,
         string $internalRef,
         RefResolutionContext $context,
-    ): RefResolutionContext {
-        $context = self::documentContext($root, $context);
-
+    ): array {
+        $declaration = self::documentDeclaration($root);
         $pointer = substr($internalRef, 2);
-        if ($pointer === '') {
+
+        if ($pointer !== '') {
+            $segments = explode('/', $pointer);
+            // The last segment is the target itself, not an ancestor.
+            array_pop($segments);
+
+            $node = $root;
+            foreach ($segments as $segment) {
+                $segment = self::unescapePointerSegment($segment);
+                if (!is_array($node) || !array_key_exists($segment, $node)) {
+                    break;
+                }
+
+                $node = $node[$segment];
+                if (is_array($node) && array_key_exists('$schema', $node)) {
+                    $declaration = ['$schema' => $node['$schema']];
+                }
+            }
+        }
+
+        return [self::dialectContext($declaration, $context), $declaration];
+    }
+
+    /**
+     * The `$schema` a document root states for itself: literally for a JSON
+     * Schema file, or derived from `jsonSchemaDialect` / the OAS version for an
+     * OpenAPI one. `[]` when it states neither.
+     *
+     * @param array<string, mixed> $root
+     *
+     * @return array<string, mixed>
+     */
+    private static function documentDeclaration(array $root): array
+    {
+        if (array_key_exists('$schema', $root)) {
+            return ['$schema' => $root['$schema']];
+        }
+
+        if (array_key_exists('openapi', $root)) {
+            $dialect = self::documentDialect($root);
+
+            return $dialect === null ? [] : ['$schema' => $dialect];
+        }
+
+        return [];
+    }
+
+    /**
+     * Put a `$schema` declaration into force. A value that is not a URI string
+     * names no dialect anything can read, so it selects none: the conservative
+     * reading, and the one that keeps the resolver from acting on a `$schema`
+     * the converter is about to reject. The declaration itself is not lost —
+     * {@see self::preserveResourceDialect()} carries it to wherever the target
+     * ends up.
+     *
+     * @param array<string, mixed> $declaration
+     */
+    private static function dialectContext(array $declaration, RefResolutionContext $context): RefResolutionContext
+    {
+        if (!array_key_exists('$schema', $declaration)) {
             return $context;
         }
 
-        $segments = explode('/', $pointer);
-        // The last segment is the target itself, not an ancestor.
-        array_pop($segments);
+        $declared = $declaration['$schema'];
 
-        $node = $root;
-        foreach ($segments as $segment) {
-            $segment = self::unescapePointerSegment($segment);
-            if (!is_array($node) || !array_key_exists($segment, $node)) {
-                return $context;
-            }
-
-            $node = $node[$segment];
-            if (is_array($node) && is_string($node['$schema'] ?? null)) {
-                $context = $context->withSchemaDialect($node['$schema']);
-            }
-        }
-
-        return $context;
+        return $context->withSchemaDialect(is_string($declared) ? $declared : null);
     }
 
     /**
@@ -446,56 +492,42 @@ final class OpenApiRefResolver
      * would then read it under the dialect in force at the reference site. A
      * Draft 07 tuple `items: [ ... ]` pulled into a 2020-12 document is the
      * loud case: `items` there takes a single schema, and a valid spec is
-     * rejected. Stamp the inherited dialect on the substituted schema so it
-     * stays a resource of its own.
+     * rejected. Re-attach the resource's own `$schema` declaration to the
+     * substituted schema so it stays a resource of its own — verbatim, so a
+     * malformed one still reaches the converter that rejects it instead of
+     * disappearing along with the resource it was written on.
      *
      * @param array<int|string, mixed> $target
+     * @param array<string, mixed> $declaration
      *
      * @return array<int|string, mixed>
      */
     private static function preserveResourceDialect(
         array $target,
-        RefResolutionContext $targetContext,
+        array $declaration,
         RefResolutionContext $context,
         bool $targetIsSchema,
     ): array {
-        $dialect = $targetContext->schemaDialect;
-
-        if (!$targetIsSchema || $dialect === null || array_key_exists('$schema', $target)) {
-            return $target;
-        }
-
         if (
-            !self::isJsonObject($target) ||
-            ($context->schemaDialect !== null &&
-                OpenApiSchemaDialect::sameDialect($dialect, $context->schemaDialect))
+            !$targetIsSchema ||
+            !array_key_exists('$schema', $declaration) ||
+            array_key_exists('$schema', $target) ||
+            !self::isJsonObject($target)
         ) {
             return $target;
         }
 
-        $target['$schema'] = $dialect;
-
-        return $target;
-    }
-
-    /**
-     * Re-decide the dialect for a document root: a JSON Schema file states it
-     * in `$schema`, an OpenAPI document in `jsonSchemaDialect` (defaulting per
-     * version). A document that declares neither inherits the caller's.
-     *
-     * @param array<string, mixed> $root
-     */
-    private static function documentContext(array $root, RefResolutionContext $context): RefResolutionContext
-    {
-        if (is_string($root['$schema'] ?? null)) {
-            return $context->withSchemaDialect($root['$schema']);
+        $declared = $declaration['$schema'];
+        if (
+            is_string($declared) &&
+            is_string($context->schemaDialect) &&
+            OpenApiSchemaDialect::sameDialect($declared, $context->schemaDialect)
+        ) {
+            // No boundary crossed; the reference site already reads it this way.
+            return $target;
         }
 
-        if (array_key_exists('openapi', $root)) {
-            return $context->withSchemaDialect(self::documentDialect($root));
-        }
-
-        return $context;
+        return $target + $declaration;
     }
 
     /**
@@ -614,10 +646,15 @@ final class OpenApiRefResolver
      */
     private static function declaresForeignDialect(array $target, ?string $dialect): bool
     {
-        $declared = $target['$schema'] ?? null;
+        if (!array_key_exists('$schema', $target)) {
+            return false;
+        }
 
-        return is_string($declared) &&
-            ($dialect === null || !OpenApiSchemaDialect::sameDialect($declared, $dialect));
+        $declared = $target['$schema'];
+
+        return !is_string($declared) ||
+            $dialect === null ||
+            !OpenApiSchemaDialect::sameDialect($declared, $dialect);
     }
 
     /**
@@ -923,8 +960,8 @@ final class OpenApiRefResolver
         // a schema resource with a dialect of its own. Whether `$ref` siblings
         // apply is a property of that dialect, so re-decide it here and let the
         // answer flow to this subtree only.
-        if ($isSchema && !$insideUserNamedMap && is_string($node['$schema'] ?? null)) {
-            $context = $context->withSchemaDialect($node['$schema']);
+        if ($isSchema && !$insideUserNamedMap && array_key_exists('$schema', $node)) {
+            $context = self::dialectContext(['$schema' => $node['$schema']], $context);
         }
 
         if (!$insideUserNamedMap && array_key_exists('$ref', $node)) {
@@ -1408,9 +1445,9 @@ final class OpenApiRefResolver
         // the target. Sibling keys alongside $ref are dropped here per OAS 3.0
         // ("any sibling elements of a $ref are ignored"); for 3.1/3.2 Schema
         // Objects the caller re-applies them around this result.
-        $targetContext = self::enclosingResourceContext($root, $ref, $context);
+        [$targetContext, $declaration] = self::enclosingResource($root, $ref, $context);
         self::walk($target, $root, [...$chain, $chainKey], false, $targetContext, $documentCache, isSchema: $targetIsSchema);
-        $node = self::preserveResourceDialect($target, $targetContext, $context, $targetIsSchema);
+        $node = self::preserveResourceDialect($target, $declaration, $context, $targetIsSchema);
     }
 
     /**
@@ -1604,7 +1641,8 @@ final class OpenApiRefResolver
         // siblings apply inside it is decided by *its* dialect, not the
         // entry document's. Walking a bare fragment never sees the root's
         // `$schema`, so read it here, before anything under it resolves.
-        $documentContext = self::documentContext($newRoot, $context);
+        $documentDeclaration = self::documentDeclaration($newRoot);
+        $documentContext = self::dialectContext($documentDeclaration, $context);
 
         if ($fragment !== '') {
             $internalRef = '#' . $fragment;
@@ -1636,9 +1674,9 @@ final class OpenApiRefResolver
                 );
             }
 
-            $targetContext = self::enclosingResourceContext($newRoot, $internalRef, $documentContext);
+            [$targetContext, $declaration] = self::enclosingResource($newRoot, $internalRef, $documentContext);
             self::walk($target, $newRoot, [...$chain, $chainKey], false, $targetContext, $documentCache, isSchema: $targetIsSchema);
-            $node = self::preserveResourceDialect($target, $targetContext, $context, $targetIsSchema);
+            $node = self::preserveResourceDialect($target, $declaration, $context, $targetIsSchema);
 
             return;
         }
@@ -1657,7 +1695,7 @@ final class OpenApiRefResolver
 
         $target = $newRoot;
         self::walk($target, $newRoot, [...$chain, $chainKey], false, $documentContext, $documentCache, isSchema: $targetIsSchema);
-        $node = self::preserveResourceDialect($target, $documentContext, $context, $targetIsSchema);
+        $node = self::preserveResourceDialect($target, $documentDeclaration, $context, $targetIsSchema);
     }
 
     private static function normalizeEmptyObjectRefTarget(mixed $target): mixed
