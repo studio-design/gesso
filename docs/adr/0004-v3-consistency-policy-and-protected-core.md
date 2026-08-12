@@ -353,7 +353,12 @@ cutting it is not free: the first breaking commit on `main` turns the pending
 release into `3.0.0`, after which no further v2 release can be cut from the
 branch ([docs/versioning.md:216-221](../versioning.md)).
 
-The window opens when both the floor and one trigger hold.
+The window opens when both the floor and one trigger hold. The two are not
+symmetric: the floor can only ever *permit* the window, never open one, and a
+trigger is an event that has already happened rather than an item sitting in
+the milestone. If a trigger could be satisfied by the plan itself, the
+conjunction would collapse back into the floor's date and this amendment would
+have renamed a deadline rather than removed one.
 
 **Floor.** v1 has reached end of life (2027-07-01, per the
 [v1 maintenance lifecycle](../versioning.md#v1-maintenance-lifecycle)).
@@ -373,14 +378,28 @@ overlap. If a trigger fires before 2027-07-01 and waiting is genuinely worse
 than the third line, that is an amendment with its own reasoning, not a
 judgement call made under deadline.
 
-**Triggers.**
+**Triggers.** Both are worded as observations, because the obvious wording of
+the first one is circular. The v3.0 milestone already catalogues the changes
+that cannot be expressed additively — #505, #506, #507, #508, and #524 among
+them — so "a breaking change is planned" has been true since the milestone
+opened. A trigger satisfied by the catalogue is satisfied permanently, which
+is the collapse described above.
 
-1. A required change cannot be expressed additively. #506 is the standing
-   example: moving `phpunit/phpunit` from `require` to `require-dev` cannot be
-   done without breaking an install that relies on the transitive dependency.
+1. A change that cannot be expressed additively is *blocked on the window*: a
+   consumer reports the current state as a problem, it conflicts with a
+   dependency or security policy, or other work cannot proceed until it lands.
+   #506 is the likeliest candidate — moving `phpunit/phpunit` from `require`
+   to `require-dev` cannot be done without breaking an install that relies on
+   the transitive dependency — but it does not fire by being scoped and
+   sitting in the milestone, which it already is and has been. It fires when
+   someone who carries the production requirement reports it as an actual
+   problem.
 2. The deprecated surface starts costing more than deferring it saves. The
-   operational test is that a change has to be implemented twice, once against
-   the old surface and once against the new one.
+   operational test is that a change *had to be* implemented twice, once
+   against the old surface and once against the new one. Carrying the
+   deprecation bridge does not count on its own: that cost is what the
+   sequencing amendment already decided to pay, so spending it is the plan
+   working, not evidence against it.
 
 This amendment changes *when* the deletion happens, not *whether* it does. The
 sequencing amendment already decided that v3.0 deletes; nothing here reopens
