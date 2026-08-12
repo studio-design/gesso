@@ -250,7 +250,12 @@ The three channels a spelling can take:
 - **`accepted-spelling`** — the spelling keeps working. The `[Gesso]` warning
   channel through `Studio\Gesso\Internal\LegacyIdentity`, described below.
 - **`unchanged-spelling`** — nothing is removed; listed only so the gate can
-  account for every ADR row.
+  account for every ADR row. This is the one channel that stages nothing and
+  counts toward nothing, so membership is a hand-written list in
+  `V3RenameRegistryTest`, not a property of the entry. Keeping a *name* is not
+  enough: `baseline_stale` and the two `--strict-*` flags keep theirs while
+  replacing the value they accept, which is a removal to anyone who wrote the
+  old value down, so they take the `deprecation` channel.
 
 ### Renamed spellings still accepted
 

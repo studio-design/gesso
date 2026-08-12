@@ -168,7 +168,7 @@ become 26 keys in one file.
 | `validation.format` | `validation_output` |
 | `validation.max_errors` | Laravel `max_errors` |
 | `validation.enforce_discriminator` | `enforce_discriminator` (extension + Laravel) |
-| `validation.acknowledged_unvalidatable_schemes` | same name, both surfaces |
+| `validation.acknowledged_unvalidatable_schemes` | `acknowledged_unvalidatable_schemes` (same name, both surfaces) |
 | `validation.skip_response_codes` | Laravel `skip_response_codes` |
 | `validation.skip_request_validation_response_codes` | Laravel `skip_request_validation_response_codes` |
 | `strict.required` = `['run' => …, 'per_call' => …]` | `strict_required`, `strict_required_per_call` |

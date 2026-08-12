@@ -60,6 +60,23 @@ final class V3RenameRegistryTest extends TestCase
     private const ADR = '/docs/adr/0005-v3-configuration-and-cli-naming.md';
     private const CHANNELS = ['deprecation', 'accepted-spelling', 'unchanged-spelling'];
 
+    /**
+     * The only spelling entitled to the `unchanged-spelling` channel.
+     *
+     * Deriving this from the ADR does not work, and the failed attempt is
+     * worth recording. Four rows name the same spelling in both columns, but
+     * three of them — `baseline_stale` and the two `--strict-*` flags — keep
+     * the name while replacing the value it accepts, which is a removal to
+     * everyone who wrote the old value down. The distinction lives in the
+     * value grammar the ADR spells out (`--strict-required="run=…,per_call=…"`
+     * against a bare `--strict-required`), and telling that apart from a mere
+     * placeholder like `--output-file=<path>` is a guess a parser should not
+     * be making. One name, listed by hand, is the honest form: this channel
+     * stages nothing and counts toward nothing, so entry into it should cost a
+     * deliberate edit here.
+     */
+    private const UNCHANGED_SPELLINGS = ['--output-file'];
+
     #[Test]
     public function every_old_spelling_the_adr_names_is_listed(): void
     {
@@ -74,10 +91,68 @@ final class V3RenameRegistryTest extends TestCase
     }
 
     #[Test]
+    public function every_replacement_points_where_the_adr_points(): void
+    {
+        foreach ($this->adrRows() as $spelling => $v3Names) {
+            $entry = $this->renames()[$spelling] ?? null;
+            if ($entry === null) {
+                continue; // Reported by every_old_spelling_the_adr_names_is_listed.
+            }
+
+            $this->assertIsString($entry['replacement'], $spelling . '.replacement');
+
+            // Without this the two fixtures only ever agree with each other,
+            // so a replacement can name anything at all — including a v3 key
+            // that does not exist — and a staged pair can be walked somewhere
+            // else wholesale by editing both files together.
+            if ($v3Names === []) {
+                // `— removed —` rows name no successor, so the fixture has to
+                // say so rather than invent one.
+                $this->assertStringStartsWith('none', $entry['replacement'], sprintf(
+                    'ADR 0005 removes %s outright, so its replacement cannot name a v3 target.',
+                    $spelling,
+                ));
+
+                continue;
+            }
+
+            $named = array_filter(
+                $v3Names,
+                static fn(string $v3Name): bool => str_contains($entry['replacement'], $v3Name),
+            );
+
+            $this->assertNotSame([], $named, sprintf(
+                "%s is replaced by \"%s\", which names none of the v3 targets ADR 0005 gives its row:\n  %s",
+                $spelling,
+                $entry['replacement'],
+                implode("\n  ", $v3Names),
+            ));
+        }
+    }
+
+    #[Test]
+    public function no_entry_sits_outside_both_gates(): void
+    {
+        $adr = $this->adrSpellings();
+        $accepted = array_keys(array_merge(LegacyIdentity::ENV_NAMES, LegacyIdentity::COMMAND_NAMES));
+
+        $ungated = array_values(array_diff(array_keys($this->renames()), $adr, $accepted));
+
+        // Two checks hold this fixture to its sources — the ADR tables and
+        // LegacyIdentity's maps — and both compare against a set they read
+        // elsewhere. An entry belonging to neither source answers to nothing:
+        // deleting it passes, which is how a spelling stops being tracked
+        // without anyone deciding to stop tracking it.
+        $this->assertSame([], $ungated, sprintf(
+            'These entries are checked by neither the ADR scan nor LegacyIdentity, so deleting them '
+            . "would go unnoticed. Make the ADR name the spelling instead of describing it:\n  %s",
+            implode("\n  ", $ungated),
+        ));
+    }
+
+    #[Test]
     public function every_entry_declares_a_channel_and_a_removal(): void
     {
-        $survivors = $this->adrSurvivingSpellings();
-
         foreach ($this->renames() as $spelling => $entry) {
             foreach (['surface', 'replacement', 'channel', 'owner'] as $key) {
                 $this->assertArrayHasKey($key, $entry, $spelling);
@@ -95,10 +170,10 @@ final class V3RenameRegistryTest extends TestCase
             // rejects an empty `$removedIn`.
             //
             // `unchanged-spelling` is the one channel that stages nothing and
-            // counts toward nothing, so a mislabelled entry leaves the gate.
-            // Claiming it therefore has to be true twice over: locally, the
-            // entry replaces itself; and in the ADR, the row's v3 column names
-            // the same spelling back.
+            // counts toward nothing, so a mislabelled entry leaves the gate
+            // entirely. Membership is the hand-written list above, not a
+            // property of the entry, precisely so that relabelling an entry
+            // cannot let it in.
             if ($entry['channel'] === 'unchanged-spelling') {
                 $this->assertNull($entry['removed_in'], $spelling . '.removed_in');
 
@@ -108,8 +183,9 @@ final class V3RenameRegistryTest extends TestCase
                     $entry['replacement'],
                 ));
 
-                $this->assertContains($spelling, $survivors, sprintf(
-                    'ADR 0005 replaces %s, so it cannot be recorded as surviving v3 unchanged.',
+                $this->assertContains($spelling, self::UNCHANGED_SPELLINGS, sprintf(
+                    '%s is not one of the spellings v3 carries over untouched. If it genuinely is, '
+                    . 'add it to V3RenameRegistryTest::UNCHANGED_SPELLINGS and say why in the PR.',
                     $spelling,
                 ));
 
@@ -282,23 +358,13 @@ final class V3RenameRegistryTest extends TestCase
         // a name.
         $this->assertNotContains('bearer', $spellings);
 
-        // The survivor derivation decides who may claim `unchanged-spelling`,
-        // so it needs its own guard: if it returned everything the channel
-        // would stop being checked, and if it returned nothing the row that
-        // legitimately uses it could never be recorded.
-        //
-        // Four rows keep their name. Only `--output-file` keeps its meaning
-        // too — the other three swap a bare value for the collapsed grammar,
-        // so the fixture puts them on `deprecation` instead. Surviving the
-        // rename is permission to claim the channel, not an instruction to.
-        $survivors = $this->adrSurvivingSpellings();
+        // The v3 column is read too, and `every_replacement_points_where_the_adr_points`
+        // is only as strong as what it finds there.
+        $rows = $this->adrRows();
 
-        $this->assertSame(
-            ['--output-file', '--strict-additional-properties', '--strict-required', 'baseline_stale'],
-            $survivors,
-        );
-        $this->assertContains('--json-output', $spellings, 'a replaced flag is still scanned');
-        $this->assertNotContains('--json-output', $survivors, 'but it is not a survivor');
+        $this->assertSame(['spec.base_path'], $rows['spec_base_path']);
+        $this->assertSame(['--report'], $rows['--json-output'], 'a value placeholder is trimmed off');
+        $this->assertSame([], $rows['enum_spec_base_path'], 'the "— removed —" row names no successor');
     }
 
     /**
@@ -312,30 +378,6 @@ final class V3RenameRegistryTest extends TestCase
         sort($spellings);
 
         return $spellings;
-    }
-
-    /**
-     * The old spellings whose own row names them again in its v3 column, i.e.
-     * the ones ADR 0005 carries into v3 under the same name. Only these may be
-     * recorded as `unchanged-spelling`; a row may still choose the stricter
-     * `deprecation` channel, as `baseline_stale` does because its accepted
-     * value changes while its name does not.
-     *
-     * @return list<string>
-     */
-    private function adrSurvivingSpellings(): array
-    {
-        $survivors = [];
-
-        foreach ($this->adrRows() as $spelling => $v3Names) {
-            if (in_array($spelling, $v3Names, true)) {
-                $survivors[] = $spelling;
-            }
-        }
-
-        sort($survivors);
-
-        return $survivors;
     }
 
     /**

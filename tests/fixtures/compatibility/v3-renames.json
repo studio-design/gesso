@@ -71,8 +71,7 @@
             "channel": "deprecation",
             "removed_in": "3.0",
             "owner": "#501",
-            "deprecation_id": null,
-            "$comment": "ADR 0005's table cell reads 'same name, both surfaces' with no backticked spelling, so the ADR scan cannot derive this row. The flat key still moves under `validation.`, so it is a rename like the rest and is listed by hand."
+            "deprecation_id": null
         },
         "skip_response_codes": {
             "surface": "config-key",
