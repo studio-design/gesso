@@ -334,3 +334,51 @@ is added under an old naming scheme — every flat addition grows the
 deprecation surface this milestone exists to shrink (observed: the sidecar
 envelope grew from six versions to eight while #505 sat open). New surfaces
 carry their ADR 0005 names from the start.
+
+### 2026-08-12 — the v3.0 window opens on a condition, not a date
+
+The sequencing amendment above says the v3.0 window is time-boxed. That is
+retained as a *scope* rule — an issue that does not fit still moves to v3.1
+rather than extending the window — and retracted as a *scheduling* rule. No
+date opens the window.
+
+The reason is what that amendment already established. If the adopter-visible
+value ships in the v2 minors, then v3.0's own payload is deletion. Two items
+are the exception: #506 removes `phpunit/phpunit` from the production
+requirement, and #508's breaking half changes the compared set. Everything
+else on the list returns nothing to an adopter — it reduces the surface this
+repository maintains, which is a maintainer benefit. A date attached to that
+payload creates pressure to cut a release adopters gain nothing from, and
+cutting it is not free: the first breaking commit on `main` turns the pending
+release into `3.0.0`, after which no further v2 release can be cut from the
+branch ([docs/versioning.md:216-221](../versioning.md)).
+
+The window opens when both the floor and one trigger hold.
+
+**Floor.** v1 has left active maintenance (2026-12-31, per the
+[v1 maintenance lifecycle](../versioning.md#v1-maintenance-lifecycle)).
+Opening the window earlier puts three lines under simultaneous maintenance,
+and the backport procedure in that section — cherry-pick from `main` into a
+branch based on the maintenance line — is written for two. A trigger alone
+does not open the window while v1 is still in active maintenance.
+
+**Triggers.**
+
+1. A required change cannot be expressed additively. #506 is the standing
+   example: moving `phpunit/phpunit` from `require` to `require-dev` cannot be
+   done without breaking an install that relies on the transitive dependency.
+2. The deprecated surface starts costing more than deferring it saves. The
+   operational test is that a change has to be implemented twice, once against
+   the old surface and once against the new one.
+
+Measured on 2026-08-12, both Composer packages report 0 dependents
+(`studio-design/gesso`, `studio-design/openapi-contract-testing`), so the
+migration cost of the deletion is near zero today and rises with adoption.
+That argues for deleting early, and it is why this amendment changes *when*
+the deletion happens rather than *whether* it does.
+
+What does not change is the work order. Every rename still ships additively in
+a v2 minor carrying its deprecation, exactly as the sequencing amendment
+requires. The intent is that v3.0 stays permanently ready to cut: once the
+last deprecation has shipped, it is the removal of the old names plus a tag.
+This amendment holds that option open; it does not defer the work behind it.
