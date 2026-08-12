@@ -6,6 +6,7 @@ This library follows [Semantic Versioning 2.0](https://semver.org/). v1.0.0 is t
 - [What's NOT covered by SemVer](#whats-not-covered-by-semver)
 - [Deprecation policy](#deprecation-policy)
 - [Support policy](#support-policy)
+- [v2 maintenance lifecycle](#v2-maintenance-lifecycle)
 - [v1 maintenance lifecycle](#v1-maintenance-lifecycle)
 - [Release checklist](#release-checklist)
 
@@ -251,9 +252,48 @@ resolves to the same value with no behaviour difference. The map lives in
 | Laravel (optional adapter) | Whatever `orchestra/testbench` `^9 \|\| ^10 \|\| ^11` supports. |
 
 After v2 stable, v2 bug fixes and security updates land on its latest minor.
-The v1 line follows the maintenance lifecycle below. Neither major maintains
+Each line follows its maintenance lifecycle below. Neither major maintains
 older minor branches; upgrade to the latest minor of the selected major to
 receive fixes.
+
+## v2 maintenance lifecycle
+
+v3.0 has no scheduled date: its window opens on a condition rather than a
+calendar deadline, recorded in
+[ADR 0004](adr/0004-v3-consistency-policy-and-protected-core.md#2026-08-12--the-v30-window-opens-on-a-condition-not-a-date).
+This line's support is therefore anchored to the v3.0.0 release rather than to
+fixed dates.
+
+| Period | Ends | Accepted changes |
+| --- | --- | --- |
+| Active maintenance | 12 months after v3.0.0 is released, and no earlier than 2028-07-01 | Security fixes, backward-compatible bug fixes, and critical ecosystem interoperability fixes |
+| Security maintenance | 6 months after active maintenance ends | Security fixes only; non-security changes require evidence that they are necessary to ship a security fix safely |
+| End of life | when security maintenance ends | No releases or support commitment |
+
+**Adopting v2 today does not carry an unknown support horizon.** The earliest
+v3.0.0 can be released is 2027-07-01, because the ADR 0004 window cannot open
+before v1 reaches end of life. Twelve months after that is 2028-07-01, so that
+is the earliest date active maintenance can end, and 2029-01-01 the earliest
+end of life.
+
+The 2028-07-01 floor in the table restates that derived date as a commitment
+of this document. It is not there to bind the relative rule — it cannot, since
+the two are equal by construction today — but to make the guarantee
+independent: shortening it requires changing this table, so amending ADR 0004
+cannot quietly shorten how long v2 is supported.
+
+The window is longer than the one v1 received — v1 entered security
+maintenance about five months after v2.0.0 shipped — and the difference is
+deliberate. v1 was the pre-rename line under a package that is now
+[marked abandoned][composer-abandoned], and its migration path is a package
+swap documented in [migration/v2.md](migration/v2.md). v2 is the line adopters
+are asked to build on.
+
+The anchor is relative because a calendar one decouples from the release it
+describes: the v1 table below carries a note that its dates do not move
+automatically if the v2 schedule changes, which is a manual obligation this
+line avoids by construction. When v3.0.0 ships, the resolved dates are
+recorded in this section by the same PR that closes the v3 window.
 
 ## v1 maintenance lifecycle
 

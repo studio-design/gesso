@@ -334,3 +334,115 @@ is added under an old naming scheme — every flat addition grows the
 deprecation surface this milestone exists to shrink (observed: the sidecar
 envelope grew from six versions to eight while #505 sat open). New surfaces
 carry their ADR 0005 names from the start.
+
+### 2026-08-12 — the v3.0 window opens on a condition, not a date
+
+The sequencing amendment above says the v3.0 window is time-boxed. That is
+retained as a *scope* rule — an issue that does not fit still moves to v3.1
+rather than extending the window — and retracted as a *scheduling* rule. No
+date opens the window.
+
+The reason is what that amendment already established. If the adopter-visible
+value ships in the v2 minors, then v3.0's own payload is deletion. Two items
+are the exception: #506 removes `phpunit/phpunit` from the production
+requirement, and #508's breaking half changes the compared set. Everything
+else on the list returns nothing to an adopter — it reduces the surface this
+repository maintains, which is a maintainer benefit. A date attached to that
+payload creates pressure to cut a release adopters gain nothing from, and
+cutting it is not free: the first breaking commit on `main` turns the pending
+release into `3.0.0`, after which no further v2 release can be cut from the
+branch ([docs/versioning.md:216-221](../versioning.md)).
+
+The window opens when the floor and a trigger both hold **and** an amendment to
+this ADR records that they do. The three do different work: the floor only ever
+*permits* the window, a trigger is a dated event rather than an item in the
+milestone, and the amendment is what actually opens it.
+
+The amendment requirement is the part that keeps a date from opening the window
+on its own. A condition that opens the window automatically is a deadline
+wearing different words — its release date is simply the earliest date on which
+the condition happens to be true, computed rather than announced. Requiring
+something to be written means the window cannot open while nobody has decided
+to open it.
+
+**Floor.** v1 has reached end of life (2027-07-01, per the
+[v1 maintenance lifecycle](../versioning.md#v1-maintenance-lifecycle)).
+Opening the window earlier puts three lines under simultaneous maintenance,
+and the backport procedure in that section — cherry-pick from `main` into a
+branch based on the maintenance line — is written for two. A trigger alone
+does not open the window while v1 still receives releases.
+
+The floor is v1's EOL rather than the end of its active maintenance
+(2026-12-31) because security maintenance is still maintenance: through
+2027-06-30 the `1.x` branch keeps taking security backports, so a v3.0 cut in
+that window would leave `main`, `2.x`, and `1.x` all live. Moving the floor
+six months later costs nothing this ADR is trying to buy — the window is
+condition-gated precisely because v3.0 has no adopter-visible deadline — and
+it is cheaper than defining a three-line backport procedure for a six-month
+overlap. If a trigger fires before 2027-07-01 and waiting is genuinely worse
+than the third line, that is an amendment with its own reasoning, not a
+judgement call made under deadline.
+
+**Triggers.** Each one is an event with a date. Standing conditions are
+excluded deliberately: a standing condition is true from the moment it is
+written down and is therefore satisfied permanently, so a window gated on one
+opens the instant the floor arrives — the collapse described above, reached by
+a different route.
+
+Two standing conditions in particular do not count, because both are already
+recorded and would otherwise fire on day one:
+
+- The v3.0 milestone catalogues the changes that cannot be expressed additively
+  (#505, #506, #507, #508, #524 among them), so "a breaking change is planned"
+  has been true since the milestone opened.
+- #506 has recorded since it was filed that a runner in `require` contradicts
+  `AGENTS.md`'s "Runtime dependencies are deliberately small" and two README
+  claims. That contradiction is the reason the issue exists and has been
+  equally true every day since; it is not news, and news is what a trigger is.
+
+The triggers:
+
+1. Someone outside this repository reports the current state as a problem they
+   carry — not a preference, but a cost they can describe. For #506 that means
+   an install, an audit, or a dependency policy that the production
+   `phpunit/phpunit` requirement actually breaks for them.
+2. A security advisory lands that cannot be resolved additively.
+3. Work already in flight cannot proceed until the breaking change lands, with
+   the blocked work named.
+4. The deprecated surface starts costing more than deferring it saves. The
+   operational test is that a change *had to be* implemented twice, once
+   against the old surface and once against the new one. Carrying the
+   deprecation bridge does not count on its own: that cost is what the
+   sequencing amendment already decided to pay, so spending it is the plan
+   working, not evidence against it.
+
+**A trigger does not bank.** An event observed before the floor does not open
+the window when the floor arrives. The opening amendment states that a trigger
+holds as of the date the amendment is written and carries its evidence; an
+event that has since been resolved or gone quiet is not a trigger any more.
+This is also the re-evaluation point — there is exactly one, and it is the
+amendment.
+
+This amendment changes *when* the deletion happens, not *whether* it does. The
+sequencing amendment already decided that v3.0 deletes; nothing here reopens
+that.
+
+No adoption figure is offered in support, because the one that is easy to
+reach does not measure what it would need to. Packagist reported 0 dependents
+for both `studio-design/gesso` and `studio-design/openapi-contract-testing` on
+2026-08-12, but that field counts published packages that require them — not
+root applications, and not private consumers. This ADR's own evidence
+contradicts the reading that nobody would be migrated: [what v3 does not
+delete](#what-v3-does-not-delete) cites one consumer running enum drift over
+52 backed enums and another using the named contract checks across 2 files and
+246 lines, and the #508 amendment records a consumer gaining 10 newly compared
+bindings. Sizing the migration would need consumer-side measurement of the
+kind #508 already collected, per surface being deleted. Until that exists,
+timing the deletion by an unmeasured cost is not available as an argument in
+either direction.
+
+What does not change is the work order. Every rename still ships additively in
+a v2 minor carrying its deprecation, exactly as the sequencing amendment
+requires. The intent is that v3.0 stays permanently ready to cut: once the
+last deprecation has shipped, it is the removal of the old names plus a tag.
+This amendment holds that option open; it does not defer the work behind it.
