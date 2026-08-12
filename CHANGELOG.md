@@ -10,6 +10,21 @@ the README for the full surface contract.
 
 ## Unreleased
 
+## [2.6.0](https://github.com/studio-design/gesso/compare/v2.5.0...v2.6.0) (2026-08-12)
+
+
+### Features
+
+* **config:** give plain phpunit suites the laravel-only validation-policy keys ([#540](https://github.com/studio-design/gesso/issues/540)) ([5390c74](https://github.com/studio-design/gesso/commit/5390c745210b5ece938c9136611b44d41d09c569))
+* **config:** read gesso.php through a single validated loader ([#547](https://github.com/studio-design/gesso/issues/547)) ([c1ad97c](https://github.com/studio-design/gesso/commit/c1ad97cf0e57563f4ef912dba6c7be6e77b810b4))
+* **coverage:** record coverage inside the validators so the minimal core setup prints the table ([#538](https://github.com/studio-design/gesso/issues/538)) ([dbc4b54](https://github.com/studio-design/gesso/commit/dbc4b545593f13c9ba57ce60bd56fe378769bdc6))
+* **laravel:** deprecate auto_inject_dummy_bearer and document the credentials superset ([#541](https://github.com/studio-design/gesso/issues/541)) ([deba58e](https://github.com/studio-design/gesso/commit/deba58e10d04ae6e82a623bfbf2c991b60feee48))
+
+
+### Bug Fixes
+
+* **spec:** apply $ref sibling keywords in 3.1/3.2 schema objects ([#544](https://github.com/studio-design/gesso/issues/544)) ([0883d1f](https://github.com/studio-design/gesso/commit/0883d1f75b359ebab4104378f4fd3d7835fd3f65))
+
 ## [2.5.0](https://github.com/studio-design/gesso/compare/v2.4.0...v2.5.0) (2026-08-07)
 
 
