@@ -1,0 +1,69 @@
+name: Composer install
+description: >
+  Install Composer dependencies from a cached download directory, retrying the
+  install so one transient registry or CDN failure does not take the job down.
+
+inputs:
+  args:
+    description: >
+      Composer arguments, without the flags every call shares
+      (`--prefer-dist --no-interaction --no-progress`). Example:
+      `update --with phpunit/phpunit:^12.0 --prefer-lowest`.
+    required: false
+    default: install
+  working-directory:
+    description: Directory holding the composer.json to install.
+    required: false
+    default: .
+  cache-key:
+    description: >
+      Discriminator for the cache key, so jobs that resolve to different
+      package versions keep a cache line each instead of overwriting one.
+    required: false
+    default: default
+
+runs:
+  using: composite
+  steps:
+    - name: Locate the Composer download cache
+      id: composer-cache
+      shell: bash
+      run: echo "dir=$(composer config --global cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+    - name: Restore the Composer download cache
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.composer-cache.outputs.dir }}
+        # No composer.lock is committed — this is a library, so every job
+        # resolves from the manifests. That is what the key hashes. The cached
+        # files are content-addressed per package version, so even a restore
+        # from an older key still spares most of the downloads; the prefix
+        # fallbacks below are what make that likely.
+        key: composer-files-${{ runner.os }}-${{ inputs.cache-key }}-${{ hashFiles('**/composer.json') }}
+        restore-keys: |
+          composer-files-${{ runner.os }}-${{ inputs.cache-key }}-
+          composer-files-${{ runner.os }}-
+
+    - name: Install dependencies
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        COMPOSER_ARGS: ${{ inputs.args }}
+      run: |
+        read -r -a args <<< "$COMPOSER_ARGS"
+
+        # Retrying every failure rather than only the transport ones is safe:
+        # dependency resolution is deterministic, so a genuine conflict fails
+        # all three attempts and still reports. Only the network is flaky.
+        for attempt in 1 2 3; do
+          if composer "${args[@]}" --prefer-dist --no-interaction --no-progress; then
+            exit 0
+          fi
+
+          if [ "${attempt}" -lt 3 ]; then
+            echo "::warning::composer ${COMPOSER_ARGS} failed (attempt ${attempt}/3), retrying"
+            sleep "$((attempt * 10))"
+          fi
+        done
+
+        exit 1

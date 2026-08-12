@@ -49,12 +49,12 @@ jobs:
           coverage: none
 
       - name: Install dependencies
-        run: |
-          if [ "${{ matrix.deps }}" = "lowest" ]; then
-            composer update --with "phpunit/phpunit:^${{ matrix.phpunit }}.0" --prefer-lowest --prefer-dist --no-interaction --no-progress
-          else
-            composer update --with "phpunit/phpunit:^${{ matrix.phpunit }}.0" --prefer-dist --no-interaction --no-progress
-          fi
+        uses: ./.github/actions/composer-install
+        with:
+          args: >-
+            update --with phpunit/phpunit:^${{ matrix.phpunit }}.0
+            ${{ matrix.deps == 'lowest' && '--prefer-lowest' || '' }}
+          cache-key: php${{ matrix.php }}-phpunit${{ matrix.phpunit }}-${{ matrix.deps }}
 
       - name: Run tests
         run: vendor/bin/phpunit
@@ -91,7 +91,10 @@ jobs:
         # tree in the CI log, not as a "no-update succeeded but update
         # failed" two-step that obscures which constraint introduced the
         # conflict.
-        run: composer require --dev "pestphp/pest:^4.0" --prefer-dist --no-interaction --no-progress
+        uses: ./.github/actions/composer-install
+        with:
+          args: require --dev pestphp/pest:^4.0
+          cache-key: pest-php${{ matrix.php }}
 
       - name: Run Pest smoke tests
         run: composer test:pest
@@ -116,8 +119,10 @@ jobs:
           coverage: none
 
       - name: Install example dependencies
-        working-directory: examples/pest
-        run: composer install --prefer-dist --no-interaction --no-progress
+        uses: ./.github/actions/composer-install
+        with:
+          working-directory: examples/pest
+          cache-key: example-pest
 
       - name: Run example Pest suite
         working-directory: examples/pest
@@ -138,8 +143,10 @@ jobs:
           coverage: none
 
       - name: Install example dependencies
-        working-directory: examples/psr7
-        run: composer install --prefer-dist --no-interaction --no-progress
+        uses: ./.github/actions/composer-install
+        with:
+          working-directory: examples/psr7
+          cache-key: example-psr7
 
       - name: Run PSR-7 example
         working-directory: examples/psr7
@@ -170,8 +177,10 @@ jobs:
           coverage: none
 
       - name: Install quickstart dependencies
-        working-directory: examples/${{ matrix.example }}
-        run: composer install --prefer-dist --no-interaction --no-progress
+        uses: ./.github/actions/composer-install
+        with:
+          working-directory: examples/${{ matrix.example }}
+          cache-key: quickstart-${{ matrix.example }}
 
       - name: Run quickstart
         working-directory: examples/${{ matrix.example }}
@@ -248,7 +257,9 @@ jobs:
           coverage: none
 
       - name: Install dependencies
-        run: composer install --prefer-dist --no-interaction --no-progress
+        uses: ./.github/actions/composer-install
+        with:
+          cache-key: phpstan
 
       - name: Run PHPStan
         run: vendor/bin/phpstan analyse
@@ -268,7 +279,9 @@ jobs:
           coverage: none
 
       - name: Install dependencies
-        run: composer install --prefer-dist --no-interaction --no-progress
+        uses: ./.github/actions/composer-install
+        with:
+          cache-key: cs-fixer
 
       - name: Check code style
         run: vendor/bin/php-cs-fixer fix --dry-run --diff
@@ -311,7 +324,9 @@ jobs:
           coverage: none
 
       - name: Install dependencies
-        run: composer install --prefer-dist --no-interaction --no-progress
+        uses: ./.github/actions/composer-install
+        with:
+          cache-key: audit
 
       - name: Audit installed dependencies
         run: composer audit --abandoned=fail
@@ -341,7 +356,9 @@ jobs:
           npx --version
 
       - name: Install PHP dependencies
-        run: composer install --prefer-dist --no-interaction --no-progress
+        uses: ./.github/actions/composer-install
+        with:
+          cache-key: markdown-lint
 
       - name: Run markdown lint test
         run: vendor/bin/phpunit --filter MarkdownCoverageRendererLintTest
