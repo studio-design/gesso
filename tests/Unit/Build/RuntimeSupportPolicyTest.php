@@ -76,17 +76,24 @@ final class RuntimeSupportPolicyTest extends TestCase
         $this->assertSame('^4.0', $composer['require']['pestphp/pest'] ?? null);
     }
 
+    /**
+     * Matched on the `--with` selector rather than a whole command line: the
+     * install now runs through a composite action, so the `composer` prefix
+     * and the shared flags live there. Quoting around the constraint is
+     * optional for the same reason — what must not drift is that the matrix
+     * *selects* a PHPUnit major, instead of rewriting the root constraint.
+     */
     #[Test]
     public function ci_selects_phpunit_without_rewriting_the_root_constraint(): void
     {
         $workflow = file_get_contents(__DIR__ . '/../../../.github/workflows/ci.yml');
 
         $this->assertNotFalse($workflow);
-        $this->assertStringContainsString(
-            'composer update --with "phpunit/phpunit:^${{ matrix.phpunit }}.0"',
+        $this->assertMatchesRegularExpression(
+            '/update --with "?phpunit\/phpunit:\^\$\{\{ matrix\.phpunit \}\}\.0"?/',
             $workflow,
         );
-        $this->assertStringNotContainsString('composer require --dev "phpunit/phpunit:', $workflow);
+        $this->assertDoesNotMatchRegularExpression('/require --dev "?phpunit\/phpunit:/', $workflow);
     }
 
     #[Test]
