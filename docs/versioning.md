@@ -221,6 +221,37 @@ release must ship before the first breaking commit reaches `main`, because that
 commit turns the pending release into `3.0.0` and no further v2 release can be
 cut from the branch.
 
+### The rename checklist
+
+Two fixtures carry the v2 → v3 transition, and they are checked from opposite
+directions because each one is blind to the other's failure mode.
+
+| Fixture | Scanned from | Catches |
+| --- | --- | --- |
+| `tests/fixtures/compatibility/v2-deprecations.json` | `src/`, by `DeprecationRegistryTest` | a `Deprecations::notice()` call nobody registered |
+| `tests/fixtures/compatibility/v3-renames.json` | [ADR 0005](adr/0005-v3-configuration-and-cli-naming.md), by `V3RenameRegistryTest` | a rename that ships no notice at all |
+
+The first cannot see the second. A rename that simply never calls
+`Deprecations::notice()` emits nothing, so the scan finds nothing and the
+registry stays as correct — and as empty — as it was.
+
+`v3-renames.json` therefore starts from the ADR: it lists every old spelling
+ADR 0005's two tables name, the channel that spelling uses, and the deprecation
+id once one is staged. **A PR that renames a configuration key or a CLI flag
+updates this fixture in the same change.** Its `unstaged_count` is a ratchet —
+staging a deprecation lowers it, and the test fails in both directions, so
+neither an unstaged addition nor a stale number can sit unnoticed. Zero means
+every v3 rename has shipped its notice and the final v2 minor can be cut.
+
+The three channels a spelling can take:
+
+- **`deprecation`** — the spelling stops working. `E_USER_DEPRECATED` through
+  `Studio\Gesso\Internal\Deprecations`, with an entry in `v2-deprecations.json`.
+- **`accepted-spelling`** — the spelling keeps working. The `[Gesso]` warning
+  channel through `Studio\Gesso\Internal\LegacyIdentity`, described below.
+- **`unchanged-spelling`** — nothing is removed; listed only so the gate can
+  account for every ADR row.
+
 ### Renamed spellings still accepted
 
 A rename that keeps the old spelling working is not a removal, so it does not go

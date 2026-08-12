@@ -1,0 +1,498 @@
+{
+    "$comment": "Every spelling v3 renames or removes, transcribed from the two tables in docs/adr/0005-v3-configuration-and-cli-naming.md, plus the spellings that ADR names in prose rather than in a table cell. Checked by tests/Unit/Compatibility/V3RenameRegistryTest.php. This is the other direction of the deprecation registry: v2-deprecations.json is scanned code-first (issue #499), so a rename that simply never calls Deprecations::notice() is invisible to it. This file is scanned ADR-first, so it is not. A v3 rename PR stages its entries here and in the registry in the same change; see docs/versioning.md#deprecation-policy.",
+    "format_version": 1,
+    "$unstaged_count": "Old spellings that still have no deprecation staged. This is a ratchet: it may go down, never up. When it reaches 0 every v3 rename has shipped its notice, and the final v2 minor can be cut. Entries with channel `unchanged-spelling` are not counted — nothing about them is removed.",
+    "unstaged_count": 53,
+    "$channels": {
+        "deprecation": "The old spelling stops working in `removed_in`. Routed through Studio\\Gesso\\Internal\\Deprecations (E_USER_DEPRECATED); `deprecation_id` links to the matching v2-deprecations.json entry, and is null until the owning issue stages it.",
+        "accepted-spelling": "The old spelling keeps working through `removed_in`. Routed through Studio\\Gesso\\Internal\\LegacyIdentity's `[Gesso]` E_USER_WARNING channel instead, because a suite running failOnDeprecation must not fail for spelling a name that still works (docs/versioning.md#renamed-spellings-still-accepted).",
+        "unchanged-spelling": "The spelling itself survives v3 unchanged. Listed because the ADR table names it, so the gate can account for every row; nothing is staged and nothing is counted."
+    },
+    "renames": {
+        "spec_base_path": {
+            "surface": "config-key",
+            "replacement": "spec.base_path",
+            "channel": "deprecation",
+            "removed_in": "3.0",
+            "owner": "#501",
+            "deprecation_id": null
+        },
+        "default_spec": {
+            "surface": "config-key",
+            "replacement": "spec.default",
+            "channel": "deprecation",
+            "removed_in": "3.0",
+            "owner": "#501",
+            "deprecation_id": null
+        },
+        "specs": {
+            "surface": "config-key",
+            "replacement": "spec.names",
+            "channel": "deprecation",
+            "removed_in": "3.0",
+            "owner": "#501",
+            "deprecation_id": null
+        },
+        "strip_prefixes": {
+            "surface": "config-key",
+            "replacement": "spec.strip_prefixes",
+            "channel": "deprecation",
+            "removed_in": "3.0",
+            "owner": "#501",
+            "deprecation_id": null
+        },
+        "validation_output": {
+            "surface": "config-key",
+            "replacement": "validation.format",
+            "channel": "deprecation",
+            "removed_in": "3.0",
+            "owner": "#501",
+            "deprecation_id": null
+        },
+        "max_errors": {
+            "surface": "config-key",
+            "replacement": "validation.max_errors",
+            "channel": "deprecation",
+            "removed_in": "3.0",
+            "owner": "#501",
+            "deprecation_id": null
+        },
+        "enforce_discriminator": {
+            "surface": "config-key",
+            "replacement": "validation.enforce_discriminator",
+            "channel": "deprecation",
+            "removed_in": "3.0",
+            "owner": "#501",
+            "deprecation_id": null
+        },
+        "acknowledged_unvalidatable_schemes": {
+            "surface": "config-key",
+            "replacement": "validation.acknowledged_unvalidatable_schemes",
+            "channel": "deprecation",
+            "removed_in": "3.0",
+            "owner": "#501",
+            "deprecation_id": null,
+            "$comment": "ADR 0005's table cell reads 'same name, both surfaces' with no backticked spelling, so the ADR scan cannot derive this row. The flat key still moves under `validation.`, so it is a rename like the rest and is listed by hand."
+        },
+        "skip_response_codes": {
+            "surface": "config-key",
+            "replacement": "validation.skip_response_codes",
+            "channel": "deprecation",
+            "removed_in": "3.0",
+            "owner": "#501",
+            "deprecation_id": null
+        },
+        "skip_request_validation_response_codes": {
+            "surface": "config-key",
+            "replacement": "validation.skip_request_validation_response_codes",
+            "channel": "deprecation",
+            "removed_in": "3.0",
+            "owner": "#501",
+            "deprecation_id": null
+        },
+        "strict_required": {
+            "surface": "config-key",
+            "replacement": "strict.required['run']",
+            "channel": "deprecation",
+            "removed_in": "3.0",
+            "owner": "#502",
+            "deprecation_id": null
+        },
+        "strict_required_per_call": {
+            "surface": "config-key",
+            "replacement": "strict.required['per_call']",
+            "channel": "deprecation",
+            "removed_in": "3.0",
+            "owner": "#502",
+            "deprecation_id": null
+        },
+        "strict_additional_properties": {
+            "surface": "config-key",
+            "replacement": "strict.additional_properties['run']",
+            "channel": "deprecation",
+            "removed_in": "3.0",
+            "owner": "#502",
+            "deprecation_id": null
+        },
+        "strict_additional_properties_per_call": {
+            "surface": "config-key",
+            "replacement": "strict.additional_properties['per_call']",
+            "channel": "deprecation",
+            "removed_in": "3.0",
+            "owner": "#502",
+            "deprecation_id": null
+        },
+        "min_endpoint_coverage": {
+            "surface": "config-key",
+            "replacement": "coverage.min_coverage['endpoint']",
+            "channel": "deprecation",
+            "removed_in": "3.0",
+            "owner": "#502",
+            "deprecation_id": null
+        },
+        "min_response_coverage": {
+            "surface": "config-key",
+            "replacement": "coverage.min_coverage['response']",
+            "channel": "deprecation",
+            "removed_in": "3.0",
+            "owner": "#502",
+            "deprecation_id": null
+        },
+        "min_sdk_exercise_coverage": {
+            "surface": "config-key",
+            "replacement": "coverage.min_coverage['sdk_exercise']",
+            "channel": "deprecation",
+            "removed_in": "3.0",
+            "owner": "#502",
+            "deprecation_id": null
+        },
+        "min_coverage_strict": {
+            "surface": "config-key",
+            "replacement": "coverage.min_coverage['strict']",
+            "channel": "deprecation",
+            "removed_in": "3.0",
+            "owner": "#502",
+            "deprecation_id": null
+        },
+        "output_file": {
+            "surface": "config-key",
+            "replacement": "coverage.report_output['markdown']",
+            "channel": "deprecation",
+            "removed_in": "3.0",
+            "owner": "#502",
+            "deprecation_id": null
+        },
+        "json_output": {
+            "surface": "config-key",
+            "replacement": "coverage.report_output['json']",
+            "channel": "deprecation",
+            "removed_in": "3.0",
+            "owner": "#502",
+            "deprecation_id": null
+        },
+        "junit_output": {
+            "surface": "config-key",
+            "replacement": "coverage.report_output['junit']",
+            "channel": "deprecation",
+            "removed_in": "3.0",
+            "owner": "#502",
+            "deprecation_id": null
+        },
+        "html_output": {
+            "surface": "config-key",
+            "replacement": "coverage.report_output['html']",
+            "channel": "deprecation",
+            "removed_in": "3.0",
+            "owner": "#502",
+            "deprecation_id": null
+        },
+        "console_output": {
+            "surface": "config-key",
+            "replacement": "coverage.console_report",
+            "channel": "deprecation",
+            "removed_in": "3.0",
+            "owner": "#502",
+            "deprecation_id": null
+        },
+        "sidecar_dir": {
+            "surface": "config-key",
+            "replacement": "coverage.sidecar_dir",
+            "channel": "deprecation",
+            "removed_in": "3.0",
+            "owner": "#501",
+            "deprecation_id": null
+        },
+        "baseline_file": {
+            "surface": "config-key",
+            "replacement": "baseline['violations']",
+            "channel": "deprecation",
+            "removed_in": "3.0",
+            "owner": "#502",
+            "deprecation_id": null
+        },
+        "coverage_baseline_file": {
+            "surface": "config-key",
+            "replacement": "baseline['coverage']",
+            "channel": "deprecation",
+            "removed_in": "3.0",
+            "owner": "#502",
+            "deprecation_id": null
+        },
+        "baseline_stale": {
+            "surface": "config-key",
+            "replacement": "baseline_stale['violations']",
+            "channel": "deprecation",
+            "removed_in": "3.0",
+            "owner": "#502",
+            "deprecation_id": null,
+            "$comment": "The spelling survives but the accepted value does not: the scalar becomes ['violations' => …, 'coverage' => …]. A consumer whose scalar stops being accepted needs the same notice as one whose key was renamed."
+        },
+        "coverage_baseline_stale": {
+            "surface": "config-key",
+            "replacement": "baseline_stale['coverage']",
+            "channel": "deprecation",
+            "removed_in": "3.0",
+            "owner": "#502",
+            "deprecation_id": null
+        },
+        "enum_drift_enabled": {
+            "surface": "config-key",
+            "replacement": "enum_drift.enabled",
+            "channel": "deprecation",
+            "removed_in": "3.0",
+            "owner": "#501",
+            "deprecation_id": null
+        },
+        "enum_drift_scan_namespaces": {
+            "surface": "config-key",
+            "replacement": "enum_drift.scan_namespaces",
+            "channel": "deprecation",
+            "removed_in": "3.0",
+            "owner": "#501",
+            "deprecation_id": null
+        },
+        "enum_drift_fail_on_drift": {
+            "surface": "config-key",
+            "replacement": "enum_drift.fail_on_drift",
+            "channel": "deprecation",
+            "removed_in": "3.0",
+            "owner": "#501",
+            "deprecation_id": null
+        },
+        "default_testsuite_as_full": {
+            "surface": "config-key",
+            "replacement": "phpunit.default_testsuite_as_full",
+            "channel": "deprecation",
+            "removed_in": "3.0",
+            "owner": "#501",
+            "deprecation_id": null
+        },
+        "auto_assert": {
+            "surface": "config-key",
+            "replacement": "laravel.auto_assert",
+            "channel": "deprecation",
+            "removed_in": "3.0",
+            "owner": "#501",
+            "deprecation_id": null
+        },
+        "auto_validate_request": {
+            "surface": "config-key",
+            "replacement": "laravel.auto_validate_request",
+            "channel": "deprecation",
+            "removed_in": "3.0",
+            "owner": "#501",
+            "deprecation_id": null
+        },
+        "auto_inject_dummy_credentials": {
+            "surface": "config-key",
+            "replacement": "laravel.auto_inject_dummy_credentials",
+            "channel": "deprecation",
+            "removed_in": "3.0",
+            "owner": "#501",
+            "deprecation_id": null
+        },
+        "auto_inject_dummy_bearer": {
+            "surface": "config-key",
+            "replacement": "laravel.auto_inject_dummy_credentials = 'bearer'",
+            "channel": "deprecation",
+            "removed_in": "3.0",
+            "owner": "#501",
+            "deprecation_id": "laravel.config.auto_inject_dummy_bearer"
+        },
+        "route_parity": {
+            "surface": "config-key",
+            "replacement": "laravel.route_parity",
+            "channel": "deprecation",
+            "removed_in": "3.0",
+            "owner": "#501",
+            "deprecation_id": null
+        },
+        "enum_spec_base_path": {
+            "surface": "config-key",
+            "replacement": "none — the second filesystem root is deleted, bindings resolve by spec component name",
+            "channel": "deprecation",
+            "removed_in": "3.0",
+            "owner": "#508",
+            "deprecation_id": null
+        },
+        "--output-file": {
+            "surface": "cli-flag",
+            "replacement": "--output-file",
+            "channel": "unchanged-spelling",
+            "removed_in": null,
+            "owner": "#507",
+            "deprecation_id": null,
+            "$comment": "Markdown-only today, any format under --format in v3. The spelling and every invocation that uses it keep working, so nothing is deprecated."
+        },
+        "--json-output": {
+            "surface": "cli-flag",
+            "replacement": "--report=json:<path>",
+            "channel": "deprecation",
+            "removed_in": "3.0",
+            "owner": "#507",
+            "deprecation_id": null
+        },
+        "--junit-output": {
+            "surface": "cli-flag",
+            "replacement": "--report=junit:<path>",
+            "channel": "deprecation",
+            "removed_in": "3.0",
+            "owner": "#507",
+            "deprecation_id": null
+        },
+        "--html-output": {
+            "surface": "cli-flag",
+            "replacement": "--report=html:<path>",
+            "channel": "deprecation",
+            "removed_in": "3.0",
+            "owner": "#507",
+            "deprecation_id": null
+        },
+        "--console-output": {
+            "surface": "cli-flag",
+            "replacement": "--console-report",
+            "channel": "deprecation",
+            "removed_in": "3.0",
+            "owner": "#507",
+            "deprecation_id": null
+        },
+        "--min-endpoint-coverage": {
+            "surface": "cli-flag",
+            "replacement": "--min-coverage=\"endpoint=…\"",
+            "channel": "deprecation",
+            "removed_in": "3.0",
+            "owner": "#507",
+            "deprecation_id": null
+        },
+        "--min-response-coverage": {
+            "surface": "cli-flag",
+            "replacement": "--min-coverage=\"response=…\"",
+            "channel": "deprecation",
+            "removed_in": "3.0",
+            "owner": "#507",
+            "deprecation_id": null
+        },
+        "--min-sdk-exercise-coverage": {
+            "surface": "cli-flag",
+            "replacement": "--min-coverage=\"sdk_exercise=…\"",
+            "channel": "deprecation",
+            "removed_in": "3.0",
+            "owner": "#507",
+            "deprecation_id": null
+        },
+        "--min-coverage-strict": {
+            "surface": "cli-flag",
+            "replacement": "--min-coverage=\"…,strict\"",
+            "channel": "deprecation",
+            "removed_in": "3.0",
+            "owner": "#507",
+            "deprecation_id": null
+        },
+        "--baseline-file": {
+            "surface": "cli-flag",
+            "replacement": "--baseline=\"violations=…\"",
+            "channel": "deprecation",
+            "removed_in": "3.0",
+            "owner": "#507",
+            "deprecation_id": null
+        },
+        "--coverage-baseline-file": {
+            "surface": "cli-flag",
+            "replacement": "--baseline=\"coverage=…\"",
+            "channel": "deprecation",
+            "removed_in": "3.0",
+            "owner": "#507",
+            "deprecation_id": null
+        },
+        "--coverage-baseline-stale": {
+            "surface": "cli-flag",
+            "replacement": "--baseline-stale=\"coverage=…\"",
+            "channel": "deprecation",
+            "removed_in": "3.0",
+            "owner": "#507",
+            "deprecation_id": null
+        },
+        "--strict-required": {
+            "surface": "cli-flag",
+            "replacement": "--strict-required=\"run=…,per_call=…\"",
+            "channel": "deprecation",
+            "removed_in": "3.0",
+            "owner": "#507",
+            "deprecation_id": null,
+            "$comment": "The flag name survives; its bare value form does not. A consumer passing the v2 value needs the notice."
+        },
+        "--strict-additional-properties": {
+            "surface": "cli-flag",
+            "replacement": "--strict-additional-properties=\"run=…,per_call=…\"",
+            "channel": "deprecation",
+            "removed_in": "3.0",
+            "owner": "#507",
+            "deprecation_id": null,
+            "$comment": "Same as --strict-required: the name survives, the bare value form does not."
+        },
+        "--specs": {
+            "surface": "cli-flag",
+            "replacement": "--spec-name=<name>, repeatable",
+            "channel": "deprecation",
+            "removed_in": "3.0",
+            "owner": "#507",
+            "deprecation_id": null
+        },
+        "--strip-prefixes": {
+            "surface": "cli-flag",
+            "replacement": "--strip-prefix=<p>, repeatable",
+            "channel": "deprecation",
+            "removed_in": "3.0",
+            "owner": "#507",
+            "deprecation_id": null
+        },
+        "--enum-spec-base-path": {
+            "surface": "cli-flag",
+            "replacement": "none — the second filesystem root is deleted, bindings resolve by spec component name",
+            "channel": "deprecation",
+            "removed_in": "3.0",
+            "owner": "#508",
+            "deprecation_id": null
+        },
+        "OPENAPI_VALIDATION_OUTPUT": {
+            "surface": "env-var",
+            "replacement": "GESSO_VALIDATION_FORMAT",
+            "channel": "accepted-spelling",
+            "removed_in": "4.0",
+            "owner": "#504",
+            "deprecation_id": null
+        },
+        "OPENAPI_CONSOLE_OUTPUT": {
+            "surface": "env-var",
+            "replacement": "GESSO_CONSOLE_OUTPUT",
+            "channel": "accepted-spelling",
+            "removed_in": "4.0",
+            "owner": "#504",
+            "deprecation_id": null
+        },
+        "OPENAPI_BASELINE_GENERATE": {
+            "surface": "env-var",
+            "replacement": "GESSO_BASELINE_GENERATE",
+            "channel": "accepted-spelling",
+            "removed_in": "4.0",
+            "owner": "#504",
+            "deprecation_id": null
+        },
+        "openapi:routes": {
+            "surface": "artisan-command",
+            "replacement": "gesso:routes",
+            "channel": "accepted-spelling",
+            "removed_in": "4.0",
+            "owner": "#504",
+            "deprecation_id": null
+        },
+        "openapi:stubs": {
+            "surface": "artisan-command",
+            "replacement": "gesso:stubs",
+            "channel": "accepted-spelling",
+            "removed_in": "4.0",
+            "owner": "#504",
+            "deprecation_id": null
+        }
+    }
+}
