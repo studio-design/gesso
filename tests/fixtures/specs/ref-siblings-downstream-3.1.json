@@ -1,0 +1,695 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Ref siblings — downstream consumers (3.1)",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/users/{id}": {
+      "get": {
+        "operationId": "getUser",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id",
+              "maximum": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "secret": {
+                      "$ref": "#/components/schemas/Secret",
+                      "minLength": 1
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createUser",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "serverId": {
+                    "$ref": "#/components/schemas/ServerId",
+                    "minimum": 1
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "ok"
+          }
+        }
+      }
+    },
+    "/pets": {
+      "get": {
+        "operationId": "listPets",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/Dog",
+                      "required": [
+                        "petType",
+                        "bark"
+                      ]
+                    },
+                    {
+                      "$ref": "#/components/schemas/Cat"
+                    }
+                  ],
+                  "discriminator": {
+                    "propertyName": "petType",
+                    "mapping": {
+                      "Cat": "#/components/schemas/Cat"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/form": {
+      "post": {
+        "operationId": "submitForm",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/FormBase",
+                "properties": {
+                  "bar": {
+                    "type": "integer"
+                  }
+                },
+                "unevaluatedProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "ok"
+          }
+        }
+      }
+    },
+    "/resource": {
+      "get": {
+        "operationId": "getResource",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Draft07Base",
+                  "unevaluatedProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/external": {
+      "get": {
+        "operationId": "getExternal",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./ref-siblings-external/draft07.json#/definitions/User"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/conditional": {
+      "get": {
+        "operationId": "getConditional",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IfBase",
+                  "if": {
+                    "required": [
+                      "kind"
+                    ]
+                  },
+                  "then": {
+                    "required": [
+                      "value"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/restated": {
+      "get": {
+        "operationId": "getRestated",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Sealed",
+                  "unevaluatedProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/bounds": {
+      "get": {
+        "operationId": "getBounds",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Bounded",
+                  "required": [
+                    "b"
+                  ],
+                  "properties": {
+                    "a": {
+                      "minLength": 4,
+                      "maxLength": 6
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/embedded": {
+      "get": {
+        "operationId": "getEmbedded",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./ref-siblings-external/embedded.json#/$defs/Legacy/definitions/User"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tuple": {
+      "get": {
+        "operationId": "getTuple",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Legacy2019",
+                  "prefixItems": [
+                    false
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/restated-dialect": {
+      "get": {
+        "operationId": "getRestatedDialect",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Restated2020",
+                  "minLength": 4
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/closed": {
+      "get": {
+        "operationId": "getClosed",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Closed",
+                  "properties": {
+                    "foo": true,
+                    "bar": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/widened/{id}": {
+      "get": {
+        "operationId": "getWidened",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ResourceId",
+              "type": [
+                "string",
+                "integer"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          }
+        }
+      }
+    },
+    "/resource/{id}": {
+      "get": {
+        "operationId": "getResourceById",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ResourceId",
+              "maximum": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          }
+        }
+      }
+    },
+    "/internal-embedded": {
+      "get": {
+        "operationId": "getInternalEmbedded",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LegacyResource/definitions/User"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tuple-internal": {
+      "get": {
+        "operationId": "getTupleInternal",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LegacyResource/definitions/Tuple"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tuple-external": {
+      "get": {
+        "operationId": "getTupleExternal",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./ref-siblings-external/embedded.json#/$defs/Legacy/definitions/Tuple"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sealed": {
+      "get": {
+        "operationId": "getSealed",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SealedObject",
+                  "properties": {
+                    "a": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "a"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sealed-property": {
+      "get": {
+        "operationId": "getSealedProperty",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SealedHolder",
+                  "properties": {
+                    "inner": {
+                      "properties": {
+                        "a": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "a"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sealed-narrowing": {
+      "get": {
+        "operationId": "getSealedNarrowing",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SealedObject",
+                  "properties": {
+                    "b": {
+                      "minLength": 3
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sealed-reference": {
+      "get": {
+        "operationId": "getSealedReference",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpenObject",
+                  "properties": {
+                    "a": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Id": {
+        "type": "integer"
+      },
+      "Secret": {
+        "type": "string",
+        "writeOnly": true
+      },
+      "ServerId": {
+        "type": "integer",
+        "readOnly": true
+      },
+      "Dog": {
+        "type": "object",
+        "required": [
+          "petType"
+        ],
+        "properties": {
+          "petType": {
+            "type": "string"
+          },
+          "bark": {
+            "type": "boolean"
+          }
+        }
+      },
+      "Cat": {
+        "type": "object",
+        "required": [
+          "petType",
+          "meow"
+        ],
+        "properties": {
+          "petType": {
+            "type": "string"
+          },
+          "meow": {
+            "type": "boolean"
+          }
+        }
+      },
+      "FormBase": {
+        "type": "object",
+        "properties": {
+          "foo": {
+            "type": "integer"
+          }
+        }
+      },
+      "Draft07Base": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "foo": {
+            "type": "string"
+          }
+        }
+      },
+      "IfBase": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "if": {
+          "required": [
+            "nothing"
+          ]
+        },
+        "then": {
+          "required": [
+            "kind"
+          ]
+        }
+      },
+      "Sealed": {
+        "type": "object",
+        "properties": {
+          "foo": {
+            "type": "string"
+          }
+        },
+        "unevaluatedProperties": false
+      },
+      "Bounded": {
+        "type": "object",
+        "required": [
+          "a"
+        ],
+        "properties": {
+          "a": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 8
+          }
+        }
+      },
+      "ResourceId": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "$id": "https://example.com/ResourceId",
+        "type": "integer"
+      },
+      "Legacy2019": {
+        "$schema": "https://json-schema.org/draft/2019-09/schema",
+        "type": "array"
+      },
+      "Restated2020": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "string"
+      },
+      "Closed": {
+        "type": "object",
+        "properties": {
+          "foo": false,
+          "bar": true
+        }
+      },
+      "PlainName": {
+        "type": "string"
+      },
+      "LegacyResource": {
+        "$id": "https://example.com/legacy-internal",
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "definitions": {
+          "User": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "$ref": "#/components/schemas/PlainName",
+                "minLength": 4
+              }
+            }
+          },
+          "Tuple": {
+            "type": "array",
+            "items": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ]
+          }
+        }
+      },
+      "SealedObject": {
+        "type": "object",
+        "properties": {
+          "b": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "b"
+        ],
+        "additionalProperties": false
+      },
+      "SealedHolder": {
+        "type": "object",
+        "properties": {
+          "inner": {
+            "$ref": "#/components/schemas/SealedObject"
+          }
+        }
+      },
+      "OpenObject": {
+        "type": "object",
+        "properties": {
+          "b": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

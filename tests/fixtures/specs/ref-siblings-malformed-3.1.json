@@ -1,0 +1,285 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Ref siblings — malformed sides of a keyword collision (3.1)",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/bad-bound": {
+      "get": {
+        "operationId": "getBadBound",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadBound",
+                  "minLength": 4
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/bad-required": {
+      "get": {
+        "operationId": "getBadRequired",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequired",
+                  "required": [
+                    1
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/bad-properties": {
+      "get": {
+        "operationId": "getBadProperties",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadProperties",
+                  "properties": [
+                    {
+                      "type": "integer"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/empty-allof": {
+      "get": {
+        "operationId": "getEmptyAllOf",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmptyAllOf",
+                  "allOf": [
+                    {
+                      "required": [
+                        "x"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/list-property": {
+      "get": {
+        "operationId": "getListProperty",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadProperties",
+                  "properties": {
+                    "foo": [
+                      {
+                        "type": "integer"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/bad-dialect": {
+      "get": {
+        "operationId": "getBadDialect",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadDialect/definitions/Plain"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/bad-dialect-sibling": {
+      "get": {
+        "operationId": "getBadDialectSibling",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadDialect",
+                  "minLength": 4
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/bad-dialect-nested": {
+      "get": {
+        "operationId": "getBadDialectNested",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadDialect/definitions/Ref"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/unsupported-dialect": {
+      "get": {
+        "operationId": "getUnsupportedDialect",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnsupportedDialect/definitions/Ref"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/bad-dialect-on-the-ref": {
+      "get": {
+        "operationId": "getBadDialectOnTheRef",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": 123,
+                  "$ref": "#/components/schemas/PlainString"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/bad-dialect-around-a-resource": {
+      "get": {
+        "operationId": "getBadDialectAroundAResource",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadDialect/definitions/Resource"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "BadBound": {
+        "type": "string",
+        "minLength": "3"
+      },
+      "BadRequired": {
+        "type": "object",
+        "required": [
+          "1"
+        ],
+        "properties": {
+          "1": {
+            "type": "string"
+          }
+        }
+      },
+      "BadProperties": {
+        "type": "object",
+        "properties": {
+          "foo": {
+            "type": "string"
+          }
+        }
+      },
+      "EmptyAllOf": {
+        "type": "object",
+        "allOf": []
+      },
+      "BadDialect": {
+        "$schema": 123,
+        "type": "string",
+        "definitions": {
+          "Plain": {
+            "type": "string"
+          },
+          "Ref": {
+            "$ref": "#/components/schemas/PlainString",
+            "minLength": 4
+          },
+          "Resource": {
+            "$ref": "#/components/schemas/Draft07Resource"
+          }
+        }
+      },
+      "PlainString": {
+        "type": "string"
+      },
+      "UnsupportedDialect": {
+        "$schema": "https://example.com/custom",
+        "type": "string",
+        "definitions": {
+          "Ref": {
+            "$ref": "#/components/schemas/PlainString",
+            "minLength": 4
+          }
+        }
+      },
+      "Draft07Resource": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "string"
+      }
+    }
+  }
+}

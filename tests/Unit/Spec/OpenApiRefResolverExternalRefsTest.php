@@ -412,6 +412,33 @@ class OpenApiRefResolverExternalRefsTest extends TestCase
         $this->assertSame(['type' => 'object'], $resolved['components']['schemas']['Alias']);
     }
 
+    #[Test]
+    public function applies_schema_ref_siblings_inside_an_external_document(): void
+    {
+        $rootPath = $this->workDir . '/openapi.json';
+        file_put_contents($rootPath, '{}');
+        file_put_contents($this->workDir . '/name.json', '{"type":"string"}');
+        file_put_contents(
+            $this->workDir . '/user.json',
+            '{"type":"object","properties":{"name":{"$ref":"./name.json","minLength":4}}}',
+        );
+
+        $spec = [
+            'openapi' => '3.1.0',
+            'paths' => ['/users' => ['get' => ['responses' => ['200' => ['content' => [
+                'application/json' => ['schema' => ['$ref' => './user.json']],
+            ]]]]]],
+        ];
+
+        $resolved = OpenApiRefResolver::resolve($spec, $rootPath);
+
+        $schema = $resolved['paths']['/users']['get']['responses']['200']['content']['application/json']['schema'];
+        $this->assertSame(
+            ['type' => 'string', 'minLength' => 4],
+            $schema['properties']['name'],
+        );
+    }
+
     private function removeDir(string $dir): void
     {
         if (!is_dir($dir)) {

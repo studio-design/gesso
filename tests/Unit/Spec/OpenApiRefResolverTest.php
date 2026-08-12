@@ -1516,4 +1516,178 @@ class OpenApiRefResolverTest extends TestCase
         // Sanity: value still opaque.
         $this->assertSame(['plain' => 'data'], $entry['value']);
     }
+
+    #[Test]
+    public function applies_schema_ref_siblings_for_openapi_31(): void
+    {
+        $resolved = OpenApiRefResolver::resolve([
+            'openapi' => '3.1.0',
+            'components' => ['schemas' => [
+                'Name' => ['type' => 'string'],
+                'Nickname' => ['$ref' => '#/components/schemas/Name', 'maxLength' => 8],
+            ]],
+            'paths' => ['/pets' => ['get' => ['responses' => ['200' => ['content' => [
+                'application/json' => ['schema' => [
+                    'type' => 'object',
+                    'properties' => ['name' => ['$ref' => '#/components/schemas/Name', 'minLength' => 4]],
+                ]],
+            ]]]]]],
+        ]);
+
+        $schema = $resolved['paths']['/pets']['get']['responses']['200']['content']['application/json']['schema'];
+        $this->assertSame(
+            ['type' => 'string', 'minLength' => 4],
+            $schema['properties']['name'],
+        );
+        $this->assertSame(
+            ['type' => 'string', 'maxLength' => 8],
+            $resolved['components']['schemas']['Nickname'],
+            'components.schemas entries are Schema Object positions too',
+        );
+    }
+
+    #[Test]
+    public function ignores_schema_ref_siblings_for_openapi_30(): void
+    {
+        $resolved = OpenApiRefResolver::resolve([
+            'openapi' => '3.0.3',
+            'components' => ['schemas' => ['Name' => ['type' => 'string']]],
+            'paths' => ['/pets' => ['get' => ['responses' => ['200' => ['content' => [
+                'application/json' => ['schema' => [
+                    'type' => 'object',
+                    'properties' => ['name' => ['$ref' => '#/components/schemas/Name', 'minLength' => 4]],
+                ]],
+            ]]]]]],
+        ]);
+
+        $schema = $resolved['paths']['/pets']['get']['responses']['200']['content']['application/json']['schema'];
+        $this->assertSame(['type' => 'string'], $schema['properties']['name']);
+    }
+
+    #[Test]
+    public function keeps_reference_object_substitution_when_a_non_schema_node_has_siblings(): void
+    {
+        $resolved = OpenApiRefResolver::resolve([
+            'openapi' => '3.1.0',
+            'components' => ['parameters' => [
+                'Id' => ['name' => 'id', 'in' => 'query', 'schema' => ['type' => 'integer']],
+            ]],
+            'paths' => ['/pets' => ['get' => ['parameters' => [
+                // Not legal per OAS 3.1 (a Reference Object only permits
+                // summary/description siblings), but common in the wild.
+                // Substitution — not an allOf wrapper — keeps it working.
+                ['$ref' => '#/components/parameters/Id', 'required' => true],
+            ]]]],
+        ]);
+
+        $this->assertSame(
+            ['name' => 'id', 'in' => 'query', 'schema' => ['type' => 'integer']],
+            $resolved['paths']['/pets']['get']['parameters'][0],
+        );
+    }
+
+    #[Test]
+    public function keeps_implicit_schema_name_when_ref_siblings_are_applied(): void
+    {
+        $marker = OpenApiRefResolver::IMPLICIT_SCHEMA_NAME_EXTENSION;
+        $resolved = OpenApiRefResolver::resolve([
+            'openapi' => '3.1.0',
+            'components' => ['schemas' => ['Cat' => ['type' => 'object']]],
+            'paths' => ['/pets' => ['get' => ['responses' => ['200' => ['content' => [
+                'application/json' => ['schema' => ['oneOf' => [
+                    ['$ref' => '#/components/schemas/Cat', 'required' => ['meow']],
+                    ['$ref' => '#/components/schemas/Cat', 'description' => 'plain reference'],
+                ]]],
+            ]]]]]],
+        ]);
+
+        $alternatives = $resolved['paths']['/pets']['get']['responses']['200']['content']['application/json']['schema']['oneOf'];
+
+        $this->assertSame(
+            ['type' => 'object', 'required' => ['meow'], $marker => 'Cat'],
+            $alternatives[0],
+            'siblings narrow how the branch validates, not which component it names',
+        );
+        $this->assertSame('Cat', $alternatives[1][$marker]);
+    }
+
+    #[Test]
+    public function folds_the_target_into_an_existing_allof_sibling(): void
+    {
+        $resolved = OpenApiRefResolver::resolve([
+            'openapi' => '3.1.0',
+            'components' => ['schemas' => [
+                'Name' => ['type' => 'string'],
+                'Short' => ['maxLength' => 8],
+            ]],
+            'paths' => ['/pets' => ['get' => ['responses' => ['200' => ['content' => [
+                'application/json' => ['schema' => [
+                    '$ref' => '#/components/schemas/Name',
+                    'allOf' => [['$ref' => '#/components/schemas/Short']],
+                    'minLength' => 4,
+                ]],
+            ]]]]]],
+        ]);
+
+        $this->assertSame(
+            [
+                'type' => 'string',
+                'allOf' => [['maxLength' => 8]],
+                'minLength' => 4,
+            ],
+            $resolved['paths']['/pets']['get']['responses']['200']['content']['application/json']['schema'],
+        );
+    }
+
+    #[Test]
+    public function honours_the_declared_json_schema_dialect_over_the_document_version(): void
+    {
+        // Draft 07 requires every other member of a `$ref` object to be
+        // ignored, and OAS 3.1 lets a document select it document-wide.
+        $resolved = OpenApiRefResolver::resolve([
+            'openapi' => '3.1.0',
+            'jsonSchemaDialect' => 'http://json-schema.org/draft-07/schema#',
+            'components' => ['schemas' => ['Name' => ['type' => 'string']]],
+            'paths' => ['/pets' => ['get' => ['responses' => ['200' => ['content' => [
+                'application/json' => ['schema' => [
+                    'type' => 'object',
+                    'properties' => ['name' => ['$ref' => '#/components/schemas/Name', 'minLength' => 4]],
+                ]],
+            ]]]]]],
+        ]);
+
+        $schema = $resolved['paths']['/pets']['get']['responses']['200']['content']['application/json']['schema'];
+        $this->assertSame(['type' => 'string'], $schema['properties']['name']);
+    }
+
+    #[Test]
+    public function honours_a_schema_resources_own_dollar_schema_dialect(): void
+    {
+        $resolved = OpenApiRefResolver::resolve([
+            'openapi' => '3.1.0',
+            'components' => ['schemas' => [
+                'Name' => ['type' => 'string'],
+                'Draft07' => [
+                    '$schema' => 'http://json-schema.org/draft-07/schema#',
+                    'type' => 'object',
+                    'properties' => ['name' => ['$ref' => '#/components/schemas/Name', 'minLength' => 4]],
+                ],
+                'Default' => [
+                    'type' => 'object',
+                    'properties' => ['name' => ['$ref' => '#/components/schemas/Name', 'minLength' => 4]],
+                ],
+            ]],
+        ]);
+
+        $this->assertSame(
+            ['type' => 'string', '$schema' => 'https://spec.openapis.org/oas/3.1/dialect/base'],
+            $resolved['components']['schemas']['Draft07']['properties']['name'],
+            'the resource dialect governs its own subtree; the target keeps the resource it came from',
+        );
+        $this->assertSame(
+            ['type' => 'string', 'minLength' => 4],
+            $resolved['components']['schemas']['Default']['properties']['name'],
+            'and only its own subtree',
+        );
+    }
 }
