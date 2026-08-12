@@ -7,8 +7,10 @@ namespace Studio\Gesso\Config;
 use const FILTER_NULL_ON_FAILURE;
 use const FILTER_VALIDATE_BOOLEAN;
 
+use InvalidArgumentException;
 use Studio\Gesso\OpenApiRequestValidator;
 use Studio\Gesso\OpenApiResponseValidator;
+use Studio\Gesso\Validation\Support\StatusCodePatternSet;
 
 use function array_is_list;
 use function array_key_exists;
@@ -23,6 +25,7 @@ use function in_array;
 use function is_array;
 use function is_bool;
 use function is_file;
+use function is_finite;
 use function is_float;
 use function is_int;
 use function is_string;
@@ -82,7 +85,10 @@ final class GessoConfig
      * - `enum`      — one of `values`.
      * - `string`    — `null`, or any string.
      * - `path`      — `null`, or a path resolved against the config directory.
-     * - `strings`   — a list of strings.
+     * - `strings`   — a list of non-empty strings. An `items` entry adds the
+     *                 constraint the setting's own consumer applies, so the
+     *                 file is rejected where the value is written rather than
+     *                 halfway through a run.
      * - `bool_enum` — a boolean, or one of `values` (a boolean setting that
      *                 grew a third state).
      *
@@ -102,10 +108,12 @@ final class GessoConfig
             'acknowledged_unvalidatable_schemes' => ['type' => 'strings', 'default' => []],
             'skip_response_codes' => [
                 'type' => 'strings',
+                'items' => 'status_code_pattern',
                 'default' => OpenApiResponseValidator::DEFAULT_SKIP_RESPONSE_CODES,
             ],
             'skip_request_validation_response_codes' => [
                 'type' => 'strings',
+                'items' => 'status_code_pattern',
                 'default' => OpenApiRequestValidator::DEFAULT_SKIP_REQUEST_VALIDATION_RESPONSE_CODES,
             ],
         ],
@@ -277,38 +285,45 @@ final class GessoConfig
      * Whether the file set this key itself, as opposed to leaving it at its
      * documented default. Surfaces with their own inputs need the difference
      * to resolve precedence.
+     *
+     * A key the schema does not declare is a programming error, not `false`:
+     * `has('validation.max_error')` answering "not configured" would make a
+     * caller's typo silently discard whatever the user did configure, on the
+     * very code path that decides precedence.
      */
     public function has(string $key): bool
     {
+        self::leafNode($key);
+
         return array_key_exists($key, $this->declared);
     }
 
     public function bool(string $key): bool
     {
-        $value = $this->leaf($key);
+        $value = $this->typed($key, ['bool']);
 
-        return is_bool($value) ? $value : (bool) $value;
+        return is_bool($value) ? $value : throw self::corrupt($key);
     }
 
     public function int(string $key): int
     {
-        $value = $this->leaf($key);
+        $value = $this->typed($key, ['int']);
 
-        return is_int($value) ? $value : 0;
+        return is_int($value) ? $value : throw self::corrupt($key);
     }
 
     public function number(string $key): null|float|int
     {
-        $value = $this->leaf($key);
+        $value = $this->typed($key, ['percent']);
 
-        return is_int($value) || is_float($value) ? $value : null;
+        return $value === null || is_int($value) || is_float($value) ? $value : throw self::corrupt($key);
     }
 
     public function string(string $key): ?string
     {
-        $value = $this->leaf($key);
+        $value = $this->typed($key, ['string', 'enum', 'path']);
 
-        return is_string($value) ? $value : null;
+        return $value === null || is_string($value) ? $value : throw self::corrupt($key);
     }
 
     /**
@@ -316,9 +331,9 @@ final class GessoConfig
      */
     public function strings(string $key): array
     {
-        $value = $this->leaf($key);
+        $value = $this->typed($key, ['strings']);
         if (!is_array($value)) {
-            return [];
+            throw self::corrupt($key);
         }
 
         /** @var list<string> $value */
@@ -330,9 +345,9 @@ final class GessoConfig
      */
     public function boolOrString(string $key): bool|string
     {
-        $value = $this->leaf($key);
+        $value = $this->typed($key, ['bool_enum']);
 
-        return is_bool($value) || is_string($value) ? $value : false;
+        return is_bool($value) || is_string($value) ? $value : throw self::corrupt($key);
     }
 
     /**
@@ -426,7 +441,12 @@ final class GessoConfig
             'percent' => self::percentValue($value, $path, $origin),
             'string' => $value === null ? null : self::expectString($value, $path, $origin, 'a string'),
             'path' => $value === null ? null : self::pathValue($value, $path, $baseDir, $origin),
-            'strings' => self::stringListValue($value, $path, $origin),
+            'strings' => self::stringListValue(
+                $value,
+                $path,
+                $origin,
+                is_string($node['items'] ?? null) ? $node['items'] : null,
+            ),
             default => $value,
         };
     }
@@ -477,7 +497,11 @@ final class GessoConfig
         }
 
         $number = match (true) {
-            is_int($value), is_float($value) => $value,
+            is_int($value) => $value,
+            // NAN passes `is_float()` and every comparison against it is
+            // false, so a range check alone lets it through — and a coverage
+            // gate then treats it as a threshold nothing can ever meet.
+            is_float($value) => is_finite($value) ? $value : null,
             is_string($value) && preg_match('/^\d+(\.\d+)?$/', trim($value)) === 1 => (float) trim($value),
             default => null,
         };
@@ -509,9 +533,11 @@ final class GessoConfig
     }
 
     /**
+     * @param null|string $items extra per-entry constraint, from the schema
+     *
      * @return list<string>
      */
-    private static function stringListValue(mixed $value, string $path, ?string $origin): array
+    private static function stringListValue(mixed $value, string $path, ?string $origin, ?string $items): array
     {
         if (!is_array($value) || !array_is_list($value)) {
             throw self::invalid($path, $origin, sprintf(
@@ -523,17 +549,51 @@ final class GessoConfig
         $list = [];
 
         foreach ($value as $index => $entry) {
+            $entryPath = $path . '[' . $index . ']';
+
             if (!is_string($entry)) {
-                throw self::invalid($path . '[' . $index . ']', $origin, sprintf(
+                throw self::invalid($entryPath, $origin, sprintf(
                     'expected a string, got %s',
                     self::describe($entry),
                 ));
             }
 
+            // No entry of any of these lists — a spec name, a path prefix, a
+            // scheme name, a namespace, a status-code pattern — means anything
+            // when it is blank, and every consumer either rejects it or
+            // matches nothing with it.
+            if (trim($entry) === '') {
+                throw self::invalid($entryPath, $origin, 'expected a non-empty string');
+            }
+
             $list[] = $entry;
         }
 
+        if ($items === 'status_code_pattern') {
+            self::assertStatusCodePatterns($list, $path, $origin);
+        }
+
         return $list;
+    }
+
+    /**
+     * Compile the patterns the way the validators will, so an unclosed group
+     * is rejected at the file rather than at the first response it is matched
+     * against.
+     *
+     * @param list<string> $patterns
+     */
+    private static function assertStatusCodePatterns(array $patterns, string $path, ?string $origin): void
+    {
+        try {
+            new StatusCodePatternSet($patterns, $path);
+        } catch (InvalidArgumentException $e) {
+            throw new InvalidGessoConfigurationException(sprintf(
+                'Invalid Gesso configuration in %s: %s',
+                $origin ?? self::FILENAME,
+                $e->getMessage(),
+            ), 0, $e);
+        }
     }
 
     private static function expectString(mixed $value, string $path, ?string $origin, string $expected): string
@@ -578,6 +638,89 @@ final class GessoConfig
             $keyPath,
             $reason,
         ));
+    }
+
+    /**
+     * The schema descriptor for a dotted key path.
+     *
+     * Anything that is not a declared leaf — a misspelling, or a section
+     * addressed as though it were a key — throws. Callers ask for settings by
+     * name from all over the codebase, and a reader that answers a name the
+     * schema never had is how a setting goes silently unread.
+     *
+     * @return array<array-key, mixed>
+     */
+    private static function leafNode(string $key): array
+    {
+        /** @var mixed $node */
+        $node = self::SCHEMA;
+
+        foreach (explode('.', $key) as $segment) {
+            if (!is_array($node) || !array_key_exists($segment, $node)) {
+                throw new InvalidGessoConfigurationException(sprintf(
+                    'Unknown Gesso configuration key "%s" requested.',
+                    $key,
+                ));
+            }
+
+            /** @var mixed $node */
+            $node = $node[$segment];
+        }
+
+        if (!is_array($node) || !isset($node['type'])) {
+            throw new InvalidGessoConfigurationException(sprintf(
+                'Gesso configuration key "%s" is a section, not a setting.',
+                $key,
+            ));
+        }
+
+        return $node;
+    }
+
+    /**
+     * The accessor that reads each schema type. Reading a key through the
+     * wrong one is a programming error, not a conversion: `bool()` over
+     * `laravel.auto_inject_dummy_credentials` would turn the narrow `'bearer'`
+     * mode into `true` and inject dummy credentials for every scheme.
+     */
+    private static function accessorFor(string $type): string
+    {
+        return match ($type) {
+            'bool' => 'bool()',
+            'int' => 'int()',
+            'percent' => 'number()',
+            'string', 'enum', 'path' => 'string()',
+            'strings' => 'strings()',
+            'bool_enum' => 'boolOrString()',
+            default => 'the matching accessor',
+        };
+    }
+
+    private static function corrupt(string $key): InvalidGessoConfigurationException
+    {
+        return new InvalidGessoConfigurationException(sprintf(
+            'Gesso configuration key "%s" holds a value its own schema type rejects.',
+            $key,
+        ));
+    }
+
+    /**
+     * @param list<string> $accepted schema types this accessor reads
+     */
+    private function typed(string $key, array $accepted): mixed
+    {
+        $type = self::leafNode($key)['type'];
+
+        if (!is_string($type) || !in_array($type, $accepted, true)) {
+            throw new InvalidGessoConfigurationException(sprintf(
+                'Gesso configuration key "%s" is a %s setting; read it with %s.',
+                $key,
+                is_string($type) ? $type : get_debug_type($type),
+                self::accessorFor(is_string($type) ? $type : ''),
+            ));
+        }
+
+        return $this->leaf($key);
     }
 
     private function leaf(string $key): mixed

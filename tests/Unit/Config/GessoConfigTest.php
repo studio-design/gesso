@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Tests\Unit\Config;
 
+use const INF;
+use const NAN;
+
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
@@ -124,6 +127,19 @@ final class GessoConfigTest extends TestCase
         // Documented alongside the false spellings by the filter itself, and
         // already what the Laravel trait read it as.
         yield 'empty string' => ['', false];
+    }
+
+    /**
+     * @return iterable<string, array{string, string}>
+     */
+    public static function provideNo_accessor_converts_a_key_of_another_typeCases(): iterable
+    {
+        yield 'bool over an enum' => ['bool', 'validation.format'];
+        yield 'int over a percent' => ['int', 'coverage.min_coverage.endpoint'];
+        yield 'number over an int' => ['number', 'validation.max_errors'];
+        yield 'string over a list' => ['string', 'spec.names'];
+        yield 'strings over a path' => ['strings', 'spec.base_path'];
+        yield 'boolOrString over a bool' => ['boolOrString', 'validation.enforce_discriminator'];
     }
 
     #[Test]
@@ -393,6 +409,123 @@ final class GessoConfigTest extends TestCase
         $this->expectExceptionMessage('Unknown Gesso configuration key "validation.nope" requested');
 
         GessoConfig::defaults()->string('validation.nope');
+    }
+
+    /**
+     * `has()` decides precedence against the surfaces' own inputs, so a
+     * misspelled key answering "not configured" would silently discard what
+     * the user did configure.
+     */
+    #[Test]
+    public function has_rejects_a_key_the_schema_does_not_declare(): void
+    {
+        $config = GessoConfig::fromArray(['validation' => ['max_errors' => 5]], '/tmp');
+
+        $this->assertTrue($config->has('validation.max_errors'));
+
+        $this->expectException(InvalidGessoConfigurationException::class);
+        $this->expectExceptionMessage('Unknown Gesso configuration key "validation.max_error" requested');
+
+        $config->has('validation.max_error');
+    }
+
+    #[Test]
+    public function a_section_is_not_a_key(): void
+    {
+        $this->expectException(InvalidGessoConfigurationException::class);
+        $this->expectExceptionMessage('"validation" is a section, not a setting');
+
+        GessoConfig::defaults()->has('validation');
+    }
+
+    /**
+     * The dangerous one: `bool()` over the credentials key would read the
+     * narrow `'bearer'` mode as `true` and inject dummy credentials for every
+     * inject-eligible scheme.
+     */
+    #[Test]
+    public function reading_a_key_through_the_wrong_accessor_is_fatal(): void
+    {
+        $config = GessoConfig::fromArray(
+            ['laravel' => ['auto_inject_dummy_credentials' => 'bearer']],
+            '/tmp',
+        );
+
+        $this->expectException(InvalidGessoConfigurationException::class);
+        $this->expectExceptionMessage(
+            '"laravel.auto_inject_dummy_credentials" is a bool_enum setting; read it with boolOrString()',
+        );
+
+        $config->bool('laravel.auto_inject_dummy_credentials');
+    }
+
+    #[Test]
+    #[DataProvider('provideNo_accessor_converts_a_key_of_another_typeCases')]
+    public function no_accessor_converts_a_key_of_another_type(string $accessor, string $key): void
+    {
+        $this->expectException(InvalidGessoConfigurationException::class);
+        $this->expectExceptionMessage('read it with');
+
+        GessoConfig::defaults()->{$accessor}($key);
+    }
+
+    /**
+     * Blank means nothing to any of these consumers, and the string encodings
+     * on the other surfaces already reject it.
+     */
+    #[Test]
+    public function a_string_list_rejects_a_blank_entry(): void
+    {
+        $this->expectException(InvalidGessoConfigurationException::class);
+        $this->expectExceptionMessage(
+            '"validation.acknowledged_unvalidatable_schemes[0]" expected a non-empty string',
+        );
+
+        GessoConfig::fromArray(
+            ['validation' => ['acknowledged_unvalidatable_schemes' => ['']]],
+            '/tmp',
+        );
+    }
+
+    /**
+     * The validators compile these; an unclosed group must fail at the file,
+     * not at the first response it is matched against.
+     */
+    #[Test]
+    public function a_status_code_pattern_list_rejects_an_unparseable_pattern(): void
+    {
+        $config = GessoConfig::fromArray(
+            ['validation' => ['skip_response_codes' => ['5\d\d', '404']]],
+            '/tmp',
+        );
+        $this->assertSame(['5\d\d', '404'], $config->strings('validation.skip_response_codes'));
+
+        $this->expectException(InvalidGessoConfigurationException::class);
+        $this->expectExceptionMessage('validation.skip_response_codes[0] is not a valid regex pattern "(unclosed"');
+
+        GessoConfig::fromArray(['validation' => ['skip_response_codes' => ['(unclosed']]], '/tmp');
+    }
+
+    /**
+     * `NAN` passes `is_float()` and every comparison against it is false, so a
+     * bare range check lets it reach the coverage gate as a threshold.
+     */
+    #[Test]
+    public function nan_is_not_a_threshold(): void
+    {
+        $this->expectException(InvalidGessoConfigurationException::class);
+        $this->expectExceptionMessage('"coverage.min_coverage.endpoint" expected a number between 0 and 100');
+
+        GessoConfig::fromArray(['coverage' => ['min_coverage' => ['endpoint' => NAN]]], '/tmp');
+    }
+
+    #[Test]
+    public function infinity_is_not_a_threshold_either(): void
+    {
+        $this->expectException(InvalidGessoConfigurationException::class);
+        $this->expectExceptionMessage('expected a number between 0 and 100');
+
+        GessoConfig::fromArray(['coverage' => ['min_coverage' => ['response' => INF]]], '/tmp');
     }
 
     #[Test]
