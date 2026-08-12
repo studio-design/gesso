@@ -608,6 +608,11 @@ final class OpenApiRefResolver
      * the schema means. When a collision has no meaning-preserving merge, the
      * siblings are applied whole as an adjacent `allOf` branch instead.
      *
+     * The same fallback covers the one interaction that is not a collision at
+     * all: a side that constrains its additional properties reaches across to
+     * the property names *only the other side* declares. See
+     * {@see self::closesOverTheOthersProperties()}.
+     *
      * A target declaring its own `$schema` is a schema resource with a dialect
      * of its own. Merging would put the *siblings* under that dialect, so
      * unless it is the same dialect the referring schema is read under, the
@@ -633,6 +638,13 @@ final class OpenApiRefResolver
             // author wrote it so the validator still rejects it loudly instead
             // of being folded into a merged branch list.
             return self::applyAsBranch($target, $siblings);
+        }
+
+        if (
+            self::closesOverTheOthersProperties($target, $siblings) ||
+            self::closesOverTheOthersProperties($siblings, $target)
+        ) {
+            return self::applySiblingsAsBranch($target, $siblings);
         }
 
         // Disjoint keys, so `+` is a plain union.
@@ -746,6 +758,55 @@ final class OpenApiRefResolver
         }
 
         return [false, null];
+    }
+
+    /**
+     * True when `$closed` constrains the property names `$other` declares and
+     * it does not.
+     *
+     * `additionalProperties` is not annotation-based: it applies to every name
+     * *its own adjacent* `properties` / `patternProperties` do not match. In
+     * the in-place reading the two sides keep their own, so a name only the
+     * other side declares is still subject to it — folding the names into one
+     * object exempts them. With `additionalProperties: false` that turns a
+     * schema nothing can satisfy (a name required on one side and forbidden by
+     * the other) into one that accepts the union, silently and in the
+     * over-accepting direction. Neither side declares the keyword the other
+     * one does, so there is no collision for {@see self::mergeKeyword()} to
+     * catch; the check has to be cross-keyword.
+     *
+     * `unevaluatedProperties` is deliberately *not* treated this way: it reads
+     * the annotations of adjacent in-place applicators, `$ref` among them, so
+     * the flat merge is exactly what it already meant.
+     *
+     * @see https://json-schema.org/draft/2020-12/json-schema-core#name-additionalproperties
+     *
+     * @param array<int|string, mixed> $closed
+     * @param array<int|string, mixed> $other
+     */
+    private static function closesOverTheOthersProperties(array $closed, array $other): bool
+    {
+        if (($closed['additionalProperties'] ?? true) === true) {
+            return false;
+        }
+
+        // A `patternProperties` key matches by regex, so a pattern only the
+        // other side declares widens what gets past the constraint the same
+        // way a name does. Comparing the patterns literally is the
+        // conservative reading — an unmatched one falls back to the branch,
+        // which is meaning-preserving either way.
+        foreach (['properties', 'patternProperties'] as $keyword) {
+            $declared = self::isJsonObject($closed[$keyword] ?? null) ? $closed[$keyword] : [];
+            $others = self::isJsonObject($other[$keyword] ?? null) ? $other[$keyword] : [];
+
+            foreach ($others as $name => $ignored) {
+                if (!array_key_exists($name, $declared)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     /**

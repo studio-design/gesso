@@ -399,6 +399,35 @@ class SchemaValidatorRunnerTest extends TestCase
     }
 
     #[Test]
+    public function additional_properties_dedup_reads_the_schema_that_raised_the_error(): void
+    {
+        // Under `allOf` several schemas constrain the same instance location,
+        // each with `properties` of its own. `b` is declared by the enclosing
+        // schema and genuinely additional to the branch that complained, so
+        // locating the schema by walking the instance path from the root would
+        // read the wrong `properties` and cancel a real violation.
+        $schema = ObjectConverter::convert([
+            'type' => 'object',
+            'properties' => ['b' => ['type' => 'string']],
+            'allOf' => [
+                [
+                    'properties' => ['a' => ['type' => 'string']],
+                    'additionalProperties' => false,
+                ],
+            ],
+        ]);
+        $data = ObjectConverter::convert(['b' => 'y']);
+
+        $errors = (new SchemaValidatorRunner(0))->validate($schema, $data);
+
+        $this->assertNotSame(
+            [],
+            $errors,
+            sprintf('the branch forbids `b`; got: %s', $this->formatErrors($errors)),
+        );
+    }
+
+    #[Test]
     public function additional_properties_dedup_keeps_message_under_oneof_composition(): void
     {
         // oneOf routes the data through alternate sub-schemas — the cascade's

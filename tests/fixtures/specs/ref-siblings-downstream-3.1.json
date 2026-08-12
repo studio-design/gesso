@@ -410,6 +410,105 @@
           }
         }
       }
+    },
+    "/sealed": {
+      "get": {
+        "operationId": "getSealed",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SealedObject",
+                  "properties": {
+                    "a": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "a"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sealed-property": {
+      "get": {
+        "operationId": "getSealedProperty",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SealedHolder",
+                  "properties": {
+                    "inner": {
+                      "properties": {
+                        "a": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "a"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sealed-narrowing": {
+      "get": {
+        "operationId": "getSealedNarrowing",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SealedObject",
+                  "properties": {
+                    "b": {
+                      "minLength": 3
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sealed-reference": {
+      "get": {
+        "operationId": "getSealedReference",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpenObject",
+                  "properties": {
+                    "a": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -560,6 +659,34 @@
                 "type": "integer"
               }
             ]
+          }
+        }
+      },
+      "SealedObject": {
+        "type": "object",
+        "properties": {
+          "b": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "b"
+        ],
+        "additionalProperties": false
+      },
+      "SealedHolder": {
+        "type": "object",
+        "properties": {
+          "inner": {
+            "$ref": "#/components/schemas/SealedObject"
+          }
+        }
+      },
+      "OpenObject": {
+        "type": "object",
+        "properties": {
+          "b": {
+            "type": "string"
           }
         }
       }

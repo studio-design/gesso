@@ -14,6 +14,8 @@ use Studio\Gesso\OpenApiValidationResult;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 
+use function json_encode;
+
 /**
  * Issue #536: in JSON Schema 2019-09 and later a Schema Object `$ref` is an
  * in-place applicator, so keywords sitting next to it must still be validated.
@@ -604,6 +606,108 @@ class RefSiblingKeywordsTest extends TestCase
             $internal['properties']['name'],
             'a same-document fragment resets to the document dialect before the descent',
         );
+    }
+
+    /**
+     * `additionalProperties` is not annotation-based: it applies to the names
+     * *its own adjacent* `properties` does not match. In the in-place reading
+     * each side keeps its own, so a name only the reference declares stays
+     * subject to the target's constraint — folding them into one object would
+     * exempt it, turning a schema nothing can satisfy into one that accepts
+     * the union. Nothing about the resolved shape says so, so the assertion
+     * has to be on which instances are accepted.
+     */
+    #[Test]
+    public function a_closed_target_does_not_absorb_the_siblings_property_names(): void
+    {
+        // `a` is required by the reference and forbidden by the target, so no
+        // instance satisfies the node — least of all the union of both names.
+        foreach ([[], ['a' => 'x'], ['b' => 'y'], ['a' => 'x', 'b' => 'y']] as $body) {
+            $result = $this->validator->validate(
+                'ref-siblings-downstream-3.1',
+                'GET',
+                '/sealed',
+                200,
+                $body,
+                'application/json',
+            );
+            $this->assertFalse($result->isValid(), 'accepted ' . json_encode($body));
+        }
+    }
+
+    /** It reaches the other way too: the reference can be the closed side. */
+    #[Test]
+    public function a_closed_reference_does_not_absorb_the_targets_property_names(): void
+    {
+        $accepted = $this->validator->validate(
+            'ref-siblings-downstream-3.1',
+            'GET',
+            '/sealed-reference',
+            200,
+            ['a' => 'x'],
+            'application/json',
+        );
+        $this->assertTrue($accepted->isValid());
+
+        $rejected = $this->validator->validate(
+            'ref-siblings-downstream-3.1',
+            'GET',
+            '/sealed-reference',
+            200,
+            ['b' => 'y'],
+            'application/json',
+        );
+        $this->assertFalse($rejected->isValid(), 'the reference forbids every name it does not declare');
+    }
+
+    /** The per-name merge inside `properties` recurses, so it has the same gap. */
+    #[Test]
+    public function a_closed_property_schema_does_not_absorb_the_siblings_names(): void
+    {
+        foreach ([['a' => 'x'], ['b' => 'y'], ['a' => 'x', 'b' => 'y']] as $inner) {
+            $result = $this->validator->validate(
+                'ref-siblings-downstream-3.1',
+                'GET',
+                '/sealed-property',
+                200,
+                ['inner' => $inner],
+                'application/json',
+            );
+            $this->assertFalse($result->isValid(), 'accepted ' . json_encode($inner));
+        }
+    }
+
+    /**
+     * And only then: narrowing a name the closed target already declares adds
+     * nothing it could let through, so the flat merge stands.
+     */
+    #[Test]
+    public function narrowing_a_name_the_closed_target_declares_still_merges_flat(): void
+    {
+        $schema = OpenApiSpecLoader::load('ref-siblings-downstream-3.1')['paths']['/sealed-narrowing']['get']['responses']['200']['content']['application/json']['schema'];
+
+        $this->assertArrayNotHasKey('allOf', $schema);
+        $this->assertSame(['type' => 'string', 'minLength' => 3], $schema['properties']['b']);
+
+        $accepted = $this->validator->validate(
+            'ref-siblings-downstream-3.1',
+            'GET',
+            '/sealed-narrowing',
+            200,
+            ['b' => 'abcd'],
+            'application/json',
+        );
+        $this->assertTrue($accepted->isValid());
+
+        $rejected = $this->validator->validate(
+            'ref-siblings-downstream-3.1',
+            'GET',
+            '/sealed-narrowing',
+            200,
+            ['b' => 'ab'],
+            'application/json',
+        );
+        $this->assertFalse($rejected->isValid());
     }
 
     /**

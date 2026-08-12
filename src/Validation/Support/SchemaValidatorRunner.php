@@ -10,6 +10,7 @@ use InvalidArgumentException;
 use Opis\JsonSchema\Errors\ErrorFormatter;
 use Opis\JsonSchema\Errors\ValidationError;
 use Opis\JsonSchema\JsonPointer;
+use Opis\JsonSchema\Schema;
 use Opis\JsonSchema\Validator;
 use stdClass;
 
@@ -23,7 +24,6 @@ use function hash;
 use function implode;
 use function in_array;
 use function is_array;
-use function is_int;
 use function is_object;
 use function is_string;
 use function preg_match;
@@ -135,7 +135,7 @@ final class SchemaValidatorRunner
             return [new SchemaViolation('', null, 'Schema validation failed but opis reported no error detail.')];
         }
 
-        $cascadeActions = self::computeCascadeActions($error, $jsonSchema);
+        $cascadeActions = self::computeCascadeActions($error);
 
         // Custom formatter callable so each entry keeps its keyword next to
         // the interpolated message; the custom key formatter produces RFC
@@ -190,28 +190,30 @@ final class SchemaValidatorRunner
      *
      * Detection is structural — the listed property names come straight from
      * `ValidationError::args()['properties']` (the raw array opis populates
-     * before string interpolation), and declared property names come from
-     * walking `$jsonSchema` via the error's raw `fullPath()` segments. Neither
-     * step parses or trims the rendered error message, so property names
-     * containing commas / spaces / empty strings / JSON-Pointer-escape-worthy
-     * characters all compare correctly against the declared set.
+     * before string interpolation), and declared property names come from the
+     * schema object that raised the error, via `ValidationError::schema()`.
+     * Neither step parses or trims the rendered error message, so property
+     * names containing commas / spaces / empty strings /
+     * JSON-Pointer-escape-worthy characters all compare correctly against the
+     * declared set.
      *
-     * Degrades safely:
-     * - Non-object root schema (opis accepts `true`/`false`/scalar) → empty map
-     * - Composition keywords (`oneOf` / `allOf` / `anyOf`) routing the data
-     *   through an alternate sub-schema → walker returns null at that path,
-     *   no entry in the map, message kept untouched.
+     * Reading the *raising* schema is what makes composition safe. Under
+     * `allOf` / `oneOf` / `anyOf` several schemas constrain one instance
+     * location, each with `properties` of its own, so a name declared by the
+     * enclosing schema can be genuinely additional to the branch that
+     * complained — locating the schema by walking the instance path from the
+     * root would cancel that real violation.
+     *
+     * Degrades safely: a boolean or otherwise non-object raising schema, or
+     * one without an object `properties`, yields no entry in the map and the
+     * message is kept untouched.
      *
      * @return array<string, list<string>>
      */
-    private static function computeCascadeActions(ValidationError $rootError, mixed $jsonSchema): array
+    private static function computeCascadeActions(ValidationError $rootError): array
     {
-        if (!$jsonSchema instanceof stdClass) {
-            return [];
-        }
-
         $actions = [];
-        self::collectCascadeActions($rootError, $jsonSchema, $actions);
+        self::collectCascadeActions($rootError, $actions);
 
         return $actions;
     }
@@ -219,16 +221,13 @@ final class SchemaValidatorRunner
     /**
      * @param array<string, list<string>> $actions
      */
-    private static function collectCascadeActions(
-        ValidationError $error,
-        stdClass $rootSchema,
-        array &$actions,
-    ): void {
+    private static function collectCascadeActions(ValidationError $error, array &$actions): void
+    {
         if ($error->keyword() === 'additionalProperties') {
             $listed = $error->args()['properties'] ?? null;
             if (is_array($listed)) {
                 $segments = $error->data()->fullPath();
-                $declared = self::declaredPropertyNamesAtSegments($rootSchema, $segments);
+                $declared = self::declaredPropertyNames($error->schema());
                 if ($declared !== null) {
                     $real = array_values(array_filter(
                         $listed,
@@ -247,8 +246,30 @@ final class SchemaValidatorRunner
         }
 
         foreach ($error->subErrors() as $sub) {
-            self::collectCascadeActions($sub, $rootSchema, $actions);
+            self::collectCascadeActions($sub, $actions);
         }
+    }
+
+    /**
+     * The property names the schema that raised the error declares itself.
+     * `null` when it declares none the dedup can compare against — a boolean
+     * schema, or an object without an object-shaped `properties` — in which
+     * case the message is left exactly as opis rendered it.
+     *
+     * @return null|list<string>
+     */
+    private static function declaredPropertyNames(Schema $schema): ?array
+    {
+        $data = $schema->info()->data();
+
+        if (!$data instanceof stdClass ||
+            !property_exists($data, 'properties') ||
+            !$data->properties instanceof stdClass
+        ) {
+            return null;
+        }
+
+        return array_keys(get_object_vars($data->properties));
     }
 
     /**
@@ -316,95 +337,6 @@ final class SchemaValidatorRunner
         }
 
         return $errors;
-    }
-
-    /**
-     * Walk `$schema` via raw data-path segments and return the keys of the
-     * `properties` keyword at that location, or null when the path doesn't
-     * resolve through plain property nesting / array-element nesting.
-     *
-     * The walker recognises property and array-item transitions and treats
-     * every other shape as unresolvable (returns null):
-     * - `properties.<name>` for string segments (object property access)
-     * - `items` for int segments (array element access). Both single-schema
-     *   form (`items: <stdClass>`), Draft 07 tuple form
-     *   (`items: [<stdClass>, <stdClass>, ...]`), and native 2020-12
-     *   `prefixItems` are supported.
-     *
-     * Anything that does not match those two transitions falls through to
-     * `null` — the dedup never silently rewrites a path it cannot prove. In
-     * practice this catches (non-exhaustive list, illustrative only):
-     * composition keywords (`oneOf` / `anyOf` / `allOf`),
-     * `additionalProperties: <schema>`, `patternProperties`, `additionalItems`,
-     * boolean schemas at item level (`items: true | false`), tuple-form
-     * indices out of range, and digit-only object property names — these
-     * arrive as int segments via PHP's automatic key cast in opis's data
-     * path, take the array branch, and bail when no `items` keyword exists
-     * (a no-op, not a regression).
-     *
-     * Segments are compared as raw values (opis hands us decoded segments
-     * via `DataInfo::fullPath()`), so a property declared as `a/b` matches
-     * without any JSON-Pointer escape handling on our side.
-     *
-     * @param array<int, mixed> $segments
-     *
-     * @return null|list<string>
-     */
-    private static function declaredPropertyNamesAtSegments(stdClass $schema, array $segments): ?array
-    {
-        $current = $schema;
-
-        foreach ($segments as $segment) {
-            // int segment → array element (descend through `items`)
-            if (is_int($segment)) {
-                if (property_exists($current, 'prefixItems') &&
-                    is_array($current->prefixItems) &&
-                    array_key_exists($segment, $current->prefixItems) &&
-                    $current->prefixItems[$segment] instanceof stdClass
-                ) {
-                    $current = $current->prefixItems[$segment];
-
-                    continue;
-                }
-
-                if (!property_exists($current, 'items')) {
-                    return null;
-                }
-                $items = $current->items;
-                if ($items instanceof stdClass) {
-                    $current = $items;
-
-                    continue;
-                }
-                if (is_array($items) && array_key_exists($segment, $items) && $items[$segment] instanceof stdClass) {
-                    $current = $items[$segment];
-
-                    continue;
-                }
-
-                return null;
-            }
-
-            // string segment → object property (descend through `properties.<name>`)
-            if (!property_exists($current, 'properties') || !$current->properties instanceof stdClass) {
-                return null;
-            }
-            $key = (string) $segment;
-            if (!property_exists($current->properties, $key)) {
-                return null;
-            }
-            $next = $current->properties->{$key};
-            if (!$next instanceof stdClass) {
-                return null;
-            }
-            $current = $next;
-        }
-
-        if (!property_exists($current, 'properties') || !$current->properties instanceof stdClass) {
-            return null;
-        }
-
-        return array_keys(get_object_vars($current->properties));
     }
 
     /**
