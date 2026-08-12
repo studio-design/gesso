@@ -181,6 +181,41 @@
           }
         }
       }
+    },
+    "/bad-dialect-on-the-ref": {
+      "get": {
+        "operationId": "getBadDialectOnTheRef",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": 123,
+                  "$ref": "#/components/schemas/PlainString"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/bad-dialect-around-a-resource": {
+      "get": {
+        "operationId": "getBadDialectAroundAResource",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadDialect/definitions/Resource"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -222,6 +257,9 @@
           "Ref": {
             "$ref": "#/components/schemas/PlainString",
             "minLength": 4
+          },
+          "Resource": {
+            "$ref": "#/components/schemas/Draft07Resource"
           }
         }
       },
@@ -237,6 +275,10 @@
             "minLength": 4
           }
         }
+      },
+      "Draft07Resource": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "string"
       }
     }
   }

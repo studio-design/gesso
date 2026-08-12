@@ -63,6 +63,8 @@ class RefSiblingKeywordsTest extends TestCase
         yield 'dialect sibling' => ['/bad-dialect-sibling', 'abc', 'Unsupported `$schema`: expected a URI string, got int'];
         yield 'dialect around a ref' => ['/bad-dialect-nested', 'abc', 'Unsupported `$schema`: expected a URI string, got int'];
         yield 'unsupported dialect' => ['/unsupported-dialect', 'abc', "Unsupported JSON Schema dialect in `jsonSchemaDialect`: 'https://example.com/custom'"];
+        yield 'dialect on the ref' => ['/bad-dialect-on-the-ref', 'abc', 'Unsupported `$schema`: expected a URI string, got int'];
+        yield 'dialect around a resource' => ['/bad-dialect-around-a-resource', 'abc', 'Unsupported `$schema`: expected a URI string, got int'];
     }
 
     /** @return iterable<string, array{string}> */
@@ -700,6 +702,21 @@ class RefSiblingKeywordsTest extends TestCase
 
         $unsupported = $paths['/unsupported-dialect']['get']['responses']['200']['content']['application/json']['schema'];
         $this->assertSame(['type' => 'string', '$schema' => 'https://example.com/custom'], $unsupported);
+
+        // The declaration sits on the very node substitution replaces.
+        $onTheRef = $paths['/bad-dialect-on-the-ref']['get']['responses']['200']['content']['application/json']['schema'];
+        $this->assertSame(['type' => 'string', '$schema' => 123], $onTheRef);
+
+        // Two resource roots cannot share one object, so the unreadable one
+        // wraps the target rather than being dropped for it.
+        $aroundAResource = $paths['/bad-dialect-around-a-resource']['get']['responses']['200']['content']['application/json']['schema'];
+        $this->assertSame(
+            [
+                '$schema' => 123,
+                'allOf' => [['$schema' => 'http://json-schema.org/draft-07/schema#', 'type' => 'string']],
+            ],
+            $aroundAResource,
+        );
 
         $property = $paths['/list-property']['get']['responses']['200']['content']['application/json']['schema'];
         $this->assertSame(

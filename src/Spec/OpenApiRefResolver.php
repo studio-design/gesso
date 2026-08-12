@@ -503,12 +503,21 @@ final class OpenApiRefResolver
         RefResolutionContext $context,
         bool $targetIsSchema,
     ): array {
-        if (
-            !$targetIsSchema ||
-            !array_key_exists('$schema', $declaration) ||
-            array_key_exists('$schema', $target) ||
-            !self::isJsonObject($target)
-        ) {
+        if (!$targetIsSchema || !array_key_exists('$schema', $declaration) || !self::isJsonObject($target)) {
+            return $target;
+        }
+
+        $declared = $declaration['$schema'];
+        if (!is_string($declared) || !OpenApiSchemaDialect::isSupported($declared)) {
+            // A declaration naming no readable dialect is a spec error, and the
+            // converter has to see it wherever the target is referenced from —
+            // the resource it was written on may never be converted itself.
+            return self::underDeclaration($target, $declaration);
+        }
+
+        if (array_key_exists('$schema', $target)) {
+            // The target is a resource root in its own right, so the enclosing
+            // readable dialect does not govern it.
             return $target;
         }
 
@@ -520,14 +529,30 @@ final class OpenApiRefResolver
             return $target;
         }
 
-        $declared = $declaration['$schema'];
         $dialect = $context->schemaDialect();
-        if (is_string($declared) && $dialect !== null && OpenApiSchemaDialect::sameDialect($declared, $dialect)) {
-            // No boundary crossed; the reference site already reads it this way.
-            return $target;
-        }
 
-        return $target + $declaration;
+        // No boundary crossed when the reference site already reads it this way.
+        return $dialect !== null && OpenApiSchemaDialect::sameDialect($declared, $dialect)
+            ? $target
+            : $target + $declaration;
+    }
+
+    /**
+     * Put a schema under a `$schema` declaration. A target that already
+     * declares one is a resource root of its own, so the two cannot share an
+     * object: the declaration goes on a wrapper holding the target as its only
+     * branch, which keeps both readable.
+     *
+     * @param array<int|string, mixed> $target
+     * @param array<string, mixed> $declaration
+     *
+     * @return array<int|string, mixed>
+     */
+    private static function underDeclaration(array $target, array $declaration): array
+    {
+        return array_key_exists('$schema', $target)
+            ? $declaration + ['allOf' => [$target]]
+            : $target + $declaration;
     }
 
     /**
@@ -960,8 +985,10 @@ final class OpenApiRefResolver
         // a schema resource with a dialect of its own. Whether `$ref` siblings
         // apply is a property of that dialect, so re-decide it here and let the
         // answer flow to this subtree only.
+        $ownDeclaration = [];
         if ($isSchema && !$insideUserNamedMap && array_key_exists('$schema', $node)) {
-            $context = self::dialectContext(['$schema' => $node['$schema']], $context);
+            $ownDeclaration = ['$schema' => $node['$schema']];
+            $context = self::dialectContext($ownDeclaration, $context);
         }
 
         if (!$insideUserNamedMap && array_key_exists('$ref', $node)) {
@@ -981,6 +1008,14 @@ final class OpenApiRefResolver
             }
             if ($implicitSchemaName !== null) {
                 $node[self::IMPLICIT_SCHEMA_NAME_EXTENSION] = $implicitSchemaName;
+            }
+
+            // `{$schema: <unreadable>, $ref: …}`: the declaration sits on the
+            // very node substitution replaces, and it names no dialect the
+            // siblings could have carried it through. Re-attach it so the
+            // converter still reports the spec error.
+            if ($ownDeclaration !== [] && $context->declaresUnreadableDialect()) {
+                $node = self::underDeclaration($node, $ownDeclaration);
             }
 
             return;
