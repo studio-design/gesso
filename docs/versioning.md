@@ -266,14 +266,21 @@ fixed dates.
 
 | Period | Ends | Accepted changes |
 | --- | --- | --- |
-| Active maintenance | 12 months after v3.0.0 is released, and no earlier than 2027-06-30 | Security fixes, backward-compatible bug fixes, and critical ecosystem interoperability fixes |
+| Active maintenance | 12 months after v3.0.0 is released, and no earlier than 2028-07-01 | Security fixes, backward-compatible bug fixes, and critical ecosystem interoperability fixes |
 | Security maintenance | 6 months after active maintenance ends | Security fixes only; non-security changes require evidence that they are necessary to ship a security fix safely |
 | End of life | when security maintenance ends | No releases or support commitment |
 
-**The floor is the part that is readable today.** v2 stays in active
-maintenance until at least 2027-06-30 whatever the v3 schedule turns out to
-be, including v3.0.0 shipping tomorrow. Adopting v2 today does not carry an
-unknown support horizon.
+**Adopting v2 today does not carry an unknown support horizon.** The earliest
+v3.0.0 can be released is 2027-07-01, because the ADR 0004 window cannot open
+before v1 reaches end of life. Twelve months after that is 2028-07-01, so that
+is the earliest date active maintenance can end, and 2029-01-01 the earliest
+end of life.
+
+The 2028-07-01 floor in the table restates that derived date as a commitment
+of this document. It is not there to bind the relative rule — it cannot, since
+the two are equal by construction today — but to make the guarantee
+independent: shortening it requires changing this table, so amending ADR 0004
+cannot quietly shorten how long v2 is supported.
 
 The window is longer than the one v1 received — v1 entered security
 maintenance about five months after v2.0.0 shipped — and the difference is

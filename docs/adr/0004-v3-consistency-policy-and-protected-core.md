@@ -355,12 +355,23 @@ branch ([docs/versioning.md:216-221](../versioning.md)).
 
 The window opens when both the floor and one trigger hold.
 
-**Floor.** v1 has left active maintenance (2026-12-31, per the
+**Floor.** v1 has reached end of life (2027-07-01, per the
 [v1 maintenance lifecycle](../versioning.md#v1-maintenance-lifecycle)).
 Opening the window earlier puts three lines under simultaneous maintenance,
 and the backport procedure in that section — cherry-pick from `main` into a
 branch based on the maintenance line — is written for two. A trigger alone
-does not open the window while v1 is still in active maintenance.
+does not open the window while v1 still receives releases.
+
+The floor is v1's EOL rather than the end of its active maintenance
+(2026-12-31) because security maintenance is still maintenance: through
+2027-06-30 the `1.x` branch keeps taking security backports, so a v3.0 cut in
+that window would leave `main`, `2.x`, and `1.x` all live. Moving the floor
+six months later costs nothing this ADR is trying to buy — the window is
+condition-gated precisely because v3.0 has no adopter-visible deadline — and
+it is cheaper than defining a three-line backport procedure for a six-month
+overlap. If a trigger fires before 2027-07-01 and waiting is genuinely worse
+than the third line, that is an amendment with its own reasoning, not a
+judgement call made under deadline.
 
 **Triggers.**
 
@@ -371,11 +382,23 @@ does not open the window while v1 is still in active maintenance.
    operational test is that a change has to be implemented twice, once against
    the old surface and once against the new one.
 
-Measured on 2026-08-12, both Composer packages report 0 dependents
-(`studio-design/gesso`, `studio-design/openapi-contract-testing`), so the
-migration cost of the deletion is near zero today and rises with adoption.
-That argues for deleting early, and it is why this amendment changes *when*
-the deletion happens rather than *whether* it does.
+This amendment changes *when* the deletion happens, not *whether* it does. The
+sequencing amendment already decided that v3.0 deletes; nothing here reopens
+that.
+
+No adoption figure is offered in support, because the one that is easy to
+reach does not measure what it would need to. Packagist reported 0 dependents
+for both `studio-design/gesso` and `studio-design/openapi-contract-testing` on
+2026-08-12, but that field counts published packages that require them — not
+root applications, and not private consumers. This ADR's own evidence
+contradicts the reading that nobody would be migrated: [what v3 does not
+delete](#what-v3-does-not-delete) cites one consumer running enum drift over
+52 backed enums and another using the named contract checks across 2 files and
+246 lines, and the #508 amendment records a consumer gaining 10 newly compared
+bindings. Sizing the migration would need consumer-side measurement of the
+kind #508 already collected, per surface being deleted. Until that exists,
+timing the deletion by an unmeasured cost is not available as an argument in
+either direction.
 
 What does not change is the work order. Every rename still ships additively in
 a v2 minor carrying its deprecation, exactly as the sequencing amendment
