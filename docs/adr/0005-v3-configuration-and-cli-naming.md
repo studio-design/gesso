@@ -182,7 +182,7 @@ with nothing to contradict it.
 | `strict.additional_properties` = `['run' => …, 'per_call' => …]` | `strict_additional_properties` → `strict.additional_properties['run']`, `strict_additional_properties_per_call` → `strict.additional_properties['per_call']` |
 | `coverage.min_coverage` = `['endpoint' => …, 'response' => …, 'sdk_exercise' => …, 'strict' => …]` | `min_endpoint_coverage` → `coverage.min_coverage['endpoint']`, `min_response_coverage` → `coverage.min_coverage['response']`, `min_sdk_exercise_coverage` → `coverage.min_coverage['sdk_exercise']`, `min_coverage_strict` → `coverage.min_coverage['strict']` |
 | `coverage.report_output` = `['markdown' => …, 'json' => …, 'junit' => …, 'html' => …]` | `output_file` → `coverage.report_output['markdown']`, `json_output` → `coverage.report_output['json']`, `junit_output` → `coverage.report_output['junit']`, `html_output` → `coverage.report_output['html']` |
-| `coverage.console_report` | `console_output` |
+| `coverage.console_report` | `console_output` (#502) |
 | `coverage.sidecar_dir` | `sidecar_dir` |
 | `baseline` = `['violations' => …, 'coverage' => …]` | `baseline_file` → `baseline['violations']`, `coverage_baseline_file` → `baseline['coverage']` |
 | `baseline_stale` = `['violations' => …, 'coverage' => …]` | `baseline_stale` → `baseline_stale['violations']`, `coverage_baseline_stale` → `baseline_stale['coverage']` |

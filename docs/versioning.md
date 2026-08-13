@@ -273,6 +273,12 @@ the fixture: how many spellings ADR 0005 names, and the highest
 lowering either is progress and costs one line, raising one is a decision and
 shows up in the diff of a test.
 
+`owner` is derived, not declared: ADR 0005's rule 4 gives each name one issue,
+and the test applies its own division of labour — the environment variables and
+Artisan commands to #504, the CLI to #507, the keys that collapse several v2
+settings to #502, the rest of the key set to #501. A row that the rule would
+get wrong names its issue inline instead, the way the removals carry `(#508)`.
+
 The three channels a spelling can take:
 
 - **`deprecation`** — the spelling stops working. `E_USER_DEPRECATED` through

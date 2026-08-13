@@ -239,6 +239,7 @@ final class V3RenameRegistryTest extends TestCase
     public function every_entry_declares_a_channel_and_a_removal(): void
     {
         $surfaces = $this->expectedSurfaces();
+        $owners = $this->expectedOwners();
 
         foreach ($this->renames() as $spelling => $entry) {
             foreach (['surface', 'replacement', 'channel', 'owner'] as $key) {
@@ -261,13 +262,15 @@ final class V3RenameRegistryTest extends TestCase
             ));
 
             // `owner` is how a reader gets from an unstaged spelling to the
-            // issue that owes it a notice, so it has to be one of the issues
-            // ADR 0005 routes its work to. A bare `/^#\d+$/` accepted `#0` on
-            // all 53 unstaged entries and pointed the reader nowhere.
-            $this->assertContains($entry['owner'], $this->adrIssues(), sprintf(
-                '%s is owned by %s, which ADR 0005 does not list in its Issue/Related header.',
+            // issue that owes it a notice, so it has to be *that* issue. Any
+            // issue in the ADR header was not enough: rule 4 says one issue
+            // owns each name, and swapping two of them left every entry
+            // pointing at a real issue and half of them at the wrong one.
+            $this->assertSame($owners[$spelling] ?? null, $entry['owner'], sprintf(
+                '%s is owned by %s; ADR 0005 gives it to %s.',
                 $spelling,
                 $entry['owner'],
+                $owners[$spelling] ?? '(no issue)',
             ));
 
             $this->assertArrayHasKey('removed_in', $entry, $spelling);
@@ -564,6 +567,23 @@ final class V3RenameRegistryTest extends TestCase
         $this->assertSame('config-key', $rows['spec_base_path']['surface']);
         $this->assertSame('cli-flag', $rows['--json-output']['surface']);
 
+        // Rule 4 applied mechanically. Each of these is a different branch,
+        // and a derivation that collapsed to one answer would agree with the
+        // fixture everywhere and check nothing.
+        $owners = $this->expectedOwners();
+
+        $this->assertSame('#501', $owners['spec_base_path'], 'a key that collapses nothing');
+        $this->assertSame('#502', $owners['min_endpoint_coverage'], 'a key that collapses several settings');
+        $this->assertSame('#502', $owners['console_output'], 'section C, marked inline in the table');
+        $this->assertSame('#507', $owners['--json-output'], 'the CLI, including the flags it gained from #502');
+        $this->assertSame('#508', $owners['enum_spec_base_path'], 'a removal, marked inline in the table');
+        $this->assertSame('#504', $owners['OPENAPI_VALIDATION_OUTPUT'], 'an environment variable');
+        $this->assertSame('#504', $owners['openapi:routes'], 'an Artisan command');
+
+        // Every derived owner is one the ADR actually routes work to, or the
+        // rule has invented an issue number nobody can follow.
+        $this->assertSame([], array_values(array_diff($owners, $this->adrIssues())));
+
         // Splitting a target into its key and its members is what makes the
         // comparison against the row's v3 key exact. A split that stopped
         // parsing one of ADR 0005's shapes would return the whole target as a
@@ -678,6 +698,41 @@ final class V3RenameRegistryTest extends TestCase
     }
 
     /**
+     * The issue that owns each spelling, applying ADR 0005's rule 4 — "one
+     * issue owns each name" — to its own division of labour.
+     *
+     * A row that names an issue inline settles itself; the `(#508)` markers on
+     * the removed rows and the `(#502)` on `console_output`, which the ADR's
+     * section C decides in prose, are all read that way. The rest follow
+     * "What each issue changes": #504 owns the environment variables and the
+     * Artisan commands, #507 owns the CLI (including the merge flags it gained
+     * from #502), #502 owns the keys that collapse several v2 settings into
+     * one — that collapse *is* its subject — and #501 owns the rest of the
+     * key set.
+     *
+     * Derived rather than transcribed, so that an owner cannot be edited into
+     * something plausible. A future spelling the rule gets wrong is marked
+     * inline in the ADR, the same way the two exceptions above are.
+     *
+     * @return array<string, string>
+     */
+    private function expectedOwners(): array
+    {
+        $owners = [];
+
+        foreach ($this->adrRows() as $spelling => $row) {
+            $owners[$spelling] = $row['owner']
+                ?? ($row['surface'] === 'cli-flag' ? '#507' : ($row['collapses'] ? '#502' : '#501'));
+        }
+
+        foreach (array_keys(array_merge(LegacyIdentity::ENV_NAMES, LegacyIdentity::COMMAND_NAMES)) as $spelling) {
+            $owners[$spelling] = '#504';
+        }
+
+        return $owners;
+    }
+
+    /**
      * The issues ADR 0005 routes its work to, from its own header.
      *
      * Derived rather than listed here for the same reason `surface` is: the
@@ -731,7 +786,12 @@ final class V3RenameRegistryTest extends TestCase
      * a malformed table. The cost is that their failures are reported under
      * whichever test called this first; the message says which row and why.
      *
-     * @return array<string, array{target: null|string, surface: string}>
+     * @return array<string, array{
+     *     target: null|string,
+     *     surface: string,
+     *     collapses: bool,
+     *     owner: null|string,
+     * }>
      */
     private function adrRows(): array
     {
@@ -803,6 +863,7 @@ final class V3RenameRegistryTest extends TestCase
             $declared = $this->declaredMembers($v3Cell);
             $replacesCell = $this->prose($replaces);
             $paired = $this->pairs($replacesCell);
+            $owner = preg_match('/\(#(\d+)\)/', $replaces, $inline) === 1 ? '#' . $inline[1] : null;
 
             // `prose()` drops parentheticals before anything counts tokens, so
             // an arrow written inside one is renaming a spelling that no check
@@ -962,7 +1023,12 @@ final class V3RenameRegistryTest extends TestCase
                     $claimed[$target] = $spelling;
                 }
 
-                $rows[$spelling] = ['target' => $target, 'surface' => $surface];
+                $rows[$spelling] = [
+                    'target' => $target,
+                    'surface' => $surface,
+                    'collapses' => $declared['shape'] !== 'none',
+                    'owner' => $owner,
+                ];
             }
         }
 

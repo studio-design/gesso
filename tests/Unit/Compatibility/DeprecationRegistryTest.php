@@ -24,6 +24,7 @@ use const T_NS_SEPARATOR;
 use const T_OBJECT_OPERATOR;
 use const T_STRING;
 use const T_USE;
+use const T_VARIABLE;
 use const T_WHITESPACE;
 
 use PHPUnit\Framework\Attributes\Test;
@@ -219,18 +220,9 @@ final class DeprecationRegistryTest extends TestCase
         foreach ($this->sourceFiles() as $file => $contents) {
             $tokens = $this->significantTokens($contents);
 
-            foreach ($tokens as $index => $token) {
-                if (!$this->isCallTo($tokens, $index, 'trigger_error')) {
-                    continue;
-                }
-
-                foreach ($this->argumentSegments($tokens, $index + 1) ?? [] as $segment) {
-                    foreach ($segment as $argument) {
-                        if (is_array($argument) && ltrim($argument[1], '\\') === 'E_USER_DEPRECATED') {
-                            $emitters[$file] = ($emitters[$file] ?? 0) + 1;
-                        }
-                    }
-                }
+            $emissions = count($this->channelEmissions($tokens));
+            if ($emissions > 0) {
+                $emitters[$file] = $emissions;
             }
         }
 
@@ -257,17 +249,8 @@ final class DeprecationRegistryTest extends TestCase
         $tagged = [];
 
         foreach ($this->sourceFiles() as $file => $contents) {
-            $tokens = $this->significantTokens($contents);
-
-            foreach ($tokens as $index => $token) {
-                if (!is_array($token) || $token[0] !== T_ATTRIBUTE) {
-                    continue;
-                }
-
-                $name = $tokens[$index + 1] ?? null;
-                if (is_array($name) && ltrim($name[1], '\\') === 'Deprecated') {
-                    $tagged[] = $file;
-                }
+            foreach ($this->deprecatedAttributes($this->significantTokens($contents)) as $_) {
+                $tagged[] = $file;
             }
         }
 
@@ -276,6 +259,55 @@ final class DeprecationRegistryTest extends TestCase
             . "Deprecations::notice() and records nothing the removing major can delete:\n  %s",
             implode("\n  ", $tagged),
         ));
+    }
+
+    #[Test]
+    public function the_emitter_scan_resolves_aliased_functions_and_constants(): void
+    {
+        // Guards the guard. Both halves of the call can be renamed by an
+        // import, and comparing the written spelling saw neither — nor the
+        // reverse, where an alias makes a call that looks right go elsewhere.
+        $cases = [
+            "<?php\nnamespace X;\nuse function trigger_error as deprecate;\n"
+                . "deprecate('m', E_USER_DEPRECATED);" => 1,
+            "<?php\nnamespace X;\nuse const E_USER_DEPRECATED as GONE;\n"
+                . "trigger_error('m', GONE);" => 1,
+            "<?php\nnamespace X;\ntrigger_error('m', \\E_USER_DEPRECATED);" => 1,
+            // An alias pointing somewhere else is not this channel.
+            "<?php\nnamespace X;\nuse function X\\log as trigger_error;\n"
+                . "trigger_error('m', E_USER_DEPRECATED);" => 0,
+            "<?php\nnamespace X;\nuse const X\\E_USER_DEPRECATED as GONE;\n"
+                . "trigger_error('m', GONE);" => 0,
+            "<?php\nnamespace X;\ntrigger_error('m', E_USER_WARNING);" => 0,
+        ];
+
+        foreach ($cases as $source => $expected) {
+            $this->assertCount($expected, $this->channelEmissions($this->significantTokens($source)), $source);
+        }
+    }
+
+    #[Test]
+    public function the_attribute_scan_reads_a_whole_group_and_resolves_aliases(): void
+    {
+        // Guards the guard. An attribute group holds several attributes and an
+        // attribute name is a class name, so reading one token and comparing
+        // its spelling missed both `#[Other, Deprecated]` and `use Deprecated
+        // as D; #[D]` — and, the other way, took `X\Deprecated` for the real
+        // one when PHP would not have.
+        $cases = [
+            "<?php\nnamespace X;\n#[\\Deprecated]\nfunction f(): void {}" => 1,
+            "<?php\nnamespace X;\n#[\\Other, \\Deprecated]\nfunction f(): void {}" => 1,
+            "<?php\nnamespace X;\n#[\\Other(1, 2), \\Deprecated(since: '2.6')]\nfunction f(): void {}" => 1,
+            "<?php\nnamespace X;\nuse Deprecated as D;\n#[D]\nfunction f(): void {}" => 1,
+            "<?php\nnamespace X;\n#[\\Other]\nfunction f(): void {}" => 0,
+            // Unimported and namespaced: PHP resolves this to X\Deprecated,
+            // which is not the attribute that emits.
+            "<?php\nnamespace X;\n#[Deprecated]\nfunction f(): void {}" => 0,
+        ];
+
+        foreach ($cases as $source => $expected) {
+            $this->assertCount($expected, $this->deprecatedAttributes($this->significantTokens($source)), $source);
+        }
     }
 
     #[Test]
@@ -317,6 +349,22 @@ final class DeprecationRegistryTest extends TestCase
         foreach ($spellings as $index => $source) {
             $this->assertSame(['a'], $this->scan('snippet-' . $index, $source), 'spelling ' . $index);
         }
+    }
+
+    #[Test]
+    public function the_emitters_own_static_properties_are_not_an_escape(): void
+    {
+        // `self::$counts[$id]` is a property read, not a method selected at
+        // runtime. Treating every `::$` as an escape reported the emitter for
+        // doing its own bookkeeping.
+        $source = "<?php\nnamespace Studio\\Gesso\\Internal;\nclass Deprecations {\n"
+            . "public static array \$counts = [];\n"
+            . "public static function f(): void { self::\$counts['a'] = 1; }\n}";
+
+        $failures = [];
+        $this->scan('property', $source, $failures);
+
+        $this->assertSame([], $failures);
     }
 
     #[Test]
@@ -449,6 +497,10 @@ final class DeprecationRegistryTest extends TestCase
                 . "Deprecations::{'notice'}('a', 's', 'r', '3.0');",
             "<?php\nnamespace X;\nuse Studio\\Gesso\\Internal\\Deprecations;\n"
                 . "call_user_func([Deprecations::class, 'notice'], 'a', 's', 'r', '3.0');",
+            // The method name in a variable. `::$name(` is a call; `::$name`
+            // without one is a static property, which the emitter has three of.
+            "<?php\nnamespace X;\nuse Studio\\Gesso\\Internal\\Deprecations;\n"
+                . "\$method = 'notice';\nDeprecations::\$method('a', 's', 'r', '3.0');",
         ];
 
         foreach ($spellings as $index => $source) {
@@ -705,16 +757,23 @@ final class DeprecationRegistryTest extends TestCase
      * True when `$tokens[$index]` is a plain call to the named function, not a
      * method of the same name and not a declaration of it.
      *
+     * `$aliases` is the file's `use function` map, so a call written through an
+     * alias still resolves — and so does one whose alias points somewhere else.
+     *
      * @param list<array{int, string}|string> $tokens
+     * @param array<string, string> $aliases
      */
-    private function isCallTo(array $tokens, int $index, string $name): bool
+    private function isCallTo(array $tokens, int $index, string $name, array $aliases = []): bool
     {
         $token = $tokens[$index] ?? null;
         if (!is_array($token) || !in_array($token[0], [T_STRING, T_NAME_FULLY_QUALIFIED], true)) {
             return false;
         }
 
-        if (strtolower(ltrim($token[1], '\\')) !== $name || ($tokens[$index + 1] ?? null) !== '(') {
+        $called = strtolower(ltrim($token[1], '\\'));
+        $called = strtolower($aliases[$called] ?? $called);
+
+        if ($called !== $name || ($tokens[$index + 1] ?? null) !== '(') {
             return false;
         }
 
@@ -760,6 +819,119 @@ final class DeprecationRegistryTest extends TestCase
     }
 
     /**
+     * The index of every `trigger_error(..., E_USER_DEPRECATED)` call in one
+     * file's tokens.
+     *
+     * Both halves can be renamed by an import — `use function trigger_error as
+     * deprecate` and `use const E_USER_DEPRECATED as GONE` are both legal — so
+     * both are resolved rather than compared as written.
+     *
+     * @param list<array{int, string}|string> $tokens
+     *
+     * @return list<int>
+     */
+    private function channelEmissions(array $tokens): array
+    {
+        $functions = $this->symbolAliasesOf($tokens, T_FUNCTION);
+        $constants = $this->symbolAliasesOf($tokens, T_CONST);
+        $found = [];
+
+        foreach ($tokens as $index => $token) {
+            if (!$this->isCallTo($tokens, $index, 'trigger_error', $functions)) {
+                continue;
+            }
+
+            foreach ($this->argumentSegments($tokens, $index + 1) ?? [] as $segment) {
+                foreach ($segment as $argument) {
+                    if (!is_array($argument) || !in_array($argument[0], self::CLASS_REFERENCES, true)) {
+                        continue;
+                    }
+
+                    $name = ltrim($argument[1], '\\');
+                    if (($constants[strtolower($name)] ?? $name) === 'E_USER_DEPRECATED') {
+                        $found[] = $index;
+                    }
+                }
+            }
+        }
+
+        return $found;
+    }
+
+    /**
+     * The index of every `#[\Deprecated]` in one file's tokens, wherever it
+     * sits in an attribute group and whatever it is imported as.
+     *
+     * @param list<array{int, string}|string> $tokens
+     *
+     * @return list<int>
+     */
+    private function deprecatedAttributes(array $tokens): array
+    {
+        $namespace = $this->namespacesOf($tokens)[0] ?? '';
+        $imports = $this->importsOf($tokens);
+        $selfClass = $this->classOf($tokens, $namespace);
+        $found = [];
+
+        foreach ($tokens as $index => $token) {
+            if (!is_array($token) || $token[0] !== T_ATTRIBUTE) {
+                continue;
+            }
+
+            foreach ($this->attributeNames($tokens, $index) as $name) {
+                if ($this->resolve($name, $namespace, $imports, $selfClass) === 'Deprecated') {
+                    $found[] = $index;
+                }
+            }
+        }
+
+        return $found;
+    }
+
+    /**
+     * The name token of every attribute in the group opening at `$index`.
+     *
+     * @param list<array{int, string}|string> $tokens
+     *
+     * @return list<array{int, string}>
+     */
+    private function attributeNames(array $tokens, int $index): array
+    {
+        $names = [];
+        $depth = 0;
+        $expectName = true;
+
+        for ($i = $index + 1, $count = count($tokens); $i < $count; $i++) {
+            $token = $tokens[$i];
+
+            if (is_array($token)) {
+                if ($token[0] === T_ATTRIBUTE) {
+                    $depth++;
+                } elseif ($expectName && $depth === 0 && in_array($token[0], self::CLASS_REFERENCES, true)) {
+                    $names[] = $token;
+                    $expectName = false;
+                }
+
+                continue;
+            }
+
+            if (in_array($token, ['(', '[', '{'], true)) {
+                $depth++;
+            } elseif (in_array($token, [')', ']', '}'], true)) {
+                if ($token === ']' && $depth === 0) {
+                    break;
+                }
+
+                $depth--;
+            } elseif ($token === ',' && $depth === 0) {
+                $expectName = true;
+            }
+        }
+
+        return $names;
+    }
+
+    /**
      * True when `$tokens[$index]` is a reference to the emitter that reaches
      * it by something other than a literal `::notice(` — `::{'notice'}()`, or
      * `::class` handed to a callable.
@@ -791,7 +963,13 @@ final class DeprecationRegistryTest extends TestCase
         $member = $tokens[$index + 2] ?? null;
 
         // `::class` in `src/` has no use but building a callable, since the
-        // emitter is never injected; `::{` selects the method at runtime.
+        // emitter is never injected; `::{` and `::$method(` both pick the
+        // method at runtime, and `notice` is one of the names they can pick.
+        // The trailing `(` is what tells `::$method(` from `::$property`.
+        if (is_array($member) && $member[0] === T_VARIABLE) {
+            return ($tokens[$index + 3] ?? null) === '(';
+        }
+
         return $member === '{' || (is_array($member) && $member[0] === T_CLASS);
     }
 
@@ -1134,6 +1312,39 @@ final class DeprecationRegistryTest extends TestCase
         }
 
         return $imports;
+    }
+
+    /**
+     * Alias (lowercased) → the function or constant name it imports, for the
+     * `use function` / `use const` statements of one file.
+     *
+     * The value is the fully qualified name, not the short one, so that both
+     * directions resolve: `use const A\B\E_USER_DEPRECATED as X` names a
+     * different constant that merely shares a short name, and `use function
+     * X\log as trigger_error` makes a call that looks right go elsewhere.
+     *
+     * @param list<array{int, string}|string> $tokens
+     *
+     * @return array<string, string>
+     */
+    private function symbolAliasesOf(array $tokens, int $kind): array
+    {
+        $symbols = [];
+
+        foreach ($tokens as $index => $token) {
+            if (!is_array($token) || $token[0] !== T_USE) {
+                continue;
+            }
+
+            $next = $tokens[$index + 1] ?? null;
+            if (!is_array($next) || $next[0] !== $kind) {
+                continue;
+            }
+
+            $this->addStatement($tokens, $index + 2, $symbols);
+        }
+
+        return $symbols;
     }
 
     /**
