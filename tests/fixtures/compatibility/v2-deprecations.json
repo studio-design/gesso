@@ -1,13 +1,15 @@
 {
     "$comment": "Registry of every surface deprecated in v2 for removal in a later major (issue #499). One entry per Deprecations::notice() id in src/, checked by tests/Unit/Compatibility/DeprecationRegistryTest.php. A major that removes a surface deletes its entry in the same change; a removal with no entry here never shipped a deprecation and violates docs/versioning.md.",
-    "$spelling": "`surface` and `replacement` are the prose a human reads in the notice. `spelling` and `v3_target` are the same two facts in the form V3RenameRegistryTest can compare: the exact v2 name being deprecated, and the exact v3 name replacing it, both matching the entry of that name in v3-renames.json. Prose alone cannot carry the link — it can mention two spellings at once, and then an id points at whichever of them a reader assumes.",
+    "$fields": "`notice` is that call's three prose arguments copied verbatim and compared to src/ argument by argument, so a notice cannot be re-pointed, re-dated, or moved to another surface without this ledger showing it. `spelling` and `v3_target` are the same two facts in the form V3RenameRegistryTest can compare: the exact v2 name being deprecated, and the exact v3 name replacing it, both matching the entry of that name in v3-renames.json. Prose alone cannot carry that link — one sentence can mention two spellings at once, and then an id points at whichever of them a reader assumes.",
     "deprecations": {
         "laravel.config.auto_inject_dummy_bearer": {
             "spelling": "auto_inject_dummy_bearer",
-            "surface": "Laravel config key `auto_inject_dummy_bearer`",
-            "replacement": "`laravel.auto_inject_dummy_credentials` = `'bearer'` in the v3 `gesso.php` (accepted from Gesso 3.0 per ADR 0005; the v2 key is boolean-only, and `true` also injects apiKey schemes)",
             "v3_target": "laravel.auto_inject_dummy_credentials = 'bearer'",
-            "removed_in": "3.0"
+            "notice": {
+                "subject": "The Laravel config key 'auto_inject_dummy_bearer'",
+                "replacement": "laravel.auto_inject_dummy_credentials = 'bearer' (accepted from Gesso 3.0)",
+                "removed_in": "3.0"
+            }
         }
     }
 }

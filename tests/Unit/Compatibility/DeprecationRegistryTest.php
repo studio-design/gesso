@@ -39,6 +39,7 @@ use function in_array;
 use function is_array;
 use function json_decode;
 use function ltrim;
+use function preg_quote;
 use function sort;
 use function sprintf;
 use function stripslashes;
@@ -62,6 +63,13 @@ final class DeprecationRegistryTest extends TestCase
 {
     private const EMITTER = Deprecations::class;
 
+    /**
+     * The `notice()` arguments the registry mirrors, as registry key =>
+     * parameter name, in the order {@see Deprecations::notice()} declares them
+     * after `$id`. Positions matter: a call may pass them positionally.
+     */
+    private const ARGUMENTS = ['subject' => 'subject', 'replacement' => 'replacement', 'removed_in' => 'removedIn'];
+
     #[Test]
     public function every_notice_id_in_src_has_a_registry_entry(): void
     {
@@ -72,50 +80,71 @@ final class DeprecationRegistryTest extends TestCase
     }
 
     #[Test]
-    public function every_registry_entry_names_its_replacement_and_removal(): void
+    public function every_registry_entry_names_its_spelling_target_and_notice(): void
     {
-        foreach ($this->registry() as $id => $entry) {
-            $this->assertIsArray($entry, $id);
-
-            // `spelling` and `v3_target` are the machine-readable halves of the
-            // two prose fields, so `V3RenameRegistryTest` can match an id to
-            // the rename it stages by equality instead of by reading English.
-            foreach (['spelling', 'surface', 'replacement', 'v3_target', 'removed_in'] as $key) {
-                $this->assertArrayHasKey($key, $entry, $id);
-                $this->assertIsString($entry[$key], $id . '.' . $key);
-                $this->assertNotSame('', $entry[$key], $id . '.' . $key);
-            }
-        }
+        // The shape check itself lives in `registry()`, so that no test can
+        // read a malformed entry and pass. This one names the invariant and
+        // fails if the fixture is ever emptied out from under the others.
+        $this->assertNotSame([], $this->registry());
     }
 
     #[Test]
-    public function every_entry_names_the_spelling_its_own_notice_names(): void
+    public function every_entry_records_the_notice_its_call_emits(): void
     {
-        $subjects = [];
+        $calls = [];
         $failures = [];
 
         foreach ($this->sourceFiles() as $file => $contents) {
-            $this->scan($file, $contents, $failures, $subjects);
+            $this->scan($file, $contents, $failures, $calls);
         }
 
         foreach ($this->registry() as $id => $entry) {
-            $this->assertArrayHasKey($id, $subjects, $id . ' is registered but never emitted');
+            $this->assertArrayHasKey($id, $calls, $id . ' is registered but never emitted');
 
-            // The registry is a claim about what a consumer will read on
-            // STDERR. Nothing checked that claim against the call, so an entry
-            // could be re-pointed at a different key while the notice it
-            // describes went on naming the old one.
-            $this->assertIsString($subjects[$id], sprintf(
-                'The notice for "%s" builds its subject at runtime, so the registry cannot be held to it.',
-                $id,
-            ));
+            // The registry is a claim about what a consumer reads on STDERR.
+            // Only the id was ever checked against the call, so a notice could
+            // be re-pointed at another target, re-dated to a release v3 does
+            // not own, or moved to a different surface, and the ledger a
+            // reviewer reads would go on describing the notice that used to be
+            // there. Each argument is compared to the call verbatim: changing
+            // one in `src/` is now a change to this fixture too.
+            foreach (self::ARGUMENTS as $key => $parameter) {
+                $emitted = $calls[$id][$key];
 
-            $this->assertStringContainsString($entry['spelling'], $subjects[$id], sprintf(
+                $this->assertIsString($emitted, sprintf(
+                    'The notice for "%s" builds its $%s at runtime, so the registry cannot be held to it.',
+                    $id,
+                    $parameter,
+                ));
+
+                $this->assertSame($entry['notice'][$key], $emitted, sprintf(
+                    'Registry entry "%s" records a $%s its own notice does not pass.',
+                    $id,
+                    $parameter,
+                ));
+            }
+
+            $this->assertStringContainsString($entry['spelling'], $entry['notice']['subject'], sprintf(
                 'Registry entry "%s" deprecates %s, but its notice announces "%s".',
                 $id,
                 $entry['spelling'],
-                $subjects[$id],
+                $entry['notice']['subject'],
             ));
+
+            // The notice may add a parenthetical aside — when the replacement
+            // starts being accepted, say — but everything before it is the v3
+            // name itself, so that the target the consumer is sent to is the
+            // one `V3RenameRegistryTest` pins against ADR 0005.
+            $this->assertMatchesRegularExpression(
+                '/^' . preg_quote($entry['v3_target'], '/') . '(?: \(.+\))?$/',
+                $entry['notice']['replacement'],
+                sprintf(
+                    'Registry entry "%s" sends the reader to "%s" while its v3_target is "%s".',
+                    $id,
+                    $entry['notice']['replacement'],
+                    $entry['v3_target'],
+                ),
+            );
         }
     }
 
@@ -240,10 +269,11 @@ final class DeprecationRegistryTest extends TestCase
      * its ids. Unreadable ids are appended to `$failures` rather than thrown,
      * so one scan reports every offending call site at once.
      *
+     * `$calls` receives each id's remaining arguments, keyed by
+     * {@see self::ARGUMENTS}, with `null` for any that is not a literal.
+     *
      * @param list<string> $failures
-     * @param array<string, null|string> $subjects receives each id's `subject`
-     *                                             argument, `null` when it is
-     *                                             not a literal
+     * @param array<string, array<string, null|string>> $calls
      *
      * @return list<string>
      */
@@ -251,7 +281,7 @@ final class DeprecationRegistryTest extends TestCase
         string $file,
         string $contents,
         array &$failures = [],
-        array &$subjects = [],
+        array &$calls = [],
     ): array {
         $tokens = $this->significantTokens($contents);
         $namespace = $this->namespaceOf($tokens);
@@ -271,7 +301,7 @@ final class DeprecationRegistryTest extends TestCase
                 continue;
             }
 
-            $id = $this->idArgument($tokens, $index + 3, $reason);
+            $id = $this->argument($tokens, $index + 3, 'id', 0, $reason);
             if ($id === null) {
                 $failures[] = sprintf(
                     '%s: this Deprecations::notice() call cannot be checked against the deprecation '
@@ -284,7 +314,11 @@ final class DeprecationRegistryTest extends TestCase
             }
 
             $ids[] = $id;
-            $subjects[$id] = $this->subjectArgument($tokens, $index + 3);
+
+            $position = 0;
+            foreach (self::ARGUMENTS as $key => $parameter) {
+                $calls[$id][$key] = $this->argument($tokens, $index + 3, $parameter, ++$position);
+            }
         }
 
         return $ids;
@@ -337,35 +371,15 @@ final class DeprecationRegistryTest extends TestCase
     }
 
     /**
-     * The `id` argument of the call whose `(` sits at `$open`, or `null` when
-     * it cannot be read. Prefers the `id:` named argument and falls back to the
-     * first positional one, matching PHP's own resolution order. `$reason`
-     * receives the explanation, so a scan that cannot read an id says which
-     * kind of unreadable it hit rather than guessing.
+     * The literal value of one argument of the call whose `(` sits at `$open`,
+     * found by name first and by position second, the way PHP resolves it, or
+     * `null` when it cannot be read.
      *
-     * @param list<array{int, string}|string> $tokens
-     */
-    private function idArgument(array $tokens, int $open, ?string &$reason = null): ?string
-    {
-        return $this->argument($tokens, $open, 'id', 0, $reason);
-    }
-
-    /**
-     * The `subject` argument of the same call, or `null` when it is not a
-     * literal. Unlike the id, an unreadable subject is not a failure here: the
-     * caller decides, because a subject that interpolates a runtime value is
-     * legitimate while an id that does is not.
-     *
-     * @param list<array{int, string}|string> $tokens
-     */
-    private function subjectArgument(array $tokens, int $open): ?string
-    {
-        return $this->argument($tokens, $open, 'subject', 1);
-    }
-
-    /**
-     * The literal value of one argument, found by name first and by position
-     * second, the way PHP resolves it.
+     * `$reason` receives the explanation, so a scan that cannot read an
+     * argument says which kind of unreadable it hit rather than guessing. Only
+     * the id passes it: an unreadable id is a failure because the registry
+     * could not list it, while a subject that interpolates a runtime value is
+     * legitimate and left for the caller to judge.
      *
      * @param list<array{int, string}|string> $tokens
      */
@@ -609,7 +623,20 @@ final class DeprecationRegistryTest extends TestCase
         return $namespace === '' ? $name : $namespace . '\\' . $name;
     }
 
-    /** @return array<string, mixed> */
+    /**
+     * The registry, with its shape checked rather than assumed.
+     *
+     * The check lives here rather than in a test of its own so that a test
+     * which only wants one field still cannot read a half-written entry: the
+     * comparisons against `src/` are only as strong as the fixture side being
+     * a string where a string is expected.
+     *
+     * @return array<string, array{
+     *     spelling: string,
+     *     v3_target: string,
+     *     notice: array{subject: string, replacement: string, removed_in: string},
+     * }>
+     */
     private function registry(): array
     {
         $contents = file_get_contents(
@@ -620,7 +647,44 @@ final class DeprecationRegistryTest extends TestCase
         /** @var array{deprecations: array<string, mixed>} $fixture */
         $fixture = json_decode($contents, true, flags: JSON_THROW_ON_ERROR);
 
-        return $fixture['deprecations'];
+        $registry = [];
+
+        foreach ($fixture['deprecations'] as $id => $entry) {
+            $this->assertIsArray($entry, $id);
+
+            // `spelling` and `v3_target` are the machine-readable halves of the
+            // notice's prose, so `V3RenameRegistryTest` can match an id to the
+            // rename it stages by equality instead of by reading English.
+            foreach (['spelling', 'v3_target'] as $key) {
+                $this->assertArrayHasKey($key, $entry, $id);
+                $this->assertIsString($entry[$key], $id . '.' . $key);
+                $this->assertNotSame('', $entry[$key], $id . '.' . $key);
+            }
+
+            $this->assertArrayHasKey('notice', $entry, $id);
+            $this->assertIsArray($entry['notice'], $id . '.notice');
+
+            $notice = [];
+            foreach (array_keys(self::ARGUMENTS) as $key) {
+                $this->assertArrayHasKey($key, $entry['notice'], $id . '.notice');
+                $this->assertIsString($entry['notice'][$key], $id . '.notice.' . $key);
+                $this->assertNotSame('', $entry['notice'][$key], $id . '.notice.' . $key);
+
+                $notice[$key] = $entry['notice'][$key];
+            }
+
+            $registry[$id] = [
+                'spelling' => $entry['spelling'],
+                'v3_target' => $entry['v3_target'],
+                'notice' => [
+                    'subject' => $notice['subject'],
+                    'replacement' => $notice['replacement'],
+                    'removed_in' => $notice['removed_in'],
+                ],
+            ];
+        }
+
+        return $registry;
     }
 
     /** @return array<string, string> */

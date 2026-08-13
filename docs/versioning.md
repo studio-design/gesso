@@ -228,18 +228,21 @@ directions because each one is blind to the other's failure mode.
 
 | Fixture | Scanned from | Catches |
 | --- | --- | --- |
-| `tests/fixtures/compatibility/v2-deprecations.json` | `src/`, by `DeprecationRegistryTest` | a `Deprecations::notice()` call nobody registered, and an entry describing a different surface from the one its own notice announces |
+| `tests/fixtures/compatibility/v2-deprecations.json` | `src/`, by `DeprecationRegistryTest` | a `Deprecations::notice()` call nobody registered, and a notice re-pointed, re-dated, or moved to another surface without the ledger saying so |
 | `tests/fixtures/compatibility/v3-renames.json` | [ADR 0005](adr/0005-v3-configuration-and-cli-naming.md), by `V3RenameRegistryTest` | a rename that ships no notice at all |
 
 The first cannot see the second. A rename that simply never calls
 `Deprecations::notice()` emits nothing, so the scan finds nothing and the
 registry stays as correct — and as empty — as it was.
 
-Each registry entry carries its surface and replacement twice: once as the
-prose a consumer reads in the notice, and once as the bare `spelling` and
-`v3_target` the tests compare by equality. Prose alone cannot carry the link,
-because one sentence can name two spellings and an id then points at whichever
-of them the reader assumes.
+Each registry entry carries the notice twice: once under `notice`, as the three
+prose arguments the call passes, compared to `src/` argument by argument; and
+once as the bare `spelling` and `v3_target` the tests compare by equality.
+Prose alone cannot carry the link, because one sentence can name two spellings
+and an id then points at whichever of them the reader assumes. **Changing the
+wording, the target, or the removal version of a notice is therefore a change
+to this fixture too** — which is the point, since the fixture is the list a
+major deletes from.
 
 `v3-renames.json` therefore starts from the ADR: it lists every old spelling
 ADR 0005's two tables name, the v3 spelling that replaces it, the channel it

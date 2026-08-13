@@ -31,7 +31,6 @@ use function preg_replace;
 use function sort;
 use function sprintf;
 use function str_contains;
-use function str_replace;
 use function str_starts_with;
 use function trim;
 
@@ -86,6 +85,19 @@ final class V3RenameRegistryTest extends TestCase
      * deliberate edit here.
      */
     private const UNCHANGED_SPELLINGS = ['--output-file'];
+
+    /**
+     * What a deprecation notice has to call each surface. The surface itself
+     * is derived — from the ADR table a spelling sits under, or from which
+     * LegacyIdentity map holds it — so this is the one place the derived value
+     * meets the sentence a consumer reads on STDERR.
+     */
+    private const SURFACE_WORDS = [
+        'config-key' => 'config key',
+        'cli-flag' => 'flag',
+        'env-var' => 'environment variable',
+        'artisan-command' => 'command',
+    ];
 
     #[Test]
     public function every_old_spelling_the_adr_names_is_listed(): void
@@ -297,8 +309,15 @@ final class V3RenameRegistryTest extends TestCase
                 $id,
             ));
 
-            $this->assertSame($registry[$id]['removed_in'], $entry['removed_in'], sprintf(
-                '%s and its registry entry "%s" disagree about the removal version.',
+            $notice = $registry[$id]['notice'] ?? null;
+            $this->assertIsArray($notice, $id . '.notice');
+
+            // `notice` is what `DeprecationRegistryTest` holds to the call in
+            // `src/` argument by argument, so comparing against it compares
+            // against the emitted notice, not against a second copy of the
+            // fixture's own opinion.
+            $this->assertSame($notice['removed_in'] ?? null, $entry['removed_in'], sprintf(
+                '%s and the notice "%s" emits disagree about the removal version.',
                 $spelling,
                 $id,
             ));
@@ -324,20 +343,25 @@ final class V3RenameRegistryTest extends TestCase
                 $entry['replacement'],
             ));
 
-            // The prose still has to agree with the pair, or the notice a
-            // consumer reads says something the fixtures do not.
-            $this->assertIsString($registry[$id]['surface'], $id . '.surface');
-            $this->assertStringContainsString(
-                $spelling,
-                $this->unquoted($registry[$id]['surface']),
-                sprintf('Registry entry "%s" does not name the spelling %s deprecates.', $id, $spelling),
-            );
+            // Which surface the notice announces is a fact the ADR already
+            // fixes, by which of its two tables the spelling sits under. The
+            // notice is free prose and can call a config key a flag; the
+            // vocabulary below is the least it has to get right about the
+            // thing a reader then goes looking for.
+            $subject = $notice['subject'] ?? null;
+            $this->assertIsString($subject, $id . '.notice.subject');
 
-            $this->assertIsString($registry[$id]['replacement'], $id . '.replacement');
-            $this->assertStringContainsString(
-                $this->unquoted($registry[$id]['v3_target']),
-                $this->unquoted($registry[$id]['replacement']),
-                sprintf('Registry entry "%s" reads as pointing somewhere other than its own v3_target.', $id),
+            $this->assertArrayHasKey($entry['surface'], self::SURFACE_WORDS, $spelling . '.surface');
+            $this->assertStringContainsStringIgnoringCase(
+                self::SURFACE_WORDS[$entry['surface']],
+                $subject,
+                sprintf(
+                    '%s is written on the %s surface, but the notice "%s" emits announces it as "%s".',
+                    $spelling,
+                    $entry['surface'],
+                    $id,
+                    $subject,
+                ),
             );
         }
     }
@@ -452,6 +476,38 @@ final class V3RenameRegistryTest extends TestCase
         // key and the check stops being able to fail.
         $this->assertSame('config-key', $rows['spec_base_path']['surface']);
         $this->assertSame('cli-flag', $rows['--json-output']['surface']);
+
+        // Splitting a target into its key and its members is what makes the
+        // comparison against the row's v3 key exact. A split that stopped
+        // parsing one of ADR 0005's shapes would return the whole target as a
+        // key that matches nothing — loud — but one that quietly parsed a
+        // prefix would compare the wrong half, so the shapes are pinned.
+        $this->assertSame(
+            ['key' => 'spec.base_path', 'members' => []],
+            $this->targetParts('spec.base_path'),
+            'a bare key',
+        );
+        $this->assertSame(
+            ['key' => 'coverage.min_coverage', 'members' => ['endpoint']],
+            $this->targetParts("coverage.min_coverage['endpoint']"),
+            'a subscripted key',
+        );
+        $this->assertSame(
+            ['key' => '--strict-required', 'members' => ['run', 'per_call']],
+            $this->targetParts('--strict-required="run=…,per_call=…"'),
+            'a flag carrying the collapsed grammar',
+        );
+        $this->assertSame(
+            ['key' => '--report', 'members' => []],
+            $this->targetParts('--report=json:<path>'),
+            'a flag carrying a value placeholder',
+        );
+        $this->assertSame(
+            ['key' => 'laravel.auto_inject_dummy_credentials', 'members' => []],
+            $this->targetParts("laravel.auto_inject_dummy_credentials = 'bearer'"),
+            'a key pinned to one value',
+        );
+        $this->assertNull($this->targetParts("coverage.min_coverage['endpoint'] and then some"), 'trailing prose');
     }
 
     /**
@@ -604,27 +660,36 @@ final class V3RenameRegistryTest extends TestCase
                     // The target has to be a member of this row's key, not of
                     // whichever key happens to appear in the same sentence.
                     $this->assertNotSame([], $v3Names, $spelling . ' names a target under no v3 key');
-                    $this->assertStringStartsWith($v3Names[0], $target, sprintf(
-                        '%s is replaced by "%s", which is not under this row\'s v3 key %s.',
+
+                    $parts = $this->targetParts($target);
+                    if ($parts === null) {
+                        $unreadable[] = $spelling . ' is replaced by an unparseable target: ' . $line;
+
+                        continue;
+                    }
+
+                    // Split, then compared exactly, in both halves.
+                    // `assertStringStartsWith` accepted
+                    // `coverage.min_coverage_typo['response']` under the key
+                    // `coverage.min_coverage`, because the wrong key had the
+                    // right one as a prefix — the same substring failure the
+                    // member check had already been fixed for.
+                    $this->assertSame($v3Names[0], $parts['key'], sprintf(
+                        '%s is replaced by "%s", which is under the key %s, not this row\'s %s.',
                         $spelling,
                         $target,
+                        $parts['key'],
                         $v3Names[0],
                     ));
 
                     if ($members !== []) {
-                        // Parsed out of the target, not searched for inside it.
-                        // `str_contains` accepted `['response_typo']` because
-                        // `response` is a substring of it, which let a row name
-                        // a member it never enumerates.
-                        $named = $this->targetMembers($target);
-
-                        $this->assertNotSame([], $named, sprintf(
+                        $this->assertNotSame([], $parts['members'], sprintf(
                             '%s is replaced by "%s", which names no member of the key its row collapses into.',
                             $spelling,
                             $target,
                         ));
 
-                        $this->assertSame([], array_values(array_diff($named, $members)), sprintf(
+                        $this->assertSame([], array_values(array_diff($parts['members'], $members)), sprintf(
                             "%s is replaced by \"%s\", whose member is not one this row lists:\n  %s",
                             $spelling,
                             $target,
@@ -692,20 +757,38 @@ final class V3RenameRegistryTest extends TestCase
     }
 
     /**
-     * The sub-keys one target names, in the two forms a target can take: an
-     * array subscript for a `gesso.php` key, and the collapsed string grammar
-     * for a CLI flag. A target naming a whole key names no member.
+     * One v3 target split into the key it names and the members it selects out
+     * of that key: `coverage.min_coverage['endpoint']` is the key
+     * `coverage.min_coverage` selecting `endpoint`, and
+     * `--min-coverage="strict"` is the flag `--min-coverage` selecting
+     * `strict`. A target naming a whole key or a plain flag value selects no
+     * member.
      *
-     * @return list<string>
+     * `null` when the target is written in none of the shapes ADR 0005 uses.
+     * Matching the whole string is what makes the split a split: a pattern
+     * that read a prefix and ignored the rest would let anything trail a
+     * well-formed target and still be compared as if it were one.
+     *
+     * @return null|array{key: string, members: list<string>}
      */
-    private function targetMembers(string $target): array
+    private function targetParts(string $target): ?array
     {
-        preg_match_all("/\\['(\\w+)'\\]/", $target, $subscripts);
-        if ($subscripts[1] !== []) {
-            return $subscripts[1];
+        $matched = preg_match(
+            '/^(?<key>[^\s=\[]+)(?<subscripts>(?:\[\'\w+\'\])*)(?:\s*=\s*(?:"[^"]*"|\'[^\']*\'|[\w:<>.,-]+))?$/',
+            $target,
+            $parts,
+        );
+
+        if ($matched !== 1) {
+            return null;
         }
 
-        return $this->grammarMembers($target);
+        preg_match_all("/\\['(\\w+)'\\]/", $parts['subscripts'], $subscripts);
+
+        return [
+            'key' => $parts['key'],
+            'members' => $subscripts[1] !== [] ? $subscripts[1] : $this->grammarMembers($target),
+        ];
     }
 
     /**
@@ -775,16 +858,6 @@ final class V3RenameRegistryTest extends TestCase
         }
 
         return $names;
-    }
-
-    /**
-     * The registry writes its `surface` and `replacement` as prose for a human
-     * reading a deprecation notice, so it quotes names in backticks. Comparing
-     * against the fixture's bare spellings means taking those out first.
-     */
-    private function unquoted(string $prose): string
-    {
-        return str_replace('`', '', $prose);
     }
 
     /** @return array<string, array<string, mixed>> */
