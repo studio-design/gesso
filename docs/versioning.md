@@ -237,11 +237,13 @@ registry stays as correct — and as empty — as it was.
 
 `Deprecations` is the only place allowed to put a notice on the
 `E_USER_DEPRECATED` channel, and that is enforced rather than asked for: a
-`trigger_error(..., E_USER_DEPRECATED)` or a `#[\Deprecated]` attribute
-anywhere in `src/` or `bin/` fails the scan, because it announces a removal the
-registry has no row for. The severity is read as a value, so `16384` is the
-same thing spelled differently, and one it cannot evaluate counts as the
-channel rather than being waved through. The one exception — the Laravel
+`trigger_error(..., E_USER_DEPRECATED)` — or `user_error()`, PHP's own alias —
+or a `#[\Deprecated]` attribute anywhere in `src/` or `bin/` fails the scan,
+because it announces a removal the registry has no row for. The severity is
+read as a value, in every base PHP writes one, so `0x4000` is the same thing
+spelled differently; only the four severities `trigger_error()` accepts can
+answer "not the deprecation channel", and anything else counts as the channel
+rather than being waved through. The one exception — the Laravel
 adapter's contradictory-intent warning, which rides the channel so PHPUnit
 counts it and announces no removal — is listed by name and by call count in
 `DeprecationRegistryTest`.

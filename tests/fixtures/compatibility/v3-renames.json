@@ -308,11 +308,12 @@
         },
         "enum_spec_base_path": {
             "surface": "config-key",
-            "replacement": "none — the second filesystem root is deleted, bindings resolve by spec component name",
+            "replacement": "none",
             "channel": "deprecation",
             "removed_in": "3.0",
             "owner": "#508",
-            "deprecation_id": null
+            "deprecation_id": null,
+            "$comment": "The second filesystem root is deleted; enum bindings resolve by spec component name (#508). Nothing replaces it, which is why `replacement` is the bare sentinel."
         },
         "--output-file": {
             "surface": "cli-flag",
@@ -447,11 +448,12 @@
         },
         "--enum-spec-base-path": {
             "surface": "cli-flag",
-            "replacement": "none — the second filesystem root is deleted, bindings resolve by spec component name",
+            "replacement": "none",
             "channel": "deprecation",
             "removed_in": "3.0",
             "owner": "#508",
-            "deprecation_id": null
+            "deprecation_id": null,
+            "$comment": "The second filesystem root is deleted; enum bindings resolve by spec component name (#508). Nothing replaces it, which is why `replacement` is the bare sentinel."
         },
         "OPENAPI_VALIDATION_OUTPUT": {
             "surface": "env-var",

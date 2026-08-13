@@ -138,6 +138,13 @@ final class V3RenameRegistryTest extends TestCase
      */
     private const RENAMES_NOTHING = ['', 'unchanged'];
 
+    /**
+     * What a `— removed —` row's entry records as its replacement. A sentinel
+     * with no room in it, so that a successor cannot be smuggled into a field
+     * whose point is that there is none.
+     */
+    private const NO_SUCCESSOR = 'none';
+
     private const UNSTAGED_CEILING = 53;
 
     #[Test]
@@ -164,12 +171,17 @@ final class V3RenameRegistryTest extends TestCase
 
             $this->assertIsString($entry['replacement'], $spelling . '.replacement');
 
-            // `— removed —` rows name no successor, so the fixture has to say
-            // so rather than invent one.
+            // `— removed —` rows name no successor, so the fixture says so
+            // with a sentinel and nothing else. A prefix test let the rest of
+            // the field carry one anyway — "none — use spec.base_path
+            // instead" both starts with `none` and points somewhere, which is
+            // the whole thing the row denies. The reason a row has no
+            // successor goes in its `$comment`, where nothing reads it as one.
             if ($row['target'] === null) {
-                $this->assertStringStartsWith('none', $entry['replacement'], sprintf(
-                    'ADR 0005 removes %s outright, so its replacement cannot name a v3 target.',
+                $this->assertSame(self::NO_SUCCESSOR, $entry['replacement'], sprintf(
+                    'ADR 0005 removes %s outright, so its replacement is the bare sentinel "%s".',
                     $spelling,
+                    self::NO_SUCCESSOR,
                 ));
 
                 continue;

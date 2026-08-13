@@ -16,6 +16,7 @@ use const T_CURLY_OPEN;
 use const T_DOC_COMMENT;
 use const T_DOLLAR_OPEN_CURLY_BRACES;
 use const T_DOUBLE_COLON;
+use const T_ENCAPSED_AND_WHITESPACE;
 use const T_FUNCTION;
 use const T_LNUMBER;
 use const T_NAME_FULLY_QUALIFIED;
@@ -48,24 +49,28 @@ use function file_get_contents;
 use function hexdec;
 use function implode;
 use function in_array;
+use function intval;
 use function is_array;
 use function is_string;
 use function json_decode;
 use function ksort;
 use function ltrim;
 use function octdec;
+use function preg_match;
 use function preg_quote;
 use function preg_replace;
 use function preg_replace_callback;
 use function sort;
 use function sprintf;
 use function str_contains;
+use function str_replace;
 use function str_starts_with;
 use function stripslashes;
 use function strlen;
 use function strtolower;
 use function substr;
 use function token_get_all;
+use function trim;
 
 /**
  * The registry fixture is the ordering artifact between the deprecation
@@ -85,6 +90,28 @@ final class DeprecationRegistryTest extends TestCase
 
     /** The shipped directories a deprecation can be emitted from. */
     private const SHIPPED = ['src', 'bin'];
+
+    /**
+     * The functions that raise a user error. `user_error` is PHP's own alias
+     * for `trigger_error` and reaches the same channel.
+     */
+    private const RAISERS = ['trigger_error', 'user_error'];
+
+    /**
+     * The severities `trigger_error()` accepts, and their values.
+     *
+     * A closed set, because the question this answers is "is this the
+     * deprecation channel", and only an argument that is demonstrably one of
+     * the other three can answer no. A user-defined constant holding
+     * `E_USER_DEPRECATED` is not a fourth name for something else — it is the
+     * channel wearing a name this scan cannot follow.
+     */
+    private const SEVERITIES = [
+        'E_USER_ERROR' => 256,
+        'E_USER_WARNING' => 512,
+        'E_USER_NOTICE' => 1024,
+        'E_USER_DEPRECATED' => 16384,
+    ];
 
     /**
      * The files allowed to hand a notice to `E_USER_DEPRECATED` directly.
@@ -287,14 +314,34 @@ final class DeprecationRegistryTest extends TestCase
             // A severity this cannot evaluate might be the channel, so it
             // counts rather than passing.
             "<?php\nnamespace X;\n\$level = E_USER_DEPRECATED;\ntrigger_error('m', \$level);" => 1,
-            "<?php\nnamespace X;\ntrigger_error('m', 8192);" => 0,
+            // Every base PHP writes an integer in, and the separator it
+            // allows. `(int)` read the hexadecimal spelling as zero.
+            "<?php\nnamespace X;\ntrigger_error('m', 0x4000);" => 1,
+            "<?php\nnamespace X;\ntrigger_error('m', 0b100000000000000);" => 1,
+            "<?php\nnamespace X;\ntrigger_error('m', 040000);" => 1,
+            "<?php\nnamespace X;\ntrigger_error('m', 0o40000);" => 1,
+            "<?php\nnamespace X;\ntrigger_error('m', 16_384);" => 1,
+            // A name whose value this cannot see is not a fourth severity.
+            "<?php\nnamespace X;\nconst LEVEL = E_USER_DEPRECATED;\ntrigger_error('m', LEVEL);" => 1,
+            // PHP's own alias for the same function, and a name relative to a
+            // file that has no namespace — which is `bin/gesso`.
+            "<?php\nnamespace X;\nuser_error('m', E_USER_DEPRECATED);" => 1,
+            "<?php\nnamespace\\trigger_error('m', \\E_USER_DEPRECATED);" => 1,
+            // A nowdoc body is a string like any other.
+            "<?php\nnamespace X;\ncall_user_func(<<<'F'\ntrigger_error\nF, 'm', E_USER_DEPRECATED);" => 1,
+            // A relative name under a namespace is a different function.
+            "<?php\nnamespace X;\nnamespace\\trigger_error('m', \\E_USER_DEPRECATED);" => 0,
+            "<?php\nnamespace X;\ntrigger_error('m', E_USER_WARNING);" => 0,
+            "<?php\nnamespace X;\ntrigger_error('m', 512);" => 0,
             "<?php\nnamespace X;\ntrigger_error('m');" => 0,
             // An alias pointing somewhere else is not this channel.
             "<?php\nnamespace X;\nuse function X\\log as trigger_error;\n"
                 . "trigger_error('m', E_USER_DEPRECATED);" => 0,
+            // A namespaced constant that merely shares the short name is a
+            // constant this cannot evaluate, not a different severity — it
+            // could hold 16384. Unreadable counts.
             "<?php\nnamespace X;\nuse const X\\E_USER_DEPRECATED as GONE;\n"
-                . "trigger_error('m', GONE);" => 0,
-            "<?php\nnamespace X;\ntrigger_error('m', E_USER_WARNING);" => 0,
+                . "trigger_error('m', GONE);" => 1,
         ];
 
         foreach ($cases as $source => $expected) {
@@ -532,6 +579,11 @@ final class DeprecationRegistryTest extends TestCase
                 => 'can only build a callable',
             "<?php\nnamespace X;\n\$e = 'Studio\\\\Gesso\\\\Internal\\\\Deprecations';\n"
                 . "\$e::notice('a', 's', 'r', '3.0');" => 'can only build a callable',
+            // A nowdoc spells the callable out in full and is not a quoted
+            // literal, so a scan reading only quoted literals never saw it.
+            "<?php\nnamespace X;\ncall_user_func(<<<'CALLABLE'\n"
+                . "Studio\\Gesso\\Internal\\Deprecations::notice\nCALLABLE, 'a', 's', 'r', '3.0');"
+                => 'can only build a callable',
         ];
 
         foreach ($spellings as $source => $expected) {
@@ -690,7 +742,8 @@ final class DeprecationRegistryTest extends TestCase
             // is a valid callable and leaves no class token to resolve. The
             // emitter's name has no other use as a string in shipped code, so
             // the string is reported as the call it is about to become.
-            if (is_array($token) && $token[0] === T_CONSTANT_ENCAPSED_STRING && $this->namesEmitter($token[1])) {
+            $text = is_array($token) ? $this->staticText($token) : null;
+            if ($text !== null && $this->namesEmitter($text)) {
                 $failures[] = sprintf(
                     '%s: this string names %s, which can only build a callable the deprecation scan '
                     . 'cannot read. Call notice() by name.',
@@ -796,33 +849,57 @@ final class DeprecationRegistryTest extends TestCase
     }
 
     /**
-     * True when `$tokens[$index]` is a plain call to the named function, not a
-     * method of the same name and not a declaration of it.
+     * The name of the function a plain call at `$tokens[$index]` invokes,
+     * lowercased and fully resolved, or `null` when this is not one — a method
+     * of the same name, or a declaration of it.
      *
-     * `$aliases` is the file's `use function` map, so a call written through an
-     * alias still resolves — and so does one whose alias points somewhere else.
+     * `$aliases` is the file's `use function` map, so a call written through
+     * an alias resolves to what it really invokes, and one whose alias points
+     * elsewhere resolves to that instead. `namespace\f()` and `A\f()` are
+     * relative to the file, and an unqualified name that no import claims
+     * falls back to the global function the way PHP does.
      *
      * @param list<array{int, string}|string> $tokens
      * @param array<string, string> $aliases
      */
-    private function isCallTo(array $tokens, int $index, string $name, array $aliases = []): bool
+    private function calledFunction(array $tokens, int $index, string $namespace, array $aliases): ?string
     {
         $token = $tokens[$index] ?? null;
-        if (!is_array($token) || !in_array($token[0], [T_STRING, T_NAME_FULLY_QUALIFIED], true)) {
-            return false;
+        if (!is_array($token) || !in_array($token[0], self::CLASS_REFERENCES, true)) {
+            return null;
         }
 
-        $called = strtolower(ltrim($token[1], '\\'));
-        $called = strtolower($aliases[$called] ?? $called);
-
-        if ($called !== $name || ($tokens[$index + 1] ?? null) !== '(') {
-            return false;
+        if (($tokens[$index + 1] ?? null) !== '(') {
+            return null;
         }
 
         $previous = $tokens[$index - 1] ?? null;
+        if (is_array($previous) && in_array($previous[0], [T_DOUBLE_COLON, T_OBJECT_OPERATOR, T_FUNCTION], true)) {
+            return null;
+        }
 
-        return !is_array($previous) ||
-            !in_array($previous[0], [T_DOUBLE_COLON, T_OBJECT_OPERATOR, T_FUNCTION], true);
+        $name = $token[1];
+
+        if ($token[0] === T_NAME_FULLY_QUALIFIED) {
+            return strtolower(ltrim($name, '\\'));
+        }
+
+        if ($token[0] === T_NAME_RELATIVE) {
+            $relative = substr($name, strlen('namespace\\'));
+
+            return strtolower($namespace === '' ? $relative : $namespace . '\\' . $relative);
+        }
+
+        if ($token[0] === T_NAME_QUALIFIED) {
+            return strtolower($namespace === '' ? $name : $namespace . '\\' . $name);
+        }
+
+        // Unqualified. An import decides it; otherwise PHP looks in the
+        // current namespace and falls back to the global function, and no
+        // shipped file defines one of these.
+        $short = strtolower($name);
+
+        return strtolower($aliases[$short] ?? $short);
     }
 
     /**
@@ -876,23 +953,24 @@ final class DeprecationRegistryTest extends TestCase
     {
         $functions = $this->symbolAliasesOf($tokens, T_FUNCTION);
         $constants = $this->symbolAliasesOf($tokens, T_CONST);
+        $namespace = $this->namespacesOf($tokens)[0] ?? '';
         $found = [];
 
         foreach ($tokens as $index => $token) {
-            // A string naming the function is a callable waiting to be
+            // A string naming one of the functions is a callable waiting to be
             // invoked: `call_user_func('trigger_error', …)` raises exactly the
-            // same notice. The name has no other use in shipped code, so its
-            // presence is counted as the call it is about to become.
-            if (is_array($token) && $token[0] === T_CONSTANT_ENCAPSED_STRING) {
-                $literal = $this->decode($token[1]);
-                if ($literal !== null && strtolower(ltrim($literal, '\\')) === 'trigger_error') {
+            // same notice. The names have no other use in shipped code, so
+            // their presence is counted as the call they are about to become.
+            $literal = is_array($token) ? $this->staticText($token) : null;
+            if ($literal !== null) {
+                if (in_array(strtolower(trim(ltrim($literal, '\\'))), self::RAISERS, true)) {
                     $found[] = $index;
                 }
 
                 continue;
             }
 
-            if (!$this->isCallTo($tokens, $index, 'trigger_error', $functions)) {
+            if (!in_array($this->calledFunction($tokens, $index, $namespace, $functions), self::RAISERS, true)) {
                 continue;
             }
 
@@ -956,7 +1034,13 @@ final class DeprecationRegistryTest extends TestCase
         }
 
         if ($token[0] === T_LNUMBER) {
-            return (int) $token[1] === E_USER_DEPRECATED ? 'channel' : 'other';
+            $value = $this->integer($token[1]);
+
+            return match (true) {
+                $value === self::SEVERITIES['E_USER_DEPRECATED'] => 'channel',
+                in_array($value, self::SEVERITIES, true) => 'other',
+                default => 'unreadable',
+            };
         }
 
         if (!in_array($token[0], self::CLASS_REFERENCES, true)) {
@@ -964,8 +1048,35 @@ final class DeprecationRegistryTest extends TestCase
         }
 
         $name = ltrim($token[1], '\\');
+        $name = $constants[strtolower($name)] ?? $name;
 
-        return ($constants[strtolower($name)] ?? $name) === 'E_USER_DEPRECATED' ? 'channel' : 'other';
+        // Not "anything but E_USER_DEPRECATED is fine". A name this does not
+        // know is a name whose value it cannot see, and
+        // `const REVIEW_LEVEL = E_USER_DEPRECATED` is exactly that.
+        return match (true) {
+            $name === 'E_USER_DEPRECATED' => 'channel',
+            array_key_exists($name, self::SEVERITIES) => 'other',
+            default => 'unreadable',
+        };
+    }
+
+    /**
+     * The value of one PHP integer literal, in every base PHP writes them in.
+     *
+     * `(int)` was here, and it reads `0x4000` as zero — the hexadecimal
+     * spelling of the deprecation channel arriving as "not the channel".
+     * `intval(..., 0)` detects `0x`, `0b` and a leading-zero octal; `0o` is
+     * newer than the function and `_` is a separator PHP strips itself.
+     */
+    private function integer(string $literal): int
+    {
+        $literal = str_replace('_', '', $literal);
+
+        if (preg_match('/^0[oO]/', $literal) === 1) {
+            $literal = '0' . substr($literal, 2);
+        }
+
+        return intval($literal, 0);
     }
 
     /**
@@ -1042,17 +1153,31 @@ final class DeprecationRegistryTest extends TestCase
     }
 
     /**
-     * True when one string literal names the emitter class — on its own, or
+     * The text of one token that carries a static string, or `null` when the
+     * token is not one.
+     *
+     * Quoted literals are one token; a heredoc or nowdoc body is a
+     * `T_ENCAPSED_AND_WHITESPACE` between its delimiters. Reading only the
+     * first meant a nowdoc could spell out a callable in full and be invisible.
+     *
+     * @param array{int, string} $token
+     */
+    private function staticText(array $token): ?string
+    {
+        return match ($token[0]) {
+            T_CONSTANT_ENCAPSED_STRING => $this->decode($token[1]),
+            T_ENCAPSED_AND_WHITESPACE => $token[1],
+            default => null,
+        };
+    }
+
+    /**
+     * True when one static string names the emitter class — on its own, or
      * with a member after it.
      */
     private function namesEmitter(string $literal): bool
     {
-        $value = $this->decode($literal);
-        if ($value === null) {
-            return false;
-        }
-
-        $value = strtolower(ltrim($value, '\\'));
+        $value = strtolower(trim(ltrim($literal, '\\')));
         $emitter = strtolower(self::EMITTER);
 
         return $value === $emitter || str_starts_with($value, $emitter . '::');
