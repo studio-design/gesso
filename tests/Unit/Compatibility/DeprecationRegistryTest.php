@@ -18,8 +18,10 @@ use const T_DOUBLE_COLON;
 use const T_FUNCTION;
 use const T_NAME_FULLY_QUALIFIED;
 use const T_NAME_QUALIFIED;
+use const T_NAME_RELATIVE;
 use const T_NAMESPACE;
 use const T_NS_SEPARATOR;
+use const T_OBJECT_OPERATOR;
 use const T_STRING;
 use const T_USE;
 use const T_WHITESPACE;
@@ -31,21 +33,32 @@ use RecursiveIteratorIterator;
 use SplFileInfo;
 use Studio\Gesso\Internal\Deprecations;
 
+use function array_diff_key;
 use function array_key_exists;
 use function array_keys;
+use function chr;
 use function count;
 use function dirname;
 use function explode;
 use function file_get_contents;
+use function hexdec;
 use function implode;
 use function in_array;
 use function is_array;
+use function is_string;
 use function json_decode;
+use function ksort;
 use function ltrim;
+use function octdec;
 use function preg_quote;
+use function preg_replace;
+use function preg_replace_callback;
 use function sort;
 use function sprintf;
+use function str_contains;
+use function str_starts_with;
 use function stripslashes;
+use function strlen;
 use function strtolower;
 use function substr;
 use function token_get_all;
@@ -66,12 +79,56 @@ final class DeprecationRegistryTest extends TestCase
 {
     private const EMITTER = Deprecations::class;
 
+    /** The shipped directories a deprecation can be emitted from. */
+    private const SHIPPED = ['src', 'bin'];
+
+    /**
+     * The files allowed to hand a notice to `E_USER_DEPRECATED` directly.
+     *
+     * `Deprecations` is the channel's one emitter, which is the whole point of
+     * routing deprecations through it: the registry can be checked against the
+     * call sites. `ValidatesOpenApiSchema` is the deliberate exception — its
+     * contradictory-intent warning rides the channel so PHPUnit counts it, and
+     * it announces no removal, so it has nothing to register.
+     *
+     * Counted, not just named: a file already on the list would otherwise be
+     * free to grow a second direct emission, and the file that owns the one
+     * exception is also the file with the most reason to add one. Any change
+     * here adds a deprecation the registry will never see, so it should cost a
+     * deliberate edit and a sentence in the PR.
+     */
+    private const DEPRECATION_EMITTERS = [
+        'src/Internal/Deprecations.php' => 1,
+        'src/Laravel/ValidatesOpenApiSchema.php' => 1,
+    ];
+
     /**
      * The `notice()` arguments the registry mirrors, as registry key =>
      * parameter name, in the order {@see Deprecations::notice()} declares them
      * after `$id`. Positions matter: a call may pass them positionally.
      */
     private const ARGUMENTS = ['subject' => 'subject', 'replacement' => 'replacement', 'removed_in' => 'removedIn'];
+
+    /**
+     * Every token a class reference can be, including `namespace\Foo`. PHP
+     * resolves that one against the file's own namespace, so it reaches the
+     * emitter from inside `Studio\Gesso\Internal` — and a scan that did not
+     * know the token dropped the call before it ever looked at the class name.
+     */
+    private const CLASS_REFERENCES = [T_STRING, T_NAME_QUALIFIED, T_NAME_FULLY_QUALIFIED, T_NAME_RELATIVE];
+
+    /** The escapes a double-quoted PHP literal gives a meaning of its own. */
+    private const ESCAPES = [
+        'n' => "\n",
+        'r' => "\r",
+        't' => "\t",
+        'v' => "\v",
+        'e' => "\e",
+        'f' => "\f",
+        '\\' => '\\',
+        '$' => '$',
+        '"' => '"',
+    ];
 
     #[Test]
     public function every_notice_id_in_src_has_a_registry_entry(): void
@@ -150,6 +207,86 @@ final class DeprecationRegistryTest extends TestCase
     }
 
     #[Test]
+    public function the_deprecation_channel_has_one_emitter(): void
+    {
+        // The registry can only be checked against `Deprecations::notice()`
+        // call sites, so a `trigger_error(..., E_USER_DEPRECATED)` written
+        // anywhere else announces a removal that nothing here can see. The
+        // class docblock says routing everything through one method is the
+        // point; nothing enforced it.
+        $emitters = [];
+
+        foreach ($this->sourceFiles() as $file => $contents) {
+            $tokens = $this->significantTokens($contents);
+
+            foreach ($tokens as $index => $token) {
+                if (!$this->isCallTo($tokens, $index, 'trigger_error')) {
+                    continue;
+                }
+
+                foreach ($this->argumentSegments($tokens, $index + 1) ?? [] as $segment) {
+                    foreach ($segment as $argument) {
+                        if (is_array($argument) && ltrim($argument[1], '\\') === 'E_USER_DEPRECATED') {
+                            $emitters[$file] = ($emitters[$file] ?? 0) + 1;
+                        }
+                    }
+                }
+            }
+        }
+
+        ksort($emitters);
+        $expected = self::DEPRECATION_EMITTERS;
+        ksort($expected);
+
+        $this->assertSame($expected, $emitters, sprintf(
+            "The E_USER_DEPRECATED channel is emitted on somewhere this gate does not know about.\n"
+            . "  unlisted: %s\n  listed but no longer emitting: %s",
+            implode(', ', array_diff_key($emitters, $expected)) !== ''
+                ? implode(', ', array_keys(array_diff_key($emitters, $expected)))
+                : '(none)',
+            implode(', ', array_keys(array_diff_key($expected, $emitters))) ?: '(none)',
+        ));
+    }
+
+    #[Test]
+    public function no_attribute_deprecates_behind_the_emitter(): void
+    {
+        // PHP 8.4's `#[\Deprecated]` raises `E_USER_DEPRECATED` by itself when
+        // the symbol is used. That is the same channel with none of the
+        // ledger: no id, no removal version, nothing for 3.0 to delete.
+        $tagged = [];
+
+        foreach ($this->sourceFiles() as $file => $contents) {
+            $tokens = $this->significantTokens($contents);
+
+            foreach ($tokens as $index => $token) {
+                if (!is_array($token) || $token[0] !== T_ATTRIBUTE) {
+                    continue;
+                }
+
+                $name = $tokens[$index + 1] ?? null;
+                if (is_array($name) && ltrim($name[1], '\\') === 'Deprecated') {
+                    $tagged[] = $file;
+                }
+            }
+        }
+
+        $this->assertSame([], $tagged, sprintf(
+            'These files deprecate a symbol with #[\Deprecated], which emits on the same channel as '
+            . "Deprecations::notice() and records nothing the removing major can delete:\n  %s",
+            implode("\n  ", $tagged),
+        ));
+    }
+
+    #[Test]
+    public function the_scan_covers_the_shipped_cli(): void
+    {
+        // Guards the guard. `bin/gesso` has no `.php` extension, so an
+        // extension filter silently excluded the surface ADR 0005 renames most.
+        $this->assertArrayHasKey('bin/gesso', $this->sourceFiles());
+    }
+
+    #[Test]
     public function the_scanner_finds_every_call_spelling(): void
     {
         // Guards the guard: if this scan silently stopped matching, the
@@ -171,6 +308,10 @@ final class DeprecationRegistryTest extends TestCase
             "<?php\nnamespace X;\nuse Studio\\Gesso\\{Internal\\Deprecations};\nDeprecations::notice('a', 's', 'r', '3.0');",
             "<?php\nnamespace X;\nuse Studio\\Gesso\\Internal\\{function helper, Deprecations};\n"
                 . "Deprecations::notice('a', 's', 'r', '3.0');",
+            // `namespace\Foo` from inside the emitter's own namespace. Its
+            // token is neither T_STRING nor T_NAME_QUALIFIED, so a scan that
+            // did not list it dropped the call before reading the class name.
+            "<?php\nnamespace Studio\\Gesso\\Internal;\nnamespace\\Deprecations::notice('a', 's', 'r', '3.0');",
         ];
 
         foreach ($spellings as $index => $source) {
@@ -186,6 +327,9 @@ final class DeprecationRegistryTest extends TestCase
             // A grouped import of something else must not make every short
             // name in the file resolve to the emitter.
             "<?php\nnamespace X;\nuse X\\{Logger, Other};\nLogger::notice('not-a-deprecation');",
+            // `namespace\` is relative to the file, not to the emitter, so the
+            // same spelling under another namespace is a different class.
+            "<?php\nnamespace X;\nnamespace\\Deprecations::notice('not-a-deprecation');",
         ];
 
         foreach ($sources as $index => $source) {
@@ -211,6 +355,128 @@ final class DeprecationRegistryTest extends TestCase
         $this->assertSame('first', $calls['a']['subject']);
         $this->assertCount(1, $failures);
         $this->assertStringContainsString('reuses the id "a"', $failures[0]);
+    }
+
+    #[Test]
+    public function the_scanner_decodes_a_literal_the_way_php_does(): void
+    {
+        // Left column: the literal as it is written in the source. Right
+        // column: what PHP makes of it, and therefore what the registry has to
+        // record. `stripslashes()` agreed with PHP on neither quote style —
+        // it ate the backslash out of a Windows path and left `\x41` as text.
+        $literals = [
+            "'C:\\new'" => 'C:\\new',
+            "'it\\'s'" => "it's",
+            "'a\\\\b'" => 'a\\b',
+            "'A\\Gesso'" => 'A\\Gesso',
+            '"a\\nb"' => "a\nb",
+            '"C:\\\\new"' => 'C:\\new',
+            '"A\\Gesso"' => 'A\\Gesso',
+            '"say \\"hi\\""' => 'say "hi"',
+            '"\\$x"' => '$x',
+            '"\\x41"' => 'A',
+            '"\\101"' => 'A',
+            '"\\e[0m"' => "\e[0m",
+            '"\\u{2019}"' => "\u{2019}",
+            '"\\u{1F600}"' => "\u{1F600}",
+        ];
+
+        foreach ($literals as $source => $expected) {
+            $calls = [];
+            $failures = [];
+
+            $this->scan(
+                'literal',
+                "<?php\nnamespace X;\nuse Studio\\Gesso\\Internal\\Deprecations;\n"
+                    . "Deprecations::notice('id', " . $source . ", 'r', '3.0');",
+                $failures,
+                $calls,
+            );
+
+            $this->assertSame([], $failures, $source);
+            $this->assertSame($expected, $calls['id']['subject'] ?? null, $source);
+        }
+    }
+
+    #[Test]
+    public function an_undecodable_literal_fails_instead_of_decoding_to_something_else(): void
+    {
+        // Past the last code point. Reporting it as unreadable is the only
+        // honest answer; producing some other string would put a value in the
+        // registry that no notice can ever print.
+        $source = "<?php\nnamespace X;\nuse Studio\\Gesso\\Internal\\Deprecations;\n"
+            . "Deprecations::notice(\"a\\u{110000}\", 's', 'r', '3.0');";
+
+        $failures = [];
+        $this->scan('undecodable', $source, $failures);
+
+        $this->assertCount(1, $failures);
+        $this->assertStringContainsString('the id must be a literal string', $failures[0]);
+    }
+
+    #[Test]
+    public function a_dynamically_dispatched_notice_fails_instead_of_going_unnoticed(): void
+    {
+        // Each of these reaches the same emitter at runtime and leaves no
+        // class name for the scan to resolve, so silence would mean a notice
+        // that never needs a registry entry.
+        $spellings = [
+            "<?php\nnamespace X;\n\$emitter = 'Studio\\Gesso\\Internal\\Deprecations';\n"
+                . "\$emitter::notice('a', 's', 'r', '3.0');",
+            "<?php\nnamespace X;\nclass C { const E = \\Studio\\Gesso\\Internal\\Deprecations::class;\n"
+                . "public function f(): void { self::E::notice('a', 's', 'r', '3.0'); } }",
+        ];
+
+        foreach ($spellings as $index => $source) {
+            $failures = [];
+            $this->scan('dynamic-' . $index, $source, $failures);
+
+            $this->assertStringContainsString(
+                'names its class dynamically',
+                implode("\n", $failures),
+                'spelling ' . $index,
+            );
+        }
+    }
+
+    #[Test]
+    public function selecting_notice_as_a_value_fails_instead_of_going_unnoticed(): void
+    {
+        // Both reach the emitter with the method name in a value, so no `id`
+        // is readable and no registry entry is ever demanded.
+        $spellings = [
+            "<?php\nnamespace X;\nuse Studio\\Gesso\\Internal\\Deprecations;\n"
+                . "Deprecations::{'notice'}('a', 's', 'r', '3.0');",
+            "<?php\nnamespace X;\nuse Studio\\Gesso\\Internal\\Deprecations;\n"
+                . "call_user_func([Deprecations::class, 'notice'], 'a', 's', 'r', '3.0');",
+        ];
+
+        foreach ($spellings as $index => $source) {
+            $failures = [];
+            $this->scan('escape-' . $index, $source, $failures);
+
+            $this->assertStringContainsString(
+                'selects its method as a value',
+                implode("\n", $failures),
+                'spelling ' . $index,
+            );
+        }
+    }
+
+    #[Test]
+    public function a_second_namespace_fails_instead_of_resolving_against_the_first(): void
+    {
+        // Every unqualified reference in the second block resolves under a
+        // prefix the scan never applies, so its calls would land on some other
+        // class and vanish.
+        $source = "<?php\nnamespace X {\n}\nnamespace Studio\\Gesso\\Internal {\n"
+            . "Deprecations::notice('a', 's', 'r', '3.0');\n}";
+
+        $failures = [];
+        $this->assertSame([], $this->scan('two-namespaces', $source, $failures));
+
+        $this->assertCount(1, $failures);
+        $this->assertStringContainsString('declares 2 namespaces', $failures[0]);
     }
 
     #[Test]
@@ -320,13 +586,53 @@ final class DeprecationRegistryTest extends TestCase
         array &$calls = [],
     ): array {
         $tokens = $this->significantTokens($contents);
-        $namespace = $this->namespaceOf($tokens);
+        $namespaces = $this->namespacesOf($tokens);
         $aliases = $this->importsOf($tokens);
+        $namespace = $namespaces[0] ?? '';
         $selfClass = $this->classOf($tokens, $namespace);
         $ids = [];
 
+        // One namespace per file is what this scan can resolve, and what PSR-4
+        // gives it. A second block would put every unqualified reference under
+        // a prefix the scan does not apply — the call would resolve to some
+        // other class and disappear — so it is reported rather than guessed at.
+        if (count($namespaces) > 1) {
+            $failures[] = sprintf(
+                '%s: this file declares %d namespaces, and the deprecation scan resolves one per file.',
+                $file,
+                count($namespaces),
+            );
+
+            return [];
+        }
+
         foreach ($tokens as $index => $token) {
             if (!is_array($token) || !$this->isStaticCallTo($tokens, $index, 'notice')) {
+                // A `::notice(` whose class is computed reaches the emitter
+                // just as well and leaves no name to resolve. Nothing can
+                // check it, so it fails instead of passing unseen.
+                if ($this->isDynamicCallTo($tokens, $index, 'notice')) {
+                    $failures[] = sprintf(
+                        '%s: this ::notice() call names its class dynamically, so the scan cannot tell '
+                        . 'whether it reaches Deprecations. Call the emitter by name.',
+                        $file,
+                    );
+                }
+
+                // `Deprecations::{'notice'}()` and `[Deprecations::class,
+                // 'notice']` both reach the emitter with the method name in a
+                // value. Neither can be read here, so both are reported: the
+                // emitter's name appearing next to anything but a literal
+                // method call is the signal.
+                if ($this->isEmitterEscape($tokens, $index, $namespace, $aliases, $selfClass)) {
+                    $failures[] = sprintf(
+                        '%s: this reference to %s selects its method as a value, so the deprecation '
+                        . 'registry cannot read the id. Call notice() by name.',
+                        $file,
+                        self::EMITTER,
+                    );
+                }
+
                 continue;
             }
 
@@ -396,6 +702,29 @@ final class DeprecationRegistryTest extends TestCase
     }
 
     /**
+     * True when `$tokens[$index]` is a plain call to the named function, not a
+     * method of the same name and not a declaration of it.
+     *
+     * @param list<array{int, string}|string> $tokens
+     */
+    private function isCallTo(array $tokens, int $index, string $name): bool
+    {
+        $token = $tokens[$index] ?? null;
+        if (!is_array($token) || !in_array($token[0], [T_STRING, T_NAME_FULLY_QUALIFIED], true)) {
+            return false;
+        }
+
+        if (strtolower(ltrim($token[1], '\\')) !== $name || ($tokens[$index + 1] ?? null) !== '(') {
+            return false;
+        }
+
+        $previous = $tokens[$index - 1] ?? null;
+
+        return !is_array($previous) ||
+            !in_array($previous[0], [T_DOUBLE_COLON, T_OBJECT_OPERATOR, T_FUNCTION], true);
+    }
+
+    /**
      * True when `$tokens[$index]` is the class part of a `Class::$method(`
      * static call.
      *
@@ -404,7 +733,15 @@ final class DeprecationRegistryTest extends TestCase
     private function isStaticCallTo(array $tokens, int $index, string $method): bool
     {
         $class = $tokens[$index] ?? null;
-        if (!is_array($class) || !in_array($class[0], [T_STRING, T_NAME_QUALIFIED, T_NAME_FULLY_QUALIFIED], true)) {
+        if (!is_array($class) || !in_array($class[0], self::CLASS_REFERENCES, true)) {
+            return false;
+        }
+
+        // `Foo::BAR::notice()` puts a name in the class slot that is a class
+        // constant, not a class: the name resolves to nothing, and treating it
+        // as a class would quietly decide the call is on some other class.
+        $preceding = $tokens[$index - 1] ?? null;
+        if (is_array($preceding) && $preceding[0] === T_DOUBLE_COLON) {
             return false;
         }
 
@@ -420,6 +757,81 @@ final class DeprecationRegistryTest extends TestCase
             // that call site skip the registry entirely.
             strtolower($name[1]) === $method &&
             ($tokens[$index + 3] ?? null) === '(';
+    }
+
+    /**
+     * True when `$tokens[$index]` is a reference to the emitter that reaches
+     * it by something other than a literal `::notice(` — `::{'notice'}()`, or
+     * `::class` handed to a callable.
+     *
+     * @param list<array{int, string}|string> $tokens
+     * @param array<string, string> $imports
+     */
+    private function isEmitterEscape(
+        array $tokens,
+        int $index,
+        string $namespace,
+        array $imports,
+        ?string $selfClass,
+    ): bool {
+        $token = $tokens[$index] ?? null;
+        if (!is_array($token) || !in_array($token[0], self::CLASS_REFERENCES, true)) {
+            return false;
+        }
+
+        $operator = $tokens[$index + 1] ?? null;
+        if (!is_array($operator) || $operator[0] !== T_DOUBLE_COLON) {
+            return false;
+        }
+
+        if (strtolower($this->resolve($token, $namespace, $imports, $selfClass)) !== strtolower(self::EMITTER)) {
+            return false;
+        }
+
+        $member = $tokens[$index + 2] ?? null;
+
+        // `::class` in `src/` has no use but building a callable, since the
+        // emitter is never injected; `::{` selects the method at runtime.
+        return $member === '{' || (is_array($member) && $member[0] === T_CLASS);
+    }
+
+    /**
+     * True when `$tokens[$index]` starts a `::$method(` static call whose
+     * class is not a name the scan can resolve — `$class::notice()`,
+     * `(expr)::notice()`, `self::CLASS_NAME::notice()`.
+     *
+     * Anchored on the `::` so that the token before it can be anything at all;
+     * that is the point.
+     *
+     * @param list<array{int, string}|string> $tokens
+     */
+    private function isDynamicCallTo(array $tokens, int $index, string $method): bool
+    {
+        $operator = $tokens[$index] ?? null;
+        $name = $tokens[$index + 1] ?? null;
+
+        if (!is_array($operator) || $operator[0] !== T_DOUBLE_COLON) {
+            return false;
+        }
+
+        if (!is_array($name) || $name[0] !== T_STRING || strtolower($name[1]) !== $method) {
+            return false;
+        }
+
+        if (($tokens[$index + 2] ?? null) !== '(') {
+            return false;
+        }
+
+        $class = $tokens[$index - 1] ?? null;
+        if (!is_array($class) || !in_array($class[0], self::CLASS_REFERENCES, true)) {
+            return true;
+        }
+
+        // A name in the class slot that is itself reached through `::` is a
+        // class constant holding a class name — resolvable at runtime, not here.
+        $preceding = $tokens[$index - 2] ?? null;
+
+        return is_array($preceding) && $preceding[0] === T_DOUBLE_COLON;
     }
 
     /**
@@ -562,37 +974,142 @@ final class DeprecationRegistryTest extends TestCase
             return null;
         }
 
-        // A double-quoted literal that interpolated anything would not have
-        // survived as one T_CONSTANT_ENCAPSED_STRING, so unescaping is safe.
-        return stripslashes(substr($value[1], 1, -1));
+        return $this->decode($value[1]);
     }
 
-    /** @param list<array{int, string}|string> $tokens */
-    private function namespaceOf(array $tokens): string
+    /**
+     * One PHP string literal, decoded the way PHP decodes it.
+     *
+     * `stripslashes()` was here, and it agrees with neither quote style: it
+     * eats the backslash in `'C:\new'`, which PHP keeps, and it leaves `\x41`
+     * as `x41`, which PHP makes an `A`. Either way the registry records a
+     * string no consumer ever sees, and the comparison against `src/` compares
+     * two things that are both wrong.
+     *
+     * `null` for anything this cannot decode faithfully — an unreadable
+     * literal fails the scan rather than being guessed at.
+     */
+    private function decode(string $literal): ?string
     {
+        // `b'...'` / `B"..."` are the same literals with a binary prefix.
+        $literal = ltrim($literal, 'bB');
+        $quote = $literal[0] ?? '';
+        $inner = substr($literal, 1, -1);
+
+        if ($quote === "'") {
+            // Single quotes escape the quote and the backslash, nothing else:
+            // `'\n'` is a backslash followed by an n.
+            $decoded = preg_replace('/\\\\([\'\\\\])/', '$1', $inner);
+
+            return is_string($decoded) ? $decoded : null;
+        }
+
+        if ($quote !== '"') {
+            return null;
+        }
+
+        $invalid = false;
+        $decoded = preg_replace_callback(
+            '/\\\\(?:([nrtvef\\\\$"])|([0-7]{1,3})|x([0-9A-Fa-f]{1,2})|u\{([0-9A-Fa-f]+)\})/',
+            function (array $match) use (&$invalid): string {
+                if ($match[1] !== '') {
+                    return self::ESCAPES[$match[1]];
+                }
+
+                if ($match[2] !== '') {
+                    return chr(octdec($match[2]) % 256);
+                }
+
+                if ($match[3] !== '') {
+                    return chr(hexdec($match[3]));
+                }
+
+                $utf8 = $this->utf8((int) hexdec($match[4]));
+                $invalid = $invalid || $utf8 === null;
+
+                return $utf8 ?? '';
+            },
+            $inner,
+        );
+
+        // A backslash before anything else stays a backslash, which is why the
+        // pattern leaves it alone rather than stripping it.
+        return $invalid || !is_string($decoded) ? null : $decoded;
+    }
+
+    /**
+     * One code point as UTF-8, or `null` when it is not a code point.
+     *
+     * Written out rather than taken from `mb_chr()`: mbstring is not in this
+     * package's `require`, and a compatibility gate that decodes differently
+     * depending on the extensions a machine happens to have is not a gate.
+     */
+    private function utf8(int $codepoint): ?string
+    {
+        if ($codepoint < 0 || $codepoint > 0x10FFFF) {
+            return null;
+        }
+
+        if ($codepoint < 0x80) {
+            return chr($codepoint);
+        }
+
+        if ($codepoint < 0x800) {
+            return chr(0xC0 | $codepoint >> 6) . chr(0x80 | $codepoint & 0x3F);
+        }
+
+        if ($codepoint < 0x10000) {
+            return chr(0xE0 | $codepoint >> 12)
+                . chr(0x80 | $codepoint >> 6 & 0x3F)
+                . chr(0x80 | $codepoint & 0x3F);
+        }
+
+        return chr(0xF0 | $codepoint >> 18)
+            . chr(0x80 | $codepoint >> 12 & 0x3F)
+            . chr(0x80 | $codepoint >> 6 & 0x3F)
+            . chr(0x80 | $codepoint & 0x3F);
+    }
+
+    /**
+     * Every namespace the file declares, in source order.
+     *
+     * @param list<array{int, string}|string> $tokens
+     *
+     * @return list<string>
+     */
+    private function namespacesOf(array $tokens): array
+    {
+        $namespaces = [];
+
         foreach ($tokens as $index => $token) {
             if (!is_array($token) || $token[0] !== T_NAMESPACE) {
                 continue;
             }
 
+            // `namespace\Foo` is a class reference, not a declaration: its
+            // whole name is one token, so there is no separator after it.
             $name = $tokens[$index + 1] ?? null;
+            if (is_array($name) && $name[0] === T_NS_SEPARATOR) {
+                continue;
+            }
 
-            return is_array($name) ? $name[1] : '';
+            $namespaces[] = is_array($name) ? $name[1] : '';
         }
 
-        return '';
+        return $namespaces;
     }
 
     /**
-     * Short name (lowercased) → imported FQCN, for `use A\B;`, `use A\B as C;`
-     * and the grouped `use A\{B, C as D};`.
+     * Short name (lowercased) → imported FQCN, for every form a `use`
+     * statement takes: `use A\B;`, `use A\B as C;`, the comma-separated
+     * `use A\B, A\C;`, and the grouped `use A\{B, C as D};`.
      *
-     * The grouped form is the one that has to be parsed rather than ignored.
-     * An unrecognised import does not fail — nothing about the file says a
-     * deprecation was meant to be in it — so a group left unread silently
-     * resolves `Deprecations::notice()` against the current namespace, misses
-     * the emitter, and takes the call out of the scan entirely. A missing
-     * registry entry is exactly what this file exists to make impossible.
+     * Every clause has to be read, not just the first. An unrecognised import
+     * does not fail — nothing about the file says a deprecation was meant to
+     * be in it — so a clause left unread silently resolves
+     * `Deprecations::notice()` against the current namespace, misses the
+     * emitter, and takes the call out of the scan entirely. A missing registry
+     * entry is exactly what this file exists to make impossible.
      *
      * @param list<array{int, string}|string> $tokens
      *
@@ -607,47 +1124,79 @@ final class DeprecationRegistryTest extends TestCase
                 continue;
             }
 
-            $name = $tokens[$index + 1] ?? null;
-            if (!is_array($name) || !in_array($name[0], [T_STRING, T_NAME_QUALIFIED, T_NAME_FULLY_QUALIFIED], true)) {
+            // `use function f;` / `use const C;` import no class at all.
+            $next = $tokens[$index + 1] ?? null;
+            if (is_array($next) && in_array($next[0], [T_FUNCTION, T_CONST], true)) {
                 continue;
             }
 
-            $fqcn = ltrim($name[1], '\\');
-            $next = $tokens[$index + 2] ?? null;
-
-            // `use A\B\{...}` — the prefix keeps its own token and the brace
-            // is reached through a separator of its own.
-            if (is_array($next) && $next[0] === T_NS_SEPARATOR && ($tokens[$index + 3] ?? null) === '{') {
-                $this->addGroup($tokens, $index + 4, $fqcn, $imports);
-
-                continue;
-            }
-
-            if (is_array($next) && $next[0] === T_AS) {
-                $alias = $tokens[$index + 3] ?? null;
-                if (is_array($alias)) {
-                    $imports[strtolower($alias[1])] = $fqcn;
-                }
-
-                continue;
-            }
-
-            $this->addImport($fqcn, null, $imports);
+            $this->addStatement($tokens, $index + 1, $imports);
         }
 
         return $imports;
     }
 
     /**
-     * Read the members of one `use A\{...}` group, starting just inside the
-     * brace, into `$imports`.
+     * Read one `use` statement from `$start` up to its `;`, registering every
+     * clause it names.
      *
      * @param list<array{int, string}|string> $tokens
      * @param array<string, string> $imports
      */
-    private function addGroup(array $tokens, int $open, string $prefix, array &$imports): void
+    private function addStatement(array $tokens, int $start, array &$imports): void
     {
-        for ($i = $open, $count = count($tokens); $i < $count && $tokens[$i] !== '}'; $i++) {
+        for ($i = $start, $count = count($tokens); $i < $count; $i++) {
+            $token = $tokens[$i];
+
+            // `;` ends the statement; a bare `{` here opens a trait-conflict
+            // block, which renames methods rather than importing classes.
+            if ($token === ';' || $token === '{') {
+                return;
+            }
+
+            if (!is_array($token) || !in_array($token[0], self::CLASS_REFERENCES, true)) {
+                continue;
+            }
+
+            $fqcn = ltrim($token[1], '\\');
+            $next = $tokens[$i + 1] ?? null;
+
+            // `use A\B\{...}` — the prefix keeps its own token and the brace
+            // is reached through a separator of its own.
+            if (is_array($next) && $next[0] === T_NS_SEPARATOR && ($tokens[$i + 2] ?? null) === '{') {
+                $i = $this->addGroup($tokens, $i + 3, $fqcn, $imports);
+
+                continue;
+            }
+
+            $alias = $tokens[$i + 2] ?? null;
+            if (is_array($next) && $next[0] === T_AS && is_array($alias)) {
+                $this->addImport($fqcn, $alias[1], $imports);
+                $i += 2;
+
+                continue;
+            }
+
+            $this->addImport($fqcn, null, $imports);
+        }
+    }
+
+    /**
+     * Read the members of one `use A\{...}` group, starting just inside the
+     * brace, into `$imports`.
+     *
+     * Returns the index of the closing `}`, so the statement scan resumes
+     * after the group rather than re-reading its members as clauses.
+     *
+     * @param list<array{int, string}|string> $tokens
+     * @param array<string, string> $imports
+     */
+    private function addGroup(array $tokens, int $open, string $prefix, array &$imports): int
+    {
+        $count = count($tokens);
+        $i = $open;
+
+        for (; $i < $count && $tokens[$i] !== '}'; $i++) {
             $member = $tokens[$i];
 
             // `use A\{function f, const C}` imports no class, and registering
@@ -674,6 +1223,8 @@ final class DeprecationRegistryTest extends TestCase
 
             $this->addImport($prefix . '\\' . $member[1], null, $imports);
         }
+
+        return $i;
     }
 
     /**
@@ -723,6 +1274,14 @@ final class DeprecationRegistryTest extends TestCase
 
         if ($token[0] === T_NAME_FULLY_QUALIFIED) {
             return ltrim($name, '\\');
+        }
+
+        // `namespace\Foo` is relative to the file's own namespace and never
+        // consults an import, so it must be resolved before the alias lookup.
+        if ($token[0] === T_NAME_RELATIVE) {
+            $relative = substr($name, strlen('namespace\\'));
+
+            return $namespace === '' ? $relative : $namespace . '\\' . $relative;
         }
 
         if (in_array(strtolower($name), ['self', 'static'], true)) {
@@ -804,24 +1363,44 @@ final class DeprecationRegistryTest extends TestCase
         return $registry;
     }
 
-    /** @return array<string, string> */
+    /**
+     * Every shipped PHP source, keyed by its repository-relative path.
+     *
+     * `bin/` is scanned as well as `src/`, and its one file has no extension:
+     * `bin/gesso` is a `#!/usr/bin/env php` script, listed in composer's
+     * `bin`, and it owns the CLI flags ADR 0005 renames. Scanning `src/*.php`
+     * alone left the surface with the most renames outside the gate — a
+     * deprecation emitted from the CLI would have needed no registry entry.
+     *
+     * @return array<string, string>
+     */
     private function sourceFiles(): array
     {
         $projectRoot = dirname(__DIR__, 3);
-        $iterator = new RecursiveIteratorIterator(
-            new RecursiveDirectoryIterator($projectRoot . '/src'),
-        );
         $sources = [];
 
-        /** @var SplFileInfo $file */
-        foreach ($iterator as $file) {
-            if (!$file->isFile() || $file->getExtension() !== 'php') {
-                continue;
-            }
+        foreach (self::SHIPPED as $directory) {
+            $iterator = new RecursiveIteratorIterator(
+                new RecursiveDirectoryIterator($projectRoot . '/' . $directory),
+            );
 
-            $contents = file_get_contents($file->getPathname());
-            $this->assertIsString($contents);
-            $sources['src/' . $iterator->getSubPathname()] = $contents;
+            /** @var SplFileInfo $file */
+            foreach ($iterator as $file) {
+                if (!$file->isFile()) {
+                    continue;
+                }
+
+                $contents = file_get_contents($file->getPathname());
+                $this->assertIsString($contents);
+
+                $isPhp = $file->getExtension() === 'php' ||
+                    (str_starts_with($contents, '#!') && str_contains($contents, '<?php'));
+                if (!$isPhp) {
+                    continue;
+                }
+
+                $sources[$directory . '/' . $iterator->getSubPathname()] = $contents;
+            }
         }
 
         return $sources;

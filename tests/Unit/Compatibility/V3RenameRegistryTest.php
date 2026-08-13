@@ -12,11 +12,15 @@ use PHPUnit\Framework\TestCase;
 use Studio\Gesso\Internal\LegacyIdentity;
 
 use function array_diff;
+use function array_diff_key;
+use function array_fill;
 use function array_fill_keys;
 use function array_filter;
 use function array_key_exists;
 use function array_keys;
 use function array_merge;
+use function array_unique;
+use function array_unshift;
 use function array_values;
 use function count;
 use function dirname;
@@ -27,11 +31,13 @@ use function in_array;
 use function json_decode;
 use function preg_match;
 use function preg_match_all;
+use function preg_quote;
 use function preg_replace;
 use function sort;
 use function sprintf;
 use function str_contains;
 use function str_starts_with;
+use function substr_count;
 use function trim;
 
 /**
@@ -98,6 +104,41 @@ final class V3RenameRegistryTest extends TestCase
         'env-var' => 'environment variable',
         'artisan-command' => 'command',
     ];
+
+    /**
+     * The one shape a deprecation notice's subject may take, as a format
+     * string taking the surface phrase and the spelling.
+     *
+     * A fixed shape rather than a vocabulary check, because prose that merely
+     * contains the right words can still say the wrong thing: "The CLI flag
+     * 'x' (not a config key)" passed a containment test while describing the
+     * wrong surface entirely. The optional capitalised word is the framework
+     * or tool a surface belongs to — `Laravel config key`, `Artisan command`,
+     * `CLI flag` — and is the only freedom the format leaves.
+     */
+    private const SUBJECT = '/^The (?:[A-Z]\\w+ )?%s \'%s\'$/';
+
+    /**
+     * How many old spellings ADR 0005's two tables name, and the highest
+     * `unstaged_count` the fixture may record.
+     *
+     * Both numbers live here rather than being read out of the artifact they
+     * bound, which is the only way either can bound anything: the ratchet's
+     * two assertions both took `unstaged_count` from the file being edited, so
+     * the fixture certified itself and the "may go down, never up" half was
+     * unenforceable. Lowering either is progress and costs one line; raising
+     * one is a decision, and now it shows up in the diff of a test.
+     */
+    private const SPELLINGS = 55;
+
+    /**
+     * What a Replaces cell reads as when the row renames nothing, once its
+     * parenthetical commentary is stripped. Anything else with no backticked
+     * name in it is prose the scan would silently take for one of these.
+     */
+    private const RENAMES_NOTHING = ['', 'unchanged'];
+
+    private const UNSTAGED_CEILING = 53;
 
     #[Test]
     public function every_old_spelling_the_adr_names_is_listed(): void
@@ -220,9 +261,14 @@ final class V3RenameRegistryTest extends TestCase
             ));
 
             // `owner` is how a reader gets from an unstaged spelling to the
-            // issue that owes it a notice, so it has to be a reachable issue
-            // reference rather than any non-empty string.
-            $this->assertMatchesRegularExpression('/^#\d+$/', $entry['owner'], $spelling . '.owner');
+            // issue that owes it a notice, so it has to be one of the issues
+            // ADR 0005 routes its work to. A bare `/^#\d+$/` accepted `#0` on
+            // all 53 unstaged entries and pointed the reader nowhere.
+            $this->assertContains($entry['owner'], $this->adrIssues(), sprintf(
+                '%s is owned by %s, which ADR 0005 does not list in its Issue/Related header.',
+                $spelling,
+                $entry['owner'],
+            ));
 
             $this->assertArrayHasKey('removed_in', $entry, $spelling);
             $this->assertArrayHasKey('deprecation_id', $entry, $spelling);
@@ -344,25 +390,56 @@ final class V3RenameRegistryTest extends TestCase
             ));
 
             // Which surface the notice announces is a fact the ADR already
-            // fixes, by which of its two tables the spelling sits under. The
-            // notice is free prose and can call a config key a flag; the
-            // vocabulary below is the least it has to get right about the
-            // thing a reader then goes looking for.
+            // fixes, by which of its two tables the spelling sits under — so
+            // the subject is derived from it rather than merely searched for
+            // inside it. Containment was not enough: "The CLI flag 'x' (not a
+            // config key)" contains "config key" and says the opposite.
             $subject = $notice['subject'] ?? null;
             $this->assertIsString($subject, $id . '.notice.subject');
 
             $this->assertArrayHasKey($entry['surface'], self::SURFACE_WORDS, $spelling . '.surface');
-            $this->assertStringContainsStringIgnoringCase(
-                self::SURFACE_WORDS[$entry['surface']],
+            $this->assertMatchesRegularExpression(
+                sprintf(self::SUBJECT, preg_quote(self::SURFACE_WORDS[$entry['surface']], '/'), preg_quote($spelling, '/')),
                 $subject,
                 sprintf(
-                    '%s is written on the %s surface, but the notice "%s" emits announces it as "%s".',
+                    '%s is a %s, so the notice "%s" must announce it as "The [Qualifier] %s \'%s\'". It says "%s".',
                     $spelling,
                     $entry['surface'],
                     $id,
+                    self::SURFACE_WORDS[$entry['surface']],
+                    $spelling,
                     $subject,
                 ),
             );
+        }
+    }
+
+    #[Test]
+    public function every_shipped_notice_is_claimed_by_the_rename_it_stages(): void
+    {
+        $renames = $this->renames();
+
+        foreach ($this->registry() as $id => $entry) {
+            $spelling = $entry['spelling'] ?? null;
+            $this->assertIsString($spelling, $id . '.spelling');
+
+            // A deprecation of something ADR 0005 does not rename — a method,
+            // a return shape — has no rename to be claimed by.
+            if (!array_key_exists($spelling, $renames)) {
+                continue;
+            }
+
+            // The other direction, and the reason it is needed: the forward
+            // check starts from `deprecation_id` and skips a null one, so
+            // clearing that field unlinks a notice that actually shipped. The
+            // spelling would go back to counting as unstaged, and the next
+            // reader would stage it a second time or, worse, read the count as
+            // work still to do at 3.0 and remove it without one.
+            $this->assertSame($id, $renames[$spelling]['deprecation_id'] ?? null, sprintf(
+                'The notice "%s" deprecates %s, which v3-renames.json does not name it as staging.',
+                $id,
+                $spelling,
+            ));
         }
     }
 
@@ -422,6 +499,13 @@ final class V3RenameRegistryTest extends TestCase
 
         $recorded = $this->fixture()['unstaged_count'];
 
+        $this->assertLessThanOrEqual(self::UNSTAGED_CEILING, $recorded, sprintf(
+            'unstaged_count is %d, above the %d this gate was set at. Staging lowers it; raising it '
+            . 'means a rename shipped with no notice, so raise the ceiling here too and say why.',
+            $recorded,
+            self::UNSTAGED_CEILING,
+        ));
+
         $this->assertLessThanOrEqual($recorded, count($unstaged), sprintf(
             'This branch adds a v3 rename without staging its deprecation. Stage it, or raise '
             . "unstaged_count deliberately and say why in the PR.\n  %s",
@@ -446,7 +530,10 @@ final class V3RenameRegistryTest extends TestCase
         // vacuously and the fixture could rot untouched.
         $spellings = $this->adrSpellings();
 
-        $this->assertGreaterThan(50, count($spellings));
+        // Pinned, not floored. A row deleted from the ADR is not missing from
+        // anything — the ADR is the source of truth — so the count is the only
+        // thing that notices a spelling leaving the gate.
+        $this->assertCount(self::SPELLINGS, $spellings);
         $this->assertContains('spec_base_path', $spellings, 'the configuration table');
         $this->assertContains('--console-output', $spellings, 'the CLI table');
         $this->assertContains('enum_spec_base_path', $spellings, 'the "— removed —" row');
@@ -483,31 +570,70 @@ final class V3RenameRegistryTest extends TestCase
         // key that matches nothing — loud — but one that quietly parsed a
         // prefix would compare the wrong half, so the shapes are pinned.
         $this->assertSame(
-            ['key' => 'spec.base_path', 'members' => []],
+            ['key' => 'spec.base_path', 'shape' => 'none', 'members' => []],
             $this->targetParts('spec.base_path'),
             'a bare key',
         );
         $this->assertSame(
-            ['key' => 'coverage.min_coverage', 'members' => ['endpoint']],
+            ['key' => 'coverage.min_coverage', 'shape' => 'array', 'members' => ['endpoint' => true]],
             $this->targetParts("coverage.min_coverage['endpoint']"),
             'a subscripted key',
         );
         $this->assertSame(
-            ['key' => '--strict-required', 'members' => ['run', 'per_call']],
+            ['key' => '--strict-required', 'shape' => 'grammar', 'members' => ['run' => true, 'per_call' => true]],
             $this->targetParts('--strict-required="run=…,per_call=…"'),
             'a flag carrying the collapsed grammar',
         );
         $this->assertSame(
-            ['key' => '--report', 'members' => []],
+            ['key' => '--min-coverage', 'shape' => 'grammar', 'members' => ['strict' => false]],
+            $this->targetParts('--min-coverage="strict"'),
+            'a grammar member written without a value',
+        );
+        $this->assertSame(
+            ['key' => '--report', 'shape' => 'none', 'members' => []],
             $this->targetParts('--report=json:<path>'),
             'a flag carrying a value placeholder',
         );
         $this->assertSame(
-            ['key' => 'laravel.auto_inject_dummy_credentials', 'members' => []],
+            ['key' => 'laravel.auto_inject_dummy_credentials', 'shape' => 'none', 'members' => []],
             $this->targetParts("laravel.auto_inject_dummy_credentials = 'bearer'"),
             'a key pinned to one value',
         );
         $this->assertNull($this->targetParts("coverage.min_coverage['endpoint'] and then some"), 'trailing prose');
+
+        // Structure, not just names. Each of these parses into members the
+        // enclosing row would accept, and each is a different target from the
+        // one the row declares.
+        $this->assertSame(
+            ['endpoint' => true, 'response' => true],
+            $this->targetParts("coverage.min_coverage['endpoint']['response']")['members'] ?? null,
+            'a nested chain keeps both levels, so the depth check can see it',
+        );
+        $this->assertNull($this->targetParts("coverage.min_coverage['endpoint']['endpoint']"), 'a repeated subscript');
+        $this->assertNull($this->targetParts('--min-coverage="run=…,run=…"'), 'a repeated grammar member');
+        $this->assertSame(
+            'grammar',
+            $this->targetParts('coverage.min_coverage="endpoint=…"')['shape'] ?? null,
+            'the notation a target is written in is not the notation of the key it names',
+        );
+
+        // The declaration side has to carry the same two facts, or comparing
+        // against it compares against half of one.
+        $this->assertSame(
+            ['shape' => 'array', 'members' => ['endpoint' => true, 'response' => true]],
+            $this->declaredMembers("`coverage.min_coverage` = `['endpoint' => …, 'response' => …]`"),
+            'a flat map declaration',
+        );
+        $this->assertSame(
+            ['shape' => 'grammar', 'members' => ['endpoint' => true, 'strict' => false]],
+            $this->declaredMembers('`--min-coverage="endpoint=…,strict"`'),
+            'a grammar declaration, with and without values',
+        );
+        $this->assertSame(
+            ['shape' => 'none', 'members' => []],
+            $this->declaredMembers('`--console-report=<mode>`'),
+            'a row that collapses nothing',
+        );
     }
 
     /**
@@ -526,15 +652,52 @@ final class V3RenameRegistryTest extends TestCase
             $surfaces[$spelling] = $row['surface'];
         }
 
-        foreach (array_keys(LegacyIdentity::ENV_NAMES) as $spelling) {
-            $surfaces[$spelling] = 'env-var';
-        }
+        $legacy = [
+            'env-var' => array_keys(LegacyIdentity::ENV_NAMES),
+            'artisan-command' => array_keys(LegacyIdentity::COMMAND_NAMES),
+        ];
 
-        foreach (array_keys(LegacyIdentity::COMMAND_NAMES) as $spelling) {
-            $surfaces[$spelling] = 'artisan-command';
+        foreach ($legacy as $surface => $spellings) {
+            foreach ($spellings as $spelling) {
+                // Overwriting silently would let the second source decide, and
+                // the two disagree about more than the label: an ADR spelling
+                // that also appeared in LegacyIdentity would take the surface
+                // of a name that keeps working, and with it the channel that
+                // stages no deprecation.
+                $this->assertArrayNotHasKey($spelling, $surfaces, sprintf(
+                    '%s is named by both ADR 0005 and LegacyIdentity, which disagree about whether it '
+                    . 'is removed at 3.0 or accepted through v3.',
+                    $spelling,
+                ));
+
+                $surfaces[$spelling] = $surface;
+            }
         }
 
         return $surfaces;
+    }
+
+    /**
+     * The issues ADR 0005 routes its work to, from its own header.
+     *
+     * Derived rather than listed here for the same reason `surface` is: the
+     * ADR already decides who owns which part of v3, and a second copy of that
+     * decision is a second thing to keep true.
+     *
+     * @return list<string>
+     */
+    private function adrIssues(): array
+    {
+        $contents = file_get_contents(dirname(__DIR__, 3) . self::ADR);
+        $this->assertIsString($contents);
+
+        $header = explode('## Context', $contents)[0];
+        preg_match_all('/\\[(#\\d+)\\]/', $header, $matches);
+
+        $issues = array_values(array_unique($matches[1]));
+        $this->assertNotSame([], $issues, 'ADR 0005 names no issue in its header');
+
+        return $issues;
     }
 
     /**
@@ -580,14 +743,38 @@ final class V3RenameRegistryTest extends TestCase
         $claimed = [];
         $surface = null;
 
+        $inTable = false;
+
         foreach (explode("\n", $contents) as $line) {
             $line = trim($line);
-            if (!str_starts_with($line, '|') || str_contains($line, '| --- |')) {
+
+            // A table ends at the first blank line, and GitHub-flavoured
+            // Markdown lets a row omit its outer pipes — so membership is a
+            // property of the block, not of the first character. Keying on a
+            // leading `|` let a row render in the published table and never
+            // enter the scan, which is a rename nobody has to record.
+            if ($line === '') {
+                $inTable = false;
+
                 continue;
             }
 
-            $columns = explode('|', $line);
-            if (count($columns) !== 4) {
+            // A delimiter is dashes, colons and pipes and nothing else. The
+            // old substring test for `| --- |` also swallowed any data row
+            // that happened to contain one, which is how an ASCII-dashed
+            // "removed" row would have left the gate.
+            if (preg_match('/^\|?[\s:|-]+\|?$/', $line) === 1 && str_contains($line, '-')) {
+                $inTable = str_contains($line, '|');
+
+                continue;
+            }
+
+            if (!$inTable && !str_starts_with($line, '|')) {
+                continue;
+            }
+
+            $columns = explode('|', trim($line, '|'));
+            if (count($columns) !== 2) {
                 // Skipping the row silently would drop its spellings from a
                 // gate whose entire job is to notice a dropped spelling. A cell
                 // containing a literal `|` is the way this happens.
@@ -596,8 +783,12 @@ final class V3RenameRegistryTest extends TestCase
                 continue;
             }
 
+            array_unshift($columns, '');
+
             $replaces = trim($columns[2]);
             if ($replaces === 'Replaces') {
+                $inTable = true;
+
                 // The header says which surface the rows beneath it describe,
                 // which is how `surface` becomes derived rather than declared.
                 $surface = trim($columns[1]) === 'v3 flag' ? 'cli-flag' : 'config-key';
@@ -609,15 +800,35 @@ final class V3RenameRegistryTest extends TestCase
 
             $v3Cell = $this->prose($columns[1]);
             $v3Names = $this->names($v3Cell);
-            $members = $this->members($v3Cell);
+            $declared = $this->declaredMembers($v3Cell);
             $replacesCell = $this->prose($replaces);
             $paired = $this->pairs($replacesCell);
+
+            // `prose()` drops parentheticals before anything counts tokens, so
+            // an arrow written inside one is renaming a spelling that no check
+            // downstream can see. The ADR uses asides for commentary; a
+            // rename is not commentary.
+            if (substr_count($replaces, '→') !== substr_count($replacesCell, '→')) {
+                $unreadable[] = 'a parenthetical hides a rename: ' . $line;
+
+                continue;
+            }
+
+            // A Replaces cell says one of three things: nothing is replaced
+            // (`unchanged`, or a parenthetical noting a new flag), or it names
+            // spellings in backticks. Prose that names something without
+            // backticks reads as the first while meaning the second.
+            if ($this->tokens($replacesCell) === 0 && !in_array(trim($replacesCell), self::RENAMES_NOTHING, true)) {
+                $unreadable[] = 'a Replaces cell names something without backticks: ' . $line;
+
+                continue;
+            }
 
             // A row whose v3 cell enumerates members but whose enumeration
             // stopped parsing would silently drop the member check below, so
             // the two grammars the ADR actually uses are pinned here.
             if (str_contains($v3Cell, '= [') || str_contains($v3Cell, '="')) {
-                $this->assertNotSame([], $members, 'members unreadable in: ' . trim($v3Cell));
+                $this->assertNotSame('none', $declared['shape'], 'members unreadable in: ' . trim($v3Cell));
             }
 
             if ($paired === []) {
@@ -682,19 +893,59 @@ final class V3RenameRegistryTest extends TestCase
                         $v3Names[0],
                     ));
 
+                    // The notation is part of the declaration. A row collapsing
+                    // a key into a flat `gesso.php` map is not answered by a
+                    // target written in the CLI's collapsed string grammar,
+                    // even when both name the same member.
+                    $this->assertSame($declared['shape'], $parts['shape'], sprintf(
+                        '%s is replaced by "%s", written as %s, but its row declares %s.',
+                        $spelling,
+                        $target,
+                        $parts['shape'],
+                        $declared['shape'],
+                    ));
+
                     // Checked whether or not the row enumerates anything. A row
                     // that collapses no key lists no members, and `[]` is the
                     // set a target under it may select from — so guarding this
                     // on a non-empty enumeration let exactly those rows accept
                     // any subscript at all.
-                    $this->assertSame([], array_values(array_diff($parts['members'], $members)), sprintf(
+                    $this->assertSame([], array_keys(array_diff_key($parts['members'], $declared['members'])), sprintf(
                         "%s is replaced by \"%s\", which selects a member this row does not list:\n  %s",
                         $spelling,
                         $target,
-                        $members === [] ? '(this row collapses no key, so it lists none)' : implode("\n  ", $members),
+                        $declared['members'] === []
+                            ? '(this row collapses no key, so it lists none)'
+                            : implode("\n  ", array_keys($declared['members'])),
                     ));
 
-                    if ($members !== []) {
+                    // ADR 0005's array literals are flat, so a subscripted
+                    // target selects exactly one key of exactly one map.
+                    // Flattening the chain to a set of names lost that:
+                    // `['endpoint']['response']` read as two ordinary members.
+                    if ($parts['shape'] === 'array') {
+                        $this->assertCount(1, $parts['members'], sprintf(
+                            '%s is replaced by "%s", but its row declares %s as a flat map, so a target '
+                            . 'selects one of its keys and no deeper.',
+                            $spelling,
+                            $target,
+                            $v3Names[0],
+                        ));
+                    }
+
+                    // Whether a member carries a value is declared too:
+                    // `--min-coverage` takes `endpoint=…` but a bare `strict`.
+                    foreach ($parts['members'] as $member => $carriesValue) {
+                        $this->assertSame($declared['members'][$member], $carriesValue, sprintf(
+                            '%s is replaced by "%s", but this row declares %s %s a value.',
+                            $spelling,
+                            $target,
+                            $member,
+                            $declared['members'][$member] ? 'with' : 'without',
+                        ));
+                    }
+
+                    if ($declared['members'] !== []) {
                         $this->assertNotSame([], $parts['members'], sprintf(
                             '%s is replaced by "%s", which names no member of the key its row collapses into.',
                             $spelling,
@@ -763,18 +1014,21 @@ final class V3RenameRegistryTest extends TestCase
 
     /**
      * One v3 target split into the key it names and the members it selects out
-     * of that key: `coverage.min_coverage['endpoint']` is the key
-     * `coverage.min_coverage` selecting `endpoint`, and
-     * `--min-coverage="strict"` is the flag `--min-coverage` selecting
-     * `strict`. A target naming a whole key or a plain flag value selects no
-     * member.
+     * of that key, each mapped to whether the target writes it with a value.
      *
-     * `null` when the target is written in none of the shapes ADR 0005 uses.
-     * Matching the whole string is what makes the split a split: a pattern
-     * that read a prefix and ignored the rest would let anything trail a
-     * well-formed target and still be compared as if it were one.
+     * `coverage.min_coverage['endpoint']` is the key `coverage.min_coverage`
+     * selecting `endpoint`; `--min-coverage="strict"` is the flag
+     * `--min-coverage` selecting `strict` and giving it no value; a plain key
+     * or flag value selects nothing. `shape` is which of the two notations the
+     * target is written in, so that a target cannot answer a row in a notation
+     * that row does not use.
      *
-     * @return null|array{key: string, members: list<string>}
+     * `null` when the target is written in none of the shapes ADR 0005 uses,
+     * or names one member twice. Matching the whole string is what makes the
+     * split a split: a pattern that read a prefix and ignored the rest would
+     * let anything trail a well-formed target and still be compared as one.
+     *
+     * @return null|array{key: string, shape: string, members: array<string, bool>}
      */
     private function targetParts(string $target): ?array
     {
@@ -789,49 +1043,106 @@ final class V3RenameRegistryTest extends TestCase
         }
 
         preg_match_all("/\\['(\\w+)'\\]/", $parts['subscripts'], $subscripts);
+        if ($subscripts[1] !== []) {
+            // A key an array subscript selects always carries a value, so the
+            // map is uniform; what the depth of the chain says is how many
+            // levels down the target reaches, and that has to survive.
+            $members = $this->distinct($subscripts[1], array_fill(0, count($subscripts[1]), true));
 
-        return [
-            'key' => $parts['key'],
-            'members' => $subscripts[1] !== [] ? $subscripts[1] : $this->grammarMembers($target),
-        ];
+            return $members === null ? null : ['key' => $parts['key'], 'shape' => 'array', 'members' => $members];
+        }
+
+        $grammar = $this->grammarMembers($target);
+
+        return match (true) {
+            $grammar === null && str_contains($target, '="') => null,
+            $grammar === null => ['key' => $parts['key'], 'shape' => 'none', 'members' => []],
+            default => ['key' => $parts['key'], 'shape' => 'grammar', 'members' => $grammar],
+        };
     }
 
     /**
-     * The sub-keys a v3 cell enumerates, in the two forms ADR 0005 uses: a PHP
-     * array literal for `gesso.php`, and the collapsed string grammar for a
-     * CLI flag. A cell using neither enumerates nothing.
+     * What a v3 cell declares its key collapses into: the notation, and each
+     * member mapped to whether the ADR writes it with a value.
      *
-     * @return list<string>
+     * The value-ness is half the declaration. `--min-coverage` takes
+     * `endpoint=…` but a bare `strict`, so a target writing `strict=…` or a
+     * bare `endpoint` is naming a setting the ADR does not describe, even
+     * though both name a member that exists.
+     *
+     * @return array{shape: string, members: array<string, bool>}
      */
-    private function members(string $prose): array
+    private function declaredMembers(string $prose): array
     {
         preg_match_all("/'(\\w+)' =>/", $prose, $arrayLiteral);
         if ($arrayLiteral[1] !== []) {
-            return $arrayLiteral[1];
+            $members = $this->distinct($arrayLiteral[1], array_fill(0, count($arrayLiteral[1]), true));
+            $this->assertNotNull($members, 'a key is declared twice in: ' . trim($prose));
+
+            return ['shape' => 'array', 'members' => $members];
         }
 
-        return $this->grammarMembers($prose);
+        $grammar = $this->grammarMembers($prose);
+
+        return $grammar === null
+            ? ['shape' => 'none', 'members' => []]
+            : ['shape' => 'grammar', 'members' => $grammar];
     }
 
     /**
-     * The sub-keys named inside a collapsed `name=value,name=value` string,
-     * the one grammar ADR 0005 gives a CLI flag that carries several settings.
+     * The members named inside a collapsed `name=value,name` string — the one
+     * grammar ADR 0005 gives a CLI flag that carries several settings — each
+     * mapped to whether it is written with a value.
      *
-     * @return list<string>
+     * `null` when the subject is not that grammar, or names a member twice.
+     *
+     * @return null|array<string, bool>
      */
-    private function grammarMembers(string $subject): array
+    private function grammarMembers(string $subject): ?array
     {
-        if (preg_match('/="([^"]+)"/', $subject, $grammar) !== 1) {
-            return [];
+        if (preg_match('/="([^"]*)"/', $subject, $grammar) !== 1) {
+            return null;
         }
 
+        $names = [];
+        $values = [];
+
+        foreach (explode(',', $grammar[1]) as $element) {
+            $parts = explode('=', $element, 2);
+            $name = trim($parts[0]);
+            if ($name === '') {
+                return null;
+            }
+
+            $names[] = $name;
+            $values[] = count($parts) === 2;
+        }
+
+        return $this->distinct($names, $values);
+    }
+
+    /**
+     * Zip names to their value-ness, or `null` when a name repeats.
+     *
+     * A member selected twice is a typo whichever way it is read, and folding
+     * it into a map would hide it — `['endpoint']['endpoint']` would arrive
+     * here as one perfectly ordinary member.
+     *
+     * @param list<string> $names
+     * @param list<bool> $values
+     *
+     * @return null|array<string, bool>
+     */
+    private function distinct(array $names, array $values): ?array
+    {
         $members = [];
 
-        foreach (explode(',', $grammar[1]) as $pair) {
-            $member = trim(explode('=', $pair)[0]);
-            if ($member !== '' && !in_array($member, $members, true)) {
-                $members[] = $member;
+        foreach ($names as $index => $name) {
+            if (array_key_exists($name, $members)) {
+                return null;
             }
+
+            $members[$name] = $values[$index];
         }
 
         return $members;

@@ -228,12 +228,23 @@ directions because each one is blind to the other's failure mode.
 
 | Fixture | Scanned from | Catches |
 | --- | --- | --- |
-| `tests/fixtures/compatibility/v2-deprecations.json` | `src/`, by `DeprecationRegistryTest` | a `Deprecations::notice()` call nobody registered, and a notice re-pointed, re-dated, or moved to another surface without the ledger saying so |
+| `tests/fixtures/compatibility/v2-deprecations.json` | `src/` and `bin/`, by `DeprecationRegistryTest` | a `Deprecations::notice()` call nobody registered, and a notice re-pointed, re-dated, or moved to another surface without the ledger saying so |
 | `tests/fixtures/compatibility/v3-renames.json` | [ADR 0005](adr/0005-v3-configuration-and-cli-naming.md), by `V3RenameRegistryTest` | a rename that ships no notice at all |
 
 The first cannot see the second. A rename that simply never calls
 `Deprecations::notice()` emits nothing, so the scan finds nothing and the
 registry stays as correct — and as empty — as it was.
+
+`Deprecations` is the only place allowed to put a notice on the
+`E_USER_DEPRECATED` channel, and that is enforced rather than asked for: a
+`trigger_error(..., E_USER_DEPRECATED)` or a `#[\Deprecated]` attribute
+anywhere in `src/` or `bin/` fails the scan, because it announces a removal the
+registry has no row for. The one exception — the Laravel adapter's
+contradictory-intent warning, which rides the channel so PHPUnit counts it and
+announces no removal — is listed by name and by call count in
+`DeprecationRegistryTest`. Reaching the emitter in a way the scan cannot read
+(`$class::notice()`, `::{'notice'}()`, a `[Deprecations::class, 'notice']`
+callable) fails for the same reason: call it by name.
 
 Each registry entry carries the notice twice: once under `notice`, as the three
 prose arguments the call passes, compared to `src/` argument by argument; and
@@ -255,6 +266,12 @@ the same change.** Its `unstaged_count` is a ratchet —
 staging a deprecation lowers it, and the test fails in both directions, so
 neither an unstaged addition nor a stale number can sit unnoticed. Zero means
 every v3 rename has shipped its notice and the final v2 minor can be cut.
+
+Two numbers bounding the fixture live in `V3RenameRegistryTest` rather than in
+the fixture: how many spellings ADR 0005 names, and the highest
+`unstaged_count` allowed. A number a file keeps about itself bounds nothing —
+lowering either is progress and costs one line, raising one is a decision and
+shows up in the diff of a test.
 
 The three channels a spelling can take:
 
