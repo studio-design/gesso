@@ -236,9 +236,13 @@ The first cannot see the second. A rename that simply never calls
 registry stays as correct — and as empty — as it was.
 
 `v3-renames.json` therefore starts from the ADR: it lists every old spelling
-ADR 0005's two tables name, the channel that spelling uses, and the deprecation
-id once one is staged. **A PR that renames a configuration key or a CLI flag
-updates this fixture in the same change.** Its `unstaged_count` is a ratchet —
+ADR 0005's two tables name, the v3 spelling that replaces it, the channel it
+uses, and the deprecation id once one is staged. Each replacement is compared
+byte-for-byte against the right of the matching `→` in the ADR, which is why
+a row replacing several spellings at once writes one `→` per spelling —
+otherwise the fixture could name the wrong member of the right key.
+**A PR that renames a configuration key or a CLI flag updates this fixture in
+the same change.** Its `unstaged_count` is a ratchet —
 staging a deprecation lowers it, and the test fails in both directions, so
 neither an unstaged addition nor a stale number can sit unnoticed. Zero means
 every v3 rename has shipped its notice and the final v2 minor can be cut.

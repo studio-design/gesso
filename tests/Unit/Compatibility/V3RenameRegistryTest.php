@@ -5,16 +5,18 @@ declare(strict_types=1);
 namespace Studio\Gesso\Tests\Unit\Compatibility;
 
 use const JSON_THROW_ON_ERROR;
+use const PREG_SET_ORDER;
 
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Studio\Gesso\Internal\LegacyIdentity;
 
 use function array_diff;
+use function array_fill_keys;
 use function array_filter;
+use function array_key_exists;
 use function array_keys;
 use function array_merge;
-use function array_unique;
 use function array_values;
 use function count;
 use function dirname;
@@ -23,6 +25,7 @@ use function file_get_contents;
 use function implode;
 use function in_array;
 use function json_decode;
+use function preg_match;
 use function preg_match_all;
 use function preg_replace;
 use function sort;
@@ -93,7 +96,7 @@ final class V3RenameRegistryTest extends TestCase
     #[Test]
     public function every_replacement_points_where_the_adr_points(): void
     {
-        foreach ($this->adrRows() as $spelling => $v3Names) {
+        foreach ($this->adrRows() as $spelling => $row) {
             $entry = $this->renames()[$spelling] ?? null;
             if ($entry === null) {
                 continue; // Reported by every_old_spelling_the_adr_names_is_listed.
@@ -101,13 +104,9 @@ final class V3RenameRegistryTest extends TestCase
 
             $this->assertIsString($entry['replacement'], $spelling . '.replacement');
 
-            // Without this the two fixtures only ever agree with each other,
-            // so a replacement can name anything at all — including a v3 key
-            // that does not exist — and a staged pair can be walked somewhere
-            // else wholesale by editing both files together.
-            if ($v3Names === []) {
-                // `— removed —` rows name no successor, so the fixture has to
-                // say so rather than invent one.
+            // `— removed —` rows name no successor, so the fixture has to say
+            // so rather than invent one.
+            if ($row['target'] === null) {
                 $this->assertStringStartsWith('none', $entry['replacement'], sprintf(
                     'ADR 0005 removes %s outright, so its replacement cannot name a v3 target.',
                     $spelling,
@@ -116,18 +115,44 @@ final class V3RenameRegistryTest extends TestCase
                 continue;
             }
 
-            $named = array_filter(
-                $v3Names,
-                static fn(string $v3Name): bool => str_contains($entry['replacement'], $v3Name),
-            );
-
-            $this->assertNotSame([], $named, sprintf(
-                "%s is replaced by \"%s\", which names none of the v3 targets ADR 0005 gives its row:\n  %s",
+            // Exact, not containment. Containment let a spelling name the
+            // right v3 key and the wrong member of it — `min_endpoint_coverage`
+            // pointing at `coverage.min_coverage['response']` — which is the
+            // failure a grouped row invites, and the reason ADR 0005 now
+            // spells its pairings out with `→`.
+            $this->assertSame($row['target'], $entry['replacement'], sprintf(
+                'ADR 0005 replaces %s with "%s"; the fixture says "%s".',
                 $spelling,
+                $row['target'],
                 $entry['replacement'],
-                implode("\n  ", $v3Names),
             ));
         }
+    }
+
+    #[Test]
+    public function unchanged_spellings_are_exactly_the_listed_ones(): void
+    {
+        $listed = array_keys(array_filter(
+            $this->renames(),
+            static fn(array $entry): bool => $entry['channel'] === 'unchanged-spelling',
+        ));
+        sort($listed);
+
+        $expected = self::UNCHANGED_SPELLINGS;
+        sort($expected);
+
+        // Both directions. Checking only that a claimant is on the list leaves
+        // the other way open: moving `--output-file` onto `deprecation` and
+        // raising the count reads as progress on the ratchet while nothing was
+        // staged, because the spelling it claims to deprecate is not going
+        // anywhere.
+        $this->assertSame($expected, $listed, sprintf(
+            "The unchanged-spelling channel and V3RenameRegistryTest::UNCHANGED_SPELLINGS disagree.\n"
+            . "  listed in the constant but not in the fixture: %s\n"
+            . '  claiming the channel but not in the constant: %s',
+            implode(', ', array_diff($expected, $listed)) ?: '(none)',
+            implode(', ', array_diff($listed, $expected)) ?: '(none)',
+        ));
     }
 
     #[Test]
@@ -153,6 +178,8 @@ final class V3RenameRegistryTest extends TestCase
     #[Test]
     public function every_entry_declares_a_channel_and_a_removal(): void
     {
+        $surfaces = $this->expectedSurfaces();
+
         foreach ($this->renames() as $spelling => $entry) {
             foreach (['surface', 'replacement', 'channel', 'owner'] as $key) {
                 $this->assertArrayHasKey($key, $entry, $spelling);
@@ -161,6 +188,23 @@ final class V3RenameRegistryTest extends TestCase
             }
 
             $this->assertContains($entry['channel'], self::CHANNELS, $spelling . '.channel');
+
+            // Derived, not merely enumerated. A closed list still accepts
+            // `cli-flag` on a configuration key, because the wrong value is a
+            // legal one; only the source can say which surface a spelling is
+            // written on.
+            $this->assertSame($surfaces[$spelling] ?? null, $entry['surface'], sprintf(
+                '%s is written on the %s surface, not %s.',
+                $spelling,
+                $surfaces[$spelling] ?? '(unknown)',
+                $entry['surface'],
+            ));
+
+            // `owner` is how a reader gets from an unstaged spelling to the
+            // issue that owes it a notice, so it has to be a reachable issue
+            // reference rather than any non-empty string.
+            $this->assertMatchesRegularExpression('/^#\d+$/', $entry['owner'], $spelling . '.owner');
+
             $this->assertArrayHasKey('removed_in', $entry, $spelling);
             $this->assertArrayHasKey('deprecation_id', $entry, $spelling);
 
@@ -181,12 +225,6 @@ final class V3RenameRegistryTest extends TestCase
                     '%s is recorded as surviving v3 unchanged, but it is replaced by %s.',
                     $spelling,
                     $entry['replacement'],
-                ));
-
-                $this->assertContains($spelling, self::UNCHANGED_SPELLINGS, sprintf(
-                    '%s is not one of the spellings v3 carries over untouched. If it genuinely is, '
-                    . 'add it to V3RenameRegistryTest::UNCHANGED_SPELLINGS and say why in the PR.',
-                    $spelling,
                 ));
 
                 continue;
@@ -362,9 +400,47 @@ final class V3RenameRegistryTest extends TestCase
         // is only as strong as what it finds there.
         $rows = $this->adrRows();
 
-        $this->assertSame(['spec.base_path'], $rows['spec_base_path']);
-        $this->assertSame(['--report'], $rows['--json-output'], 'a value placeholder is trimmed off');
-        $this->assertSame([], $rows['enum_spec_base_path'], 'the "— removed —" row names no successor');
+        $this->assertSame('spec.base_path', $rows['spec_base_path']['target'], 'a one-to-one row');
+        $this->assertSame(
+            "coverage.min_coverage['endpoint']",
+            $rows['min_endpoint_coverage']['target'],
+            'a grouped row resolves per spelling, not per key',
+        );
+        $this->assertSame('--report=json:<path>', $rows['--json-output']['target'], 'a grouped flag row');
+        $this->assertNull($rows['enum_spec_base_path']['target'], 'the "— removed —" row names no successor');
+
+        // The surface comes from which table the row sits under, so the two
+        // headers have to be told apart or every spelling reads as a config
+        // key and the check stops being able to fail.
+        $this->assertSame('config-key', $rows['spec_base_path']['surface']);
+        $this->assertSame('cli-flag', $rows['--json-output']['surface']);
+    }
+
+    /**
+     * The surface each spelling is written on, taken from where the spelling
+     * is defined rather than from what the fixture says about it: the ADR's
+     * two tables carry one surface each, and LegacyIdentity keeps its
+     * environment variables and its Artisan commands in separate maps.
+     *
+     * @return array<string, string>
+     */
+    private function expectedSurfaces(): array
+    {
+        $surfaces = [];
+
+        foreach ($this->adrRows() as $spelling => $row) {
+            $surfaces[$spelling] = $row['surface'];
+        }
+
+        foreach (array_keys(LegacyIdentity::ENV_NAMES) as $spelling) {
+            $surfaces[$spelling] = 'env-var';
+        }
+
+        foreach (array_keys(LegacyIdentity::COMMAND_NAMES) as $spelling) {
+            $surfaces[$spelling] = 'artisan-command';
+        }
+
+        return $surfaces;
     }
 
     /**
@@ -381,14 +457,24 @@ final class V3RenameRegistryTest extends TestCase
     }
 
     /**
-     * Each old spelling in ADR 0005's two "Replaces" columns, mapped to the v3
-     * names its own row proposes.
+     * Each old spelling in ADR 0005's two "Replaces" columns, mapped to the one
+     * v3 spelling that replaces it and to the surface its table describes.
+     *
+     * The target comes from the row's own `old` → `new` pairing where the row
+     * has one, and from its single v3 name where it does not. A row that
+     * replaces several spellings without pairing them is unreadable rather
+     * than guessed at, and a `— removed —` row has no target at all.
      *
      * Parenthetical asides are dropped before the backticked tokens are read:
      * the ADR uses them for commentary, and one of them quotes a config *value*
      * rather than a name.
      *
-     * @return array<string, list<string>>
+     * The checks on the ADR itself live here rather than in a test of their
+     * own, so that a test which only wants the spelling list still cannot read
+     * a malformed table. The cost is that their failures are reported under
+     * whichever test called this first; the message says which row and why.
+     *
+     * @return array<string, array{target: null|string, surface: string}>
      */
     private function adrRows(): array
     {
@@ -397,6 +483,8 @@ final class V3RenameRegistryTest extends TestCase
 
         $rows = [];
         $unreadable = [];
+        $claimed = [];
+        $surface = null;
 
         foreach (explode("\n", $contents) as $line) {
             $line = trim($line);
@@ -416,37 +504,183 @@ final class V3RenameRegistryTest extends TestCase
 
             $replaces = trim($columns[2]);
             if ($replaces === 'Replaces') {
+                // The header says which surface the rows beneath it describe,
+                // which is how `surface` becomes derived rather than declared.
+                $surface = trim($columns[1]) === 'v3 flag' ? 'cli-flag' : 'config-key';
+
                 continue;
             }
 
-            $v3Names = $this->names($columns[1]);
+            $this->assertIsString($surface, 'a table row appeared before any header');
 
-            foreach ($this->names($replaces) as $spelling) {
-                $rows[$spelling] = array_values(array_unique(
-                    array_merge($rows[$spelling] ?? [], $v3Names),
-                ));
+            $v3Cell = $this->prose($columns[1]);
+            $v3Names = $this->names($v3Cell);
+            $members = $this->members($v3Cell);
+            $replacesCell = $this->prose($replaces);
+            $paired = $this->pairs($replacesCell);
+
+            // A row whose v3 cell enumerates members but whose enumeration
+            // stopped parsing would silently drop the member check below, so
+            // the two grammars the ADR actually uses are pinned here.
+            if (str_contains($v3Cell, '= [') || str_contains($v3Cell, '="')) {
+                $this->assertNotSame([], $members, 'members unreadable in: ' . trim($v3Cell));
+            }
+
+            if ($paired === []) {
+                $spellings = $this->names($replacesCell);
+                if ($spellings === []) {
+                    continue; // A row that adds a flag or renames nothing.
+                }
+
+                // No `→`, so the row can only speak for itself if it names one
+                // target. More than one and the pairing is the reader's guess,
+                // which is exactly what the arrows exist to remove.
+                if (count($v3Names) > 1) {
+                    $unreadable[] = $line;
+
+                    continue;
+                }
+
+                $paired = array_fill_keys($spellings, $v3Names[0] ?? null);
+            } elseif ($this->tokens($replacesCell) !== count($paired) * 2) {
+                // Some spelling in an arrowed row has no arrow of its own.
+                $unreadable[] = $line;
+
+                continue;
+            }
+
+            foreach ($paired as $spelling => $target) {
+                $this->assertSame(
+                    $rows[$spelling]['surface'] ?? $surface,
+                    $surface,
+                    $spelling . ' appears under two different ADR tables',
+                );
+
+                if (array_key_exists($spelling, $rows)) {
+                    $unreadable[] = $spelling . ' is replaced twice: ' . $line;
+
+                    continue;
+                }
+
+                if ($target !== null) {
+                    // The target has to be a member of this row's key, not of
+                    // whichever key happens to appear in the same sentence.
+                    $this->assertNotSame([], $v3Names, $spelling . ' names a target under no v3 key');
+                    $this->assertStringStartsWith($v3Names[0], $target, sprintf(
+                        '%s is replaced by "%s", which is not under this row\'s v3 key %s.',
+                        $spelling,
+                        $target,
+                        $v3Names[0],
+                    ));
+
+                    if ($members !== []) {
+                        $this->assertNotSame([], array_filter(
+                            $members,
+                            static fn(string $member): bool => str_contains($target, $member),
+                        ), sprintf(
+                            "%s is replaced by \"%s\", which names none of the members its row lists:\n  %s",
+                            $spelling,
+                            $target,
+                            implode("\n  ", $members),
+                        ));
+                    }
+
+                    $this->assertArrayNotHasKey($target, $claimed, sprintf(
+                        '%s and %s are both replaced by "%s". One target replaces one spelling.',
+                        $claimed[$target] ?? '',
+                        $spelling,
+                        $target,
+                    ));
+                    $claimed[$target] = $spelling;
+                }
+
+                $rows[$spelling] = ['target' => $target, 'surface' => $surface];
             }
         }
 
         $this->assertSame([], $unreadable, sprintf(
-            "This ADR table row did not split into two columns, so its spellings were never read:\n  %s",
+            "ADR 0005 has a row this scan cannot read, so its spellings were never checked:\n  %s",
             implode("\n  ", $unreadable),
         ));
 
         return $rows;
     }
 
-    /**
-     * The backticked names in one ADR table cell, with parenthetical asides
-     * dropped first.
-     *
-     * @return list<string>
-     */
-    private function names(string $cell): array
+    /** One ADR table cell with its parenthetical asides dropped. */
+    private function prose(string $cell): string
     {
         $prose = preg_replace('/\([^)]*\)/', '', $cell);
         $this->assertIsString($prose);
 
+        return $prose;
+    }
+
+    /**
+     * The `old` → `new` pairs in a Replaces cell, keyed by the old spelling.
+     *
+     * @return array<string, string>
+     */
+    private function pairs(string $prose): array
+    {
+        preg_match_all('/`([^`]+)`\s*→\s*`([^`]+)`/', $prose, $matches, PREG_SET_ORDER);
+
+        $pairs = [];
+
+        foreach ($matches as $match) {
+            // Only the left side is split at `=`: it names a flag whose value
+            // shape rides along, while the right side is the exact string the
+            // fixture has to carry.
+            $pairs[trim(explode('=', $match[1])[0])] = $match[2];
+        }
+
+        return $pairs;
+    }
+
+    /** How many backticked names a cell holds, arrows included. */
+    private function tokens(string $prose): int
+    {
+        preg_match_all('/`[^`]+`/', $prose, $matches);
+
+        return count($matches[0]);
+    }
+
+    /**
+     * The sub-keys a v3 cell enumerates, in the two forms ADR 0005 uses: a PHP
+     * array literal for `gesso.php`, and the collapsed string grammar for a
+     * CLI flag. A cell using neither enumerates nothing.
+     *
+     * @return list<string>
+     */
+    private function members(string $prose): array
+    {
+        preg_match_all("/'(\\w+)' =>/", $prose, $arrayLiteral);
+        if ($arrayLiteral[1] !== []) {
+            return $arrayLiteral[1];
+        }
+
+        if (preg_match('/="([^"]+)"/', $prose, $grammar) !== 1) {
+            return [];
+        }
+
+        $members = [];
+
+        foreach (explode(',', $grammar[1]) as $pair) {
+            $member = trim(explode('=', $pair)[0]);
+            if ($member !== '') {
+                $members[] = $member;
+            }
+        }
+
+        return $members;
+    }
+
+    /**
+     * The backticked names in one already-prosed ADR table cell.
+     *
+     * @return list<string>
+     */
+    private function names(string $prose): array
+    {
         preg_match_all('/`([^`]+)`/', $prose, $matches);
 
         $names = [];

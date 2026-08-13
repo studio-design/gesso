@@ -381,7 +381,7 @@
         },
         "--min-coverage-strict": {
             "surface": "cli-flag",
-            "replacement": "--min-coverage=\"…,strict\"",
+            "replacement": "--min-coverage=\"strict\"",
             "channel": "deprecation",
             "removed_in": "3.0",
             "owner": "#507",
@@ -431,7 +431,7 @@
         },
         "--specs": {
             "surface": "cli-flag",
-            "replacement": "--spec-name=<name>, repeatable",
+            "replacement": "--spec-name",
             "channel": "deprecation",
             "removed_in": "3.0",
             "owner": "#507",
@@ -439,7 +439,7 @@
         },
         "--strip-prefixes": {
             "surface": "cli-flag",
-            "replacement": "--strip-prefix=<p>, repeatable",
+            "replacement": "--strip-prefix",
             "channel": "deprecation",
             "removed_in": "3.0",
             "owner": "#507",
