@@ -64,6 +64,13 @@ final class V3RenameRegistryTest extends TestCase
     private const CHANNELS = ['deprecation', 'accepted-spelling', 'unchanged-spelling'];
 
     /**
+     * The release that removes everything on the `deprecation` channel. ADR
+     * 0004's sequencing amendment makes v3.0 the deletion release, so a v3
+     * rename dated anywhere else has quietly left the milestone.
+     */
+    private const REMOVED_IN = '3.0';
+
+    /**
      * The only spelling entitled to the `unchanged-spelling` channel.
      *
      * Deriving this from the ADR does not work, and the failed attempt is
@@ -230,8 +237,26 @@ final class V3RenameRegistryTest extends TestCase
                 continue;
             }
 
-            $this->assertIsString($entry['removed_in'], $spelling . '.removed_in');
-            $this->assertNotSame('', $entry['removed_in'], $spelling . '.removed_in');
+            // Each channel removes at exactly one version, so "non-empty" is
+            // not the check: a deprecation quietly re-dated to 4.0 keeps its
+            // notice, keeps its registry entry, and stops being something v3
+            // has to finish, which is the whole subject of this fixture.
+            if ($entry['channel'] === 'accepted-spelling') {
+                $this->assertSame(
+                    LegacyIdentity::REMOVED_IN,
+                    $entry['removed_in'] . '.0',
+                    $spelling . ' is removed when LegacyIdentity says it is',
+                );
+
+                continue;
+            }
+
+            $this->assertSame(self::REMOVED_IN, $entry['removed_in'], sprintf(
+                'A deprecation is removed in Gesso %s; %s says %s.',
+                self::REMOVED_IN,
+                $spelling,
+                $entry['removed_in'],
+            ));
         }
     }
 
@@ -278,11 +303,29 @@ final class V3RenameRegistryTest extends TestCase
                 $id,
             ));
 
-            // Existence is not correspondence. Without these two, any id that
-            // happens to share a removal version satisfies the link, so a
-            // spelling can be marked staged by pointing at another spelling's
-            // deprecation. Both registry fields are prose written for humans,
-            // so the check is containment with the backticks taken out.
+            // Existence is not correspondence, and neither is prose. The
+            // registry's `surface` and `replacement` are written for a human
+            // reading a notice, so one sentence can mention two spellings at
+            // once — enough for a containment check to accept an id that
+            // actually stages the sibling key. The comparison is against the
+            // machine-readable pair the registry carries for this purpose.
+            $this->assertSame($spelling, $registry[$id]['spelling'], sprintf(
+                'Registry entry "%s" deprecates %s, not %s.',
+                $id,
+                $registry[$id]['spelling'],
+                $spelling,
+            ));
+
+            $this->assertSame($entry['replacement'], $registry[$id]['v3_target'], sprintf(
+                'Registry entry "%s" replaces %s with "%s"; ADR 0005 replaces it with "%s".',
+                $id,
+                $spelling,
+                $registry[$id]['v3_target'],
+                $entry['replacement'],
+            ));
+
+            // The prose still has to agree with the pair, or the notice a
+            // consumer reads says something the fixtures do not.
             $this->assertIsString($registry[$id]['surface'], $id . '.surface');
             $this->assertStringContainsString(
                 $spelling,
@@ -290,16 +333,11 @@ final class V3RenameRegistryTest extends TestCase
                 sprintf('Registry entry "%s" does not name the spelling %s deprecates.', $id, $spelling),
             );
 
-            $this->assertIsString($entry['replacement'], $spelling . '.replacement');
             $this->assertIsString($registry[$id]['replacement'], $id . '.replacement');
             $this->assertStringContainsString(
-                $this->unquoted($entry['replacement']),
+                $this->unquoted($registry[$id]['v3_target']),
                 $this->unquoted($registry[$id]['replacement']),
-                sprintf(
-                    'Registry entry "%s" points somewhere other than the v3 name ADR 0005 gives %s.',
-                    $id,
-                    $spelling,
-                ),
+                sprintf('Registry entry "%s" reads as pointing somewhere other than its own v3_target.', $id),
             );
         }
     }
@@ -574,11 +612,20 @@ final class V3RenameRegistryTest extends TestCase
                     ));
 
                     if ($members !== []) {
-                        $this->assertNotSame([], array_filter(
-                            $members,
-                            static fn(string $member): bool => str_contains($target, $member),
-                        ), sprintf(
-                            "%s is replaced by \"%s\", which names none of the members its row lists:\n  %s",
+                        // Parsed out of the target, not searched for inside it.
+                        // `str_contains` accepted `['response_typo']` because
+                        // `response` is a substring of it, which let a row name
+                        // a member it never enumerates.
+                        $named = $this->targetMembers($target);
+
+                        $this->assertNotSame([], $named, sprintf(
+                            '%s is replaced by "%s", which names no member of the key its row collapses into.',
+                            $spelling,
+                            $target,
+                        ));
+
+                        $this->assertSame([], array_values(array_diff($named, $members)), sprintf(
+                            "%s is replaced by \"%s\", whose member is not one this row lists:\n  %s",
                             $spelling,
                             $target,
                             implode("\n  ", $members),
@@ -645,6 +692,23 @@ final class V3RenameRegistryTest extends TestCase
     }
 
     /**
+     * The sub-keys one target names, in the two forms a target can take: an
+     * array subscript for a `gesso.php` key, and the collapsed string grammar
+     * for a CLI flag. A target naming a whole key names no member.
+     *
+     * @return list<string>
+     */
+    private function targetMembers(string $target): array
+    {
+        preg_match_all("/\\['(\\w+)'\\]/", $target, $subscripts);
+        if ($subscripts[1] !== []) {
+            return $subscripts[1];
+        }
+
+        return $this->grammarMembers($target);
+    }
+
+    /**
      * The sub-keys a v3 cell enumerates, in the two forms ADR 0005 uses: a PHP
      * array literal for `gesso.php`, and the collapsed string grammar for a
      * CLI flag. A cell using neither enumerates nothing.
@@ -658,7 +722,18 @@ final class V3RenameRegistryTest extends TestCase
             return $arrayLiteral[1];
         }
 
-        if (preg_match('/="([^"]+)"/', $prose, $grammar) !== 1) {
+        return $this->grammarMembers($prose);
+    }
+
+    /**
+     * The sub-keys named inside a collapsed `name=value,name=value` string,
+     * the one grammar ADR 0005 gives a CLI flag that carries several settings.
+     *
+     * @return list<string>
+     */
+    private function grammarMembers(string $subject): array
+    {
+        if (preg_match('/="([^"]+)"/', $subject, $grammar) !== 1) {
             return [];
         }
 
@@ -666,7 +741,7 @@ final class V3RenameRegistryTest extends TestCase
 
         foreach (explode(',', $grammar[1]) as $pair) {
             $member = trim(explode('=', $pair)[0]);
-            if ($member !== '') {
+            if ($member !== '' && !in_array($member, $members, true)) {
                 $members[] = $member;
             }
         }

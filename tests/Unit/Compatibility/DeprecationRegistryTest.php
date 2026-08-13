@@ -77,11 +77,45 @@ final class DeprecationRegistryTest extends TestCase
         foreach ($this->registry() as $id => $entry) {
             $this->assertIsArray($entry, $id);
 
-            foreach (['surface', 'replacement', 'removed_in'] as $key) {
+            // `spelling` and `v3_target` are the machine-readable halves of the
+            // two prose fields, so `V3RenameRegistryTest` can match an id to
+            // the rename it stages by equality instead of by reading English.
+            foreach (['spelling', 'surface', 'replacement', 'v3_target', 'removed_in'] as $key) {
                 $this->assertArrayHasKey($key, $entry, $id);
                 $this->assertIsString($entry[$key], $id . '.' . $key);
                 $this->assertNotSame('', $entry[$key], $id . '.' . $key);
             }
+        }
+    }
+
+    #[Test]
+    public function every_entry_names_the_spelling_its_own_notice_names(): void
+    {
+        $subjects = [];
+        $failures = [];
+
+        foreach ($this->sourceFiles() as $file => $contents) {
+            $this->scan($file, $contents, $failures, $subjects);
+        }
+
+        foreach ($this->registry() as $id => $entry) {
+            $this->assertArrayHasKey($id, $subjects, $id . ' is registered but never emitted');
+
+            // The registry is a claim about what a consumer will read on
+            // STDERR. Nothing checked that claim against the call, so an entry
+            // could be re-pointed at a different key while the notice it
+            // describes went on naming the old one.
+            $this->assertIsString($subjects[$id], sprintf(
+                'The notice for "%s" builds its subject at runtime, so the registry cannot be held to it.',
+                $id,
+            ));
+
+            $this->assertStringContainsString($entry['spelling'], $subjects[$id], sprintf(
+                'Registry entry "%s" deprecates %s, but its notice announces "%s".',
+                $id,
+                $entry['spelling'],
+                $subjects[$id],
+            ));
         }
     }
 
@@ -207,11 +241,18 @@ final class DeprecationRegistryTest extends TestCase
      * so one scan reports every offending call site at once.
      *
      * @param list<string> $failures
+     * @param array<string, null|string> $subjects receives each id's `subject`
+     *                                             argument, `null` when it is
+     *                                             not a literal
      *
      * @return list<string>
      */
-    private function scan(string $file, string $contents, array &$failures = []): array
-    {
+    private function scan(
+        string $file,
+        string $contents,
+        array &$failures = [],
+        array &$subjects = [],
+    ): array {
         $tokens = $this->significantTokens($contents);
         $namespace = $this->namespaceOf($tokens);
         $aliases = $this->importsOf($tokens);
@@ -243,6 +284,7 @@ final class DeprecationRegistryTest extends TestCase
             }
 
             $ids[] = $id;
+            $subjects[$id] = $this->subjectArgument($tokens, $index + 3);
         }
 
         return $ids;
@@ -305,41 +347,73 @@ final class DeprecationRegistryTest extends TestCase
      */
     private function idArgument(array $tokens, int $open, ?string &$reason = null): ?string
     {
+        return $this->argument($tokens, $open, 'id', 0, $reason);
+    }
+
+    /**
+     * The `subject` argument of the same call, or `null` when it is not a
+     * literal. Unlike the id, an unreadable subject is not a failure here: the
+     * caller decides, because a subject that interpolates a runtime value is
+     * legitimate while an id that does is not.
+     *
+     * @param list<array{int, string}|string> $tokens
+     */
+    private function subjectArgument(array $tokens, int $open): ?string
+    {
+        return $this->argument($tokens, $open, 'subject', 1);
+    }
+
+    /**
+     * The literal value of one argument, found by name first and by position
+     * second, the way PHP resolves it.
+     *
+     * @param list<array{int, string}|string> $tokens
+     */
+    private function argument(
+        array $tokens,
+        int $open,
+        string $name,
+        int $position,
+        ?string &$reason = null,
+    ): ?string {
         $reason = null;
         $arguments = $this->argumentSegments($tokens, $open);
         if ($arguments === null) {
             $reason = 'its argument list could not be split into arguments — the scanner did not '
-                . 'find the closing parenthesis, so it cannot see the id';
+                . 'find the closing parenthesis, so it cannot see the ' . $name;
 
             return null;
         }
 
-        $notALiteral = 'the id must be a literal string so the deprecation registry can list it';
+        $notALiteral = sprintf(
+            'the %s must be a literal string so the deprecation registry can list it',
+            $name,
+        );
 
         foreach ($arguments as $segment) {
             $head = $segment[0] ?? null;
-            if (is_array($head) && $head[0] === T_STRING && $head[1] === 'id' && ($segment[1] ?? null) === ':') {
-                $id = $this->literal($segment, 2);
-                $reason = $id === null ? $notALiteral : null;
+            if (is_array($head) && $head[0] === T_STRING && $head[1] === $name && ($segment[1] ?? null) === ':') {
+                $value = $this->literal($segment, 2);
+                $reason = $value === null ? $notALiteral : null;
 
-                return $id;
+                return $value;
             }
         }
 
-        $first = $arguments[0] ?? null;
-        $head = $first[0] ?? null;
-        // A named argument in first position that is not `id` means the call
-        // passes no positional id at all.
-        if ($first === null || (is_array($head) && $head[0] === T_STRING && ($first[1] ?? null) === ':')) {
-            $reason = 'the call passes no id argument';
+        $positional = $arguments[$position] ?? null;
+        $head = $positional[0] ?? null;
+        // A named argument in this position means the call passes no
+        // positional argument here at all.
+        if ($positional === null || (is_array($head) && $head[0] === T_STRING && ($positional[1] ?? null) === ':')) {
+            $reason = 'the call passes no ' . $name . ' argument';
 
             return null;
         }
 
-        $id = $this->literal($first, 0);
-        $reason = $id === null ? $notALiteral : null;
+        $value = $this->literal($positional, 0);
+        $reason = $value === null ? $notALiteral : null;
 
-        return $id;
+        return $value;
     }
 
     /**
