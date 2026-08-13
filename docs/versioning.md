@@ -252,7 +252,9 @@ Reaching the emitter in a way the scan cannot read fails for the same reason:
 call it by name. A literal `Deprecations::notice(...)` is the only form the
 scan can attach a registry entry to, so a computed class, a computed member
 (`::{'notice'}`, `::${'notice'}`, `::$method(`), a `::class` callable, and a
-string naming the emitter are all reported instead.
+string naming the emitter are all reported instead. A string is compared as
+PHP builds it rather than as it is typed — quoted, heredoc, or nowdoc, each
+with the escapes it applies — so `\x53tudio\Gesso\…` is that name too.
 
 Each registry entry carries the notice twice: once under `notice`, as the three
 prose arguments the call passes, compared to `src/` argument by argument; and

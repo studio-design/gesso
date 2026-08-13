@@ -25,6 +25,7 @@ use const T_NAME_RELATIVE;
 use const T_NAMESPACE;
 use const T_NS_SEPARATOR;
 use const T_OBJECT_OPERATOR;
+use const T_START_HEREDOC;
 use const T_STRING;
 use const T_USE;
 use const T_VARIABLE;
@@ -65,7 +66,6 @@ use function sprintf;
 use function str_contains;
 use function str_replace;
 use function str_starts_with;
-use function stripslashes;
 use function strlen;
 use function strtolower;
 use function substr;
@@ -327,8 +327,14 @@ final class DeprecationRegistryTest extends TestCase
             // file that has no namespace — which is `bin/gesso`.
             "<?php\nnamespace X;\nuser_error('m', E_USER_DEPRECATED);" => 1,
             "<?php\nnamespace\\trigger_error('m', \\E_USER_DEPRECATED);" => 1,
-            // A nowdoc body is a string like any other.
+            // A nowdoc body is a string like any other, and a heredoc body is
+            // that string after PHP applies its escapes.
             "<?php\nnamespace X;\ncall_user_func(<<<'F'\ntrigger_error\nF, 'm', E_USER_DEPRECATED);" => 1,
+            "<?php\nnamespace X;\ncall_user_func(<<<F\n\\x74rigger_error\nF, 'm', E_USER_DEPRECATED);" => 1,
+            // The same body under nowdoc delimiters is fifteen literal
+            // characters and no function, which is why the two are told apart
+            // rather than both being decoded.
+            "<?php\nnamespace X;\ncall_user_func(<<<'F'\n\\x74rigger_error\nF, 'm', E_USER_DEPRECATED);" => 0,
             // A relative name under a namespace is a different function.
             "<?php\nnamespace X;\nnamespace\\trigger_error('m', \\E_USER_DEPRECATED);" => 0,
             "<?php\nnamespace X;\ntrigger_error('m', E_USER_WARNING);" => 0,
@@ -584,6 +590,11 @@ final class DeprecationRegistryTest extends TestCase
             "<?php\nnamespace X;\ncall_user_func(<<<'CALLABLE'\n"
                 . "Studio\\Gesso\\Internal\\Deprecations::notice\nCALLABLE, 'a', 's', 'r', '3.0');"
                 => 'can only build a callable',
+            // And a heredoc spells it out only once PHP has applied the
+            // escapes, which is the string the callable is built from.
+            "<?php\nnamespace X;\ncall_user_func(<<<CALLABLE\n"
+                . "\\x53tudio\\Gesso\\Internal\\Deprecations::notice\nCALLABLE, 'a', 's', 'r', '3.0');"
+                => 'can only build a callable',
         ];
 
         foreach ($spellings as $source => $expected) {
@@ -742,7 +753,7 @@ final class DeprecationRegistryTest extends TestCase
             // is a valid callable and leaves no class token to resolve. The
             // emitter's name has no other use as a string in shipped code, so
             // the string is reported as the call it is about to become.
-            $text = is_array($token) ? $this->staticText($token) : null;
+            $text = $this->staticText($tokens, $index);
             if ($text !== null && $this->namesEmitter($text)) {
                 $failures[] = sprintf(
                     '%s: this string names %s, which can only build a callable the deprecation scan '
@@ -956,12 +967,12 @@ final class DeprecationRegistryTest extends TestCase
         $namespace = $this->namespacesOf($tokens)[0] ?? '';
         $found = [];
 
-        foreach ($tokens as $index => $token) {
+        foreach (array_keys($tokens) as $index) {
             // A string naming one of the functions is a callable waiting to be
             // invoked: `call_user_func('trigger_error', …)` raises exactly the
             // same notice. The names have no other use in shipped code, so
             // their presence is counted as the call they are about to become.
-            $literal = is_array($token) ? $this->staticText($token) : null;
+            $literal = $this->staticText($tokens, $index);
             if ($literal !== null) {
                 if (in_array(strtolower(trim(ltrim($literal, '\\'))), self::RAISERS, true)) {
                     $found[] = $index;
@@ -1154,21 +1165,67 @@ final class DeprecationRegistryTest extends TestCase
 
     /**
      * The text of one token that carries a static string, or `null` when the
-     * token is not one.
+     * token is not one — or is one this cannot decode faithfully.
      *
      * Quoted literals are one token; a heredoc or nowdoc body is a
      * `T_ENCAPSED_AND_WHITESPACE` between its delimiters. Reading only the
      * first meant a nowdoc could spell out a callable in full and be invisible.
+     * Reading the body as written was the same miss one step along: a heredoc
+     * applies escapes, so `\x53tudio\Gesso\Internal\Deprecations::notice` is a
+     * working callable at runtime and matches nothing as it is spelled. Only
+     * the `T_START_HEREDOC` that opened the body says which of the two it is.
      *
-     * @param array{int, string} $token
+     * @param list<array{int, string}|string> $tokens
      */
-    private function staticText(array $token): ?string
+    private function staticText(array $tokens, int $index): ?string
     {
-        return match ($token[0]) {
-            T_CONSTANT_ENCAPSED_STRING => $this->decode($token[1]),
-            T_ENCAPSED_AND_WHITESPACE => $token[1],
-            default => null,
-        };
+        $token = $tokens[$index];
+        if (!is_array($token)) {
+            return null;
+        }
+
+        if ($token[0] === T_CONSTANT_ENCAPSED_STRING) {
+            return $this->decode($token[1]);
+        }
+
+        if ($token[0] !== T_ENCAPSED_AND_WHITESPACE) {
+            return null;
+        }
+
+        $enclosure = $this->enclosureOf($tokens, $index);
+
+        return $enclosure === 'nowdoc' ? $token[1] : $this->unescape($token[1], $enclosure === 'quoted');
+    }
+
+    /**
+     * Which enclosure the string body at `$tokens[$index]` sits in: `nowdoc`
+     * for `<<<'ID'`, `heredoc` for `<<<ID` and `<<<"ID"`, `quoted` for a
+     * double quote or a backtick.
+     *
+     * An enclosure this cannot find is answered as a heredoc, the reading that
+     * applies escapes. Of the two ways to be wrong, naming a call site that
+     * turns out to be innocent costs someone a second reading; missing one
+     * costs a released deprecation with no registry entry.
+     *
+     * @param list<array{int, string}|string> $tokens
+     */
+    private function enclosureOf(array $tokens, int $index): string
+    {
+        for ($cursor = $index - 1; $cursor >= 0; $cursor--) {
+            $token = $tokens[$cursor];
+            if (is_array($token) && $token[0] === T_START_HEREDOC) {
+                return str_contains($token[1], "'") ? 'nowdoc' : 'heredoc';
+            }
+
+            // Interpolation returns the lexer to normal PHP, so a quote inside
+            // `{$a["k"]}` arrives as one `T_CONSTANT_ENCAPSED_STRING` and never
+            // as the bare character that closes a body.
+            if ($token === '"' || $token === '`') {
+                return 'quoted';
+            }
+        }
+
+        return 'heredoc';
     }
 
     /**
@@ -1437,13 +1494,27 @@ final class DeprecationRegistryTest extends TestCase
             return is_string($decoded) ? $decoded : null;
         }
 
-        if ($quote !== '"') {
-            return null;
-        }
+        return $quote === '"' ? $this->unescape($inner, true) : null;
+    }
 
+    /**
+     * One double-quoted or heredoc body with its escapes applied, or `null`
+     * when it holds one that has no faithful value.
+     *
+     * `$quoted` is whether `\"` is one of those escapes. Inside double quotes
+     * it is; inside a heredoc PHP keeps both characters — the manual says a
+     * heredoc "behaves just like a double-quoted string", and on 8.4 and 8.5
+     * `<<<X\n\"\nX` is two bytes, so the exception is taken from the engine
+     * rather than from the sentence.
+     *
+     * @see https://www.php.net/manual/en/language.types.string.php
+     */
+    private function unescape(string $inner, bool $quoted): ?string
+    {
+        $simple = 'nrtvef\\\\$' . ($quoted ? '"' : '');
         $invalid = false;
         $decoded = preg_replace_callback(
-            '/\\\\(?:([nrtvef\\\\$"])|([0-7]{1,3})|x([0-9A-Fa-f]{1,2})|u\{([0-9A-Fa-f]+)\})/',
+            '/\\\\(?:([' . $simple . '])|([0-7]{1,3})|x([0-9A-Fa-f]{1,2})|u\{([0-9A-Fa-f]+)\})/',
             function (array $match) use (&$invalid): string {
                 if ($match[1] !== '') {
                     return self::ESCAPES[$match[1]];
