@@ -239,12 +239,18 @@ registry stays as correct — and as empty — as it was.
 `E_USER_DEPRECATED` channel, and that is enforced rather than asked for: a
 `trigger_error(..., E_USER_DEPRECATED)` or a `#[\Deprecated]` attribute
 anywhere in `src/` or `bin/` fails the scan, because it announces a removal the
-registry has no row for. The one exception — the Laravel adapter's
-contradictory-intent warning, which rides the channel so PHPUnit counts it and
-announces no removal — is listed by name and by call count in
-`DeprecationRegistryTest`. Reaching the emitter in a way the scan cannot read
-(`$class::notice()`, `::{'notice'}()`, a `[Deprecations::class, 'notice']`
-callable) fails for the same reason: call it by name.
+registry has no row for. The severity is read as a value, so `16384` is the
+same thing spelled differently, and one it cannot evaluate counts as the
+channel rather than being waved through. The one exception — the Laravel
+adapter's contradictory-intent warning, which rides the channel so PHPUnit
+counts it and announces no removal — is listed by name and by call count in
+`DeprecationRegistryTest`.
+
+Reaching the emitter in a way the scan cannot read fails for the same reason:
+call it by name. A literal `Deprecations::notice(...)` is the only form the
+scan can attach a registry entry to, so a computed class, a computed member
+(`::{'notice'}`, `::${'notice'}`, `::$method(`), a `::class` callable, and a
+string naming the emitter are all reported instead.
 
 Each registry entry carries the notice twice: once under `notice`, as the three
 prose arguments the call passes, compared to `src/` argument by argument; and

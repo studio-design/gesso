@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Tests\Unit\Compatibility;
 
+use const E_USER_DEPRECATED;
 use const JSON_THROW_ON_ERROR;
 use const T_AS;
 use const T_ATTRIBUTE;
@@ -16,6 +17,7 @@ use const T_DOC_COMMENT;
 use const T_DOLLAR_OPEN_CURLY_BRACES;
 use const T_DOUBLE_COLON;
 use const T_FUNCTION;
+use const T_LNUMBER;
 use const T_NAME_FULLY_QUALIFIED;
 use const T_NAME_QUALIFIED;
 use const T_NAME_RELATIVE;
@@ -37,6 +39,7 @@ use Studio\Gesso\Internal\Deprecations;
 use function array_diff_key;
 use function array_key_exists;
 use function array_keys;
+use function array_slice;
 use function chr;
 use function count;
 use function dirname;
@@ -273,6 +276,19 @@ final class DeprecationRegistryTest extends TestCase
             "<?php\nnamespace X;\nuse const E_USER_DEPRECATED as GONE;\n"
                 . "trigger_error('m', GONE);" => 1,
             "<?php\nnamespace X;\ntrigger_error('m', \\E_USER_DEPRECATED);" => 1,
+            // The value PHP stores, written out; and the parameter reached by
+            // name rather than by position.
+            "<?php\nnamespace X;\ntrigger_error('m', 16384);" => 1,
+            "<?php\nnamespace X;\ntrigger_error(error_level: 16384, message: 'm');" => 1,
+            "<?php\nnamespace X;\ntrigger_error(message: 'm', error_level: E_USER_DEPRECATED);" => 1,
+            // A callable in waiting: nothing else spells the function's name
+            // as a string.
+            "<?php\nnamespace X;\ncall_user_func('trigger_error', 'm', E_USER_DEPRECATED);" => 1,
+            // A severity this cannot evaluate might be the channel, so it
+            // counts rather than passing.
+            "<?php\nnamespace X;\n\$level = E_USER_DEPRECATED;\ntrigger_error('m', \$level);" => 1,
+            "<?php\nnamespace X;\ntrigger_error('m', 8192);" => 0,
+            "<?php\nnamespace X;\ntrigger_error('m');" => 0,
             // An alias pointing somewhere else is not this channel.
             "<?php\nnamespace X;\nuse function X\\log as trigger_error;\n"
                 . "trigger_error('m', E_USER_DEPRECATED);" => 0,
@@ -299,6 +315,10 @@ final class DeprecationRegistryTest extends TestCase
             "<?php\nnamespace X;\n#[\\Other, \\Deprecated]\nfunction f(): void {}" => 1,
             "<?php\nnamespace X;\n#[\\Other(1, 2), \\Deprecated(since: '2.6')]\nfunction f(): void {}" => 1,
             "<?php\nnamespace X;\nuse Deprecated as D;\n#[D]\nfunction f(): void {}" => 1,
+            // Class names are case-insensitive, so these are the same
+            // attribute raising the same notice.
+            "<?php\nnamespace X;\n#[\\deprecated]\nfunction f(): void {}" => 1,
+            "<?php\nnamespace X;\nuse Deprecated as gone;\n#[gone]\nfunction f(): void {}" => 1,
             "<?php\nnamespace X;\n#[\\Other]\nfunction f(): void {}" => 0,
             // Unimported and namespaced: PHP resolves this to X\Deprecated,
             // which is not the attribute that emits.
@@ -494,24 +514,31 @@ final class DeprecationRegistryTest extends TestCase
         // is readable and no registry entry is ever demanded.
         $spellings = [
             "<?php\nnamespace X;\nuse Studio\\Gesso\\Internal\\Deprecations;\n"
-                . "Deprecations::{'notice'}('a', 's', 'r', '3.0');",
+                . "Deprecations::{'notice'}('a', 's', 'r', '3.0');" => 'selects its method as a value',
             "<?php\nnamespace X;\nuse Studio\\Gesso\\Internal\\Deprecations;\n"
-                . "call_user_func([Deprecations::class, 'notice'], 'a', 's', 'r', '3.0');",
+                . "Deprecations::\${'notice'}('a', 's', 'r', '3.0');" => 'selects its method as a value',
+            "<?php\nnamespace X;\nuse Studio\\Gesso\\Internal\\Deprecations;\n"
+                . "call_user_func([Deprecations::class, 'notice'], 'a', 's', 'r', '3.0');"
+                => 'selects its method as a value',
             // The method name in a variable. `::$name(` is a call; `::$name`
             // without one is a static property, which the emitter has three of.
             "<?php\nnamespace X;\nuse Studio\\Gesso\\Internal\\Deprecations;\n"
-                . "\$method = 'notice';\nDeprecations::\$method('a', 's', 'r', '3.0');",
+                . "\$method = 'notice';\nDeprecations::\$method('a', 's', 'r', '3.0');"
+                => 'selects its method as a value',
+            // No class token at all: the emitter is named by a string, which
+            // is a callable one call away.
+            "<?php\nnamespace X;\ncall_user_func("
+                . "'Studio\\\\Gesso\\\\Internal\\\\Deprecations::notice', 'a', 's', 'r', '3.0');"
+                => 'can only build a callable',
+            "<?php\nnamespace X;\n\$e = 'Studio\\\\Gesso\\\\Internal\\\\Deprecations';\n"
+                . "\$e::notice('a', 's', 'r', '3.0');" => 'can only build a callable',
         ];
 
-        foreach ($spellings as $index => $source) {
+        foreach ($spellings as $source => $expected) {
             $failures = [];
-            $this->scan('escape-' . $index, $source, $failures);
+            $this->scan('escape', $source, $failures);
 
-            $this->assertStringContainsString(
-                'selects its method as a value',
-                implode("\n", $failures),
-                'spelling ' . $index,
-            );
+            $this->assertStringContainsString($expected, implode("\n", $failures), $source);
         }
     }
 
@@ -659,6 +686,21 @@ final class DeprecationRegistryTest extends TestCase
         }
 
         foreach ($tokens as $index => $token) {
+            // `call_user_func('Studio\\Gesso\\Internal\\Deprecations::notice', …)`
+            // is a valid callable and leaves no class token to resolve. The
+            // emitter's name has no other use as a string in shipped code, so
+            // the string is reported as the call it is about to become.
+            if (is_array($token) && $token[0] === T_CONSTANT_ENCAPSED_STRING && $this->namesEmitter($token[1])) {
+                $failures[] = sprintf(
+                    '%s: this string names %s, which can only build a callable the deprecation scan '
+                    . 'cannot read. Call notice() by name.',
+                    $file,
+                    self::EMITTER,
+                );
+
+                continue;
+            }
+
             if (!is_array($token) || !$this->isStaticCallTo($tokens, $index, 'notice')) {
                 // A `::notice(` whose class is computed reaches the emitter
                 // just as well and leaves no name to resolve. Nothing can
@@ -837,25 +879,93 @@ final class DeprecationRegistryTest extends TestCase
         $found = [];
 
         foreach ($tokens as $index => $token) {
+            // A string naming the function is a callable waiting to be
+            // invoked: `call_user_func('trigger_error', …)` raises exactly the
+            // same notice. The name has no other use in shipped code, so its
+            // presence is counted as the call it is about to become.
+            if (is_array($token) && $token[0] === T_CONSTANT_ENCAPSED_STRING) {
+                $literal = $this->decode($token[1]);
+                if ($literal !== null && strtolower(ltrim($literal, '\\')) === 'trigger_error') {
+                    $found[] = $index;
+                }
+
+                continue;
+            }
+
             if (!$this->isCallTo($tokens, $index, 'trigger_error', $functions)) {
                 continue;
             }
 
-            foreach ($this->argumentSegments($tokens, $index + 1) ?? [] as $segment) {
-                foreach ($segment as $argument) {
-                    if (!is_array($argument) || !in_array($argument[0], self::CLASS_REFERENCES, true)) {
-                        continue;
-                    }
-
-                    $name = ltrim($argument[1], '\\');
-                    if (($constants[strtolower($name)] ?? $name) === 'E_USER_DEPRECATED') {
-                        $found[] = $index;
-                    }
-                }
+            // The severity is one argument, read as one argument. Looking for
+            // the constant among all of them meant a numeric `16384` — the
+            // same value, spelled the way PHP stores it — matched nothing.
+            if ($this->severityOf($tokens, $index + 1, $constants) !== 'other') {
+                $found[] = $index;
             }
         }
 
         return $found;
+    }
+
+    /**
+     * Which channel one `trigger_error()` call raises on: `channel` for
+     * `E_USER_DEPRECATED` however it is spelled, `other` for a severity that
+     * is demonstrably something else, `unreadable` when the argument cannot be
+     * evaluated here.
+     *
+     * `unreadable` counts as an emission, deliberately. A severity this cannot
+     * read might be the deprecation channel, and the conservative answer is
+     * the one that fails loudly rather than the one that lets a notice ship
+     * with no registry entry.
+     *
+     * @param list<array{int, string}|string> $tokens
+     * @param array<string, string> $constants
+     */
+    private function severityOf(array $tokens, int $open, array $constants): string
+    {
+        $segments = $this->argumentSegments($tokens, $open);
+        if ($segments === null) {
+            return 'unreadable';
+        }
+
+        $severity = null;
+        foreach ($segments as $segment) {
+            $head = $segment[0] ?? null;
+            if (is_array($head) && $head[0] === T_STRING && $head[1] === 'error_level' && ($segment[1] ?? null) === ':') {
+                $severity = array_slice($segment, 2);
+
+                break;
+            }
+        }
+
+        if ($severity === null) {
+            $positional = $segments[1] ?? null;
+            $head = $positional[0] ?? null;
+
+            // No second argument at all: PHP defaults to E_USER_NOTICE.
+            if ($positional === null || (is_array($head) && $head[0] === T_STRING && ($positional[1] ?? null) === ':')) {
+                return 'other';
+            }
+
+            $severity = $positional;
+        }
+
+        $token = count($severity) === 1 ? $severity[0] : null;
+        if (!is_array($token)) {
+            return 'unreadable';
+        }
+
+        if ($token[0] === T_LNUMBER) {
+            return (int) $token[1] === E_USER_DEPRECATED ? 'channel' : 'other';
+        }
+
+        if (!in_array($token[0], self::CLASS_REFERENCES, true)) {
+            return 'unreadable';
+        }
+
+        $name = ltrim($token[1], '\\');
+
+        return ($constants[strtolower($name)] ?? $name) === 'E_USER_DEPRECATED' ? 'channel' : 'other';
     }
 
     /**
@@ -879,7 +989,7 @@ final class DeprecationRegistryTest extends TestCase
             }
 
             foreach ($this->attributeNames($tokens, $index) as $name) {
-                if ($this->resolve($name, $namespace, $imports, $selfClass) === 'Deprecated') {
+                if (strtolower($this->resolve($name, $namespace, $imports, $selfClass)) === 'deprecated') {
                     $found[] = $index;
                 }
             }
@@ -932,6 +1042,23 @@ final class DeprecationRegistryTest extends TestCase
     }
 
     /**
+     * True when one string literal names the emitter class — on its own, or
+     * with a member after it.
+     */
+    private function namesEmitter(string $literal): bool
+    {
+        $value = $this->decode($literal);
+        if ($value === null) {
+            return false;
+        }
+
+        $value = strtolower(ltrim($value, '\\'));
+        $emitter = strtolower(self::EMITTER);
+
+        return $value === $emitter || str_starts_with($value, $emitter . '::');
+    }
+
+    /**
      * True when `$tokens[$index]` is a reference to the emitter that reaches
      * it by something other than a literal `::notice(` — `::{'notice'}()`, or
      * `::class` handed to a callable.
@@ -962,15 +1089,18 @@ final class DeprecationRegistryTest extends TestCase
 
         $member = $tokens[$index + 2] ?? null;
 
-        // `::class` in `src/` has no use but building a callable, since the
-        // emitter is never injected; `::{` and `::$method(` both pick the
-        // method at runtime, and `notice` is one of the names they can pick.
-        // The trailing `(` is what tells `::$method(` from `::$property`.
+        // A literal member name is the only one this can read. `::class` in
+        // `src/` has no use but building a callable, since the emitter is
+        // never injected, and `::{`, `::${` and `::$method(` all pick the
+        // member at runtime — `notice` being one of the names they can pick.
+        // Listing the escapes let each new syntax through in turn; this lists
+        // the one readable form instead. The trailing `(` is what tells
+        // `::$method(` from `::$property`, which the emitter reads three of.
         if (is_array($member) && $member[0] === T_VARIABLE) {
             return ($tokens[$index + 3] ?? null) === '(';
         }
 
-        return $member === '{' || (is_array($member) && $member[0] === T_CLASS);
+        return !is_array($member) || $member[0] !== T_STRING;
     }
 
     /**
