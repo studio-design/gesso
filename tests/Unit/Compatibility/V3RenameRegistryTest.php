@@ -682,18 +682,23 @@ final class V3RenameRegistryTest extends TestCase
                         $v3Names[0],
                     ));
 
+                    // Checked whether or not the row enumerates anything. A row
+                    // that collapses no key lists no members, and `[]` is the
+                    // set a target under it may select from — so guarding this
+                    // on a non-empty enumeration let exactly those rows accept
+                    // any subscript at all.
+                    $this->assertSame([], array_values(array_diff($parts['members'], $members)), sprintf(
+                        "%s is replaced by \"%s\", which selects a member this row does not list:\n  %s",
+                        $spelling,
+                        $target,
+                        $members === [] ? '(this row collapses no key, so it lists none)' : implode("\n  ", $members),
+                    ));
+
                     if ($members !== []) {
                         $this->assertNotSame([], $parts['members'], sprintf(
                             '%s is replaced by "%s", which names no member of the key its row collapses into.',
                             $spelling,
                             $target,
-                        ));
-
-                        $this->assertSame([], array_values(array_diff($parts['members'], $members)), sprintf(
-                            "%s is replaced by \"%s\", whose member is not one this row lists:\n  %s",
-                            $spelling,
-                            $target,
-                            implode("\n  ", $members),
                         ));
                     }
 

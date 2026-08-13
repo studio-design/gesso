@@ -9,14 +9,17 @@ use const T_AS;
 use const T_ATTRIBUTE;
 use const T_CLASS;
 use const T_COMMENT;
+use const T_CONST;
 use const T_CONSTANT_ENCAPSED_STRING;
 use const T_CURLY_OPEN;
 use const T_DOC_COMMENT;
 use const T_DOLLAR_OPEN_CURLY_BRACES;
 use const T_DOUBLE_COLON;
+use const T_FUNCTION;
 use const T_NAME_FULLY_QUALIFIED;
 use const T_NAME_QUALIFIED;
 use const T_NAMESPACE;
+use const T_NS_SEPARATOR;
 use const T_STRING;
 use const T_USE;
 use const T_WHITESPACE;
@@ -76,7 +79,10 @@ final class DeprecationRegistryTest extends TestCase
         $registered = array_keys($this->registry());
         sort($registered);
 
-        $this->assertSame($registered, $this->emittedIds());
+        $emitted = array_keys($this->emittedCalls());
+        sort($emitted);
+
+        $this->assertSame($registered, $emitted);
     }
 
     #[Test]
@@ -91,12 +97,7 @@ final class DeprecationRegistryTest extends TestCase
     #[Test]
     public function every_entry_records_the_notice_its_call_emits(): void
     {
-        $calls = [];
-        $failures = [];
-
-        foreach ($this->sourceFiles() as $file => $contents) {
-            $this->scan($file, $contents, $failures, $calls);
-        }
+        $calls = $this->emittedCalls();
 
         foreach ($this->registry() as $id => $entry) {
             $this->assertArrayHasKey($id, $calls, $id . ' is registered but never emitted');
@@ -160,6 +161,16 @@ final class DeprecationRegistryTest extends TestCase
             "<?php\nnamespace X;\n\\Studio\\Gesso\\Internal\\Deprecations::notice(subject: 's', id: 'a', replacement: 'r', removedIn: '3.0');",
             "<?php\nnamespace Studio\\Gesso\\Internal;\nDeprecations::notice('a', 's', 'r', '3.0');",
             "<?php\nnamespace X;\nuse Studio\\Gesso\\Internal;\nInternal\\Deprecations::notice('a', 's', 'r', '3.0');",
+            // Grouped imports, alone and among siblings, plain and aliased.
+            // An unread group resolves the call against the namespace instead,
+            // misses the emitter, and drops the call out of the scan silently.
+            "<?php\nnamespace X;\nuse Studio\\Gesso\\Internal\\{Deprecations};\nDeprecations::notice('a', 's', 'r', '3.0');",
+            "<?php\nnamespace X;\nuse Studio\\Gesso\\Internal\\{LegacyIdentity, Deprecations};\n"
+                . "Deprecations::notice('a', 's', 'r', '3.0');",
+            "<?php\nnamespace X;\nuse Studio\\Gesso\\Internal\\{Deprecations as D};\nD::notice('a', 's', 'r', '3.0');",
+            "<?php\nnamespace X;\nuse Studio\\Gesso\\{Internal\\Deprecations};\nDeprecations::notice('a', 's', 'r', '3.0');",
+            "<?php\nnamespace X;\nuse Studio\\Gesso\\Internal\\{function helper, Deprecations};\n"
+                . "Deprecations::notice('a', 's', 'r', '3.0');",
         ];
 
         foreach ($spellings as $index => $source) {
@@ -170,9 +181,36 @@ final class DeprecationRegistryTest extends TestCase
     #[Test]
     public function the_scanner_ignores_a_notice_call_on_another_class(): void
     {
-        $source = "<?php\nnamespace X;\nuse X\\Logger;\nLogger::notice('not-a-deprecation');";
+        $sources = [
+            "<?php\nnamespace X;\nuse X\\Logger;\nLogger::notice('not-a-deprecation');",
+            // A grouped import of something else must not make every short
+            // name in the file resolve to the emitter.
+            "<?php\nnamespace X;\nuse X\\{Logger, Other};\nLogger::notice('not-a-deprecation');",
+        ];
 
-        $this->assertSame([], $this->scan('other-class', $source));
+        foreach ($sources as $index => $source) {
+            $this->assertSame([], $this->scan('other-class-' . $index, $source), 'source ' . $index);
+        }
+    }
+
+    #[Test]
+    public function a_second_call_under_one_id_fails_rather_than_shadowing_the_first(): void
+    {
+        $source = "<?php\nnamespace X;\nuse Studio\\Gesso\\Internal\\Deprecations;\n"
+            . "Deprecations::notice('a', 'first', 'r', '3.0');\n"
+            . "Deprecations::notice('a', 'second', 'r', '3.0');";
+
+        $failures = [];
+        $calls = [];
+
+        $this->assertSame(['a'], $this->scan('duplicate', $source, $failures, $calls));
+
+        // The first call is what a process actually emits, so it is the one
+        // kept — and the duplicate is reported rather than silently replacing
+        // it, which would hold the registry to a notice nobody ever reads.
+        $this->assertSame('first', $calls['a']['subject']);
+        $this->assertCount(1, $failures);
+        $this->assertStringContainsString('reuses the id "a"', $failures[0]);
     }
 
     #[Test]
@@ -238,30 +276,28 @@ final class DeprecationRegistryTest extends TestCase
     }
 
     /**
-     * Every id emitted through {@see Deprecations::notice()} anywhere in
-     * `src/`, sorted. A call whose id cannot be read statically fails the test
-     * rather than being skipped — an id the registry cannot list is an id the
-     * removing major cannot delete.
+     * Every {@see Deprecations::notice()} call anywhere in `src/`, keyed by id.
      *
-     * @return list<string>
+     * A call whose id cannot be read statically fails the test rather than
+     * being skipped — an id the registry cannot list is an id the removing
+     * major cannot delete. So does a second call under an id already seen: the
+     * whole of `src/` is scanned in one pass precisely so that two files
+     * cannot each look unambiguous on their own.
+     *
+     * @return array<string, array<string, null|string>>
      */
-    private function emittedIds(): array
+    private function emittedCalls(): array
     {
-        $ids = [];
+        $calls = [];
         $failures = [];
 
         foreach ($this->sourceFiles() as $file => $contents) {
-            foreach ($this->scan($file, $contents, $failures) as $id) {
-                $ids[$id] = true;
-            }
+            $this->scan($file, $contents, $failures, $calls);
         }
 
-        $this->assertSame([], $failures, 'every Deprecations::notice() id must be statically readable');
+        $this->assertSame([], $failures, 'every Deprecations::notice() call must be readable and uniquely identified');
 
-        $ids = array_keys($ids);
-        sort($ids);
-
-        return $ids;
+        return $calls;
     }
 
     /**
@@ -308,6 +344,22 @@ final class DeprecationRegistryTest extends TestCase
                     . 'registry because %s.',
                     $file,
                     $reason ?? 'the id could not be read',
+                );
+
+                continue;
+            }
+
+            // Second call under an id already seen. The channel dedups per id,
+            // so at runtime the first call to fire is the notice a consumer
+            // reads and the rest are swallowed — while a check that kept the
+            // last one it parsed would be describing a notice nobody sees. One
+            // id names one surface; two calls is a mistake either way.
+            if (array_key_exists($id, $calls)) {
+                $failures[] = sprintf(
+                    '%s: this Deprecations::notice() call reuses the id "%s", which another call already '
+                    . 'emits. The channel dedups per id, so only the first to fire is ever read.',
+                    $file,
+                    $id,
                 );
 
                 continue;
@@ -532,8 +584,15 @@ final class DeprecationRegistryTest extends TestCase
     }
 
     /**
-     * Short name (lowercased) → imported FQCN, for both `use A\B;` and
-     * `use A\B as C;`.
+     * Short name (lowercased) → imported FQCN, for `use A\B;`, `use A\B as C;`
+     * and the grouped `use A\{B, C as D};`.
+     *
+     * The grouped form is the one that has to be parsed rather than ignored.
+     * An unrecognised import does not fail — nothing about the file says a
+     * deprecation was meant to be in it — so a group left unread silently
+     * resolves `Deprecations::notice()` against the current namespace, misses
+     * the emitter, and takes the call out of the scan entirely. A missing
+     * registry entry is exactly what this file exists to make impossible.
      *
      * @param list<array{int, string}|string> $tokens
      *
@@ -555,6 +614,15 @@ final class DeprecationRegistryTest extends TestCase
 
             $fqcn = ltrim($name[1], '\\');
             $next = $tokens[$index + 2] ?? null;
+
+            // `use A\B\{...}` — the prefix keeps its own token and the brace
+            // is reached through a separator of its own.
+            if (is_array($next) && $next[0] === T_NS_SEPARATOR && ($tokens[$index + 3] ?? null) === '{') {
+                $this->addGroup($tokens, $index + 4, $fqcn, $imports);
+
+                continue;
+            }
+
             if (is_array($next) && $next[0] === T_AS) {
                 $alias = $tokens[$index + 3] ?? null;
                 if (is_array($alias)) {
@@ -564,11 +632,60 @@ final class DeprecationRegistryTest extends TestCase
                 continue;
             }
 
-            $segments = explode('\\', $fqcn);
-            $imports[strtolower($segments[count($segments) - 1])] = $fqcn;
+            $this->addImport($fqcn, null, $imports);
         }
 
         return $imports;
+    }
+
+    /**
+     * Read the members of one `use A\{...}` group, starting just inside the
+     * brace, into `$imports`.
+     *
+     * @param list<array{int, string}|string> $tokens
+     * @param array<string, string> $imports
+     */
+    private function addGroup(array $tokens, int $open, string $prefix, array &$imports): void
+    {
+        for ($i = $open, $count = count($tokens); $i < $count && $tokens[$i] !== '}'; $i++) {
+            $member = $tokens[$i];
+
+            // `use A\{function f, const C}` imports no class, and registering
+            // the name anyway would let a function shadow a real class of the
+            // same short name.
+            if (is_array($member) && in_array($member[0], [T_FUNCTION, T_CONST], true)) {
+                $i++;
+
+                continue;
+            }
+
+            if (!is_array($member) || !in_array($member[0], [T_STRING, T_NAME_QUALIFIED], true)) {
+                continue;
+            }
+
+            $as = $tokens[$i + 1] ?? null;
+            $alias = $tokens[$i + 2] ?? null;
+            if (is_array($as) && $as[0] === T_AS && is_array($alias)) {
+                $this->addImport($prefix . '\\' . $member[1], $alias[1], $imports);
+                $i += 2;
+
+                continue;
+            }
+
+            $this->addImport($prefix . '\\' . $member[1], null, $imports);
+        }
+    }
+
+    /**
+     * Register one import under its alias, or under its own last segment.
+     *
+     * @param array<string, string> $imports
+     */
+    private function addImport(string $fqcn, ?string $alias, array &$imports): void
+    {
+        $segments = explode('\\', $fqcn);
+
+        $imports[strtolower($alias ?? $segments[count($segments) - 1])] = $fqcn;
     }
 
     /**
