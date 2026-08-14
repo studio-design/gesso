@@ -159,6 +159,13 @@ environment variables are unchanged" is scoped to *by #501*.
 files, 38 distinct settings once the four duplicated pairs are counted once —
 become 26 keys in one file.
 
+Both tables below are read by `V3RenameRegistryTest`, which compares the right
+of each `→` byte-for-byte against `tests/fixtures/compatibility/v3-renames.json`.
+Where one row replaces several spellings at once, write one `→` per old
+spelling: without it the row says which key they all land on but not which of
+them lands where, and the fixture can name the wrong member of the right key
+with nothing to contradict it.
+
 | v3 key | Replaces |
 | --- | --- |
 | `spec.base_path` | `spec_base_path` (extension + Laravel) |
@@ -168,24 +175,24 @@ become 26 keys in one file.
 | `validation.format` | `validation_output` |
 | `validation.max_errors` | Laravel `max_errors` |
 | `validation.enforce_discriminator` | `enforce_discriminator` (extension + Laravel) |
-| `validation.acknowledged_unvalidatable_schemes` | same name, both surfaces |
+| `validation.acknowledged_unvalidatable_schemes` | `acknowledged_unvalidatable_schemes` (same name, both surfaces) |
 | `validation.skip_response_codes` | Laravel `skip_response_codes` |
 | `validation.skip_request_validation_response_codes` | Laravel `skip_request_validation_response_codes` |
-| `strict.required` = `['run' => …, 'per_call' => …]` | `strict_required`, `strict_required_per_call` |
-| `strict.additional_properties` = `['run' => …, 'per_call' => …]` | `strict_additional_properties`, `strict_additional_properties_per_call` |
-| `coverage.min_coverage` = `['endpoint' => …, 'response' => …, 'sdk_exercise' => …, 'strict' => …]` | `min_endpoint_coverage`, `min_response_coverage`, `min_sdk_exercise_coverage`, `min_coverage_strict` |
-| `coverage.report_output` = `['markdown' => …, 'json' => …, 'junit' => …, 'html' => …]` | `output_file`, `json_output`, `junit_output`, `html_output` |
-| `coverage.console_report` | `console_output` |
+| `strict.required` = `['run' => …, 'per_call' => …]` | `strict_required` → `strict.required['run']`, `strict_required_per_call` → `strict.required['per_call']` |
+| `strict.additional_properties` = `['run' => …, 'per_call' => …]` | `strict_additional_properties` → `strict.additional_properties['run']`, `strict_additional_properties_per_call` → `strict.additional_properties['per_call']` |
+| `coverage.min_coverage` = `['endpoint' => …, 'response' => …, 'sdk_exercise' => …, 'strict' => …]` | `min_endpoint_coverage` → `coverage.min_coverage['endpoint']`, `min_response_coverage` → `coverage.min_coverage['response']`, `min_sdk_exercise_coverage` → `coverage.min_coverage['sdk_exercise']`, `min_coverage_strict` → `coverage.min_coverage['strict']` |
+| `coverage.report_output` = `['markdown' => …, 'json' => …, 'junit' => …, 'html' => …]` | `output_file` → `coverage.report_output['markdown']`, `json_output` → `coverage.report_output['json']`, `junit_output` → `coverage.report_output['junit']`, `html_output` → `coverage.report_output['html']` |
+| `coverage.console_report` | `console_output` (#502) |
 | `coverage.sidecar_dir` | `sidecar_dir` |
-| `baseline` = `['violations' => …, 'coverage' => …]` | `baseline_file`, `coverage_baseline_file` |
-| `baseline_stale` = `['violations' => …, 'coverage' => …]` | `baseline_stale`, `coverage_baseline_stale` |
+| `baseline` = `['violations' => …, 'coverage' => …]` | `baseline_file` → `baseline['violations']`, `coverage_baseline_file` → `baseline['coverage']` |
+| `baseline_stale` = `['violations' => …, 'coverage' => …]` | `baseline_stale` → `baseline_stale['violations']`, `coverage_baseline_stale` → `baseline_stale['coverage']` |
 | `enum_drift.enabled` | `enum_drift_enabled` |
 | `enum_drift.scan_namespaces` | `enum_drift_scan_namespaces` |
 | `enum_drift.fail_on_drift` | `enum_drift_fail_on_drift` |
 | `phpunit.default_testsuite_as_full` | `default_testsuite_as_full` |
 | `laravel.auto_assert` | Laravel `auto_assert` |
 | `laravel.auto_validate_request` | Laravel `auto_validate_request` |
-| `laravel.auto_inject_dummy_credentials` | Laravel `auto_inject_dummy_credentials`, `auto_inject_dummy_bearer` (the legacy key's behaviour becomes the value `bearer`) |
+| `laravel.auto_inject_dummy_credentials` | Laravel `auto_inject_dummy_credentials` → `laravel.auto_inject_dummy_credentials`, `auto_inject_dummy_bearer` → `laravel.auto_inject_dummy_credentials = 'bearer'` (the legacy key's behaviour becomes the value `bearer`) |
 | `laravel.route_parity` | Laravel `route_parity` |
 | — removed — | `enum_spec_base_path` (#508) |
 
@@ -203,13 +210,13 @@ combination becomes unexpressible.
 | --- | --- |
 | `--format=<name>` | (new on merge; hard-wired per sink today) |
 | `--output-file=<path>` | `--output-file` (Markdown-only today) |
-| `--report=<format>:<path>`, repeatable | `--json-output`, `--junit-output`, `--html-output` |
+| `--report=<format>:<path>`, repeatable | `--json-output` → `--report=json:<path>`, `--junit-output` → `--report=junit:<path>`, `--html-output` → `--report=html:<path>` |
 | `--console-report=<mode>` | `--console-output` |
-| `--min-coverage="endpoint=…,response=…,sdk_exercise=…,strict"` | `--min-endpoint-coverage`, `--min-response-coverage`, `--min-sdk-exercise-coverage`, `--min-coverage-strict` |
-| `--baseline="violations=…,coverage=…"` | `--baseline-file`, `--coverage-baseline-file` |
-| `--baseline-stale="violations=…,coverage=…"` | `--coverage-baseline-stale` (the violations side has no flag today) |
-| `--strict-required="run=…,per_call=…"` | `--strict-required` |
-| `--strict-additional-properties="run=…,per_call=…"` | `--strict-additional-properties` |
+| `--min-coverage="endpoint=…,response=…,sdk_exercise=…,strict"` | `--min-endpoint-coverage` → `--min-coverage="endpoint=…"`, `--min-response-coverage` → `--min-coverage="response=…"`, `--min-sdk-exercise-coverage` → `--min-coverage="sdk_exercise=…"`, `--min-coverage-strict` → `--min-coverage="strict"` |
+| `--baseline="violations=…,coverage=…"` | `--baseline-file` → `--baseline="violations=…"`, `--coverage-baseline-file` → `--baseline="coverage=…"` |
+| `--baseline-stale="violations=…,coverage=…"` | `--coverage-baseline-stale` → `--baseline-stale="coverage=…"` (the violations side has no flag today) |
+| `--strict-required="run=…,per_call=…"` | `--strict-required` → `--strict-required="run=…,per_call=…"` |
+| `--strict-additional-properties="run=…,per_call=…"` | `--strict-additional-properties` → `--strict-additional-properties="run=…,per_call=…"` |
 | `--spec-name=<name>`, repeatable | `--specs=<a,b>` |
 | `--strip-prefix=<p>`, repeatable | `--strip-prefixes=<a,b>` |
 | `--config=<path>` | (new, #501) |

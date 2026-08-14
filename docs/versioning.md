@@ -221,6 +221,88 @@ release must ship before the first breaking commit reaches `main`, because that
 commit turns the pending release into `3.0.0` and no further v2 release can be
 cut from the branch.
 
+### The rename checklist
+
+Two fixtures carry the v2 → v3 transition, and they are checked from opposite
+directions because each one is blind to the other's failure mode.
+
+| Fixture | Scanned from | Catches |
+| --- | --- | --- |
+| `tests/fixtures/compatibility/v2-deprecations.json` | `src/` and `bin/`, by `DeprecationRegistryTest` | a `Deprecations::notice()` call nobody registered, and a notice re-pointed, re-dated, or moved to another surface without the ledger saying so |
+| `tests/fixtures/compatibility/v3-renames.json` | [ADR 0005](adr/0005-v3-configuration-and-cli-naming.md), by `V3RenameRegistryTest` | a rename that ships no notice at all |
+
+The first cannot see the second. A rename that simply never calls
+`Deprecations::notice()` emits nothing, so the scan finds nothing and the
+registry stays as correct — and as empty — as it was.
+
+`Deprecations` is the only place allowed to put a notice on the
+`E_USER_DEPRECATED` channel, and that is enforced rather than asked for: a
+`trigger_error(..., E_USER_DEPRECATED)` — or `user_error()`, PHP's own alias —
+or a `#[\Deprecated]` attribute anywhere in `src/` or `bin/` fails the scan,
+because it announces a removal the registry has no row for. The severity is
+read as a value, in every base PHP writes one, so `0x4000` is the same thing
+spelled differently; only the four severities `trigger_error()` accepts can
+answer "not the deprecation channel", and anything else counts as the channel
+rather than being waved through. The one exception — the Laravel
+adapter's contradictory-intent warning, which rides the channel so PHPUnit
+counts it and announces no removal — is listed by name and by call count in
+`DeprecationRegistryTest`.
+
+Reaching the emitter in a way the scan cannot read fails for the same reason:
+call it by name. A literal `Deprecations::notice(...)` is the only form the
+scan can attach a registry entry to, so a computed class, a computed member
+(`::{'notice'}`, `::${'notice'}`, `::$method(`), a `::class` callable, and a
+string naming the emitter are all reported instead. A string is compared as
+PHP builds it rather than as it is typed — quoted, heredoc, or nowdoc, each
+with the escapes it applies — so `\x53tudio\Gesso\…` is that name too.
+
+Each registry entry carries the notice twice: once under `notice`, as the three
+prose arguments the call passes, compared to `src/` argument by argument; and
+once as the bare `spelling` and `v3_target` the tests compare by equality.
+Prose alone cannot carry the link, because one sentence can name two spellings
+and an id then points at whichever of them the reader assumes. **Changing the
+wording, the target, or the removal version of a notice is therefore a change
+to this fixture too** — which is the point, since the fixture is the list a
+major deletes from.
+
+`v3-renames.json` therefore starts from the ADR: it lists every old spelling
+ADR 0005's two tables name, the v3 spelling that replaces it, the channel it
+uses, and the deprecation id once one is staged. Each replacement is compared
+byte-for-byte against the right of the matching `→` in the ADR, which is why
+a row replacing several spellings at once writes one `→` per spelling —
+otherwise the fixture could name the wrong member of the right key.
+**A PR that renames a configuration key or a CLI flag updates this fixture in
+the same change.** Its `unstaged_count` is a ratchet —
+staging a deprecation lowers it, and the test fails in both directions, so
+neither an unstaged addition nor a stale number can sit unnoticed. Zero means
+every v3 rename has shipped its notice and the final v2 minor can be cut.
+
+Two numbers bounding the fixture live in `V3RenameRegistryTest` rather than in
+the fixture: how many spellings ADR 0005 names, and the highest
+`unstaged_count` allowed. A number a file keeps about itself bounds nothing —
+lowering either is progress and costs one line, raising one is a decision and
+shows up in the diff of a test.
+
+`owner` is derived, not declared: ADR 0005's rule 4 gives each name one issue,
+and the test applies its own division of labour — the environment variables and
+Artisan commands to #504, the CLI to #507, the keys that collapse several v2
+settings to #502, the rest of the key set to #501. A row that the rule would
+get wrong names its issue inline instead, the way the removals carry `(#508)`.
+
+The three channels a spelling can take:
+
+- **`deprecation`** — the spelling stops working. `E_USER_DEPRECATED` through
+  `Studio\Gesso\Internal\Deprecations`, with an entry in `v2-deprecations.json`.
+- **`accepted-spelling`** — the spelling keeps working. The `[Gesso]` warning
+  channel through `Studio\Gesso\Internal\LegacyIdentity`, described below.
+- **`unchanged-spelling`** — nothing is removed; listed only so the gate can
+  account for every ADR row. This is the one channel that stages nothing and
+  counts toward nothing, so membership is a hand-written list in
+  `V3RenameRegistryTest`, not a property of the entry. Keeping a *name* is not
+  enough: `baseline_stale` and the two `--strict-*` flags keep theirs while
+  replacing the value they accept, which is a removal to anyone who wrote the
+  old value down, so they take the `deprecation` channel.
+
 ### Renamed spellings still accepted
 
 A rename that keeps the old spelling working is not a removal, so it does not go
