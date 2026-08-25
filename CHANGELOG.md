@@ -10,6 +10,13 @@ the README for the full surface contract.
 
 ## Unreleased
 
+## [2.6.1](https://github.com/studio-design/gesso/compare/v2.6.0...v2.6.1) (2026-08-25)
+
+
+### Bug Fixes
+
+* **validation:** decode adapter JSON bodies as objects so a nested {} is not read as [] ([#561](https://github.com/studio-design/gesso/issues/561)) ([006aeaa](https://github.com/studio-design/gesso/commit/006aeaad962040af37576efb1bf7649566fc8001))
+
 ## [2.6.0](https://github.com/studio-design/gesso/compare/v2.5.0...v2.6.0) (2026-08-12)
 
 
