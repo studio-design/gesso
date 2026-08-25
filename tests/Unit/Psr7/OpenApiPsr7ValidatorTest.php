@@ -603,6 +603,63 @@ final class OpenApiPsr7ValidatorTest extends TestCase
     }
 
     #[Test]
+    public function nested_empty_object_round_trips_through_request_and_response(): void
+    {
+        // Issue #559: json_decode(..., false) at decodeBody() decodes a
+        // nested `{}` as an empty object rather than `[]` flattened by assoc
+        // decoding, so it validates against a `type: object` property.
+        $validator = new OpenApiPsr7Validator('nested-empty-object');
+
+        $request = new Request(
+            'POST',
+            'https://example.test/echo',
+            ['Content-Type' => 'application/json'],
+            '{"reasoning":{}}',
+        );
+        $response = new Response(200, ['Content-Type' => 'application/json'], '{"reasoning":{}}');
+
+        $result = $validator->validateExchange($request, $response);
+
+        $this->assertTrue($result->isValid(), $result->errorMessage());
+    }
+
+    #[Test]
+    public function nested_empty_object_against_an_array_property_still_fails(): void
+    {
+        // Inverted pin: before #559 this silently passed because assoc
+        // decoding flattened `{}` to `[]`, matching `type: array`. It must
+        // now fail `type: array` since the object shape is preserved.
+        $validator = new OpenApiPsr7Validator('nested-empty-object');
+
+        $result = $validator->validateRequest(new Request(
+            'POST',
+            'https://example.test/list',
+            ['Content-Type' => 'application/json'],
+            '{"items":{}}',
+        ));
+
+        $this->assertFalse($result->isValid());
+        $this->assertStringContainsString('items', $result->errorMessage());
+    }
+
+    #[Test]
+    public function numeric_string_keyed_object_validates_against_type_object(): void
+    {
+        // A numeric-string-keyed object against `type: object` must pass — it
+        // was previously misread as a list by assoc decoding.
+        $validator = new OpenApiPsr7Validator('nested-empty-object');
+
+        $result = $validator->validateRequest(new Request(
+            'POST',
+            'https://example.test/echo',
+            ['Content-Type' => 'application/json'],
+            '{"reasoning":{"0":"a"}}',
+        ));
+
+        $this->assertTrue($result->isValid(), $result->errorMessage());
+    }
+
+    #[Test]
     public function request_adapter_issue_keeps_content_type_alongside_non_body_sibling_errors(): void
     {
         // Optional body + unreadable stream + a path-parameter error: the

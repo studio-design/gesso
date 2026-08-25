@@ -30,10 +30,14 @@ namespace Studio\Gesso;
 final readonly class DecodedBody
 {
     /**
-     * @param mixed $value the decoded JSON body value — an `array`, `string`,
-     *                     `int`, `float`, `bool`, or `null`. Always `null`
-     *                     when `$present` is false. Typed `mixed` rather than
-     *                     a union because the public validators accept a bare
+     * @param mixed $value the decoded JSON body value — a `stdClass`, `array`,
+     *                     `string`, `int`, `float`, `bool`, or `null`. Framework
+     *                     adapters decode JSON objects as `stdClass` (issue
+     *                     #559) so a wire-level `{}` is distinguishable from
+     *                     `[]`; a legacy assoc-array caller may still hand this
+     *                     an `array` for an object body. Always `null` when
+     *                     `$present` is false. Typed `mixed` rather than a
+     *                     union because the public validators accept a bare
      *                     legacy body of any shape via {@see self::fromLegacy()}.
      */
     private function __construct(

@@ -385,14 +385,24 @@ final class RequestBodyValidator
         $jsonSchema = OpenApiSchemaConverter::convert($schema, $version, SchemaContext::Request, $discriminatorContext, $jsonSchemaDialect);
 
         // PHP's `json_decode($json, true)` returns `[]` for both `[]` and `{}`.
-        // The Laravel adapter's request decoder uses associative-array decoding,
-        // so an empty `{}` body lands here as PHP `[]`. ObjectConverter preserves
-        // empty arrays as JSON arrays, so a schema's `type: object` would then
-        // reject the body with a misleading "must match the type: object" error.
-        // Coerce `[]` → stdClass when the schema explicitly accepts an object so
-        // the empty-object-against-type-object case (very common for
-        // "create with defaults" bodies) validates. Mirrors the response-side
-        // fix at ResponseBodyValidator::validate().
+        // The framework adapters decode JSON bodies as objects (assoc=false,
+        // issue #559), so `$bodyValue` is `[]` here only in two cases: (a) a
+        // caller invokes the public `validate()` entry point directly with a
+        // legacy assoc-array body instead of going through an adapter — still
+        // supported, see the `$requestBody` param on
+        // {@see \Studio\Gesso\OpenApiRequestValidator::validate()} — or (b) the wire
+        // body was a genuine empty JSON array `[]`, which decodes to PHP `[]`
+        // regardless of the decode mode. ObjectConverter preserves empty
+        // arrays as JSON arrays, so a schema's `type: object` would then
+        // reject the body with a misleading "must match the type: object"
+        // error for case (a). Coerce `[]` → stdClass when the schema
+        // explicitly accepts an object so the empty-object-against-type-object
+        // case (very common for "create with defaults" bodies) validates.
+        // Known trade-off for case (b): a genuine wire-level empty array
+        // still silently passes `type: object` instead of failing. Issue #560
+        // tracks giving `DecodedBody` a provenance bit for object-shaped wire
+        // decodes so unambiguous paths can skip this coercion.
+        // Mirrors the response-side fix at ResponseBodyValidator::validate().
         if ($bodyValue === [] && self::schemaAcceptsObject($schema)) {
             $bodyValue = new stdClass();
         }

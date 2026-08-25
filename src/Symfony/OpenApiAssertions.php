@@ -485,7 +485,9 @@ trait OpenApiAssertions
      * literal JSON `null`, a present {@see DecodedBody} carrying `null` is
      * returned so the validator type-checks the value against the schema
      * rather than mistaking it for an absent body. Non-null decoded values
-     * (scalars, arrays) are wrapped in a present envelope unchanged.
+     * (scalars, arrays, objects) are wrapped in a present envelope unchanged —
+     * `json_decode(..., false)` decodes a JSON object as `stdClass` rather
+     * than flattening it to an array indistinguishable from `[]` (issue #559).
      *
      * @param string $subject either `Request` or `Response`, used only for the
      *                        error message when the body is not valid JSON
@@ -510,7 +512,7 @@ trait OpenApiAssertions
         // catch cannot fall through to a use of an undefined $decoded.
         try {
             /** @var mixed $decoded */
-            $decoded = json_decode($content, true, flags: JSON_THROW_ON_ERROR);
+            $decoded = json_decode($content, false, flags: JSON_THROW_ON_ERROR);
 
             return DecodedBody::present($decoded);
         } catch (JsonException $e) {

@@ -1449,6 +1449,11 @@ trait ValidatesOpenApiSchema
      * `null` is returned as a present {@see DecodedBody} carrying `null`, so
      * the validator type-checks the value against the schema instead of
      * mistaking it for an absent body.
+     *
+     * Issue #559: JSON decoding uses `json_decode(..., false)`, so a JSON
+     * object body decodes to `stdClass` rather than being flattened to an
+     * array indistinguishable from `[]` — a nested `{}` now reaches the
+     * validator as an empty object.
      */
     private function extractRequestBody(Request $request, string $contentType): DecodedBody
     {
@@ -1494,7 +1499,7 @@ trait ValidatesOpenApiSchema
         // catch cannot fall through to a use of an undefined $decoded.
         try {
             /** @var mixed $decoded */
-            $decoded = json_decode($content, true, flags: JSON_THROW_ON_ERROR);
+            $decoded = json_decode($content, false, flags: JSON_THROW_ON_ERROR);
 
             return DecodedBody::present($decoded);
         } catch (JsonException $e) {
@@ -1521,6 +1526,11 @@ trait ValidatesOpenApiSchema
      * forced into an array. A present literal `null` is returned as a present
      * {@see DecodedBody} carrying `null` so it is type-checked rather than
      * read as an absent body — keeping this adapter aligned with the Symfony one.
+     *
+     * Issue #559: decoding uses `json_decode(..., false)`, so a JSON object
+     * body decodes to `stdClass` rather than being flattened to an array
+     * indistinguishable from `[]` — a nested `{}` now reaches the validator
+     * as an empty object.
      */
     private function extractJsonBody(string $content, string $contentType): DecodedBody
     {
@@ -1541,7 +1551,7 @@ trait ValidatesOpenApiSchema
         // dependence on a successful decode is local and explicit.
         try {
             /** @var mixed $decoded */
-            $decoded = json_decode($content, true, flags: JSON_THROW_ON_ERROR);
+            $decoded = json_decode($content, false, flags: JSON_THROW_ON_ERROR);
 
             return DecodedBody::present($decoded);
         } catch (JsonException $e) {
