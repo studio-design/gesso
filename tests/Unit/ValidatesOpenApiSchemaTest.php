@@ -9,11 +9,13 @@ use const JSON_THROW_ON_ERROR;
 use PHPUnit\Framework\AssertionFailedError;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+use Studio\Gesso\Attribute\OpenApiSpec;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\HttpMethod;
 use Studio\Gesso\Laravel\ValidatesOpenApiSchema;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Tests\Helpers\CreatesTestResponse;
+use Symfony\Component\HttpFoundation\Request;
 
 use function json_encode;
 
@@ -371,6 +373,31 @@ class ValidatesOpenApiSchemaTest extends TestCase
             HttpMethod::POST,
             '/v1/pets',
         );
+    }
+
+    #[Test]
+    #[OpenApiSpec('nested-empty-object')]
+    public function nested_empty_object_round_trips_through_request_and_response(): void
+    {
+        // Issue #559: json_decode(..., false) on both the Laravel request
+        // (extractRequestBody()) and response (extractJsonBody()) decode
+        // paths so a nested `{}` reaches opis as an empty object, not `[]`
+        // flattened by assoc decoding.
+        $request = Request::create(
+            '/echo',
+            'POST',
+            [],
+            [],
+            [],
+            ['CONTENT_TYPE' => 'application/json'],
+            '{"reasoning":{}}',
+        );
+
+        $this->runOpenApiRequestAssertion($request, null, HttpMethod::POST, '/echo');
+
+        $response = $this->makeTestResponse('{"reasoning":{}}', 200);
+
+        $this->assertResponseMatchesOpenApiSchema($response, HttpMethod::POST, '/echo');
     }
 
     protected function openApiSpec(): string

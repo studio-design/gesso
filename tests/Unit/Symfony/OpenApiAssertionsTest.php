@@ -520,4 +520,28 @@ final class OpenApiAssertionsTest extends TestCase
         $this->expectException(AssertionFailedError::class);
         $this->assertRequestMatchesOpenApiSchema($request, 200);
     }
+
+    #[Test]
+    #[OpenApiSpec('nested-empty-object')]
+    public function nested_empty_object_round_trips_through_request_and_response(): void
+    {
+        // Issue #559: json_decode(..., false) at extractSymfonyJsonBody()
+        // decodes a nested `{}` as an empty object, not `[]` flattened by
+        // assoc decoding, on both the request and response side.
+        $request = Request::create(
+            '/echo',
+            'POST',
+            [],
+            [],
+            [],
+            ['CONTENT_TYPE' => 'application/json'],
+            '{"reasoning":{}}',
+        );
+
+        $this->assertRequestMatchesOpenApiSchema($request);
+
+        $response = new Response('{"reasoning":{}}', 200, ['Content-Type' => 'application/json']);
+
+        $this->assertResponseMatchesOpenApiSchema($request, $response);
+    }
 }

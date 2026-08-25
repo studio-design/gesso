@@ -541,7 +541,7 @@ final class OpenApiPsr7Validator
 
         try {
             /** @var mixed $value */
-            $value = json_decode($content, true, flags: JSON_THROW_ON_ERROR);
+            $value = json_decode($content, false, flags: JSON_THROW_ON_ERROR);
 
             return ['body' => DecodedBody::present($value), 'errors' => []];
         } catch (JsonException $e) {
