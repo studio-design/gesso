@@ -10,6 +10,18 @@ the README for the full surface contract.
 
 ## Unreleased
 
+## [2.7.0](https://github.com/studio-design/gesso/compare/v2.6.0...v2.7.0) (2026-09-07)
+
+
+### Features
+
+* **validation:** preserve body boundaries across adapters and doctor ([#566](https://github.com/studio-design/gesso/issues/566)) ([b305a8c](https://github.com/studio-design/gesso/commit/b305a8c21d11aa9add02b9f6c10805202405270e))
+
+
+### Bug Fixes
+
+* **validation:** decode adapter JSON bodies as objects so a nested {} is not read as [] ([#561](https://github.com/studio-design/gesso/issues/561)) ([006aeaa](https://github.com/studio-design/gesso/commit/006aeaad962040af37576efb1bf7649566fc8001))
+
 ## [2.6.0](https://github.com/studio-design/gesso/compare/v2.5.0...v2.6.0) (2026-08-12)
 
 
