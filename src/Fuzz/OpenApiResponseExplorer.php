@@ -221,9 +221,7 @@ final class OpenApiResponseExplorer
             array_keys($plannedCases),
         );
 
-        return $beforeEach === null
-            ? new GeneratedResponseCases($cases)
-            : GeneratedResponseCases::withBeforeEach($cases, $beforeEach);
+        return new GeneratedResponseCases($cases, $beforeEach);
     }
 
     private static function assertComponentNode(mixed $node, string $location, string $specName): void

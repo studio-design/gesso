@@ -22,8 +22,9 @@ final readonly class GeneratedResponseCases implements Countable, IteratorAggreg
 {
     /**
      * @param list<GeneratedResponseCase> $cases
+     * @param null|Closure(): void $beforeEach Explorer hook run before each callback in {@see each()}.
      */
-    public function __construct(public array $cases)
+    public function __construct(public array $cases, private ?Closure $beforeEach = null)
     {
         if ($cases === []) {
             throw new InvalidArgumentException(
@@ -33,16 +34,25 @@ final readonly class GeneratedResponseCases implements Countable, IteratorAggreg
     }
 
     /**
-     * @param list<GeneratedResponseCase> $cases
+     * Serialization drops the explorer hook: it only records SDK exercise
+     * coverage on the current process's tracker, and a copy handed to another
+     * process (a PHPUnit data provider feeding a #[RunInSeparateProcess]
+     * test) iterated without it before the hook lived on the object too.
      *
-     * @internal Response explorer construction seam; not public API.
+     * @return array{cases: list<GeneratedResponseCase>}
      */
-    public static function withBeforeEach(array $cases, Closure $beforeEach): self
+    public function __serialize(): array
     {
-        $instance = new self($cases);
-        GeneratedResponseCasesHookRegistry::set($instance, $beforeEach);
+        return ['cases' => $this->cases];
+    }
 
-        return $instance;
+    /**
+     * @param array{cases: list<GeneratedResponseCase>} $data
+     */
+    public function __unserialize(array $data): void
+    {
+        $this->cases = $data['cases'];
+        $this->beforeEach = null;
     }
 
     public function count(): int
@@ -56,7 +66,9 @@ final readonly class GeneratedResponseCases implements Countable, IteratorAggreg
     public function each(callable $callback): self
     {
         foreach ($this->cases as $case) {
-            GeneratedResponseCasesHookRegistry::invoke($this);
+            if ($this->beforeEach !== null) {
+                ($this->beforeEach)();
+            }
             $callback($case);
         }
 
