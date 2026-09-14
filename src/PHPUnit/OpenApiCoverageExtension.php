@@ -67,12 +67,12 @@ use function is_dir;
 use function is_numeric;
 use function is_string;
 use function is_writable;
-use function mb_strtolower;
 use function method_exists;
 use function mkdir;
 use function preg_match;
 use function sprintf;
 use function str_starts_with;
+use function strtolower;
 use function sys_get_temp_dir;
 use function trim;
 
@@ -351,7 +351,7 @@ final class OpenApiCoverageExtension implements Extension
         // variable keeps priority inside ValidationOutput::format() itself.
         if ($parameters->has('validation_output') && trim($parameters->get('validation_output')) !== '') {
             $rawValidationOutput = $parameters->get('validation_output');
-            $validationOutput = ValidationOutputFormat::tryFrom(mb_strtolower(trim($rawValidationOutput)));
+            $validationOutput = ValidationOutputFormat::tryFrom(strtolower(trim($rawValidationOutput)));
 
             if ($validationOutput === null) {
                 // An invalid value never changes the selection — a prior
@@ -715,7 +715,7 @@ final class OpenApiCoverageExtension implements Extension
             return false;
         }
 
-        return !in_array(mb_strtolower(trim($value)), ['0', 'false', 'no'], true);
+        return !in_array(strtolower(trim($value)), ['0', 'false', 'no'], true);
     }
 
     /**
