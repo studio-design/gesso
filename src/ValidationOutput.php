@@ -9,7 +9,7 @@ use const STDERR;
 use Studio\Gesso\Internal\LegacyIdentity;
 
 use function fwrite;
-use function mb_strtolower;
+use function strtolower;
 use function trim;
 
 /**
@@ -41,7 +41,7 @@ final class ValidationOutput
         $envValue = LegacyIdentity::env('GESSO_VALIDATION_FORMAT');
 
         if ($envValue !== false && trim($envValue) !== '') {
-            $resolved = ValidationOutputFormat::tryFrom(mb_strtolower(trim($envValue)));
+            $resolved = ValidationOutputFormat::tryFrom(strtolower(trim($envValue)));
 
             if ($resolved !== null) {
                 return $resolved;

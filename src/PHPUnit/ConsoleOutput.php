@@ -9,7 +9,7 @@ use const STDERR;
 use Studio\Gesso\Internal\LegacyIdentity;
 
 use function fwrite;
-use function mb_strtolower;
+use function strtolower;
 use function trim;
 
 /**
@@ -32,7 +32,7 @@ enum ConsoleOutput: string
         $envValue = LegacyIdentity::env('GESSO_CONSOLE_OUTPUT');
 
         if ($envValue !== false && trim($envValue) !== '') {
-            $resolved = self::tryFrom(mb_strtolower(trim($envValue)));
+            $resolved = self::tryFrom(strtolower(trim($envValue)));
 
             if ($resolved === null) {
                 fwrite(STDERR, "[OpenAPI Coverage] WARNING: Invalid GESSO_CONSOLE_OUTPUT value '{$envValue}'. Valid values: default, all, uncovered_only, active_only. Falling back to 'default'.\n");
@@ -42,7 +42,7 @@ enum ConsoleOutput: string
         }
 
         if ($parameterValue !== null && trim($parameterValue) !== '') {
-            $resolved = self::tryFrom(mb_strtolower(trim($parameterValue)));
+            $resolved = self::tryFrom(strtolower(trim($parameterValue)));
 
             if ($resolved === null) {
                 fwrite(STDERR, "[OpenAPI Coverage] WARNING: Invalid console_output parameter '{$parameterValue}'. Valid values: default, all, uncovered_only, active_only. Falling back to 'default'.\n");
