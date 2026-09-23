@@ -11,32 +11,35 @@ use Opis\JsonSchema\Exceptions\ParseException;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
+use Studio\Gesso\Validation\Support\NamedError;
 use Studio\Gesso\Validation\Support\ValidatorErrorBoundary;
 use TypeError;
+
+use function array_map;
 
 class ValidatorErrorBoundaryTest extends TestCase
 {
     #[Test]
-    public function safely_passes_through_return_value_when_callable_succeeds(): void
+    public function safely_named_passes_through_return_value_when_callable_succeeds(): void
     {
-        $result = ValidatorErrorBoundary::safely(
+        $result = ValidatorErrorBoundary::safelyNamed(
             'path',
             'petstore',
             'GET',
             '/pets/{id}',
-            static fn(): array => ['[path.id] must be integer', '[path.id] must be positive'],
+            static fn(): array => [new NamedError('id', '[path.id] must be integer'), new NamedError('id', '[path.id] must be positive')],
         );
 
         $this->assertSame(
             ['[path.id] must be integer', '[path.id] must be positive'],
-            $result,
+            self::messages($result),
         );
     }
 
     #[Test]
-    public function safely_passes_through_empty_array_on_success(): void
+    public function safely_named_passes_through_empty_array_on_success(): void
     {
-        $result = ValidatorErrorBoundary::safely(
+        $result = ValidatorErrorBoundary::safelyNamed(
             'query',
             'petstore',
             'GET',
@@ -48,9 +51,9 @@ class ValidatorErrorBoundaryTest extends TestCase
     }
 
     #[Test]
-    public function safely_converts_runtime_exception_to_error_string(): void
+    public function safely_named_converts_runtime_exception_to_error_string(): void
     {
-        $result = ValidatorErrorBoundary::safely(
+        $result = ValidatorErrorBoundary::safelyNamed(
             'request-body',
             'petstore',
             'POST',
@@ -61,23 +64,23 @@ class ValidatorErrorBoundaryTest extends TestCase
         );
 
         $this->assertCount(1, $result);
-        $this->assertStringContainsString('[request-body]', $result[0]);
-        $this->assertStringContainsString('POST', $result[0]);
-        $this->assertStringContainsString('/pets', $result[0]);
-        $this->assertStringContainsString("'petstore'", $result[0]);
-        $this->assertStringContainsString('RuntimeException', $result[0]);
-        $this->assertStringContainsString('malformed schema', $result[0]);
+        $this->assertStringContainsString('[request-body]', $result[0]->message);
+        $this->assertStringContainsString('POST', $result[0]->message);
+        $this->assertStringContainsString('/pets', $result[0]->message);
+        $this->assertStringContainsString("'petstore'", $result[0]->message);
+        $this->assertStringContainsString('RuntimeException', $result[0]->message);
+        $this->assertStringContainsString('malformed schema', $result[0]->message);
     }
 
     #[Test]
-    public function safely_emits_fully_qualified_exception_class_name_for_namespaced_exceptions(): void
+    public function safely_named_emits_fully_qualified_exception_class_name_for_namespaced_exceptions(): void
     {
         // Opis SchemaException subclasses extend RuntimeException, so the narrow
         // catch covers them. The assertion on the full FQN guards against a future
         // refactor using basename (e.g. `basename($e::class)`) that would lose
         // namespace context — critical for distinguishing opis exceptions from
         // similarly-named exceptions elsewhere.
-        $result = ValidatorErrorBoundary::safely(
+        $result = ValidatorErrorBoundary::safelyNamed(
             'request-body',
             'petstore',
             'POST',
@@ -88,17 +91,17 @@ class ValidatorErrorBoundaryTest extends TestCase
         );
 
         $this->assertCount(1, $result);
-        $this->assertStringContainsString('Opis\\JsonSchema\\Exceptions\\ParseException', $result[0]);
-        $this->assertStringContainsString('malformed schema: bad $ref', $result[0]);
+        $this->assertStringContainsString('Opis\\JsonSchema\\Exceptions\\ParseException', $result[0]->message);
+        $this->assertStringContainsString('malformed schema: bad $ref', $result[0]->message);
     }
 
     #[Test]
-    public function safely_pins_exact_error_string_format(): void
+    public function safely_named_pins_exact_error_string_format(): void
     {
         // Guard against field-order / separator / label drift that
         // assertStringContainsString would silently accept. Downstream log
         // scrapers or CI summary formatters depend on this exact shape.
-        $result = ValidatorErrorBoundary::safely(
+        $result = ValidatorErrorBoundary::safelyNamed(
             'header',
             'my-spec',
             'PATCH',
@@ -110,18 +113,19 @@ class ValidatorErrorBoundaryTest extends TestCase
 
         $this->assertSame(
             ["[header] PATCH /v1/users/{id} in 'my-spec' spec: RuntimeException threw: boom"],
-            $result,
+            self::messages($result),
         );
+        $this->assertNull($result[0]->name);
     }
 
     #[Test]
-    public function safely_appends_previous_exception_when_present(): void
+    public function safely_named_appends_previous_exception_when_present(): void
     {
         // opis wraps lower-level errors via getPrevious(); with stack traces
         // discarded, the previous class + message is the most actionable piece
         // of root-cause signal left.
         $previous = new RuntimeException('underlying PCRE error: No ending delimiter');
-        $result = ValidatorErrorBoundary::safely(
+        $result = ValidatorErrorBoundary::safelyNamed(
             'request-body',
             'petstore',
             'POST',
@@ -134,16 +138,16 @@ class ValidatorErrorBoundaryTest extends TestCase
         $this->assertSame(
             ["[request-body] POST /pets in 'petstore' spec: RuntimeException threw: pattern keyword rejected"
                 . ' (caused by RuntimeException: underlying PCRE error: No ending delimiter)'],
-            $result,
+            self::messages($result),
         );
     }
 
     #[Test]
-    public function safely_omits_previous_suffix_when_no_chain(): void
+    public function safely_named_omits_previous_suffix_when_no_chain(): void
     {
         // Symmetric pin: an exception without getPrevious() must NOT produce
         // a dangling "(caused by ...)" suffix.
-        $result = ValidatorErrorBoundary::safely(
+        $result = ValidatorErrorBoundary::safelyNamed(
             'request-body',
             'petstore',
             'POST',
@@ -153,16 +157,16 @@ class ValidatorErrorBoundaryTest extends TestCase
             },
         );
 
-        $this->assertStringNotContainsString('caused by', $result[0]);
+        $this->assertStringNotContainsString('caused by', $result[0]->message);
     }
 
     #[Test]
-    public function safely_rethrows_type_error(): void
+    public function safely_named_rethrows_type_error(): void
     {
         $this->expectException(TypeError::class);
         $this->expectExceptionMessage('programmer bug');
 
-        ValidatorErrorBoundary::safely(
+        ValidatorErrorBoundary::safelyNamed(
             'path',
             'petstore',
             'GET',
@@ -174,11 +178,11 @@ class ValidatorErrorBoundaryTest extends TestCase
     }
 
     #[Test]
-    public function safely_rethrows_assertion_error(): void
+    public function safely_named_rethrows_assertion_error(): void
     {
         $this->expectException(AssertionError::class);
 
-        ValidatorErrorBoundary::safely(
+        ValidatorErrorBoundary::safelyNamed(
             'security',
             'petstore',
             'GET',
@@ -190,7 +194,7 @@ class ValidatorErrorBoundaryTest extends TestCase
     }
 
     #[Test]
-    public function safely_rethrows_invalid_argument_exception(): void
+    public function safely_named_rethrows_invalid_argument_exception(): void
     {
         // InvalidArgumentException extends LogicException extends Exception — it is
         // NOT a RuntimeException, so the narrow catch lets it bubble. This mirrors
@@ -201,7 +205,7 @@ class ValidatorErrorBoundaryTest extends TestCase
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage('bad input');
 
-        ValidatorErrorBoundary::safely(
+        ValidatorErrorBoundary::safelyNamed(
             'request-body',
             'petstore',
             'POST',
@@ -213,14 +217,14 @@ class ValidatorErrorBoundaryTest extends TestCase
     }
 
     #[Test]
-    public function safely_rethrows_logic_exception(): void
+    public function safely_named_rethrows_logic_exception(): void
     {
         // Parent of InvalidArgumentException: pins the broader LogicException
         // family policy rather than relying on the InvalidArgumentException
         // concrete case alone.
         $this->expectException(LogicException::class);
 
-        ValidatorErrorBoundary::safely(
+        ValidatorErrorBoundary::safelyNamed(
             'request-body',
             'petstore',
             'POST',
@@ -229,5 +233,15 @@ class ValidatorErrorBoundaryTest extends TestCase
                 throw new LogicException('impossible state');
             },
         );
+    }
+
+    /**
+     * @param list<NamedError> $errors
+     *
+     * @return list<string>
+     */
+    private static function messages(array $errors): array
+    {
+        return array_map(static fn(NamedError $error): string => $error->message, $errors);
     }
 }

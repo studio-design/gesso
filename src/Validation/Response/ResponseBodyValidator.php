@@ -10,10 +10,8 @@ use Studio\Gesso\DecodedBody;
 use Studio\Gesso\OpenApiResponseValidator;
 use Studio\Gesso\Validation\Support\ObjectConverter;
 use Studio\Gesso\Validation\Support\SchemaValidatorRunner;
+use Studio\Gesso\Validation\Support\TypeCoercer;
 
-use function in_array;
-use function is_array;
-use function is_string;
 use function sprintf;
 
 /**
@@ -80,7 +78,7 @@ final class ResponseBodyValidator
 
         // Only legacy assoc-array callers need the ambiguous [] -> {} shim.
         // Adapters retain JSON types, so a wire [] must stay an array.
-        if (!$responseBody->preservesJsonTypes && $bodyValue === [] && self::schemaAcceptsObject($schema)) {
+        if (!$responseBody->preservesJsonTypes && $bodyValue === [] && TypeCoercer::acceptsObject($schema)) {
             $bodyValue = new stdClass();
         }
 
@@ -95,32 +93,5 @@ final class ResponseBodyValidator
         }
 
         return new ResponseBodyValidationResult($errors, $jsonContentType, violations: $violations);
-    }
-
-    /**
-     * Whether the schema's top-level type explicitly accepts a JSON object.
-     * Handles OAS 3.0 (`type: object`) and OAS 3.1/3.2 (`type: ["object", "null"]`).
-     * Composition keywords (`oneOf` / `anyOf` / `allOf`) are intentionally
-     * NOT walked — coercion only fires for the unambiguous case so a real
-     * type-mismatch error still surfaces for `type: array` schemas where the
-     * empty-array body is genuinely wrong. Intentional duplicate of the
-     * same-named helper on the request-side body validator; if you change
-     * the scope here, change it there too.
-     *
-     * @param array<string, mixed> $schema
-     */
-    private static function schemaAcceptsObject(array $schema): bool
-    {
-        $type = $schema['type'] ?? null;
-
-        if (is_string($type)) {
-            return $type === 'object';
-        }
-
-        if (is_array($type)) {
-            return in_array('object', $type, true);
-        }
-
-        return false;
     }
 }

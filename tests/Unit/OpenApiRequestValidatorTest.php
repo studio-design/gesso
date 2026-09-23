@@ -3503,7 +3503,7 @@ class OpenApiRequestValidatorTest extends TestCase
         // the body sub-validator (opis rejects the malformed `pattern: "[unterminated"`
         // with InvalidKeywordException at validation time) aborted the orchestrator
         // mid-spread, discarding the path-param error collected one step earlier.
-        // ValidatorErrorBoundary::safely() converts the throw into a synthetic
+        // ValidatorErrorBoundary::safelyNamed() converts the throw into a synthetic
         // [request-body] error so sibling validators' findings remain surfaced.
         $result = $this->validator->validate(
             'body-validator-throws',

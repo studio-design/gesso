@@ -13,6 +13,7 @@ use stdClass;
 use Studio\Gesso\DecodedBody;
 use Studio\Gesso\OpenApiVersion;
 use Studio\Gesso\SchemaContext;
+use Studio\Gesso\Spec\OpenApiRefResolver;
 use Studio\Gesso\Spec\OpenApiSchemaConverter;
 use Studio\Gesso\UploadedPart;
 use Studio\Gesso\Validation\Support\BodyStructureInspector;
@@ -24,6 +25,7 @@ use Studio\Gesso\Validation\Support\MalformedSpecNode;
 use Studio\Gesso\Validation\Support\ObjectConverter;
 use Studio\Gesso\Validation\Support\SchemaValidatorRunner;
 use Studio\Gesso\Validation\Support\SchemaViolation;
+use Studio\Gesso\Validation\Support\TypeCoercer;
 
 use function array_column;
 use function array_filter;
@@ -37,7 +39,6 @@ use function is_array;
 use function is_string;
 use function json_decode;
 use function sprintf;
-use function str_replace;
 use function str_starts_with;
 
 /**
@@ -291,7 +292,7 @@ final class RequestBodyValidator
 
         // Only legacy assoc-array callers need the ambiguous [] -> {} shim.
         // Adapters retain JSON types, so a wire [] must stay an array.
-        if (!$requestBody->preservesJsonTypes && $bodyValue === [] && self::schemaAcceptsObject($schema)) {
+        if (!$requestBody->preservesJsonTypes && $bodyValue === [] && TypeCoercer::acceptsObject($schema)) {
             $bodyValue = new stdClass();
         }
 
@@ -573,7 +574,7 @@ final class RequestBodyValidator
         foreach ($partNames as $partName) {
             // RFC 6901 escaping, so a part literally named `a/b` is matched
             // as the single property it is rather than as a nested path.
-            $pointers[] = '/' . str_replace(['~', '/'], ['~0', '~1'], $partName);
+            $pointers[] = '/' . OpenApiRefResolver::escapePointerSegment($partName);
         }
 
         return array_values(array_filter(
@@ -636,33 +637,6 @@ final class RequestBodyValidator
             ),
             $matchedContentType,
         );
-    }
-
-    /**
-     * Whether the schema's top-level type explicitly accepts a JSON object.
-     * Handles OAS 3.0 (`type: object`) and OAS 3.1/3.2 (`type: ["object", "null"]`).
-     * Composition keywords (`oneOf` / `anyOf` / `allOf`) are intentionally
-     * NOT walked — coercion only fires for the unambiguous case so a real
-     * type-mismatch error still surfaces for `type: array` schemas where the
-     * empty-array body is genuinely correct. Intentional duplicate of the
-     * same-named helper on the response-side body validator; if you change
-     * the scope here, change it there too.
-     *
-     * @param array<string, mixed> $schema
-     */
-    private static function schemaAcceptsObject(array $schema): bool
-    {
-        $type = $schema['type'] ?? null;
-
-        if (is_string($type)) {
-            return $type === 'object';
-        }
-
-        if (is_array($type)) {
-            return in_array('object', $type, true);
-        }
-
-        return false;
     }
 
     /**

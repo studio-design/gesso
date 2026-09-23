@@ -13,6 +13,9 @@ use Opis\JsonSchema\JsonPointer;
 use Opis\JsonSchema\Schema;
 use Opis\JsonSchema\Validator;
 use stdClass;
+use Studio\Gesso\OpenApiVersion;
+use Studio\Gesso\SchemaContext;
+use Studio\Gesso\Spec\OpenApiSchemaConverter;
 
 use function array_filter;
 use function array_key_exists;
@@ -161,6 +164,36 @@ final class SchemaValidatorRunner
         }
 
         return $violations;
+    }
+
+    /**
+     * Convert an OpenAPI Schema Object, validate `$value` against it, and
+     * render every violation as a {@see NamedError} for the named spec object
+     * (`$prefix` is the bracket label, e.g. `query.limit`; the violation's
+     * display path is appended to it unless the violation sits at the root).
+     *
+     * @param array<string, mixed> $schema
+     *
+     * @return list<NamedError>
+     */
+    public function validateNamed(
+        string $name,
+        string $prefix,
+        array $schema,
+        mixed $value,
+        OpenApiVersion $version,
+        SchemaContext $context,
+        ?string $jsonSchemaDialect = null,
+    ): array {
+        $jsonSchema = OpenApiSchemaConverter::convert($schema, $version, $context, null, $jsonSchemaDialect);
+
+        $errors = [];
+        foreach ($this->validateStructured(ObjectConverter::convert($jsonSchema), ObjectConverter::convert($value)) as $violation) {
+            $suffix = $violation->displayPath() === '/' ? '' : $violation->displayPath();
+            $errors[] = new NamedError($name, "[{$prefix}{$suffix}] {$violation->message}", $violation->instancePath, $violation->keyword);
+        }
+
+        return $errors;
     }
 
     /**

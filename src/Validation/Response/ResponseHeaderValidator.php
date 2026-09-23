@@ -6,19 +6,14 @@ namespace Studio\Gesso\Validation\Response;
 
 use Studio\Gesso\OpenApiVersion;
 use Studio\Gesso\SchemaContext;
-use Studio\Gesso\Spec\OpenApiSchemaConverter;
 use Studio\Gesso\Validation\Support\HeaderNormalizer;
+use Studio\Gesso\Validation\Support\HeaderValueValidator;
 use Studio\Gesso\Validation\Support\NamedError;
-use Studio\Gesso\Validation\Support\ObjectConverter;
 use Studio\Gesso\Validation\Support\SchemaValidatorRunner;
-use Studio\Gesso\Validation\Support\TypeCoercer;
 
-use function array_key_first;
-use function count;
 use function get_debug_type;
 use function in_array;
 use function is_array;
-use function is_scalar;
 use function sprintf;
 use function strtolower;
 use function trim;
@@ -39,15 +34,8 @@ use function trim;
  * content negotiation, not arbitrary header definitions. The validator
  * skips it explicitly so a misplaced spec definition cannot fail tests.
  *
- * Header values arriving as `array<string>` (Laravel/Symfony's HeaderBag
- * models repeated occurrences this way) are unwrapped to a single value
- * when the array holds exactly one element. Multi-value arrays against
- * scalar schemas produce a hard error — frameworks disagree on which of
- * the repeated values "wins" (Laravel: first, Symfony: last), so silently
- * picking one would mask a drift the contract test exists to expose.
- * Empty arrays are treated as missing. `style: simple` with
- * `type: array | object` is out of scope; such schemas will fail with a
- * type mismatch because header values are coerced as scalars.
+ * Value handling (HeaderBag unwrap, multi-value refusal, scalar guard,
+ * coercion) is shared with the request side via {@see HeaderValueValidator}.
  *
  * @phpstan-type HeaderObject array{required?: bool, schema?: array<string, mixed>}
  * @phpstan-type HeadersSpec array<string, HeaderObject|mixed>
@@ -61,10 +49,12 @@ final class ResponseHeaderValidator
      * Lower-cased so the lookup is case-insensitive.
      */
     private const IGNORED_HEADER_NAMES = ['content-type'];
+    private readonly HeaderValueValidator $values;
 
-    public function __construct(
-        private readonly SchemaValidatorRunner $runner,
-    ) {}
+    public function __construct(SchemaValidatorRunner $runner)
+    {
+        $this->values = new HeaderValueValidator($runner, 'response-header', SchemaContext::Response);
+    }
 
     /**
      * @param HeadersSpec $headersSpec the `responses.<code>.headers` map
@@ -130,65 +120,7 @@ final class ResponseHeaderValidator
             /** @var array<string, mixed> $schema */
             $schema = $headerObject['schema'];
 
-            $rawValue = $normalizedHeaders[$lowerName] ?? null;
-
-            // `null` and `[]` (empty repeated-header array) both collapse to
-            // "missing". A repeated header that arrived zero times is
-            // semantically absent.
-            if ($rawValue === null || $rawValue === []) {
-                if ($required) {
-                    $errors[] = new NamedError((string) $name, sprintf('[response-header.%s] required header is missing.', $name), keyword: 'required');
-                }
-
-                continue;
-            }
-
-            if (is_array($rawValue)) {
-                if (count($rawValue) > 1) {
-                    $errors[] = new NamedError((string) $name, sprintf(
-                        '[response-header.%s] multiple values received (count=%d) but schema expects a single value; refusing to pick one silently.',
-                        $name,
-                        count($rawValue),
-                    ));
-
-                    continue;
-                }
-
-                $rawValue = $rawValue[array_key_first($rawValue)];
-            }
-
-            // Same post-unwrap missing guard as the pre-unwrap branch:
-            // `['X-Foo' => [null]]` is shaped identically to an absent
-            // header. Letting it through would either silently pass against
-            // a `nullable` schema or surface as a `/` type mismatch from opis.
-            if ($rawValue === null) {
-                if ($required) {
-                    $errors[] = new NamedError((string) $name, sprintf('[response-header.%s] required header is missing.', $name), keyword: 'required');
-                }
-
-                continue;
-            }
-
-            if (!is_scalar($rawValue)) {
-                $errors[] = new NamedError((string) $name, sprintf(
-                    '[response-header.%s] value must be a scalar (string|int|bool|float); got %s.',
-                    $name,
-                    get_debug_type($rawValue),
-                ));
-
-                continue;
-            }
-
-            $coerced = TypeCoercer::coercePrimitive($rawValue, $schema);
-            $jsonSchema = OpenApiSchemaConverter::convert($schema, $version, SchemaContext::Response, null, $jsonSchemaDialect);
-
-            $schemaObject = ObjectConverter::convert($jsonSchema);
-            $dataObject = ObjectConverter::convert($coerced);
-
-            foreach ($this->runner->validateStructured($schemaObject, $dataObject) as $violation) {
-                $suffix = $violation->displayPath() === '/' ? '' : $violation->displayPath();
-                $errors[] = new NamedError((string) $name, sprintf('[response-header.%s%s] %s', $name, $suffix, $violation->message), $violation->instancePath, $violation->keyword);
-            }
+            $errors = [...$errors, ...$this->values->validate((string) $name, $normalizedHeaders[$lowerName] ?? null, $required, $schema, $version, $jsonSchemaDialect)];
         }
 
         return $errors;

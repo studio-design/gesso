@@ -41,28 +41,8 @@ use function sprintf;
 final class ValidatorErrorBoundary
 {
     /**
-     * @param callable(): string[] $fn
-     *
-     * @return string[]
-     */
-    public static function safely(
-        string $stage,
-        string $specName,
-        string $method,
-        string $matchedPath,
-        callable $fn,
-    ): array {
-        try {
-            return $fn();
-        } catch (RuntimeException $e) {
-            return [self::captureMessage($stage, $specName, $method, $matchedPath, $e)];
-        }
-    }
-
-    /**
-     * Same boundary for sub-validators that return named errors. The capture
-     * entry carries no name — a thrown exception is not attributable to a
-     * single parameter.
+     * The capture entry carries no name — a thrown exception is not
+     * attributable to a single parameter.
      *
      * @param callable(): list<NamedError> $fn
      *

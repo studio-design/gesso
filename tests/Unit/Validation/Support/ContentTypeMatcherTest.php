@@ -69,13 +69,13 @@ class ContentTypeMatcherTest extends TestCase
     }
 
     #[Test]
-    public function is_content_type_in_spec_matches_case_insensitively(): void
+    public function find_content_type_key_matches_case_insensitively(): void
     {
         $content = ['Application/JSON' => [], 'Text/Html' => []];
 
-        $this->assertTrue(ContentTypeMatcher::isContentTypeInSpec('application/json', $content));
-        $this->assertTrue(ContentTypeMatcher::isContentTypeInSpec('text/html', $content));
-        $this->assertFalse(ContentTypeMatcher::isContentTypeInSpec('application/xml', $content));
+        $this->assertSame('Application/JSON', ContentTypeMatcher::findContentTypeKey('application/json', $content));
+        $this->assertSame('Text/Html', ContentTypeMatcher::findContentTypeKey('text/html', $content));
+        $this->assertNull(ContentTypeMatcher::findContentTypeKey('application/xml', $content));
     }
 
     // ========================================

@@ -665,7 +665,7 @@ final class OpenApiResponseValidator
         ResponseSchemaResolution $resolution,
         DecodedBody $responseBody,
     ): ResponseBodyValidationResult {
-        // Inlined try/catch mirrors ValidatorErrorBoundary::safely() for the
+        // Inlined try/catch mirrors ValidatorErrorBoundary::safelyNamed() for the
         // body validator: same narrow `RuntimeException` catch, same error
         // formatting. The boundary returns string[]; the body validator
         // returns a richer DTO carrying matchedContentType, so we can't reuse

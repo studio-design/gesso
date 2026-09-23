@@ -8,10 +8,8 @@ use const E_USER_WARNING;
 
 use Studio\Gesso\OpenApiVersion;
 use Studio\Gesso\SchemaContext;
-use Studio\Gesso\Spec\OpenApiSchemaConverter;
 use Studio\Gesso\Validation\Support\MalformedSpecNode;
 use Studio\Gesso\Validation\Support\NamedError;
-use Studio\Gesso\Validation\Support\ObjectConverter;
 use Studio\Gesso\Validation\Support\QueryStyleDeserializer;
 use Studio\Gesso\Validation\Support\SchemaValidatorRunner;
 use Studio\Gesso\Validation\Support\TypeCoercer;
@@ -121,15 +119,7 @@ final class QueryParameterValidator
 
             $deserialized = QueryStyleDeserializer::deserialize($queryParams[$name], $param, $schema, $rawValue);
             $coerced = TypeCoercer::coerceQuery($deserialized, $schema);
-            $jsonSchema = OpenApiSchemaConverter::convert($schema, $version, SchemaContext::Request, null, $jsonSchemaDialect);
-
-            $schemaObject = ObjectConverter::convert($jsonSchema);
-            $dataObject = ObjectConverter::convert($coerced);
-
-            foreach ($this->runner->validateStructured($schemaObject, $dataObject) as $violation) {
-                $suffix = $violation->displayPath() === '/' ? '' : $violation->displayPath();
-                $errors[] = new NamedError($name, "[query.{$name}{$suffix}] {$violation->message}", $violation->instancePath, $violation->keyword);
-            }
+            $errors = [...$errors, ...$this->runner->validateNamed($name, "query.{$name}", $schema, $coerced, $version, SchemaContext::Request, $jsonSchemaDialect)];
         }
 
         return $errors;
@@ -222,17 +212,6 @@ final class QueryParameterValidator
             }
         }
 
-        $jsonSchema = OpenApiSchemaConverter::convert($schema, $version, SchemaContext::Request, null, $jsonSchemaDialect);
-
-        $errors = [];
-        foreach ($this->runner->validateStructured(
-            ObjectConverter::convert($jsonSchema),
-            ObjectConverter::convert($coerced),
-        ) as $violation) {
-            $suffix = $violation->displayPath() === '/' ? '' : $violation->displayPath();
-            $errors[] = new NamedError($qsName, "[querystring{$suffix}] {$violation->message}", $violation->instancePath, $violation->keyword);
-        }
-
-        return $errors;
+        return $this->runner->validateNamed($qsName, 'querystring', $schema, $coerced, $version, SchemaContext::Request, $jsonSchemaDialect);
     }
 }
