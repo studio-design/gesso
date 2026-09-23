@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Coverage;
 
-use const FILE_APPEND;
-
 use InvalidArgumentException;
 use RuntimeException;
 use Studio\Gesso\Baseline\BaselineStaleMode;
@@ -13,11 +11,10 @@ use Studio\Gesso\Baseline\CoverageBaselineEvaluator;
 use Studio\Gesso\Baseline\CoverageBaselineFile;
 use Studio\Gesso\Baseline\ViolationBaseline;
 use Studio\Gesso\Baseline\ViolationBaselineFile;
-use Studio\Gesso\Exception\InvalidOpenApiSpecException;
-use Studio\Gesso\Exception\SpecFileNotFoundException;
 use Studio\Gesso\Internal\ArgvParser;
+use Studio\Gesso\Internal\CliIo;
+use Studio\Gesso\Internal\CoverageReportWriter;
 use Studio\Gesso\Internal\Deprecations;
-use Studio\Gesso\Internal\LegacyIdentity;
 use Studio\Gesso\PHPUnit\ConsoleOutput;
 use Studio\Gesso\PHPUnit\CoverageReportSubscriber;
 use Studio\Gesso\PHPUnit\OpenApiCoverageExtension;
@@ -28,23 +25,15 @@ use Studio\Gesso\Validation\Strict\StrictAdditionalPropertiesTracker;
 use Studio\Gesso\Validation\Strict\StrictRequiredAsserter;
 use Studio\Gesso\Validation\Strict\StrictRequiredMode;
 use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
-use Throwable;
 
 use function count;
 use function ctype_digit;
-use function file_put_contents;
-use function getcwd;
 use function getenv;
 use function implode;
-use function in_array;
-use function is_callable;
 use function is_int;
 use function is_numeric;
+use function is_string;
 use function sprintf;
-use function str_starts_with;
-use function strlen;
-use function strtolower;
-use function trim;
 use function unlink;
 
 /**
@@ -60,11 +49,6 @@ use function unlink;
  * @phpstan-import-type CoverageResult from OpenApiCoverageTracker
  * @phpstan-import-type SdkExerciseCoverageResult from SdkExerciseCoverageReportBuilder
  *
- * @phpstan-type MergeReportEntry array{
- *     label: string,
- *     renderer: callable(array<string, CoverageResult>, array<string, SdkExerciseCoverageResult>): string,
- *     outputFile: ?string,
- * }
  * @phpstan-type MergeOptions array{
  *     sidecar_dir?: string,
  *     spec_base_path?: string,
@@ -99,6 +83,8 @@ use function unlink;
  */
 final class CoverageMergeCommand
 {
+    use CliIo;
+
     /**
      * @param null|callable(string): void $stderrWriter Optional sink for warnings; defaults to STDERR.
      */
@@ -230,31 +216,19 @@ final class CoverageMergeCommand
             return 0;
         }
 
-        $sidecarDir = isset($options['sidecar_dir']) && $options['sidecar_dir'] !== ''
-            ? $this->absolutise($options['sidecar_dir'])
-            : OpenApiCoverageExtension::defaultSidecarDir();
+        $sidecarDir = $this->pathOption($options['sidecar_dir'] ?? null) ?? OpenApiCoverageExtension::defaultSidecarDir();
 
         // Empty `--specs=` is treated as "use default" rather than "use no
         // specs". Otherwise a misconfigured CLI invocation would silently
         // exit with "no coverage recorded" instead of warning the user.
         $specs = isset($options['specs']) && $options['specs'] !== [] ? $options['specs'] : ['front'];
 
-        $specBasePath = isset($options['spec_base_path']) && $options['spec_base_path'] !== ''
-            ? $this->absolutise($options['spec_base_path'])
-            : null;
+        $specBasePath = $this->pathOption($options['spec_base_path'] ?? null);
         $stripPrefixes = $options['strip_prefixes'] ?? [];
-        $outputFile = isset($options['output_file']) && $options['output_file'] !== ''
-            ? $this->absolutise($options['output_file'])
-            : null;
-        $junitOutput = isset($options['junit_output']) && $options['junit_output'] !== ''
-            ? $this->absolutise($options['junit_output'])
-            : null;
-        $jsonOutput = isset($options['json_output']) && $options['json_output'] !== ''
-            ? $this->absolutise($options['json_output'])
-            : null;
-        $htmlOutput = isset($options['html_output']) && $options['html_output'] !== ''
-            ? $this->absolutise($options['html_output'])
-            : null;
+        $outputFile = $this->pathOption($options['output_file'] ?? null);
+        $junitOutput = $this->pathOption($options['junit_output'] ?? null);
+        $jsonOutput = $this->pathOption($options['json_output'] ?? null);
+        $htmlOutput = $this->pathOption($options['html_output'] ?? null);
         $githubSummaryPath = isset($options['github_step_summary']) && $options['github_step_summary'] !== ''
             ? $options['github_step_summary']
             : (getenv('GITHUB_STEP_SUMMARY') ?: null);
@@ -294,18 +268,14 @@ final class CoverageMergeCommand
             return 2;
         }
 
-        $baselineFile = isset($options['baseline_file']) && $options['baseline_file'] !== ''
-            ? $this->absolutise($options['baseline_file'])
-            : null;
+        $baselineFile = $this->pathOption($options['baseline_file'] ?? null);
 
         // Issue #481: the coverage baseline gate for parallel runs. Unlike
         // the violation baseline — whose entries are staged per worker — the
         // merged coverage state already is the whole-suite view, so this
         // command both generates and enforces from it.
-        $coverageBaselineFile = isset($options['coverage_baseline_file']) && $options['coverage_baseline_file'] !== ''
-            ? $this->absolutise($options['coverage_baseline_file'])
-            : null;
-        $coverageBaselineGenerate = $coverageBaselineFile !== null && self::baselineGenerationRequested();
+        $coverageBaselineFile = $this->pathOption($options['coverage_baseline_file'] ?? null);
+        $coverageBaselineGenerate = $coverageBaselineFile !== null && OpenApiCoverageExtension::baselineGenerationRequested();
 
         try {
             $coverageBaselineStaleMode = BaselineStaleMode::fromConfigValue($options['coverage_baseline_stale'] ?? null);
@@ -542,10 +512,12 @@ final class CoverageMergeCommand
             }
         }
 
-        $results = $this->computeResults($specs, $coverageTracker);
+        // CLI severity: a failed report write is FATAL and counts toward the exit code.
+        $writer = new CoverageReportWriter($this->writeStderr(...), 'FATAL');
+        $results = $writer->computeResults($specs, $coverageTracker);
         $hasSdkState = $sidecarsWithoutSdkExercise < count($payloads);
         $sdkResults = $hasSdkState || $minSdkExercisePct !== null
-            ? $this->computeSdkResults($specs, $sdkExerciseCoverageTracker)
+            ? $writer->computeSdkResults($specs, $sdkExerciseCoverageTracker)
             : [];
         if ($results === [] && $sdkResults === []) {
             $strictGated = $minStrict && (
@@ -576,7 +548,7 @@ final class CoverageMergeCommand
                 );
             }
 
-            if ($cleanup && !$this->cleanupSafely($sidecarDir)) {
+            if ($cleanup && !$this->cleanup($sidecarDir)) {
                 return 1;
             }
 
@@ -585,8 +557,8 @@ final class CoverageMergeCommand
 
         $this->writeStdout(ConsoleCoverageRenderer::render($results, $consoleOutput, $sdkResults));
 
-        $writeFailures = $this->writeReports($results, $sdkResults, $outputFile, $junitOutput, $jsonOutput, $htmlOutput);
-        $this->appendGithubStepSummary($results, $sdkResults, $githubSummaryPath);
+        $writeFailures = $writer->writeReports($results, $sdkResults, $outputFile, $junitOutput, $jsonOutput, $htmlOutput);
+        $writer->appendGithubStepSummary($results, $sdkResults, $githubSummaryPath);
 
         $httpThresholdUnavailable = $results === [] && ($minEndpointPct !== null || $minResponsePct !== null);
         if ($httpThresholdUnavailable) {
@@ -630,7 +602,7 @@ final class CoverageMergeCommand
         // sidecars would make each of those cost a full parallel run.
         $cleanupFailure = $cleanup &&
             !$coverageBaselineFailure &&
-            !$this->cleanupSafely($sidecarDir);
+            !$this->cleanup($sidecarDir);
         if ($coverageBaselineFailure && $cleanup) {
             $this->writeStderr(sprintf(
                 "[Gesso] Sidecars kept in %s so the merge can be retried without re-running the suite.\n",
@@ -648,20 +620,10 @@ final class CoverageMergeCommand
             : 0;
     }
 
-    /**
-     * Issue #481: whether this merge should (re)write the coverage baseline
-     * instead of enforcing it. Truthy semantics mirror the PHPUnit
-     * extension's reading of the same variable, so one env var drives both
-     * halves of a parallel generation run.
-     */
-    private static function baselineGenerationRequested(): bool
+    /** An option's absolutised path, or `null` when absent or empty. */
+    private function pathOption(?string $value): ?string
     {
-        $value = LegacyIdentity::env('GESSO_BASELINE_GENERATE');
-        if ($value === false || trim($value) === '') {
-            return false;
-        }
-
-        return !in_array(strtolower(trim($value)), ['0', 'false', 'no'], true);
+        return $value !== null && $value !== '' ? $this->absolutise($value) : null;
     }
 
     /**
@@ -865,140 +827,6 @@ final class CoverageMergeCommand
     }
 
     /**
-     * Dispatch each configured renderer to its output target. Per-entry write
-     * failures emit a FATAL line, bump the counter the caller turns into a
-     * non-zero exit, and continue to the next entry — one format's broken
-     * path must not suppress the others or block the threshold gate that
-     * runs after this.
-     *
-     * @param array<string, CoverageResult> $results
-     * @param array<string, SdkExerciseCoverageResult> $sdkResults
-     *
-     * @return int Number of format outputs that failed to write
-     */
-    private function writeReports(
-        array $results,
-        array $sdkResults,
-        ?string $outputFile,
-        ?string $junitOutput,
-        ?string $jsonOutput,
-        ?string $htmlOutput,
-    ): int {
-        $writeFailures = 0;
-
-        foreach ($this->buildReportEntries($outputFile, $junitOutput, $jsonOutput, $htmlOutput) as $entry) {
-            if ($entry['outputFile'] === null) {
-                continue;
-            }
-
-            try {
-                $rendered = ($entry['renderer'])($results, $sdkResults);
-            } catch (Throwable $e) {
-                $this->writeStderr(sprintf(
-                    "[OpenAPI Coverage] FATAL: Failed to render %s report: %s\n",
-                    $entry['label'],
-                    $e->getMessage(),
-                ));
-                $writeFailures++;
-
-                continue;
-            }
-
-            // Suppress PHP warning on failure — we surface the error
-            // ourselves via stderr + exit code so the warning is redundant
-            // noise that breaks `beStrictAboutOutputDuringTests` test runs.
-            $bytes = @file_put_contents($entry['outputFile'], $rendered);
-            if ($bytes === false) {
-                $this->writeStderr(sprintf(
-                    "[OpenAPI Coverage] FATAL: Failed to write %s report to %s\n",
-                    $entry['label'],
-                    $entry['outputFile'],
-                ));
-                $writeFailures++;
-
-                continue;
-            }
-
-            $expected = strlen($rendered);
-            if ($bytes !== $expected) {
-                // Partial write — disk full / quota exceeded mid-write leaves
-                // a truncated file. Surface explicitly so downstream consumers
-                // don't parse half a document several CI steps later.
-                $this->writeStderr(sprintf(
-                    "[OpenAPI Coverage] FATAL: Truncated %s report at %s (%d of %d bytes written)\n",
-                    $entry['label'],
-                    $entry['outputFile'],
-                    $bytes,
-                    $expected,
-                ));
-                $writeFailures++;
-            }
-        }
-
-        return $writeFailures;
-    }
-
-    /**
-     * Renderer dispatch table. Adding a new format here does not require
-     * changes to the loop in {@see self::writeReports()}. The PHPUnit subscriber
-     * keeps a parallel table in {@see CoverageReportSubscriber}, so any new
-     * format must be added to both in lockstep — note the severity asymmetry
-     * (subscriber warns; CLI counts failures toward exit code).
-     *
-     * @return list<MergeReportEntry>
-     */
-    private function buildReportEntries(?string $outputFile, ?string $junitOutput, ?string $jsonOutput, ?string $htmlOutput): array
-    {
-        return [
-            [
-                'label' => 'Markdown',
-                'renderer' => static fn(array $r, array $s): string => MarkdownCoverageRenderer::render($r, $s),
-                'outputFile' => $outputFile,
-            ],
-            [
-                'label' => 'JUnit XML',
-                'renderer' => static fn(array $r, array $s): string => JUnitCoverageRenderer::render($r, $s),
-                'outputFile' => $junitOutput,
-            ],
-            [
-                'label' => 'JSON',
-                'renderer' => static fn(array $r, array $s): string => JsonCoverageRenderer::render($r, sdkResults: $s),
-                'outputFile' => $jsonOutput,
-            ],
-            [
-                'label' => 'HTML',
-                'renderer' => static fn(array $r, array $s): string => HtmlCoverageRenderer::render($r, $s),
-                'outputFile' => $htmlOutput,
-            ],
-        ];
-    }
-
-    /**
-     * GITHUB_STEP_SUMMARY is Markdown-only by design — the file is a single
-     * shared sink that GitHub consumes as Markdown, so JUnit/JSON/HTML do not
-     * get appended here. A failure here is non-fatal: the merge CLI's exit
-     * code stays driven by the primary output writes.
-     *
-     * @param array<string, CoverageResult> $results
-     * @param array<string, SdkExerciseCoverageResult> $sdkResults
-     */
-    private function appendGithubStepSummary(array $results, array $sdkResults, ?string $githubSummaryPath): void
-    {
-        if ($githubSummaryPath === null) {
-            return;
-        }
-
-        $markdown = MarkdownCoverageRenderer::render($results, $sdkResults);
-
-        if (@file_put_contents($githubSummaryPath, $markdown . "\n", FILE_APPEND) === false) {
-            $this->writeStderr(sprintf(
-                "[OpenAPI Coverage] WARNING: Failed to append Markdown report to GITHUB_STEP_SUMMARY (%s)\n",
-                $githubSummaryPath,
-            ));
-        }
-    }
-
-    /**
      * Run the threshold gate against rolled-up results. Prints the evaluator's
      * pre-formatted message to stderr when at least one threshold misses; the
      * caller decides what to do with the return value (only `strict=true`
@@ -1174,99 +1002,36 @@ final class CoverageMergeCommand
             return ['value' => null, 'fatal' => false];
         }
 
-        if (!is_numeric($value)) {
-            return $this->reportThresholdProblem(
-                $strict,
-                sprintf("%s='%s' is not a number; skipping threshold gate.", $name, (string) $value),
+        $parsed = CoverageThresholdEvaluator::parseThreshold($name, (string) $value);
+        if (is_string($parsed)) {
+            $this->writeCoverageDiagnostic($strict ? 'FATAL' : 'WARNING', $parsed . '; skipping threshold gate.');
+
+            return ['value' => null, 'fatal' => $strict];
+        }
+
+        return ['value' => $parsed, 'fatal' => false];
+    }
+
+    /**
+     * Delete the merged sidecars and markers. Returns `false` when the
+     * directory could not be inspected, so the caller exits non-zero.
+     */
+    private function cleanup(string $sidecarDir): bool
+    {
+        try {
+            $paths = [
+                ...CoverageSidecarReader::listPaths($sidecarDir),
+                ...CoverageSidecarReader::listFailureMarkerPaths($sidecarDir),
+            ];
+        } catch (RuntimeException $e) {
+            $this->writeCoverageDiagnostic(
+                'FATAL',
+                sprintf('failed to inspect sidecars for cleanup: %s', $e->getMessage()),
             );
+
+            return false;
         }
 
-        $float = (float) $value;
-        if ($float < 0.0 || $float > 100.0) {
-            return $this->reportThresholdProblem(
-                $strict,
-                sprintf('%s=%s is out of range (expected 0-100); skipping threshold gate.', $name, (string) $float),
-            );
-        }
-
-        return ['value' => $float, 'fatal' => false];
-    }
-
-    /**
-     * @return array{value: null, fatal: bool}
-     */
-    private function reportThresholdProblem(bool $strict, string $detail): array
-    {
-        $severity = $strict ? 'FATAL' : 'WARNING';
-        $this->writeCoverageDiagnostic($severity, $detail);
-
-        return ['value' => null, 'fatal' => $strict];
-    }
-
-    /**
-     * @param list<string> $specs
-     *
-     * @return array<string, CoverageResult>
-     */
-    private function computeResults(array $specs, OpenApiCoverageTracker $tracker): array
-    {
-        $hasCoverage = false;
-        foreach ($specs as $spec) {
-            if ($tracker->hasAnyCoverageOn($spec)) {
-                $hasCoverage = true;
-
-                break;
-            }
-        }
-        if (!$hasCoverage) {
-            return [];
-        }
-
-        $results = [];
-        foreach ($specs as $spec) {
-            try {
-                $results[$spec] = $tracker->computeCoverageOn($spec);
-            } catch (SpecFileNotFoundException $e) {
-                $this->writeStderr(sprintf("[OpenAPI Coverage] WARNING: Skipping spec '%s': %s\n", $spec, $e->getMessage()));
-            } catch (InvalidOpenApiSpecException $e) {
-                $this->writeStderr(sprintf("[OpenAPI Coverage] FATAL: Invalid OpenAPI spec '%s': %s\n", $spec, $e->getMessage()));
-
-                throw $e;
-            }
-        }
-
-        return $results;
-    }
-
-    /**
-     * @param list<string> $specs
-     *
-     * @return array<string, SdkExerciseCoverageResult>
-     */
-    private function computeSdkResults(array $specs, SdkExerciseCoverageTracker $tracker): array
-    {
-        $results = [];
-        foreach ($specs as $spec) {
-            try {
-                $results[$spec] = SdkExerciseCoverageReportBuilder::build($spec, $tracker);
-            } catch (SpecFileNotFoundException $e) {
-                $this->writeCoverageDiagnostic('WARNING', sprintf("Skipping spec '%s': %s", $spec, $e->getMessage()));
-            } catch (InvalidOpenApiSpecException $e) {
-                $this->writeCoverageDiagnostic('FATAL', sprintf("Invalid OpenAPI spec '%s': %s", $spec, $e->getMessage()));
-
-                throw $e;
-            }
-        }
-
-        return $results;
-    }
-
-    private function cleanup(string $sidecarDir): void
-    {
-        $paths = [
-            ...CoverageSidecarReader::listPaths($sidecarDir),
-            ...CoverageSidecarReader::listFailureMarkerPaths($sidecarDir),
-        ];
         foreach ($paths as $path) {
             // Surface unlink failures: a leftover sidecar is silently merged
             // into the next run and would over-count coverage.
@@ -1277,20 +1042,6 @@ final class CoverageMergeCommand
                 ));
             }
         }
-    }
-
-    private function cleanupSafely(string $sidecarDir): bool
-    {
-        try {
-            $this->cleanup($sidecarDir);
-        } catch (RuntimeException $e) {
-            $this->writeCoverageDiagnostic(
-                'FATAL',
-                sprintf('failed to inspect sidecars for cleanup: %s', $e->getMessage()),
-            );
-
-            return false;
-        }
 
         return true;
     }
@@ -1298,38 +1049,5 @@ final class CoverageMergeCommand
     private function writeCoverageDiagnostic(string $severity, string $detail): void
     {
         $this->writeStderr(sprintf("[OpenAPI Coverage] %s: %s\n", $severity, $detail));
-    }
-
-    private function absolutise(string $path): string
-    {
-        if (str_starts_with($path, '/')) {
-            return $path;
-        }
-
-        return (getcwd() ?: '.') . '/' . $path;
-    }
-
-    private function writeStderr(string $message): void
-    {
-        $writer = $this->stderrWriter;
-        if (is_callable($writer)) {
-            $writer($message);
-
-            return;
-        }
-
-        OpenApiCoverageExtension::writeStderr($message);
-    }
-
-    private function writeStdout(string $message): void
-    {
-        $writer = $this->stdoutWriter;
-        if (is_callable($writer)) {
-            $writer($message);
-
-            return;
-        }
-
-        echo $message;
     }
 }

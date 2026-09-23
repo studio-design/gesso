@@ -11,12 +11,10 @@ use Studio\Gesso\Internal\CoverageTotals;
 
 use function array_keys;
 use function array_unique;
+use function hash;
 use function htmlspecialchars;
 use function implode;
-use function preg_replace;
-use function rawurlencode;
 use function sprintf;
-use function strtolower;
 
 /**
  * Render coverage results as a single self-contained HTML page for human
@@ -28,8 +26,8 @@ use function strtolower;
  *  - `<details>`/`<summary>` for per-spec collapsible detail — works without
  *    JavaScript across every modern browser.
  *  - In-page anchor links navigate from the top-level endpoint list down to
- *    per-endpoint detail sections. Anchors are deduplicated within a single
- *    render — see {@see self::renderEndpointList()} / {@see self::makeAnchorAllocator()}.
+ *    per-endpoint detail sections; ids are a hash of `(specName, endpoint)`,
+ *    so they are fragment-safe and unique within a render.
  *  - All user-controlled strings pass through `htmlspecialchars` with
  *    `ENT_QUOTES | ENT_SUBSTITUTE` and explicit `'UTF-8'` so a hostile spec
  *    (path containing `<script>`, operationId with quotes, skip reason with
@@ -90,16 +88,9 @@ final class HtmlCoverageRenderer
             '</header>',
         ];
 
-        $allocateAnchor = self::makeAnchorAllocator();
-
         $specNames = array_unique([...array_keys($results), ...array_keys($sdkResults)]);
         foreach ($specNames as $specName) {
-            $lines[] = self::renderSpec(
-                $specName,
-                $results[$specName] ?? null,
-                $sdkResults[$specName] ?? null,
-                $allocateAnchor,
-            );
+            $lines[] = self::renderSpec($specName, $results[$specName] ?? null, $sdkResults[$specName] ?? null);
         }
 
         $lines[] = '</body>';
@@ -161,14 +152,9 @@ final class HtmlCoverageRenderer
     /**
      * @param null|CoverageResult $result
      * @param null|SdkExerciseCoverageResult $sdkResult
-     * @param callable(string, string): string $allocateAnchor
      */
-    private static function renderSpec(
-        string $specName,
-        ?array $result,
-        ?array $sdkResult,
-        callable $allocateAnchor,
-    ): string {
+    private static function renderSpec(string $specName, ?array $result, ?array $sdkResult): string
+    {
         $lines = [
             '<section class="spec">',
             sprintf('<h2>%s</h2>', self::escape($specName)),
@@ -188,12 +174,11 @@ final class HtmlCoverageRenderer
             );
 
             if ($result['endpoints'] !== []) {
-                // Resolve every anchor up front so the list and detail sections
-                // emit byte-for-byte identical IDs without recomputing (which
-                // would risk allocator divergence on collision-suffix runs).
+                // The `endpoint-` prefix keeps ids clear of browser-reserved
+                // anchors such as `top`.
                 $anchors = [];
                 foreach ($result['endpoints'] as $endpoint) {
-                    $anchors[] = $allocateAnchor($specName, $endpoint['endpoint']);
+                    $anchors[] = 'endpoint-' . hash('xxh128', $specName . "\0" . $endpoint['endpoint']);
                 }
 
                 $lines[] = self::renderEndpointList($result['endpoints'], $anchors);
@@ -350,50 +335,6 @@ final class HtmlCoverageRenderer
     private static function escape(string $value): string
     {
         return htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-    }
-
-    /**
-     * Build a closure that allocates unique anchor IDs across one render.
-     *
-     * The slug pipeline is `rawurlencode` → `%XX → -` → `strtolower`. The
-     * two-step encode/collapse yields a readable kebab-case fragment instead
-     * of leaving `%XX` sequences in the URL bar; `rawurlencode` is the
-     * cheapest way to enumerate "every character that's not safe in a
-     * fragment". The collapse is lossy by construction, so two distinct
-     * `(specName, endpoint)` inputs can map to the same slug (e.g. a slash
-     * vs. a literal `-`). When that happens, suffix with `-2`, `-3`, … so
-     * each `<details id="…">` stays unique within the document.
-     *
-     * `?? $slug` guards against a future `preg_replace` failure (regex error
-     * or PCRE backtracking limit) silently producing empty anchor IDs.
-     *
-     * The `"endpoint-"` prefix prevents collisions with browser-reserved
-     * anchors (e.g. `top`).
-     *
-     * @return callable(string, string): string Receives `(specName, endpoint)`
-     *                                          and returns a unique anchor ID
-     *                                          for this render.
-     */
-    private static function makeAnchorAllocator(): callable
-    {
-        /** @var array<string, int> $seen */
-        $seen = [];
-
-        return static function (string $specName, string $endpoint) use (&$seen): string {
-            $encoded = rawurlencode($specName . '-' . $endpoint);
-            $slug = preg_replace('/%[0-9A-Fa-f]{2}/', '-', $encoded) ?? $encoded;
-            $base = 'endpoint-' . strtolower($slug);
-
-            if (!isset($seen[$base])) {
-                $seen[$base] = 1;
-
-                return $base;
-            }
-
-            $seen[$base]++;
-
-            return $base . '-' . $seen[$base];
-        };
     }
 
     private static function stylesheet(): string
