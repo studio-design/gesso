@@ -6291,6 +6291,28 @@
                 }
             },
             "methods": {
+                "explore": {
+                    "visibility": "private",
+                    "static": false,
+                    "final": false,
+                    "abstract": false,
+                    "returns_reference": false,
+                    "return_type": "mixed",
+                    "attributes": [],
+                    "parameters": [
+                        {
+                            "name": "run",
+                            "type": "Closure",
+                            "optional": false,
+                            "variadic": false,
+                            "by_reference": false,
+                            "default": {
+                                "unavailable": true
+                            },
+                            "attributes": []
+                        }
+                    ]
+                },
                 "exploreEndpoint": {
                     "visibility": "public",
                     "static": false,
@@ -6920,39 +6942,6 @@
                         }
                     ]
                 },
-                "assertOpenApi": {
-                    "visibility": "private",
-                    "static": false,
-                    "final": false,
-                    "abstract": false,
-                    "returns_reference": false,
-                    "return_type": "void",
-                    "attributes": [],
-                    "parameters": [
-                        {
-                            "name": "condition",
-                            "type": "bool",
-                            "optional": false,
-                            "variadic": false,
-                            "by_reference": false,
-                            "default": {
-                                "unavailable": true
-                            },
-                            "attributes": []
-                        },
-                        {
-                            "name": "message",
-                            "type": "string",
-                            "optional": false,
-                            "variadic": false,
-                            "by_reference": false,
-                            "default": {
-                                "unavailable": true
-                            },
-                            "attributes": []
-                        }
-                    ]
-                },
                 "assertResponseMatchesOpenApiSchema": {
                     "visibility": "protected",
                     "static": false,
@@ -7142,83 +7131,6 @@
                         }
                     ]
                 },
-                "extractOrRecordBaselineViolation": {
-                    "visibility": "private",
-                    "static": false,
-                    "final": false,
-                    "abstract": false,
-                    "returns_reference": false,
-                    "return_type": "Studio\\Gesso\\DecodedBody",
-                    "attributes": [],
-                    "parameters": [
-                        {
-                            "name": "extract",
-                            "type": "Closure",
-                            "optional": false,
-                            "variadic": false,
-                            "by_reference": false,
-                            "default": {
-                                "unavailable": true
-                            },
-                            "attributes": []
-                        },
-                        {
-                            "name": "specName",
-                            "type": "string",
-                            "optional": false,
-                            "variadic": false,
-                            "by_reference": false,
-                            "default": {
-                                "unavailable": true
-                            },
-                            "attributes": []
-                        },
-                        {
-                            "name": "method",
-                            "type": "string",
-                            "optional": false,
-                            "variadic": false,
-                            "by_reference": false,
-                            "default": {
-                                "unavailable": true
-                            },
-                            "attributes": []
-                        },
-                        {
-                            "name": "path",
-                            "type": "string",
-                            "optional": false,
-                            "variadic": false,
-                            "by_reference": false,
-                            "default": {
-                                "unavailable": true
-                            },
-                            "attributes": []
-                        },
-                        {
-                            "name": "category",
-                            "type": "string",
-                            "optional": false,
-                            "variadic": false,
-                            "by_reference": false,
-                            "default": {
-                                "unavailable": true
-                            },
-                            "attributes": []
-                        },
-                        {
-                            "name": "decodeFailureDemoted",
-                            "type": "bool",
-                            "optional": false,
-                            "variadic": false,
-                            "by_reference": true,
-                            "default": {
-                                "unavailable": true
-                            },
-                            "attributes": []
-                        }
-                    ]
-                },
                 "extractRequestBody": {
                     "visibility": "private",
                     "static": false,
@@ -7241,28 +7153,6 @@
                         },
                         {
                             "name": "contentType",
-                            "type": "string",
-                            "optional": false,
-                            "variadic": false,
-                            "by_reference": false,
-                            "default": {
-                                "unavailable": true
-                            },
-                            "attributes": []
-                        }
-                    ]
-                },
-                "failOpenApi": {
-                    "visibility": "private",
-                    "static": false,
-                    "final": false,
-                    "abstract": false,
-                    "returns_reference": false,
-                    "return_type": "never",
-                    "attributes": [],
-                    "parameters": [
-                        {
-                            "name": "message",
                             "type": "string",
                             "optional": false,
                             "variadic": false,
@@ -7774,6 +7664,50 @@
                     "return_type": "array",
                     "attributes": [],
                     "parameters": []
+                },
+                "resolveStringListConfig": {
+                    "visibility": "private",
+                    "static": false,
+                    "final": false,
+                    "abstract": false,
+                    "returns_reference": false,
+                    "return_type": "array",
+                    "attributes": [],
+                    "parameters": [
+                        {
+                            "name": "key",
+                            "type": "string",
+                            "optional": false,
+                            "variadic": false,
+                            "by_reference": false,
+                            "default": {
+                                "unavailable": true
+                            },
+                            "attributes": []
+                        },
+                        {
+                            "name": "default",
+                            "type": "array",
+                            "optional": false,
+                            "variadic": false,
+                            "by_reference": false,
+                            "default": {
+                                "unavailable": true
+                            },
+                            "attributes": []
+                        },
+                        {
+                            "name": "what",
+                            "type": "string",
+                            "optional": false,
+                            "variadic": false,
+                            "by_reference": false,
+                            "default": {
+                                "unavailable": true
+                            },
+                            "attributes": []
+                        }
+                    ]
                 },
                 "responseReproduceCommand": {
                     "visibility": "private",
@@ -9050,39 +8984,6 @@
                 }
             },
             "methods": {
-                "assertPsr7": {
-                    "visibility": "private",
-                    "static": false,
-                    "final": false,
-                    "abstract": false,
-                    "returns_reference": false,
-                    "return_type": "void",
-                    "attributes": [],
-                    "parameters": [
-                        {
-                            "name": "condition",
-                            "type": "bool",
-                            "optional": false,
-                            "variadic": false,
-                            "by_reference": false,
-                            "default": {
-                                "unavailable": true
-                            },
-                            "attributes": []
-                        },
-                        {
-                            "name": "message",
-                            "type": "string",
-                            "optional": false,
-                            "variadic": false,
-                            "by_reference": false,
-                            "default": {
-                                "unavailable": true
-                            },
-                            "attributes": []
-                        }
-                    ]
-                },
                 "assertPsr7ExchangeMatchesOpenApiSchema": {
                     "visibility": "public",
                     "static": false,
@@ -9280,28 +9181,6 @@
                         {
                             "name": "reproduceCommand",
                             "type": "Closure",
-                            "optional": false,
-                            "variadic": false,
-                            "by_reference": false,
-                            "default": {
-                                "unavailable": true
-                            },
-                            "attributes": []
-                        }
-                    ]
-                },
-                "failPsr7": {
-                    "visibility": "private",
-                    "static": false,
-                    "final": false,
-                    "abstract": false,
-                    "returns_reference": false,
-                    "return_type": "never",
-                    "attributes": [],
-                    "parameters": [
-                        {
-                            "name": "message",
-                            "type": "string",
                             "optional": false,
                             "variadic": false,
                             "by_reference": false,
@@ -10395,39 +10274,6 @@
                         }
                     ]
                 },
-                "assertOpenApi": {
-                    "visibility": "private",
-                    "static": false,
-                    "final": false,
-                    "abstract": false,
-                    "returns_reference": false,
-                    "return_type": "void",
-                    "attributes": [],
-                    "parameters": [
-                        {
-                            "name": "condition",
-                            "type": "bool",
-                            "optional": false,
-                            "variadic": false,
-                            "by_reference": false,
-                            "default": {
-                                "unavailable": true
-                            },
-                            "attributes": []
-                        },
-                        {
-                            "name": "message",
-                            "type": "string",
-                            "optional": false,
-                            "variadic": false,
-                            "by_reference": false,
-                            "default": {
-                                "unavailable": true
-                            },
-                            "attributes": []
-                        }
-                    ]
-                },
                 "assertRequestMatchesOpenApiSchema": {
                     "visibility": "public",
                     "static": false,
@@ -10587,83 +10433,6 @@
                         }
                     ]
                 },
-                "extractOrRecordBaselineViolation": {
-                    "visibility": "private",
-                    "static": false,
-                    "final": false,
-                    "abstract": false,
-                    "returns_reference": false,
-                    "return_type": "Studio\\Gesso\\DecodedBody",
-                    "attributes": [],
-                    "parameters": [
-                        {
-                            "name": "extract",
-                            "type": "Closure",
-                            "optional": false,
-                            "variadic": false,
-                            "by_reference": false,
-                            "default": {
-                                "unavailable": true
-                            },
-                            "attributes": []
-                        },
-                        {
-                            "name": "specName",
-                            "type": "string",
-                            "optional": false,
-                            "variadic": false,
-                            "by_reference": false,
-                            "default": {
-                                "unavailable": true
-                            },
-                            "attributes": []
-                        },
-                        {
-                            "name": "method",
-                            "type": "string",
-                            "optional": false,
-                            "variadic": false,
-                            "by_reference": false,
-                            "default": {
-                                "unavailable": true
-                            },
-                            "attributes": []
-                        },
-                        {
-                            "name": "path",
-                            "type": "string",
-                            "optional": false,
-                            "variadic": false,
-                            "by_reference": false,
-                            "default": {
-                                "unavailable": true
-                            },
-                            "attributes": []
-                        },
-                        {
-                            "name": "category",
-                            "type": "string",
-                            "optional": false,
-                            "variadic": false,
-                            "by_reference": false,
-                            "default": {
-                                "unavailable": true
-                            },
-                            "attributes": []
-                        },
-                        {
-                            "name": "decodeFailureDemoted",
-                            "type": "bool",
-                            "optional": false,
-                            "variadic": false,
-                            "by_reference": true,
-                            "default": {
-                                "unavailable": true
-                            },
-                            "attributes": []
-                        }
-                    ]
-                },
                 "extractSymfonyJsonBody": {
                     "visibility": "private",
                     "static": false,
@@ -10730,28 +10499,6 @@
                         },
                         {
                             "name": "contentType",
-                            "type": "string",
-                            "optional": false,
-                            "variadic": false,
-                            "by_reference": false,
-                            "default": {
-                                "unavailable": true
-                            },
-                            "attributes": []
-                        }
-                    ]
-                },
-                "failOpenApi": {
-                    "visibility": "private",
-                    "static": false,
-                    "final": false,
-                    "abstract": false,
-                    "returns_reference": false,
-                    "return_type": "never",
-                    "attributes": [],
-                    "parameters": [
-                        {
-                            "name": "message",
                             "type": "string",
                             "optional": false,
                             "variadic": false,

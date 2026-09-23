@@ -5,15 +5,13 @@ declare(strict_types=1);
 namespace Studio\Gesso\Psr7;
 
 use Closure;
-use PHPUnit\Framework\Assert;
-use PHPUnit\Framework\AssertionFailedError;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
 use Studio\Gesso\Baseline\ViolationBaselineCollector;
 use Studio\Gesso\Baseline\ViolationBaselineEnforcer;
 use Studio\Gesso\Internal\CurlCommandFormatter;
 use Studio\Gesso\Internal\FailureOutput;
-use Studio\Gesso\Internal\StackTraceFilter;
+use Studio\Gesso\Internal\OpenApiAssertionCore;
 use Studio\Gesso\OpenApiRequestValidator;
 use Studio\Gesso\OpenApiResponseValidator;
 use Studio\Gesso\OpenApiValidationResult;
@@ -32,6 +30,7 @@ use function sprintf;
  */
 trait OpenApiAssertions
 {
+    use OpenApiAssertionCore;
     use OpenApiSpecResolver;
     private ?OpenApiPsr7Validator $cachedPsr7Validator = null;
     private ?string $cachedPsr7SpecName = null;
@@ -97,7 +96,7 @@ trait OpenApiAssertions
         $result = $this->psr7Validator()->validateExchange($request, $response);
 
         if ($result->isValid()) {
-            $this->assertPsr7(true, '');
+            $this->assertOpenApi(true, '');
 
             return;
         }
@@ -111,7 +110,7 @@ trait OpenApiAssertions
                     $collector->recordResult((string) $this->cachedPsr7SpecName, $sideResult, $method, $path);
                 }
             }
-            $this->assertPsr7(true, '');
+            $this->assertOpenApi(true, '');
 
             return;
         }
@@ -132,7 +131,7 @@ trait OpenApiAssertions
                 }
             }
             if ($allSuppressed) {
-                $this->assertPsr7(true, '');
+                $this->assertOpenApi(true, '');
 
                 return;
             }
@@ -149,12 +148,12 @@ trait OpenApiAssertions
             fn(): string => $this->psr7ReproduceCommand($request),
         );
 
-        // See assertPsr7Result(): json mode must end with parseable documents.
+        // See OpenApiAssertionCore::assertOpenApiResult(): json mode must end with parseable documents.
         if (ValidationOutput::format() === ValidationOutputFormat::Json) {
-            $this->failPsr7($message);
+            $this->failOpenApi($message);
         }
 
-        $this->assertPsr7(false, $message);
+        $this->assertOpenApi(false, $message);
     }
 
     /** User-overridable fallback when no #[OpenApiSpec] attribute is present. */
@@ -189,7 +188,7 @@ trait OpenApiAssertions
     {
         $specName = $this->resolveOpenApiSpec();
         if ($specName === '') {
-            $this->failPsr7(
+            $this->failOpenApi(
                 'No OpenAPI spec is configured for this PSR-7 assertion. Add '
                 . "#[OpenApiSpec('your-spec')] or override openApiSpec().",
             );
@@ -211,13 +210,8 @@ trait OpenApiAssertions
     /**
      * The reproduce command is a closure so the request body stream is only
      * touched when the assertion actually fails; a passing assertion must not
-     * observe or move the caller's stream cursor.
-     *
-     * During a baseline generation run (issue #402) the failure is demoted
-     * instead: fingerprints are recorded and the assertion passes so the
-     * whole suite completes in one run. During an enforcement run the
-     * failure is suppressed only when every issue is baselined; any new
-     * violation falls through to the full, unmodified failure.
+     * observe or move the caller's stream cursor. Baseline demotion and
+     * json-mode failure live in OpenApiAssertionCore::assertOpenApiResult().
      *
      * @param Closure(): string $reproduceCommand
      */
@@ -228,41 +222,14 @@ trait OpenApiAssertions
         string $prefix,
         Closure $reproduceCommand,
     ): void {
-        if ($result->isValid()) {
-            $this->assertPsr7(true, '');
-
-            return;
-        }
-
-        $collector = ViolationBaselineCollector::current();
-        if ($collector !== null) {
-            $collector->recordResult((string) $this->cachedPsr7SpecName, $result, $method, $path);
-            $this->assertPsr7(true, '');
-
-            return;
-        }
-
-        $enforcer = ViolationBaselineEnforcer::current();
-        if ($enforcer !== null && $enforcer->suppressesResult((string) $this->cachedPsr7SpecName, $result, $method, $path)) {
-            $this->assertPsr7(true, '');
-
-            return;
-        }
-
-        $message = FailureOutput::compose(
-            sprintf('%s (spec: %s)', $prefix, $this->cachedPsr7SpecName),
+        $this->assertOpenApiResult(
             $result,
+            (string) $this->cachedPsr7SpecName,
+            $method,
+            $path,
+            sprintf('%s (spec: %s)', $prefix, $this->cachedPsr7SpecName),
             $reproduceCommand,
         );
-
-        // Json mode must end with the parseable document, so fail without
-        // PHPUnit's "Failed asserting that false is true." suffix; text mode
-        // keeps the historical assertTrue() message byte-for-byte.
-        if (ValidationOutput::format() === ValidationOutputFormat::Json) {
-            $this->failPsr7($message);
-        }
-
-        $this->assertPsr7(false, $message);
     }
 
     private function psr7ReproduceCommand(RequestInterface $request): string
@@ -299,23 +266,5 @@ trait OpenApiAssertions
             $body,
             $request->getHeaderLine('Content-Type') ?: null,
         );
-    }
-
-    private function failPsr7(string $message): never
-    {
-        try {
-            Assert::fail($message);
-        } catch (AssertionFailedError $e) {
-            StackTraceFilter::rethrowWithCleanTrace($e);
-        }
-    }
-
-    private function assertPsr7(bool $condition, string $message): void
-    {
-        try {
-            Assert::assertTrue($condition, $message);
-        } catch (AssertionFailedError $e) {
-            StackTraceFilter::rethrowWithCleanTrace($e);
-        }
     }
 }

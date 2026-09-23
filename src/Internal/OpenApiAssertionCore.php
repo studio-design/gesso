@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Studio\Gesso\Internal;
 
 use Closure;
+use PHPUnit\Framework\Assert;
 use PHPUnit\Framework\AssertionFailedError;
 use Studio\Gesso\Baseline\ViolationBaselineCollector;
 use Studio\Gesso\Baseline\ViolationBaselineEnforcer;
@@ -19,15 +20,45 @@ use function implode;
 use function is_scalar;
 
 /**
- * Helpers shared verbatim by the Laravel and Symfony assertion traits, which
- * both hand HttpFoundation requests straight through. The consuming trait
- * supplies `failOpenApi()` / `assertOpenApi()` and keeps its frozen private
- * method names (docs/versioning.md) as forwarders onto the methods here.
+ * Assertion plumbing shared verbatim by the Laravel, Symfony and PSR-7
+ * assertion traits: clean-trace fail/assert, the baseline-aware result
+ * assertion, and the HttpFoundation reproduce command the two
+ * HttpFoundation adapters hand requests straight through to. Consuming
+ * traits keep their frozen private method names (docs/versioning.md) as
+ * forwarders onto the methods here.
  *
  * @internal Framework adapter implementation detail.
  */
-trait HttpFoundationOpenApiAssertions
+trait OpenApiAssertionCore
 {
+    /**
+     * Like Assert::fail() but with vendor frames stripped from the trace.
+     *
+     * @internal Shared body.
+     */
+    private function failOpenApi(string $message): never
+    {
+        try {
+            Assert::fail($message);
+        } catch (AssertionFailedError $e) {
+            StackTraceFilter::rethrowWithCleanTrace($e);
+        }
+    }
+
+    /**
+     * Like Assert::assertTrue() but with vendor frames stripped from the trace on failure.
+     *
+     * @internal Shared body.
+     */
+    private function assertOpenApi(bool $condition, string $message): void
+    {
+        try {
+            Assert::assertTrue($condition, $message);
+        } catch (AssertionFailedError $e) {
+            StackTraceFilter::rethrowWithCleanTrace($e);
+        }
+    }
+
     /** @internal Shared body; the adapters' frozen private names forward here. */
     private function httpFoundationReproduceCommand(Request $request): string
     {
@@ -79,6 +110,8 @@ trait HttpFoundationOpenApiAssertions
      * @param Closure(): DecodedBody $extract
      *
      * @param-out bool $decodeFailureDemoted
+     *
+     * @internal Shared body.
      */
     private function extractOrRecordBaselineViolation(
         Closure $extract,
@@ -134,7 +167,7 @@ trait HttpFoundationOpenApiAssertions
      *
      * @internal Shared body; the adapters' frozen private names forward here.
      */
-    private function assertHttpFoundationOpenApiResult(
+    private function assertOpenApiResult(
         OpenApiValidationResult $result,
         string $specName,
         string $method,

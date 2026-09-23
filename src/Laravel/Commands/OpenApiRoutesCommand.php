@@ -252,69 +252,28 @@ final class OpenApiRoutesCommand extends Command
             ]],
         );
 
-        if ($result->documentedButNotRegistered !== []) {
-            $this->components->warn('Documented but not registered');
-            $this->table(['Spec', 'Method', 'OpenAPI path', 'operationId'], array_map(
-                static fn(array $entry): array => [
-                    $entry['spec'],
-                    $entry['method'],
-                    $entry['openapi_path'],
-                    $entry['operation_id'] ?? '',
-                ],
-                $result->documentedButNotRegistered,
-            ));
-        }
+        // [property, title, level, headers, entry keys (missing optional keys render as '')]
+        $sections = [
+            ['documentedButNotRegistered', 'Documented but not registered', 'warn', ['Spec', 'Method', 'OpenAPI path', 'operationId'], ['spec', 'method', 'openapi_path', 'operation_id']],
+            ['externalOperations', 'External operations', 'info', ['Spec', 'Method', 'OpenAPI path', 'operationId'], ['spec', 'method', 'openapi_path', 'operation_id']],
+            ['registeredButUndocumented', 'Registered but undocumented', 'warn', ['Method', 'Laravel URI', 'Name', 'Domain'], ['method', 'route_uri', 'route_name', 'domain']],
+            ['ambiguous', 'Ambiguous routes', 'warn', ['Kind', 'Method', 'Laravel URI', 'Name', 'Domain'], ['kind', 'method', 'route_uri', 'route_name', 'domain']],
+            ['unsupported', 'Unsupported route methods', 'warn', ['Method', 'Laravel URI', 'Name', 'Reason'], ['method', 'route_uri', 'route_name', 'reason']],
+        ];
+        foreach ($sections as [$property, $title, $level, $headers, $keys]) {
+            /** @var list<array<string, mixed>> $entries */
+            $entries = $result->{$property};
+            if ($entries === []) {
+                continue;
+            }
 
-        if ($result->externalOperations !== []) {
-            $this->components->info('External operations');
-            $this->table(['Spec', 'Method', 'OpenAPI path', 'operationId'], array_map(
-                static fn(array $entry): array => [
-                    $entry['spec'],
-                    $entry['method'],
-                    $entry['openapi_path'],
-                    $entry['operation_id'] ?? '',
-                ],
-                $result->externalOperations,
-            ));
-        }
-
-        if ($result->registeredButUndocumented !== []) {
-            $this->components->warn('Registered but undocumented');
-            $this->table(['Method', 'Laravel URI', 'Name', 'Domain'], array_map(
-                static fn(array $entry): array => [
-                    $entry['method'],
-                    $entry['route_uri'],
-                    $entry['route_name'] ?? '',
-                    $entry['domain'] ?? '',
-                ],
-                $result->registeredButUndocumented,
-            ));
-        }
-
-        if ($result->ambiguous !== []) {
-            $this->components->warn('Ambiguous routes');
-            $this->table(['Kind', 'Method', 'Laravel URI', 'Name', 'Domain'], array_map(
-                static fn(array $entry): array => [
-                    $entry['kind'],
-                    $entry['method'] ?? '',
-                    $entry['route_uri'],
-                    $entry['route_name'] ?? '',
-                    $entry['domain'] ?? '',
-                ],
-                $result->ambiguous,
-            ));
-        }
-
-        if ($result->unsupported !== []) {
-            $this->components->warn('Unsupported route methods');
-            $this->table(['Method', 'Laravel URI', 'Name', 'Reason'], array_map(
-                static fn(array $entry): array => [
-                    $entry['method'],
-                    $entry['route_uri'],
-                    $entry['route_name'] ?? '',
-                    $entry['reason'],
-                ],
-                $result->unsupported,
+            $this->components->{$level}($title);
+            $this->table($headers, array_map(
+                static fn(array $entry): array => array_map(
+                    static fn(string $key): string => (string) ($entry[$key] ?? ''),
+                    $keys,
+                ),
+                $entries,
             ));
         }
     }
