@@ -53,11 +53,6 @@ final class FakeHttpClient implements ClientInterface
         return new Response($status, $headers, $body);
     }
 
-    public function set(string $url, callable|ResponseInterface $response): void
-    {
-        $this->responses[$url] = $response;
-    }
-
     public function sendRequest(RequestInterface $request): ResponseInterface
     {
         $url = (string) $request->getUri();

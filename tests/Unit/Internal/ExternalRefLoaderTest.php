@@ -11,15 +11,13 @@ use Studio\Gesso\Exception\InvalidOpenApiSpecException;
 use Studio\Gesso\Exception\InvalidOpenApiSpecReason;
 use Studio\Gesso\Internal\ExternalRefLoader;
 use Studio\Gesso\Internal\YamlAvailability;
+use Studio\Gesso\Tests\Helpers\RemovesDirectories;
 
 use function chmod;
 use function file_put_contents;
 use function function_exists;
-use function is_dir;
 use function mkdir;
 use function posix_geteuid;
-use function rmdir;
-use function scandir;
 use function symlink;
 use function sys_get_temp_dir;
 use function uniqid;
@@ -27,6 +25,7 @@ use function unlink;
 
 class ExternalRefLoaderTest extends TestCase
 {
+    use RemovesDirectories;
     private string $workDir;
 
     protected function setUp(): void
@@ -350,24 +349,5 @@ class ExternalRefLoaderTest extends TestCase
         } catch (InvalidOpenApiSpecException $e) {
             $this->assertSame(InvalidOpenApiSpecReason::NonMappingRoot, $e->reason);
         }
-    }
-
-    private function removeDir(string $dir): void
-    {
-        if (!is_dir($dir)) {
-            return;
-        }
-        foreach (scandir($dir) ?: [] as $entry) {
-            if ($entry === '.' || $entry === '..') {
-                continue;
-            }
-            $path = $dir . '/' . $entry;
-            if (is_dir($path)) {
-                $this->removeDir($path);
-            } else {
-                unlink($path);
-            }
-        }
-        rmdir($dir);
     }
 }

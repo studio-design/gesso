@@ -13,19 +13,17 @@ use Studio\Gesso\Exception\InvalidOpenApiSpecException;
 use Studio\Gesso\Exception\InvalidOpenApiSpecReason;
 use Studio\Gesso\Spec\OpenApiRefResolver;
 use Studio\Gesso\Tests\Helpers\FakeHttpClient;
+use Studio\Gesso\Tests\Helpers\RemovesDirectories;
 
 use function file_put_contents;
 use function ini_set;
-use function is_dir;
 use function mkdir;
-use function rmdir;
-use function scandir;
 use function sys_get_temp_dir;
 use function uniqid;
-use function unlink;
 
 class OpenApiRefResolverHttpRefsTest extends TestCase
 {
+    use RemovesDirectories;
     private HttpFactory $factory;
     private string $workDir;
 
@@ -576,24 +574,5 @@ class OpenApiRefResolverHttpRefsTest extends TestCase
         } catch (InvalidOpenApiSpecException $e) {
             $this->assertSame(InvalidOpenApiSpecReason::BareFragmentRef, $e->reason);
         }
-    }
-
-    private function removeDir(string $dir): void
-    {
-        if (!is_dir($dir)) {
-            return;
-        }
-        foreach (scandir($dir) ?: [] as $entry) {
-            if ($entry === '.' || $entry === '..') {
-                continue;
-            }
-            $path = $dir . '/' . $entry;
-            if (is_dir($path)) {
-                $this->removeDir($path);
-            } else {
-                unlink($path);
-            }
-        }
-        rmdir($dir);
     }
 }

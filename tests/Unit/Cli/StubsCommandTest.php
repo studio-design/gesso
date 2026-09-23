@@ -18,6 +18,7 @@ use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Stubs\StubGenerator;
 use Studio\Gesso\Stubs\StubRenderer;
 use Studio\Gesso\Symfony\HttpFoundationBody;
+use Studio\Gesso\Tests\Helpers\RemovesDirectories;
 use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 use Symfony\Component\HttpFoundation\Request as SymfonyRequest;
 
@@ -36,18 +37,17 @@ use function is_dir;
 use function json_encode;
 use function mkdir;
 use function preg_replace;
-use function rmdir;
 use function scandir;
 use function sort;
 use function str_contains;
 use function substr_count;
 use function sys_get_temp_dir;
 use function uniqid;
-use function unlink;
 use function var_export;
 
 class StubsCommandTest extends TestCase
 {
+    use RemovesDirectories;
     private string $workDir;
     private string $stdout = '';
     private string $stderr = '';
@@ -62,7 +62,7 @@ class StubsCommandTest extends TestCase
 
     protected function tearDown(): void
     {
-        $this->removeTree($this->workDir);
+        $this->removeDir($this->workDir);
         OpenApiSpecLoader::reset();
         parent::tearDown();
     }
@@ -1567,20 +1567,5 @@ class StubsCommandTest extends TestCase
         sort($files);
 
         return $files;
-    }
-
-    private function removeTree(string $directory): void
-    {
-        if (!is_dir($directory)) {
-            return;
-        }
-        foreach (scandir($directory) ?: [] as $entry) {
-            if ($entry === '.' || $entry === '..') {
-                continue;
-            }
-            $path = $directory . '/' . $entry;
-            is_dir($path) ? $this->removeTree($path) : @unlink($path);
-        }
-        @rmdir($directory);
     }
 }
