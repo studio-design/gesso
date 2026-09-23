@@ -7,6 +7,7 @@ namespace Studio\Gesso\Coverage;
 use Studio\Gesso\PHPUnit\CoverageReportSubscriber;
 
 use function implode;
+use function is_numeric;
 use function round;
 use function sprintf;
 use function str_repeat;
@@ -45,6 +46,24 @@ final class CoverageThresholdEvaluator
 {
     /** Static-only utility — no instances. */
     private function __construct() {}
+
+    /**
+     * Parse a `min_*_coverage` percentage shared by the extension parameter
+     * and the merge CLI flag. Returns the value, or the problem as text
+     * (no severity, no suffix) for the caller to grade and report.
+     */
+    public static function parseThreshold(string $name, string $raw): float|string
+    {
+        if (!is_numeric($raw)) {
+            return sprintf("%s='%s' is not a number", $name, $raw);
+        }
+        $value = (float) $raw;
+        if ($value < 0.0 || $value > 100.0) {
+            return sprintf('%s=%s is out of range (expected 0-100)', $name, (string) $value);
+        }
+
+        return $value;
+    }
 
     /**
      * @param array<string, CoverageResult> $results
@@ -170,22 +189,13 @@ final class CoverageThresholdEvaluator
             return sprintf('%s coverage cannot be evaluated (no eligible response schemas).', $label);
         }
 
-        $actual = self::formatPercent($line['percent']);
-        $threshold = self::formatPercent($line['threshold']);
+        // `(string)` on a float drops a trailing `.0` (`80.0 → "80"`), the
+        // way MarkdownCoverageRenderer prints percentages.
+        $actual = (string) $line['percent'];
+        $threshold = (string) $line['threshold'];
 
         return $line['ok']
             ? sprintf('%s coverage %s%% (>= %s%%, ok).', $label, $actual, $threshold)
             : sprintf('%s coverage %s%% < threshold %s%%.', $label, $actual, $threshold);
-    }
-
-    /**
-     * Cast to string via the natural PHP coercion so integer-valued floats
-     * print without a trailing `.0` (`80.0 → "80"`, `67.4 → "67.4"`). Matches
-     * the issue's example output and how MarkdownCoverageRenderer formats
-     * percentages.
-     */
-    private static function formatPercent(float $value): string
-    {
-        return (string) $value;
     }
 }

@@ -214,8 +214,8 @@ final class SdkExerciseCoverageReportBuilder
     }
 
     /**
-     * @param SdkExerciseResponseRow $left
-     * @param SdkExerciseResponseRow $right
+     * @param array{endpoint: string, statusKey: string, contentTypeKey: string, ...} $left
+     * @param array{endpoint: string, statusKey: string, contentTypeKey: string, ...} $right
      */
     private static function compareRows(array $left, array $right): int
     {
@@ -246,20 +246,8 @@ final class SdkExerciseCoverageReportBuilder
             }
         }
 
-        usort($unexpected, self::compareUnexpected(...));
+        usort($unexpected, self::compareRows(...));
 
         return $unexpected;
-    }
-
-    /**
-     * @param SdkExerciseUnexpected $left
-     * @param SdkExerciseUnexpected $right
-     */
-    private static function compareUnexpected(array $left, array $right): int
-    {
-        return strcmp(
-            $left['endpoint'] . "\0" . $left['statusKey'] . "\0" . $left['contentTypeKey'],
-            $right['endpoint'] . "\0" . $right['statusKey'] . "\0" . $right['contentTypeKey'],
-        );
     }
 }

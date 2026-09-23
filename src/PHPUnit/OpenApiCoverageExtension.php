@@ -20,6 +20,7 @@ use Studio\Gesso\Baseline\InvalidBaselineConfigurationException;
 use Studio\Gesso\Baseline\ViolationBaselineCollector;
 use Studio\Gesso\Baseline\ViolationBaselineEnforcer;
 use Studio\Gesso\Baseline\ViolationBaselineFile;
+use Studio\Gesso\Coverage\CoverageThresholdEvaluator;
 use Studio\Gesso\Coverage\InvalidCoverageOutputPathException;
 use Studio\Gesso\Coverage\InvalidThresholdConfigurationException;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
@@ -62,12 +63,9 @@ use function getcwd;
 use function getenv;
 use function implode;
 use function in_array;
-use function is_array;
 use function is_dir;
-use function is_numeric;
 use function is_string;
 use function is_writable;
-use function method_exists;
 use function mkdir;
 use function preg_match;
 use function sprintf;
@@ -119,115 +117,76 @@ final class OpenApiCoverageExtension implements Extension
     }
 
     /**
-     * Append a Markdown block describing a strict_required outcome to the
-     * GitHub Actions Step Summary file. Mirrors
-     * {@see appendGithubStepSummaryEnumDriftBlock()} structurally, but the
-     * body text is intentionally distinct ("schema under-description" vs
-     * "checks failed") so log scrapers can route the two channels by
-     * grepping the title — keep the wording divergent if you ever touch
-     * either method.
+     * Append a strict_required outcome to the GitHub Actions Step Summary.
+     * Each channel below keeps its own title and intro wording so log
+     * scrapers can route them by grepping the title.
      *
      * @internal Exposed so {@see CoverageReportSubscriber} can reuse the same
      *           rendering path when invoking the asserter at ExecutionFinished.
      */
-    public static function appendGithubStepSummaryStrictRequiredBlock(
-        ?string $path,
-        string $body,
-        bool $isFatal,
-    ): void {
-        if ($path === null) {
-            return;
-        }
-
-        $title = $isFatal
-            ? '## :rotating_light: FATAL OpenAPI strict_required drift'
-            : '## :warning: OpenAPI strict_required drift';
-
-        $block = $title . PHP_EOL
-            . PHP_EOL
-            . ($isFatal
+    public static function appendGithubStepSummaryStrictRequiredBlock(?string $path, string $body, bool $isFatal): void
+    {
+        self::appendGithubStepSummaryBlock(
+            $path,
+            $isFatal ? '## :rotating_light: FATAL OpenAPI strict_required drift' : '## :warning: OpenAPI strict_required drift',
+            $isFatal
                 ? 'strict_required detected schema under-description and the test run was aborted.'
-                : 'strict_required detected schema under-description (warn-only).') . PHP_EOL
-            . PHP_EOL
-            . '```' . PHP_EOL
-            . $body . PHP_EOL
-            . '```' . PHP_EOL
-            . PHP_EOL;
-
-        $written = file_put_contents($path, $block, FILE_APPEND);
-        if ($written === false) {
-            self::writeStderr("[OpenAPI Strict Required] WARNING: Failed to append block to GITHUB_STEP_SUMMARY ({$path})\n");
-        }
+                : 'strict_required detected schema under-description (warn-only).',
+            $body,
+            '[OpenAPI Strict Required] WARNING: Failed to append block',
+        );
     }
 
     /**
      * @internal Exposed for the execution-finished subscriber.
      */
-    public static function appendGithubStepSummaryStrictAdditionalPropertiesBlock(
-        ?string $path,
-        string $body,
-        bool $isFatal,
-    ): void {
-        if ($path === null) {
-            return;
-        }
-
-        $title = $isFatal
-            ? '## :rotating_light: FATAL OpenAPI undocumented response properties'
-            : '## :warning: OpenAPI undocumented response properties';
-        $block = $title . PHP_EOL
-            . PHP_EOL
-            . ($isFatal
+    public static function appendGithubStepSummaryStrictAdditionalPropertiesBlock(?string $path, string $body, bool $isFatal): void
+    {
+        self::appendGithubStepSummaryBlock(
+            $path,
+            $isFatal
+                ? '## :rotating_light: FATAL OpenAPI undocumented response properties'
+                : '## :warning: OpenAPI undocumented response properties',
+            $isFatal
                 ? 'strict_additional_properties found undocumented response fields and the test run was aborted.'
-                : 'strict_additional_properties found undocumented response fields (warn-only).') . PHP_EOL
-            . PHP_EOL
-            . '```' . PHP_EOL
-            . $body . PHP_EOL
-            . '```' . PHP_EOL
-            . PHP_EOL;
-
-        if (file_put_contents($path, $block, FILE_APPEND) === false) {
-            self::writeStderr("[OpenAPI Strict Additional Properties] WARNING: Failed to append block to GITHUB_STEP_SUMMARY ({$path})\n");
-        }
+                : 'strict_additional_properties found undocumented response fields (warn-only).',
+            $body,
+            '[OpenAPI Strict Additional Properties] WARNING: Failed to append block',
+        );
     }
 
     /**
-     * Append a Markdown block listing stale baseline entries to the GitHub
-     * Actions Step Summary file. Structurally mirrors
-     * {@see appendGithubStepSummaryStrictRequiredBlock()}, with its own
-     * title/body wording so log scrapers can route the channels by title.
-     *
      * @internal Exposed so {@see CoverageReportSubscriber} can render the
      *           stale gate outcome at ExecutionFinished.
      */
-    public static function appendGithubStepSummaryBaselineStaleBlock(
-        ?string $path,
-        string $body,
-        bool $isFatal,
-    ): void {
-        if ($path === null) {
-            return;
-        }
-
-        $title = $isFatal
-            ? '## :rotating_light: FATAL OpenAPI baseline stale entries'
-            : '## :warning: OpenAPI baseline stale entries';
-
-        $block = $title . PHP_EOL
-            . PHP_EOL
-            . ($isFatal
+    public static function appendGithubStepSummaryBaselineStaleBlock(?string $path, string $body, bool $isFatal): void
+    {
+        self::appendGithubStepSummaryBlock(
+            $path,
+            $isFatal ? '## :rotating_light: FATAL OpenAPI baseline stale entries' : '## :warning: OpenAPI baseline stale entries',
+            $isFatal
                 ? 'Baseline entries no longer occurred and the test run was aborted (baseline_stale=fail). Remove them from the baseline file.'
-                : 'Baseline entries no longer occurred and can be removed from the baseline file.') . PHP_EOL
-            . PHP_EOL
-            . '```' . PHP_EOL
-            . $body . PHP_EOL
-            . '```' . PHP_EOL
-            . PHP_EOL;
+                : 'Baseline entries no longer occurred and can be removed from the baseline file.',
+            $body,
+            '[Gesso] WARNING: Failed to append baseline block',
+        );
+    }
 
-        $written = file_put_contents($path, $block, FILE_APPEND);
-        if ($written === false) {
-            self::writeStderr("[Gesso] WARNING: Failed to append baseline block to GITHUB_STEP_SUMMARY ({$path})\n");
+    /**
+     * Issue #402 / #481: whether this run is a baseline generation run. Any
+     * non-empty value except `0` / `false` / `no` requests generation. One
+     * env var drives both the sequential run and `gesso coverage:merge`.
+     *
+     * @internal Shared with the merge CLI.
+     */
+    public static function baselineGenerationRequested(): bool
+    {
+        $value = LegacyIdentity::env('GESSO_BASELINE_GENERATE');
+        if ($value === false || trim($value) === '') {
+            return false;
         }
+
+        return !in_array(strtolower(trim($value)), ['0', 'false', 'no'], true);
     }
 
     public function bootstrap(Configuration $configuration, Facade $facade, ParameterCollection $parameters): void
@@ -471,7 +430,7 @@ final class OpenApiCoverageExtension implements Extension
 
         // Resolve strict first so threshold validation can promote bad values
         // to FATAL when the user opted in to fail-fast (issue #135 review C1).
-        $minCoverageStrict = self::resolveStrictFlag($parameters);
+        $minCoverageStrict = self::resolveBooleanFlag($parameters, 'min_coverage_strict', false);
         $minEndpointCoverage = self::resolveThresholdParameter($parameters, 'min_endpoint_coverage', $minCoverageStrict);
         $minResponseCoverage = self::resolveThresholdParameter($parameters, 'min_response_coverage', $minCoverageStrict);
         $minSdkExerciseCoverage = self::resolveThresholdParameter($parameters, 'min_sdk_exercise_coverage', $minCoverageStrict);
@@ -503,7 +462,16 @@ final class OpenApiCoverageExtension implements Extension
         // Issue #224: schema under-description detection mode is read from
         // phpunit.xml here so a misspelled `strict_required=` value
         // hard-fails bootstrap before any subscriber wiring.
-        $strictRequiredMode = self::resolveStrictRequiredMode($parameters, $githubSummaryPath);
+        $strictRequiredMode = self::resolveMode(
+            $parameters,
+            'strict_required',
+            StrictRequiredMode::fromConfigValue(...),
+            StrictRequiredMode::Off,
+            'off, warn, fail',
+            '[OpenAPI Strict Required]',
+            self::appendGithubStepSummaryStrictRequiredBlock(...),
+            $githubSummaryPath,
+        );
 
         // Issue #228: per-call strict_required mode. Independent of the
         // run-level parameter above — both gates can be wired in the same
@@ -514,12 +482,39 @@ final class OpenApiCoverageExtension implements Extension
         // unconditionally, so the reset matters specifically for the
         // failed-resolve early-return path (where configure never runs)
         // and for repeated bootstrap calls.
-        $strictRequiredPerCallMode = self::resolveStrictRequiredPerCallMode($parameters, $githubSummaryPath);
+        $strictRequiredPerCallMode = self::resolveMode(
+            $parameters,
+            'strict_required_per_call',
+            StrictRequiredPerCallMode::fromConfigValue(...),
+            StrictRequiredPerCallMode::Off,
+            'off, warn',
+            '[OpenAPI Strict Required per-call]',
+            self::appendGithubStepSummaryStrictRequiredBlock(...),
+            $githubSummaryPath,
+        );
         StrictRequiredPerCallChecker::reset();
         StrictRequiredPerCallChecker::configure($strictRequiredPerCallMode);
 
-        $strictAdditionalPropertiesMode = self::resolveStrictAdditionalPropertiesMode($parameters, $githubSummaryPath);
-        $strictAdditionalPropertiesPerCallMode = self::resolveStrictAdditionalPropertiesPerCallMode($parameters, $githubSummaryPath);
+        $strictAdditionalPropertiesMode = self::resolveMode(
+            $parameters,
+            'strict_additional_properties',
+            StrictAdditionalPropertiesMode::fromConfigValue(...),
+            StrictAdditionalPropertiesMode::Off,
+            'off, warn, fail',
+            '[OpenAPI Strict Additional Properties]',
+            self::appendGithubStepSummaryStrictAdditionalPropertiesBlock(...),
+            $githubSummaryPath,
+        );
+        $strictAdditionalPropertiesPerCallMode = self::resolveMode(
+            $parameters,
+            'strict_additional_properties_per_call',
+            StrictAdditionalPropertiesPerCallMode::fromConfigValue(...),
+            StrictAdditionalPropertiesPerCallMode::Off,
+            'off, warn',
+            '[OpenAPI Strict Additional Properties per-call]',
+            self::appendGithubStepSummaryStrictAdditionalPropertiesBlock(...),
+            $githubSummaryPath,
+        );
         StrictAdditionalPropertiesPerCallChecker::reset();
         StrictAdditionalPropertiesPerCallChecker::configure($strictAdditionalPropertiesPerCallMode);
 
@@ -622,6 +617,35 @@ final class OpenApiCoverageExtension implements Extension
     }
 
     /**
+     * Append one fenced Markdown block to the GitHub Actions Step Summary
+     * file; a failed append is a WARNING on `$failureWarning`'s channel.
+     */
+    private static function appendGithubStepSummaryBlock(
+        ?string $path,
+        string $title,
+        string $intro,
+        string $body,
+        string $failureWarning,
+    ): void {
+        if ($path === null) {
+            return;
+        }
+
+        $block = $title . PHP_EOL
+            . PHP_EOL
+            . $intro . PHP_EOL
+            . PHP_EOL
+            . '```' . PHP_EOL
+            . $body . PHP_EOL
+            . '```' . PHP_EOL
+            . PHP_EOL;
+
+        if (file_put_contents($path, $block, FILE_APPEND) === false) {
+            self::writeStderr("{$failureWarning} to GITHUB_STEP_SUMMARY ({$path})\n");
+        }
+    }
+
+    /**
      * Read a baseline path parameter, resolving a relative value against the
      * working directory. Empty values are treated as "not configured" so a
      * blank `value=""` does not point the baseline at the cwd itself.
@@ -704,21 +728,6 @@ final class OpenApiCoverageExtension implements Extension
     }
 
     /**
-     * Issue #402: whether this run is a baseline generation run. Truthy
-     * semantics mirror {@see self::resolveStrictFlag()}: any non-empty value
-     * except `0` / `false` / `no` requests generation.
-     */
-    private static function baselineGenerationRequested(): bool
-    {
-        $value = LegacyIdentity::env('GESSO_BASELINE_GENERATE');
-        if ($value === false || trim($value) === '') {
-            return false;
-        }
-
-        return !in_array(strtolower(trim($value)), ['0', 'false', 'no'], true);
-    }
-
-    /**
      * Issue #221: read PHPUnit's selection signals off the
      * {@see Configuration} object so the subscriber can skip persistent
      * writes on partial runs. The signal set, rationale, and why the
@@ -742,8 +751,8 @@ final class OpenApiCoverageExtension implements Extension
             hasExcludeFilter: $configuration->hasExcludeFilter(),
             hasGroups: $configuration->hasGroups(),
             hasExcludeGroups: $configuration->hasExcludeGroups(),
-            includeTestSuites: self::readTestSuiteList($configuration, 'includeTestSuites', 'includeTestSuite'),
-            excludeTestSuites: self::readTestSuiteList($configuration, 'excludeTestSuites', 'excludeTestSuite'),
+            includeTestSuites: $configuration->includeTestSuites(),
+            excludeTestSuites: $configuration->excludeTestSuites(),
             hasTestsCovering: $configuration->hasTestsCovering(),
             hasTestsUsing: $configuration->hasTestsUsing(),
             hasTestsRequiringPhpExtension: $configuration->hasTestsRequiringPhpExtension(),
@@ -755,12 +764,9 @@ final class OpenApiCoverageExtension implements Extension
     /**
      * Read the `defaultTestSuite` xml attribute via PHPUnit's
      * {@see Configuration} accessors. Both `hasDefaultTestSuite()` and
-     * `defaultTestSuite()` exists on PHPUnit 12/13, so a direct call is
-     * safe across the CI matrix (unlike {@see readTestSuiteList()}, which
-     * needs the dynamic dispatch because PHPUnit 13 dropped the singular
-     * `includeTestSuite()` accessor). The `hasDefaultTestSuite()` guard is
-     * mandatory: `defaultTestSuite()` throws `NoDefaultTestSuiteException`
-     * when the xml attribute is absent.
+     * `defaultTestSuite()` exist on PHPUnit 12/13. The `hasDefaultTestSuite()`
+     * guard is mandatory: `defaultTestSuite()` throws
+     * `NoDefaultTestSuiteException` when the xml attribute is absent.
      *
      * `$warnOnInertOptIn` surfaces the two misconfigurations that make
      * `default_testsuite_as_full=true` a silent no-op: (1) the user opted
@@ -808,64 +814,6 @@ final class OpenApiCoverageExtension implements Extension
         }
 
         return $value;
-    }
-
-    /**
-     * Cross-version reader for the `--testsuite` / `--exclude-testsuite`
-     * selection. PHPUnit 13 exposes only the plural array form, PHPUnit
-     * 11 exposes only the singular comma-joined string form, and
-     * PHPUnit 12 happens to ship both — so picking one at compile time
-     * would break the matrix CI (PHP 8.3/8.4/8.5 × PHPUnit 12/13).
-     * The dynamic method call also avoids a static analysis error on
-     * whichever PHPUnit version PHPStan is resolving against locally.
-     *
-     * @return list<non-empty-string>
-     */
-    private static function readTestSuiteList(
-        Configuration $configuration,
-        string $pluralMethod,
-        string $singularMethod,
-    ): array {
-        // Dynamic method calls deliberately bypass PHPStan's static
-        // resolution against whichever PHPUnit version it happens to be
-        // analysing locally. We narrow the `mixed` result back to
-        // `list<non-empty-string>` via runtime checks rather than `@var`
-        // (the project's PHPStan policy forbids `@var` type overrides).
-        if (method_exists($configuration, $pluralMethod)) {
-            $plural = $configuration->{$pluralMethod}();
-
-            return self::coerceToNonEmptyStringList($plural);
-        }
-
-        $singular = $configuration->{$singularMethod}();
-        if (!is_string($singular) || $singular === '') {
-            return [];
-        }
-
-        return self::coerceToNonEmptyStringList(explode(',', $singular));
-    }
-
-    /**
-     * Filter an arbitrary value down to `list<non-empty-string>` for
-     * `readTestSuiteList()`. Defensive: PHPUnit's contracts already
-     * guarantee strings, but funneling the result through a single
-     * narrowing helper keeps PHPStan happy without resorting to `@var`.
-     *
-     * @return list<non-empty-string>
-     */
-    private static function coerceToNonEmptyStringList(mixed $value): array
-    {
-        if (!is_array($value)) {
-            return [];
-        }
-        $list = [];
-        foreach ($value as $entry) {
-            if (is_string($entry) && $entry !== '') {
-                $list[] = $entry;
-            }
-        }
-
-        return $list;
     }
 
     /**
@@ -1032,23 +980,14 @@ final class OpenApiCoverageExtension implements Extension
         if ($raw === '') {
             return null;
         }
-        if (!is_numeric($raw)) {
-            self::reportInvalidThreshold($name, sprintf("%s='%s' is not a number", $name, $raw), $strict);
-
-            return null;
-        }
-        $value = (float) $raw;
-        if ($value < 0.0 || $value > 100.0) {
-            self::reportInvalidThreshold(
-                $name,
-                sprintf('%s=%s is out of range (expected 0-100)', $name, (string) $value),
-                $strict,
-            );
+        $parsed = CoverageThresholdEvaluator::parseThreshold($name, $raw);
+        if (is_string($parsed)) {
+            self::reportInvalidThreshold($name, $parsed, $strict);
 
             return null;
         }
 
-        return $value;
+        return $parsed;
     }
 
     /**
@@ -1067,23 +1006,10 @@ final class OpenApiCoverageExtension implements Extension
         }
     }
 
-    private static function resolveStrictFlag(ParameterCollection $parameters): bool
-    {
-        if (!$parameters->has('min_coverage_strict')) {
-            return false;
-        }
-        $raw = trim($parameters->get('min_coverage_strict'));
-
-        // Symmetric with the merge CLI's `--min-coverage-strict` (no-value
-        // form): only explicit falsey strings disable strict mode. Empty
-        // value (the `<parameter name="..." />` shorthand) is treated as
-        // "set" so the XML and CLI sides agree.
-        return !in_array($raw, ['0', 'false', 'no'], true);
-    }
-
     /**
-     * Generalization of {@see resolveStrictFlag()} with a configurable
-     * default for the missing-parameter case.
+     * Only explicit falsey strings disable a flag; the empty value (the
+     * `<parameter name="..." />` shorthand) counts as set, so the XML side
+     * agrees with the merge CLI's no-value `--min-coverage-strict`.
      */
     private static function resolveBooleanFlag(
         ParameterCollection $parameters,
@@ -1166,109 +1092,49 @@ final class OpenApiCoverageExtension implements Extension
     }
 
     /**
-     * Issue #224: read the `strict_required` parameter. Missing and empty
-     * values resolve to {@see StrictRequiredMode::Off}; unrecognised values
-     * are FATAL — silently dropping a misspelled `strict_required` would
-     * defeat the opt-in fail-loud policy this extension enforces.
+     * Issues #224 / #228: read one `strict_*` mode parameter. A missing
+     * parameter resolves to `$default`; an unrecognised value (the per-call
+     * enums reject `fail` — per-call is warn-only) is FATAL, because
+     * silently dropping a misspelled parameter would defeat the opt-in
+     * fail-loud policy this extension enforces.
+     *
+     * @template T of object
+     *
+     * @param callable(string): T $parse
+     * @param T $default
+     * @param string $accepted the accepted values, for the FATAL line
+     * @param string $prefix the diagnostic channel, e.g. `[OpenAPI Strict Required]`
+     * @param callable(?string, string, bool): void $summaryBlock
+     *
+     * @return T
      */
-    private static function resolveStrictRequiredMode(
+    private static function resolveMode(
         ParameterCollection $parameters,
+        string $name,
+        callable $parse,
+        object $default,
+        string $accepted,
+        string $prefix,
+        callable $summaryBlock,
         ?string $githubSummaryPath,
-    ): StrictRequiredMode {
-        if (!$parameters->has('strict_required')) {
-            return StrictRequiredMode::Off;
+    ): object {
+        if (!$parameters->has($name)) {
+            return $default;
         }
 
-        $raw = $parameters->get('strict_required');
+        $raw = $parameters->get($name);
 
         try {
-            return StrictRequiredMode::fromConfigValue($raw);
+            return $parse($raw);
         } catch (InvalidArgumentException $e) {
             $reason = sprintf(
-                'strict_required=%s is not recognised. Accepted: off, warn, fail.',
+                '%s=%s is not recognised. Accepted: %s.',
+                $name,
                 trim($raw) === '' ? '<empty>' : $raw,
+                $accepted,
             );
-            self::writeStderr("[OpenAPI Strict Required] FATAL: {$reason}\n");
-            self::appendGithubStepSummaryStrictRequiredBlock($githubSummaryPath, $reason, isFatal: true);
-
-            throw new InvalidStrictRequiredConfigurationException($reason, $e);
-        }
-    }
-
-    /**
-     * Issue #228: read the `strict_required_per_call` parameter. Mirrors
-     * {@see resolveStrictRequiredMode()} with one deliberate difference —
-     * the per-call enum rejects `fail` outright (per-call is warn-only;
-     * the run-level mode is the safe fail-gate). Unrecognised values stay
-     * FATAL for the same opt-in fail-loud rationale.
-     */
-    private static function resolveStrictRequiredPerCallMode(
-        ParameterCollection $parameters,
-        ?string $githubSummaryPath,
-    ): StrictRequiredPerCallMode {
-        if (!$parameters->has('strict_required_per_call')) {
-            return StrictRequiredPerCallMode::Off;
-        }
-
-        $raw = $parameters->get('strict_required_per_call');
-
-        try {
-            return StrictRequiredPerCallMode::fromConfigValue($raw);
-        } catch (InvalidArgumentException $e) {
-            $reason = sprintf(
-                'strict_required_per_call=%s is not recognised. Accepted: off, warn.',
-                trim($raw) === '' ? '<empty>' : $raw,
-            );
-            self::writeStderr("[OpenAPI Strict Required per-call] FATAL: {$reason}\n");
-            self::appendGithubStepSummaryStrictRequiredBlock($githubSummaryPath, $reason, isFatal: true);
-
-            throw new InvalidStrictRequiredConfigurationException($reason, $e);
-        }
-    }
-
-    private static function resolveStrictAdditionalPropertiesMode(
-        ParameterCollection $parameters,
-        ?string $githubSummaryPath,
-    ): StrictAdditionalPropertiesMode {
-        if (!$parameters->has('strict_additional_properties')) {
-            return StrictAdditionalPropertiesMode::Off;
-        }
-
-        $raw = $parameters->get('strict_additional_properties');
-
-        try {
-            return StrictAdditionalPropertiesMode::fromConfigValue($raw);
-        } catch (InvalidArgumentException $e) {
-            $reason = sprintf(
-                'strict_additional_properties=%s is not recognised. Accepted: off, warn, fail.',
-                trim($raw) === '' ? '<empty>' : $raw,
-            );
-            self::writeStderr("[OpenAPI Strict Additional Properties] FATAL: {$reason}\n");
-            self::appendGithubStepSummaryStrictAdditionalPropertiesBlock($githubSummaryPath, $reason, isFatal: true);
-
-            throw new InvalidStrictRequiredConfigurationException($reason, $e);
-        }
-    }
-
-    private static function resolveStrictAdditionalPropertiesPerCallMode(
-        ParameterCollection $parameters,
-        ?string $githubSummaryPath,
-    ): StrictAdditionalPropertiesPerCallMode {
-        if (!$parameters->has('strict_additional_properties_per_call')) {
-            return StrictAdditionalPropertiesPerCallMode::Off;
-        }
-
-        $raw = $parameters->get('strict_additional_properties_per_call');
-
-        try {
-            return StrictAdditionalPropertiesPerCallMode::fromConfigValue($raw);
-        } catch (InvalidArgumentException $e) {
-            $reason = sprintf(
-                'strict_additional_properties_per_call=%s is not recognised. Accepted: off, warn.',
-                trim($raw) === '' ? '<empty>' : $raw,
-            );
-            self::writeStderr("[OpenAPI Strict Additional Properties per-call] FATAL: {$reason}\n");
-            self::appendGithubStepSummaryStrictAdditionalPropertiesBlock($githubSummaryPath, $reason, isFatal: true);
+            self::writeStderr("{$prefix} FATAL: {$reason}\n");
+            $summaryBlock($githubSummaryPath, $reason, true);
 
             throw new InvalidStrictRequiredConfigurationException($reason, $e);
         }
@@ -1380,60 +1246,27 @@ final class OpenApiCoverageExtension implements Extension
         self::appendGithubStepSummaryEnumDriftBlock($githubSummaryPath, $message, isFatal: false);
     }
 
-    /**
-     * Append a Markdown block describing an enum-drift outcome to the
-     * GitHub Actions Step Summary file. Mirrors
-     * {@see appendGithubStepSummaryFatalBlock()} but keeps a separate body
-     * so the spec-load and enum-drift narratives stay distinct.
-     */
-    private static function appendGithubStepSummaryEnumDriftBlock(
-        ?string $path,
-        string $body,
-        bool $isFatal,
-    ): void {
-        if ($path === null) {
-            return;
-        }
-
-        $title = $isFatal
-            ? '## :rotating_light: FATAL OpenAPI enum drift'
-            : '## :warning: OpenAPI enum drift';
-
-        $block = $title . PHP_EOL
-            . PHP_EOL
-            . ($isFatal
+    private static function appendGithubStepSummaryEnumDriftBlock(?string $path, string $body, bool $isFatal): void
+    {
+        self::appendGithubStepSummaryBlock(
+            $path,
+            $isFatal ? '## :rotating_light: FATAL OpenAPI enum drift' : '## :warning: OpenAPI enum drift',
+            $isFatal
                 ? 'One or more `#[BoundToOpenApiEnum]` checks failed and the test run was aborted.'
-                : 'One or more `#[BoundToOpenApiEnum]` checks reported drift.') . PHP_EOL
-            . PHP_EOL
-            . '```' . PHP_EOL
-            . $body . PHP_EOL
-            . '```' . PHP_EOL
-            . PHP_EOL;
-
-        $written = file_put_contents($path, $block, FILE_APPEND);
-        if ($written === false) {
-            self::writeStderr("[OpenAPI Enum Drift] WARNING: Failed to append block to GITHUB_STEP_SUMMARY ({$path})\n");
-        }
+                : 'One or more `#[BoundToOpenApiEnum]` checks reported drift.',
+            $body,
+            '[OpenAPI Enum Drift] WARNING: Failed to append block',
+        );
     }
 
     private static function appendGithubStepSummaryFatalBlock(?string $path, string $spec, string $reason): void
     {
-        if ($path === null) {
-            return;
-        }
-
-        $block = '## :rotating_light: FATAL OpenAPI spec error' . PHP_EOL
-            . PHP_EOL
-            . "Spec `{$spec}` could not be loaded and the test run was aborted." . PHP_EOL
-            . PHP_EOL
-            . '```' . PHP_EOL
-            . $reason . PHP_EOL
-            . '```' . PHP_EOL
-            . PHP_EOL;
-
-        $written = file_put_contents($path, $block, FILE_APPEND);
-        if ($written === false) {
-            self::writeStderr("[OpenAPI Coverage] WARNING: Failed to append FATAL block to GITHUB_STEP_SUMMARY ({$path})\n");
-        }
+        self::appendGithubStepSummaryBlock(
+            $path,
+            '## :rotating_light: FATAL OpenAPI spec error',
+            "Spec `{$spec}` could not be loaded and the test run was aborted.",
+            $reason,
+            '[OpenAPI Coverage] WARNING: Failed to append FATAL block',
+        );
     }
 }

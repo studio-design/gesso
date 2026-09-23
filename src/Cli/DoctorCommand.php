@@ -15,7 +15,6 @@ use const JSON_UNESCAPED_SLASHES;
 use const PATHINFO_DIRNAME;
 use const PATHINFO_EXTENSION;
 use const PATHINFO_FILENAME;
-use const STDERR;
 
 use GuzzleHttp\Client;
 use GuzzleHttp\Psr7\HttpFactory;
@@ -26,6 +25,7 @@ use Studio\Gesso\Exception\InvalidOpenApiSpecException;
 use Studio\Gesso\Exception\MalformedDiscriminatorException;
 use Studio\Gesso\Exception\SpecFileNotFoundException;
 use Studio\Gesso\Internal\ArgvParser;
+use Studio\Gesso\Internal\CliIo;
 use Studio\Gesso\Internal\HttpRefLoader;
 use Studio\Gesso\Internal\ToolVersion;
 use Studio\Gesso\OpenApiVersion;
@@ -48,7 +48,6 @@ use function compact;
 use function count;
 use function dirname;
 use function filter_var;
-use function fwrite;
 use function get_debug_type;
 use function getcwd;
 use function htmlspecialchars;
@@ -85,6 +84,8 @@ use function trim;
  */
 final class DoctorCommand
 {
+    use CliIo;
+
     public const JSON_SCHEMA_VERSION = 1;
     public const EXIT_OK = 0;
     public const EXIT_DIAGNOSTIC_FAILURE = 1;
@@ -361,7 +362,7 @@ final class DoctorCommand
             $version = OpenApiVersion::fromSpec($spec);
             $dialect = OpenApiSchemaDialect::fromSpec($spec, $version);
             [$operations, $responses] = $this->inspectStructure($spec, $version, $label, $issues);
-            $this->inspectSchemas($spec, $version, $dialect, new DiscriminatorContext($spec, true));
+            $this->walkForSchemas($spec, $version, $dialect, new DiscriminatorContext($spec, true), null);
             $this->inspectSkippedFeatures($spec, $label, $acknowledgedSchemes, $issues);
 
             $specResults[] = [
@@ -527,16 +528,6 @@ final class DoctorCommand
             sprintf('Malformed `%s` for %s %s: expected object, got %s.', $location, $method, $path, MalformedSpecNode::describe($node)),
             null,
         );
-    }
-
-    /** @param array<string, mixed> $spec */
-    private function inspectSchemas(
-        array $spec,
-        OpenApiVersion $version,
-        string $dialect,
-        DiscriminatorContext $discriminator,
-    ): void {
-        $this->walkForSchemas($spec, $version, $dialect, $discriminator, null);
     }
 
     /** @param array<mixed> $node */
@@ -913,36 +904,5 @@ final class DoctorCommand
     {
         /** @var 'error'|'skipped'|'warning' $severity */
         return compact('severity', 'category', 'spec', 'message', 'suggestion');
-    }
-
-    private function absolutise(string $path): string
-    {
-        if (str_starts_with($path, '/')) {
-            return $path;
-        }
-        $cwd = getcwd();
-        $absolute = rtrim($cwd !== false ? $cwd : '.', '/') . '/' . $path;
-
-        return realpath($absolute) ?: $absolute;
-    }
-
-    private function writeStdout(string $message): void
-    {
-        if (is_callable($this->stdoutWriter)) {
-            ($this->stdoutWriter)($message);
-
-            return;
-        }
-        echo $message;
-    }
-
-    private function writeStderr(string $message): void
-    {
-        if (is_callable($this->stderrWriter)) {
-            ($this->stderrWriter)($message);
-
-            return;
-        }
-        fwrite(STDERR, $message);
     }
 }
