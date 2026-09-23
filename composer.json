@@ -107,7 +107,7 @@
     "scripts": {
         "test": "phpunit",
         "test:pest": [
-            "test -f vendor/bin/pest || { echo 'Pest is not installed. Run: composer require --dev pestphp/pest:^4.0' >&2; exit 1; }",
+            "@php -r \"is_file('vendor/bin/pest') || (fwrite(STDERR, PHP_EOL . 'ERROR: vendor/bin/pest not found. composer test:pest requires Pest 4. Install it with: composer require --dev pestphp/pest:^4.0' . PHP_EOL . PHP_EOL) && exit(1));\"",
             "pest --colors=always tests/Integration/Pest"
         ],
         "stan": "phpstan analyse",
