@@ -9,24 +9,23 @@ use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
+use Studio\Gesso\Tests\Helpers\RemovesDirectories;
 
 use function copy;
 use function dirname;
 use function fclose;
-use function is_dir;
 use function is_resource;
 use function mkdir;
 use function proc_close;
 use function proc_open;
 use function realpath;
-use function rmdir;
 use function stream_get_contents;
 use function sys_get_temp_dir;
 use function uniqid;
-use function unlink;
 
 final class ComposerPackageMigrationIntegrationTest extends TestCase
 {
+    use RemovesDirectories;
     private string $temporaryDirectory;
 
     protected function setUp(): void
@@ -41,7 +40,7 @@ final class ComposerPackageMigrationIntegrationTest extends TestCase
 
     protected function tearDown(): void
     {
-        $this->removeDirectory($this->temporaryDirectory);
+        $this->removeDir($this->temporaryDirectory);
 
         parent::tearDown();
     }
@@ -126,21 +125,5 @@ final class ComposerPackageMigrationIntegrationTest extends TestCase
                 copy($item->getPathname(), $target);
             }
         }
-    }
-
-    private function removeDirectory(string $directory): void
-    {
-        if (!is_dir($directory)) {
-            return;
-        }
-
-        $iterator = new RecursiveIteratorIterator(
-            new RecursiveDirectoryIterator($directory, FilesystemIterator::SKIP_DOTS),
-            RecursiveIteratorIterator::CHILD_FIRST,
-        );
-        foreach ($iterator as $item) {
-            $item->isDir() ? rmdir($item->getPathname()) : unlink($item->getPathname());
-        }
-        rmdir($directory);
     }
 }

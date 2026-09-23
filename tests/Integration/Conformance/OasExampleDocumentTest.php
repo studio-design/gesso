@@ -13,6 +13,7 @@ use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 use SplFileInfo;
 use Studio\Gesso\Cli\DoctorCommand;
+use Studio\Gesso\Tests\Helpers\RemovesDirectories;
 
 use function array_keys;
 use function copy;
@@ -23,7 +24,6 @@ use function is_dir;
 use function json_decode;
 use function ksort;
 use function mkdir;
-use function rmdir;
 use function sort;
 use function sprintf;
 use function str_ends_with;
@@ -32,7 +32,6 @@ use function strrpos;
 use function substr;
 use function sys_get_temp_dir;
 use function uniqid;
-use function unlink;
 
 /**
  * Conformance signal for the spec loader and `gesso doctor` against the
@@ -56,6 +55,8 @@ use function unlink;
  */
 final class OasExampleDocumentTest extends TestCase
 {
+    use RemovesDirectories;
+
     /**
      * `examples/v2.0` also ships in the corpus. It is Swagger 2.0, which this
      * package does not accept by design, so it is not measured.
@@ -99,17 +100,7 @@ final class OasExampleDocumentTest extends TestCase
 
     protected function tearDown(): void
     {
-        if (is_dir($this->yamlRoot)) {
-            $entries = new RecursiveIteratorIterator(
-                new RecursiveDirectoryIterator($this->yamlRoot, FilesystemIterator::SKIP_DOTS),
-                RecursiveIteratorIterator::CHILD_FIRST,
-            );
-            /** @var SplFileInfo $entry */
-            foreach ($entries as $entry) {
-                $entry->isDir() ? @rmdir($entry->getPathname()) : @unlink($entry->getPathname());
-            }
-            @rmdir($this->yamlRoot);
-        }
+        $this->removeDir($this->yamlRoot);
 
         parent::tearDown();
     }
