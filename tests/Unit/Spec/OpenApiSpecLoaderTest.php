@@ -7,7 +7,6 @@ namespace Studio\Gesso\Tests\Unit\Spec;
 use const DIRECTORY_SEPARATOR;
 use const JSON_THROW_ON_ERROR;
 
-use GuzzleHttp\Client;
 use GuzzleHttp\Psr7\HttpFactory;
 use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\Test;
@@ -552,7 +551,7 @@ class OpenApiSpecLoaderTest extends TestCase
     #[Test]
     public function configure_throws_when_client_is_set_without_allow_flag(): void
     {
-        $client = new Client();
+        $client = new FakeHttpClient();
         $factory = new HttpFactory();
 
         try {
@@ -572,7 +571,7 @@ class OpenApiSpecLoaderTest extends TestCase
     #[Test]
     public function configure_accepts_full_remote_setup(): void
     {
-        $client = new Client();
+        $client = new FakeHttpClient();
         $factory = new HttpFactory();
 
         OpenApiSpecLoader::configure(
@@ -637,7 +636,7 @@ class OpenApiSpecLoaderTest extends TestCase
 
         OpenApiSpecLoader::configure(
             '/path/to/specs',
-            httpClient: new Client(),
+            httpClient: new FakeHttpClient(),
             requestFactory: new HttpFactory(),
             allowRemoteRefs: true,
         );
@@ -663,7 +662,7 @@ class OpenApiSpecLoaderTest extends TestCase
 
         OpenApiSpecLoader::configure(
             '/path/to/specs',
-            httpClient: new Client(),
+            httpClient: new FakeHttpClient(),
             requestFactory: new HttpFactory(),
             allowRemoteRefs: true,
             allowedRemoteRefHosts: ['https://example.com/specs'],
@@ -683,7 +682,7 @@ class OpenApiSpecLoaderTest extends TestCase
 
         OpenApiSpecLoader::configure(
             $fixturesPath,
-            httpClient: new Client(),
+            httpClient: new FakeHttpClient(),
             requestFactory: new HttpFactory(),
             allowRemoteRefs: true,
             allowedRemoteRefHosts: ['example.com'],
@@ -699,7 +698,7 @@ class OpenApiSpecLoaderTest extends TestCase
     {
         OpenApiSpecLoader::configure(
             '/path/to/specs',
-            httpClient: new Client(),
+            httpClient: new FakeHttpClient(),
             requestFactory: new HttpFactory(),
             allowRemoteRefs: true,
             allowedRemoteRefHosts: ['example.com'],

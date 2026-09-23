@@ -16,8 +16,6 @@
 /.gitignore                     export-ignore
 /.markdownlint.jsonc            export-ignore
 /.php-cs-fixer.dist.php         export-ignore
-/.php-cs-fixer.pest.dist.php    export-ignore
-/.php-cs-fixer.shared.php       export-ignore
 /.release-please-manifest.json  export-ignore
 /AGENTS.md                      export-ignore
 /CLAUDE.md                      export-ignore
