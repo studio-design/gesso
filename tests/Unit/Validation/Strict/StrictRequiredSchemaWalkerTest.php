@@ -6,8 +6,6 @@ namespace Studio\Gesso\Tests\Unit\Validation\Strict;
 
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
-use Studio\Gesso\Validation\Strict\StrictRequiredKnownRequired;
-use Studio\Gesso\Validation\Strict\StrictRequiredMapMatch;
 use Studio\Gesso\Validation\Strict\StrictRequiredSchemaWalker;
 use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 
@@ -506,10 +504,8 @@ final class StrictRequiredSchemaWalkerTest extends TestCase
 
         $analysis = StrictRequiredSchemaWalker::analyse($schema);
 
-        $this->assertInstanceOf(StrictRequiredMapMatch::class, $analysis->lookup('/errors'));
-        $mapMatch = $analysis->lookup('/errors/client_id');
-        $this->assertInstanceOf(StrictRequiredMapMatch::class, $mapMatch);
-        $this->assertSame('/errors', $mapMatch->coveringPointer);
-        $this->assertInstanceOf(StrictRequiredKnownRequired::class, $analysis->lookup('/'));
+        $this->assertSame('map', $analysis->lookup('/errors')['kind']);
+        $this->assertSame(['kind' => 'map', 'coveringPointer' => '/errors'], $analysis->lookup('/errors/client_id'));
+        $this->assertSame('required', $analysis->lookup('/')['kind']);
     }
 }

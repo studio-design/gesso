@@ -6,6 +6,7 @@ namespace Studio\Gesso\Validation\Strict;
 
 use stdClass;
 use Studio\Gesso\OpenApiResponseValidator;
+use Studio\Gesso\Spec\OpenApiRefResolver;
 
 use function array_intersect;
 use function array_is_list;
@@ -71,6 +72,21 @@ final class StrictRequiredBodyWalker
         ksort($out);
 
         return $out;
+    }
+
+    /**
+     * RFC 6901 escaping (`~` → `~0`, `/` → `~1`) plus the non-standard
+     * `[*]` → `[~*]` escape that keeps a property literally named `[*]`
+     * from colliding with the array-element marker. The single definition
+     * of the strict-check pointer notation: the schema walker and the
+     * additional-properties inspector build their pointers through it so
+     * spec-side and body-side pointers always agree.
+     *
+     * @internal
+     */
+    public static function escapeProperty(string $name): string
+    {
+        return str_replace('[*]', '[~*]', OpenApiRefResolver::escapePointerSegment($name));
     }
 
     /**
@@ -224,16 +240,6 @@ final class StrictRequiredBodyWalker
         }
 
         return $pointer . '/' . $escaped;
-    }
-
-    private static function escapeProperty(string $name): string
-    {
-        // RFC 6901 order: '~' must be escaped first so subsequent '/' → '~1'
-        // does not get re-escaped to '~01'.
-        $escaped = str_replace('~', '~0', $name);
-        $escaped = str_replace('/', '~1', $escaped);
-
-        return str_replace('[*]', '[~*]', $escaped);
     }
 
     /**

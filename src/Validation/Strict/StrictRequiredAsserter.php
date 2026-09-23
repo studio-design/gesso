@@ -203,7 +203,7 @@ final class StrictRequiredAsserter
         $reports = [];
         $unresolved = [];
         $unwalkable = [];
-        foreach (StrictRequiredTracker::recordedSpecs() as $specName) {
+        foreach (StrictRequiredTracker::current()->recordedSpecsOn() as $specName) {
             $spec = self::reportsForSpec($specName);
             foreach ($spec['reports'] as $report) {
                 $reports[] = $report;
@@ -226,7 +226,7 @@ final class StrictRequiredAsserter
      */
     private static function reportsForSpec(string $specName): array
     {
-        $observations = StrictRequiredTracker::getObservations($specName);
+        $observations = StrictRequiredTracker::current()->getObservationsOn($specName);
         if ($observations === []) {
             return ['reports' => [], 'unresolved' => [], 'unwalkable' => []];
         }
@@ -296,7 +296,7 @@ final class StrictRequiredAsserter
 
                 foreach ($pointers as $pointer => $alwaysPresent) {
                     $lookup = $analysis->lookup($pointer);
-                    if ($lookup instanceof StrictRequiredMapMatch) {
+                    if ($lookup['kind'] === 'map') {
                         // Map-shaped node (`additionalProperties` schema
                         // form or `true`, no `properties`): observed keys
                         // are data, not shape (issue #437). Nothing to
@@ -304,7 +304,7 @@ final class StrictRequiredAsserter
                         // report and no NOTE.
                         continue;
                     }
-                    if ($lookup instanceof StrictRequiredDisjunctionMatch) {
+                    if ($lookup['kind'] === 'disjunction') {
                         // The spec node at (or above) this pointer is a
                         // disjunction (`anyOf` / `oneOf`); the "add to
                         // required" advice does not apply. Surface as a
@@ -315,14 +315,14 @@ final class StrictRequiredAsserter
                             $endpointKey,
                             $responseKey,
                             $pointer,
-                            $lookup->reason,
-                            $lookup->coveringPointer === '' ? '<root>' : $lookup->coveringPointer,
+                            $lookup['reason'],
+                            $lookup['coveringPointer'] === '' ? '<root>' : $lookup['coveringPointer'],
                         );
 
                         continue;
                     }
 
-                    $missing = array_values(array_diff($alwaysPresent, $lookup->required));
+                    $missing = array_values(array_diff($alwaysPresent, $lookup['required']));
                     if ($missing === []) {
                         continue;
                     }

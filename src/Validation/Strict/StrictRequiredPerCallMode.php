@@ -6,12 +6,6 @@ namespace Studio\Gesso\Validation\Strict;
 
 use InvalidArgumentException;
 
-use function array_map;
-use function implode;
-use function sprintf;
-use function strtolower;
-use function trim;
-
 /**
  * Operating mode for the per-call strict-required check (Issue #228).
  *
@@ -64,43 +58,19 @@ enum StrictRequiredPerCallMode: string
      */
     public static function fromConfigValue(?string $value): self
     {
-        if ($value === null) {
-            return self::Off;
-        }
-
-        $normalized = strtolower(trim($value));
-        if ($normalized === '') {
-            return self::Off;
-        }
-
-        if ($normalized === 'fail') {
-            // `fail` is the value most likely to be tried by mistake — it
-            // works for the run-level `strict_required` parameter but is
-            // intentionally rejected here. A generic "unknown value" error
-            // would leave the user wondering whether they typoed it; the
-            // directive message explains the design and points at the two
-            // legitimate alternatives so the fix is self-evident.
-            throw new InvalidArgumentException(
-                "strict_required_per_call does not support 'fail' — per-call mode is "
+        // `fail` is the value most likely to be tried by mistake — it
+        // works for the run-level `strict_required` parameter but is
+        // intentionally rejected here. A generic "unknown value" error
+        // would leave the user wondering whether they typoed it; the
+        // directive message explains the design and points at the two
+        // legitimate alternatives so the fix is self-evident.
+        return ConfigEnumParser::parse(self::class, 'strict_required_per_call', $value, [
+            'fail' => "strict_required_per_call does not support 'fail' — per-call mode is "
                 . 'warn-only by design (see docs/strict-required.md "Per-call mode" → '
                 . '"Why no `fail` mode?"). For hard failures on per-call drift use '
                 . "phpunit.xml's failOnWarning=\"true\". For an aggregate fail-gate "
                 . 'use the run-level `strict_required=fail`.',
-            );
-        }
-
-        $match = self::tryFrom($normalized);
-        if ($match !== null) {
-            return $match;
-        }
-
-        $accepted = implode(', ', array_map(static fn(self $c): string => $c->value, self::cases()));
-
-        throw new InvalidArgumentException(sprintf(
-            "Unknown strict_required_per_call value '%s'. Accepted: %s.",
-            $value,
-            $accepted,
-        ));
+        ]) ?? self::Off;
     }
 
     public function isEnabled(): bool
