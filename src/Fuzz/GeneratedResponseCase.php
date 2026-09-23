@@ -10,6 +10,7 @@ use const JSON_THROW_ON_ERROR;
 use JsonException;
 use LogicException;
 use PHPUnit\Framework\Assert;
+use Studio\Gesso\Spec\OpenApiRefResolver;
 
 use function array_is_list;
 use function array_key_exists;
@@ -17,7 +18,6 @@ use function is_array;
 use function json_decode;
 use function json_encode;
 use function sprintf;
-use function str_replace;
 use function strtolower;
 use function var_export;
 
@@ -182,7 +182,7 @@ final readonly class GeneratedResponseCase
         }
 
         foreach ($generated as $key => $value) {
-            $childPointer = $pointer . '/' . self::escapePointerToken((string) $key);
+            $childPointer = $pointer . '/' . OpenApiRefResolver::escapePointerSegment((string) $key);
             if (!array_key_exists($key, $actual)) {
                 return sprintf(
                     "missing generated key '%s' at '%s'",
@@ -203,11 +203,6 @@ final readonly class GeneratedResponseCase
     private static function displayPointer(string $pointer): string
     {
         return $pointer === '' ? '/' : $pointer;
-    }
-
-    private static function escapePointerToken(string $token): string
-    {
-        return str_replace(['~', '/'], ['~0', '~1'], $token);
     }
 
     private function failureContext(): string

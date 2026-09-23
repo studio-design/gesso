@@ -14,7 +14,6 @@ namespace Studio\Gesso\Fuzz;
 final readonly class PlannedSchemaCase
 {
     public function __construct(
-        public int $index,
         public mixed $value,
         public CaseSelectionPlan $plan,
     ) {}

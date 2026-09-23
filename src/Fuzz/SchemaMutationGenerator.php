@@ -272,9 +272,6 @@ final class SchemaMutationGenerator
             return null;
         }
         unset($cursor[$mutation->keyword]);
-        if ($cursor === []) {
-            $cursor['title'] = 'relaxed mutation target';
-        }
 
         return $relaxed;
     }
@@ -288,9 +285,6 @@ final class SchemaMutationGenerator
     private static function valueOutsideExactConstraint(array $schema, string $keyword, array $excluded): ?array
     {
         unset($schema[$keyword]);
-        if ($schema === []) {
-            $schema['title'] = 'relaxed exact-value target';
-        }
         for ($iteration = 0; $iteration < 20; $iteration++) {
             $candidate = SchemaDataGenerator::generateOne($schema, null, $iteration);
             if (!in_array($candidate, $excluded, true) && SchemaValueValidator::isValid($candidate, $schema)) {

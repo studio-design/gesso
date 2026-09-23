@@ -106,7 +106,7 @@ final class BranchCompleteCaseGenerator
             if ($plan->targetPointer === null) {
                 $value = SchemaDataGenerator::generateOne($schema, $faker, $index, $plan);
                 SchemaValueValidator::assertValid($value, $schema, $index);
-                $cases[] = new PlannedSchemaCase($index, $value, $plan);
+                $cases[] = new PlannedSchemaCase($value, $plan);
 
                 continue;
             }
@@ -124,7 +124,7 @@ final class BranchCompleteCaseGenerator
             $index = count($plans);
             $value = SchemaDataGenerator::generateOne($schema, $faker, $index, new CaseSelectionPlan([]));
             SchemaValueValidator::assertValid($value, $schema, $index);
-            $cases[] = new PlannedSchemaCase($index, $value, new CaseSelectionPlan([]));
+            $cases[] = new PlannedSchemaCase($value, new CaseSelectionPlan([]));
         }
 
         return $cases;
@@ -155,7 +155,7 @@ final class BranchCompleteCaseGenerator
                 );
                 $value = SchemaDataGenerator::generateOne($schema, $faker, $index + $round, $attempt);
                 if ($attempt->observation->targetSatisfied && SchemaValueValidator::isValid($value, $schema)) {
-                    return new PlannedSchemaCase($index, $value, $attempt);
+                    return new PlannedSchemaCase($value, $attempt);
                 }
                 if ($attempt->observation->provenDeadEnd) {
                     // A schema-derived proof (statically empty domain at a

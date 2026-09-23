@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Studio\Gesso\Fuzz;
 
 use InvalidArgumentException;
+use Studio\Gesso\Spec\OpenApiRefResolver;
 
 use function array_filter;
 use function array_key_exists;
@@ -19,7 +20,6 @@ use function is_string;
 use function json_encode;
 use function md5;
 use function sprintf;
-use function str_replace;
 
 /**
  * Pre-pass enumerator that collects every composition choice point of a
@@ -87,14 +87,6 @@ final class SchemaChoicePointEnumerator
         $enumerator->visitNode($schema, '', [], 0);
 
         return $enumerator->points;
-    }
-
-    /**
-     * Escape a property name for use as a JSON Pointer reference token.
-     */
-    public static function escapePointerSegment(string $segment): string
-    {
-        return str_replace(['~', '/'], ['~0', '~1'], $segment);
     }
 
     /**
@@ -184,13 +176,7 @@ final class SchemaChoicePointEnumerator
             }
 
             $choicePointer = $pointer . '/' . $keyword;
-            $this->record(
-                $keyword === 'oneOf' ? SchemaChoicePointKind::OneOf : SchemaChoicePointKind::AnyOf,
-                $choicePointer,
-                count($enumerable),
-                $ancestors,
-                $branches,
-            );
+            $this->record($choicePointer, count($enumerable), $ancestors, $branches);
 
             $base = $schema;
             unset($base[$keyword]);
@@ -218,20 +204,7 @@ final class SchemaChoicePointEnumerator
             return;
         }
 
-        $base = $schema;
-        unset($base['allOf']);
-        $conditionals = [];
-        foreach ($schema['allOf'] as $branch) {
-            if (!is_array($branch)) {
-                continue;
-            }
-            if (isset($branch['if']) && is_array($branch['if'])) {
-                $conditionals[] = $branch;
-            } else {
-                $base = SchemaDataGenerator::mergeSchemas($base, $branch);
-            }
-        }
-
+        [$base, $conditionals] = SchemaDataGenerator::splitConditionals($schema);
         if ($conditionals !== []) {
             // Boolean consequents leave no choice; fold them exactly like
             // generation does. An unsatisfiable node keeps only the base —
@@ -253,13 +226,7 @@ final class SchemaChoicePointEnumerator
         // plus the trailing none-match branch where every else applies.
         $count = count($conditionals);
         $choicePointer = $pointer . '/allOf';
-        $this->record(
-            SchemaChoicePointKind::AllOfConditional,
-            $choicePointer,
-            $count + 1,
-            $ancestors,
-            $conditionals,
-        );
+        $this->record($choicePointer, $count + 1, $ancestors, $conditionals);
         for ($branch = 0; $branch <= $count; $branch++) {
             $view = SchemaDataGenerator::conditionalBranchView($base, $conditionals, $branch);
             $this->rejectReintroduced($view, ['oneOf', 'anyOf', 'allOf'], $pointer);
@@ -276,11 +243,7 @@ final class SchemaChoicePointEnumerator
         if (is_bool($schema['if'] ?? null)) {
             // A boolean if has no branch to choose: `if: true` makes the
             // then unconditional, `if: false` the else. No choice point.
-            $branchSchema = $schema['if'] === true ? ($schema['then'] ?? null) : ($schema['else'] ?? null);
-            unset($schema['if'], $schema['then'], $schema['else']);
-            if (is_array($branchSchema)) {
-                $schema = SchemaDataGenerator::mergeSchemas($schema, $branchSchema);
-            }
+            $schema = SchemaDataGenerator::foldBooleanIf($schema);
             $this->rejectReintroduced($schema, ['oneOf', 'anyOf', 'allOf', 'if'], $pointer);
             $this->visitLeaf($schema, $pointer, $ancestors, $depth);
 
@@ -305,7 +268,6 @@ final class SchemaChoicePointEnumerator
 
         $choicePointer = $pointer . '/if';
         $this->record(
-            SchemaChoicePointKind::IfThenElse,
             $choicePointer,
             count($sides),
             $ancestors,
@@ -336,13 +298,7 @@ final class SchemaChoicePointEnumerator
             $hasNull = in_array(null, $admissible, true);
             $hasValue = array_filter($admissible, static fn(mixed $value): bool => $value !== null) !== [];
             if (self::isNullableTypeArray($schema) && $hasNull && $hasValue) {
-                $this->record(
-                    SchemaChoicePointKind::Nullable,
-                    $pointer . '/type',
-                    2,
-                    $ancestors,
-                    null,
-                );
+                $this->record($pointer . '/type', 2, $ancestors, null);
             }
 
             return;
@@ -350,7 +306,7 @@ final class SchemaChoicePointEnumerator
 
         if (self::isNullableTypeArray($schema)) {
             $choicePointer = $pointer . '/type';
-            $this->record(SchemaChoicePointKind::Nullable, $choicePointer, 2, $ancestors, null);
+            $this->record($choicePointer, 2, $ancestors, null);
             $ancestors = [...$ancestors, $choicePointer => SchemaChoicePoint::VALUE];
         }
 
@@ -396,10 +352,10 @@ final class SchemaChoicePointEnumerator
                 continue;
             }
 
-            $childPointer = $pointer . '/properties/' . self::escapePointerSegment($name);
+            $childPointer = $pointer . '/properties/' . OpenApiRefResolver::escapePointerSegment($name);
             $childAncestors = $ancestors;
             if (!in_array($name, $required, true)) {
-                $this->record(SchemaChoicePointKind::OptionalProperty, $childPointer, 2, $ancestors, null);
+                $this->record($childPointer, 2, $ancestors, null);
                 $childAncestors = [...$childAncestors, $childPointer => SchemaChoicePoint::PRESENT];
             }
 
@@ -461,13 +417,8 @@ final class SchemaChoicePointEnumerator
     /**
      * @param array<string, int> $ancestors
      */
-    private function record(
-        SchemaChoicePointKind $kind,
-        string $pointer,
-        int $branchCount,
-        array $ancestors,
-        mixed $content,
-    ): void {
+    private function record(string $pointer, int $branchCount, array $ancestors, mixed $content): void
+    {
         // The same effective pointer can be rediscovered under a different
         // branch context. Each context keeps its own entry: generation may
         // leave a context mid-case (closure expansion when suppressed
@@ -483,7 +434,7 @@ final class SchemaChoicePointEnumerator
         }
         $this->seen[$key] = true;
 
-        $this->points[] = new SchemaChoicePoint($kind, $pointer, $branchCount, $ancestors);
+        $this->points[] = new SchemaChoicePoint($pointer, $branchCount, $ancestors);
         if (count($this->points) > self::MAX_CHOICE_POINTS) {
             throw new InvalidArgumentException(sprintf(
                 'Choice-point enumeration exceeded the maximum of %d choice points.',
