@@ -32,7 +32,6 @@ final readonly class SchemaChoicePoint
 
     /** @param array<string, int> $ancestors */
     public function __construct(
-        public SchemaChoicePointKind $kind,
         public string $pointer,
         public int $branchCount,
         public array $ancestors,

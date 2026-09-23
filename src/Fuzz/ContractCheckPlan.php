@@ -39,6 +39,7 @@ use function strtolower;
  */
 final class ContractCheckPlan
 {
+    use RunsOperationHooks;
     use SelectsExploredOperations;
 
     /**
@@ -56,15 +57,6 @@ final class ContractCheckPlan
 
     /** @var array<string, list<int>> keyed by ContractCheck value */
     private array $expectedStatusClassOverrides = [];
-
-    /** @var null|callable(ExploredOperation): void */
-    private $authenticate;
-
-    /** @var null|callable(ExploredOperation): void */
-    private $setUp;
-
-    /** @var null|callable(ExploredOperation): void */
-    private $tearDown;
 
     /** @var null|callable(ExploredCase): mixed */
     private $dispatch;
@@ -142,30 +134,6 @@ final class ContractCheckPlan
             }
         }
         $this->expectedStatusClassOverrides[$check->value] = $statusClasses;
-
-        return $this;
-    }
-
-    /** @param callable(ExploredOperation): void $callback */
-    public function authenticateUsing(callable $callback): self
-    {
-        $this->authenticate = $callback;
-
-        return $this;
-    }
-
-    /** @param callable(ExploredOperation): void $callback */
-    public function setUpUsing(callable $callback): self
-    {
-        $this->setUp = $callback;
-
-        return $this;
-    }
-
-    /** @param callable(ExploredOperation): void $callback */
-    public function tearDownUsing(callable $callback): self
-    {
-        $this->tearDown = $callback;
 
         return $this;
     }
@@ -1011,18 +979,10 @@ final class ContractCheckPlan
     private function dispatchProbe(ContractCheck $check, ContractCheckProbe $probe, int $derivedSeed): int
     {
         $case = $probe->case;
-        $operation = $probe->operation;
 
-        try {
-            if ($this->setUp !== null) {
-                ($this->setUp)($operation);
-            }
-            // Probes that exist to prove authentication is enforced must not
-            // be handed credentials by the plan's own hook.
-            if ($probe->authenticate && $this->authenticate !== null) {
-                ($this->authenticate)($operation);
-            }
-
+        // Probes that exist to prove authentication is enforced must not be
+        // handed credentials by the plan's own hook.
+        return $this->runWithOperationHooks($probe->operation, $probe->authenticate, function () use ($check, $case, $derivedSeed): int {
             try {
                 $response = ($this->dispatch)($case);
 
@@ -1039,10 +999,6 @@ final class ContractCheckPlan
                     $case->curlSnippet(),
                 ), 0, $e);
             }
-        } finally {
-            if ($this->tearDown !== null) {
-                ($this->tearDown)($operation);
-            }
-        }
+        });
     }
 }

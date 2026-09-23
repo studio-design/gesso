@@ -8,6 +8,8 @@ use Studio\Gesso\Spec\OpenApiOperationResolver;
 
 use function array_intersect;
 use function array_map;
+use function crc32;
+use function implode;
 use function in_array;
 
 /**
@@ -63,7 +65,7 @@ trait SelectsExploredOperations
     /** @param list<string> $methods */
     public function includeMethods(array $methods): self
     {
-        $this->includedMethods = array_map(self::normalizeFilterMethod(...), $methods);
+        $this->includedMethods = array_map(OpenApiOperationResolver::normalizeMethodForKey(...), $methods);
 
         return $this;
     }
@@ -71,7 +73,7 @@ trait SelectsExploredOperations
     /** @param list<string> $methods */
     public function excludeMethods(array $methods): self
     {
-        $this->excludedMethods = array_map(self::normalizeFilterMethod(...), $methods);
+        $this->excludedMethods = array_map(OpenApiOperationResolver::normalizeMethodForKey(...), $methods);
 
         return $this;
     }
@@ -115,9 +117,13 @@ trait SelectsExploredOperations
         return $this;
     }
 
-    private static function normalizeFilterMethod(string $method): string
+    /** Build the operation record with a per-operation seed derived from the plan's global seed. */
+    private function operationFromDeclaration(string $path, string $method, mixed $rawOperation): ExploredOperation
     {
-        return OpenApiOperationResolver::normalizeMethodForKey($method);
+        $normalizedMethod = OpenApiOperationResolver::normalizeMethodForKey($method);
+        $derivedSeed = crc32(implode("\0", [$this->specName, $normalizedMethod, $path, (string) $this->seed])) & 0x7fffffff;
+
+        return ExploredOperation::fromDeclaration($this->specName, $path, $method, $rawOperation, $derivedSeed);
     }
 
     private function matchesFilters(ExploredOperation $operation): bool

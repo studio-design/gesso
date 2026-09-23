@@ -9,7 +9,6 @@ use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Studio\Gesso\Fuzz\SchemaChoicePoint;
 use Studio\Gesso\Fuzz\SchemaChoicePointEnumerator;
-use Studio\Gesso\Fuzz\SchemaChoicePointKind;
 
 use function array_fill;
 
@@ -38,13 +37,11 @@ class SchemaChoicePointEnumeratorTest extends TestCase
 
         $this->assertArrayHasKey('/properties/aud', $points);
         $presence = $points['/properties/aud'];
-        $this->assertSame(SchemaChoicePointKind::OptionalProperty, $presence->kind);
         $this->assertSame(2, $presence->branchCount);
         $this->assertSame([], $presence->ancestors);
 
         $this->assertArrayHasKey('/properties/aud/oneOf', $points);
         $oneOf = $points['/properties/aud/oneOf'];
-        $this->assertSame(SchemaChoicePointKind::OneOf, $oneOf->kind);
         $this->assertSame(2, $oneOf->branchCount);
         $this->assertSame(
             ['/properties/aud' => SchemaChoicePoint::PRESENT],
@@ -68,7 +65,6 @@ class SchemaChoicePointEnumeratorTest extends TestCase
         $this->assertArrayNotHasKey('/properties/status', $points);
         $this->assertArrayHasKey('/properties/status/anyOf', $points);
         $anyOf = $points['/properties/status/anyOf'];
-        $this->assertSame(SchemaChoicePointKind::AnyOf, $anyOf->kind);
         $this->assertSame(2, $anyOf->branchCount);
         $this->assertSame([], $anyOf->ancestors);
     }
@@ -87,7 +83,6 @@ class SchemaChoicePointEnumeratorTest extends TestCase
 
         $this->assertArrayHasKey('/type', $points);
         $nullable = $points['/type'];
-        $this->assertSame(SchemaChoicePointKind::Nullable, $nullable->kind);
         $this->assertSame(2, $nullable->branchCount);
 
         $this->assertArrayHasKey('/properties/name', $points);
@@ -111,7 +106,6 @@ class SchemaChoicePointEnumeratorTest extends TestCase
 
         $this->assertArrayHasKey('/if', $points);
         $conditional = $points['/if'];
-        $this->assertSame(SchemaChoicePointKind::IfThenElse, $conditional->kind);
         $this->assertSame(2, $conditional->branchCount);
     }
 
@@ -131,7 +125,6 @@ class SchemaChoicePointEnumeratorTest extends TestCase
 
         $this->assertArrayHasKey('/allOf', $points);
         $conditional = $points['/allOf'];
-        $this->assertSame(SchemaChoicePointKind::AllOfConditional, $conditional->kind);
         // One branch per conditional (if+then, all others suppressed) plus
         // the trailing none-match branch.
         $this->assertSame(3, $conditional->branchCount);
@@ -216,7 +209,6 @@ class SchemaChoicePointEnumeratorTest extends TestCase
         ]));
 
         $this->assertArrayHasKey('/properties/x', $points);
-        $this->assertSame(SchemaChoicePointKind::OptionalProperty, $points['/properties/x']->kind);
         // Presence of a `false` property is unreachable — no choice.
         $this->assertArrayNotHasKey('/properties/y', $points);
     }
@@ -306,7 +298,6 @@ class SchemaChoicePointEnumeratorTest extends TestCase
         ]);
 
         $this->assertCount(1, $points);
-        $this->assertSame(SchemaChoicePointKind::Nullable, $points[0]->kind);
         $this->assertSame('/type', $points[0]->pointer);
         $this->assertSame(2, $points[0]->branchCount);
         $this->assertSame([], $points[0]->ancestors);
