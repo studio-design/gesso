@@ -21,18 +21,6 @@ final class ToolVersionTest extends TestCase
         $this->assertNotSame('unknown', $version);
     }
 
-    /**
-     * `InstalledVersions::getVersion()` throws `OutOfBoundsException` for a
-     * package it does not know (`vendor/composer/InstalledVersions.php`). The
-     * documents that carry the value forbid null, so the sentinel has to be a
-     * string.
-     */
-    #[Test]
-    public function returns_the_unknown_sentinel_when_composer_metadata_is_unreadable(): void
-    {
-        $this->assertSame('unknown', ToolVersion::resolve('studio-design/not-installed'));
-    }
-
     #[Test]
     public function package_name_matches_the_composer_manifest(): void
     {

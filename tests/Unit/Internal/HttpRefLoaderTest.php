@@ -88,7 +88,7 @@ class HttpRefLoaderTest extends TestCase
     {
         $url = 'https://example.com/schemas/pet.yaml';
         $client = new FakeHttpClient([
-            $url => FakeHttpClient::yamlResponse("type: object\nrequired:\n  - id\n"),
+            $url => FakeHttpClient::jsonResponse("type: object\nrequired:\n  - id\n", contentType: 'application/yaml'),
         ]);
 
         $cache = [];
@@ -261,7 +261,7 @@ class HttpRefLoaderTest extends TestCase
     {
         $url = 'https://example.com/bad.yaml';
         $client = new FakeHttpClient([
-            $url => FakeHttpClient::yamlResponse("key: value\n  bad: indent\n"),
+            $url => FakeHttpClient::jsonResponse("key: value\n  bad: indent\n", contentType: 'application/yaml'),
         ]);
 
         try {

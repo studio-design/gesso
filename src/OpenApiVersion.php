@@ -34,18 +34,9 @@ enum OpenApiVersion: string
         if (is_string($version) &&
             preg_match('/\A(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)\z/D', $version, $matches) === 1
         ) {
-            $family = $matches['major'] . '.' . $matches['minor'];
-
-            if ($family === self::V3_0->value) {
-                return self::V3_0;
-            }
-
-            if ($family === self::V3_1->value) {
-                return self::V3_1;
-            }
-
-            if ($family === self::V3_2->value) {
-                return self::V3_2;
+            $family = self::tryFrom($matches['major'] . '.' . $matches['minor']);
+            if ($family !== null) {
+                return $family;
             }
         }
 

@@ -16,14 +16,12 @@ use Studio\Gesso\Exception\InvalidOpenApiSpecReason;
 
 use function ctype_digit;
 use function hash;
-use function ltrim;
 use function pathinfo;
 use function preg_replace;
 use function preg_split;
 use function rtrim;
 use function sprintf;
 use function str_ends_with;
-use function strcmp;
 use function strcspn;
 use function strlen;
 use function strtolower;
@@ -164,7 +162,7 @@ final class HttpRefLoader
         }
 
         $contentLength = trim($response->getHeaderLine('Content-Length'));
-        if ($contentLength !== '' && ctype_digit($contentLength) && self::decimalExceeds($contentLength, $maxResponseBytes)) {
+        if ($contentLength !== '' && ctype_digit($contentLength) && (float) $contentLength > $maxResponseBytes) {
             throw self::responseTooLarge($safeUrl, $maxResponseBytes);
         }
 
@@ -311,16 +309,6 @@ final class HttpRefLoader
             ),
             ref: $safeUrl,
         );
-    }
-
-    private static function decimalExceeds(string $decimal, int $limit): bool
-    {
-        $decimal = ltrim($decimal, '0');
-        $decimal = $decimal === '' ? '0' : $decimal;
-        $limitString = (string) $limit;
-
-        return strlen($decimal) > strlen($limitString) ||
-            (strlen($decimal) === strlen($limitString) && strcmp($decimal, $limitString) > 0);
     }
 
     /** @param list<string> $allowedRemoteRefHosts */
