@@ -63,9 +63,11 @@ use function getcwd;
 use function getenv;
 use function implode;
 use function in_array;
+use function is_array;
 use function is_dir;
 use function is_string;
 use function is_writable;
+use function method_exists;
 use function mkdir;
 use function preg_match;
 use function sprintf;
@@ -751,8 +753,8 @@ final class OpenApiCoverageExtension implements Extension
             hasExcludeFilter: $configuration->hasExcludeFilter(),
             hasGroups: $configuration->hasGroups(),
             hasExcludeGroups: $configuration->hasExcludeGroups(),
-            includeTestSuites: $configuration->includeTestSuites(),
-            excludeTestSuites: $configuration->excludeTestSuites(),
+            includeTestSuites: self::readTestSuiteList($configuration, 'includeTestSuites', 'includeTestSuite'),
+            excludeTestSuites: self::readTestSuiteList($configuration, 'excludeTestSuites', 'excludeTestSuite'),
             hasTestsCovering: $configuration->hasTestsCovering(),
             hasTestsUsing: $configuration->hasTestsUsing(),
             hasTestsRequiringPhpExtension: $configuration->hasTestsRequiringPhpExtension(),
@@ -762,11 +764,72 @@ final class OpenApiCoverageExtension implements Extension
     }
 
     /**
+     * Cross-version reader for the `--testsuite` / `--exclude-testsuite`
+     * selection. PHPUnit 13 exposes only the plural array form, PHPUnit
+     * 11 exposes only the singular comma-joined string form, and
+     * PHPUnit 12 happens to ship both — so picking one at compile time
+     * would break the matrix CI (PHP 8.3/8.4/8.5 × PHPUnit 12/13).
+     * The dynamic method call also avoids a static analysis error on
+     * whichever PHPUnit version PHPStan is resolving against locally.
+     *
+     * @return list<non-empty-string>
+     */
+    private static function readTestSuiteList(
+        Configuration $configuration,
+        string $pluralMethod,
+        string $singularMethod,
+    ): array {
+        // Dynamic method calls deliberately bypass PHPStan's static
+        // resolution against whichever PHPUnit version it happens to be
+        // analysing locally. We narrow the `mixed` result back to
+        // `list<non-empty-string>` via runtime checks rather than `@var`
+        // (the project's PHPStan policy forbids `@var` type overrides).
+        if (method_exists($configuration, $pluralMethod)) {
+            $plural = $configuration->{$pluralMethod}();
+
+            return self::coerceToNonEmptyStringList($plural);
+        }
+
+        $singular = $configuration->{$singularMethod}();
+        if (!is_string($singular) || $singular === '') {
+            return [];
+        }
+
+        return self::coerceToNonEmptyStringList(explode(',', $singular));
+    }
+
+    /**
+     * Filter an arbitrary value down to `list<non-empty-string>` for
+     * `readTestSuiteList()`. Defensive: PHPUnit's contracts already
+     * guarantee strings, but funneling the result through a single
+     * narrowing helper keeps PHPStan happy without resorting to `@var`.
+     *
+     * @return list<non-empty-string>
+     */
+    private static function coerceToNonEmptyStringList(mixed $value): array
+    {
+        if (!is_array($value)) {
+            return [];
+        }
+        $list = [];
+        foreach ($value as $entry) {
+            if (is_string($entry) && $entry !== '') {
+                $list[] = $entry;
+            }
+        }
+
+        return $list;
+    }
+
+    /**
      * Read the `defaultTestSuite` xml attribute via PHPUnit's
      * {@see Configuration} accessors. Both `hasDefaultTestSuite()` and
-     * `defaultTestSuite()` exist on PHPUnit 12/13. The `hasDefaultTestSuite()`
-     * guard is mandatory: `defaultTestSuite()` throws
-     * `NoDefaultTestSuiteException` when the xml attribute is absent.
+     * `defaultTestSuite()` exists on PHPUnit 12/13, so a direct call is
+     * safe across the CI matrix (unlike {@see readTestSuiteList()}, which
+     * needs the dynamic dispatch because PHPUnit 13 dropped the singular
+     * `includeTestSuite()` accessor). The `hasDefaultTestSuite()` guard is
+     * mandatory: `defaultTestSuite()` throws `NoDefaultTestSuiteException`
+     * when the xml attribute is absent.
      *
      * `$warnOnInertOptIn` surfaces the two misconfigurations that make
      * `default_testsuite_as_full=true` a silent no-op: (1) the user opted

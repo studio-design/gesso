@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Studio\Gesso\Coverage;
 
 use const E_USER_WARNING;
+use const PHP_INT_MAX;
 
 use InvalidArgumentException;
 use Studio\Gesso\Spec\OpenApiOperationResolver;
@@ -71,6 +72,10 @@ final class SdkExerciseCoverageTracker
     ): void {
         $endpoint = OpenApiOperationResolver::normalizeMethodForKey($method) . ' ' . $path;
         $hits = $this->observations[$specName][$endpoint][$statusKey][$contentTypeKey] ?? 0;
+        if ($hits === PHP_INT_MAX) {
+            throw new InvalidArgumentException('SDK exercise coverage hit count overflow.');
+        }
+
         $this->observations[$specName][$endpoint][$statusKey][$contentTypeKey] = $hits + 1;
     }
 
@@ -119,6 +124,10 @@ final class SdkExerciseCoverageTracker
                 foreach ($statuses as $statusKey => $contentTypes) {
                     foreach ($contentTypes as $contentTypeKey => $hits) {
                         $existing = $merged[$specName][$endpoint][$statusKey][$contentTypeKey] ?? 0;
+                        if ($existing > PHP_INT_MAX - $hits) {
+                            throw new InvalidArgumentException('SDK exercise coverage hit count overflow while importing state.');
+                        }
+
                         $merged[$specName][$endpoint][$statusKey][$contentTypeKey] = $existing + $hits;
                     }
                 }
