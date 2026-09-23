@@ -58,17 +58,12 @@
     ],
     "require-dev": {
         "friendsofphp/php-cs-fixer": "^3.94",
-        "guzzlehttp/guzzle": "^7.12.1",
         "guzzlehttp/psr7": "^2.12.1",
         "json-schema-org/json-schema-test-suite": "2026.08.04",
-        "nyholm/psr7": "^1.8",
         "oai/learn.openapis.org": "2026.05.07",
         "orchestra/testbench": "^9.0 || ^10.0 || ^11.0",
         "phpstan/phpstan": "^2.1.13",
-        "symfony/browser-kit": "^6.4 || ^7.0 || ^8.0",
-        "symfony/http-foundation": "^6.4 || ^7.0 || ^8.0",
-        "symfony/http-kernel": "^6.4 || ^7.0 || ^8.0",
-        "symfony/yaml": "^6.4 || ^7.0 || ^8.0"
+        "symfony/browser-kit": "^6.4 || ^7.0 || ^8.0"
     },
     "suggest": {
         "illuminate/testing": "Required for the Laravel adapter (ValidatesOpenApiSchema trait)",
@@ -99,7 +94,6 @@
     "config": {
         "sort-packages": true,
         "allow-plugins": {
-            "dealerdirect/phpcodesniffer-composer-installer": true,
             "pestphp/pest-plugin": true
         }
     },
@@ -113,18 +107,12 @@
     "scripts": {
         "test": "phpunit",
         "test:pest": [
-            "@php scripts/check-pest.php",
+            "@php -r \"is_file('vendor/bin/pest') || (fwrite(STDERR, PHP_EOL . 'ERROR: vendor/bin/pest not found. composer test:pest requires Pest 4. Install it with: composer require --dev pestphp/pest:^4.0' . PHP_EOL . PHP_EOL) && exit(1));\"",
             "pest --colors=always tests/Integration/Pest"
         ],
         "stan": "phpstan analyse",
-        "cs": [
-            "php-cs-fixer fix",
-            "php-cs-fixer fix --config=.php-cs-fixer.pest.dist.php"
-        ],
-        "cs-check": [
-            "php-cs-fixer fix --dry-run --diff",
-            "php-cs-fixer fix --dry-run --diff --config=.php-cs-fixer.pest.dist.php"
-        ],
+        "cs": "php-cs-fixer fix",
+        "cs-check": "php-cs-fixer fix --dry-run --diff",
         "ci": [
             "@cs-check",
             "@stan",
@@ -150,7 +138,6 @@
             "/composer.lock",
             "/node_modules",
             "/.php-cs-fixer.cache",
-            "/.php-cs-fixer.pest.cache",
             "/.phpstan.cache",
             "/.phpunit.cache",
             "/.gitattributes",
@@ -158,8 +145,6 @@
             "/.gitignore",
             "/.markdownlint.jsonc",
             "/.php-cs-fixer.dist.php",
-            "/.php-cs-fixer.pest.dist.php",
-            "/.php-cs-fixer.shared.php",
             "/.release-please-manifest.json",
             "/AGENTS.md",
             "/CLAUDE.md",

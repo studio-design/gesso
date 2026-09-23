@@ -75,7 +75,6 @@ final class PackageArchivePolicyTest extends TestCase
      */
     private const BUILD_ARTIFACT_ONLY = [
         '/.php-cs-fixer.cache',
-        '/.php-cs-fixer.pest.cache',
         '/.phpstan.cache',
         '/.phpunit.cache',
         '/composer.lock',
@@ -426,7 +425,8 @@ final class PackageArchivePolicyTest extends TestCase
     /**
      * Tracked paths come from git rather than the filesystem so untracked
      * local state (`.claude/`, editor scratch, plugin caches) does not have to
-     * be enumerated here.
+     * be enumerated here. Deleted-but-unstaged paths are dropped so the test
+     * also passes in a dirty worktree.
      *
      * @return list<string>
      */
@@ -454,6 +454,10 @@ final class PackageArchivePolicyTest extends TestCase
             $this->markTestSkipped('git ls-files is unavailable; cannot enumerate tracked paths.');
         }
 
-        return $output;
+        // The index still lists files deleted but not yet staged.
+        return array_values(array_filter(
+            $output,
+            fn(string $path): bool => file_exists($this->root() . '/' . $path),
+        ));
     }
 }

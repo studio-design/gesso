@@ -101,7 +101,7 @@ composer audit --abandoned=fail
 composer cs
 ```
 
-`composer ci` runs both PHP-CS-Fixer configurations, PHPStan, and PHPUnit. CI also
+`composer ci` runs PHP-CS-Fixer, PHPStan, and PHPUnit. CI also
 tests PHP 8.3-8.5 with PHPUnit 12-13, lowest dependencies, the optional Pest
 integration and example, Composer validation/audit, and generated Markdown lint.
 When changing one of those surfaces, run its focused check and rely on the matrix
@@ -116,7 +116,7 @@ normal dependency set.
 - Keep code compatible with the PHP 8.3 floor.
 - PHP-CS-Fixer is authoritative: PER-CS2.0, strict comparisons, explicit global
   function/constant imports, ordered imports/elements, and snake_case PHPUnit
-  test methods. Pest callbacks are the intentional exception to `static_lambda`.
+  test methods. `static_lambda` is off because Pest callbacks must not be static.
 - Mark new classes `final` unless extension is intentional. Prefer readonly DTOs
   or accessors to public mutable properties.
 - Mark implementation-only public symbols `@internal` with the reason. PHPStan

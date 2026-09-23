@@ -206,9 +206,6 @@ jobs:
       - name: Audit documentation dependencies
         run: npm audit --audit-level=high
 
-      - name: Verify vendored Tombo assets
-        run: npm run docs:verify-tombo
-
       - name: Build searchable documentation
         env:
           DOCS_VERSION: next

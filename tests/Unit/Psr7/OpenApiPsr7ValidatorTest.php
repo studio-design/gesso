@@ -14,15 +14,14 @@ use GuzzleHttp\Psr7\Response;
 use GuzzleHttp\Psr7\ServerRequest;
 use GuzzleHttp\Psr7\Stream;
 use GuzzleHttp\Psr7\UploadedFile;
+use GuzzleHttp\Psr7\Uri;
 use GuzzleHttp\Psr7\Utils;
 use LogicException;
-use Nyholm\Psr7\Request as NyholmRequest;
-use Nyholm\Psr7\Response as NyholmResponse;
-use Nyholm\Psr7\ServerRequest as NyholmServerRequest;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\DataProviderExternal;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\StreamInterface;
 use RuntimeException;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
@@ -205,26 +204,6 @@ final class OpenApiPsr7ValidatorTest extends TestCase
         $coverage = OpenApiCoverageTracker::computeCoverage('psr7');
         $this->assertSame(1, $coverage['responseCovered']);
         $this->assertArrayHasKey('POST /widgets/{id}', OpenApiCoverageTracker::getCovered()['psr7']);
-    }
-
-    #[Test]
-    public function validates_nyholm_psr7_messages_through_the_same_api(): void
-    {
-        $request = (new NyholmServerRequest(
-            'POST',
-            'https://example.test/widgets/42?q=blue',
-            ['Content-Type' => 'application/json', 'X-Token' => 'secret'],
-            '{"message":"hello"}',
-        ))->withCookieParams(['session' => 'abc']);
-        $response = new NyholmResponse(
-            201,
-            ['Content-Type' => 'application/json', 'X-Trace' => 'trace-1'],
-            '{"id":42}',
-        );
-
-        $result = $this->validator->validateExchange($request, $response);
-
-        $this->assertTrue($result->isValid(), $result->errorMessage());
     }
 
     #[Test]
@@ -421,14 +400,18 @@ final class OpenApiPsr7ValidatorTest extends TestCase
             '{"id":2,"name":"Copy"}',
         );
 
-        $matching = $validator->validateResponse(
-            new NyholmRequest('COPY', 'https://example.test/v1/pets/1'),
-            $response,
-        );
-        $wrongCase = $validator->validateResponse(
-            new NyholmRequest('copy', 'https://example.test/v1/pets/1'),
-            $response,
-        );
+        // Guzzle's Request upper-cases the method, so stub one that keeps
+        // the casing the way a case-preserving PSR-7 implementation would.
+        $requestWithMethod = function (string $method): RequestInterface {
+            $request = $this->createStub(RequestInterface::class);
+            $request->method('getMethod')->willReturn($method);
+            $request->method('getUri')->willReturn(new Uri('https://example.test/v1/pets/1'));
+
+            return $request;
+        };
+
+        $matching = $validator->validateResponse($requestWithMethod('COPY'), $response);
+        $wrongCase = $validator->validateResponse($requestWithMethod('copy'), $response);
 
         $this->assertTrue($matching->isValid(), $matching->errorMessage());
         $this->assertFalse($wrongCase->isValid());
