@@ -11,8 +11,6 @@ use Studio\Gesso\Spec\OpenApiOperationResolver;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Throwable;
 
-use function crc32;
-use function implode;
 use function sprintf;
 
 /**
@@ -24,19 +22,11 @@ use function sprintf;
  */
 final class OpenApiSpecExploration
 {
+    use RunsOperationHooks;
     use SelectsExploredOperations;
 
     /** @var null|list<int> */
     private ?array $negativeExpectedStatusClasses = null;
-
-    /** @var null|callable(ExploredOperation): void */
-    private $authenticate;
-
-    /** @var null|callable(ExploredOperation): void */
-    private $setUp;
-
-    /** @var null|callable(ExploredOperation): void */
-    private $tearDown;
 
     /** @var null|callable(ExploredCase, ExploredOperation): mixed */
     private $mutateCase;
@@ -73,30 +63,6 @@ final class OpenApiSpecExploration
             }
         }
         $this->negativeExpectedStatusClasses = $expectedStatusClasses;
-
-        return $this;
-    }
-
-    /** @param callable(ExploredOperation): void $callback */
-    public function authenticateUsing(callable $callback): self
-    {
-        $this->authenticate = $callback;
-
-        return $this;
-    }
-
-    /** @param callable(ExploredOperation): void $callback */
-    public function setUpUsing(callable $callback): self
-    {
-        $this->setUp = $callback;
-
-        return $this;
-    }
-
-    /** @param callable(ExploredOperation): void $callback */
-    public function tearDownUsing(callable $callback): self
-    {
-        $this->tearDown = $callback;
 
         return $this;
     }
@@ -197,27 +163,12 @@ final class OpenApiSpecExploration
         return new SpecExplorationSummary($executedOperations, $executedCases, $operations, $skips);
     }
 
-    private function operationFromDeclaration(string $path, string $method, mixed $rawOperation): ExploredOperation
-    {
-        $normalizedMethod = OpenApiOperationResolver::normalizeMethodForKey($method);
-        $derivedSeed = crc32(implode("\0", [$this->specName, $normalizedMethod, $path, (string) $this->seed])) & 0x7fffffff;
-
-        return ExploredOperation::fromDeclaration($this->specName, $path, $method, $rawOperation, $derivedSeed);
-    }
-
     private function runOperation(
         ExploredOperation $operation,
         ExplorationCases $cases,
         int &$executedCases,
     ): void {
-        try {
-            if ($this->setUp !== null) {
-                ($this->setUp)($operation);
-            }
-            if ($this->authenticate !== null) {
-                ($this->authenticate)($operation);
-            }
-
+        $this->runWithOperationHooks($operation, true, function () use ($operation, $cases, &$executedCases): void {
             foreach ($cases as $caseIndex => $generatedCase) {
                 $case = $generatedCase;
 
@@ -239,11 +190,7 @@ final class OpenApiSpecExploration
                     throw new RuntimeException($this->caseFailureMessage($operation, $case, $caseIndex), 0, $e);
                 }
             }
-        } finally {
-            if ($this->tearDown !== null) {
-                ($this->tearDown)($operation);
-            }
-        }
+        });
     }
 
     private function caseFailureMessage(ExploredOperation $operation, ExploredCase $case, int $caseIndex): string

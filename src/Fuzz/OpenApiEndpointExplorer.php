@@ -368,20 +368,8 @@ final class OpenApiEndpointExplorer
      */
     private static function schemasForOperation(string $specName, string $method, string $path): array
     {
-        $spec = OpenApiSpecLoader::load($specName);
-        /** @var array<string, mixed> $paths */
-        $paths = is_array($spec['paths'] ?? null) ? $spec['paths'] : [];
-        $matchedPath = self::resolveMatchedPath($paths, $path);
-        if ($matchedPath === null || !is_array($paths[$matchedPath] ?? null)) {
-            throw new InvalidArgumentException(sprintf("Path '%s' is not declared in OpenAPI spec '%s'.", $path, $specName));
-        }
-        $methodUpper = strtoupper($method);
-        $pathSpec = $paths[$matchedPath];
-        $resolved = OpenApiOperationResolver::resolve($pathSpec, $methodUpper);
-        if (!$resolved['found'] || !is_array($resolved['operation'])) {
-            throw new InvalidArgumentException(sprintf("Operation %s '%s' is not declared in OpenAPI spec '%s'.", $methodUpper, $matchedPath, $specName));
-        }
-        $operation = $resolved['operation'];
+        [$spec, $methodEnum, $matchedPath, $pathSpec, $operation] = self::resolveOperationContext($specName, $method, $path, 1);
+        $methodUpper = $methodEnum->value;
         $version = OpenApiVersion::fromSpec($spec);
         $dialect = OpenApiSchemaDialect::fromSpec($spec, $version);
         $body = self::extractRequestBodySchema($operation, $version, $methodUpper, $matchedPath, $specName, $dialect, $spec);
