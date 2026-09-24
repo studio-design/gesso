@@ -94,6 +94,10 @@ class ViolationBaselineCollectorTest extends TestCase
         // Enforcement needs the full error list too: a truncated list could
         // hide a new violation behind baselined ones and suppress it.
         ViolationBaselineEnforcer::setCurrent(new ViolationBaselineEnforcer(new ViolationBaseline()));
-        $this->assertSame(0, ViolationBaselineCollector::uncap(20));
+        // Through a variable: PHPStan 2.2.15 remembers the narrowed result of
+        // the identical assertSame(0, uncap(20)) expression above and reports
+        // this one as always true.
+        $uncapped = ViolationBaselineCollector::uncap(20);
+        $this->assertSame(0, $uncapped);
     }
 }
