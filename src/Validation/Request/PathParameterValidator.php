@@ -6,9 +6,7 @@ namespace Studio\Gesso\Validation\Request;
 
 use Studio\Gesso\OpenApiVersion;
 use Studio\Gesso\SchemaContext;
-use Studio\Gesso\Spec\OpenApiSchemaConverter;
 use Studio\Gesso\Validation\Support\NamedError;
-use Studio\Gesso\Validation\Support\ObjectConverter;
 use Studio\Gesso\Validation\Support\SchemaValidatorRunner;
 use Studio\Gesso\Validation\Support\TypeCoercer;
 
@@ -89,15 +87,7 @@ final class PathParameterValidator
 
             $decoded = rawurldecode($pathVariables[$name]);
             $coerced = TypeCoercer::coercePrimitive($decoded, $schema);
-            $jsonSchema = OpenApiSchemaConverter::convert($schema, $version, SchemaContext::Request, null, $jsonSchemaDialect);
-
-            $schemaObject = ObjectConverter::convert($jsonSchema);
-            $dataObject = ObjectConverter::convert($coerced);
-
-            foreach ($this->runner->validateStructured($schemaObject, $dataObject) as $violation) {
-                $suffix = $violation->displayPath() === '/' ? '' : $violation->displayPath();
-                $errors[] = new NamedError($name, "[path.{$name}{$suffix}] {$violation->message}", $violation->instancePath, $violation->keyword);
-            }
+            $errors = [...$errors, ...$this->runner->validateNamed($name, "path.{$name}", $schema, $coerced, $version, SchemaContext::Request, $jsonSchemaDialect)];
         }
 
         // Reverse check: every `{placeholder}` in the URL template MUST be declared

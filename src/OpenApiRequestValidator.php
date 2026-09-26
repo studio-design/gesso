@@ -319,7 +319,7 @@ final class OpenApiRequestValidator
         /** @var array<string, mixed> $operation */
         $collected = ParameterCollector::collect($method, $matchedPath, $pathSpec, $operation);
 
-        // Each sub-validator is wrapped in ValidatorErrorBoundary::safely() so a
+        // Each sub-validator is wrapped in ValidatorErrorBoundary::safelyNamed() so a
         // RuntimeException thrown from one (typically an opis/json-schema
         // SchemaException via body validation — e.g. InvalidKeywordException from a
         // malformed `pattern` keyword, or UnresolvedReferenceException from a $ref
@@ -333,7 +333,7 @@ final class OpenApiRequestValidator
         // a single test run surfaces as much contract drift as possible.
         // The body validator returns a richer DTO (errors + an optional
         // skipReason) rather than a bare string[], so it cannot flow through
-        // ValidatorErrorBoundary::safely() like the other sub-validators.
+        // ValidatorErrorBoundary::safelyNamed() like the other sub-validators.
         // validateBody() runs it behind the same narrow RuntimeException
         // boundary inline — mirrors OpenApiResponseValidator::validateBody().
         // Carry the resolved root + enforce gate so the body validator can
@@ -524,7 +524,7 @@ final class OpenApiRequestValidator
 
     /**
      * Run the request-body validator behind the same narrow
-     * `RuntimeException` boundary {@see ValidatorErrorBoundary::safely()}
+     * `RuntimeException` boundary {@see ValidatorErrorBoundary::safelyNamed()}
      * applies to the other sub-validators: a `RuntimeException` (typically
      * an opis/json-schema `SchemaException` raised from schema conversion
      * or validation) is converted to an error string instead of aborting

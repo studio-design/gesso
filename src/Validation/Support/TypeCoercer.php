@@ -44,6 +44,31 @@ final class TypeCoercer
     }
 
     /**
+     * Whether the schema's top-level type explicitly accepts a JSON object.
+     * Handles OAS 3.0 (`type: object`) and OAS 3.1/3.2 (`type: ["object", "null"]`).
+     * Composition keywords (`oneOf` / `anyOf` / `allOf`) are intentionally
+     * NOT walked — the body validators only coerce an empty PHP array to an
+     * empty object for the unambiguous case, so a real type-mismatch error
+     * still surfaces for `type: array` schemas.
+     *
+     * @param array<string, mixed> $schema
+     */
+    public static function acceptsObject(array $schema): bool
+    {
+        $type = $schema['type'] ?? null;
+
+        if (is_string($type)) {
+            return $type === 'object';
+        }
+
+        if (is_array($type)) {
+            return in_array('object', $type, true);
+        }
+
+        return false;
+    }
+
+    /**
      * Scalar-only variant used for path / header parameters. The input arrives
      * as a single string (OpenAPI default `style: simple`) so array handling
      * is never appropriate — a spec declaring `type: array` for such a param

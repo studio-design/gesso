@@ -117,18 +117,6 @@ final class ContentTypeMatcher
     }
 
     /**
-     * Check whether the given (already normalised, lower-cased) content type
-     * matches any content type key defined in the spec. Spec keys are
-     * lower-cased before comparison.
-     *
-     * @param array<string, mixed> $content
-     */
-    public static function isContentTypeInSpec(string $normalizedContentType, array $content): bool
-    {
-        return self::findContentTypeKey($normalizedContentType, $content) !== null;
-    }
-
-    /**
      * Return the spec key (with the spec author's original casing) whose
      * lower-cased form matches the given normalised content type, or null
      * when no spec key matches. Used by coverage tracking to surface the
