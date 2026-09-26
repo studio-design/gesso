@@ -13,8 +13,6 @@ use Closure;
 use Illuminate\Testing\TestResponse;
 use InvalidArgumentException;
 use JsonException;
-use PHPUnit\Framework\Assert;
-use PHPUnit\Framework\AssertionFailedError;
 use RuntimeException;
 use Studio\Gesso\Attribute\SkipOpenApi;
 use Studio\Gesso\Baseline\ViolationBaselineCollector;
@@ -22,8 +20,7 @@ use Studio\Gesso\DecodedBody;
 use Studio\Gesso\HttpMethod;
 use Studio\Gesso\Internal\CurlCommandFormatter;
 use Studio\Gesso\Internal\Deprecations;
-use Studio\Gesso\Internal\HttpFoundationOpenApiAssertions;
-use Studio\Gesso\Internal\StackTraceFilter;
+use Studio\Gesso\Internal\OpenApiAssertionCore;
 use Studio\Gesso\OpenApiRequestValidator;
 use Studio\Gesso\OpenApiResponseValidator;
 use Studio\Gesso\OpenApiValidationResult;
@@ -59,7 +56,7 @@ use function var_export;
 
 trait ValidatesOpenApiSchema
 {
-    use HttpFoundationOpenApiAssertions;
+    use OpenApiAssertionCore;
     use ResolvesOpenApiSpec;
     use SkipOpenApiResolver;
 
@@ -613,21 +610,9 @@ trait ValidatesOpenApiSchema
      */
     private static function slotIsAlreadyPopulated(mixed $value): bool
     {
-        if ($value === null) {
-            return false;
-        }
+        $first = is_array($value) ? ($value[array_key_first($value) ?? ''] ?? null) : $value;
 
-        if (is_array($value)) {
-            if ($value === []) {
-                return false;
-            }
-
-            $first = $value[array_key_first($value)] ?? null;
-
-            return is_string($first) && $first !== '';
-        }
-
-        return is_string($value) && $value !== '';
+        return is_string($first) && $first !== '';
     }
 
     /**
@@ -1045,35 +1030,50 @@ trait ValidatesOpenApiSchema
     /** @return list<string> */
     private function resolveAcknowledgedUnvalidatableSchemes(): array
     {
-        $raw = config('gesso.acknowledged_unvalidatable_schemes', []);
+        return $this->resolveStringListConfig('acknowledged_unvalidatable_schemes', [], 'security scheme name');
+    }
+
+    /**
+     * Read a `gesso.$key` list of non-empty strings, failing loudly on any
+     * other shape so a typo is not silently read as "nothing configured".
+     *
+     * @param list<string> $default
+     * @param string $what singular noun for the error prose, e.g. "regex pattern"
+     *
+     * @return list<string>
+     */
+    private function resolveStringListConfig(string $key, array $default, string $what): array
+    {
+        $raw = config('gesso.' . $key, $default);
 
         if (!is_array($raw)) {
             $this->failOpenApi(sprintf(
-                'gesso.acknowledged_unvalidatable_schemes must be an array of security scheme names, got %s: %s.',
+                'gesso.%s must be an array of %ss, got %s: %s.',
+                $key,
+                $what,
                 get_debug_type($raw),
                 var_export($raw, true),
             ));
         }
 
-        $names = [];
-        foreach ($raw as $index => $name) {
-            if (!is_string($name)) {
+        $values = [];
+        foreach ($raw as $index => $value) {
+            if (!is_string($value)) {
                 $this->failOpenApi(sprintf(
-                    'gesso.acknowledged_unvalidatable_schemes[%s] must be a string security scheme name, got %s.',
+                    'gesso.%s[%s] must be a string %s, got %s.',
+                    $key,
                     (string) $index,
-                    get_debug_type($name),
+                    $what,
+                    get_debug_type($value),
                 ));
             }
-            if ($name === '') {
-                $this->failOpenApi(sprintf(
-                    'gesso.acknowledged_unvalidatable_schemes[%s] must not be an empty string.',
-                    (string) $index,
-                ));
+            if ($value === '') {
+                $this->failOpenApi(sprintf('gesso.%s[%s] must not be an empty string.', $key, (string) $index));
             }
-            $names[] = $name;
+            $values[] = $value;
         }
 
-        return $names;
+        return $values;
     }
 
     private function resolveMaxErrors(): int
@@ -1091,72 +1091,21 @@ trait ValidatesOpenApiSchema
     /** @return string[] */
     private function resolveSkipResponseCodes(): array
     {
-        $raw = config('gesso.skip_response_codes', OpenApiResponseValidator::DEFAULT_SKIP_RESPONSE_CODES);
-
-        if (!is_array($raw)) {
-            $this->failOpenApi(sprintf(
-                'gesso.skip_response_codes must be an array of regex patterns, got %s: %s.',
-                get_debug_type($raw),
-                var_export($raw, true),
-            ));
-        }
-
-        $patterns = [];
-        foreach ($raw as $index => $pattern) {
-            if (!is_string($pattern)) {
-                $this->failOpenApi(sprintf(
-                    'gesso.skip_response_codes[%s] must be a string regex pattern, got %s.',
-                    (string) $index,
-                    get_debug_type($pattern),
-                ));
-            }
-            if ($pattern === '') {
-                $this->failOpenApi(sprintf(
-                    'gesso.skip_response_codes[%s] must not be an empty string.',
-                    (string) $index,
-                ));
-            }
-            $patterns[] = $pattern;
-        }
-
-        return $patterns;
+        return $this->resolveStringListConfig(
+            'skip_response_codes',
+            OpenApiResponseValidator::DEFAULT_SKIP_RESPONSE_CODES,
+            'regex pattern',
+        );
     }
 
     /** @return string[] */
     private function resolveSkipRequestValidationResponseCodes(): array
     {
-        $raw = config(
-            'gesso.skip_request_validation_response_codes',
+        return $this->resolveStringListConfig(
+            'skip_request_validation_response_codes',
             OpenApiRequestValidator::DEFAULT_SKIP_REQUEST_VALIDATION_RESPONSE_CODES,
+            'regex pattern',
         );
-
-        if (!is_array($raw)) {
-            $this->failOpenApi(sprintf(
-                'gesso.skip_request_validation_response_codes must be an array of regex patterns, got %s: %s.',
-                get_debug_type($raw),
-                var_export($raw, true),
-            ));
-        }
-
-        $patterns = [];
-        foreach ($raw as $index => $pattern) {
-            if (!is_string($pattern)) {
-                $this->failOpenApi(sprintf(
-                    'gesso.skip_request_validation_response_codes[%s] must be a string regex pattern, got %s.',
-                    (string) $index,
-                    get_debug_type($pattern),
-                ));
-            }
-            if ($pattern === '') {
-                $this->failOpenApi(sprintf(
-                    'gesso.skip_request_validation_response_codes[%s] must not be an empty string.',
-                    (string) $index,
-                ));
-            }
-            $patterns[] = $pattern;
-        }
-
-        return $patterns;
     }
 
     private function emitSkipOpenApiWarning(SkipOpenApi $attribute): void
@@ -1207,7 +1156,7 @@ trait ValidatesOpenApiSchema
 
     /**
      * Frozen private name (docs/versioning.md); the body lives in
-     * HttpFoundationOpenApiAssertions::assertHttpFoundationOpenApiResult().
+     * OpenApiAssertionCore::assertOpenApiResult().
      *
      * @param Closure(): string $reproduceCommand
      */
@@ -1220,27 +1169,7 @@ trait ValidatesOpenApiSchema
         Closure $reproduceCommand,
         ?string $recordExcludeCategory = null,
     ): void {
-        $this->assertHttpFoundationOpenApiResult($result, $specName, $method, $path, $header, $reproduceCommand, $recordExcludeCategory);
-    }
-
-    /** Like Assert::fail() but with vendor frames stripped from the trace. */
-    private function failOpenApi(string $message): never
-    {
-        try {
-            Assert::fail($message);
-        } catch (AssertionFailedError $e) {
-            StackTraceFilter::rethrowWithCleanTrace($e);
-        }
-    }
-
-    /** Like Assert::assertTrue() but with vendor frames stripped from the trace on failure. */
-    private function assertOpenApi(bool $condition, string $message): void
-    {
-        try {
-            Assert::assertTrue($condition, $message);
-        } catch (AssertionFailedError $e) {
-            StackTraceFilter::rethrowWithCleanTrace($e);
-        }
+        $this->assertOpenApiResult($result, $specName, $method, $path, $header, $reproduceCommand, $recordExcludeCategory);
     }
 
     private function isAutoAssertEnabled(): bool
