@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Schema;
 
-use const DIRECTORY_SEPARATOR;
 use const E_USER_WARNING;
 use const JSON_THROW_ON_ERROR;
 use const PATHINFO_EXTENSION;
@@ -19,6 +18,7 @@ use Studio\Gesso\Exception\EnumBindingReason;
 use Studio\Gesso\Exception\EnumDriftException;
 use Studio\Gesso\Exception\InvalidOpenApiSpecException;
 use Studio\Gesso\Exception\InvalidOpenApiSpecReason;
+use Studio\Gesso\Internal\SpecPath;
 use Studio\Gesso\Internal\YamlAvailability;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Symfony\Component\Yaml\Yaml;
@@ -30,7 +30,6 @@ use function array_values;
 use function count;
 use function enum_exists;
 use function error_get_last;
-use function explode;
 use function file_exists;
 use function file_get_contents;
 use function get_debug_type;
@@ -42,13 +41,8 @@ use function is_int;
 use function is_string;
 use function json_decode;
 use function pathinfo;
-use function preg_match;
 use function realpath;
-use function rtrim;
 use function sprintf;
-use function str_contains;
-use function str_replace;
-use function str_starts_with;
 use function strtolower;
 use function trigger_error;
 
@@ -356,16 +350,11 @@ final class EnumDriftAsserter
     {
         $basePath = self::resolveEnumBasePath($fqcn, $specPath);
 
-        $portableSpecPath = str_replace('\\', '/', $specPath);
-        if (str_contains($portableSpecPath, "\0") ||
-            str_starts_with($portableSpecPath, '/') ||
-            preg_match('/^[A-Za-z]:\//', $portableSpecPath) === 1 ||
-            in_array('..', explode('/', $portableSpecPath), true)
-        ) {
+        if (SpecPath::escapesBase($specPath)) {
             throw self::specFileNotFound($fqcn, $specPath);
         }
 
-        $candidate = self::joinBasePath($basePath, $specPath);
+        $candidate = SpecPath::join($basePath, $specPath);
 
         if (!file_exists($candidate)) {
             throw self::specFileNotFound($fqcn, $specPath, $candidate);
@@ -375,7 +364,7 @@ final class EnumDriftAsserter
         $canonicalBase = realpath($basePath);
         if ($absolute === false ||
             $canonicalBase === false ||
-            !self::isPathInsideRoot($absolute, $canonicalBase)
+            !SpecPath::isInsideRoot($absolute, $canonicalBase)
         ) {
             throw self::specFileNotFound($fqcn, $specPath, $candidate);
         }
@@ -534,28 +523,6 @@ final class EnumDriftAsserter
                 previous: $e,
             );
         }
-    }
-
-    private static function joinBasePath(string $basePath, string $relativePath): string
-    {
-        if ($basePath === '') {
-            return $relativePath;
-        }
-
-        $basePath = rtrim($basePath, '/\\');
-
-        return ($basePath === '' ? DIRECTORY_SEPARATOR : $basePath . DIRECTORY_SEPARATOR) . $relativePath;
-    }
-
-    private static function isPathInsideRoot(string $path, string $root): bool
-    {
-        $root = rtrim($root, '/\\');
-        if (DIRECTORY_SEPARATOR === '\\') {
-            $path = strtolower($path);
-            $root = strtolower($root);
-        }
-
-        return $path === $root || str_starts_with($path, $root . DIRECTORY_SEPARATOR);
     }
 
     private static function specFileNotFound(

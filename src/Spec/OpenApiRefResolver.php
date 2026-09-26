@@ -1364,6 +1364,8 @@ final class OpenApiRefResolver
         }
 
         if (str_starts_with($ref, 'http://') || str_starts_with($ref, 'https://')) {
+            // Redact the parameter in this frame so a fetch-failure stack trace
+            // prints the safe URL, not the credential-bearing original.
             $rawRef = $ref;
             $ref = HttpRefLoader::redactSensitiveUrlData($ref);
             self::resolveHttpRef($node, $rawRef, $chain, $context, $documentCache, $targetIsSchema);
@@ -1508,8 +1510,45 @@ final class OpenApiRefResolver
         // Canonicalize internal refs against the current document so cycles
         // that span files are detected against per-file pointers, not the
         // raw `#/...` string (which is ambiguous across documents).
-        $chainKey = self::canonicalChainKey($context->sourceFile, $ref);
+        self::resolveFragmentIn(
+            $node,
+            $ref,
+            $ref,
+            $root,
+            self::canonicalChainKey($context->sourceFile, $ref),
+            sprintf('Unresolvable $ref: target not found for %s', $ref),
+            $chain,
+            $context,
+            $context,
+            $documentCache,
+            $targetIsSchema,
+        );
+    }
 
+    /**
+     * Resolve a `#/...` pointer inside `$root`: cycle detection, lookup, the
+     * object-target guard, then recursion with the chain extended. Shared by
+     * same-document refs and the fragment half of external refs, which differ
+     * only in which document is the root and how the chain key is spelled.
+     *
+     * @param array<int|string, mixed> $node
+     * @param array<string, mixed> $root
+     * @param list<string> $chain
+     * @param array<string, array<string, mixed>> $documentCache
+     */
+    private static function resolveFragmentIn(
+        array &$node,
+        string $ref,
+        string $internalRef,
+        array $root,
+        string $chainKey,
+        string $unresolvableMessage,
+        array $chain,
+        RefResolutionContext $lookupContext,
+        RefResolutionContext $context,
+        array &$documentCache,
+        bool $targetIsSchema,
+    ): void {
         if (in_array($chainKey, $chain, true)) {
             throw new InvalidOpenApiSpecException(
                 InvalidOpenApiSpecReason::CircularRef,
@@ -1518,11 +1557,11 @@ final class OpenApiRefResolver
             );
         }
 
-        [$found, $target] = self::lookup($ref, $root);
+        [$found, $target] = self::lookup($internalRef, $root);
         if (!$found) {
             throw new InvalidOpenApiSpecException(
                 InvalidOpenApiSpecReason::UnresolvableRef,
-                sprintf('Unresolvable $ref: target not found for %s', $ref),
+                $unresolvableMessage,
                 ref: $ref,
             );
         }
@@ -1541,7 +1580,7 @@ final class OpenApiRefResolver
         // the target. Sibling keys alongside $ref are dropped here per OAS 3.0
         // ("any sibling elements of a $ref are ignored"); for 3.1/3.2 Schema
         // Objects the caller re-applies them around this result.
-        [$targetContext, $declaration] = self::enclosingResource($root, $ref, $context);
+        [$targetContext, $declaration] = self::enclosingResource($root, $internalRef, $lookupContext);
         self::walk($target, $root, [...$chain, $chainKey], false, $targetContext, $documentCache, isSchema: $targetIsSchema);
         $node = self::preserveResourceDialect($target, $declaration, $context, $targetIsSchema);
     }
@@ -1742,37 +1781,19 @@ final class OpenApiRefResolver
 
         if ($fragment !== '') {
             $internalRef = '#' . $fragment;
-            $chainKey = self::canonicalChainKey($absoluteUri, $internalRef);
-
-            if (in_array($chainKey, $chain, true)) {
-                throw new InvalidOpenApiSpecException(
-                    InvalidOpenApiSpecReason::CircularRef,
-                    sprintf('Circular $ref detected: %s', implode(' -> ', [...$chain, $chainKey])),
-                    ref: $ref,
-                );
-            }
-
-            [$found, $target] = self::lookup($internalRef, $newRoot);
-            if (!$found) {
-                throw new InvalidOpenApiSpecException(
-                    InvalidOpenApiSpecReason::UnresolvableRef,
-                    sprintf('Unresolvable $ref: fragment %s not found in %s', $fragment, $absoluteUri),
-                    ref: $ref,
-                );
-            }
-
-            $target = self::normalizeEmptyObjectRefTarget($target);
-            if (!is_array($target)) {
-                throw new InvalidOpenApiSpecException(
-                    InvalidOpenApiSpecReason::NonObjectRefTarget,
-                    sprintf('$ref target is not an object: %s points to a %s value', $ref, get_debug_type($target)),
-                    ref: $ref,
-                );
-            }
-
-            [$targetContext, $declaration] = self::enclosingResource($newRoot, $internalRef, $documentContext);
-            self::walk($target, $newRoot, [...$chain, $chainKey], false, $targetContext, $documentCache, isSchema: $targetIsSchema);
-            $node = self::preserveResourceDialect($target, $declaration, $context, $targetIsSchema);
+            self::resolveFragmentIn(
+                $node,
+                $ref,
+                $internalRef,
+                $newRoot,
+                self::canonicalChainKey($absoluteUri, $internalRef),
+                sprintf('Unresolvable $ref: fragment %s not found in %s', $fragment, $absoluteUri),
+                $chain,
+                $documentContext,
+                $context,
+                $documentCache,
+                $targetIsSchema,
+            );
 
             return;
         }

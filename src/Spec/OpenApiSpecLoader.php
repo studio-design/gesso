@@ -4,13 +4,10 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Spec;
 
-use const DIRECTORY_SEPARATOR;
 use const E_USER_WARNING;
-use const JSON_THROW_ON_ERROR;
 use const PHP_URL_HOST;
 
 use InvalidArgumentException;
-use JsonException;
 use Psr\Http\Client\ClientInterface;
 use Psr\Http\Message\RequestFactoryInterface;
 use Studio\Gesso\Exception\InvalidOpenApiSpecException;
@@ -20,22 +17,17 @@ use Studio\Gesso\Internal\HttpRefLoader;
 use Studio\Gesso\Internal\OpenApiDocumentShapeNormalizer;
 use Studio\Gesso\Internal\RemoteAuthorization;
 use Studio\Gesso\Internal\SpecDocumentDecoder;
+use Studio\Gesso\Internal\SpecPath;
 use Studio\Gesso\Internal\YamlAvailability;
 use Studio\Gesso\OpenApiVersion;
-use Symfony\Component\Yaml\Exception\ParseException;
-use Symfony\Component\Yaml\Yaml;
 
 use function array_key_exists;
-use function explode;
 use function file_exists;
 use function file_get_contents;
-use function get_debug_type;
 use function getenv;
 use function implode;
 use function in_array;
-use function is_array;
 use function is_string;
-use function json_decode;
 use function parse_url;
 use function preg_match;
 use function realpath;
@@ -43,9 +35,7 @@ use function rtrim;
 use function sprintf;
 use function str_contains;
 use function str_ends_with;
-use function str_replace;
 use function str_starts_with;
-use function strtolower;
 use function trigger_error;
 use function trim;
 
@@ -265,15 +255,30 @@ final class OpenApiSpecLoader
 
         ['path' => $path, 'extension' => $extension] = self::resolveSpecFile($specName);
 
-        $decoded = match ($extension) {
-            'json' => self::decodeJsonSpec($path, $specName),
-            'yaml', 'yml' => self::decodeYamlSpec($path, $specName),
-            default => throw new InvalidOpenApiSpecException(
-                InvalidOpenApiSpecReason::UnsupportedExtension,
-                "Unsupported spec extension: .{$extension}",
-                specName: $specName,
-            ),
-        };
+        $content = file_get_contents($path);
+        if ($content === false) {
+            // I/O failure after resolveSpecFile() already confirmed the file
+            // exists is practically always a permissions / concurrent-unlink
+            // issue — treat the file as effectively missing.
+            throw new SpecFileNotFoundException(
+                $specName,
+                self::getBasePath(),
+                "Failed to read OpenAPI spec: {$path}",
+            );
+        }
+
+        try {
+            $decoded = match ($extension) {
+                'json' => SpecDocumentDecoder::decodeJson($content, $path),
+                'yaml', 'yml' => SpecDocumentDecoder::decodeYaml($content, $path),
+                default => throw new InvalidOpenApiSpecException(
+                    InvalidOpenApiSpecReason::UnsupportedExtension,
+                    "Unsupported spec extension: .{$extension}",
+                ),
+            };
+        } catch (InvalidOpenApiSpecException $e) {
+            throw $e->withSpecName($specName);
+        }
 
         self::assertSupportedDocument($decoded, $specName);
 
@@ -326,16 +331,6 @@ final class OpenApiSpecLoader
     public static function clearCache(): void
     {
         self::$cache = [];
-    }
-
-    /**
-     * Remove a single spec from the cache.
-     *
-     * @internal Test seam — production code never needs this.
-     */
-    public static function evict(string $specName): void
-    {
-        unset(self::$cache[$specName]);
     }
 
     /**
@@ -574,17 +569,12 @@ final class OpenApiSpecLoader
         // `bundled/front`) but must never select a parent or an absolute
         // filesystem location. Reject these shapes before checking existence
         // so callers cannot use the exception category as an existence probe.
-        $portableSpecName = str_replace('\\', '/', $specName);
-        if (str_contains($portableSpecName, "\0") ||
-            str_starts_with($portableSpecName, '/') ||
-            preg_match('/^[A-Za-z]:\//', $portableSpecName) === 1 ||
-            in_array('..', explode('/', $portableSpecName), true)
-        ) {
+        if (SpecPath::escapesBase($specName)) {
             throw self::specFileNotFound($specName, $basePath);
         }
 
         foreach (self::SEARCH_EXTENSIONS as $extension) {
-            $candidate = self::joinBasePath($basePath, "{$specName}.{$extension}");
+            $candidate = SpecPath::join($basePath, "{$specName}.{$extension}");
             if (!file_exists($candidate)) {
                 continue;
             }
@@ -593,7 +583,7 @@ final class OpenApiSpecLoader
             $canonicalBase = realpath($basePath);
             if ($canonicalCandidate === false ||
                 $canonicalBase === false ||
-                !self::isPathInsideRoot($canonicalCandidate, $canonicalBase)
+                !SpecPath::isInsideRoot($canonicalCandidate, $canonicalBase)
             ) {
                 throw self::specFileNotFound($specName, $basePath);
             }
@@ -602,31 +592,6 @@ final class OpenApiSpecLoader
         }
 
         throw self::specFileNotFound($specName, $basePath);
-    }
-
-    private static function joinBasePath(
-        string $basePath,
-        string $relativePath,
-        string $separator = DIRECTORY_SEPARATOR,
-    ): string {
-        if ($basePath === '') {
-            return $relativePath;
-        }
-
-        $basePath = rtrim($basePath, '/\\');
-
-        return ($basePath === '' ? $separator : $basePath . $separator) . $relativePath;
-    }
-
-    private static function isPathInsideRoot(string $path, string $root): bool
-    {
-        $root = rtrim($root, '/\\');
-        if (DIRECTORY_SEPARATOR === '\\') {
-            $path = strtolower($path);
-            $root = strtolower($root);
-        }
-
-        return $path === $root || str_starts_with($path, $root . DIRECTORY_SEPARATOR);
     }
 
     private static function normalizeConfiguredBasePath(string $path): string
@@ -656,84 +621,5 @@ final class OpenApiSpecLoader
                 '.' . implode(', .', self::SEARCH_EXTENSIONS),
             ),
         );
-    }
-
-    /** @return array<string, mixed> */
-    private static function decodeJsonSpec(string $path, string $specName): array
-    {
-        $content = file_get_contents($path);
-        if ($content === false) {
-            // I/O failure after resolveSpecFile() already confirmed the file
-            // exists is practically always a permissions / concurrent-unlink
-            // issue — treat the file as effectively missing.
-            throw new SpecFileNotFoundException(
-                $specName,
-                self::getBasePath(),
-                "Failed to read OpenAPI spec: {$path}",
-            );
-        }
-
-        try {
-            $decoded = SpecDocumentDecoder::normalizeObjectMaps(
-                json_decode($content, false, 512, JSON_THROW_ON_ERROR),
-            );
-        } catch (JsonException $e) {
-            throw new InvalidOpenApiSpecException(
-                InvalidOpenApiSpecReason::MalformedJson,
-                "Failed to parse JSON OpenAPI spec: {$path}. {$e->getMessage()}",
-                specName: $specName,
-                previous: $e,
-            );
-        }
-
-        if (!is_array($decoded)) {
-            throw new InvalidOpenApiSpecException(
-                InvalidOpenApiSpecReason::NonMappingRoot,
-                sprintf('JSON OpenAPI spec must decode to a mapping (got %s): %s', get_debug_type($decoded), $path),
-                specName: $specName,
-            );
-        }
-
-        /** @var array<string, mixed> $decoded */
-        return $decoded;
-    }
-
-    /** @return array<string, mixed> */
-    private static function decodeYamlSpec(string $path, string $specName): array
-    {
-        if (!YamlAvailability::isAvailable()) {
-            throw new InvalidOpenApiSpecException(
-                InvalidOpenApiSpecReason::YamlLibraryMissing,
-                'Loading YAML OpenAPI specs requires symfony/yaml. '
-                . 'Install it via: composer require --dev symfony/yaml',
-                specName: $specName,
-            );
-        }
-
-        // Yaml::parseFile wraps its own I/O failures in ParseException, so a
-        // single catch covers both syntax errors and file-read problems.
-        try {
-            $decoded = SpecDocumentDecoder::normalizeObjectMaps(
-                Yaml::parseFile($path, Yaml::PARSE_OBJECT_FOR_MAP),
-            );
-        } catch (ParseException $e) {
-            throw new InvalidOpenApiSpecException(
-                InvalidOpenApiSpecReason::MalformedYaml,
-                "Failed to parse YAML OpenAPI spec: {$path}. {$e->getMessage()}",
-                specName: $specName,
-                previous: $e,
-            );
-        }
-
-        if (!is_array($decoded)) {
-            throw new InvalidOpenApiSpecException(
-                InvalidOpenApiSpecReason::NonMappingRoot,
-                sprintf('YAML OpenAPI spec must decode to a mapping (got %s): %s', get_debug_type($decoded), $path),
-                specName: $specName,
-            );
-        }
-
-        /** @var array<string, mixed> $decoded */
-        return $decoded;
     }
 }

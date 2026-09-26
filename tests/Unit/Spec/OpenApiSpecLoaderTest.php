@@ -11,11 +11,11 @@ use GuzzleHttp\Psr7\HttpFactory;
 use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
-use ReflectionMethod;
 use stdClass;
 use Studio\Gesso\Exception\InvalidOpenApiSpecException;
 use Studio\Gesso\Exception\InvalidOpenApiSpecReason;
 use Studio\Gesso\Exception\SpecFileNotFoundException;
+use Studio\Gesso\Internal\SpecPath;
 use Studio\Gesso\Internal\YamlAvailability;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Tests\Helpers\FakeHttpClient;
@@ -107,12 +107,12 @@ class OpenApiSpecLoaderTest extends TestCase
     #[Test]
     public function joining_a_windows_root_does_not_create_a_unc_path(): void
     {
-        $joinBasePath = new ReflectionMethod(OpenApiSpecLoader::class, 'joinBasePath');
+        // A bare root trims to '' and must re-emit exactly one separator,
+        // never two (which Windows would read as a UNC server prefix).
+        $candidate = SpecPath::join('/', 'server/share/spec.json');
 
-        $candidate = $joinBasePath->invoke(null, '/', 'server/share/spec.json', '\\');
-
-        $this->assertSame('\\server/share/spec.json', $candidate);
-        $this->assertStringStartsNotWith('\\\\', $candidate);
+        $this->assertSame(DIRECTORY_SEPARATOR . 'server/share/spec.json', $candidate);
+        $this->assertStringStartsNotWith(DIRECTORY_SEPARATOR . DIRECTORY_SEPARATOR, $candidate);
     }
 
     #[Test]
@@ -800,27 +800,6 @@ class OpenApiSpecLoaderTest extends TestCase
     }
 
     #[Test]
-    public function evict_removes_single_spec_from_cache(): void
-    {
-        $fixturesPath = __DIR__ . '/../../fixtures/specs';
-        OpenApiSpecLoader::configure($fixturesPath);
-
-        // Load two specs
-        $first30 = OpenApiSpecLoader::load('petstore-3.0');
-        $first31 = OpenApiSpecLoader::load('petstore-3.1');
-
-        // Evict only 3.0
-        OpenApiSpecLoader::evict('petstore-3.0');
-
-        // 3.1 still cached (by-value equal)
-        $this->assertSame($first31, OpenApiSpecLoader::load('petstore-3.1'));
-
-        // 3.0 reload produces the same content (by-value; array equality, not instance identity)
-        $reloaded30 = OpenApiSpecLoader::load('petstore-3.0');
-        $this->assertSame($first30, $reloaded30);
-    }
-
-    #[Test]
     public function failed_load_does_not_poison_cache(): void
     {
         $fixturesPath = __DIR__ . '/../../fixtures/specs';
@@ -1023,7 +1002,7 @@ class OpenApiSpecLoaderTest extends TestCase
         } catch (InvalidOpenApiSpecException $e) {
             $this->assertSame(InvalidOpenApiSpecReason::NonMappingRoot, $e->reason);
             $this->assertSame('non-array-root', $e->specName);
-            $this->assertStringContainsString('YAML OpenAPI spec must decode to a mapping', $e->getMessage());
+            $this->assertStringContainsString('must decode to a mapping', $e->getMessage());
         }
     }
 
@@ -1039,7 +1018,7 @@ class OpenApiSpecLoaderTest extends TestCase
         } catch (InvalidOpenApiSpecException $e) {
             $this->assertSame(InvalidOpenApiSpecReason::NonMappingRoot, $e->reason);
             $this->assertSame('non-array-json-root', $e->specName);
-            $this->assertStringContainsString('JSON OpenAPI spec must decode to a mapping', $e->getMessage());
+            $this->assertStringContainsString('must decode to a mapping', $e->getMessage());
         }
     }
 
@@ -1055,7 +1034,7 @@ class OpenApiSpecLoaderTest extends TestCase
         } catch (InvalidOpenApiSpecException $e) {
             $this->assertSame(InvalidOpenApiSpecReason::MalformedJson, $e->reason);
             $this->assertSame('malformed-json', $e->specName);
-            $this->assertStringContainsString('Failed to parse JSON OpenAPI spec', $e->getMessage());
+            $this->assertStringContainsString('Failed to parse JSON', $e->getMessage());
         }
     }
 

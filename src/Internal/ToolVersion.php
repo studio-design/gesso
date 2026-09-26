@@ -37,14 +37,11 @@ final class ToolVersion
      * surface as other throwables. Silent by design — `'unknown'` is the
      * documented sentinel and every schema that carries the value forbids null,
      * so returning a string is enough.
-     *
-     * @param string $package Overridable so tests can exercise the
-     *                        missing-metadata path; callers pass nothing.
      */
-    public static function resolve(string $package = self::PACKAGE): string
+    public static function resolve(): string
     {
         try {
-            $version = InstalledVersions::getVersion($package);
+            $version = InstalledVersions::getVersion(self::PACKAGE);
         } catch (Throwable) {
             return 'unknown';
         }
