@@ -6,12 +6,6 @@ namespace Studio\Gesso\Validation\Strict;
 
 use InvalidArgumentException;
 
-use function array_map;
-use function implode;
-use function sprintf;
-use function strtolower;
-use function trim;
-
 /**
  * Operating mode for the strict-required (schema under-description) check.
  *
@@ -51,27 +45,7 @@ enum StrictRequiredMode: string
      */
     public static function fromConfigValue(?string $value): self
     {
-        if ($value === null) {
-            return self::Off;
-        }
-
-        $normalized = strtolower(trim($value));
-        if ($normalized === '') {
-            return self::Off;
-        }
-
-        $match = self::tryFrom($normalized);
-        if ($match !== null) {
-            return $match;
-        }
-
-        $accepted = implode(', ', array_map(static fn(self $c): string => $c->value, self::cases()));
-
-        throw new InvalidArgumentException(sprintf(
-            "Unknown strict_required value '%s'. Accepted: %s.",
-            $value,
-            $accepted,
-        ));
+        return ConfigEnumParser::parse(self::class, 'strict_required', $value) ?? self::Off;
     }
 
     public function isEnabled(): bool

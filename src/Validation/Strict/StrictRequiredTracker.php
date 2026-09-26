@@ -238,19 +238,6 @@ final class StrictRequiredTracker
     }
 
     /**
-     * List the spec names that have at least one recorded observation.
-     *
-     * @return list<string>
-     *
-     * @internal Consumed by {@see StrictRequiredAsserter} so it can walk
-     *           only the specs actually touched by the test run.
-     */
-    public static function recordedSpecs(): array
-    {
-        return self::current()->recordedSpecsOn();
-    }
-
-    /**
      * Snapshot the tracker as a JSON-safe payload. Worker processes write
      * this to their sidecar; the merge CLI reconstructs state via
      * {@see self::importState()}.
@@ -344,7 +331,9 @@ final class StrictRequiredTracker
     }
 
     /**
-     * Instance counterpart of {@see self::recordedSpecs()} (Issue #229).
+     * List the spec names that have at least one recorded observation.
+     * Consumed by {@see StrictRequiredAsserter} so it can walk only the
+     * specs actually touched by the test run.
      *
      * @return list<string>
      */

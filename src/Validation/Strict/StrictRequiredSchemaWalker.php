@@ -8,7 +8,6 @@ use function array_unique;
 use function array_values;
 use function is_array;
 use function is_string;
-use function str_replace;
 use function str_starts_with;
 use function strpos;
 use function strtolower;
@@ -556,22 +555,12 @@ final class StrictRequiredSchemaWalker
     }
 
     /**
-     * Append a property name to a JSON-Pointer-like path with RFC 6901
-     * escaping (`~` → `~0`, `/` → `~1`) plus the `[*]` → `[~*]` extension
-     * shared with {@see StrictRequiredBodyWalker::appendProperty()}.
-     *
-     * Inlined rather than shared because the two walkers stay drop-in
-     * independent — the body walker walks observed JSON, this walker walks
-     * the spec, and the escape rules are intentionally pinned to the body
-     * walker's pointer notation. If a new escape is ever needed (e.g.
-     * for a future container syntax), both implementations must move
-     * together — add a regression test in both walkers' test files.
+     * Append a property name to a JSON-Pointer-like path using the body
+     * walker's escape rules, so spec-side and body-side pointers agree.
      */
     private static function appendProperty(string $pointer, string $propertyName): string
     {
-        $escaped = str_replace('~', '~0', $propertyName);
-        $escaped = str_replace('/', '~1', $escaped);
-        $escaped = str_replace('[*]', '[~*]', $escaped);
+        $escaped = StrictRequiredBodyWalker::escapeProperty($propertyName);
 
         if ($pointer === '/') {
             return '/' . $escaped;

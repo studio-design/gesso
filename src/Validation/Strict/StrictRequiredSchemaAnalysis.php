@@ -13,16 +13,12 @@ namespace Studio\Gesso\Validation\Strict;
  * together by the asserter and the per-call checker. Wrapping the triple
  * in this object enforces the "check covering stop-nodes first, then look
  * up required" rule structurally — callers go through {@see self::lookup()}
- * which returns a {@see StrictRequiredDisjunctionMatch} (caller must skip
- * / NOTE), a {@see StrictRequiredMapMatch} (caller must skip silently —
- * dynamically-keyed observations are data, issue #437), or a
- * {@see StrictRequiredKnownRequired} (caller can diff against observed
- * keys). PHPStan exhaustively checks the `instanceof` discriminator on
- * the union return type.
+ * which returns a tagged array: `disjunction` (caller must skip / NOTE —
+ * `required` has no AND-semantic across `anyOf` / `oneOf`), `map` (caller
+ * must skip silently — dynamically-keyed observations are data, issue
+ * #437), or `required` (caller can diff against observed keys).
  *
- * Diagnostic accessors (`disjunctions()`, `walkedPointers()`) are exposed
- * for the asserter's NOTE-rendering loop and for unit-test introspection;
- * neither should be used to bypass the `lookup()` rule.
+ * @phpstan-type Lookup array{kind: 'required', required: list<string>}|array{kind: 'map', coveringPointer: string}|array{kind: 'disjunction', coveringPointer: string, reason: string}
  *
  * @internal Returned by the schema walker; consumers are the asserter and
  *           the per-call checker.
@@ -42,37 +38,25 @@ final class StrictRequiredSchemaAnalysis
 
     /**
      * Resolve a single observed pointer against the schema. Always returns
-     * one of the three leaf variants — never null — so callers' `instanceof`
-     * branches are exhaustive.
+     * one of the three tagged variants — never null — so callers' `kind`
+     * branches are exhaustive. `coveringPointer` is the schema-side pointer
+     * at which descent stopped (empty string means "the root schema itself");
+     * `reason` is one of `anyOf` / `oneOf` / `unwalkable`.
+     *
+     * @return Lookup
      */
-    public function lookup(string $pointer): StrictRequiredDisjunctionMatch|StrictRequiredKnownRequired|StrictRequiredMapMatch
+    public function lookup(string $pointer): array
     {
         $covering = StrictRequiredSchemaWalker::findCoveringDisjunction($pointer, $this->disjunctions);
         if ($covering !== null) {
-            return new StrictRequiredDisjunctionMatch($covering['pointer'], $covering['reason']);
+            return ['kind' => 'disjunction', 'coveringPointer' => $covering['pointer'], 'reason' => $covering['reason']];
         }
 
         $coveringMap = StrictRequiredSchemaWalker::findCoveringMapPointer($pointer, $this->maps);
         if ($coveringMap !== null) {
-            return new StrictRequiredMapMatch($coveringMap);
+            return ['kind' => 'map', 'coveringPointer' => $coveringMap];
         }
 
-        return new StrictRequiredKnownRequired($this->walked[$pointer] ?? []);
-    }
-
-    /**
-     * @return list<array{pointer: string, reason: string}>
-     */
-    public function disjunctions(): array
-    {
-        return $this->disjunctions;
-    }
-
-    /**
-     * @return array<string, list<string>>
-     */
-    public function walkedPointers(): array
-    {
-        return $this->walked;
+        return ['kind' => 'required', 'required' => $this->walked[$pointer] ?? []];
     }
 }

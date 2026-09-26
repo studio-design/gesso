@@ -488,10 +488,6 @@ final class StrictAdditionalPropertiesInspector
 
     private static function appendProperty(string $pointer, string $propertyName): string
     {
-        $escaped = str_replace('~', '~0', $propertyName);
-        $escaped = str_replace('/', '~1', $escaped);
-        $escaped = str_replace('[*]', '[~*]', $escaped);
-
-        return $pointer . '/' . $escaped;
+        return $pointer . '/' . StrictRequiredBodyWalker::escapeProperty($propertyName);
     }
 }

@@ -208,14 +208,14 @@ final class StrictRequiredPerCallChecker
         $missingByPointer = [];
         foreach ($pointers as $pointer => $observedKeys) {
             $lookup = $analysis->lookup($pointer);
-            if ($lookup instanceof StrictRequiredMapMatch) {
+            if ($lookup['kind'] === 'map') {
                 // Map-shaped node (`additionalProperties` schema form or
                 // `true`, no `properties`): observed keys are data, not
                 // shape (issue #437). Unlike the disjunction case there is
                 // nothing for the author to fix, so no NOTE either.
                 continue;
             }
-            if ($lookup instanceof StrictRequiredDisjunctionMatch) {
+            if ($lookup['kind'] === 'disjunction') {
                 // Same rule as the asserter: `required` has no AND-semantic
                 // across `anyOf` / `oneOf`, so "add to required" advice
                 // would mislead. Drop the observation, but emit a one-shot
@@ -227,7 +227,7 @@ final class StrictRequiredPerCallChecker
                         $specName,
                         $endpointId,
                         $responseId,
-                        $lookup->coveringPointer,
+                        $lookup['coveringPointer'],
                     ),
                     sprintf(
                         "[OpenAPI Strict Required per-call] NOTE: %s (%s in spec '%s') observation at "
@@ -238,15 +238,15 @@ final class StrictRequiredPerCallChecker
                         $responseId,
                         $specName,
                         $pointer,
-                        $lookup->reason,
-                        $lookup->coveringPointer === '' ? '<root>' : $lookup->coveringPointer,
+                        $lookup['reason'],
+                        $lookup['coveringPointer'] === '' ? '<root>' : $lookup['coveringPointer'],
                     ),
                 );
 
                 continue;
             }
 
-            $missing = array_values(array_diff($observedKeys, $lookup->required));
+            $missing = array_values(array_diff($observedKeys, $lookup['required']));
             if ($missing === []) {
                 continue;
             }
