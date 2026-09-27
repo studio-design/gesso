@@ -16,6 +16,7 @@ use Studio\Gesso\Spec\OpenApiSpecLoader;
 use function array_diff;
 use function array_keys;
 use function array_map;
+use function array_push;
 use function array_values;
 use function count;
 use function implode;
@@ -205,15 +206,9 @@ final class StrictRequiredAsserter
         $unwalkable = [];
         foreach (StrictRequiredTracker::current()->recordedSpecsOn() as $specName) {
             $spec = self::reportsForSpec($specName);
-            foreach ($spec['reports'] as $report) {
-                $reports[] = $report;
-            }
-            foreach ($spec['unresolved'] as $u) {
-                $unresolved[] = $u;
-            }
-            foreach ($spec['unwalkable'] as $u) {
-                $unwalkable[] = $u;
-            }
+            array_push($reports, ...$spec['reports']);
+            array_push($unresolved, ...$spec['unresolved']);
+            array_push($unwalkable, ...$spec['unwalkable']);
         }
         sort($unresolved);
         sort($unwalkable);

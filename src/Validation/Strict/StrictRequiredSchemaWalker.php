@@ -4,15 +4,16 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Validation\Strict;
 
+use function array_filter;
+use function array_push;
 use function array_unique;
 use function array_values;
+use function explode;
 use function is_array;
 use function is_string;
 use function str_starts_with;
-use function strpos;
 use function strtolower;
 use function strtoupper;
-use function substr;
 
 /**
  * Pure helpers for resolving observed `(method, path, status, content-type,
@@ -54,15 +55,9 @@ final class StrictRequiredSchemaWalker
      */
     public static function splitEndpointKey(string $endpointKey): array
     {
-        $spacePos = strpos($endpointKey, ' ');
-        if ($spacePos === false) {
-            return [strtoupper($endpointKey), '/'];
-        }
+        $parts = explode(' ', $endpointKey, 2);
 
-        return [
-            strtoupper(substr($endpointKey, 0, $spacePos)),
-            substr($endpointKey, $spacePos + 1),
-        ];
+        return [strtoupper($parts[0]), $parts[1] ?? '/'];
     }
 
     /**
@@ -77,15 +72,9 @@ final class StrictRequiredSchemaWalker
      */
     public static function splitResponseKey(string $responseKey): array
     {
-        $colonPos = strpos($responseKey, ':');
-        if ($colonPos === false) {
-            return [$responseKey, StrictRequiredTracker::ANY_CONTENT_TYPE];
-        }
+        $parts = explode(':', $responseKey, 2);
 
-        return [
-            substr($responseKey, 0, $colonPos),
-            substr($responseKey, $colonPos + 1),
-        ];
+        return [$parts[0], $parts[1] ?? StrictRequiredTracker::ANY_CONTENT_TYPE];
     }
 
     /**
@@ -470,20 +459,13 @@ final class StrictRequiredSchemaWalker
      */
     private static function collectRequiredFromSchema(array $schema): array
     {
-        $collected = [];
-        if (isset($schema['required']) && is_array($schema['required'])) {
-            foreach ($schema['required'] as $entry) {
-                if (is_string($entry)) {
-                    $collected[] = $entry;
-                }
-            }
-        }
+        $collected = is_array($schema['required'] ?? null)
+            ? array_values(array_filter($schema['required'], is_string(...)))
+            : [];
         if (isset($schema['allOf']) && is_array($schema['allOf'])) {
             foreach ($schema['allOf'] as $branch) {
                 if (is_array($branch)) {
-                    foreach (self::collectRequiredFromSchema($branch) as $key) {
-                        $collected[] = $key;
-                    }
+                    array_push($collected, ...self::collectRequiredFromSchema($branch));
                 }
             }
         }
@@ -516,9 +498,7 @@ final class StrictRequiredSchemaWalker
                 if (!is_array($branch)) {
                     continue;
                 }
-                foreach (self::collectPropertyBranches($branch) as $name => $sub) {
-                    $out[$name] = $sub;
-                }
+                $out = [...$out, ...self::collectPropertyBranches($branch)];
             }
         }
 
