@@ -38,11 +38,21 @@ and checks all of the following:
   contract failures at `/data/id`, with no unrelated test errors.
 - Omitting the 422 test leaves 5/6 responses covered. A controlled base spec
   without that 422 models a PR adding it; `coverage:gate` then exits 1.
+- CLI and Artisan generate the missing test with `--request-prefix=/api`.
+  It starts incomplete. Removing only that marker makes all six responses
+  covered again, and the gate passes without editing the generated URL.
 
 Expected failures make `verify` succeed; an unexpected result makes it fail.
 Logs, JUnit results, and coverage remain in `build/scenarios/build`. Source files
 and the normal coverage report are untouched. Run only one `verify` process at a
 time because it recreates that directory.
+
+For your own missing responses, run
+`php artisan gesso:stubs --coverage=build/coverage.json --request-prefix=/api`,
+review and complete the generated tests, then rerun the full suite and gate.
+Keep the PHPUnit extension's `strip_prefixes=/api` setting: generation and runtime
+matching are separate. The verifier saves `coverage-missing-422.json` before
+completing the generated test so you can compare the reports.
 
 After an intentional contract change, run `composer export` and review the new
 spec before testing. Automatically regenerating the contract after a breaking

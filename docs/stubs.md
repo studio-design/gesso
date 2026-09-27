@@ -46,12 +46,52 @@ php artisan gesso:stubs --coverage=build/coverage.json
 | `--namespace=<ns>` | per adapter | Namespace for the generated classes. Ignored by `pest`. |
 | `--base-class=<fqcn>` | per adapter | Test class to extend — `PHPUnit\Framework\TestCase`, or `Tests\TestCase` for `laravel`. Ignored by `pest`. |
 | `--dry-run` | off | Report what would be written without writing it. |
+| `--request-prefix=<path>` | none | Prepend the application's mount path to generated Laravel, Symfony, or Pest requests, e.g. `/api`. Does not configure runtime path matching. |
 
 Exit code `0` means stubs were written or there was nothing left to stub; `2`
 means a usage error or an unreadable input.
 
 The Artisan command takes the same options. Its `--spec` accepts a spec *name*
 resolved under `gesso.spec_base_path` as well as a path.
+
+## Applications mounted under a prefix
+
+If your spec declares `/users` but Laravel serves `/api/users`, generate the
+request with an explicit mount path:
+
+```bash
+vendor/bin/gesso stubs --spec=openapi/api.json \
+  --coverage=build/coverage.json --adapter=laravel --request-prefix=/api
+
+# Equivalent, using Laravel's configured spec:
+php artisan gesso:stubs --coverage=build/coverage.json --request-prefix=/api
+```
+
+The generated test calls `/api/users`; its class name, spec attribute, and
+coverage identity still refer to the original operation. Path parameter values
+and query strings are retained. For example, `/users/7?q=alice` becomes
+`/api/users/7?q=alice`. Configure `strip_prefixes=/api` on the PHPUnit extension
+separately so the runtime validator matches that request to `/users`; see
+[server base paths](setup.md#server-base-paths-are-not-stripped-automatically).
+
+The prefix is an absolute URI path, not a URL: `/api` and `/api/v1` are accepted;
+hosts, query strings, fragments, and unencoded whitespace are rejected. Encode
+spaces and non-ASCII characters with percent encoding. Trailing slashes are
+removed before prepending, so `/api/` behaves like `/api`; an empty prefix or `/`
+leaves requests unchanged. The spec's root path `/` becomes `/api/`.
+
+Omitting the option preserves existing output. The generator does not infer a
+mount from `servers` or `strip_prefixes`, and does not remove an existing prefix
+from a spec path. Only supply the portion missing from the spec's paths. The
+response-only `phpunit` adapter rejects a non-empty normalized prefix because
+it does not send HTTP requests.
+
+Existing files are still never overwritten, including when you change the
+prefix. Edit an existing test's URL yourself or use a fresh output directory to
+preview a new stub. New tests still start incomplete: review their payload,
+authentication, and fixtures before removing the marker. The
+[Scramble example](recipes/scramble.md#generate-the-missing-422-test) verifies this
+workflow through to a passing coverage gate.
 
 ## What ends up in a stub
 

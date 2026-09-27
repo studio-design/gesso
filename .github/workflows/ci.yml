@@ -219,7 +219,7 @@ jobs:
           composer setup
           composer test
 
-      - name: Verify drift detection and uncovered 422 gate
+      - name: Verify drift detection and close the 422 gap with a generated test
         working-directory: examples/scramble
         run: composer verify
 

@@ -17,7 +17,7 @@ $files->makeDirectory($workspace, 0o755, true);
 foreach (['app', 'bootstrap', 'config', 'database', 'routes', 'tests', 'scripts', 'openapi'] as $directory) {
     $files->copyDirectory($root . '/' . $directory, $workspace . '/' . $directory);
 }
-foreach (['composer.json', 'phpunit.xml.dist', '.env'] as $file) {
+foreach (['composer.json', 'phpunit.xml.dist', 'artisan', '.env'] as $file) {
     $files->copy($root . '/' . $file, $workspace . '/' . $file);
 }
 $files->link($root . '/vendor', $workspace . '/vendor');
@@ -52,7 +52,7 @@ function runScenario(string $name, array $command, int $expectedExit = 0): strin
     return $output;
 }
 
-function checkSuite(string $name, int $tests, int $failures = 0): SimpleXMLElement
+function checkSuite(string $name, int $tests, int $failures = 0, int $skipped = 0): SimpleXMLElement
 {
     global $workspace;
 
@@ -60,7 +60,8 @@ function checkSuite(string $name, int $tests, int $failures = 0): SimpleXMLEleme
     ensure($report !== false, "{$name}: missing JUnit report");
     ensure(\count($report->xpath('//testcase')) === $tests, "{$name}: unexpected test count");
     ensure(\count($report->xpath('//failure')) === $failures, "{$name}: unexpected failures");
-    ensure(\count($report->xpath('//error | //skipped')) === 0, "{$name}: unexpected errors or skipped tests");
+    ensure(\count($report->xpath('//error')) === 0, "{$name}: unexpected test errors");
+    ensure(\count($report->xpath('//skipped')) === $skipped, "{$name}: unexpected skipped tests");
 
     return $report;
 }
@@ -134,5 +135,39 @@ replaceOnce(
 runScenario('missing-422', [...$phpunit, '--log-junit=build/missing-422.xml']);
 checkSuite('missing-422', 5);
 checkCoverage(5);
+\copy($workspace . '/build/coverage.json', $workspace . '/build/coverage-missing-422.json');
 runScenario('gate-uncovered', $gate, 1);
-echo "Verified: six covered responses, response type drift, and an uncovered new 422.\n";
+
+// Follow the user's next step: generate the missing test for the app's mount.
+runScenario('stubs-cli', [
+    'vendor/bin/gesso', 'stubs', '--spec=openapi/api.json', '--coverage=build/coverage.json',
+    '--adapter=laravel', '--request-prefix=/api', '--output=tests/Feature/Contract',
+]);
+$stub = $workspace . '/tests/Feature/Contract/PostUsersTest.php';
+ensure(\is_file($stub), 'Expected a generated test for POST /users');
+$generated = \file_get_contents($stub);
+
+// Bootstrap the copied app's class mappings for Artisan as well as PHPUnit.
+runScenario('stubs-artisan', [
+    '-d', 'auto_prepend_file=scripts/scenario-bootstrap.php', 'artisan', 'gesso:stubs',
+    '--coverage=build/coverage.json', '--request-prefix=/api', '--output=build/artisan-stubs',
+]);
+ensure(
+    $generated === \file_get_contents($workspace . '/build/artisan-stubs/PostUsersTest.php'),
+    'CLI and Artisan should generate identical stubs',
+);
+
+runScenario('stub-incomplete', [...$phpunit, '--fail-on-incomplete', '--log-junit=build/stub-incomplete.xml'], 1);
+checkSuite('stub-incomplete', 6, skipped: 1);
+
+// This endpoint deliberately rejects the generated empty JSON object with 422.
+// Only acknowledge completion; do not edit its URL or response assertions.
+$completed = \preg_replace('/^.*\$this->markTestIncomplete\([^\n]*\);\n/m', '', $generated, -1, $markers);
+ensure($markers === 1 && $completed !== null, 'Expected one incomplete marker in the generated test');
+\file_put_contents($stub, $completed);
+\unlink($workspace . '/build/coverage.json');
+runScenario('stub-completed', [...$phpunit, '--log-junit=build/stub-completed.xml']);
+checkSuite('stub-completed', 6);
+checkCoverage(6);
+runScenario('gate-after-stub', $gate);
+echo "Verified: response drift and an uncovered 422, then generated a prefixed test that closes the coverage gap.\n";

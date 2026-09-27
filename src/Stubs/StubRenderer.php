@@ -32,6 +32,7 @@ use function is_int;
 use function is_string;
 use function json_encode;
 use function ltrim;
+use function preg_match;
 use function preg_replace;
 use function preg_split;
 use function rtrim;
@@ -97,15 +98,29 @@ final class StubRenderer
         'symfony' => 'Tests\Contract',
         'pest' => '',
     ];
+    private readonly string $requestPrefix;
 
     public function __construct(
         private readonly string $adapter,
         private readonly string $specName,
         private readonly string $namespace,
         private readonly string $baseClass,
+        string $requestPrefix = '',
     ) {
         if (!in_array($adapter, self::ADAPTERS, true)) {
             throw new InvalidArgumentException("Unsupported adapter: {$adapter}");
+        }
+        if ($requestPrefix !== '' && (str_starts_with($requestPrefix, '//') ||
+            preg_match('#\A/(?:[A-Za-z0-9._~!$&\'()*+,;=:@/-]|%[0-9A-Fa-f]{2})*\z#', $requestPrefix) !== 1)) {
+            throw new InvalidArgumentException(
+                '--request-prefix must be an absolute URI path such as /api, without a host, query, or fragment; percent-encode spaces and non-ASCII characters.',
+            );
+        }
+        $this->requestPrefix = rtrim($requestPrefix, '/');
+        if ($adapter === 'phpunit' && $this->requestPrefix !== '') {
+            throw new InvalidArgumentException(
+                '--request-prefix requires laravel, symfony or pest; phpunit stubs validate responses without sending requests.',
+            );
         }
     }
 
@@ -199,6 +214,10 @@ final class StubRenderer
     /** @param StubOperation $operation */
     public function render(array $operation, string $className): string
     {
+        // The spec path still owns names and coverage identity. Only the
+        // request target receives the explicitly selected application mount.
+        $operation['request_path'] = $this->requestPrefix . $operation['request_path'];
+
         return match ($this->adapter) {
             'pest' => $this->renderPest($operation),
             default => $this->renderClass($operation, $className),

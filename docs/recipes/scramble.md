@@ -161,3 +161,34 @@ Gesso does not persist coverage reports for partial PHPUnit selections such as
 `--filter`. Generate the gate's report from a full run, and do not reuse a stale
 report after a filtered run. Coverage records exercised responses; PHPUnit's
 result determines whether those responses conform to the schema.
+
+## Generate the missing 422 test
+
+When the full report shows an untested 422, generate a Laravel test using the
+application's mount path:
+
+```bash
+php artisan gesso:stubs \
+  --coverage=build/coverage.json \
+  --request-prefix=/api
+```
+
+For the example's missing-422 scenario this creates
+`tests/Feature/Contract/PostUsersTest.php`, calling `/api/users`. Review the
+generated test and remove its `markTestIncomplete()` call when it is ready.
+The generated empty JSON object is appropriate here: this endpoint rejects it
+with 422. Other cases may need payload, authentication, or database fixtures.
+
+Run the full suite again, then the coverage gate using the same base spec. This
+response should now be covered. Keep `strip_prefixes=/api` in the PHPUnit
+configuration: `--request-prefix` controls generated requests, while
+`strip_prefixes` controls runtime matching against the spec.
+
+`composer verify` automates the entire sequence in an isolated app copy. It
+checks that CLI and Artisan generate the same test, that the fresh test is
+incomplete, and that removing only its incomplete marker brings coverage back
+from 5/6 to 6/6 and makes the gate pass. The saved
+`build/scenarios/build/coverage-missing-422.json` preserves the report before
+the gap was closed. See [stub options](../stubs.md) for other adapters and prefix
+validation. The new option is available in the repository's development version;
+check `gesso stubs --help` before using it with an older installed release.

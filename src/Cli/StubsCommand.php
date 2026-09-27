@@ -40,7 +40,7 @@ use function sprintf;
  *
  * @phpstan-import-type StubOperation from StubGenerator
  *
- * @phpstan-type StubsOptions array{spec?: string, coverage?: string, spec_name?: string, adapter?: string, output?: string, namespace?: string, base_class?: string, dry_run?: bool, help?: bool, invalid_options?: list<string>}
+ * @phpstan-type StubsOptions array{spec?: string, coverage?: string, spec_name?: string, adapter?: string, output?: string, namespace?: string, base_class?: string, request_prefix?: string, dry_run?: bool, help?: bool, invalid_options?: list<string>}
  *
  * @internal The `gesso stubs` CLI surface is the supported API.
  */
@@ -50,7 +50,7 @@ final class StubsCommand
 
     public const EXIT_OK = 0;
     public const EXIT_USAGE = 2;
-    private const VALUE_OPTIONS = ['spec', 'coverage', 'spec_name', 'adapter', 'output', 'namespace', 'base_class'];
+    private const VALUE_OPTIONS = ['spec', 'coverage', 'spec_name', 'adapter', 'output', 'namespace', 'base_class', 'request_prefix'];
 
     /** @param null|callable(string): void $stdoutWriter */
     public function __construct(
@@ -97,6 +97,10 @@ final class StubsCommand
                                    adapter's conventional namespace. Ignored by pest.
               --base-class=<fqcn>  Test class to extend, e.g. Tests\\TestCase.
                                    Ignored by pest.
+              --request-prefix=<path>
+                                   Prepend an application mount path, e.g. /api, to
+                                   generated requests (laravel, symfony, pest).
+                                   Default: no prefix. Does not configure validation.
               --dry-run            Report what would be written without writing it.
               --help               Show this message.
 
@@ -141,6 +145,13 @@ final class StubsCommand
         $specName = $options['spec_name'] ?? pathinfo($this->absolutise($specPath), PATHINFO_FILENAME);
 
         try {
+            $renderer = new StubRenderer(
+                $adapter,
+                $specName,
+                $options['namespace'] ?? StubRenderer::DEFAULT_NAMESPACES[$adapter],
+                $options['base_class'] ?? StubRenderer::DEFAULT_BASE_CLASSES[$adapter],
+                $options['request_prefix'] ?? '',
+            );
             $spec = CliDocuments::loadSpec($this->absolutise($specPath), $specPath);
             $states = ($options['coverage'] ?? '') === ''
                 ? null
@@ -160,12 +171,6 @@ final class StubsCommand
         // file that other operation already owns, where the never-overwrite
         // guard would silently drop it.
         $allPlans = (new StubGenerator())->plan($spec, $states);
-        $renderer = new StubRenderer(
-            $adapter,
-            $specName,
-            $options['namespace'] ?? StubRenderer::DEFAULT_NAMESPACES[$adapter],
-            $options['base_class'] ?? StubRenderer::DEFAULT_BASE_CLASSES[$adapter],
-        );
         [$plans, $classNames, $unreachable] = $this->partitionStubbable(
             $allPlans,
             StubRenderer::classNames($allPlans),
