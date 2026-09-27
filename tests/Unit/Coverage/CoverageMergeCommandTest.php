@@ -531,6 +531,20 @@ class CoverageMergeCommandTest extends TestCase
     }
 
     #[Test]
+    public function parse_argv_keeps_accepting_cleanup_false_as_a_spelling_of_no_cleanup(): void
+    {
+        // `--cleanup=false` predates `--no-cleanup` and must keep retaining
+        // sidecars; dropping it from the flag list would silently fall back
+        // to the cleanup default and delete them.
+        $opts = CoverageMergeCommand::parseArgv(['--cleanup=false']);
+
+        $this->assertSame([], $opts['invalid_options']);
+        $this->assertFalse($opts['cleanup']);
+
+        $this->assertTrue(CoverageMergeCommand::parseArgv(['--cleanup'])['cleanup']);
+    }
+
+    #[Test]
     public function exits_one_when_junit_output_write_fails(): void
     {
         OpenApiCoverageTracker::recordResponse(

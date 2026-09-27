@@ -16,6 +16,7 @@ use Studio\Gesso\Internal\CliDocuments;
 use Studio\Gesso\Internal\CliIo;
 use Studio\Gesso\Spec\OpenApiOperationResolver;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
+use Studio\Gesso\Stubs\StubGenerator;
 use Studio\Gesso\Validation\Request\ParameterCollector;
 use Throwable;
 
@@ -310,7 +311,7 @@ final class CoverageGateCommand
      */
     private function isTrackedMethod(string $method, string $location): bool
     {
-        return in_array($method, ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'QUERY'], true) ||
+        return in_array($method, StubGenerator::TRACKED_METHODS, true) ||
             str_starts_with($location, 'additionalOperations[');
     }
 
@@ -489,28 +490,9 @@ final class CoverageGateCommand
      */
     private function loadCoverage(string $inputPath, string $specName): array
     {
-        $spec = CliDocuments::loadCoverageSpec($this->absolutise($inputPath), $inputPath, $specName);
-
-        $states = [];
-        $endpoints = is_array($spec['endpoints'] ?? null) ? $spec['endpoints'] : [];
-        foreach ($endpoints as $endpoint) {
-            if (!is_array($endpoint) || !is_string($endpoint['method'] ?? null) || !is_string($endpoint['path'] ?? null)) {
-                continue;
-            }
-            $key = $endpoint['method'] . ' ' . $endpoint['path'];
-            $responses = is_array($endpoint['responses'] ?? null) ? $endpoint['responses'] : [];
-            foreach ($responses as $response) {
-                if (!is_array($response) ||
-                    !is_string($response['status_key'] ?? null) ||
-                    !is_string($response['content_type_key'] ?? null) ||
-                    !is_string($response['response_state'] ?? null)) {
-                    continue;
-                }
-                $states[$key . "\x1f" . $response['status_key'] . "\x1f" . $response['content_type_key']] = $response['response_state'];
-            }
-        }
-
-        return $states;
+        return StubGenerator::statesFromCoverage(
+            CliDocuments::loadCoverageSpec($this->absolutise($inputPath), $inputPath, $specName),
+        );
     }
 
     /**

@@ -30,6 +30,7 @@ use Studio\Gesso\Exception\EnumBindingReason;
 use Studio\Gesso\Exception\EnumDriftException;
 use Studio\Gesso\Exception\InvalidOpenApiSpecException;
 use Studio\Gesso\Exception\SpecFileNotFoundException;
+use Studio\Gesso\Internal\ArgvParser;
 use Studio\Gesso\Internal\EnumScanner;
 use Studio\Gesso\Internal\LegacyIdentity;
 use Studio\Gesso\Internal\PartialRunDecision;
@@ -54,6 +55,7 @@ use Studio\Gesso\ValidationOutputFormat;
 use function array_filter;
 use function array_map;
 use function array_values;
+use function ctype_digit;
 use function dirname;
 use function explode;
 use function fflush;
@@ -62,14 +64,12 @@ use function fwrite;
 use function getcwd;
 use function getenv;
 use function implode;
-use function in_array;
 use function is_array;
 use function is_dir;
 use function is_string;
 use function is_writable;
 use function method_exists;
 use function mkdir;
-use function preg_match;
 use function sprintf;
 use function str_starts_with;
 use function strtolower;
@@ -188,7 +188,7 @@ final class OpenApiCoverageExtension implements Extension
             return false;
         }
 
-        return !in_array(strtolower(trim($value)), ['0', 'false', 'no'], true);
+        return ArgvParser::bool(strtolower(trim($value)));
     }
 
     public function bootstrap(Configuration $configuration, Facade $facade, ParameterCollection $parameters): void
@@ -1084,7 +1084,7 @@ final class OpenApiCoverageExtension implements Extension
         }
         $raw = trim($parameters->get($name));
 
-        return !in_array($raw, ['0', 'false', 'no'], true);
+        return ArgvParser::bool($raw);
     }
 
     /**
@@ -1104,7 +1104,7 @@ final class OpenApiCoverageExtension implements Extension
             return null;
         }
 
-        if (preg_match('/^\d+$/', $raw) !== 1) {
+        if (!ctype_digit($raw)) {
             $reason = "Invalid max_errors parameter '{$raw}'. Expected a non-negative integer (0 = unlimited).";
             self::writeStderr("[Gesso] FATAL: {$reason}\n");
 

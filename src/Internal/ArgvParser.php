@@ -83,6 +83,10 @@ final class ArgvParser
         return $options;
     }
 
+    /**
+     * The one boolean spelling the CLI flags, the extension's XML parameters
+     * and `GESSO_BASELINE_GENERATE` share: only `0` / `false` / `no` are false.
+     */
     public static function bool(string $value): bool
     {
         return !in_array($value, ['0', 'false', 'no'], true);
@@ -91,7 +95,7 @@ final class ArgvParser
     /**
      * @return list<string>
      */
-    public static function csv(string $value): array
+    private static function csv(string $value): array
     {
         return array_values(array_filter(array_map('trim', explode(',', $value)), static fn(string $item): bool => $item !== ''));
     }
