@@ -531,13 +531,17 @@ class CoverageMergeCommandTest extends TestCase
     }
 
     #[Test]
-    public function parse_argv_rejects_the_undocumented_cleanup_flag(): void
+    public function parse_argv_keeps_accepting_cleanup_false_as_a_spelling_of_no_cleanup(): void
     {
-        // Cleanup is the default; only `--no-cleanup` is a documented flag.
-        $opts = CoverageMergeCommand::parseArgv(['--cleanup']);
+        // `--cleanup=false` predates `--no-cleanup` and must keep retaining
+        // sidecars; dropping it from the flag list would silently fall back
+        // to the cleanup default and delete them.
+        $opts = CoverageMergeCommand::parseArgv(['--cleanup=false']);
 
-        $this->assertSame(['--cleanup'], $opts['invalid_options']);
-        $this->assertArrayNotHasKey('cleanup', $opts);
+        $this->assertSame([], $opts['invalid_options']);
+        $this->assertFalse($opts['cleanup']);
+
+        $this->assertTrue(CoverageMergeCommand::parseArgv(['--cleanup'])['cleanup']);
     }
 
     #[Test]

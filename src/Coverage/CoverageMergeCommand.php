@@ -108,7 +108,7 @@ final class CoverageMergeCommand
         $opts = ArgvParser::parse(
             $argv,
             'coverage:merge',
-            flags: ['no_cleanup', 'min_coverage_strict'],
+            flags: ['cleanup', 'no_cleanup', 'min_coverage_strict'],
             values: [
                 'sidecar_dir', 'spec_base_path', 'output_file', 'junit_output', 'json_output', 'html_output',
                 'github_step_summary', 'console_output', 'strict_required', 'strict_additional_properties',
