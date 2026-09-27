@@ -7,9 +7,9 @@ namespace Studio\Gesso\Baseline;
 use Studio\Gesso\Spec\OpenApiOperationResolver;
 use Studio\Gesso\ValidationIssue;
 
-use function ctype_digit;
 use function explode;
 use function implode;
+use function preg_match;
 use function sprintf;
 
 /**
@@ -254,7 +254,7 @@ final readonly class ViolationFingerprint
             if ($index === 0) {
                 continue;
             }
-            if (ctype_digit($segment)) {
+            if (preg_match('/^\d+$/', $segment) === 1) {
                 $segments[$index] = '*';
             }
         }
