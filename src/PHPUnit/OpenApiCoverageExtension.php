@@ -55,6 +55,7 @@ use Studio\Gesso\ValidationOutputFormat;
 use function array_filter;
 use function array_map;
 use function array_values;
+use function ctype_digit;
 use function dirname;
 use function explode;
 use function fflush;
@@ -69,7 +70,6 @@ use function is_string;
 use function is_writable;
 use function method_exists;
 use function mkdir;
-use function preg_match;
 use function sprintf;
 use function str_starts_with;
 use function strtolower;
@@ -1104,7 +1104,7 @@ final class OpenApiCoverageExtension implements Extension
             return null;
         }
 
-        if (preg_match('/^\d+$/', $raw) !== 1) {
+        if (!ctype_digit($raw)) {
             $reason = "Invalid max_errors parameter '{$raw}'. Expected a non-negative integer (0 = unlimited).";
             self::writeStderr("[Gesso] FATAL: {$reason}\n");
 
