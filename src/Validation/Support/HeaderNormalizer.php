@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Validation\Support;
 
+use const ARRAY_FILTER_USE_KEY;
+
+use function array_change_key_case;
+use function array_filter;
 use function is_string;
-use function strtolower;
 
 /**
  * @internal Not part of the package's public API. Do not use from user code.
@@ -30,16 +33,6 @@ final class HeaderNormalizer
      */
     public static function normalize(array $headers): array
     {
-        $normalized = [];
-
-        foreach ($headers as $name => $value) {
-            if (!is_string($name)) {
-                continue;
-            }
-
-            $normalized[strtolower($name)] = $value;
-        }
-
-        return $normalized;
+        return array_change_key_case(array_filter($headers, is_string(...), ARRAY_FILTER_USE_KEY));
     }
 }
