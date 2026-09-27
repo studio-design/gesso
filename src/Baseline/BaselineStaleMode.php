@@ -5,13 +5,8 @@ declare(strict_types=1);
 namespace Studio\Gesso\Baseline;
 
 use InvalidArgumentException;
+use Studio\Gesso\Validation\Strict\ConfigEnumParser;
 use Studio\Gesso\Validation\Strict\StrictRequiredMode;
-
-use function array_map;
-use function implode;
-use function sprintf;
-use function strtolower;
-use function trim;
 
 /**
  * How stale baseline entries — entries that no longer occurred during a
@@ -46,26 +41,6 @@ enum BaselineStaleMode: string
      */
     public static function fromConfigValue(?string $value): self
     {
-        if ($value === null) {
-            return self::Note;
-        }
-
-        $normalized = strtolower(trim($value));
-        if ($normalized === '') {
-            return self::Note;
-        }
-
-        $match = self::tryFrom($normalized);
-        if ($match !== null) {
-            return $match;
-        }
-
-        $accepted = implode(', ', array_map(static fn(self $c): string => $c->value, self::cases()));
-
-        throw new InvalidArgumentException(sprintf(
-            "Unknown baseline_stale value '%s'. Accepted: %s.",
-            $value,
-            $accepted,
-        ));
+        return ConfigEnumParser::parse(self::class, 'baseline_stale', $value) ?? self::Note;
     }
 }
