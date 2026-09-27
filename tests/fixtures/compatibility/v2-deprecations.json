@@ -10,6 +10,24 @@
                 "replacement": "laravel.auto_inject_dummy_credentials = 'bearer' (accepted from Gesso 3.0)",
                 "removed_in": "3.0"
             }
+        },
+        "exception.enum_binding_exception.for_binding": {
+            "spelling": "EnumBindingException::forBinding()",
+            "v3_target": "new EnumBindingException($reason, $message, $enumFqcn, $specPath, $previous)",
+            "notice": {
+                "subject": "EnumBindingException::forBinding()",
+                "replacement": "new EnumBindingException($reason, $message, $enumFqcn, $specPath, $previous)",
+                "removed_in": "3.0"
+            }
+        },
+        "trait.skip_open_api_resolver.should_skip_open_api": {
+            "spelling": "SkipOpenApiResolver::shouldSkipOpenApi()",
+            "v3_target": "$this->findSkipOpenApiAttribute() !== null",
+            "notice": {
+                "subject": "SkipOpenApiResolver::shouldSkipOpenApi()",
+                "replacement": "$this->findSkipOpenApiAttribute() !== null",
+                "removed_in": "3.0"
+            }
         }
     }
 }
