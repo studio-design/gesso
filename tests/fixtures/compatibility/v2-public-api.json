@@ -7929,6 +7929,16 @@
                         }
                     ]
                 },
+                "shouldSkipOpenApi": {
+                    "visibility": "private",
+                    "static": false,
+                    "final": false,
+                    "abstract": false,
+                    "returns_reference": false,
+                    "return_type": "bool",
+                    "attributes": [],
+                    "parameters": []
+                },
                 "skipResponseCode": {
                     "visibility": "public",
                     "static": false,
