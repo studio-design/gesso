@@ -15,6 +15,7 @@ use Studio\Gesso\Attribute\BoundToOpenApiEnum;
 use Studio\Gesso\Exception\EnumBindingException;
 use Studio\Gesso\Exception\EnumBindingReason;
 
+use function array_filter;
 use function array_keys;
 use function array_unique;
 use function array_values;
@@ -97,14 +98,7 @@ final class EnumScanner
             $candidates = [...$candidates, ...self::discoverCandidates($loader, $prefix)];
         }
 
-        $matches = [];
-        foreach (array_values(array_unique($candidates)) as $fqcn) {
-            if (self::isBoundEnum($fqcn)) {
-                $matches[] = $fqcn;
-            }
-        }
-
-        $matches = array_values(array_unique($matches));
+        $matches = array_values(array_filter(array_unique($candidates), self::isBoundEnum(...)));
         sort($matches);
 
         return self::$cache[$cacheKey] = $matches;
@@ -210,14 +204,10 @@ final class EnumScanner
      */
     private static function collectFromClassmap(ClassLoader $loader, string $prefix): array
     {
-        $matches = [];
-        foreach (array_keys($loader->getClassMap()) as $fqcn) {
-            if (str_starts_with($fqcn, $prefix)) {
-                $matches[] = $fqcn;
-            }
-        }
-
-        return $matches;
+        return array_values(array_filter(
+            array_keys($loader->getClassMap()),
+            static fn(string $fqcn): bool => str_starts_with($fqcn, $prefix),
+        ));
     }
 
     /**

@@ -14,9 +14,8 @@ use function preg_match;
 use function sprintf;
 use function str_contains;
 use function str_starts_with;
-use function strpos;
+use function strstr;
 use function strtolower;
-use function substr;
 use function trim;
 
 /**
@@ -67,9 +66,9 @@ final readonly class RemoteSpecSource
         // need their JSON pointers, but an entry URL's fragment is rejected
         // wholesale and may carry an OAuth-style token — hide its content
         // and show only that one was present.
-        $fragmentStart = strpos($safeUrl, '#');
-        if ($fragmentStart !== false) {
-            $safeUrl = substr($safeUrl, 0, $fragmentStart) . '#[redacted]';
+        $beforeFragment = strstr($safeUrl, '#', true);
+        if ($beforeFragment !== false) {
+            $safeUrl = $beforeFragment . '#[redacted]';
         }
         $url = $safeUrl;
 

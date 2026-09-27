@@ -16,9 +16,7 @@ use function rawurldecode;
 use function sprintf;
 use function str_ends_with;
 use function str_replace;
-use function strpos;
 use function strtolower;
-use function substr;
 use function trim;
 
 /**
@@ -79,12 +77,12 @@ final class CurlCommandFormatter
      */
     private static function redactQueryValues(string $uri): string
     {
-        $queryStart = strpos($uri, '?');
-        if ($queryStart === false) {
+        $split = explode('?', $uri, 2);
+        if (!isset($split[1])) {
             return $uri;
         }
 
-        $pairs = explode('&', substr($uri, $queryStart + 1));
+        $pairs = explode('&', $split[1]);
         foreach ($pairs as $index => $pair) {
             $parts = explode('=', $pair, 2);
             if (count($parts) !== 2) {
@@ -95,7 +93,7 @@ final class CurlCommandFormatter
             }
         }
 
-        return substr($uri, 0, $queryStart) . '?' . implode('&', $pairs);
+        return $split[0] . '?' . implode('&', $pairs);
     }
 
     private static function isSensitiveName(string $name): bool

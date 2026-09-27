@@ -53,10 +53,18 @@ final class SpecPath
         return ($basePath === '' ? DIRECTORY_SEPARATOR : $basePath . DIRECTORY_SEPARATOR) . $relativePath;
     }
 
-    public static function isInsideRoot(string $path, string $root): bool
+    /**
+     * @param bool $foldCase Compare case-insensitively. Defaults to true on
+     *                       Windows, where `realpath()` output can differ in
+     *                       case for the same file. Pass false where the root
+     *                       is a trust boundary: Windows can enable per-directory
+     *                       case sensitivity, so `Specs` may be a different
+     *                       directory from an allowed `specs`.
+     */
+    public static function isInsideRoot(string $path, string $root, bool $foldCase = DIRECTORY_SEPARATOR === '\\'): bool
     {
         $root = rtrim($root, '/\\');
-        if (DIRECTORY_SEPARATOR === '\\') {
+        if ($foldCase) {
             $path = strtolower($path);
             $root = strtolower($root);
         }
