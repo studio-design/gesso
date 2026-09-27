@@ -96,7 +96,7 @@ trait OpenApiAssertions
         $result = $this->psr7Validator()->validateExchange($request, $response);
 
         if ($result->isValid()) {
-            $this->assertOpenApi(true, '');
+            $this->assertPsr7(true, '');
 
             return;
         }
@@ -110,7 +110,7 @@ trait OpenApiAssertions
                     $collector->recordResult((string) $this->cachedPsr7SpecName, $sideResult, $method, $path);
                 }
             }
-            $this->assertOpenApi(true, '');
+            $this->assertPsr7(true, '');
 
             return;
         }
@@ -131,7 +131,7 @@ trait OpenApiAssertions
                 }
             }
             if ($allSuppressed) {
-                $this->assertOpenApi(true, '');
+                $this->assertPsr7(true, '');
 
                 return;
             }
@@ -150,10 +150,10 @@ trait OpenApiAssertions
 
         // See OpenApiAssertionCore::assertOpenApiResult(): json mode must end with parseable documents.
         if (ValidationOutput::format() === ValidationOutputFormat::Json) {
-            $this->failOpenApi($message);
+            $this->failPsr7($message);
         }
 
-        $this->assertOpenApi(false, $message);
+        $this->assertPsr7(false, $message);
     }
 
     /** User-overridable fallback when no #[OpenApiSpec] attribute is present. */
@@ -188,7 +188,7 @@ trait OpenApiAssertions
     {
         $specName = $this->resolveOpenApiSpec();
         if ($specName === '') {
-            $this->failOpenApi(
+            $this->failPsr7(
                 'No OpenAPI spec is configured for this PSR-7 assertion. Add '
                 . "#[OpenApiSpec('your-spec')] or override openApiSpec().",
             );
@@ -266,5 +266,21 @@ trait OpenApiAssertions
             $body,
             $request->getHeaderLine('Content-Type') ?: null,
         );
+    }
+
+    /**
+     * Frozen private name (docs/versioning.md): forwards to the shared body.
+     */
+    private function failPsr7(string $message): never
+    {
+        $this->failOpenApi($message);
+    }
+
+    /**
+     * Frozen private name (docs/versioning.md): forwards to the shared body.
+     */
+    private function assertPsr7(bool $condition, string $message): void
+    {
+        $this->assertOpenApi($condition, $message);
     }
 }

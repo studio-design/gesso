@@ -34,7 +34,9 @@ trait OpenApiAssertionCore
     /**
      * Like Assert::fail() but with vendor frames stripped from the trace.
      *
-     * @internal Shared body.
+     * Deliberately carries no internal marker: the public adapter traits
+     * compose it, so the name is part of their frozen private surface
+     * (docs/versioning.md).
      */
     private function failOpenApi(string $message): never
     {
@@ -48,7 +50,9 @@ trait OpenApiAssertionCore
     /**
      * Like Assert::assertTrue() but with vendor frames stripped from the trace on failure.
      *
-     * @internal Shared body.
+     * Deliberately carries no internal marker: the public adapter traits
+     * compose it, so the name is part of their frozen private surface
+     * (docs/versioning.md).
      */
     private function assertOpenApi(bool $condition, string $message): void
     {
@@ -110,8 +114,6 @@ trait OpenApiAssertionCore
      * @param Closure(): DecodedBody $extract
      *
      * @param-out bool $decodeFailureDemoted
-     *
-     * @internal Shared body.
      */
     private function extractOrRecordBaselineViolation(
         Closure $extract,
