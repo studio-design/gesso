@@ -6,7 +6,9 @@ namespace Studio\Gesso\Baseline;
 
 use Studio\Gesso\OpenApiValidationResult;
 
+use function array_filter;
 use function array_key_exists;
+use function array_values;
 use function count;
 
 /**
@@ -144,13 +146,9 @@ final class ViolationBaselineEnforcer
      */
     public function staleEntries(): array
     {
-        $stale = [];
-        foreach ($this->baseline->sorted() as $fingerprint) {
-            if (!array_key_exists($fingerprint->key(), $this->hitKeys)) {
-                $stale[] = $fingerprint;
-            }
-        }
-
-        return $stale;
+        return array_values(array_filter(
+            $this->baseline->sorted(),
+            fn(ViolationFingerprint $fingerprint): bool => !array_key_exists($fingerprint->key(), $this->hitKeys),
+        ));
     }
 }

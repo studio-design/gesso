@@ -7,9 +7,9 @@ namespace Studio\Gesso\Baseline;
 use Studio\Gesso\Spec\OpenApiOperationResolver;
 use Studio\Gesso\ValidationIssue;
 
+use function ctype_digit;
 use function explode;
 use function implode;
-use function preg_match;
 use function sprintf;
 
 /**
@@ -170,30 +170,6 @@ final readonly class ViolationFingerprint
     }
 
     /**
-     * Replace purely numeric RFC 6901 segments with `*`. A property whose
-     * name is itself a digit string collapses too — a documented trade-off
-     * for baseline stability across test-data changes.
-     */
-    public static function canonicalizeInstancePath(string $instancePath): string
-    {
-        if ($instancePath === '') {
-            return '';
-        }
-
-        $segments = explode('/', $instancePath);
-        foreach ($segments as $index => $segment) {
-            if ($index === 0) {
-                continue;
-            }
-            if (preg_match('/^\d+$/', $segment) === 1) {
-                $segments[$index] = '*';
-            }
-        }
-
-        return implode('/', $segments);
-    }
-
-    /**
      * Binary-safe identity/sort key. Null fields are encoded distinctly from
      * empty strings (`instancePath === ''` is the document root, not
      * "absent"), and null sorts before any string value.
@@ -260,5 +236,29 @@ final readonly class ViolationFingerprint
             'instance_path' => $this->instancePath,
             'keyword' => $this->keyword,
         ];
+    }
+
+    /**
+     * Replace purely numeric RFC 6901 segments with `*`. A property whose
+     * name is itself a digit string collapses too — a documented trade-off
+     * for baseline stability across test-data changes.
+     */
+    private static function canonicalizeInstancePath(string $instancePath): string
+    {
+        if ($instancePath === '') {
+            return '';
+        }
+
+        $segments = explode('/', $instancePath);
+        foreach ($segments as $index => $segment) {
+            if ($index === 0) {
+                continue;
+            }
+            if (ctype_digit($segment)) {
+                $segments[$index] = '*';
+            }
+        }
+
+        return implode('/', $segments);
     }
 }

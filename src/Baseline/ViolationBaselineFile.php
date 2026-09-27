@@ -4,27 +4,12 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Baseline;
 
-use const JSON_PRETTY_PRINT;
-use const JSON_THROW_ON_ERROR;
-use const JSON_UNESCAPED_SLASHES;
-use const JSON_UNESCAPED_UNICODE;
-
 use InvalidArgumentException;
-use JsonException;
 use RuntimeException;
 use Studio\Gesso\ValidationIssue;
 
-use function array_diff;
-use function array_keys;
 use function array_map;
-use function file_get_contents;
-use function file_put_contents;
-use function implode;
-use function is_array;
-use function is_int;
 use function is_string;
-use function json_decode;
-use function json_encode;
 use function sprintf;
 
 /**
@@ -53,6 +38,7 @@ final class ViolationBaselineFile
      */
     public const BASELINE_VERSION = 1;
 
+    private const LABEL = 'Baseline';
     private const REQUIRED_STRING_FIELDS = ['spec', 'method', 'path', 'category'];
     private const NULLABLE_STRING_FIELDS = ['status_code', 'content_type', 'parameter', 'instance_path', 'keyword'];
 
@@ -78,10 +64,7 @@ final class ViolationBaselineFile
 
     public static function render(ViolationBaseline $baseline): string
     {
-        return json_encode(
-            self::toDocument($baseline),
-            JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE,
-        ) . "\n";
+        return BaselineFileFormat::render(self::toDocument($baseline));
     }
 
     /**
@@ -90,20 +73,7 @@ final class ViolationBaselineFile
      */
     public static function parse(string $document): ViolationBaseline
     {
-        try {
-            $decoded = json_decode($document, true, 512, JSON_THROW_ON_ERROR);
-        } catch (JsonException $exception) {
-            throw new InvalidArgumentException(
-                'Baseline file is not valid JSON: ' . $exception->getMessage(),
-                previous: $exception,
-            );
-        }
-
-        if (!is_array($decoded)) {
-            throw new InvalidArgumentException('Baseline file must decode to a JSON object.');
-        }
-
-        return self::parseDocument($decoded);
+        return self::parseDocument(BaselineFileFormat::decode($document, self::LABEL));
     }
 
     /**
@@ -118,18 +88,7 @@ final class ViolationBaselineFile
      */
     public static function parseDocument(array $decoded): ViolationBaseline
     {
-        $version = $decoded['baseline_version'] ?? null;
-        if (!is_int($version) || $version !== self::BASELINE_VERSION) {
-            throw new InvalidArgumentException(sprintf(
-                'Unsupported baseline_version: expected %d.',
-                self::BASELINE_VERSION,
-            ));
-        }
-
-        $violations = $decoded['violations'] ?? null;
-        if (!is_array($violations)) {
-            throw new InvalidArgumentException('Baseline "violations" must be an array.');
-        }
+        $violations = BaselineFileFormat::entries($decoded, self::LABEL, 'baseline_version', self::BASELINE_VERSION, 'violations');
 
         $baseline = new ViolationBaseline();
         foreach ($violations as $index => $entry) {
@@ -142,54 +101,21 @@ final class ViolationBaselineFile
     /** @throws InvalidArgumentException when the file is unreadable or malformed */
     public static function read(string $path): ViolationBaseline
     {
-        $document = @file_get_contents($path);
-        if ($document === false) {
-            throw new InvalidArgumentException(sprintf('Could not read baseline file: %s', $path));
-        }
-
-        return self::parse($document);
+        return self::parse(BaselineFileFormat::readFile($path, self::LABEL));
     }
 
     /** @throws RuntimeException when the file cannot be written */
     public static function write(string $path, ViolationBaseline $baseline): void
     {
-        if (@file_put_contents($path, self::render($baseline)) === false) {
-            throw new RuntimeException(sprintf('Could not write baseline file: %s', $path));
-        }
+        BaselineFileFormat::writeFile($path, self::render($baseline), self::LABEL);
     }
 
     private static function parseEntry(int|string $index, mixed $entry): ViolationFingerprint
     {
-        if (!is_array($entry)) {
-            throw new InvalidArgumentException(sprintf('Baseline violation #%s must be an object.', $index));
-        }
+        $values = BaselineFileFormat::entry($index, $entry, 'Baseline violation', self::REQUIRED_STRING_FIELDS, self::NULLABLE_STRING_FIELDS);
 
-        $unknown = array_diff(
-            array_keys($entry),
-            [...self::REQUIRED_STRING_FIELDS, ...self::NULLABLE_STRING_FIELDS],
-        );
-        if ($unknown !== []) {
-            throw new InvalidArgumentException(sprintf(
-                'Baseline violation #%s has unknown field(s): %s.',
-                $index,
-                implode(', ', $unknown),
-            ));
-        }
-
-        $values = [];
-        foreach (self::REQUIRED_STRING_FIELDS as $field) {
-            $value = $entry[$field] ?? null;
-            if (!is_string($value) || $value === '') {
-                throw new InvalidArgumentException(sprintf(
-                    'Baseline violation #%s field "%s" must be a non-empty string.',
-                    $index,
-                    $field,
-                ));
-            }
-            $values[$field] = $value;
-        }
         foreach (self::NULLABLE_STRING_FIELDS as $field) {
-            $value = $entry[$field] ?? null;
+            $value = $values[$field] ?? null;
             if ($value !== null && !is_string($value)) {
                 throw new InvalidArgumentException(sprintf(
                     'Baseline violation #%s field "%s" must be a string or null.',
