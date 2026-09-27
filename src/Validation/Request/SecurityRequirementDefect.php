@@ -24,7 +24,7 @@ final readonly class SecurityRequirementDefect
     public const SCOPES_NOT_LIST = 'scopes-not-list';
     public const SCOPE_NOT_STRING = 'scope-not-string';
     public const UNDEFINED_SCHEME = 'undefined-scheme';
-    public const MALFORMED_DEFINITION = 'malformed-definition';
+    private const MALFORMED_DEFINITION = 'malformed-definition';
 
     /**
      * @param string $kind one of the class constants
