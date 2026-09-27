@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Tests\Unit\Coverage;
 
+use const E_USER_DEPRECATED;
+
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Studio\Gesso\Coverage\ConsoleCoverageRenderer;
@@ -14,6 +16,7 @@ use Studio\Gesso\Coverage\JUnitCoverageRenderer;
 use Studio\Gesso\Coverage\MarkdownCoverageRenderer;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\Coverage\ResponseCoverageState;
+use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 
 use function array_column;
@@ -734,6 +737,36 @@ class OpenApiCoverageTrackerTest extends TestCase
         $joined = implode(' | ', $captured);
         $this->assertStringContainsString("spec 'malformed-response'", $joined);
         $this->assertStringContainsString('not an object', $joined);
+    }
+
+    #[Test]
+    public function static_has_any_coverage_is_deprecated_and_still_answers(): void
+    {
+        OpenApiCoverageTracker::reset();
+        Deprecations::resetForTesting();
+        $captured = [];
+        set_error_handler(static function (int $errno, string $message) use (&$captured): bool {
+            $captured[] = [$errno, $message];
+
+            return true;
+        });
+
+        try {
+            $this->assertFalse(OpenApiCoverageTracker::hasAnyCoverage('petstore-3.0'));
+            OpenApiCoverageTracker::recordRequest('petstore-3.0', 'GET', '/pets');
+            $this->assertTrue(OpenApiCoverageTracker::hasAnyCoverage('petstore-3.0'));
+        } finally {
+            restore_error_handler();
+            OpenApiCoverageTracker::reset();
+            Deprecations::resetForTesting();
+        }
+
+        // One-shot notice on the channel the registry test pins, carrying the
+        // replacement; the answer itself is unchanged.
+        $this->assertCount(1, $captured);
+        $this->assertSame(E_USER_DEPRECATED, $captured[0][0]);
+        $this->assertStringStartsWith(Deprecations::PREFIX, $captured[0][1]);
+        $this->assertStringContainsString('hasAnyCoverageOn()', $captured[0][1]);
     }
 
     #[Test]

@@ -23,11 +23,14 @@ use function str_replace;
  */
 final class MarkdownCoverageRenderer
 {
-    private const MARKER_ALL_COVERED = ':white_check_mark:';
-    private const MARKER_PARTIAL = ':large_orange_diamond:';
-    private const MARKER_SKIPPED = ':warning:';
-    private const MARKER_UNCOVERED = ':x:';
-    private const MARKER_REQUEST_ONLY = ':information_source:';
+    /** @see CoverageTotals::marker() */
+    private const MARKERS = [
+        'allCovered' => ':white_check_mark:',
+        'partial' => ':large_orange_diamond:',
+        'skipped' => ':warning:',
+        'uncovered' => ':x:',
+        'requestOnly' => ':information_source:',
+    ];
 
     /**
      * @param array<string, CoverageResult> $results
@@ -77,7 +80,7 @@ final class MarkdownCoverageRenderer
                     foreach ($result['endpoints'] as $endpoint) {
                         $lines[] = sprintf(
                             '| %s | `%s` | %s |',
-                            self::endpointMarker($endpoint['state']),
+                            CoverageTotals::marker($endpoint['state'], self::MARKERS),
                             $endpoint['endpoint'],
                             self::endpointResponsesSummary($endpoint),
                         );
@@ -129,7 +132,7 @@ final class MarkdownCoverageRenderer
         foreach ($result['responses'] as $row) {
             $lines[] = sprintf(
                 '| %s | `%s` | %s | %s | %s |',
-                $row['exercised'] ? self::MARKER_ALL_COVERED : self::MARKER_UNCOVERED,
+                $row['exercised'] ? self::MARKERS['allCovered'] : self::MARKERS['uncovered'],
                 self::escapeCell($row['endpoint']),
                 self::escapeCell($row['statusKey']),
                 self::escapeCell($row['contentTypeKey']),
@@ -187,7 +190,7 @@ final class MarkdownCoverageRenderer
         foreach ($endpoint['responses'] as $row) {
             $lines[] = sprintf(
                 '| %s %s | %s | %s |',
-                self::responseMarker($row['state']),
+                CoverageTotals::marker($row['state'], self::MARKERS),
                 $row['statusKey'],
                 $row['contentTypeKey'],
                 self::responseStateLabel($row),
@@ -230,25 +233,6 @@ final class MarkdownCoverageRenderer
         }
 
         return $extras === [] ? $line : sprintf('%s (%s)', $line, implode(', ', $extras));
-    }
-
-    private static function endpointMarker(EndpointCoverageState $state): string
-    {
-        return match ($state) {
-            EndpointCoverageState::AllCovered => self::MARKER_ALL_COVERED,
-            EndpointCoverageState::Partial => self::MARKER_PARTIAL,
-            EndpointCoverageState::RequestOnly => self::MARKER_REQUEST_ONLY,
-            EndpointCoverageState::Uncovered => self::MARKER_UNCOVERED,
-        };
-    }
-
-    private static function responseMarker(ResponseCoverageState $state): string
-    {
-        return match ($state) {
-            ResponseCoverageState::Validated => self::MARKER_ALL_COVERED,
-            ResponseCoverageState::Skipped => self::MARKER_SKIPPED,
-            ResponseCoverageState::Uncovered => self::MARKER_UNCOVERED,
-        };
     }
 
     /**
