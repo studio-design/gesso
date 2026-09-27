@@ -77,6 +77,53 @@ class OpenApiContractChecksTest extends TestCase
     }
 
     #[Test]
+    public function reads_the_status_from_a_response_object_or_magic_call_proxy(): void
+    {
+        $response = new class {
+            public function getStatusCode(): int
+            {
+                return 405;
+            }
+        };
+        $proxy = new class {
+            /** @param list<mixed> $arguments */
+            public function __call(string $name, array $arguments): int
+            {
+                return $name === 'getStatusCode' ? 405 : 0;
+            }
+        };
+
+        foreach ([$response, $proxy] as $dispatched) {
+            $summary = OpenApiContractChecks::run('contract-checks', seed: 7)
+                ->checks([ContractCheck::UnsupportedMethod])
+                ->includePaths(['/pets'])
+                ->dispatchUsing(static fn(ExploredCase $case): object => $dispatched)
+                ->report();
+
+            $this->assertFalse($summary->hasFailures());
+        }
+    }
+
+    #[Test]
+    public function rejects_a_dispatch_return_value_without_a_status_code(): void
+    {
+        try {
+            OpenApiContractChecks::run('contract-checks', seed: 7)
+                ->checks([ContractCheck::UnsupportedMethod])
+                ->includePaths(['/pets'])
+                ->dispatchUsing(static fn(ExploredCase $case): array => ['status' => 200])
+                ->report();
+            $this->fail('Expected the dispatch to be rejected.');
+        } catch (RuntimeException $e) {
+            $this->assertInstanceOf(InvalidArgumentException::class, $e->getPrevious());
+            $this->assertMatchesRegularExpression(
+                '/int status code, a PSR-7 response, or an object exposing getStatusCode\(\)/',
+                $e->getPrevious()->getMessage(),
+            );
+        }
+    }
+
+    #[Test]
     public function expected_statuses_override_replaces_the_default(): void
     {
         $summary = OpenApiContractChecks::run('contract-checks', seed: 7)

@@ -6,6 +6,7 @@ namespace Studio\Gesso\Validation\Support;
 
 use function count;
 use function explode;
+use function is_string;
 use function str_ends_with;
 use function strstr;
 use function strtolower;
@@ -61,6 +62,38 @@ final class ContentTypeMatcher
         }
 
         return null;
+    }
+
+    /**
+     * Every JSON-compatible content type key in the spec's `content` map, in
+     * declaration order: the multi-key counterpart of
+     * {@see findJsonContentType()}. Falls back to `[application/*]` only when
+     * no literal JSON key exists. Media-type parameters on a key are ignored
+     * for matching; the key is returned verbatim.
+     *
+     * @param array<array-key, mixed> $content
+     *
+     * @return list<string>
+     */
+    public static function findJsonContentTypes(array $content): array
+    {
+        $contentTypes = [];
+        foreach ($content as $contentType => $_mediaType) {
+            if (is_string($contentType) && self::isJsonContentType(self::normalizeMediaType($contentType))) {
+                $contentTypes[] = $contentType;
+            }
+        }
+        if ($contentTypes !== []) {
+            return $contentTypes;
+        }
+
+        foreach ($content as $contentType => $_mediaType) {
+            if (is_string($contentType) && self::normalizeMediaType($contentType) === 'application/*') {
+                return [$contentType];
+            }
+        }
+
+        return [];
     }
 
     /**
