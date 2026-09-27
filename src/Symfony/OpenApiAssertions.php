@@ -6,14 +6,11 @@ namespace Studio\Gesso\Symfony;
 
 use Closure;
 use JsonException;
-use PHPUnit\Framework\Assert;
-use PHPUnit\Framework\AssertionFailedError;
 use Studio\Gesso\Baseline\ViolationBaselineCollector;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\DecodedBody;
 use Studio\Gesso\HttpMethod;
-use Studio\Gesso\Internal\HttpFoundationOpenApiAssertions;
-use Studio\Gesso\Internal\StackTraceFilter;
+use Studio\Gesso\Internal\OpenApiAssertionCore;
 use Studio\Gesso\OpenApiRequestValidator;
 use Studio\Gesso\OpenApiResponseValidator;
 use Studio\Gesso\OpenApiValidationResult;
@@ -75,7 +72,7 @@ use function var_export;
  */
 trait OpenApiAssertions
 {
-    use HttpFoundationOpenApiAssertions;
+    use OpenApiAssertionCore;
     use OpenApiSpecResolver;
 
     /**
@@ -385,7 +382,7 @@ trait OpenApiAssertions
 
     /**
      * Frozen private name (docs/versioning.md); the body lives in
-     * HttpFoundationOpenApiAssertions::assertHttpFoundationOpenApiResult().
+     * OpenApiAssertionCore::assertOpenApiResult().
      *
      * @param Closure(): string $reproduceCommand
      */
@@ -398,26 +395,6 @@ trait OpenApiAssertions
         Closure $reproduceCommand,
         ?string $recordExcludeCategory = null,
     ): void {
-        $this->assertHttpFoundationOpenApiResult($result, $specName, $method, $path, $header, $reproduceCommand, $recordExcludeCategory);
-    }
-
-    /** Like Assert::fail() but with vendor frames stripped from the trace. */
-    private function failOpenApi(string $message): never
-    {
-        try {
-            Assert::fail($message);
-        } catch (AssertionFailedError $e) {
-            StackTraceFilter::rethrowWithCleanTrace($e);
-        }
-    }
-
-    /** Like Assert::assertTrue() but with vendor frames stripped from the trace on failure. */
-    private function assertOpenApi(bool $condition, string $message): void
-    {
-        try {
-            Assert::assertTrue($condition, $message);
-        } catch (AssertionFailedError $e) {
-            StackTraceFilter::rethrowWithCleanTrace($e);
-        }
+        $this->assertOpenApiResult($result, $specName, $method, $path, $header, $reproduceCommand, $recordExcludeCategory);
     }
 }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Laravel;
 
+use Closure;
 use InvalidArgumentException;
 use PHPUnit\Framework\Assert;
 use PHPUnit\Framework\AssertionFailedError;
@@ -16,8 +17,6 @@ use Studio\Gesso\Fuzz\OpenApiResponseSpecExploration;
 use Studio\Gesso\Fuzz\OpenApiSpecExploration;
 use Studio\Gesso\Fuzz\OpenApiSpecExplorer;
 use Studio\Gesso\Internal\StackTraceFilter;
-
-use function is_string;
 
 /**
  * Schema-driven request fuzzing trait — issue #136.
@@ -59,25 +58,9 @@ trait ExploresOpenApiEndpoint
         int $cases = 30,
         ?int $seed = null,
     ): ExplorationCases {
-        $specName = $this->resolveOpenApiSpec();
-        if (!is_string($specName) || $specName === '') {
-            $this->failExplore(
-                'openApiSpec() must return a non-empty spec name, but an empty string was returned. '
-                . 'Either add #[OpenApiSpec(\'your-spec\')] to your test class or method, '
-                . 'override openApiSpec() in your test class, or set the "default_spec" key '
-                . 'in config/gesso.php.',
-            );
-        }
-
-        try {
-            return OpenApiEndpointExplorer::explore($specName, $method, $path, $cases, $seed);
-        } catch (InvalidArgumentException|RuntimeException $e) {
-            // RuntimeException covers OpenApiSpecLoader failures
-            // (InvalidOpenApiSpecException, SpecFileNotFoundException, etc.)
-            // — without this, a missing or malformed spec leaks the loader's
-            // raw stack trace into PHPUnit instead of a clean assertion.
-            $this->failExplore($e->getMessage());
-        }
+        return $this->explore(
+            static fn(string $specName) => OpenApiEndpointExplorer::explore($specName, $method, $path, $cases, $seed),
+        );
     }
 
     /** @param list<int> $expectedStatusClasses */
@@ -88,23 +71,14 @@ trait ExploresOpenApiEndpoint
         int $cases = 30,
         ?int $seed = null,
     ): ExplorationCases {
-        $specName = $this->resolveOpenApiSpec();
-        if (!is_string($specName) || $specName === '') {
-            $this->failExplore('openApiSpec() must return a non-empty spec name.');
-        }
-
-        try {
-            return OpenApiEndpointExplorer::exploreInvalid(
-                $specName,
-                $method,
-                $path,
-                $expectedStatusClasses,
-                $cases,
-                $seed,
-            );
-        } catch (InvalidArgumentException|RuntimeException $e) {
-            $this->failExplore($e->getMessage());
-        }
+        return $this->explore(static fn(string $specName) => OpenApiEndpointExplorer::exploreInvalid(
+            $specName,
+            $method,
+            $path,
+            $expectedStatusClasses,
+            $cases,
+            $seed,
+        ));
     }
 
     /**
@@ -119,29 +93,15 @@ trait ExploresOpenApiEndpoint
         ?int $seed = null,
         int $extraCases = 0,
     ): GeneratedResponseCases {
-        $specName = $this->resolveOpenApiSpec();
-        if (!is_string($specName) || $specName === '') {
-            $this->failExplore(
-                'openApiSpec() must return a non-empty spec name, but an empty string was returned. '
-                . 'Either add #[OpenApiSpec(\'your-spec\')] to your test class or method, '
-                . 'override openApiSpec() in your test class, or set the "default_spec" key '
-                . 'in config/gesso.php.',
-            );
-        }
-
-        try {
-            return OpenApiResponseExplorer::explore(
-                $specName,
-                $method,
-                $path,
-                $status,
-                $contentType,
-                $seed,
-                $extraCases,
-            );
-        } catch (InvalidArgumentException|RuntimeException $e) {
-            $this->failExplore($e->getMessage());
-        }
+        return $this->explore(static fn(string $specName) => OpenApiResponseExplorer::explore(
+            $specName,
+            $method,
+            $path,
+            $status,
+            $contentType,
+            $seed,
+            $extraCases,
+        ));
     }
 
     /**
@@ -149,21 +109,9 @@ trait ExploresOpenApiEndpoint
      */
     public function exploreResponseSpec(int $seed = 1, int $extraCases = 0): OpenApiResponseSpecExploration
     {
-        $specName = $this->resolveOpenApiSpec();
-        if (!is_string($specName) || $specName === '') {
-            $this->failExplore(
-                'openApiSpec() must return a non-empty spec name, but an empty string was returned. '
-                . 'Either add #[OpenApiSpec(\'your-spec\')] to your test class or method, '
-                . 'override openApiSpec() in your test class, or set the "default_spec" key '
-                . 'in config/gesso.php.',
-            );
-        }
-
-        try {
-            return OpenApiResponseExplorer::exploreSpec($specName, $seed, $extraCases);
-        } catch (InvalidArgumentException|RuntimeException $e) {
-            $this->failExplore($e->getMessage());
-        }
+        return $this->explore(
+            static fn(string $specName) => OpenApiResponseExplorer::exploreSpec($specName, $seed, $extraCases),
+        );
     }
 
     /**
@@ -171,8 +119,29 @@ trait ExploresOpenApiEndpoint
      */
     public function exploreSpec(int $casesPerOperation = 30, int $seed = 1): OpenApiSpecExploration
     {
+        return $this->explore(
+            static fn(string $specName) => OpenApiSpecExplorer::explore($specName, $casesPerOperation, $seed),
+        );
+    }
+
+    /**
+     * Resolve the spec name and run one explorer call, turning an empty spec
+     * name or a loader/explorer exception into a clean assertion failure.
+     * RuntimeException covers OpenApiSpecLoader failures
+     * (InvalidOpenApiSpecException, SpecFileNotFoundException, etc.) —
+     * without this, a missing or malformed spec leaks the loader's raw stack
+     * trace into PHPUnit instead of a clean assertion.
+     *
+     * @template T
+     *
+     * @param Closure(string): T $run
+     *
+     * @return T
+     */
+    private function explore(Closure $run): mixed
+    {
         $specName = $this->resolveOpenApiSpec();
-        if (!is_string($specName) || $specName === '') {
+        if ($specName === '') {
             $this->failExplore(
                 'openApiSpec() must return a non-empty spec name, but an empty string was returned. '
                 . 'Either add #[OpenApiSpec(\'your-spec\')] to your test class or method, '
@@ -182,7 +151,7 @@ trait ExploresOpenApiEndpoint
         }
 
         try {
-            return OpenApiSpecExplorer::explore($specName, $casesPerOperation, $seed);
+            return $run($specName);
         } catch (InvalidArgumentException|RuntimeException $e) {
             $this->failExplore($e->getMessage());
         }
