@@ -16,7 +16,6 @@ class SkipOpenApiResolverTest extends TestCase
     #[Test]
     public function no_attribute_returns_false(): void
     {
-        $this->assertFalse($this->shouldSkipOpenApi());
         $this->assertNull($this->findSkipOpenApiAttribute());
     }
 
@@ -24,7 +23,7 @@ class SkipOpenApiResolverTest extends TestCase
     #[SkipOpenApi]
     public function method_level_attribute_skips(): void
     {
-        $this->assertTrue($this->shouldSkipOpenApi());
+        $this->assertNotNull($this->findSkipOpenApiAttribute());
         $this->assertSame('', $this->findSkipOpenApiAttribute()->reason);
     }
 
@@ -32,7 +31,7 @@ class SkipOpenApiResolverTest extends TestCase
     #[SkipOpenApi(reason: 'experimental endpoint')]
     public function method_level_reason_is_resolved(): void
     {
-        $this->assertTrue($this->shouldSkipOpenApi());
+        $this->assertNotNull($this->findSkipOpenApiAttribute());
         $this->assertSame('experimental endpoint', $this->findSkipOpenApiAttribute()->reason);
     }
 }

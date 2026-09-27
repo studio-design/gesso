@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Studio\Gesso\Exception;
 
 use RuntimeException;
+use Studio\Gesso\Internal\Deprecations;
 use Throwable;
 
 /**
@@ -34,6 +35,10 @@ final class EnumBindingException extends RuntimeException
      * against its spec file. `$enumFqcn` is required because all per-binding
      * reasons (`TargetIsNotEnum`, `AttributeMissing`, `SpecFileNotFound`, …)
      * carry it.
+     *
+     * @deprecated Construct the exception directly with
+     *             `new EnumBindingException($reason, $message, $enumFqcn, $specPath, $previous)`.
+     *             Removed in Gesso 3.0.
      */
     public static function forBinding(
         EnumBindingReason $reason,
@@ -42,6 +47,13 @@ final class EnumBindingException extends RuntimeException
         ?string $specPath = null,
         ?Throwable $previous = null,
     ): self {
+        Deprecations::notice(
+            id: 'exception.enum_binding_exception.for_binding',
+            subject: 'EnumBindingException::forBinding()',
+            replacement: 'new EnumBindingException($reason, $message, $enumFqcn, $specPath, $previous)',
+            removedIn: '3.0',
+        );
+
         return new self($reason, $message, $enumFqcn, $specPath, $previous);
     }
 

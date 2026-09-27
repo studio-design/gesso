@@ -13,11 +13,6 @@ use Studio\Gesso\Attribute\SkipOpenApi;
  */
 trait SkipOpenApiResolver
 {
-    private function shouldSkipOpenApi(): bool
-    {
-        return $this->findSkipOpenApiAttribute() !== null;
-    }
-
     private function findSkipOpenApiAttribute(): ?SkipOpenApi
     {
         $methodName = $this->name(); // @phpstan-ignore method.notFound
