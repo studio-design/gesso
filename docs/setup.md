@@ -2,6 +2,10 @@
 
 This guide walks through end-to-end setup, including the configuration knobs, opt-out mechanisms, and the `auto_validate_request` family. For an at-a-glance quick start, choose a [tested quickstart](quickstarts/core.md).
 
+When invoked through `vendor/bin/gesso`, the CLI uses the consuming project's
+Composer autoloader, including for symlinked path dependencies. Direct execution
+of `bin/gesso` from a library checkout uses that checkout's dependencies.
+
 - [1. Provide your OpenAPI spec](#1-provide-your-openapi-spec)
 - [2. Configure the PHPUnit extension](#2-configure-the-phpunit-extension)
   - [Server base paths are not stripped automatically](#server-base-paths-are-not-stripped-automatically)

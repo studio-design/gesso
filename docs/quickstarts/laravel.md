@@ -34,3 +34,7 @@ composer test
 ```
 
 Its second test enables `auto_assert` and `auto_validate_request`, demonstrating validation without an explicit assertion. The PHPUnit extension prints coverage for both tests.
+
+Already generating your spec with Scramble? Follow the
+[Scramble integration recipe](../recipes/scramble.md) to validate generated
+contracts, cover 401/404/422 responses, and gate untested contract changes in CI.

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Tests\Integration;
 
+use const PHP_BINARY;
+
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
@@ -75,6 +77,28 @@ final class GessoCliIntegrationTest extends TestCase
         $this->assertSame(0, $exit);
         $this->assertSame('', $stderr);
         $this->assertMatchesRegularExpression('/^gesso \S+\n$/', $stdout);
+    }
+
+    #[Test]
+    public function composer_proxy_autoloader_takes_precedence_over_the_repository_vendor(): void
+    {
+        $process = proc_open([
+            PHP_BINARY,
+            '-r',
+            '$GLOBALS["_composer_autoload_path"] = $argv[1]; require $argv[2];',
+            $this->repoRoot . '/tests/fixtures/cli/consumer-autoload.php',
+            $this->repoRoot . '/bin/gesso',
+        ], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, $this->repoRoot);
+        $this->assertIsResource($process);
+        $stdout = stream_get_contents($pipes[1]);
+        $stderr = stream_get_contents($pipes[2]);
+        foreach ($pipes as $pipe) {
+            fclose($pipe);
+        }
+
+        $this->assertSame(23, proc_close($process));
+        $this->assertSame("consumer autoloader selected\n", $stdout);
+        $this->assertSame('', $stderr);
     }
 
     #[Test]
