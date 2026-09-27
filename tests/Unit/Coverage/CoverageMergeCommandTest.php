@@ -531,6 +531,16 @@ class CoverageMergeCommandTest extends TestCase
     }
 
     #[Test]
+    public function parse_argv_rejects_the_undocumented_cleanup_flag(): void
+    {
+        // Cleanup is the default; only `--no-cleanup` is a documented flag.
+        $opts = CoverageMergeCommand::parseArgv(['--cleanup']);
+
+        $this->assertSame(['--cleanup'], $opts['invalid_options']);
+        $this->assertArrayNotHasKey('cleanup', $opts);
+    }
+
+    #[Test]
     public function exits_one_when_junit_output_write_fails(): void
     {
         OpenApiCoverageTracker::recordResponse(
