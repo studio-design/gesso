@@ -4,26 +4,11 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Baseline;
 
-use const JSON_PRETTY_PRINT;
-use const JSON_THROW_ON_ERROR;
-use const JSON_UNESCAPED_SLASHES;
-use const JSON_UNESCAPED_UNICODE;
-
 use InvalidArgumentException;
-use JsonException;
 use RuntimeException;
 
-use function array_diff;
-use function array_keys;
 use function array_map;
-use function file_get_contents;
-use function file_put_contents;
-use function implode;
-use function is_array;
-use function is_int;
 use function is_string;
-use function json_decode;
-use function json_encode;
 use function sprintf;
 
 /**
@@ -49,6 +34,7 @@ final class CoverageBaselineFile
      */
     public const BASELINE_VERSION = 1;
 
+    private const LABEL = 'Coverage baseline';
     private const REQUIRED_STRING_FIELDS = ['spec', 'method', 'path', 'status'];
 
     private function __construct() {}
@@ -69,10 +55,7 @@ final class CoverageBaselineFile
 
     public static function render(CoverageBaseline $baseline): string
     {
-        return json_encode(
-            self::toDocument($baseline),
-            JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE,
-        ) . "\n";
+        return BaselineFileFormat::render(self::toDocument($baseline));
     }
 
     /**
@@ -82,20 +65,7 @@ final class CoverageBaselineFile
      */
     public static function parse(string $document): CoverageBaseline
     {
-        try {
-            $decoded = json_decode($document, true, 512, JSON_THROW_ON_ERROR);
-        } catch (JsonException $exception) {
-            throw new InvalidArgumentException(
-                'Coverage baseline file is not valid JSON: ' . $exception->getMessage(),
-                previous: $exception,
-            );
-        }
-
-        if (!is_array($decoded)) {
-            throw new InvalidArgumentException('Coverage baseline file must decode to a JSON object.');
-        }
-
-        return self::parseDocument($decoded);
+        return self::parseDocument(BaselineFileFormat::decode($document, self::LABEL));
     }
 
     /**
@@ -107,18 +77,7 @@ final class CoverageBaselineFile
      */
     public static function parseDocument(array $decoded): CoverageBaseline
     {
-        $version = $decoded['coverage_baseline_version'] ?? null;
-        if (!is_int($version) || $version !== self::BASELINE_VERSION) {
-            throw new InvalidArgumentException(sprintf(
-                'Unsupported coverage_baseline_version: expected %d.',
-                self::BASELINE_VERSION,
-            ));
-        }
-
-        $responses = $decoded['uncovered_responses'] ?? null;
-        if (!is_array($responses)) {
-            throw new InvalidArgumentException('Coverage baseline "uncovered_responses" must be an array.');
-        }
+        $responses = BaselineFileFormat::entries($decoded, self::LABEL, 'coverage_baseline_version', self::BASELINE_VERSION, 'uncovered_responses');
 
         $baseline = new CoverageBaseline();
         foreach ($responses as $index => $entry) {
@@ -131,54 +90,23 @@ final class CoverageBaselineFile
     /** @throws InvalidArgumentException when the file is unreadable or malformed */
     public static function read(string $path): CoverageBaseline
     {
-        $document = @file_get_contents($path);
-        if ($document === false) {
-            throw new InvalidArgumentException(sprintf('Could not read coverage baseline file: %s', $path));
-        }
-
-        return self::parse($document);
+        return self::parse(BaselineFileFormat::readFile($path, self::LABEL));
     }
 
     /** @throws RuntimeException when the file cannot be written */
     public static function write(string $path, CoverageBaseline $baseline): void
     {
-        if (@file_put_contents($path, self::render($baseline)) === false) {
-            throw new RuntimeException(sprintf('Could not write coverage baseline file: %s', $path));
-        }
+        BaselineFileFormat::writeFile($path, self::render($baseline), self::LABEL);
     }
 
     private static function parseEntry(int|string $index, mixed $entry): CoverageBaselineEntry
     {
-        if (!is_array($entry)) {
-            throw new InvalidArgumentException(sprintf('Coverage baseline entry #%s must be an object.', $index));
-        }
-
-        $unknown = array_diff(array_keys($entry), [...self::REQUIRED_STRING_FIELDS, 'content_type']);
-        if ($unknown !== []) {
-            throw new InvalidArgumentException(sprintf(
-                'Coverage baseline entry #%s has unknown field(s): %s.',
-                $index,
-                implode(', ', $unknown),
-            ));
-        }
-
-        $values = [];
-        foreach (self::REQUIRED_STRING_FIELDS as $field) {
-            $value = $entry[$field] ?? null;
-            if (!is_string($value) || $value === '') {
-                throw new InvalidArgumentException(sprintf(
-                    'Coverage baseline entry #%s field "%s" must be a non-empty string.',
-                    $index,
-                    $field,
-                ));
-            }
-            $values[$field] = $value;
-        }
+        $values = BaselineFileFormat::entry($index, $entry, 'Coverage baseline entry', self::REQUIRED_STRING_FIELDS, ['content_type']);
 
         // `content_type` is the only field copied verbatim from a spec
         // `content` key, so an empty key round-trips instead of failing a
         // regenerated baseline.
-        $contentType = $entry['content_type'] ?? null;
+        $contentType = $values['content_type'] ?? null;
         if (!is_string($contentType)) {
             throw new InvalidArgumentException(sprintf(
                 'Coverage baseline entry #%s field "content_type" must be a string.',

@@ -14,18 +14,18 @@ class ViolationFingerprintTest extends TestCase
     #[Test]
     public function canonicalization_replaces_numeric_segments_with_a_wildcard(): void
     {
-        $this->assertSame('/data/*/id', ViolationFingerprint::canonicalizeInstancePath('/data/0/id'));
-        $this->assertSame('/items/*/tags/*', ViolationFingerprint::canonicalizeInstancePath('/items/10/tags/2'));
-        $this->assertSame('/*', ViolationFingerprint::canonicalizeInstancePath('/0'));
+        $this->assertSame('/data/*/id', self::canonicalized('/data/0/id'));
+        $this->assertSame('/items/*/tags/*', self::canonicalized('/items/10/tags/2'));
+        $this->assertSame('/*', self::canonicalized('/0'));
     }
 
     #[Test]
     public function canonicalization_keeps_non_numeric_segments_and_the_root_pointer(): void
     {
-        $this->assertSame('', ViolationFingerprint::canonicalizeInstancePath(''));
-        $this->assertSame('/name', ViolationFingerprint::canonicalizeInstancePath('/name'));
-        $this->assertSame('/data/0abc/id', ViolationFingerprint::canonicalizeInstancePath('/data/0abc/id'));
-        $this->assertSame('/', ViolationFingerprint::canonicalizeInstancePath('/'));
+        $this->assertSame('', self::canonicalized(''));
+        $this->assertSame('/name', self::canonicalized('/name'));
+        $this->assertSame('/data/0abc/id', self::canonicalized('/data/0abc/id'));
+        $this->assertSame('/', self::canonicalized('/'));
     }
 
     #[Test]
@@ -132,5 +132,15 @@ class ViolationFingerprintTest extends TestCase
         $b = new ViolationFingerprint('front', 'GET', '/v1/pets', null, null, 'response.status', null, null);
 
         $this->assertSame($a->key(), $b->key());
+    }
+
+    private static function canonicalized(string $instancePath): ?string
+    {
+        return ViolationFingerprint::fromIssue(
+            'front',
+            new ValidationIssue('response.body', 'violation', instancePath: $instancePath),
+            'get',
+            '/v1/pets',
+        )->instancePath;
     }
 }

@@ -8,6 +8,8 @@ use Studio\Gesso\Coverage\CoverageThresholdEvaluator;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\Coverage\ResponseCoverageState;
 
+use function array_filter;
+use function array_values;
 use function count;
 use function implode;
 use function sprintf;
@@ -94,23 +96,15 @@ final class CoverageBaselineEvaluator
     {
         $current = self::collect($results);
 
-        $regressions = [];
-        foreach ($current->sorted() as $entry) {
-            if (!$baseline->contains($entry)) {
-                $regressions[] = $entry;
-            }
-        }
-
-        $stale = [];
-        foreach ($baseline->sorted() as $entry) {
-            if (!$current->contains($entry)) {
-                $stale[] = $entry;
-            }
-        }
-
         return [
-            'regressions' => $regressions,
-            'stale' => $stale,
+            'regressions' => array_values(array_filter(
+                $current->sorted(),
+                static fn(CoverageBaselineEntry $entry): bool => !$baseline->contains($entry),
+            )),
+            'stale' => array_values(array_filter(
+                $baseline->sorted(),
+                static fn(CoverageBaselineEntry $entry): bool => !$current->contains($entry),
+            )),
             'uncovered' => $current->count(),
         ];
     }
