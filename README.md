@@ -122,6 +122,7 @@ Choose the CI-tested five-minute path matching your stack:
 | --- | --- | --- |
 | Framework-independent PHPUnit | [`examples/core`](https://github.com/studio-design/gesso/tree/main/examples/core) | Direct response validation and coverage |
 | Laravel | [`examples/laravel`](https://github.com/studio-design/gesso/tree/main/examples/laravel) | Explicit assertion, `auto_assert`, and request validation |
+| Laravel + Scramble | [`examples/scramble`](https://github.com/studio-design/gesso/tree/main/examples/scramble) | Generated contracts, response drift, and untested 422 coverage gates |
 | Symfony | [`examples/symfony`](https://github.com/studio-design/gesso/tree/main/examples/symfony) | HttpFoundation request/response assertions |
 | Pest | [`examples/pest`](https://github.com/studio-design/gesso/tree/main/examples/pest) | Laravel response and request expectations |
 | PSR-7 | [`examples/psr7`](https://github.com/studio-design/gesso/tree/main/examples/psr7) | Request/response exchange validation |

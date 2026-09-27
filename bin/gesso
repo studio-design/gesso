@@ -10,13 +10,16 @@ use Studio\Gesso\Coverage\CoverageMergeCommand;
 use Studio\Gesso\Internal\ToolVersion;
 
 $autoloadCandidates = [
+    // Composer's proxy knows the consuming project's vendor directory, even
+    // when this binary belongs to a symlinked path repository.
+    $GLOBALS['_composer_autoload_path'] ?? null,
     __DIR__ . '/../vendor/autoload.php',
     __DIR__ . '/../../../autoload.php',
 ];
 
 $autoload = null;
 foreach ($autoloadCandidates as $candidate) {
-    if (file_exists($candidate)) {
+    if (is_string($candidate) && file_exists($candidate)) {
         $autoload = $candidate;
 
         break;

@@ -22,7 +22,7 @@ exclude = [
   # Run URLs cited as evidence in docs; they expire and are not navigation.
   '^https://github\.com/studio-design/gesso/actions/runs/',
   # Directory listings GitHub answers with 404 until the branch is pushed.
-  '^https://github\.com/studio-design/gesso/tree/main/examples/(core|laravel|symfony)$',
+  '^https://github\.com/studio-design/gesso/tree/main/examples/(core|laravel|scramble|symfony)$',
   # The published site itself: checking it from a PR asserts the *previous*
   # deploy, which says nothing about the branch under test.
   '^https://studio-design\.github\.io/gesso/',

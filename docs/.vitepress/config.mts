@@ -290,6 +290,7 @@ export default defineConfig({
         text: 'Recipes',
         items: [
           { text: 'GitHub Actions', link: '/recipes/github-actions' },
+          { text: 'Scramble + Laravel', link: '/recipes/scramble' },
           { text: 'Fuzzing and drift checks', link: '/recipes/advanced-validation' },
           { text: 'Parallel test runners', link: '/parallel' }
         ]
