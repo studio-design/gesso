@@ -18,9 +18,7 @@ use Closure;
  * the value exists ({@see self::evaluate()}). Sites that can decide on the
  * spot (property presence after the maxProperties trim) report directly.
  *
- * `targetLocal` keeps the node-level outcome at the target site — the value
- * the check ran on, or the reported state — for diagnostics only. A case may
- * be dropped solely when generation records a schema-derived empty-domain
+ * A case may be dropped solely when generation records a schema-derived empty-domain
  * proof through {@see self::proveDeadEnd()}. Search exhaustion, repeated
  * output, or deterministic failure without that proof must stay loud.
  *
@@ -39,8 +37,6 @@ use Closure;
 final class PinnedBranchObservation
 {
     public bool $targetSatisfied = false;
-    public bool $observed = false;
-    public mixed $targetLocal = null;
 
     /**
      * Set when generation hit a statically empty value domain at a forced
@@ -74,8 +70,6 @@ final class PinnedBranchObservation
     public function evaluate(string $pointer, mixed $value): void
     {
         if ($this->check !== null && $this->owner === $pointer) {
-            $this->observed = true;
-            $this->targetLocal = $value;
             $this->targetSatisfied = ($this->check)($value);
         }
     }
@@ -89,8 +83,6 @@ final class PinnedBranchObservation
     /** Record an on-the-spot decision from a site that needs no deferral. */
     public function report(bool $satisfied): void
     {
-        $this->observed = true;
-        $this->targetLocal = $satisfied;
         $this->targetSatisfied = $satisfied;
     }
 

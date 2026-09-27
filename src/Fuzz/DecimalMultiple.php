@@ -4,17 +4,18 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Fuzz;
 
+use const FILTER_VALIDATE_INT;
 use const JSON_PRESERVE_ZERO_FRACTION;
 use const PHP_INT_MAX;
 
 use function abs;
+use function filter_var;
 use function intdiv;
 use function is_string;
 use function json_encode;
 use function ltrim;
 use function preg_match;
 use function str_repeat;
-use function strcmp;
 use function strlen;
 
 /** @internal */
@@ -85,7 +86,8 @@ final class DecimalMultiple
             $digits .= str_repeat('0', -$decimalPlaces);
             $decimalPlaces = 0;
         }
-        if ($decimalPlaces > 18 || !self::fitsPlatformInteger($digits)) {
+        // $digits is ltrim'd of leading zeros, so filter_var's octal-looking rejection cannot bite.
+        if ($decimalPlaces > 18 || filter_var($digits, FILTER_VALIDATE_INT) === false) {
             return null;
         }
 
@@ -97,14 +99,6 @@ final class DecimalMultiple
             'numerator' => intdiv($numerator, $divisor),
             'denominator' => intdiv($denominator, $divisor),
         ];
-    }
-
-    private static function fitsPlatformInteger(string $digits): bool
-    {
-        $maximum = (string) PHP_INT_MAX;
-
-        return strlen($digits) < strlen($maximum) ||
-            (strlen($digits) === strlen($maximum) && strcmp($digits, $maximum) <= 0);
     }
 
     private static function greatestCommonDivisor(int $left, int $right): int

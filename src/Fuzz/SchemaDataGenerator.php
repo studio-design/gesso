@@ -11,6 +11,7 @@ use Faker\Factory;
 use Faker\Generator;
 use InvalidArgumentException;
 use stdClass;
+use Studio\Gesso\Spec\OpenApiRefResolver;
 use Studio\Gesso\Spec\OpenApiSchemaConverter;
 
 use function array_filter;
@@ -628,6 +629,58 @@ final class SchemaDataGenerator
     }
 
     /**
+     * Fold a boolean `if` (OpenAPI 3.1 / JSON Schema 2020-12 Boolean Schema
+     * Objects): `if: true` makes the then unconditional, `if: false` the
+     * else — there is no branch to choose. Shared with the enumerator.
+     *
+     * @param array<string, mixed> $schema node whose `if` is a bool
+     *
+     * @return array<string, mixed>
+     */
+    public static function foldBooleanIf(array $schema): array
+    {
+        $branchSchema = $schema['if'] === true ? ($schema['then'] ?? null) : ($schema['else'] ?? null);
+        unset($schema['if'], $schema['then'], $schema['else']);
+        if (is_array($branchSchema)) {
+            $schema = self::mergeSchemas($schema, $branchSchema);
+        }
+
+        return $schema;
+    }
+
+    /**
+     * Split a node's `allOf` into the node with every non-conditional branch
+     * merged in, and the list of conditional (`if`-carrying) branches.
+     * Shared with the enumerator so both traverse identical views.
+     *
+     * @param array<string, mixed> $schema
+     *
+     * @return array{array<string, mixed>, list<array<string, mixed>>}
+     */
+    public static function splitConditionals(array $schema): array
+    {
+        if (!isset($schema['allOf']) || !is_array($schema['allOf'])) {
+            return [$schema, []];
+        }
+
+        $base = $schema;
+        unset($base['allOf']);
+        $conditionals = [];
+        foreach ($schema['allOf'] as $branch) {
+            if (!is_array($branch)) {
+                continue;
+            }
+            if (isset($branch['if']) && is_array($branch['if'])) {
+                $conditionals[] = $branch;
+            } else {
+                $base = self::mergeSchemas($base, $branch);
+            }
+        }
+
+        return [$base, $conditionals];
+    }
+
+    /**
      * `$forced` tracks whether every choice on the path from the root to
      * this node was pinned by the plan or admitted no alternative — i.e.
      * whether this node's constraints are unavoidable for any value of the
@@ -952,7 +1005,7 @@ final class SchemaDataGenerator
                 continue;
             }
 
-            $childPointer = $pointer . '/properties/' . SchemaChoicePointEnumerator::escapePointerSegment($name);
+            $childPointer = $pointer . '/properties/' . OpenApiRefResolver::escapePointerSegment($name);
             if ($plan !== null && $plan->targetPointer === $childPointer) {
                 // A presence target is decided by this object's final shape
                 // — the maxProperties trim may still remove the property —
@@ -992,20 +1045,7 @@ final class SchemaDataGenerator
             ? $schema['minProperties']
             : 0;
         if (count($result) < $minProperties && ($schema['additionalProperties'] ?? true) !== false) {
-            while (count($result) < $minProperties) {
-                $name = 'property' . count($result);
-                $additionalSchema = is_array($schema['additionalProperties'] ?? null)
-                    ? $schema['additionalProperties']
-                    : ['type' => 'string'];
-                $result[$name] = self::generateOne(
-                    $additionalSchema,
-                    $faker,
-                    $iteration + count($result),
-                    $plan,
-                    $pointer . '/additionalProperties',
-                    false,
-                );
-            }
+            $result = self::fillAdditionalProperties($result, $schema, $minProperties, $faker, $iteration, $plan, $pointer);
         }
         if ($plan !== null && count($result) < $minProperties && ($schema['additionalProperties'] ?? true) === false) {
             // `additionalProperties: false` only forbids names that neither
@@ -1034,7 +1074,7 @@ final class SchemaDataGenerator
                         $faker,
                         $iteration + count($result),
                         $plan,
-                        $pointer . '/patternProperties/' . SchemaChoicePointEnumerator::escapePointerSegment($patternKey),
+                        $pointer . '/patternProperties/' . OpenApiRefResolver::escapePointerSegment($patternKey),
                         false,
                     );
                 }
@@ -1044,20 +1084,7 @@ final class SchemaDataGenerator
             ? $schema['maxProperties']
             : null;
         if ($maxProperties !== null && ($iteration % 3) === 1 && ($schema['additionalProperties'] ?? true) !== false) {
-            while (count($result) < $maxProperties) {
-                $name = 'property' . count($result);
-                $additionalSchema = is_array($schema['additionalProperties'] ?? null)
-                    ? $schema['additionalProperties']
-                    : ['type' => 'string'];
-                $result[$name] = self::generateOne(
-                    $additionalSchema,
-                    $faker,
-                    $iteration + count($result),
-                    $plan,
-                    $pointer . '/additionalProperties',
-                    false,
-                );
-            }
+            $result = self::fillAdditionalProperties($result, $schema, $maxProperties, $faker, $iteration, $plan, $pointer);
         }
         if ($maxProperties !== null && count($result) > $maxProperties) {
             // Trim unpinned optional properties first so a plan that forces
@@ -1072,7 +1099,7 @@ final class SchemaDataGenerator
                         continue;
                     }
                     if ($sparePinned && $plan?->branchFor(
-                        $pointer . '/properties/' . SchemaChoicePointEnumerator::escapePointerSegment($name),
+                        $pointer . '/properties/' . OpenApiRefResolver::escapePointerSegment($name),
                     ) === SchemaChoicePoint::PRESENT) {
                         continue;
                     }
@@ -1139,6 +1166,41 @@ final class SchemaDataGenerator
                 return new stdClass();
             }
             $result['property0'] = 'value';
+        }
+
+        return $result;
+    }
+
+    /**
+     * Append `additionalProperties` filler until the object holds `$target`
+     * members. Filler nodes are unforced: they are avoidable by construction.
+     *
+     * @param array<string, mixed> $result
+     * @param array<string, mixed> $schema
+     *
+     * @return array<string, mixed>
+     */
+    private static function fillAdditionalProperties(
+        array $result,
+        array $schema,
+        int $target,
+        ?Generator $faker,
+        int $iteration,
+        ?CaseSelectionPlan $plan,
+        string $pointer,
+    ): array {
+        $additionalSchema = is_array($schema['additionalProperties'] ?? null)
+            ? $schema['additionalProperties']
+            : ['type' => 'string'];
+        while (count($result) < $target) {
+            $result['property' . count($result)] = self::generateOne(
+                $additionalSchema,
+                $faker,
+                $iteration + count($result),
+                $plan,
+                $pointer . '/additionalProperties',
+                false,
+            );
         }
 
         return $result;
@@ -1615,15 +1677,9 @@ final class SchemaDataGenerator
         }
 
         if ($plan !== null && is_bool($schema['if'] ?? null)) {
-            // Boolean Schema Objects (OpenAPI 3.1 / JSON Schema 2020-12):
-            // `if: true` makes the then unconditional, `if: false` the else
-            // — there is no branch to choose. Plan-less rotation keeps its
-            // historical output and ignores boolean ifs.
-            $branchSchema = $schema['if'] === true ? ($schema['then'] ?? null) : ($schema['else'] ?? null);
-            unset($schema['if'], $schema['then'], $schema['else']);
-            if (is_array($branchSchema)) {
-                $schema = self::mergeSchemas($schema, $branchSchema);
-            }
+            // Plan-less rotation keeps its historical output and ignores
+            // boolean ifs.
+            $schema = self::foldBooleanIf($schema);
         } elseif (isset($schema['if']) && is_array($schema['if'])) {
             if ($plan !== null) {
                 $sides = self::ifBranchSides($schema);
@@ -1648,15 +1704,7 @@ final class SchemaDataGenerator
                     $schema = self::applyIfSide($schema, $side);
                 }
             } else {
-                $useThen = ($iteration % 2) === 0;
-                $conditional = $useThen
-                    ? self::mergeSchemas($schema['if'], is_array($schema['then'] ?? null) ? $schema['then'] : [])
-                    : self::mergeSchemas(
-                        ['not' => $schema['if']],
-                        is_array($schema['else'] ?? null) ? $schema['else'] : [],
-                    );
-                unset($schema['if'], $schema['then'], $schema['else']);
-                $schema = self::mergeSchemas($schema, $conditional);
+                $schema = self::applyIfSide($schema, ($iteration % 2) === 0 ? 0 : 1);
             }
         }
 
@@ -1738,38 +1786,6 @@ final class SchemaDataGenerator
         }
 
         return $schema;
-    }
-
-    /**
-     * Split a node's `allOf` into the node with every non-conditional branch
-     * merged in, and the list of conditional (`if`-carrying) branches —
-     * mirrored by the enumerator's traversal.
-     *
-     * @param array<string, mixed> $schema
-     *
-     * @return array{array<string, mixed>, list<array<string, mixed>>}
-     */
-    private static function splitConditionals(array $schema): array
-    {
-        if (!isset($schema['allOf']) || !is_array($schema['allOf'])) {
-            return [$schema, []];
-        }
-
-        $base = $schema;
-        unset($base['allOf']);
-        $conditionals = [];
-        foreach ($schema['allOf'] as $branch) {
-            if (!is_array($branch)) {
-                continue;
-            }
-            if (isset($branch['if']) && is_array($branch['if'])) {
-                $conditionals[] = $branch;
-            } else {
-                $base = self::mergeSchemas($base, $branch);
-            }
-        }
-
-        return [$base, $conditionals];
     }
 
     /**
@@ -1885,13 +1901,14 @@ final class SchemaDataGenerator
         }
 
         $name = self::generateCommonPattern($pattern, [], $faker, $iteration);
-        if ($name === null) {
-            return null;
-        }
-        $delimiter = '~';
-        $escaped = str_replace($delimiter, '\\' . $delimiter, $pattern);
 
-        return @preg_match($delimiter . $escaped . $delimiter . 'u', $name) === 1 ? $name : null;
+        return $name !== null && self::matchesPattern($pattern, $name) ? $name : null;
+    }
+
+    /** Match `$value` against a JSON Schema ECMA-262 pattern; an uncompilable pattern matches nothing. */
+    private static function matchesPattern(string $pattern, string $value): bool
+    {
+        return @preg_match('~' . str_replace('~', '\\~', $pattern) . '~u', $value) === 1;
     }
 
     /** @param array<string, mixed> $schema */
@@ -1919,8 +1936,6 @@ final class SchemaDataGenerator
         $candidates = ['a', 'A', '0', 'abc', 'ABC', '123', 'test-' . $iteration, 'é', '日本語'];
         $minimum = isset($schema['minLength']) && is_int($schema['minLength']) ? max(0, $schema['minLength']) : null;
         $maximum = isset($schema['maxLength']) && is_int($schema['maxLength']) ? max(0, $schema['maxLength']) : null;
-        $delimiter = '~';
-        $escaped = str_replace($delimiter, '\\' . $delimiter, $pattern);
         foreach ($candidates as $candidate) {
             $candidateLength = self::unicodeLength($candidate);
             $targets = array_values(array_unique(array_filter(
@@ -1933,7 +1948,7 @@ final class SchemaDataGenerator
                 }
                 $value = self::repeatToLength($candidate, $target);
                 if (($minimum === null || self::unicodeLength($value) >= $minimum) &&
-                    @preg_match($delimiter . $escaped . $delimiter . 'u', $value) === 1) {
+                    self::matchesPattern($pattern, $value)) {
                     return $value;
                 }
             }
@@ -1975,15 +1990,13 @@ final class SchemaDataGenerator
         $candidates[] = '000-000-0000';
         $candidates[] = '0000-000-0000';
 
-        $delimiter = '~';
-        $escaped = str_replace($delimiter, '\\' . $delimiter, $pattern);
         foreach ($candidates as $candidate) {
             $length = self::unicodeLength($candidate);
             if (($minimum !== null && $length < $minimum) ||
                 ($maximum !== null && $length > $maximum)) {
                 continue;
             }
-            if (@preg_match($delimiter . $escaped . $delimiter . 'u', $candidate) === 1) {
+            if (self::matchesPattern($pattern, $candidate)) {
                 return $candidate;
             }
         }
@@ -2030,10 +2043,7 @@ final class SchemaDataGenerator
             return null;
         }
 
-        $delimiter = '~';
-        $escaped = str_replace($delimiter, '\\' . $delimiter, $pattern);
-
-        return @preg_match($delimiter . $escaped . $delimiter . 'u', $value) === 1 ? $value : null;
+        return self::matchesPattern($pattern, $value) ? $value : null;
     }
 
     /** @param array<string, mixed> $schema */
@@ -2071,25 +2081,20 @@ final class SchemaDataGenerator
         }
 
         $value = self::samplePatternCharacters($characters, $length, $faker, $iteration);
-        $delimiter = '~';
-        $escaped = str_replace($delimiter, '\\' . $delimiter, $pattern);
 
-        return @preg_match($delimiter . $escaped . $delimiter . 'u', $value) === 1 ? $value : null;
+        return self::matchesPattern($pattern, $value) ? $value : null;
     }
 
     /** @return list<string> */
     private static function charactersMatchingClass(string $characterClass): array
     {
-        $delimiter = '~';
-        $escaped = str_replace($delimiter, '\\' . $delimiter, $characterClass);
-        $expression = $delimiter . '^' . $escaped . '$' . $delimiter . 'u';
         $candidates = array_values(array_unique(self::unicodeCharacters(
             'aA0abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_- ',
         )));
         $matches = [];
 
         foreach ($candidates as $candidate) {
-            if (@preg_match($expression, $candidate) === 1) {
+            if (self::matchesPattern('^' . $characterClass . '$', $candidate)) {
                 $matches[] = $candidate;
             }
         }

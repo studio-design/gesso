@@ -18,7 +18,6 @@ use Throwable;
 use function array_key_exists;
 use function array_keys;
 use function count;
-use function crc32;
 use function implode;
 use function is_array;
 use function is_string;
@@ -448,13 +447,5 @@ final class OpenApiResponseSpecExploration
             $failure->message,
             $failure->replay,
         );
-    }
-
-    private function operationFromDeclaration(string $path, string $method, mixed $rawOperation): ExploredOperation
-    {
-        $normalizedMethod = OpenApiOperationResolver::normalizeMethodForKey($method);
-        $derivedSeed = crc32(implode("\0", [$this->specName, $normalizedMethod, $path, (string) $this->seed])) & 0x7fffffff;
-
-        return ExploredOperation::fromDeclaration($this->specName, $path, $method, $rawOperation, $derivedSeed);
     }
 }
