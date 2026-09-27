@@ -22,7 +22,6 @@ use function implode;
 use function is_readable;
 use function pathinfo;
 use function realpath;
-use function rtrim;
 use function sprintf;
 use function str_replace;
 use function str_starts_with;
@@ -157,14 +156,7 @@ final class ExternalRefLoader
     {
         foreach ($allowedLocalRefRoots as $root) {
             $canonicalRoot = realpath($root);
-            if ($canonicalRoot === false) {
-                continue;
-            }
-
-            $canonicalRoot = rtrim($canonicalRoot, '/\\');
-            if ($absolutePath === $canonicalRoot ||
-                str_starts_with($absolutePath, $canonicalRoot . DIRECTORY_SEPARATOR)
-            ) {
+            if ($canonicalRoot !== false && SpecPath::isInsideRoot($absolutePath, $canonicalRoot)) {
                 return true;
             }
         }

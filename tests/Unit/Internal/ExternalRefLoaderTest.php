@@ -152,6 +152,25 @@ class ExternalRefLoaderTest extends TestCase
     }
 
     #[Test]
+    public function rejects_a_sibling_directory_that_merely_shares_the_root_name_as_a_prefix(): void
+    {
+        $allowedRoot = $this->workDir . '/specs';
+        mkdir($allowedRoot);
+        mkdir($this->workDir . '/specs-evil');
+        $sourceFile = $allowedRoot . '/root.yaml';
+        file_put_contents($sourceFile, "openapi: 3.0.3\n");
+        file_put_contents($this->workDir . '/specs-evil/secret.json', '{"secret":true}');
+
+        try {
+            $cache = [];
+            ExternalRefLoader::loadDocument('../specs-evil/secret.json', $sourceFile, $cache);
+            $this->fail('expected InvalidOpenApiSpecException');
+        } catch (InvalidOpenApiSpecException $e) {
+            $this->assertSame(InvalidOpenApiSpecReason::LocalRefOutsideAllowedRoot, $e->reason);
+        }
+    }
+
+    #[Test]
     public function rejects_a_symlink_whose_canonical_target_is_outside_the_allowed_root(): void
     {
         $allowedRoot = $this->workDir . '/specs';

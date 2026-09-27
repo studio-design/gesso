@@ -43,7 +43,6 @@ use function str_contains;
 use function str_replace;
 use function str_starts_with;
 use function strlen;
-use function strpos;
 use function strrpos;
 use function substr;
 
@@ -1835,12 +1834,9 @@ final class OpenApiRefResolver
      */
     private static function splitRef(string $ref): array
     {
-        $hashPos = strpos($ref, '#');
-        if ($hashPos === false) {
-            return [$ref, '', false];
-        }
+        $parts = explode('#', $ref, 2);
 
-        return [substr($ref, 0, $hashPos), substr($ref, $hashPos + 1), true];
+        return isset($parts[1]) ? [$parts[0], $parts[1], true] : [$ref, '', false];
     }
 
     private static function canonicalChainKey(?string $sourceFile, string $ref): string
