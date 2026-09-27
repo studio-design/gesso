@@ -76,10 +76,7 @@ final class LaravelRouteParityAnalyzer
                 continue;
             }
 
-            $methods = array_values(array_unique(array_map(
-                static fn(string $method): string => strtoupper($method),
-                $route->methods(),
-            )));
+            $methods = array_values(array_unique(array_map(strtoupper(...), $route->methods())));
             $hasGet = in_array('GET', $methods, true);
 
             foreach ($methods as $method) {
