@@ -7,6 +7,7 @@ namespace Studio\Gesso\Stubs;
 use const JSON_THROW_ON_ERROR;
 use const JSON_UNESCAPED_SLASHES;
 use const JSON_UNESCAPED_UNICODE;
+use const PREG_SPLIT_NO_EMPTY;
 
 use InvalidArgumentException;
 use JsonException;
@@ -14,7 +15,6 @@ use stdClass;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\Validation\Support\ContentTypeMatcher;
 
-use function array_filter;
 use function array_is_list;
 use function array_keys;
 use function array_map;
@@ -148,30 +148,6 @@ final class StubRenderer
     }
 
     /**
-     * `GET /v1/pets/{petId}` becomes `GetV1PetsPetIdTest`. Derived from the
-     * method and path rather than `operationId` so the name is unique by
-     * construction — `(method, path)` is unique in a document, `operationId`
-     * is only unique when the author kept it so. Collisions this can still
-     * produce are resolved by {@see self::classNames()}.
-     */
-    public static function className(string $method, string $path): string
-    {
-        $words = preg_split('/[^A-Za-z0-9]+/', $path) ?: [];
-        // The method is a constant shouted in the spec; path segments carry the
-        // author's own casing (`{petId}` → `PetId`), so only the method is
-        // folded before capitalising.
-        $studly = ucfirst(strtolower($method));
-        foreach ($words as $word) {
-            if ($word === '') {
-                continue;
-            }
-            $studly .= ucfirst($word);
-        }
-
-        return ($studly === '' ? 'Operation' : $studly) . 'Test';
-    }
-
-    /**
      * Why this adapter cannot express the operation's request, or null when it
      * can.
      *
@@ -227,6 +203,30 @@ final class StubRenderer
             'pest' => $this->renderPest($operation),
             default => $this->renderClass($operation, $className),
         };
+    }
+
+    /**
+     * `GET /v1/pets/{petId}` becomes `GetV1PetsPetIdTest`. Derived from the
+     * method and path rather than `operationId` so the name is unique by
+     * construction — `(method, path)` is unique in a document, `operationId`
+     * is only unique when the author kept it so. Collisions this can still
+     * produce are resolved by {@see self::classNames()}.
+     */
+    private static function className(string $method, string $path): string
+    {
+        $words = preg_split('/[^A-Za-z0-9]+/', $path) ?: [];
+        // The method is a constant shouted in the spec; path segments carry the
+        // author's own casing (`{petId}` → `PetId`), so only the method is
+        // folded before capitalising.
+        $studly = ucfirst(strtolower($method));
+        foreach ($words as $word) {
+            if ($word === '') {
+                continue;
+            }
+            $studly .= ucfirst($word);
+        }
+
+        return ($studly === '' ? 'Operation' : $studly) . 'Test';
     }
 
     /**
@@ -1009,12 +1009,8 @@ final class StubRenderer
         // the surrounding snake_case method name does. Anchored on a lowercase
         // letter so an all-caps run like `2XX` is left alone.
         $value = preg_replace('/(?<=[a-z])(?=[A-Z])/', '_', $value) ?? $value;
-        $parts = preg_split('/[^A-Za-z0-9]+/', $value) ?: [];
-        $parts = array_map(static fn(string $part): string => strtolower($part), array_filter(
-            $parts,
-            static fn(string $part): bool => $part !== '',
-        ));
+        $parts = preg_split('/[^A-Za-z0-9]+/', $value, -1, PREG_SPLIT_NO_EMPTY) ?: [];
 
-        return implode('_', $parts);
+        return strtolower(implode('_', $parts));
     }
 }
