@@ -90,6 +90,7 @@ nothing there.
 | Deprecated in | Surface | Replacement | Removed in |
 | --- | --- | --- | --- |
 | 2.6.0 | `auto_inject_dummy_bearer` (Laravel config) | `laravel.auto_inject_dummy_credentials` = `'bearer'` (3.0) | 3.0 |
+| 2.7.0 | `EnumBindingException::forBinding()` | `new EnumBindingException($reason, $message, $enumFqcn, $specPath, $previous)` | 3.0 |
 
 The behaviour-equivalent replacement is
 `laravel.auto_inject_dummy_credentials = 'bearer'`, which
