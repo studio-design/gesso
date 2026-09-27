@@ -8,6 +8,7 @@ use stdClass;
 use Studio\Gesso\OpenApiResponseValidator;
 use Studio\Gesso\Spec\OpenApiRefResolver;
 
+use function array_filter;
 use function array_intersect;
 use function array_is_list;
 use function array_keys;
@@ -95,13 +96,7 @@ final class StrictRequiredBodyWalker
      */
     private static function walkObject(array $node, string $pointer, array &$out): void
     {
-        $keys = [];
-        foreach (array_keys($node) as $key) {
-            if (is_string($key)) {
-                $keys[] = $key;
-            }
-        }
-        $out[$pointer] = self::sortedUnique($keys);
+        $out[$pointer] = self::sortedUnique(array_filter(array_keys($node), is_string(...)));
 
         foreach ($node as $key => $value) {
             if (!is_string($key)) {
@@ -161,19 +156,13 @@ final class StrictRequiredBodyWalker
             // empty object consistent with the validator's stdClass
             // coercion at the root).
             $sawObjectElement = true;
-            $thisElementKeys = [];
-            foreach (array_keys($element) as $key) {
-                if (is_string($key)) {
-                    $thisElementKeys[] = $key;
-                }
-            }
-            $elementKeySets[] = self::sortedUnique($thisElementKeys);
+            $elementKeySets[] = self::sortedUnique(array_filter(array_keys($element), is_string(...)));
 
             $subOut = [];
             self::walkObject($element, $starPointer, $subOut);
             foreach ($subOut as $childPointer => $childKeys) {
                 if ($childPointer === $starPointer) {
-                    // The element's own keys are already in $thisElementKeys.
+                    // The element's own keys are already in $elementKeySets.
                     continue;
                 }
                 $childKeySetsByPointer[$childPointer][] = $childKeys;
@@ -243,7 +232,7 @@ final class StrictRequiredBodyWalker
     }
 
     /**
-     * @param list<string> $keys
+     * @param array<string> $keys
      *
      * @return list<string>
      */

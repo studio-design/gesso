@@ -6,10 +6,9 @@ namespace Studio\Gesso\Validation\Strict;
 
 use function array_map;
 use function count;
+use function explode;
 use function implode;
 use function sprintf;
-use function strpos;
-use function substr;
 use function usort;
 
 /**
@@ -29,13 +28,9 @@ final class StrictAdditionalPropertiesAsserter
         $reports = [];
         foreach ($tracker->recordedSpecsOn() as $specName) {
             foreach ($tracker->getObservationsOn($specName) as $endpoint => $responses) {
-                $space = strpos($endpoint, ' ');
-                $method = substr($endpoint, 0, $space);
-                $path = substr($endpoint, $space + 1);
+                [$method, $path] = explode(' ', $endpoint, 2);
                 foreach ($responses as $response => $pointers) {
-                    $colon = strpos($response, ':');
-                    $statusKey = substr($response, 0, $colon);
-                    $contentTypeKey = substr($response, $colon + 1);
+                    [$statusKey, $contentTypeKey] = explode(':', $response, 2);
                     foreach ($pointers as $pointer => $row) {
                         $reports[] = new StrictAdditionalPropertiesReport(
                             $specName,

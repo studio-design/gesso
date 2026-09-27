@@ -13,6 +13,8 @@ use Studio\Gesso\PHPUnit\OpenApiCoverageExtension;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 
 use function array_diff;
+use function array_map;
+use function array_sum;
 use function array_values;
 use function count;
 use function implode;
@@ -304,12 +306,7 @@ final class StrictRequiredPerCallChecker
      */
     private static function sumMissing(array $missingByPointer): int
     {
-        $total = 0;
-        foreach ($missingByPointer as $missing) {
-            $total += count($missing);
-        }
-
-        return $total;
+        return array_sum(array_map(count(...), $missingByPointer));
     }
 
     /**

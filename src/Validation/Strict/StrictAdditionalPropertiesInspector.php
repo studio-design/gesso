@@ -7,8 +7,11 @@ namespace Studio\Gesso\Validation\Strict;
 use stdClass;
 use Studio\Gesso\Spec\OpenApiSchemaDialect;
 
+use function array_filter;
 use function array_is_list;
 use function array_key_exists;
+use function array_push;
+use function array_values;
 use function count;
 use function is_array;
 use function is_string;
@@ -140,9 +143,7 @@ final class StrictAdditionalPropertiesInspector
                 if ($selection['documented']) {
                     $documented = true;
                 }
-                foreach ($selection['schemas'] as $childSchema) {
-                    $childSchemas[] = $childSchema;
-                }
+                array_push($childSchemas, ...$selection['schemas']);
             }
 
             if (!$documented) {
@@ -278,9 +279,7 @@ final class StrictAdditionalPropertiesInspector
             if ($selection['documented']) {
                 $documentedByBranch = true;
             }
-            foreach ($selection['schemas'] as $child) {
-                $schemas[] = $child;
-            }
+            array_push($schemas, ...$selection['schemas']);
         }
 
         // additionalProperties evaluates every property that was not matched
@@ -465,18 +464,9 @@ final class StrictAdditionalPropertiesInspector
      */
     private static function allOfBranches(array $schema): array
     {
-        $out = [];
         $branches = $schema['allOf'] ?? null;
-        if (!is_array($branches)) {
-            return [];
-        }
-        foreach ($branches as $branch) {
-            if (is_array($branch)) {
-                $out[] = $branch;
-            }
-        }
 
-        return $out;
+        return is_array($branches) ? array_values(array_filter($branches, is_array(...))) : [];
     }
 
     private static function patternMatches(string $pattern, string $propertyName): bool
