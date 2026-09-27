@@ -34,12 +34,14 @@ use function file_get_contents;
 use function file_put_contents;
 use function implode;
 use function is_dir;
+use function json_decode;
 use function json_encode;
 use function mkdir;
 use function preg_replace;
 use function scandir;
 use function sort;
 use function str_contains;
+use function str_replace;
 use function substr_count;
 use function sys_get_temp_dir;
 use function uniqid;
@@ -75,6 +77,25 @@ class StubsCommandTest extends TestCase
         }
     }
 
+    /** @return iterable<string, array{string, string, string}> */
+    public static function provideRequest_prefix_changes_only_the_generated_request_targetCases(): iterable
+    {
+        foreach (['laravel', 'symfony', 'pest'] as $adapter) {
+            yield $adapter . ' nested prefix' => [$adapter, '/api/v1/', '/api/v1'];
+            yield $adapter . ' encoded and quoted prefix' => [$adapter, "/team's%20api", "/team's%20api"];
+            yield $adapter . ' root prefix' => [$adapter, '/', ''];
+            yield $adapter . ' empty prefix' => [$adapter, '', ''];
+        }
+    }
+
+    /** @return iterable<string, array{string}> */
+    public static function provideRejects_invalid_request_prefix_before_writing_filesCases(): iterable
+    {
+        foreach (['api', 'https://example.test/api', '//example.test/api', '/api?q=1', '/api#fragment', '/api path', "/api\n", '/api\\path', '/api%ZZ'] as $prefix) {
+            yield $prefix => [$prefix];
+        }
+    }
+
     #[Test]
     public function parses_every_supported_flag(): void
     {
@@ -88,6 +109,7 @@ class StubsCommandTest extends TestCase
                 'output' => 'tests/Contract',
                 'namespace' => 'Tests\Contract',
                 'base_class' => 'Tests\TestCase',
+                'request_prefix' => '/api',
                 'dry_run' => true,
             ],
             StubsCommand::parseArgv([
@@ -99,6 +121,7 @@ class StubsCommandTest extends TestCase
                 '--output=tests/Contract',
                 '--namespace=Tests\Contract',
                 '--base-class=Tests\TestCase',
+                '--request-prefix=/api',
                 '--dry-run',
             ]),
         );
@@ -1425,6 +1448,68 @@ class StubsCommandTest extends TestCase
 
         $this->assertSame(StubsCommand::EXIT_USAGE, $exit);
         $this->assertStringContainsString('Available: front', $this->stderr);
+    }
+
+    #[Test]
+    #[DataProvider('provideRequest_prefix_changes_only_the_generated_request_targetCases')]
+    public function request_prefix_changes_only_the_generated_request_target(string $adapter, string $prefix, string $normalized): void
+    {
+        $operation = [
+            'parameters' => [
+                ['name' => 'id', 'in' => 'path', 'required' => true, 'schema' => ['type' => 'integer'], 'example' => 7],
+                ['name' => 'q', 'in' => 'query', 'required' => true, 'schema' => ['type' => 'string'], 'example' => 'red fox'],
+            ],
+            'responses' => ['200' => ['description' => 'OK'], '404' => ['description' => 'Missing']],
+        ];
+        $rootOperation = $operation;
+        $rootOperation['parameters'] = [$operation['parameters'][1]];
+        $spec = $this->writeInlineSpec('petstore', ['/pets/{id}' => ['get' => $operation], '/' => ['get' => $rootOperation]]);
+        $document = json_decode((string) file_get_contents($spec), true, flags: JSON_THROW_ON_ERROR);
+        $document['servers'] = [['url' => 'https://example.test/published-api']];
+        file_put_contents($spec, json_encode($document, JSON_THROW_ON_ERROR));
+        $coverage = $this->writeCoverage([
+            'GET /pets/{id}' => [['200', '*', 'validated'], ['404', '*', 'uncovered']],
+            'GET /' => [['200', '*', 'validated'], ['404', '*', 'uncovered']],
+        ]);
+        $arguments = ['--spec=' . $spec, '--coverage=' . $coverage, '--adapter=' . $adapter];
+        $this->assertSame(0, $this->command()->run(StubsCommand::parseArgv([
+            ...$arguments, '--output=' . $this->workDir . '/before',
+        ])));
+        $this->assertSame(0, $this->command()->run(StubsCommand::parseArgv([
+            ...$arguments, '--output=' . $this->workDir . '/out', '--request-prefix=' . $prefix,
+        ])));
+        $this->assertSame($this->generatedFiles('before'), $this->generatedFiles());
+        foreach (['GetPetsIdTest.php' => '/pets/7?q=red%20fox', 'GetTest.php' => '/?q=red%20fox'] as $file => $target) {
+            $before = (string) file_get_contents($this->workDir . '/before/' . $file);
+            $this->assertStringContainsString(var_export($target, true), $before);
+            $this->assertSame(
+                str_replace(var_export($target, true), var_export($normalized . $target, true), $before),
+                file_get_contents($this->workDir . '/out/' . $file),
+            );
+            $this->assertSame(0, $this->lint($this->workDir . '/out/' . $file));
+        }
+    }
+
+    #[Test]
+    #[DataProvider('provideRejects_invalid_request_prefix_before_writing_filesCases')]
+    public function rejects_invalid_request_prefix_before_writing_files(string $prefix): void
+    {
+        $this->assertSame(StubsCommand::EXIT_USAGE, $this->command()->run(StubsCommand::parseArgv([
+            '--spec=' . $this->writeSpec(), '--adapter=laravel', '--request-prefix=' . $prefix,
+            '--output=' . $this->workDir . '/out',
+        ])));
+        $this->assertStringContainsString('--request-prefix', $this->stderr);
+        $this->assertDirectoryDoesNotExist($this->workDir . '/out');
+    }
+
+    #[Test]
+    public function phpunit_response_only_stubs_reject_a_request_prefix(): void
+    {
+        $this->assertSame(StubsCommand::EXIT_USAGE, $this->command()->run(StubsCommand::parseArgv([
+            '--spec=' . $this->writeSpec(), '--request-prefix=/api', '--output=' . $this->workDir . '/out',
+        ])));
+        $this->assertStringContainsString('phpunit', $this->stderr);
+        $this->assertDirectoryDoesNotExist($this->workDir . '/out');
     }
 
     private function command(): StubsCommand

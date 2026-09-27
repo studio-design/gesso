@@ -84,6 +84,45 @@ final class OpenApiStubsCommandIntegrationTest extends TestCase
     }
 
     #[Test]
+    public function explicit_request_prefix_is_forwarded_without_changing_the_spec_path(): void
+    {
+        config()->set('gesso.strip_prefixes', ['/gateway', '/api']);
+        $this->assertSame(0, Artisan::call('gesso:stubs', [
+            '--output' => $this->outputDir, '--request-prefix' => '/api/',
+        ]));
+        $code = (string) file_get_contents($this->outputDir . '/GetV1PetsTest.php');
+        $this->assertStringContainsString("'/api/v1/pets'", $code);
+        $this->assertStringContainsString('GET /v1/pets', $code);
+        $this->assertStringNotContainsString('/gateway', $code);
+
+        // Prefix changes do not overwrite the user's existing test.
+        $this->assertSame(0, Artisan::call('gesso:stubs', [
+            '--output' => $this->outputDir, '--request-prefix' => '/other',
+        ]));
+        $this->assertSame($code, file_get_contents($this->outputDir . '/GetV1PetsTest.php'));
+    }
+
+    #[Test]
+    public function request_prefix_is_not_inferred_from_strip_prefixes(): void
+    {
+        config()->set('gesso.strip_prefixes', ['/api']);
+        $this->assertSame(0, Artisan::call('gesso:stubs', ['--output' => $this->outputDir]));
+        $code = (string) file_get_contents($this->outputDir . '/GetV1PetsTest.php');
+        $this->assertStringContainsString("'/v1/pets'", $code);
+        $this->assertStringNotContainsString("'/api/v1/pets'", $code);
+    }
+
+    #[Test]
+    public function malformed_request_prefix_is_reported_without_silent_trimming(): void
+    {
+        $this->assertSame(2, Artisan::call('gesso:stubs', [
+            '--output' => $this->outputDir, '--request-prefix' => '/api ',
+        ]));
+        $this->assertStringContainsString('--request-prefix', Artisan::output());
+        $this->assertDirectoryDoesNotExist($this->outputDir);
+    }
+
+    #[Test]
     public function a_dry_run_writes_nothing(): void
     {
         $exitCode = Artisan::call('gesso:stubs', ['--output' => $this->outputDir, '--dry-run' => true]);

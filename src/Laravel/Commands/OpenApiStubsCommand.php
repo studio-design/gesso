@@ -46,6 +46,7 @@ final class OpenApiStubsCommand extends Command
         {--output= : Directory to write into; defaults to the conventional location for the adapter}
         {--namespace= : Namespace for the generated classes}
         {--base-class= : Test class the generated classes extend}
+        {--request-prefix= : Application mount path prepended to generated requests, e.g. /api}
         {--dry-run : Report what would be written without writing it}';
     protected $description = 'Write test stubs for the OpenAPI responses no test covers';
 
@@ -84,6 +85,10 @@ final class OpenApiStubsCommand extends Command
             if (is_string($value) && trim($value) !== '') {
                 $options[str_replace('-', '_', $option)] = trim($value);
             }
+        }
+        $requestPrefix = $this->option('request-prefix');
+        if (is_string($requestPrefix)) {
+            $options['request_prefix'] = $requestPrefix;
         }
         $write = function (string $message): void {
             $this->line(rtrim($message, "\n"));
