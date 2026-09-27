@@ -60,7 +60,11 @@ location.
 
 ## 2. Configure the PHPUnit extension
 
-Add the coverage extension to your `phpunit.xml`:
+For a single file shared with Laravel, see [Shared configuration](configuration.md)
+(available on `main`, not yet in 2.6.0). It replaces the duplicated settings
+below with a root `gesso.php` and one `config` extension parameter.
+
+The existing v2 setup continues to work. Add the coverage extension to your `phpunit.xml`:
 
 ```xml
 <extensions>
@@ -74,6 +78,7 @@ Add the coverage extension to your `phpunit.xml`:
 
 | Parameter | Required | Default | Description |
 |---|---|---|---|
+| `config` | No | Beside the selected PHPUnit XML file | Path to shared `gesso.php`; see [discovery and relative paths](configuration.md#discovery-and-relative-paths) (unreleased) |
 | `spec_base_path` | Yes* | — | Path to bundled spec directory (relative paths resolve from `getcwd()`) |
 | `strip_prefixes` | No | `[]` | Comma-separated prefixes to strip from request paths (e.g., `/api`). Required even when the spec declares the same base path in `servers` — see [Server base paths are not stripped automatically](#server-base-paths-are-not-stripped-automatically) |
 | `specs` | No | `front` | Comma-separated spec names for coverage tracking |

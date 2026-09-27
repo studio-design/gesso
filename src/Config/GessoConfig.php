@@ -11,6 +11,7 @@ use InvalidArgumentException;
 use Studio\Gesso\OpenApiRequestValidator;
 use Studio\Gesso\OpenApiResponseValidator;
 use Studio\Gesso\Validation\Support\StatusCodePatternSet;
+use Throwable;
 
 use function array_is_list;
 use function array_key_exists;
@@ -212,8 +213,15 @@ final class GessoConfig
 
         $absolute = realpath($path) ?: $path;
 
-        /** @var mixed $raw */
-        $raw = require $absolute;
+        try {
+            /** @var mixed $raw */
+            $raw = require $absolute;
+        } catch (Throwable $e) {
+            throw new InvalidGessoConfigurationException(
+                sprintf('Gesso configuration "%s" could not be evaluated: %s', $absolute, $e->getMessage()),
+                previous: $e,
+            );
+        }
 
         if (!is_array($raw)) {
             throw new InvalidGessoConfigurationException(sprintf(

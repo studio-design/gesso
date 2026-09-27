@@ -20,6 +20,7 @@ use Studio\Gesso\Baseline\InvalidBaselineConfigurationException;
 use Studio\Gesso\Baseline\ViolationBaselineCollector;
 use Studio\Gesso\Baseline\ViolationBaselineEnforcer;
 use Studio\Gesso\Baseline\ViolationBaselineFile;
+use Studio\Gesso\Config\InvalidGessoConfigurationException;
 use Studio\Gesso\Coverage\CoverageThresholdEvaluator;
 use Studio\Gesso\Coverage\InvalidCoverageOutputPathException;
 use Studio\Gesso\Coverage\InvalidThresholdConfigurationException;
@@ -53,7 +54,6 @@ use Studio\Gesso\ValidationOutput;
 use Studio\Gesso\ValidationOutputFormat;
 
 use function array_filter;
-use function array_map;
 use function array_values;
 use function ctype_digit;
 use function dirname;
@@ -194,13 +194,17 @@ final class OpenApiCoverageExtension implements Extension
     public function bootstrap(Configuration $configuration, Facade $facade, ParameterCollection $parameters): void
     {
         try {
+            $parameters = ExtensionParameters::load(
+                $parameters,
+                $configuration->hasConfigurationFile() ? dirname($configuration->configurationFile()) : null,
+            );
             $this->setupExtension(
                 $facade,
                 $parameters,
                 getenv('GITHUB_STEP_SUMMARY') ?: null,
                 self::detectPartialRun($configuration, $parameters),
             );
-        } catch (EnumBindingException|EnumDriftException|InvalidBaselineConfigurationException|InvalidCoverageOutputPathException|InvalidOpenApiSpecException|InvalidStrictRequiredConfigurationException|InvalidThresholdConfigurationException|InvalidValidationPolicyConfigurationException|SpecFileNotFoundException) {
+        } catch (EnumBindingException|EnumDriftException|InvalidBaselineConfigurationException|InvalidCoverageOutputPathException|InvalidGessoConfigurationException|InvalidOpenApiSpecException|InvalidStrictRequiredConfigurationException|InvalidThresholdConfigurationException|InvalidValidationPolicyConfigurationException|SpecFileNotFoundException) {
             // setupExtension() has already written a FATAL line to stderr and
             // (if GITHUB_STEP_SUMMARY is set) appended a fatal block to it.
             // PHPUnit's ExtensionBootstrapper::bootstrap() wraps this call in
@@ -232,10 +236,14 @@ final class OpenApiCoverageExtension implements Extension
      */
     public function setupExtension(
         ?Facade $facade,
-        ParameterCollection $parameters,
+        ExtensionParameters|ParameterCollection $parameters,
         ?string $githubSummaryPath,
         ?PartialRunDecision $partialRun = null,
     ): void {
+        if ($parameters instanceof ParameterCollection) {
+            $parameters = ExtensionParameters::load($parameters);
+        }
+
         // Issue #170: secondary base path used only for
         // #[BoundToOpenApiEnum] resolution. Read independently of
         // spec_base_path so that an orphaned `enum_spec_base_path`
@@ -251,7 +259,7 @@ final class OpenApiCoverageExtension implements Extension
 
             $stripPrefixes = [];
             if ($parameters->has('strip_prefixes')) {
-                $stripPrefixes = array_map('trim', explode(',', $parameters->get('strip_prefixes')));
+                $stripPrefixes = $parameters->strings('strip_prefixes');
             }
 
             OpenApiSpecLoader::configure(
@@ -263,7 +271,7 @@ final class OpenApiCoverageExtension implements Extension
 
         $specs = ['front'];
         if ($parameters->has('specs')) {
-            $specs = array_map('trim', explode(',', $parameters->get('specs')));
+            $specs = $parameters->strings('specs');
         }
 
         // Eager-load every registered spec so structural problems surface at
@@ -539,7 +547,7 @@ final class OpenApiCoverageExtension implements Extension
         $acknowledgedSchemes = [];
         if ($parameters->has('acknowledged_unvalidatable_schemes')) {
             $acknowledgedSchemes = array_values(array_filter(
-                array_map('trim', explode(',', $parameters->get('acknowledged_unvalidatable_schemes'))),
+                $parameters->strings('acknowledged_unvalidatable_schemes'),
                 static fn(string $name): bool => $name !== '',
             ));
         }
@@ -653,7 +661,7 @@ final class OpenApiCoverageExtension implements Extension
      * blank `value=""` does not point the baseline at the cwd itself.
      */
     private static function resolveBaselineFileParameter(
-        ParameterCollection $parameters,
+        ExtensionParameters $parameters,
         string $name,
     ): ?string {
         if (!$parameters->has($name) || trim($parameters->get($name)) === '') {
@@ -695,7 +703,7 @@ final class OpenApiCoverageExtension implements Extension
      * opt-in fail-loud policy this extension enforces.
      */
     private static function resolveBaselineStaleMode(
-        ParameterCollection $parameters,
+        ExtensionParameters $parameters,
         string $name,
         string $fileName,
         bool $hasBaselineFile,
@@ -743,7 +751,7 @@ final class OpenApiCoverageExtension implements Extension
      */
     private static function detectPartialRun(
         Configuration $configuration,
-        ParameterCollection $parameters,
+        ExtensionParameters $parameters,
     ): ?PartialRunDecision {
         $treatDefaultAsFull = self::resolveBooleanFlag($parameters, 'default_testsuite_as_full', false);
 
@@ -895,7 +903,7 @@ final class OpenApiCoverageExtension implements Extension
      *    orphaned `enum_spec_base_path` would never reach the loader.
      */
     private static function resolveEnumSpecBasePathParameter(
-        ParameterCollection $parameters,
+        ExtensionParameters $parameters,
         ?string $githubSummaryPath,
     ): ?string {
         if (!$parameters->has('enum_spec_base_path')) {
@@ -960,7 +968,7 @@ final class OpenApiCoverageExtension implements Extension
      * Returns the absolutised path or `null` when the parameter is absent.
      */
     private static function resolveOutputPathParameter(
-        ParameterCollection $parameters,
+        ExtensionParameters $parameters,
         string $name,
         ?string $githubSummaryPath,
     ): ?string {
@@ -1032,7 +1040,7 @@ final class OpenApiCoverageExtension implements Extension
      *    must not silently lose its gate to a typo (issue #135 review C1).
      */
     private static function resolveThresholdParameter(
-        ParameterCollection $parameters,
+        ExtensionParameters $parameters,
         string $name,
         bool $strict,
     ): ?float {
@@ -1075,7 +1083,7 @@ final class OpenApiCoverageExtension implements Extension
      * agrees with the merge CLI's no-value `--min-coverage-strict`.
      */
     private static function resolveBooleanFlag(
-        ParameterCollection $parameters,
+        ExtensionParameters $parameters,
         string $name,
         bool $default,
     ): bool {
@@ -1093,7 +1101,7 @@ final class OpenApiCoverageExtension implements Extension
      * their built-in default of 20); anything but a non-negative integer is
      * FATAL. `0` means unlimited, matching the validator constructors.
      */
-    private static function resolveMaxErrorsParameter(ParameterCollection $parameters): ?int
+    private static function resolveMaxErrorsParameter(ExtensionParameters $parameters): ?int
     {
         if (!$parameters->has('max_errors')) {
             return null;
@@ -1129,19 +1137,17 @@ final class OpenApiCoverageExtension implements Extension
      * @return null|string[]
      */
     private static function resolveStatusCodeListParameter(
-        ParameterCollection $parameters,
+        ExtensionParameters $parameters,
         string $name,
     ): ?array {
         if (!$parameters->has($name)) {
             return null;
         }
 
-        $raw = trim($parameters->get($name));
-        if ($raw === '') {
+        $patterns = $parameters->strings($name);
+        if ($patterns === ['']) {
             return [];
         }
-
-        $patterns = array_map('trim', explode(',', $raw));
 
         try {
             new StatusCodePatternSet($patterns, $name);
@@ -1172,7 +1178,7 @@ final class OpenApiCoverageExtension implements Extension
      * @return T
      */
     private static function resolveMode(
-        ParameterCollection $parameters,
+        ExtensionParameters $parameters,
         string $name,
         callable $parse,
         object $default,
@@ -1213,7 +1219,7 @@ final class OpenApiCoverageExtension implements Extension
      * is already configured by the time `EnumDriftAsserter` resolves
      * `#[BoundToOpenApiEnum]` paths.
      */
-    private static function runEnumDriftCheck(ParameterCollection $parameters, ?string $githubSummaryPath): void
+    private static function runEnumDriftCheck(ExtensionParameters $parameters, ?string $githubSummaryPath): void
     {
         if (!self::resolveBooleanFlag($parameters, 'enum_drift_enabled', false)) {
             return;
@@ -1222,7 +1228,7 @@ final class OpenApiCoverageExtension implements Extension
         $namespaces = [];
         if ($parameters->has('enum_drift_scan_namespaces')) {
             $namespaces = array_values(array_filter(
-                array_map('trim', explode(',', $parameters->get('enum_drift_scan_namespaces'))),
+                $parameters->strings('enum_drift_scan_namespaces'),
                 static fn(string $entry): bool => $entry !== '',
             ));
         }

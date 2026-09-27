@@ -7,7 +7,10 @@ path without maintaining a second schema by hand.
 
 The runnable [Scramble example](https://github.com/studio-design/gesso/tree/main/examples/scramble)
 uses Laravel 12, Scramble 0.13.45, and PHPUnit 12. CI verifies passing responses,
-a response type mismatch, and a missing 422 test.
+a response type mismatch, and a missing 422 test. The checkout example uses one
+root `gesso.php` for PHPUnit and Laravel; this shared integration is unreleased
+and is not included in 2.6.0. See [Shared configuration](../configuration.md).
+The installation instructions below retain the published v2 configuration.
 
 ## Run the example
 
