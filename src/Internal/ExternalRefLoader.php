@@ -156,7 +156,10 @@ final class ExternalRefLoader
     {
         foreach ($allowedLocalRefRoots as $root) {
             $canonicalRoot = realpath($root);
-            if ($canonicalRoot !== false && SpecPath::isInsideRoot($absolutePath, $canonicalRoot)) {
+            // Exact comparison, never case-folded: the allowed root is an
+            // access boundary, and Windows can make `Specs` a different
+            // directory from `specs` (per-directory case sensitivity).
+            if ($canonicalRoot !== false && SpecPath::isInsideRoot($absolutePath, $canonicalRoot, foldCase: false)) {
                 return true;
             }
         }
