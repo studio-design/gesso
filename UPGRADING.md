@@ -89,19 +89,20 @@ nothing there.
 
 | Deprecated in | Surface | Replacement | Removed in |
 | --- | --- | --- | --- |
-| 2.6.0 | `auto_inject_dummy_bearer` (Laravel config) | `laravel.auto_inject_dummy_credentials` = `'bearer'` (3.0) | 3.0 |
+| 2.6.0 | `auto_inject_dummy_bearer` (Laravel config) | `laravel.auto_inject_dummy_credentials` = `'bearer'` (available on `main`, unreleased) | 3.0 |
 | 2.7.0 | `EnumBindingException::forBinding()` | `new EnumBindingException($reason, $message, $enumFqcn, $specPath, $previous)` | 3.0 |
 | 2.7.0 | `shouldSkipOpenApi()` (private, via `ValidatesOpenApiSchema`) | `$this->findSkipOpenApiAttribute() !== null` | 3.0 |
 | 2.7.0 | `OpenApiCoverageTracker::hasAnyCoverage()` (static) | `OpenApiCoverageTracker::current()->hasAnyCoverageOn()` | 3.0 |
 
 The behaviour-equivalent replacement is
 `laravel.auto_inject_dummy_credentials = 'bearer'`, which
-[ADR 0005](docs/adr/0005-v3-configuration-and-cli-naming.md) defines and Gesso
-3.0 ships — issue #501 nests Laravel-only keys under the `laravel` section of
-the root `gesso.php`, so the full v3 spelling is:
+[ADR 0005](docs/adr/0005-v3-configuration-and-cli-naming.md) defines. The shared
+configuration integration on `main` now connects this mode to Laravel request
+validation (unreleased; not included in 2.6.0). Laravel-only keys live under the
+`laravel` section of the root `gesso.php`:
 
 ```php
-// gesso.php (Gesso 3.0)
+// gesso.php (main / upcoming release)
 return [
     'laravel' => [
         'auto_inject_dummy_credentials' => 'bearer',
@@ -109,10 +110,10 @@ return [
 ];
 ```
 
-**v2 does not accept this value yet** — the v2 `auto_inject_dummy_credentials`
-key is boolean-only and rejects other values loudly — so keeping the legacy
-flag through v2 and switching to `'bearer'` at the 3.0 upgrade is the drop-in
-path.
+**Published 2.6.0 does not accept this value** — keep the legacy flag until
+upgrading to a release that includes the shared configuration integration.
+Then `'bearer'` preserves the same injection scope without using the deprecated
+key. Remove the old key after copying its setting into `gesso.php`.
 
 Migrating early to `'auto_inject_dummy_credentials' => true` changes
 behaviour: `true` also fills dummy values for every `apiKey` scheme (header /

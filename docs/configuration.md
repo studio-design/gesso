@@ -104,6 +104,15 @@ Lists stay arrays, including patterns containing commas:
 ],
 ```
 
+For dummy request credentials, use `laravel.auto_inject_dummy_credentials`:
+`false` disables injection, `true` fills missing Bearer and API-key credentials,
+and `'bearer'` fills only missing HTTP Bearer credentials. All modes require
+`laravel.auto_validate_request => true`. Injection changes only the validator's
+view, never the dispatched request, and never replaces a populated credential.
+A missing API key still fails in `'bearer'` mode, including operations that
+require both Bearer and an API key. The named mode does not use the deprecated
+`auto_inject_dummy_bearer` setting or emit its deprecation.
+
 ## Settings connected in this release
 
 | Shared setting | PHPUnit parameter | Laravel config key (`gesso.` prefix) |
