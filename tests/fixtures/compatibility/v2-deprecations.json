@@ -28,6 +28,15 @@
                 "replacement": "$this->findSkipOpenApiAttribute() !== null",
                 "removed_in": "3.0"
             }
+        },
+        "coverage.tracker.has_any_coverage": {
+            "spelling": "hasAnyCoverage",
+            "v3_target": "OpenApiCoverageTracker::current()->hasAnyCoverageOn()",
+            "notice": {
+                "subject": "OpenApiCoverageTracker::hasAnyCoverage()",
+                "replacement": "OpenApiCoverageTracker::current()->hasAnyCoverageOn()",
+                "removed_in": "3.0"
+            }
         }
     }
 }

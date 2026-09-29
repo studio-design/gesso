@@ -26,11 +26,14 @@ use function str_repeat;
  */
 final class ConsoleCoverageRenderer
 {
-    private const MARKER_ALL_COVERED = '✓';
-    private const MARKER_PARTIAL = '◐';
-    private const MARKER_SKIPPED = '⚠';
-    private const MARKER_UNCOVERED = '✗';
-    private const MARKER_REQUEST_ONLY = '·';
+    /** @see CoverageTotals::marker() */
+    private const MARKERS = [
+        'allCovered' => '✓',
+        'partial' => '◐',
+        'skipped' => '⚠',
+        'uncovered' => '✗',
+        'requestOnly' => '·',
+    ];
 
     /**
      * @param array<string, CoverageResult> $results
@@ -156,7 +159,7 @@ final class ConsoleCoverageRenderer
             }
             $output .= sprintf(
                 "  %s %s  %s  %s  %s\n",
-                $row['exercised'] ? self::MARKER_ALL_COVERED : self::MARKER_UNCOVERED,
+                $row['exercised'] ? self::MARKERS['allCovered'] : self::MARKERS['uncovered'],
                 $row['endpoint'],
                 $row['statusKey'],
                 $row['contentTypeKey'],
@@ -201,7 +204,7 @@ final class ConsoleCoverageRenderer
 
             $output .= sprintf(
                 "  %s %s%s\n",
-                self::endpointMarker($endpoint['state']),
+                CoverageTotals::marker($endpoint['state'], self::MARKERS),
                 $endpoint['endpoint'],
                 self::endpointSummaryTail($endpoint),
             );
@@ -216,7 +219,7 @@ final class ConsoleCoverageRenderer
                 }
                 $output .= sprintf(
                     "      %s %s  %s%s\n",
-                    self::responseMarker($row['state']),
+                    CoverageTotals::marker($row['state'], self::MARKERS),
                     str_pad($row['statusKey'], 5, ' ', STR_PAD_RIGHT),
                     str_pad($row['contentTypeKey'], 32, ' ', STR_PAD_RIGHT),
                     self::responseTail($row),
@@ -263,25 +266,6 @@ final class ConsoleCoverageRenderer
                 ? sprintf('skipped: %s', $row['skipReason'])
                 : 'skipped',
             ResponseCoverageState::Uncovered => 'uncovered',
-        };
-    }
-
-    private static function endpointMarker(EndpointCoverageState $state): string
-    {
-        return match ($state) {
-            EndpointCoverageState::AllCovered => self::MARKER_ALL_COVERED,
-            EndpointCoverageState::Partial => self::MARKER_PARTIAL,
-            EndpointCoverageState::RequestOnly => self::MARKER_REQUEST_ONLY,
-            EndpointCoverageState::Uncovered => self::MARKER_UNCOVERED,
-        };
-    }
-
-    private static function responseMarker(ResponseCoverageState $state): string
-    {
-        return match ($state) {
-            ResponseCoverageState::Validated => self::MARKER_ALL_COVERED,
-            ResponseCoverageState::Skipped => self::MARKER_SKIPPED,
-            ResponseCoverageState::Uncovered => self::MARKER_UNCOVERED,
         };
     }
 }

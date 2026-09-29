@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Internal;
 
+use Studio\Gesso\Coverage\EndpointCoverageState;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
+use Studio\Gesso\Coverage\ResponseCoverageState;
 
 use function round;
 
@@ -15,6 +17,13 @@ use function round;
  *
  * @phpstan-import-type CoverageResult from OpenApiCoverageTracker
  *
+ * @phpstan-type MarkerPalette array{
+ *     allCovered: string,
+ *     partial: string,
+ *     skipped: string,
+ *     uncovered: string,
+ *     requestOnly: string,
+ * }
  * @phpstan-type CoverageSums array{
  *     endpointTotal: int,
  *     endpointFullyCovered: int,
@@ -36,6 +45,22 @@ final class CoverageTotals
     public static function percentage(int $covered, int $total): string
     {
         return (string) ($total > 0 ? round($covered / $total * 100, 1) : 0);
+    }
+
+    /**
+     * The row marker for a coverage state, in the renderer's own palette.
+     *
+     * @param MarkerPalette $palette
+     */
+    public static function marker(EndpointCoverageState|ResponseCoverageState $state, array $palette): string
+    {
+        return match ($state) {
+            EndpointCoverageState::AllCovered, ResponseCoverageState::Validated => $palette['allCovered'],
+            EndpointCoverageState::Partial => $palette['partial'],
+            EndpointCoverageState::RequestOnly => $palette['requestOnly'],
+            ResponseCoverageState::Skipped => $palette['skipped'],
+            EndpointCoverageState::Uncovered, ResponseCoverageState::Uncovered => $palette['uncovered'],
+        };
     }
 
     /**

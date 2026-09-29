@@ -7,6 +7,7 @@ namespace Studio\Gesso\Coverage;
 use const E_USER_WARNING;
 
 use InvalidArgumentException;
+use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\Spec\OpenApiOperationResolver;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
@@ -15,6 +16,7 @@ use Studio\Gesso\Validation\Support\MalformedSpecNode;
 use function array_key_exists;
 use function array_keys;
 use function count;
+use function explode;
 use function get_debug_type;
 use function in_array;
 use function is_array;
@@ -26,8 +28,6 @@ use function sprintf;
 use function str_starts_with;
 use function strcasecmp;
 use function strcmp;
-use function strpos;
-use function substr;
 use function trigger_error;
 use function usort;
 
@@ -313,12 +313,21 @@ final class OpenApiCoverageTracker
 
     /**
      * Returns true when any record (request or response) exists for the given
-     * spec. The PHPUnit extension uses this to gate the "no coverage to report"
-     * short-circuit so the report block only renders when at least one test
-     * exercised a spec.
+     * spec.
+     *
+     * @deprecated since 2.7, removed in 3.0. Use
+     *             `OpenApiCoverageTracker::current()->hasAnyCoverageOn()`
+     *             instead; the PHPUnit extension and the merge CLI already do.
      */
     public static function hasAnyCoverage(string $specName): bool
     {
+        Deprecations::notice(
+            id: 'coverage.tracker.has_any_coverage',
+            subject: 'OpenApiCoverageTracker::hasAnyCoverage()',
+            replacement: 'OpenApiCoverageTracker::current()->hasAnyCoverageOn()',
+            removedIn: '3.0',
+        );
+
         return self::current()->hasAnyCoverageOn($specName);
     }
 
@@ -518,7 +527,7 @@ final class OpenApiCoverageTracker
     }
 
     /**
-     * Instance counterpart of {@see self::hasAnyCoverage()} (Issue #229).
+     * Instance form of the deprecated {@see self::hasAnyCoverage()} (Issue #229).
      */
     public function hasAnyCoverageOn(string $specName): bool
     {
@@ -1150,11 +1159,8 @@ final class OpenApiCoverageTracker
      */
     private static function splitResponseKey(string $key): array
     {
-        $colonPos = strpos($key, ':');
-        if ($colonPos === false) {
-            return [$key, self::ANY_CONTENT_TYPE];
-        }
+        $parts = explode(':', $key, 2);
 
-        return [substr($key, 0, $colonPos), substr($key, $colonPos + 1)];
+        return [$parts[0], $parts[1] ?? self::ANY_CONTENT_TYPE];
     }
 }
