@@ -262,68 +262,6 @@ final class SchemaDataGenerator
     }
 
     /**
-     * Materialise the conditional-`allOf` state where exactly the
-     * conditionals in `$satisfied` hold: their `if`+`then` merged, every
-     * other conditional suppressed through a single synthesized `not`/`anyOf`
-     * with its `else` applied. {@see self::generateConditionalNode()} starts
-     * from a singleton (or empty) set and grows it when a suppressed `if`
-     * turns out to fire anyway, so overlapping conditionals stay satisfiable.
-     *
-     * @param array<string, mixed> $schema node with `allOf` removed and its non-conditional branches merged
-     * @param list<array<string, mixed>> $conditionals
-     * @param list<int> $satisfied
-     *
-     * @return array<string, mixed>
-     */
-    public static function conditionalSetView(array $schema, array $conditionals, array $satisfied): array
-    {
-        foreach ($satisfied as $index) {
-            $selected = $conditionals[$index];
-            $schema = self::mergeSchemas($schema, $selected['if']);
-            if (isset($selected['then']) && is_array($selected['then'])) {
-                $schema = self::mergeSchemas($schema, $selected['then']);
-            }
-        }
-
-        $suppressedIfs = [];
-        $negatedByProperty = [];
-        foreach ($conditionals as $index => $conditional) {
-            if (in_array($index, $satisfied, true)) {
-                continue;
-            }
-            // A single-property `if` — the discriminator-lowering shape —
-            // is negated equivalently at the property itself: `¬(p present
-            // ∧ s(p))` is exactly "when present, `p` fails `s`". That puts
-            // the exclusion where value generation can honour it (the enum
-            // domain filter); other shapes stay in a node-level not/anyOf.
-            $condition = self::singlePropertyCondition($conditional['if']);
-            if ($condition !== null) {
-                $negatedByProperty[$condition[0]][] = $condition[1];
-            } else {
-                $suppressedIfs[] = $conditional['if'];
-            }
-            if (isset($conditional['else']) && is_array($conditional['else'])) {
-                $schema = self::mergeSchemas($schema, $conditional['else']);
-            }
-        }
-        // mergeSchemas() combines `not` assertions conjunctively, so any
-        // exclusion the target already carries — from the base schema or an
-        // earlier else merge — survives these merges.
-        foreach ($negatedByProperty as $property => $negated) {
-            $schema = self::mergeSchemas($schema, ['properties' => [
-                $property => ['not' => count($negated) === 1 ? $negated[0] : ['anyOf' => $negated]],
-            ]]);
-        }
-        if ($suppressedIfs !== []) {
-            $schema = self::mergeSchemas($schema, [
-                'not' => count($suppressedIfs) === 1 ? $suppressedIfs[0] : ['anyOf' => $suppressedIfs],
-            ]);
-        }
-
-        return $schema;
-    }
-
-    /**
      * Merge the assertion keywords needed for deterministic allOf generation.
      *
      * Public within the internal fuzz family so
@@ -681,6 +619,68 @@ final class SchemaDataGenerator
     }
 
     /**
+     * Materialise the conditional-`allOf` state where exactly the
+     * conditionals in `$satisfied` hold: their `if`+`then` merged, every
+     * other conditional suppressed through a single synthesized `not`/`anyOf`
+     * with its `else` applied. {@see self::generateConditionalNode()} starts
+     * from a singleton (or empty) set and grows it when a suppressed `if`
+     * turns out to fire anyway, so overlapping conditionals stay satisfiable.
+     *
+     * @param array<string, mixed> $schema node with `allOf` removed and its non-conditional branches merged
+     * @param list<array<string, mixed>> $conditionals
+     * @param list<int> $satisfied
+     *
+     * @return array<string, mixed>
+     */
+    private static function conditionalSetView(array $schema, array $conditionals, array $satisfied): array
+    {
+        foreach ($satisfied as $index) {
+            $selected = $conditionals[$index];
+            $schema = self::mergeSchemas($schema, $selected['if']);
+            if (isset($selected['then']) && is_array($selected['then'])) {
+                $schema = self::mergeSchemas($schema, $selected['then']);
+            }
+        }
+
+        $suppressedIfs = [];
+        $negatedByProperty = [];
+        foreach ($conditionals as $index => $conditional) {
+            if (in_array($index, $satisfied, true)) {
+                continue;
+            }
+            // A single-property `if` — the discriminator-lowering shape —
+            // is negated equivalently at the property itself: `¬(p present
+            // ∧ s(p))` is exactly "when present, `p` fails `s`". That puts
+            // the exclusion where value generation can honour it (the enum
+            // domain filter); other shapes stay in a node-level not/anyOf.
+            $condition = self::singlePropertyCondition($conditional['if']);
+            if ($condition !== null) {
+                $negatedByProperty[$condition[0]][] = $condition[1];
+            } else {
+                $suppressedIfs[] = $conditional['if'];
+            }
+            if (isset($conditional['else']) && is_array($conditional['else'])) {
+                $schema = self::mergeSchemas($schema, $conditional['else']);
+            }
+        }
+        // mergeSchemas() combines `not` assertions conjunctively, so any
+        // exclusion the target already carries — from the base schema or an
+        // earlier else merge — survives these merges.
+        foreach ($negatedByProperty as $property => $negated) {
+            $schema = self::mergeSchemas($schema, ['properties' => [
+                $property => ['not' => count($negated) === 1 ? $negated[0] : ['anyOf' => $negated]],
+            ]]);
+        }
+        if ($suppressedIfs !== []) {
+            $schema = self::mergeSchemas($schema, [
+                'not' => count($suppressedIfs) === 1 ? $suppressedIfs[0] : ['anyOf' => $suppressedIfs],
+            ]);
+        }
+
+        return $schema;
+    }
+
+    /**
      * `$forced` tracks whether every choice on the path from the root to
      * this node was pinned by the plan or admitted no alternative — i.e.
      * whether this node's constraints are unavoidable for any value of the
@@ -885,12 +885,10 @@ final class SchemaDataGenerator
                     static fn(mixed $value): bool => ($value === null) === $wantNull,
                 );
             }
-            $partition = [];
-            foreach ($admissible as $value) {
-                if (($value === null) === $wantNull) {
-                    $partition[] = $value;
-                }
-            }
+            $partition = array_values(array_filter(
+                $admissible,
+                static fn(mixed $value): bool => ($value === null) === $wantNull,
+            ));
             if ($partition === []) {
                 if ($forced) {
                     $plan->observation->proveDeadEnd();
@@ -979,14 +977,9 @@ final class SchemaDataGenerator
             return [];
         }
 
-        $required = [];
-        if (isset($schema['required']) && is_array($schema['required'])) {
-            foreach ($schema['required'] as $name) {
-                if (is_string($name)) {
-                    $required[] = $name;
-                }
-            }
-        }
+        $required = is_array($schema['required'] ?? null)
+            ? array_values(array_filter($schema['required'], is_string(...)))
+            : [];
 
         $result = [];
         $presenceTarget = null;
@@ -2091,15 +2084,11 @@ final class SchemaDataGenerator
         $candidates = array_values(array_unique(self::unicodeCharacters(
             'aA0abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_- ',
         )));
-        $matches = [];
 
-        foreach ($candidates as $candidate) {
-            if (self::matchesPattern('^' . $characterClass . '$', $candidate)) {
-                $matches[] = $candidate;
-            }
-        }
-
-        return $matches;
+        return array_values(array_filter(
+            $candidates,
+            static fn(string $candidate): bool => self::matchesPattern('^' . $characterClass . '$', $candidate),
+        ));
     }
 
     /** @param non-empty-list<string> $characters */

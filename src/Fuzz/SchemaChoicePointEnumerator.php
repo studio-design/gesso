@@ -332,14 +332,9 @@ final class SchemaChoicePointEnumerator
             return;
         }
 
-        $required = [];
-        if (isset($schema['required']) && is_array($schema['required'])) {
-            foreach ($schema['required'] as $name) {
-                if (is_string($name)) {
-                    $required[] = $name;
-                }
-            }
-        }
+        $required = is_array($schema['required'] ?? null)
+            ? array_values(array_filter($schema['required'], is_string(...)))
+            : [];
 
         foreach ($properties as $name => $propertySchema) {
             if (!is_string($name)) {

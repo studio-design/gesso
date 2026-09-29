@@ -8,13 +8,11 @@ use InvalidArgumentException;
 use Studio\Gesso\Fuzz\SpecPathsPreflight;
 use Studio\Gesso\Spec\OpenApiOperationResolver;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
-use Studio\Gesso\Validation\Response\ResponseSchemaResolution;
 use Studio\Gesso\Validation\Response\ResponseSchemaResolutionOutcome;
 use Studio\Gesso\Validation\Response\ResponseSchemaResolver;
 use Studio\Gesso\Validation\Response\ResponseStatusTargetEnumerator;
 use Studio\Gesso\Validation\Support\ContentTypeMatcher;
 
-use function array_keys;
 use function count;
 use function is_array;
 use function is_string;
@@ -100,12 +98,13 @@ final class SdkExerciseCoverageReportBuilder
                         $operationResolution,
                         $target['wireStatus'],
                     );
-                    self::throwIfMalformed($initialResolution);
+                    $initialResolution->throwIfMalformed();
                     if ($initialResolution->responseSpec === null) {
                         continue;
                     }
 
-                    foreach (self::jsonContentTypes($initialResolution->responseSpec) as $contentType) {
+                    $content = $initialResolution->responseSpec['content'] ?? null;
+                    foreach (is_array($content) ? ContentTypeMatcher::findJsonContentTypes($content) : [] as $contentType) {
                         $resolution = $resolver->resolveResponseSchema(
                             $operationResolution,
                             $target['wireStatus'],
@@ -113,7 +112,7 @@ final class SdkExerciseCoverageReportBuilder
                                 ? null
                                 : $contentType,
                         );
-                        self::throwIfMalformed($resolution);
+                        $resolution->throwIfMalformed();
                         if ($resolution->outcome !== ResponseSchemaResolutionOutcome::Resolved ||
                             $resolution->statusKey === null ||
                             $resolution->contentType === null
@@ -161,56 +160,6 @@ final class SdkExerciseCoverageReportBuilder
             'responseUnexercised' => $responseTotal - $responseExercised,
             'unexpectedObservations' => $unexpected,
         ];
-    }
-
-    /**
-     * @param array<string, mixed> $responseSpec
-     *
-     * @return list<string>
-     */
-    private static function jsonContentTypes(array $responseSpec): array
-    {
-        $content = $responseSpec['content'] ?? [];
-        if (!is_array($content)) {
-            return [];
-        }
-
-        $contentTypes = [];
-        foreach ($content as $contentType => $_mediaType) {
-            if (!is_string($contentType)) {
-                continue;
-            }
-            if (ContentTypeMatcher::isJsonContentType(ContentTypeMatcher::normalizeMediaType($contentType))) {
-                $contentTypes[] = $contentType;
-            }
-        }
-
-        if ($contentTypes !== []) {
-            return $contentTypes;
-        }
-
-        foreach (array_keys($content) as $contentType) {
-            if (is_string($contentType) && ContentTypeMatcher::normalizeMediaType($contentType) === 'application/*') {
-                return [$contentType];
-            }
-        }
-
-        return [];
-    }
-
-    private static function throwIfMalformed(ResponseSchemaResolution $resolution): void
-    {
-        if ($resolution->outcome !== ResponseSchemaResolutionOutcome::MalformedSpec &&
-            $resolution->outcome !== ResponseSchemaResolutionOutcome::MalformedResponse &&
-            $resolution->outcome !== ResponseSchemaResolutionOutcome::MalformedContent
-        ) {
-            return;
-        }
-
-        throw new InvalidArgumentException($resolution->message ?? sprintf(
-            'Response schema resolution stopped with outcome=%s.',
-            $resolution->outcome->name,
-        ));
     }
 
     /**

@@ -16,6 +16,7 @@ use Studio\Gesso\Validation\Request\SecuritySchemeIntrospector;
 use Studio\Gesso\Validation\Request\SecurityValidator;
 use Throwable;
 
+use function array_filter;
 use function array_is_list;
 use function array_key_exists;
 use function array_keys;
@@ -29,6 +30,9 @@ use function implode;
 use function in_array;
 use function intdiv;
 use function is_array;
+use function is_callable;
+use function is_int;
+use function is_object;
 use function sprintf;
 use function strtolower;
 
@@ -450,6 +454,30 @@ final class ContractCheckPlan
         return in_array($method, ['GET', 'QUERY'], true);
     }
 
+    /**
+     * Turn a dispatch return value into an HTTP status code. Duck-typing
+     * `getStatusCode()` covers PSR-7 responses, Symfony's Response, and
+     * Laravel's TestResponse (a `__call` proxy) without a framework dependency.
+     */
+    private static function statusOf(mixed $response): int
+    {
+        if (is_int($response)) {
+            return $response;
+        }
+
+        if (is_object($response) && is_callable([$response, 'getStatusCode'])) {
+            $status = $response->getStatusCode();
+            if (is_int($status)) {
+                return $status;
+            }
+        }
+
+        throw new InvalidArgumentException(sprintf(
+            'Contract check dispatchUsing() must return an int status code, a PSR-7 response, or an object exposing getStatusCode(): int — got %s.',
+            get_debug_type($response),
+        ));
+    }
+
     private function derivedSeed(ContractCheck $check, string $path): int
     {
         return crc32(implode("\0", [$this->specName, $check->value, $path, (string) $this->seed])) & 0x7fffffff;
@@ -829,12 +857,10 @@ final class ContractCheckPlan
                 $concretePath = $sourceCase->uri();
                 $collisions = $this->collidingDocumentedMethods($concretePath, $paths, $candidates);
 
-                $safeCandidates = [];
-                foreach ($candidates as $candidate) {
-                    if (!isset($collisions[$candidate->value])) {
-                        $safeCandidates[] = $candidate;
-                    }
-                }
+                $safeCandidates = array_values(array_filter(
+                    $candidates,
+                    static fn(HttpMethod $candidate): bool => !isset($collisions[$candidate->value]),
+                ));
                 if ($safeCandidates === []) {
                     $collisionDetails = [];
                     foreach ($candidates as $candidate) {
@@ -986,7 +1012,7 @@ final class ContractCheckPlan
             try {
                 $response = ($this->dispatch)($case);
 
-                return ResponseStatusExtractor::extract($response);
+                return self::statusOf($response);
             } catch (Throwable $e) {
                 throw new RuntimeException(sprintf(
                     "Contract check dispatch failed.\nCheck: %s\nSpec: %s\nMethod/path: %s %s\nGlobal seed: %d\nDerived seed: %d\nCurl: %s",

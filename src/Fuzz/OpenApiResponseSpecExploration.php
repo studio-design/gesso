@@ -16,11 +16,9 @@ use Studio\Gesso\Validation\Support\ContentTypeMatcher;
 use Throwable;
 
 use function array_key_exists;
-use function array_keys;
 use function count;
 use function implode;
 use function is_array;
-use function is_string;
 use function preg_match;
 use function sprintf;
 use function strtoupper;
@@ -142,11 +140,10 @@ final class OpenApiResponseSpecExploration
                         $operationResolution,
                         $target['wireStatus'],
                     );
-                    self::throwIfMalformed($initialResolution);
+                    $initialResolution->throwIfMalformed();
 
-                    $contentTypes = $initialResolution->responseSpec === null
-                        ? []
-                        : self::jsonContentTypes($initialResolution->responseSpec);
+                    $content = $initialResolution->responseSpec['content'] ?? null;
+                    $contentTypes = is_array($content) ? ContentTypeMatcher::findJsonContentTypes($content) : [];
                     if ($contentTypes === []) {
                         $skips[] = self::unsupportedSkip($operation, $target['selector'], $initialResolution);
 
@@ -159,7 +156,7 @@ final class OpenApiResponseSpecExploration
                             $target['wireStatus'],
                             $contentType === 'application/*' ? null : $contentType,
                         );
-                        self::throwIfMalformed($resolution);
+                        $resolution->throwIfMalformed();
                         if ($resolution->outcome !== ResponseSchemaResolutionOutcome::Resolved ||
                             $resolution->contentType === null
                         ) {
@@ -276,41 +273,6 @@ final class OpenApiResponseSpecExploration
         return $summary;
     }
 
-    /**
-     * @param array<string, mixed> $responseSpec
-     *
-     * @return list<string>
-     */
-    private static function jsonContentTypes(array $responseSpec): array
-    {
-        $content = $responseSpec['content'] ?? [];
-        if (!is_array($content)) {
-            return [];
-        }
-
-        $contentTypes = [];
-        foreach ($content as $contentType => $_mediaType) {
-            if (!is_string($contentType)) {
-                continue;
-            }
-            if (ContentTypeMatcher::isJsonContentType(ContentTypeMatcher::normalizeMediaType($contentType))) {
-                $contentTypes[] = $contentType;
-            }
-        }
-
-        if ($contentTypes !== []) {
-            return $contentTypes;
-        }
-
-        foreach (array_keys($content) as $contentType) {
-            if (is_string($contentType) && ContentTypeMatcher::normalizeMediaType($contentType) === 'application/*') {
-                return [$contentType];
-            }
-        }
-
-        return [];
-    }
-
     private static function normalizeStatusSelector(int|string $status): string
     {
         $normalized = (string) $status;
@@ -330,21 +292,6 @@ final class OpenApiResponseSpecExploration
     private static function mappingKey(string $operationId, string $status): string
     {
         return $operationId . "\0" . $status;
-    }
-
-    private static function throwIfMalformed(ResponseSchemaResolution $resolution): void
-    {
-        if ($resolution->outcome !== ResponseSchemaResolutionOutcome::MalformedSpec &&
-            $resolution->outcome !== ResponseSchemaResolutionOutcome::MalformedResponse &&
-            $resolution->outcome !== ResponseSchemaResolutionOutcome::MalformedContent
-        ) {
-            return;
-        }
-
-        throw new InvalidArgumentException($resolution->message ?? sprintf(
-            'Response schema resolution stopped with outcome=%s.',
-            $resolution->outcome->name,
-        ));
     }
 
     private static function unsupportedSkip(

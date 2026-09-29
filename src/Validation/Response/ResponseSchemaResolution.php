@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Validation\Response;
 
+use InvalidArgumentException;
 use LogicException;
 use Studio\Gesso\OpenApiVersion;
 use Studio\Gesso\SchemaContext;
@@ -260,6 +261,26 @@ final readonly class ResponseSchemaResolution
             $this->discriminatorContext,
             $this->jsonSchemaDialect,
         );
+    }
+
+    /**
+     * Throw when resolution stopped on a malformed spec node, so callers that
+     * enumerate declared responses (spec exploration, SDK coverage) fail
+     * loudly instead of silently skipping the entry.
+     */
+    public function throwIfMalformed(): void
+    {
+        if ($this->outcome !== ResponseSchemaResolutionOutcome::MalformedSpec &&
+            $this->outcome !== ResponseSchemaResolutionOutcome::MalformedResponse &&
+            $this->outcome !== ResponseSchemaResolutionOutcome::MalformedContent
+        ) {
+            return;
+        }
+
+        throw new InvalidArgumentException($this->message ?? sprintf(
+            'Response schema resolution stopped with outcome=%s.',
+            $this->outcome->name,
+        ));
     }
 
     private static function failure(
