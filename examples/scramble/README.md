@@ -28,12 +28,18 @@ validates six responses across three operations:
 | `GET /api/profile` | 200, 401 | `actingAs()` and auth middleware |
 
 Expect **6 tests, 12 assertions**, with **6/6 responses covered**. The report is
-written to `build/coverage.json`.
+written to `build/coverage.json`. The root `gesso.php` supplies the spec, path
+prefix, and report settings. PHPUnit references that file, and Laravel reads it
+automatically; there is no duplicate `config/gesso.php`. This integration is
+available in this checkout and has not yet shipped in 2.6.0.
 
 `verify` copies the app into `build/scenarios`, reuses the installed dependencies,
 and checks all of the following:
 
 - All six responses validate, and the changed-response coverage gate passes.
+- Running PHPUnit from `tests/` finds the same config, specs, and report paths.
+- Laravel's `config:cache` captures the root settings and uses the snapshot
+  without evaluating the source file again.
 - Returning a string `id` against the frozen integer schema produces three
   contract failures at `/data/id`, with no unrelated test errors.
 - Omitting the 422 test leaves 5/6 responses covered. A controlled base spec
@@ -50,7 +56,7 @@ time because it recreates that directory.
 For your own missing responses, run
 `php artisan gesso:stubs --coverage=build/coverage.json --request-prefix=/api`,
 review and complete the generated tests, then rerun the full suite and gate.
-Keep the PHPUnit extension's `strip_prefixes=/api` setting: generation and runtime
+Keep `spec.strip_prefixes => ['/api']` in `gesso.php`: generation and runtime
 matching are separate. The verifier saves `coverage-missing-422.json` before
 completing the generated test so you can compare the reports.
 

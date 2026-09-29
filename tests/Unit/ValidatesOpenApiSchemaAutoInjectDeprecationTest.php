@@ -90,7 +90,7 @@ class ValidatesOpenApiSchemaAutoInjectDeprecationTest extends TestCase
         // under gesso.php's `laravel` section, so the top-level spelling
         // would be an unknown key there.
         $this->assertStringContainsString(
-            "Use laravel.auto_inject_dummy_credentials = 'bearer' (accepted from Gesso 3.0) instead",
+            "Use laravel.auto_inject_dummy_credentials = 'bearer' (in gesso.php) instead",
             $this->captured[0],
         );
         $this->assertStringContainsString('removed in Gesso 3.0', $this->captured[0]);

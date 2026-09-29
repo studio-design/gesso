@@ -17,7 +17,7 @@ $files->makeDirectory($workspace, 0o755, true);
 foreach (['app', 'bootstrap', 'config', 'database', 'routes', 'tests', 'scripts', 'openapi'] as $directory) {
     $files->copyDirectory($root . '/' . $directory, $workspace . '/' . $directory);
 }
-foreach (['composer.json', 'phpunit.xml.dist', 'artisan', '.env'] as $file) {
+foreach (['composer.json', 'phpunit.xml.dist', 'gesso.php', 'artisan', '.env'] as $file) {
     $files->copy($root . '/' . $file, $workspace . '/' . $file);
 }
 $files->link($root . '/vendor', $workspace . '/vendor');
@@ -37,11 +37,11 @@ function readJson(string $path): array
     return \json_decode(\file_get_contents($path), true, flags: \JSON_THROW_ON_ERROR);
 }
 
-function runScenario(string $name, array $command, int $expectedExit = 0): string
+function runScenario(string $name, array $command, int $expectedExit = 0, ?string $cwd = null): string
 {
     global $workspace;
 
-    $process = new Process([\PHP_BINARY, ...$command], $workspace, ['GESSO_VALIDATION_FORMAT' => 'json']);
+    $process = new Process([\PHP_BINARY, ...$command], $cwd ?? $workspace, ['GESSO_VALIDATION_FORMAT' => 'json']);
     $process->setTimeout(120);
     $exit = $process->run();
     $output = $process->getOutput() . $process->getErrorOutput();
@@ -98,6 +98,38 @@ runScenario('full', [...$phpunit, '--log-junit=build/full.xml']);
 checkSuite('full', 6);
 checkCoverage(6);
 \copy($workspace . '/build/coverage.json', $workspace . '/build/coverage-full.json');
+
+// Both the config parameter and values inside it must be independent of cwd.
+runScenario('subdirectory', [
+    $workspace . '/vendor/bin/phpunit',
+    '--configuration=' . $workspace . '/phpunit.xml.dist',
+    '--bootstrap=' . $workspace . '/scripts/scenario-bootstrap.php',
+    '--log-junit=' . $workspace . '/build/subdirectory.xml',
+    '--colors=never',
+], cwd: $workspace . '/tests');
+checkSuite('subdirectory', 6);
+checkCoverage(6);
+
+// config:cache must capture root settings without executing the source again.
+$artisan = ['-d', 'auto_prepend_file=scripts/scenario-bootstrap.php', 'artisan'];
+runScenario('config-cache', [...$artisan, 'config:cache']);
+$sharedConfig = \file_get_contents($workspace . '/gesso.php');
+\file_put_contents($workspace . '/gesso.php', "<?php throw new RuntimeException('Root config must not run while cached');");
+try {
+    \file_put_contents($workspace . '/build/check-config.php', <<<'PHP'
+        <?php
+        require dirname(__DIR__) . '/scripts/scenario-bootstrap.php';
+        $app = require dirname(__DIR__) . '/bootstrap/app.php';
+        $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+        echo json_encode($app->make('config')->get('gesso'), JSON_THROW_ON_ERROR);
+        PHP);
+    $cached = \json_decode(runScenario('cached-config', ['build/check-config.php']), true, flags: \JSON_THROW_ON_ERROR);
+    ensure($cached['spec_base_path'] === $workspace . '/openapi', 'Cached spec path must come from root gesso.php');
+    ensure($cached['strip_prefixes'] === ['/api'], 'Cached strip prefix must come from root gesso.php');
+    runScenario('config-clear', [...$artisan, 'config:clear']);
+} finally {
+    \file_put_contents($workspace . '/gesso.php', $sharedConfig);
+}
 
 // Model a PR adding 422: the controlled base differs by exactly that response.
 $base = readJson($workspace . '/openapi/api.json');

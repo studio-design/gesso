@@ -60,7 +60,11 @@ location.
 
 ## 2. Configure the PHPUnit extension
 
-Add the coverage extension to your `phpunit.xml`:
+For a single file shared with Laravel, see [Shared configuration](configuration.md)
+(available on `main`, not yet in 2.6.0). It replaces the duplicated settings
+below with a root `gesso.php` and one `config` extension parameter.
+
+The existing v2 setup continues to work. Add the coverage extension to your `phpunit.xml`:
 
 ```xml
 <extensions>
@@ -74,6 +78,7 @@ Add the coverage extension to your `phpunit.xml`:
 
 | Parameter | Required | Default | Description |
 |---|---|---|---|
+| `config` | No | Beside the selected PHPUnit XML file | Path to shared `gesso.php`; see [discovery and relative paths](configuration.md#discovery-and-relative-paths) (unreleased) |
 | `spec_base_path` | Yes* | — | Path to bundled spec directory (relative paths resolve from `getcwd()`) |
 | `strip_prefixes` | No | `[]` | Comma-separated prefixes to strip from request paths (e.g., `/api`). Required even when the spec declares the same base path in `servers` — see [Server base paths are not stripped automatically](#server-base-paths-are-not-stripped-automatically) |
 | `specs` | No | `front` | Comma-separated spec names for coverage tracking |
@@ -685,7 +690,7 @@ Notes:
 - **Injected kinds**: `Authorization: Bearer test-token` for `http` + `bearer`, and a fixed `test-api-key` value for every `apiKey` scheme (header / cookie / query) the operation declares. `oauth2`, `openIdConnect`, `mutualTLS`, and non-bearer `http` schemes are silent-passed by the validator and therefore not injected.
 - **Never overrides non-empty user values**: if the test already set a non-empty value for the credential slot — an `Authorization` header in any case, the named cookie, or the named query / header parameter — the user's value wins, even when it is deliberately malformed. Empty-string values count as absent and are injected over, matching the validator's own missing-credential definition.
 - **Requires `auto_validate_request=true`** — the inject is a sub-feature of request validation. Setting the inject flag alone has no effect.
-- **Deprecated predecessor**: `auto_inject_dummy_bearer` (bearer-only) still works, but enabling it emits a one-shot `E_USER_DEPRECATED` notice and the key is removed in Gesso 3.0. Its exact bearer-only behavior survives in 3.0 as `laravel.auto_inject_dummy_credentials = 'bearer'` in the v3 `gesso.php` — not accepted in v2, where the key is boolean-only and `true` also injects `apiKey` schemes — see [Deprecations in `UPGRADING.md`](https://github.com/studio-design/gesso/blob/main/UPGRADING.md#deprecations) for the migration options. When both flags are set, `auto_inject_dummy_credentials` wins.
+- **Deprecated predecessor**: `auto_inject_dummy_bearer` (bearer-only) still works, but enabling it emits a one-shot `E_USER_DEPRECATED` notice and the key is removed in Gesso 3.0. Its exact bearer-only behavior is available on `main` as `laravel.auto_inject_dummy_credentials = 'bearer'` in the shared `gesso.php` (unreleased; not accepted in 2.6.0). `true` also injects `apiKey` schemes — see [Deprecations in `UPGRADING.md`](https://github.com/studio-design/gesso/blob/main/UPGRADING.md#deprecations) for the migration options. When both flags are set, `auto_inject_dummy_credentials` wins.
 
 ## Acknowledging an unvalidatable security scheme
 
