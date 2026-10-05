@@ -267,6 +267,8 @@ final class OpenApiCoverageExtension implements Extension
                 $stripPrefixes,
                 enumBasePath: $enumBasePath,
             );
+        } elseif ($parameters->has('strip_prefixes')) {
+            OpenApiSpecLoader::setStripPrefixes($parameters->strings('strip_prefixes'));
         }
 
         $specs = ['front'];

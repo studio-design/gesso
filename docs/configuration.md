@@ -71,6 +71,10 @@ continue to work. Only keys explicitly declared in `gesso.php` contribute
 values; omitted or nullable settings left at `null` retain existing consumer
 defaults. In particular, an omitted `spec.names` retains PHPUnit's `front`
 default; an omitted `spec.base_path` retains the programmatic loader setup.
+In that case, an explicit `spec.strip_prefixes` still replaces the loader's
+prefixes without changing its base path, enum path, remote-reference settings,
+or cached specs. An empty list clears the prefixes; omitting the setting
+preserves the prefixes configured in bootstrap.
 
 - PHPUnit: existing format/console environment overrides, then explicit XML
   parameters, then declared shared settings, then existing defaults.

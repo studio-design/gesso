@@ -95,6 +95,97 @@ final class SharedConfigurationTest extends TestCase
         yield 'exception' => ["<?php throw new RuntimeException('config failed');", 'config failed'];
     }
 
+    /** @return iterable<string, array{array<string, mixed>, null|string, list<string>}> */
+    public static function providePrefixes_without_shared_base_path_preserve_bootstrap_loader_settingsCases(): iterable
+    {
+        yield 'shared prefixes' => [['strip_prefixes' => ['/api']], null, ['/api']];
+        yield 'null base path' => [['base_path' => null, 'strip_prefixes' => ['/api']], null, ['/api']];
+        yield 'comma stays in prefix' => [['strip_prefixes' => ['/api,v2']], null, ['/api,v2']];
+        yield 'explicit empty list clears bootstrap prefixes' => [['strip_prefixes' => []], null, []];
+        yield 'omitted prefixes preserve bootstrap prefixes' => [[], null, ['/bootstrap']];
+        yield 'XML overrides shared prefixes' => [['strip_prefixes' => ['/api']], '/legacy', ['/legacy']];
+    }
+
+    /**
+     * @param array<string, mixed> $specSettings
+     * @param list<string> $expectedPrefixes
+     */
+    #[Test]
+    #[DataProvider('providePrefixes_without_shared_base_path_preserve_bootstrap_loader_settingsCases')]
+    public function prefixes_without_shared_base_path_preserve_bootstrap_loader_settings(
+        array $specSettings,
+        ?string $xmlPrefixes,
+        array $expectedPrefixes,
+    ): void {
+        file_put_contents($this->directory . '/gesso.php', '<?php return ' . var_export([
+            'spec' => $specSettings + ['names' => ['api']],
+        ], true) . ';');
+        $autoload = dirname(__DIR__, 2) . '/vendor/autoload.php';
+        file_put_contents($this->directory . '/bootstrap.php', '<?php require ' . var_export($autoload, true) . ';' . <<<'PHP'
+            $client = new \Studio\Gesso\Tests\Helpers\FakeHttpClient([
+                'https://specs.example.com/api.json' => static fn () =>
+                    \Studio\Gesso\Tests\Helpers\FakeHttpClient::jsonResponse(
+                        '{"openapi":"3.1.0","info":{"title":"remote","version":"1"},"paths":{"/v1/pets":{"get":{"responses":{"200":{"description":"OK"}}}}}}',
+                    ),
+            ]);
+            \Studio\Gesso\Spec\OpenApiSpecLoader::configure(
+                __DIR__ . '/specs',
+                ['/bootstrap'],
+                httpClient: $client,
+                requestFactory: new \GuzzleHttp\Psr7\HttpFactory(),
+                allowRemoteRefs: true,
+                enumBasePath: __DIR__ . '/enums',
+                allowedRemoteRefHosts: ['specs.example.com'],
+                maxRemoteRefBytes: 2048,
+                remoteSpecs: ['api' => 'https://specs.example.com/api.json'],
+            );
+            \Studio\Gesso\Spec\OpenApiSpecLoader::load('api');
+            $GLOBALS['sharedConfigHttpClient'] = $client;
+            PHP);
+        $this->replace('phpunit.xml', $autoload, $this->directory . '/bootstrap.php');
+        if ($xmlPrefixes !== null) {
+            $this->replace('phpunit.xml', '</bootstrap>', '<parameter name="strip_prefixes" value="' . $xmlPrefixes . '"/></bootstrap>');
+        }
+        file_put_contents($this->directory . '/ContractTest.php', <<<'PHP'
+            <?php
+            declare(strict_types=1);
+            namespace Studio\Gesso\Tests\SharedFixture;
+            use Illuminate\Config\Repository;
+            use Illuminate\Foundation\Application;
+            use PHPUnit\Framework\TestCase;
+            use Studio\Gesso\Laravel\GessoServiceProvider;
+            use Studio\Gesso\OpenApiRequestValidator;
+            use Studio\Gesso\Spec\OpenApiSpecLoader;
+            final class ContractTest extends TestCase {
+                public function test_bootstrap_settings(): void {
+                    $expected = EXPECTED_PREFIXES;
+                    self::assertSame($expected, OpenApiSpecLoader::getStripPrefixes());
+                    self::assertSame(__DIR__ . '/specs', OpenApiSpecLoader::getBasePath());
+                    self::assertSame(__DIR__ . '/enums', OpenApiSpecLoader::getEnumBasePath());
+                    self::assertCount(1, $GLOBALS['sharedConfigHttpClient']->sentUrls());
+                    OpenApiSpecLoader::clearCache();
+                    self::assertSame('remote', OpenApiSpecLoader::load('api')['info']['title']);
+                    self::assertCount(2, $GLOBALS['sharedConfigHttpClient']->sentUrls());
+                    $result = (new OpenApiRequestValidator())->validate(
+                        'api', 'GET', ($expected[0] ?? '') . '/v1/pets', [], [], null,
+                    );
+                    self::assertTrue($result->isValid());
+                    self::assertSame('/v1/pets', $result->matchedPath());
+                    $app = new Application(__DIR__);
+                    $config = new Repository();
+                    $app->instance('config', $config);
+                    (new GessoServiceProvider($app))->register();
+                    self::assertSame(SHARED_PREFIXES, $config->get('gesso.strip_prefixes'));
+                }
+            }
+            PHP);
+        $this->replace('ContractTest.php', 'EXPECTED_PREFIXES', var_export($expectedPrefixes, true));
+        $this->replace('ContractTest.php', 'SHARED_PREFIXES', var_export($specSettings['strip_prefixes'] ?? [], true));
+
+        $process = $this->runPhpunit($this->directory);
+        $this->assertSame(0, $process->getExitCode(), $process->getOutput() . $process->getErrorOutput());
+    }
+
     #[Test]
     public function both_adapters_share_typed_settings_and_paths_from_another_working_directory(): void
     {
