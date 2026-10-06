@@ -7,6 +7,7 @@ namespace Studio\Gesso\Fuzz;
 use Faker\Generator;
 use InvalidArgumentException;
 use stdClass;
+use Studio\Gesso\Spec\OpenApiRefResolver;
 
 use function array_filter;
 use function array_is_list;
@@ -24,7 +25,6 @@ use function is_string;
 use function ltrim;
 use function sprintf;
 use function str_repeat;
-use function str_replace;
 
 /**
  * Produces deterministic, single-constraint mutations from a known-valid value.
@@ -238,10 +238,7 @@ final class SchemaMutationGenerator
     {
         $segments = $mutation->pointer === ''
             ? []
-            : array_map(
-                static fn(string $segment): string => str_replace(['~1', '~0'], ['/', '~'], $segment),
-                explode('/', ltrim($mutation->pointer, '/')),
-            );
+            : array_map(OpenApiRefResolver::unescapePointerSegment(...), explode('/', ltrim($mutation->pointer, '/')));
         $propertySegments = in_array($mutation->keyword, ['required', 'additionalProperties'], true)
             ? array_slice($segments, 0, -1)
             : $segments;

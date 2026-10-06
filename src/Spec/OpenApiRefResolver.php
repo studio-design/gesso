@@ -366,6 +366,15 @@ final class OpenApiRefResolver
     }
 
     /**
+     * Inverse of {@see self::escapePointerSegment()}: `~1` must be decoded
+     * before `~0` so a literal `~1` stored in the key round-trips correctly.
+     */
+    public static function unescapePointerSegment(string $segment): string
+    {
+        return str_replace(['~1', '~0'], ['/', '~'], $segment);
+    }
+
+    /**
      * The document's *effective* JSON Schema dialect, which is what decides
      * whether `$ref` siblings apply — not the OAS version: an OAS 3.1/3.2
      * document may declare `jsonSchemaDialect: draft-07`, and Draft 06/07
@@ -425,7 +434,7 @@ final class OpenApiRefResolver
 
             $node = $root;
             foreach ($segments as $segment) {
-                $segment = self::unescapePointerSegment($segment);
+                $segment = self::decodePointerSegment($segment);
                 if (!is_array($node) || !array_key_exists($segment, $node)) {
                     break;
                 }
@@ -1226,7 +1235,7 @@ final class OpenApiRefResolver
             return null;
         }
 
-        return self::unescapePointerSegment($segment);
+        return self::decodePointerSegment($segment);
     }
 
     /**
@@ -1864,7 +1873,7 @@ final class OpenApiRefResolver
 
         $node = $root;
         foreach ($segments as $segment) {
-            $segment = self::unescapePointerSegment($segment);
+            $segment = self::decodePointerSegment($segment);
 
             if (!is_array($node) || !array_key_exists($segment, $node)) {
                 return [false, null];
@@ -1877,15 +1886,11 @@ final class OpenApiRefResolver
     }
 
     /**
-     * `~1` must be decoded before `~0` so a literal `~1` stored in the key
-     * round-trips correctly. `rawurldecode` runs first so percent-encoded
-     * segments produced by URL-aware tooling also resolve.
+     * `rawurldecode` runs first so percent-encoded segments produced by
+     * URL-aware tooling also resolve.
      */
-    private static function unescapePointerSegment(string $segment): string
+    private static function decodePointerSegment(string $segment): string
     {
-        $segment = rawurldecode($segment);
-        $segment = str_replace('~1', '/', $segment);
-
-        return str_replace('~0', '~', $segment);
+        return self::unescapePointerSegment(rawurldecode($segment));
     }
 }

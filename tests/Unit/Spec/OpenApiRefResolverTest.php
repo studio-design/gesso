@@ -1690,4 +1690,13 @@ class OpenApiRefResolverTest extends TestCase
             'and only its own subtree',
         );
     }
+
+    #[Test]
+    public function unescape_pointer_segment_is_the_inverse_of_escape(): void
+    {
+        $raw = 'a/b~c~1d';
+
+        $this->assertSame('a~1b~0c~01d', OpenApiRefResolver::escapePointerSegment($raw));
+        $this->assertSame($raw, OpenApiRefResolver::unescapePointerSegment(OpenApiRefResolver::escapePointerSegment($raw)));
+    }
 }
