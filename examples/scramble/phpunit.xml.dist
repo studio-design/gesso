@@ -28,10 +28,7 @@
     </php>
     <extensions>
         <bootstrap class="Studio\Gesso\PHPUnit\OpenApiCoverageExtension">
-            <parameter name="spec_base_path" value="openapi"/>
-            <parameter name="specs" value="api"/>
-            <parameter name="strip_prefixes" value="/api"/>
-            <parameter name="json_output" value="build/coverage.json"/>
+            <parameter name="config" value="gesso.php"/>
         </bootstrap>
     </extensions>
 </phpunit>

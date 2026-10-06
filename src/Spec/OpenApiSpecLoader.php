@@ -242,6 +242,18 @@ final class OpenApiSpecLoader
         return self::$stripPrefixes;
     }
 
+    /**
+     * @param string[] $stripPrefixes
+     *
+     * @internal Used by the PHPUnit extension to apply explicit prefixes while
+     * preserving bootstrap loader configuration and cached specs. Prefixes
+     * affect request path matching only, not spec loading or reference resolution.
+     */
+    public static function setStripPrefixes(array $stripPrefixes): void
+    {
+        self::$stripPrefixes = $stripPrefixes;
+    }
+
     /** @return array<string, mixed> */
     public static function load(string $specName): array
     {

@@ -797,10 +797,9 @@ trait ValidatesOpenApiSchema
      * the request. Returns the list of inject targets the caller should write —
      * empty list means "leave everything as the test set it up".
      *
-     * Two modes coexist for backward compatibility:
-     * - `auto_inject_dummy_credentials` (preferred) — injects bearer + every
-     *   apiKey scheme (header / cookie / query) the operation declares.
-     * - `auto_inject_dummy_bearer` (legacy) — injects bearer only.
+     * `auto_inject_dummy_credentials` accepts true to inject bearer + every
+     * apiKey scheme (header / cookie / query), or 'bearer' to inject bearer
+     * only. `auto_inject_dummy_bearer` retains the legacy bearer-only mode.
      *
      * When both flags are true the credentials flag wins and the legacy flag
      * is bypassed; setting only the legacy flag preserves its narrower
@@ -847,7 +846,7 @@ trait ValidatesOpenApiSchema
             // is about the config key being set, and 3.0 deletes the key
             // whether or not its code path was the one taken. The named
             // replacement is the behaviour-equivalent 'bearer' value ADR 0005
-            // gives the superset key in 3.0, not `=> true` — the boolean also
+            // gives the superset key, not `=> true` — the boolean also
             // injects apiKey schemes, which flips missing-apiKey failures into
             // passes — spelled as the full v3 path because #501 nests
             // Laravel-only keys under gesso.php's `laravel` section (see
@@ -855,7 +854,7 @@ trait ValidatesOpenApiSchema
             Deprecations::notice(
                 id: 'laravel.config.auto_inject_dummy_bearer',
                 subject: "The Laravel config key 'auto_inject_dummy_bearer'",
-                replacement: "laravel.auto_inject_dummy_credentials = 'bearer' (accepted from Gesso 3.0)",
+                replacement: "laravel.auto_inject_dummy_credentials = 'bearer' (in gesso.php)",
                 removedIn: '3.0',
             );
         }
@@ -888,7 +887,7 @@ trait ValidatesOpenApiSchema
 
         $introspector = $this->getSecuritySchemeIntrospector();
 
-        if ($credentialsEnabled) {
+        if ($credentialsEnabled && config('gesso.auto_inject_dummy_credentials') !== 'bearer') {
             $candidates = $introspector->injectableCredentialsFor($spec, $matchedOperation);
         } else {
             $candidates = $introspector->endpointAcceptsBearer($spec, $matchedOperation)
@@ -1189,7 +1188,8 @@ trait ValidatesOpenApiSchema
 
     private function isAutoInjectDummyCredentialsEnabled(): bool
     {
-        return $this->resolveBoolConfig('auto_inject_dummy_credentials');
+        return config('gesso.auto_inject_dummy_credentials') === 'bearer' ||
+            $this->resolveBoolConfig('auto_inject_dummy_credentials');
     }
 
     /**

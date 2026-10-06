@@ -7,7 +7,7 @@
             "v3_target": "laravel.auto_inject_dummy_credentials = 'bearer'",
             "notice": {
                 "subject": "The Laravel config key 'auto_inject_dummy_bearer'",
-                "replacement": "laravel.auto_inject_dummy_credentials = 'bearer' (accepted from Gesso 3.0)",
+                "replacement": "laravel.auto_inject_dummy_credentials = 'bearer' (in gesso.php)",
                 "removed_in": "3.0"
             }
         },

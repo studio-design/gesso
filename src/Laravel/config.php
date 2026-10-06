@@ -61,6 +61,7 @@ return [
     // false-failing on tests that authenticate via actingAs() or middleware
     // bypass. oauth2 / openIdConnect / mutualTLS / http-basic are
     // silent-passed by the validator and therefore not auto-injected.
+    // Set to 'bearer' to inject only HTTP Bearer credentials.
     // Defaults to false for backward compatibility.
     'auto_inject_dummy_credentials' => false,
 
@@ -68,10 +69,9 @@ return [
     // Same gating (auto_validate_request must also be on) and same view-only
     // injection, but limited to endpoints whose spec security requires
     // `http` + `bearer`. Bypassed when the superset key above is true.
-    // Enabling it emits an E_USER_DEPRECATED notice; removed in Gesso 3.0,
-    // where the bearer-only behaviour survives as
-    // `laravel.auto_inject_dummy_credentials = 'bearer'` in the v3 gesso.php
-    // (not accepted in v2 — see UPGRADING.md#deprecations).
+    // Enabling it emits an E_USER_DEPRECATED notice; removed in Gesso 3.0.
+    // Use `laravel.auto_inject_dummy_credentials = 'bearer'` in the root
+    // gesso.php instead; see UPGRADING.md#deprecations.
     'auto_inject_dummy_bearer' => false,
 
     // Security scheme names (components.securitySchemes keys) the suite
