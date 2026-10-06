@@ -16,6 +16,7 @@ use Throwable;
 use function array_is_list;
 use function array_key_exists;
 use function count;
+use function ctype_digit;
 use function dirname;
 use function explode;
 use function filter_var;
@@ -488,7 +489,7 @@ final class GessoConfig
             return $value;
         }
 
-        if (is_string($value) && preg_match('/^\d+$/', trim($value)) === 1) {
+        if (is_string($value) && ctype_digit(trim($value))) {
             return (int) trim($value);
         }
 
