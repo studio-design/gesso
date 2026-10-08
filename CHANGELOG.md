@@ -10,6 +10,23 @@ the README for the full surface contract.
 
 ## Unreleased
 
+## [2.7.0](https://github.com/studio-design/gesso/compare/v2.6.0...v2.7.0) (2026-10-08)
+
+
+### Features
+
+* **config:** share configuration between phpunit and laravel ([#593](https://github.com/studio-design/gesso/issues/593)) ([cfd51e4](https://github.com/studio-design/gesso/commit/cfd51e49ee328f1fab4299afe2c2c6bb98dbb097))
+* **stubs:** support explicit request prefixes ([#592](https://github.com/studio-design/gesso/issues/592)) ([0a4bb67](https://github.com/studio-design/gesso/commit/0a4bb6769b2ce03e194c2e8a4e7cdb22cbf07673))
+* **validation:** preserve body boundaries across adapters and doctor ([#566](https://github.com/studio-design/gesso/issues/566)) ([b305a8c](https://github.com/studio-design/gesso/commit/b305a8c21d11aa9add02b9f6c10805202405270e))
+
+
+### Bug Fixes
+
+* **ci:** resolve phpstan 2.3 findings and pin dev analysis tools ([#600](https://github.com/studio-design/gesso/issues/600)) ([53a47f1](https://github.com/studio-design/gesso/commit/53a47f1d2be006306828862ce98e947c81f73478))
+* **config:** lower-case setting values without ext-mbstring ([#570](https://github.com/studio-design/gesso/issues/570)) ([53a728f](https://github.com/studio-design/gesso/commit/53a728f0831aa388edff425c9c6434ea776c0907))
+* **docs:** update locked vue and source-map-js past high advisories ([#601](https://github.com/studio-design/gesso/issues/601)) ([35bd5d3](https://github.com/studio-design/gesso/commit/35bd5d3eeda4e34e37587666dab80f1ecd6ba53d))
+* **validation:** decode adapter JSON bodies as objects so a nested {} is not read as [] ([#561](https://github.com/studio-design/gesso/issues/561)) ([006aeaa](https://github.com/studio-design/gesso/commit/006aeaad962040af37576efb1bf7649566fc8001))
+
 ## [2.6.0](https://github.com/studio-design/gesso/compare/v2.5.0...v2.6.0) (2026-08-12)
 
 
