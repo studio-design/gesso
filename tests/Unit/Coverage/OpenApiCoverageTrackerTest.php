@@ -722,7 +722,7 @@ class OpenApiCoverageTrackerTest extends TestCase
         // dropping a non-array response would understate totals; without
         // a warning the user wouldn't notice.
         $captured = [];
-        $previous = set_error_handler(static function (int $errno, string $message) use (&$captured): bool {
+        set_error_handler(static function (int $errno, string $message) use (&$captured): bool {
             $captured[] = $message;
 
             return true;
