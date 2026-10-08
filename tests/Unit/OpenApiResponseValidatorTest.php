@@ -2173,7 +2173,7 @@ class OpenApiResponseValidatorTest extends TestCase
         $validator = new OpenApiResponseValidator(strictRequiredTracker: new StrictRequiredTracker(), skipResponseCodes: []);
 
         $captured = [];
-        $previous = set_error_handler(static function (int $errno, string $message) use (&$captured): bool {
+        set_error_handler(static function (int $errno, string $message) use (&$captured): bool {
             $captured[] = $message;
 
             return true;

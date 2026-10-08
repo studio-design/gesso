@@ -3,11 +3,12 @@ includes:
     # method.internalClass / staticMethod.internalClass / return.internalClass /
     # parameter.internalClass / classConstant.internalClass / catch.internalClass).
     # These ship under bleedingEdge because they are not part of the standard
-    # levels yet (PHPStan 2.x); they may graduate in a future major. composer
-    # require-dev pins phpstan/phpstan to ^2.1.13 — the floor where these rules
-    # are actually present, so a lockfile downgrade cannot silently disable
-    # enforcement. Pinned to the vendored .neon so the rule set tracks whichever
-    # phpstan version composer resolves.
+    # levels yet (PHPStan 2.x); they may graduate in a future major. They need
+    # phpstan/phpstan 2.1.13 or newer. composer.json pins an exact version
+    # because composer.lock is not committed: an open range let every new
+    # PHPStan release add findings and fail CI on unchanged code. Renovate
+    # proposes bumps as PRs. Pinned to the vendored .neon so the rule set
+    # tracks the installed phpstan version.
     - vendor/phpstan/phpstan/conf/bleedingEdge.neon
 
 parameters:

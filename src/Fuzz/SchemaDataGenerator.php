@@ -724,7 +724,7 @@ final class SchemaDataGenerator
             }
         }
 
-        $schema = self::resolveComposition($schema, $faker, $iteration, $plan, $pointer, $forced);
+        $schema = self::resolveComposition($schema, $iteration, $plan, $pointer, $forced);
 
         if ($plan !== null &&
             (($schema['enum'] ?? null) === [] || ($schema['type'] ?? null) === [] || ($schema['not'] ?? null) === true)) {
@@ -830,7 +830,7 @@ final class SchemaDataGenerator
 
         return match ($type) {
             'object' => self::generateObject($schema, $faker, $iteration, $plan, $pointer, $forced),
-            'array' => self::generateArray($schema, $faker, $iteration, $plan, $pointer, $forced),
+            'array' => self::generateArray($schema, $faker, $iteration, $plan, $pointer),
             'string' => self::generateString($schema, $faker, $iteration),
             'integer' => self::generateInteger($schema, $faker, $iteration),
             'number' => self::generateNumber($schema, $faker, $iteration),
@@ -1210,13 +1210,11 @@ final class SchemaDataGenerator
         int $iteration,
         ?CaseSelectionPlan $plan = null,
         string $pointer = '',
-        bool $forced = true,
     ): array {
-        // Item subtrees never prove dead ends ($forced is deliberately not
-        // forwarded below): element count and content interact with
-        // minItems/maxItems/uniqueItems in ways the proof sites do not
+        // Item subtrees never prove dead ends (the caller's forced flag is
+        // deliberately not taken here): element count and content interact
+        // with minItems/maxItems/uniqueItems in ways the proof sites do not
         // model, so stay conservative and loud.
-        unset($forced);
         // A pinned plan entry at `<pointer>/items` is a forced minimum size:
         // it makes items reachable in the pinned case (mirroring how optional
         // ancestors are forced present) without becoming a rotation strategy.
@@ -1633,7 +1631,6 @@ final class SchemaDataGenerator
      */
     private static function resolveComposition(
         array $schema,
-        ?Generator $faker,
         int $iteration,
         ?CaseSelectionPlan $plan = null,
         string $pointer = '',

@@ -1366,7 +1366,7 @@ final class OpenApiRefResolver
             // Redact the parameter in this frame so a fetch-failure stack trace
             // prints the safe URL, not the credential-bearing original.
             $rawRef = $ref;
-            $ref = HttpRefLoader::redactSensitiveUrlData($ref);
+            $ref = HttpRefLoader::redactSensitiveUrlData($ref); // @phpstan-ignore assign.unused (scrubs the argument slot)
             self::resolveHttpRef($node, $rawRef, $chain, $context, $documentCache, $targetIsSchema);
 
             return;

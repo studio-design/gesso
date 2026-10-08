@@ -847,7 +847,7 @@ class OpenApiSpecLoaderTest extends TestCase
         OpenApiSpecLoader::configure($fixturesPath);
 
         $first = OpenApiSpecLoader::load('refs-valid');
-        $first['info']['title'] = 'mutated';
+        $first['info']['title'] = 'mutated'; // @phpstan-ignore assign.unused (the write itself is the probe)
 
         $second = OpenApiSpecLoader::load('refs-valid');
         $this->assertSame('Refs valid', $second['info']['title']);

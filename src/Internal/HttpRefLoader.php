@@ -90,7 +90,7 @@ final class HttpRefLoader
         // exception with zend.exception_ignore_args=Off. The raw URI is
         // already captured for the request and cache key, so replace the
         // parameter slot before any downstream operation can throw.
-        $url = $safeUrl;
+        $url = $safeUrl; // @phpstan-ignore assign.unused (scrubs the argument slot, see above)
         $request = $requestFactory->createRequest('GET', $trimmedUri);
         // A fragment is client-side only (RFC 9110): it is never part of
         // the wire request, so it must not distinguish cache entries either.

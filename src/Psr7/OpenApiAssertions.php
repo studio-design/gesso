@@ -245,8 +245,7 @@ trait OpenApiAssertions
                 $body = $stream->getContents();
             } catch (Throwable) {
                 // An unreadable stream must not replace the real validation
-                // failure; degrade to a body-less command.
-                $body = null;
+                // failure; degrade to a body-less command ($body stays null).
             } finally {
                 if ($position !== null) {
                     try {
