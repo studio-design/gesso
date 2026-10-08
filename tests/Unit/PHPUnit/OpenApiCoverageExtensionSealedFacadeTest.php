@@ -94,6 +94,9 @@ final class OpenApiCoverageExtensionSealedFacadeTest extends TestCase
     {
         yield 'long flag' => ['--parallel'];
         yield 'short flag' => ['-p'];
+        yield 'short flag with attached process count' => ['-p2'];
+        yield 'short flag with equals value' => ['-p=4'];
+        yield 'long flag with equals value' => ['--parallel=1'];
     }
 
     #[Test]

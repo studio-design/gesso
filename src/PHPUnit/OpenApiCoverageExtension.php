@@ -56,6 +56,7 @@ use Studio\Gesso\ValidationOutput;
 use Studio\Gesso\ValidationOutputFormat;
 
 use function array_filter;
+use function array_slice;
 use function array_values;
 use function ctype_digit;
 use function debug_backtrace;
@@ -67,7 +68,6 @@ use function fwrite;
 use function getcwd;
 use function getenv;
 use function implode;
-use function in_array;
 use function is_array;
 use function is_dir;
 use function is_string;
@@ -651,15 +651,30 @@ final class OpenApiCoverageExtension implements Extension
 
     /**
      * Positive evidence for the #598 orchestrator: Pest's own parallel switch
-     * (`Pest\Plugins\Parallel::isEnabled()` checks the same two flags) and
-     * paratest's SuiteLoader bootstrapping this extension right now. The
+     * and paratest's SuiteLoader bootstrapping this extension right now. The
      * stack check excludes Pest's sequential fallback (e.g. `--parallel
      * --retry`), which keeps the flag but never goes through SuiteLoader.
      */
     private static function isPestParallelOrchestrator(): bool
     {
         $argv = $_SERVER['argv'] ?? [];
-        if (!is_array($argv) || (!in_array('--parallel', $argv, true) && !in_array('-p', $argv, true))) {
+        if (!is_array($argv)) {
+            return false;
+        }
+
+        // Mirrors `Pest\Plugins\Parallel::isEnabled()`, i.e. Symfony's
+        // `ArgvInput::hasParameterOption()` for `--parallel` and `-p`: the
+        // long flag may carry `=value`, and any token starting with `-p`
+        // counts (`-p2`, `-p=4`). argv[0] is the script, not a token.
+        $parallel = false;
+        foreach (array_slice($argv, 1) as $token) {
+            if (is_string($token) && ($token === '--parallel' || str_starts_with($token, '--parallel=') || str_starts_with($token, '-p'))) {
+                $parallel = true;
+
+                break;
+            }
+        }
+        if (!$parallel) {
             return false;
         }
 
