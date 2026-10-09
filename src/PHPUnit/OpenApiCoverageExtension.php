@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\PHPUnit;
 
+use const DEBUG_BACKTRACE_IGNORE_ARGS;
 use const FILE_APPEND;
 use const PHP_EOL;
 use const STDERR;
 
 use InvalidArgumentException;
+use PHPUnit\Event\EventFacadeIsSealedException;
 use PHPUnit\Runner\Extension\Extension;
 use PHPUnit\Runner\Extension\Facade;
 use PHPUnit\Runner\Extension\ParameterCollection;
@@ -54,8 +56,10 @@ use Studio\Gesso\ValidationOutput;
 use Studio\Gesso\ValidationOutputFormat;
 
 use function array_filter;
+use function array_slice;
 use function array_values;
 use function ctype_digit;
+use function debug_backtrace;
 use function dirname;
 use function explode;
 use function fflush;
@@ -593,39 +597,94 @@ final class OpenApiCoverageExtension implements Extension
         // opposite reason — a test that never reached its contract assertion
         // leaves its responses uncovered, which would be reported as a
         // regression on top of the failure the user is already looking at.
-        $baselineCompletionTracer = null;
-        if (ViolationBaselineEnforcer::current() !== null || $coverageBaseline !== null) {
-            $baselineCompletionTracer = new TestRunCompletionTracer();
-            $facade->registerTracer($baselineCompletionTracer);
+        //
+        // Issue #598: Pest's parallel runner seals PHPUnit's event facade
+        // before paratest's SuiteLoader bootstraps extensions in the
+        // orchestrator, so both registrations below throw there. That process
+        // runs no tests; workers register normally and write sidecars. Any
+        // other sealed context is rethrown and stays a PHPUnit warning.
+        try {
+            $baselineCompletionTracer = null;
+            if (ViolationBaselineEnforcer::current() !== null || $coverageBaseline !== null) {
+                $baselineCompletionTracer = new TestRunCompletionTracer();
+                $facade->registerTracer($baselineCompletionTracer);
+            }
+
+            $facade->registerSubscriber(new CoverageReportSubscriber(
+                specs: $specs,
+                outputFile: $outputFile,
+                consoleOutput: $consoleOutput,
+                githubSummaryPath: $githubSummaryPath,
+                coverageTracker: $coverageTracker,
+                strictRequiredTracker: $strictRequiredTracker,
+                sidecarDir: $sidecarDir,
+                minEndpointCoverage: $minEndpointCoverage,
+                minResponseCoverage: $minResponseCoverage,
+                minSdkExerciseCoverage: $minSdkExerciseCoverage,
+                minCoverageStrict: $minCoverageStrict,
+                junitOutput: $junitOutput,
+                jsonOutput: $jsonOutput,
+                htmlOutput: $htmlOutput,
+                partialRun: $partialRun,
+                strictRequiredMode: $strictRequiredMode,
+                strictAdditionalPropertiesTracker: $strictAdditionalPropertiesTracker,
+                strictAdditionalPropertiesMode: $strictAdditionalPropertiesMode,
+                sdkExerciseCoverageTracker: $sdkExerciseCoverageTracker,
+                baselineGeneratePath: $baselineGeneratePath,
+                baselineStaleMode: $baselineStaleMode,
+                baselineCompletionTracer: $baselineCompletionTracer,
+                coverageBaseline: $coverageBaseline,
+                coverageBaselineGeneratePath: $coverageBaselineGeneratePath,
+                coverageBaselineStaleMode: $coverageBaselineStaleMode,
+            ));
+        } catch (EventFacadeIsSealedException $e) {
+            if (!self::isPestParallelOrchestrator()) {
+                throw $e;
+            }
+
+            self::writeStderr(
+                '[Gesso] NOTE: PHPUnit\'s event facade was already sealed when OpenApiCoverageExtension bootstrapped in the Pest --parallel orchestrator,'
+                . " so this process registers no coverage subscriber. It runs no tests; worker sidecars and `gesso coverage:merge` are unaffected.\n",
+            );
+        }
+    }
+
+    /**
+     * Positive evidence for the #598 orchestrator: Pest's own parallel switch
+     * and paratest's SuiteLoader bootstrapping this extension right now. The
+     * stack check excludes Pest's sequential fallback (e.g. `--parallel
+     * --retry`), which keeps the flag but never goes through SuiteLoader.
+     */
+    private static function isPestParallelOrchestrator(): bool
+    {
+        $argv = $_SERVER['argv'] ?? [];
+        if (!is_array($argv)) {
+            return false;
         }
 
-        $facade->registerSubscriber(new CoverageReportSubscriber(
-            specs: $specs,
-            outputFile: $outputFile,
-            consoleOutput: $consoleOutput,
-            githubSummaryPath: $githubSummaryPath,
-            coverageTracker: $coverageTracker,
-            strictRequiredTracker: $strictRequiredTracker,
-            sidecarDir: $sidecarDir,
-            minEndpointCoverage: $minEndpointCoverage,
-            minResponseCoverage: $minResponseCoverage,
-            minSdkExerciseCoverage: $minSdkExerciseCoverage,
-            minCoverageStrict: $minCoverageStrict,
-            junitOutput: $junitOutput,
-            jsonOutput: $jsonOutput,
-            htmlOutput: $htmlOutput,
-            partialRun: $partialRun,
-            strictRequiredMode: $strictRequiredMode,
-            strictAdditionalPropertiesTracker: $strictAdditionalPropertiesTracker,
-            strictAdditionalPropertiesMode: $strictAdditionalPropertiesMode,
-            sdkExerciseCoverageTracker: $sdkExerciseCoverageTracker,
-            baselineGeneratePath: $baselineGeneratePath,
-            baselineStaleMode: $baselineStaleMode,
-            baselineCompletionTracer: $baselineCompletionTracer,
-            coverageBaseline: $coverageBaseline,
-            coverageBaselineGeneratePath: $coverageBaselineGeneratePath,
-            coverageBaselineStaleMode: $coverageBaselineStaleMode,
-        ));
+        // Mirrors `Pest\Plugins\Parallel::isEnabled()`, i.e. Symfony's
+        // `ArgvInput::hasParameterOption()` for `--parallel` and `-p`: the
+        // long flag may carry `=value`, and any token starting with `-p`
+        // counts (`-p2`, `-p=4`). argv[0] is the script, not a token.
+        $parallel = false;
+        foreach (array_slice($argv, 1) as $token) {
+            if (is_string($token) && ($token === '--parallel' || str_starts_with($token, '--parallel=') || str_starts_with($token, '-p'))) {
+                $parallel = true;
+
+                break;
+            }
+        }
+        if (!$parallel) {
+            return false;
+        }
+
+        foreach (debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS) as $frame) {
+            if (($frame['class'] ?? null) === 'ParaTest\WrapperRunner\SuiteLoader') {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
