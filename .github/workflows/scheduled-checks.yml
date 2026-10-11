@@ -1,0 +1,91 @@
+name: Scheduled checks
+
+# Checks whose result depends on the outside world rather than on the branch
+# under test: external hosts going down, and advisories published after a
+# lockfile was committed. Running them on every PR failed unrelated changes, so
+# they run weekly here and report through an issue instead.
+
+on:
+  schedule:
+    # Monday 09:00 JST, the same morning Renovate opens its PRs.
+    - cron: '0 0 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  external-links:
+    name: External documentation links
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      # Same lychee.toml and inputs as the PR job in ci.yml, but only http(s)
+      # links: repository files and anchors are already checked on every PR.
+      - name: Check external documentation links
+        uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
+        with:
+          args: --no-progress --scheme https --scheme http README.md CONTRIBUTING.md UPGRADING.md SECURITY.md 'docs/*.md' 'docs/**/*.md' 'examples/*/README.md'
+          fail: true
+          failIfEmpty: true
+          jobSummary: true
+
+      - name: Report broken external links
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TITLE: 'Broken external documentation links'
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          { echo "Weekly link check: $RUN_URL"; echo; cat lychee/out.md; } > report.md
+          number=$(gh issue list --state open --search "\"$TITLE\" in:title" --json number --jq '.[0].number // empty')
+          if [ -n "$number" ]; then
+            gh issue comment "$number" --body-file report.md
+          else
+            gh issue create --title "$TITLE" --body-file report.md
+          fi
+
+  docs-audit:
+    name: Documentation dependency audit
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24'
+
+      # Reads package-lock.json only; no install is needed. An explicit
+      # `shell: bash` adds pipefail, so `tee` cannot mask the audit's status.
+      - name: Audit documentation dependencies
+        shell: bash
+        run: npm audit --audit-level=high | tee npm-audit.txt
+
+      - name: Report audit findings
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TITLE: 'High-severity advisories in documentation dependencies'
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          { echo "Weekly \`npm audit --audit-level=high\`: $RUN_URL"; echo; echo '```'; cat npm-audit.txt; echo '```'; } > report.md
+          number=$(gh issue list --state open --search "\"$TITLE\" in:title" --json number --jq '.[0].number // empty')
+          if [ -n "$number" ]; then
+            gh issue comment "$number" --body-file report.md
+          else
+            gh issue create --title "$TITLE" --body-file report.md
+          fi

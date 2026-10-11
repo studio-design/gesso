@@ -51,9 +51,11 @@ installed by `npm ci`:
 brew install lychee     # or: cargo install lychee
 ```
 
-CI runs the same `lychee.toml` through `lycheeverse/lychee-action`, so a local
-run and the `Documentation site` job check the same links with the same rules.
-Skipping the install is fine; CI will catch a broken link.
+CI runs the same `lychee.toml` through `lycheeverse/lychee-action`, split in
+two. The `Documentation site` job checks repository files and heading anchors
+offline on every PR. The weekly `Scheduled checks` workflow checks external
+URLs and opens an issue when one breaks, so another host's outage does not fail
+your PR. Skipping the install is fine; CI will catch a broken link.
 
 ## Workflow
 

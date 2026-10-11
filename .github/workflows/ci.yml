@@ -251,11 +251,13 @@ jobs:
           node-version: '24'
           cache: npm
 
+      # `npm audit` runs weekly in scheduled-checks.yml instead: a newly
+      # published advisory is not caused by the PR under test. That workflow
+      # opens an issue; the fix is usually a lockfile refresh (`npm audit fix`
+      # or Renovate's lock file maintenance), because the advisories so far
+      # were all in transitive dependencies.
       - name: Install documentation dependencies
         run: npm ci
-
-      - name: Audit documentation dependencies
-        run: npm audit --audit-level=high
 
       - name: Build searchable documentation
         env:
@@ -282,10 +284,15 @@ jobs:
       # The probe is passed as a glob so a run without a build skips it with a
       # warning; naming the file directly aborts lychee before it checks
       # anything. The step above is what guarantees it exists here.
+      #
+      # `--offline` limits PRs to repository files and heading anchors, which
+      # only the branch can break. External URLs are checked weekly by
+      # scheduled-checks.yml, so an outage on another host (e.g. github.com
+      # answering 503) no longer fails unrelated PRs.
       - name: Check documentation links
         uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
         with:
-          args: --no-progress README.md CONTRIBUTING.md UPGRADING.md SECURITY.md 'docs/*.md' 'docs/**/*.md' 'examples/*/README.md' 'docs/.vitepress/dist/*.md'
+          args: --offline --no-progress README.md CONTRIBUTING.md UPGRADING.md SECURITY.md 'docs/*.md' 'docs/**/*.md' 'examples/*/README.md' 'docs/.vitepress/dist/*.md'
           fail: true
           failIfEmpty: true
           jobSummary: true

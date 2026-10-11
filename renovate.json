@@ -7,11 +7,17 @@
   "timezone": "Asia/Tokyo",
   "schedule": ["before 9am on Monday"],
   "minimumReleaseAge": "7 days",
+  "osvVulnerabilityAlerts": true,
   "packageRules": [
     {
       "description": "Skip the example's path-linked self reference (resolved from the working tree, not Packagist)",
       "matchPackageNames": ["studio-design/gesso"],
       "enabled": false
+    },
+    {
+      "description": "Hold vite on 6.x: package.json overrides it for vitepress 1.6.x, whose build fails on vite 8 (transformWithEsbuild removed). Lift together with the move to vitepress 2",
+      "matchPackageNames": ["vite"],
+      "allowedVersions": "<7"
     },
     {
       "description": "Automerge GitHub Actions digest + minor/patch bumps; majors stay manual review",
