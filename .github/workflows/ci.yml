@@ -128,6 +128,20 @@ jobs:
         working-directory: examples/pest
         run: vendor/bin/pest --colors=always
 
+      # Issue #598: Pest seals PHPUnit's event facade before paratest loads
+      # extensions in the orchestrator, which used to fail the run with a
+      # PHPUnit warning. The sidecar check proves workers still registered the
+      # subscriber (this example resets the tracker per test, so the merged
+      # report itself is empty by design).
+      - name: Run example Pest suite in parallel and merge sidecars
+        working-directory: examples/pest
+        run: |
+          sidecars="$(php -r 'echo sys_get_temp_dir();')/openapi-coverage-sidecars"
+          rm -rf "$sidecars"
+          vendor/bin/pest --colors=always --parallel --processes=2
+          ls "$sidecars"/*.json
+          vendor/bin/gesso coverage:merge --spec-base-path=openapi --specs=petstore
+
   psr7-example:
     name: PSR-7 example
     runs-on: ubuntu-latest

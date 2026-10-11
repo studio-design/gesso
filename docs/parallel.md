@@ -176,7 +176,10 @@ changing a sidecar shape or filename pattern.
   by the [Pest plugin](pest-plugin.md) record coverage through the
   same `OpenApiCoverageTracker` static, so each Pest worker drops a
   sidecar exactly like a paratest worker would. No additional wiring
-  needed beyond the merge step shown above.
+  needed beyond the merge step shown above. Pest seals PHPUnit's event
+  system before loading extensions in its parallel orchestrator, so the
+  extension prints one `[Gesso] NOTE` there and registers nothing in that
+  process; it runs no tests, and the workers report as usual.
 - **`strict_required` aggregates across workers.** Workers always export
   observations via the versioned sidecar envelope. The merge CLI's
   `--strict-required` flag decides whether to assert the gate; the

@@ -75,3 +75,17 @@ parameters:
         # custom paths. Marked @internal upstream but no replacement exists.
         # AssertsNoEnumDrift uses it for exactly this purpose.
         - '#Call to internal method PHPUnit\\Framework\\TestCase::addToAssertionCount\(\)#'
+        # PHPUnit 13.1 turned the runner `Facade` into an interface backed by
+        # the @internal `ExtensionFacade` (12.x-13.0 ship a final class). The
+        # #598 regression test needs a real runner facade on both shapes to
+        # reach PHPUnit's sealed event facade; which errors fire depends on
+        # the PHPUnit version installed (12 on PHP 8.3, 13 on newer PHP).
+        -
+            identifiers:
+                - class.notFound
+                - classConstant.internalClass
+                - function.impossibleType
+                - new.interface
+                - new.internalClass
+            path: tests/Unit/PHPUnit/OpenApiCoverageExtensionSealedFacadeTest.php
+            reportUnmatched: false
