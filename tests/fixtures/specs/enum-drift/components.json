@@ -10,6 +10,7 @@
             "SharedCode": {"type": "string", "enum": ["a", "b"]},
             "Flags": {"type": "boolean", "enum": [true, false]},
             "Broken": {"type": "string", "enum": "red"},
+            "Keyed": {"type": "string", "enum": {"r": "red"}},
             "NotAnEnum": {"type": "string"}
         }
     }

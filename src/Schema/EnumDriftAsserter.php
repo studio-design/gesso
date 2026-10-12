@@ -26,6 +26,7 @@ use Symfony\Component\Yaml\Yaml;
 use Throwable;
 
 use function array_filter;
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function array_values;
@@ -380,7 +381,7 @@ final class EnumDriftAsserter
             );
         }
 
-        if (!is_array($entry['enum'])) {
+        if (!is_array($entry['enum']) || !array_is_list($entry['enum'])) {
             throw new EnumBindingException(
                 EnumBindingReason::EnumKeyNotArray,
                 sprintf(
@@ -409,11 +410,11 @@ final class EnumDriftAsserter
     }
 
     /**
-     * Order-insensitive strict set equality; non-arrays compare strictly.
+     * Order-insensitive strict set equality; non-lists compare strictly.
      */
     private static function sameValues(mixed $a, mixed $b): bool
     {
-        if (!is_array($a) || !is_array($b)) {
+        if (!is_array($a) || !is_array($b) || !array_is_list($a) || !array_is_list($b)) {
             return $a === $b;
         }
 

@@ -28,6 +28,7 @@ use Studio\Gesso\Tests\Unit\Schema\Fixture\EscapingSpecEnum;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\Flags;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\IntegerBackedDriftEnum;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\IntegerBackedEnum;
+use Studio\Gesso\Tests\Unit\Schema\Fixture\Keyed;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\MalformedSpecEnum;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\MatchingEnum;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\MissingComponentEnum;
@@ -96,6 +97,15 @@ class EnumDriftAsserterTest extends TestCase
     {
         yield 'neither' => [[]];
         yield 'both' => [['a.json', 'A']];
+    }
+
+    /**
+     * @return iterable<string, array{class-string, string}>
+     */
+    public static function provideMatched_component_with_a_non_list_enum_throws_enum_key_not_arrayCases(): iterable
+    {
+        yield 'scalar' => [Broken::class, 'Broken'];
+        yield 'object' => [Keyed::class, 'Keyed'];
     }
 
     #[Test]
@@ -887,15 +897,19 @@ class EnumDriftAsserterTest extends TestCase
         }
     }
 
+    /**
+     * @param class-string $fqcn
+     */
     #[Test]
-    public function matched_component_with_a_non_array_enum_throws_enum_key_not_array(): void
+    #[DataProvider('provideMatched_component_with_a_non_list_enum_throws_enum_key_not_arrayCases')]
+    public function matched_component_with_a_non_list_enum_throws_enum_key_not_array(string $fqcn, string $component): void
     {
         try {
-            EnumDriftAsserter::detectAll([Broken::class], self::COMPONENT_SPECS, skipUnbound: true);
+            EnumDriftAsserter::detectAll([$fqcn], self::COMPONENT_SPECS, skipUnbound: true);
             $this->fail('expected EnumBindingException');
         } catch (EnumBindingException $e) {
             $this->assertSame(EnumBindingReason::EnumKeyNotArray, $e->reason);
-            $this->assertSame('#/components/schemas/Broken', $e->specPath);
+            $this->assertSame('#/components/schemas/' . $component, $e->specPath);
         }
     }
 
