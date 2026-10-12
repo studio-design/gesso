@@ -92,19 +92,6 @@ final class ArazzoWorkflowPreflight
         return $plan;
     }
 
-    /**
-     * Arazzo: an omitted contentType is taken from the target operation.
-     *
-     * @param array<string, mixed> $operation
-     */
-    private static function operationJsonContentType(array $operation): string
-    {
-        $content = $operation['requestBody']['content'] ?? null;
-        $declared = is_array($content) ? ContentTypeMatcher::findJsonContentType($content) : null;
-
-        return $declared === null || str_contains($declared, '*') ? 'application/json' : $declared;
-    }
-
     private static function isSelector(mixed $value): bool
     {
         $members = ArazzoDescription::isObject($value) ? ArazzoDescription::members($value) : [];
@@ -157,9 +144,9 @@ final class ArazzoWorkflowPreflight
                 : [];
         }
 
-        // Workflow parameters apply to every step, including the first, so a
-        // `$steps` reference in them is always a forward reference somewhere.
-        $workflowParameters = $this->parameters($at . '.parameters', $workflow['parameters'] ?? null, 0);
+        // Workflow parameters are expression-checked per step, after step
+        // overrides, because their availability depends on the step position.
+        $workflowParameters = $this->parameters($at . '.parameters', $workflow['parameters'] ?? null, null);
 
         $plans = [];
         foreach ($steps as $position => $step) {
@@ -190,15 +177,22 @@ final class ArazzoWorkflowPreflight
         $conditions = $this->criteria($at . '.successCriteria', $step, $position);
         $outputs = $this->outputs($at . '.outputs', $step['outputs'] ?? null, $position, workflowLevel: false);
 
+        $merged = [];
+        foreach ([...$workflowParameters, ...$parameters] as $parameter) {
+            $merged[$parameter['in'] . "\0" . $parameter['name']] = $parameter;
+        }
+
+        foreach ($workflowParameters as $inherited) {
+            if ($merged[$inherited['in'] . "\0" . $inherited['name']] === $inherited) {
+                $this->expressions(sprintf("%s.parameters[%s] (inherited by step '%s')", $workflowAt, $inherited['name'], $stepId), $inherited['value'], $position, recursive: false);
+            }
+        }
+
         if ($target === null) {
             return null;
         }
 
         [$specName, $entry] = $target;
-        $merged = [];
-        foreach ([...$workflowParameters, ...$parameters] as $parameter) {
-            $merged[$parameter['in'] . "\0" . $parameter['name']] = $parameter;
-        }
 
         $operationId = $entry['operation']['operationId'] ?? null;
 
@@ -344,9 +338,11 @@ final class ArazzoWorkflowPreflight
     }
 
     /**
+     * @param ?int $position step position for expression checks; null defers them to each step
+     *
      * @return list<array{name: string, in: string, value: mixed}>
      */
-    private function parameters(string $at, mixed $node, int $position): array
+    private function parameters(string $at, mixed $node, ?int $position): array
     {
         if ($node === null) {
             return [];
@@ -412,7 +408,9 @@ final class ArazzoWorkflowPreflight
                 continue;
             }
 
-            $this->expressions($parameterAt . '.value', $parameter['value'], $position, recursive: false);
+            if ($position !== null) {
+                $this->expressions($parameterAt . '.value', $parameter['value'], $position, recursive: false);
+            }
 
             $key = $in . "\0" . $name;
             if (isset($parameters[$key])) {
@@ -463,7 +461,34 @@ final class ArazzoWorkflowPreflight
 
         $this->expressions($at . '.payload', $body['payload'], $position, recursive: true);
 
-        return [is_string($contentType) ? $contentType : self::operationJsonContentType($operation), true, $body['payload']];
+        return [is_string($contentType) ? $contentType : $this->operationContentType($at, $operation), true, $body['payload']];
+    }
+
+    /**
+     * Arazzo: an omitted contentType is taken from the target operation.
+     *
+     * @param array<string, mixed> $operation
+     */
+    private function operationContentType(string $at, array $operation): string
+    {
+        $content = $operation['requestBody']['content'] ?? null;
+        if (!is_array($content) || $content === []) {
+            return 'application/json';
+        }
+
+        $declared = ContentTypeMatcher::findJsonContentType($content);
+        if ($declared === null) {
+            $this->problem(
+                ArazzoDescriptionReason::UnsupportedFeature,
+                '%s.contentType: omitted, and the target operation accepts no JSON request body (%s); only JSON request bodies are supported.',
+                $at,
+                implode(', ', array_map('strval', array_keys($content))),
+            );
+
+            return 'application/json';
+        }
+
+        return str_contains($declared, '*') ? 'application/json' : $declared;
     }
 
     /**

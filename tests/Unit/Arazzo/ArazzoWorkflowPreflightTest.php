@@ -104,6 +104,24 @@ final class ArazzoWorkflowPreflightTest extends TestCase
     }
 
     #[Test]
+    public function a_workflow_parameter_is_checked_per_step_after_overrides(): void
+    {
+        $plan = $this->plan('preflight-regressions.arazzo.json', 'overriddenWorkflowParameter');
+
+        $this->assertSame('first', $plan->steps[0]->parameters[0]['value']);
+        $this->assertSame('$steps.create.outputs.petId', $plan->steps[1]->parameters[0]['value']);
+    }
+
+    #[Test]
+    public function an_omitted_content_type_must_resolve_to_json(): void
+    {
+        $e = $this->failure('preflight-regressions.arazzo.json', 'inferredXmlBody');
+
+        $this->assertSame(ArazzoDescriptionReason::UnsupportedFeature, $e->reason);
+        $this->assertStringContainsString('application/xml', $e->problems[0]);
+    }
+
+    #[Test]
     public function target_problems_are_reported(): void
     {
         $this->assertSame(ArazzoDescriptionReason::AmbiguousTarget, $this->failure('malformed/two-targets.arazzo.json', 'w')->reason);

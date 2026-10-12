@@ -27,8 +27,10 @@ use function is_string;
 use function pathinfo;
 use function preg_match;
 use function realpath;
+use function rtrim;
 use function sprintf;
 use function str_contains;
+use function str_ends_with;
 use function str_starts_with;
 use function strtolower;
 
@@ -182,6 +184,10 @@ final readonly class ArazzoDescription
                 $baseUri = $self;
             } else {
                 $baseUri = OpenApiRefResolver::normaliseDotSegments(str_starts_with($self, '/') ? $self : dirname($path) . '/' . $self);
+                // A directory-valued reference (`./`, `..`) keeps its trailing slash so it is not dirname()'d again.
+                if (preg_match('#(^|/)\.{0,2}$#', $self) === 1) {
+                    $baseUri = rtrim($baseUri, '/') . '/';
+                }
             }
         }
 
@@ -349,6 +355,8 @@ final readonly class ArazzoDescription
             return null;
         }
 
-        return OpenApiRefResolver::normaliseDotSegments(str_starts_with($url, '/') ? $url : dirname($baseUri) . '/' . $url);
+        $directory = str_ends_with($baseUri, '/') ? $baseUri : dirname($baseUri) . '/';
+
+        return OpenApiRefResolver::normaliseDotSegments(str_starts_with($url, '/') ? $url : $directory . $url);
     }
 }

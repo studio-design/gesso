@@ -53,6 +53,25 @@
           }
         }
       }
+    },
+    "/notes": {
+      "post": {
+        "operationId": "addNote",
+        "requestBody": {
+          "content": {
+            "application/xml": {
+              "schema": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
     }
   }
 }

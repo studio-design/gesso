@@ -86,6 +86,9 @@ final class ArazzoDescriptionTest extends TestCase
         $this->assertSame('https://workflows.example.test/wf.json', $absolute->baseUri);
         $this->assertSame('https://workflows.example.test/petstore.json', $absolute->sources['petstore']->resolvedUrl);
         $this->assertTrue($absolute->sources['petstore']->isRemote());
+
+        $directory = ArazzoDescription::fromFile(self::DIR . '/self-directory.arazzo.json');
+        $this->assertSame(realpath(self::DIR . '/../specs/arazzo-petstore.json'), $directory->sources['petstore']->resolvedUrl);
     }
 
     #[Test]

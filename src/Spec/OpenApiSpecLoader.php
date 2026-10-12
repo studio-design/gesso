@@ -383,7 +383,7 @@ final class OpenApiSpecLoader
     {
         foreach (self::$remoteSpecs as $specName => $source) {
             if ($source->url === $url) {
-                return $specName;
+                return (string) $specName;
             }
         }
 

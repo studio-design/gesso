@@ -1,0 +1,73 @@
+{
+  "arazzo": "1.1.0",
+  "info": {
+    "title": "t",
+    "version": "1.0.0"
+  },
+  "sourceDescriptions": [
+    {
+      "name": "petstore",
+      "url": "../specs/arazzo-petstore.json"
+    },
+    {
+      "name": "inventory",
+      "url": "../specs/arazzo-inventory.json"
+    }
+  ],
+  "workflows": [
+    {
+      "workflowId": "overriddenWorkflowParameter",
+      "parameters": [
+        {
+          "name": "X-Request-Id",
+          "in": "header",
+          "value": "$steps.create.outputs.petId"
+        }
+      ],
+      "steps": [
+        {
+          "stepId": "create",
+          "operationId": "$sourceDescriptions.petstore.createPet",
+          "parameters": [
+            {
+              "name": "X-Request-Id",
+              "in": "header",
+              "value": "first"
+            }
+          ],
+          "requestBody": {
+            "payload": {
+              "name": "Rex"
+            }
+          },
+          "outputs": {
+            "petId": "$response.body#/id"
+          }
+        },
+        {
+          "stepId": "read",
+          "operationId": "$sourceDescriptions.petstore.getPet",
+          "parameters": [
+            {
+              "name": "petId",
+              "in": "path",
+              "value": "$steps.create.outputs.petId"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "workflowId": "inferredXmlBody",
+      "steps": [
+        {
+          "stepId": "note",
+          "operationId": "$sourceDescriptions.inventory.addNote",
+          "requestBody": {
+            "payload": "<note/>"
+          }
+        }
+      ]
+    }
+  ]
+}
