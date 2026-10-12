@@ -27,6 +27,7 @@ use Studio\Gesso\Schema\EnumDriftAsserter;
 final class BoundToOpenApiEnum
 {
     public function __construct(
+        /** @deprecated Use `component:`, or no attribute when the component is named after the class. Removed in Gesso 3.0 (#508). */
         public readonly ?string $specPath = null,
         public readonly ?string $component = null,
     ) {

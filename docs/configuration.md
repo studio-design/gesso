@@ -160,8 +160,8 @@ equivalent PHPUnit parameters; the canonical lower-case value is what the
 surfaces receive.
 
 Use the existing [setup](setup.md) and [coverage](coverage.md) guides for each
-setting's behavior. `enum_spec_base_path` remains an XML-only v2 compatibility
-setting; it has no shared successor.
+setting's behavior. `enum_spec_base_path` is deprecated (removed in 3.0) and has
+no shared successor: enum bindings resolve by component name.
 
 This step connects PHPUnit and Laravel, including `gesso:routes` and
 `gesso:stubs`, and the `coverage:merge` / `coverage:gate` defaults (see

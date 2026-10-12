@@ -253,6 +253,33 @@
                 "replacement": "Studio\\Gesso\\Contract\\OpenApiContractChecks",
                 "removed_in": "3.0"
             }
+        },
+        "phpunit.enum_spec_base_path": {
+            "spelling": "enum_spec_base_path",
+            "v3_target": "none",
+            "notice": {
+                "subject": "The PHPUnit config key 'enum_spec_base_path'",
+                "replacement": "none (delete the parameter: enum bindings resolve against components.schemas of the configured specs)",
+                "removed_in": "3.0"
+            }
+        },
+        "spec.loader.configure.enum_base_path": {
+            "spelling": "OpenApiSpecLoader::configure(enumBasePath:)",
+            "v3_target": "OpenApiSpecLoader::configure() without enumBasePath",
+            "notice": {
+                "subject": "OpenApiSpecLoader::configure(enumBasePath:)",
+                "replacement": "OpenApiSpecLoader::configure() without enumBasePath (component-name enum bindings need no enum root)",
+                "removed_in": "3.0"
+            }
+        },
+        "attribute.bound_to_open_api_enum.spec_path": {
+            "spelling": "BoundToOpenApiEnum::$specPath",
+            "v3_target": "#[BoundToOpenApiEnum(component: 'Name')]",
+            "notice": {
+                "subject": "BoundToOpenApiEnum::$specPath (binding an enum to a spec file path)",
+                "replacement": "#[BoundToOpenApiEnum(component: 'Name')] (or no attribute when a components.schemas enum is named after the class)",
+                "removed_in": "3.0"
+            }
         }
     }
 }
