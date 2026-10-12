@@ -42,6 +42,14 @@ final class SpecPath
             in_array('..', explode('/', $portable), true);
     }
 
+    /** POSIX root, UNC share, or drive letter: the shapes a configured base path may take. */
+    public static function isAbsolute(string $path): bool
+    {
+        return str_starts_with($path, '/') ||
+            str_starts_with($path, '\\\\') ||
+            preg_match('/^[A-Za-z]:[\\\\\/]/', $path) === 1;
+    }
+
     public static function join(string $basePath, string $relativePath): string
     {
         if ($basePath === '') {
