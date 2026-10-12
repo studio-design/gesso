@@ -96,7 +96,17 @@ final class ArazzoWorkflowExecution
         $description = ArazzoDescription::fromFile($this->path);
         $plan = ArazzoWorkflowPreflight::check($description, $this->workflowId, ArazzoSourceResolver::resolve($description));
 
-        $inputErrors = $this->inputErrors($plan->inputsSchema);
+        try {
+            $inputErrors = $this->inputErrors($plan->inputsSchema);
+        } catch (Throwable $e) {
+            throw InvalidArazzoDescriptionException::single(
+                ArazzoDescriptionReason::InvalidField,
+                sprintf('workflows[%s].inputs: not a valid JSON Schema: %s', $this->workflowId, $e->getMessage()),
+                $description->path,
+                $e,
+            );
+        }
+
         if ($inputErrors !== []) {
             return $this->failed([], new ArazzoFailure(ArazzoFailureKind::Workflow, null, 'Workflow inputs do not match the inputs schema.', $inputErrors));
         }
@@ -225,6 +235,15 @@ final class ArazzoWorkflowExecution
             null,
             RequestUriBuilder::query($request->query),
         );
+        $matchedPath = $requestValidation->matchedPath();
+        if ($matchedPath !== null && $matchedPath !== $step->pathTemplate) {
+            return new ArazzoStepResult($step->stepId, $request, $requestValidation, failure: new ArazzoFailure(
+                ArazzoFailureKind::RequestContract,
+                $step->stepId,
+                sprintf("The evaluated request path '%s' matches '%s' instead of the step's operation path '%s'; it was not dispatched.", $requestPath, $matchedPath, $step->pathTemplate),
+            ));
+        }
+
         if ($requestValidation->outcome() === OpenApiValidationOutcome::Failure) {
             return new ArazzoStepResult($step->stepId, $request, $requestValidation, failure: new ArazzoFailure(
                 ArazzoFailureKind::RequestContract,
@@ -340,7 +359,10 @@ final class ArazzoWorkflowExecution
                     ));
                 }
 
-                $values[$parameter['in']][$parameter['name']] = $value;
+                // A null value means "not sent", exactly as uri() and http_build_query() treat it.
+                if ($value !== null) {
+                    $values[$parameter['in']][$parameter['name']] = $value;
+                }
             }
 
             $body = $step->hasBody

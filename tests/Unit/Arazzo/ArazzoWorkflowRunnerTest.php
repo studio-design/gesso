@@ -186,6 +186,45 @@ final class ArazzoWorkflowRunnerTest extends TestCase
     }
 
     #[Test]
+    public function a_request_path_matching_another_operation_is_not_dispatched(): void
+    {
+        $result = ArazzoWorkflowRunner::workflow(self::DIR . '/runner-regressions.arazzo.json', 'emptyPathParameter')
+            ->dispatchUsing($this->server(...))
+            ->run();
+
+        $this->assertSame(ArazzoFailureKind::RequestContract, $result->failure?->kind);
+        $this->assertSame([], $this->dispatched);
+    }
+
+    #[Test]
+    public function a_malformed_inputs_schema_is_a_description_problem(): void
+    {
+        try {
+            ArazzoWorkflowRunner::workflow(self::DIR . '/runner-regressions.arazzo.json', 'malformedInputsSchema')
+                ->dispatchUsing($this->server(...))
+                ->run();
+            $this->fail('Expected InvalidArazzoDescriptionException.');
+        } catch (InvalidArazzoDescriptionException $e) {
+            $this->assertSame(ArazzoDescriptionReason::InvalidField, $e->reason);
+        }
+
+        $this->assertSame([], $this->dispatched);
+    }
+
+    #[Test]
+    public function a_null_parameter_value_is_not_sent(): void
+    {
+        $result = ArazzoWorkflowRunner::workflow(self::DIR . '/runner-regressions.arazzo.json', 'nullQueryValue')
+            ->inputs(['limit' => null])
+            ->dispatchUsing(fn(ArazzoStepRequest $request): array => ['status' => 200, 'headers' => ['Content-Type' => 'application/json'], 'body' => '[]'])
+            ->run();
+
+        $this->assertTrue($result->isSuccessful(), $result->failureMessage());
+        $this->assertSame([], $result->steps[0]->request->query);
+        $this->assertSame('/pets', $result->steps[0]->request->uri());
+    }
+
+    #[Test]
     public function run_requires_a_dispatcher(): void
     {
         $this->expectException(InvalidArgumentException::class);

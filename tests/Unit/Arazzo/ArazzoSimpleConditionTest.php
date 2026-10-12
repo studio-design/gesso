@@ -44,6 +44,8 @@ final class ArazzoSimpleConditionTest extends TestCase
         yield 'and short-circuits on false' => ['$statusCode == 500 && $response.body#/nope == 1', false];
         yield 'header' => ["\$response.header.content-type == 'application/json'", true];
         yield 'literal only' => ['1 == 1', true];
+        yield 'large integers stay exact' => ['9007199254740992 == 9007199254740993', false];
+        yield 'large numeric string stays exact' => ['$response.body#/bigId == 9007199254740993', false];
     }
 
     /**
@@ -113,7 +115,7 @@ final class ArazzoSimpleConditionTest extends TestCase
         return new RuntimeExpressionContext(response: ObservedResponse::from([
             'status' => 201,
             'headers' => ['Content-Type' => 'application/json'],
-            'body' => '{"name":"Rex","quote":"it\'s","count":"3","price":1.5,"missingValue":null,"zero":0,"ok":true,"tags":["a"]}',
+            'body' => '{"name":"Rex","quote":"it\'s","count":"3","price":1.5,"missingValue":null,"zero":0,"bigId":"9007199254740992","ok":true,"tags":["a"]}',
         ]));
     }
 }

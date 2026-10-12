@@ -289,11 +289,13 @@ final readonly class ArazzoSimpleCondition
             throw new RuntimeException(sprintf("'%s' needs two numbers, got %s and %s.", $operator, get_debug_type($left), get_debug_type($right)));
         }
 
+        $order = $a <=> $b;
+
         return match ($operator) {
-            '<' => $a < $b,
-            '<=' => $a <= $b,
-            '>' => $a > $b,
-            default => $a >= $b,
+            '<' => $order < 0,
+            '<=' => $order <= 0,
+            '>' => $order > 0,
+            default => $order >= 0,
         };
     }
 
@@ -314,7 +316,8 @@ final readonly class ArazzoSimpleCondition
         $a = self::number($left);
         $b = self::number($right);
 
-        return $a !== null && $b !== null && (float) $a === (float) $b;
+        // `<=>` keeps int-vs-int exact (no float rounding of large IDs).
+        return $a !== null && $b !== null && ($a <=> $b) === 0;
     }
 
     private static function number(mixed $value): null|float|int
@@ -323,6 +326,10 @@ final readonly class ArazzoSimpleCondition
             return $value;
         }
 
-        return is_string($value) && is_numeric($value) && !str_contains($value, ' ') ? (float) $value : null;
+        if (!is_string($value) || !is_numeric($value) || str_contains($value, ' ')) {
+            return null;
+        }
+
+        return preg_match('/^-?\d+$/D', $value) === 1 && (string) (int) $value === $value ? (int) $value : (float) $value;
     }
 }
