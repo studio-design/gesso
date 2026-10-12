@@ -31,6 +31,10 @@ maintenance cost.
 - `src/Psr7/`, `src/Laravel/`, `src/Symfony/`, `src/Pest/`: integration layers.
   Keep policy in the core when it is not framework-specific.
 - `src/Fuzz/`, `src/Schema/`: generated exploration cases and enum-drift checks.
+- `src/Contract/`: named contract checks (`ContractCheck*`,
+  `OpenApiContractChecks`) and the deprecated `Studio\Gesso\Fuzz\` alias loader
+  (`Autoload.php`). Depends on `src/Fuzz` generator outputs; `src/Fuzz` must
+  never import from it.
 - `src/Internal/`: implementation details; do not expose these as public API.
 - `bin/gesso`: Composer-installed CLI for `doctor` and `coverage:merge`.
 - `tests/Unit`, `tests/Integration`, `tests/fixtures`: tests and representative

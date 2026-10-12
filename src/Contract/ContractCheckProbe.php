@@ -2,7 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Studio\Gesso\Fuzz;
+namespace Studio\Gesso\Contract;
+
+use Studio\Gesso\Fuzz\ExploredCase;
+use Studio\Gesso\Fuzz\ExploredOperation;
 
 /**
  * One request a {@see ContractCheckPlan} is about to dispatch, together with

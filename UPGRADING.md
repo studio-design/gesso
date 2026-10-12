@@ -93,6 +93,13 @@ nothing there.
 | 2.7.0 | `EnumBindingException::forBinding()` | `new EnumBindingException($reason, $message, $enumFqcn, $specPath, $previous)` | 3.0 |
 | 2.7.0 | `shouldSkipOpenApi()` (private, via `ValidatesOpenApiSchema`) | `$this->findSkipOpenApiAttribute() !== null` | 3.0 |
 | 2.7.0 | `OpenApiCoverageTracker::hasAnyCoverage()` (static) | `OpenApiCoverageTracker::current()->hasAnyCoverageOn()` | 3.0 |
+| 2.7.0 | `Studio\Gesso\Fuzz\ContractCheck` | `Studio\Gesso\Contract\ContractCheck` | 3.0 |
+| 2.7.0 | `Studio\Gesso\Fuzz\ContractCheckPlan` | `Studio\Gesso\Contract\ContractCheckPlan` | 3.0 |
+| 2.7.0 | `Studio\Gesso\Fuzz\ContractCheckProbe` (`@internal`) | `Studio\Gesso\Contract\ContractCheckProbe` | 3.0 |
+| 2.7.0 | `Studio\Gesso\Fuzz\ContractCheckFailure` | `Studio\Gesso\Contract\ContractCheckFailure` | 3.0 |
+| 2.7.0 | `Studio\Gesso\Fuzz\ContractCheckSkip` | `Studio\Gesso\Contract\ContractCheckSkip` | 3.0 |
+| 2.7.0 | `Studio\Gesso\Fuzz\ContractCheckSummary` | `Studio\Gesso\Contract\ContractCheckSummary` | 3.0 |
+| 2.7.0 | `Studio\Gesso\Fuzz\OpenApiContractChecks` | `Studio\Gesso\Contract\OpenApiContractChecks` | 3.0 |
 
 The behaviour-equivalent replacement is
 `laravel.auto_inject_dummy_credentials = 'bearer'`, which
@@ -129,6 +136,17 @@ The table mirrors `tests/fixtures/compatibility/v2-deprecations.json`, which a
 test keeps in sync with the emitters in `src/`. The `Deprecated in` column names
 the release that started warning, not the release that introduced the
 replacement.
+
+The named contract checks moved from `Studio\Gesso\Fuzz\` to
+`Studio\Gesso\Contract\` ([#503](https://github.com/studio-design/gesso/issues/503)).
+Migration is an import rewrite. The old names keep resolving through a lazy
+`class_alias()` loader (`src/Contract/Autoload.php`) that emits the notice the
+first time each old name is used and is removed in v3.0. An alias is source
+compatibility, not a second identity: `get_class()`, reflection, and
+`serialize()` report the `Studio\Gesso\Contract\` name, so code comparing
+literal FQCN strings must switch now. Generator types (`ExploredCase`,
+`ExploredOperation`, `OpenApiSpecExplorer`, …) stay in `Studio\Gesso\Fuzz\`
+and are not aliased.
 
 ### Renamed environment variables and Artisan commands
 

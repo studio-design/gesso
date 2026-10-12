@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Studio\Gesso\Fuzz;
+namespace Studio\Gesso\Contract;
 
 use function array_map;
 use function implode;

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Studio\Gesso\Fuzz;
+namespace Studio\Gesso\Contract;
 
 /**
  * Named negative contract checks. Values match the Schemathesis check names

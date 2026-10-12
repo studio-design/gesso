@@ -2,11 +2,17 @@
 
 declare(strict_types=1);
 
-namespace Studio\Gesso\Fuzz;
+namespace Studio\Gesso\Contract;
 
 use InvalidArgumentException;
 use RuntimeException;
 use stdClass;
+use Studio\Gesso\Fuzz\ExploredCase;
+use Studio\Gesso\Fuzz\ExploredOperation;
+use Studio\Gesso\Fuzz\OpenApiEndpointExplorer;
+use Studio\Gesso\Fuzz\RunsOperationHooks;
+use Studio\Gesso\Fuzz\SelectsExploredOperations;
+use Studio\Gesso\Fuzz\SpecPathsPreflight;
 use Studio\Gesso\HttpMethod;
 use Studio\Gesso\Spec\OpenApiOperationResolver;
 use Studio\Gesso\Spec\OpenApiPathMatcher;

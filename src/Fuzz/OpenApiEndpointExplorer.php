@@ -185,7 +185,7 @@ final class OpenApiEndpointExplorer
      * inputs must not gate them. Fails loudly only when a required path
      * parameter cannot be generated — a real inability to construct a URI.
      *
-     * @internal probe-construction primitive for {@see ContractCheckPlan}, not public API
+     * @internal probe-construction primitive for the named contract checks (src/Contract), not public API
      *
      * @throws InvalidArgumentException when $cases < 1, the spec path is not
      *                                  found, the operation is not declared,
@@ -233,7 +233,7 @@ final class OpenApiEndpointExplorer
      * OAS §4.7.12.1, so a generated valid case carries no value to omit for
      * them either.
      *
-     * @internal probe-construction primitive for {@see ContractCheckPlan}, not public API
+     * @internal probe-construction primitive for the named contract checks (src/Contract), not public API
      *
      * @return list<string>
      *
