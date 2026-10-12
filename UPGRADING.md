@@ -93,6 +93,23 @@ nothing there.
 | 2.7.0 | `EnumBindingException::forBinding()` | `new EnumBindingException($reason, $message, $enumFqcn, $specPath, $previous)` | 3.0 |
 | 2.7.0 | `shouldSkipOpenApi()` (private, via `ValidatesOpenApiSchema`) | `$this->findSkipOpenApiAttribute() !== null` | 3.0 |
 | 2.7.0 | `OpenApiCoverageTracker::hasAnyCoverage()` (static) | `OpenApiCoverageTracker::current()->hasAnyCoverageOn()` | 3.0 |
+| 2.7.0 | `strict_required` (PHPUnit parameter) | `strict.required['run']` in `gesso.php` | 3.0 |
+| 2.7.0 | `strict_required_per_call` (PHPUnit parameter) | `strict.required['per_call']` in `gesso.php` | 3.0 |
+| 2.7.0 | `strict_additional_properties` (PHPUnit parameter) | `strict.additional_properties['run']` in `gesso.php` | 3.0 |
+| 2.7.0 | `strict_additional_properties_per_call` (PHPUnit parameter) | `strict.additional_properties['per_call']` in `gesso.php` | 3.0 |
+| 2.7.0 | `min_endpoint_coverage` (PHPUnit parameter) | `coverage.min_coverage['endpoint']` in `gesso.php` | 3.0 |
+| 2.7.0 | `min_response_coverage` (PHPUnit parameter) | `coverage.min_coverage['response']` in `gesso.php` | 3.0 |
+| 2.7.0 | `min_sdk_exercise_coverage` (PHPUnit parameter) | `coverage.min_coverage['sdk_exercise']` in `gesso.php` | 3.0 |
+| 2.7.0 | `min_coverage_strict` (PHPUnit parameter) | `coverage.min_coverage['strict']` in `gesso.php` | 3.0 |
+| 2.7.0 | `output_file` (PHPUnit parameter) | `coverage.report_output['markdown']` in `gesso.php` | 3.0 |
+| 2.7.0 | `json_output` (PHPUnit parameter) | `coverage.report_output['json']` in `gesso.php` | 3.0 |
+| 2.7.0 | `junit_output` (PHPUnit parameter) | `coverage.report_output['junit']` in `gesso.php` | 3.0 |
+| 2.7.0 | `html_output` (PHPUnit parameter) | `coverage.report_output['html']` in `gesso.php` | 3.0 |
+| 2.7.0 | `console_output` (PHPUnit parameter) | `coverage.console_report` in `gesso.php` | 3.0 |
+| 2.7.0 | `baseline_file` (PHPUnit parameter) | `baseline['violations']` in `gesso.php` | 3.0 |
+| 2.7.0 | `coverage_baseline_file` (PHPUnit parameter) | `baseline['coverage']` in `gesso.php` | 3.0 |
+| 2.7.0 | `baseline_stale` (PHPUnit parameter) | `baseline_stale['violations']` in `gesso.php` | 3.0 |
+| 2.7.0 | `coverage_baseline_stale` (PHPUnit parameter) | `baseline_stale['coverage']` in `gesso.php` | 3.0 |
 
 The behaviour-equivalent replacement is
 `laravel.auto_inject_dummy_credentials = 'bearer'`, which
@@ -124,6 +141,13 @@ test-set value satisfies the presence check, and an empty one counts as
 absent and is injected over, matching the validator's own missing-credential
 rule. Keep the flag off (it can be set per test) where that failure is the
 behavior under test.
+
+The PHPUnit parameters keep working, and an XML value still wins over
+`gesso.php`; move each one to its key in a root `gesso.php` (see
+[Shared configuration](docs/configuration.md)) and drop the parameter. The
+notice fires at extension bootstrap, before PHPUnit's error handler is active,
+so it is printed by PHP itself (subject to `display_errors`) rather than
+counted by `failOnDeprecation`; the end-of-run summary line lists it either way.
 
 The table mirrors `tests/fixtures/compatibility/v2-deprecations.json`, which a
 test keeps in sync with the emitters in `src/`. The `Deprecated in` column names
