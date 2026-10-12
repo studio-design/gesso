@@ -64,6 +64,7 @@ final class SharedConfigurationTest extends TestCase
                     self::assertSame('/api,v2', $config->get('gesso.strip_prefixes')[0]);
                     self::assertSame(__DIR__ . '/specs', $config->get('gesso.spec_base_path'));
                     self::assertSame('api', $config->get('gesso.default_spec'));
+                    self::assertSame(['api'], $config->get('gesso.specs'));
                     self::assertSame('api', ValidationPolicyDefaults::defaultSpec());
                     self::assertSame(7, ValidationPolicyDefaults::maxErrors());
                     self::assertSame(7, $config->get('gesso.max_errors'));
@@ -216,12 +217,13 @@ final class SharedConfigurationTest extends TestCase
             PHP);
         $this->replace('ContractTest.php', "assertSame(7, \$config->get('gesso.max_errors'))", "assertSame(3, \$config->get('gesso.max_errors'))");
         $this->replace('ContractTest.php', "assertSame(['5[0-9]{2,2}'], \$config->get('gesso.skip_response_codes'))", "assertSame([], \$config->get('gesso.skip_response_codes'))");
-        $this->replace('gesso.php', "'spec' =>", "'laravel' => ['auto_inject_dummy_credentials' => 'bearer', 'route_parity' => ['external_operation_ids' => ['root1', 'root2'], 'external_openapi_paths' => ['/external']]], 'spec' =>");
+        $this->replace('gesso.php', "'spec' =>", "'laravel' => ['auto_inject_dummy_credentials' => 'bearer', 'route_parity' => ['external_operation_ids' => ['root1', 'root2'], 'external_openapi_paths' => ['/external'], 'excluded_route_names' => ['root.*']]], 'spec' =>");
         $this->replace('ContractTest.php', '(new GessoServiceProvider($app))->register();', <<<'PHP'
             (new GessoServiceProvider($app))->register();
             self::assertSame('bearer', $config->get('gesso.auto_inject_dummy_credentials'));
             self::assertSame(['local'], $config->get('gesso.route_parity.external_operation_ids'));
             self::assertSame(['/external'], $config->get('gesso.route_parity.external_openapi_paths'));
+            self::assertSame(['root.*'], $config->get('gesso.route_parity.excluded_route_names'));
             PHP);
         $process = $this->runPhpunit($this->directory);
         $this->assertSame(0, $process->getExitCode(), $process->getOutput() . $process->getErrorOutput());

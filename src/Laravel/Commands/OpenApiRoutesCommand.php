@@ -87,12 +87,15 @@ final class OpenApiRoutesCommand extends Command
                     'prefix' => $this->nullableStringOption('prefix'),
                     'middleware' => $this->stringListOption('middleware'),
                     'domains' => $this->stringListOption('domain'),
-                    'excluded_route_names' => $this->stringListOption('exclude-route'),
-                    'excluded_operation_ids' => $this->documentedSideExclusions(
+                    'excluded_route_names' => $this->mergedExclusions(
+                        'exclude-route',
+                        'gesso.route_parity.excluded_route_names',
+                    ),
+                    'excluded_operation_ids' => $this->mergedExclusions(
                         'exclude-operation',
                         'gesso.route_parity.external_operation_ids',
                     ),
-                    'excluded_openapi_paths' => $this->documentedSideExclusions(
+                    'excluded_openapi_paths' => $this->mergedExclusions(
                         'exclude-openapi-path',
                         'gesso.route_parity.external_openapi_paths',
                     ),
@@ -135,6 +138,9 @@ final class OpenApiRoutesCommand extends Command
     private function specNames(): array
     {
         $specs = $this->stringListOption('spec');
+        if ($specs === []) {
+            $specs = array_values(array_unique($this->configStringList('gesso.specs')));
+        }
 
         return $specs !== [] ? $specs : [$this->configuredDefaultSpec()];
     }
@@ -187,7 +193,16 @@ final class OpenApiRoutesCommand extends Command
     }
 
     /** @return list<string> */
-    private function documentedSideExclusions(string $option, string $configKey): array
+    private function mergedExclusions(string $option, string $configKey): array
+    {
+        return array_values(array_unique(array_merge(
+            $this->configStringList($configKey),
+            $this->stringListOption($option),
+        )));
+    }
+
+    /** @return list<string> */
+    private function configStringList(string $configKey): array
     {
         $configured = config($configKey, []);
         if (!is_array($configured)) {
@@ -202,10 +217,7 @@ final class OpenApiRoutesCommand extends Command
             $normalized[] = trim($entry);
         }
 
-        return array_values(array_unique(array_merge(
-            $normalized,
-            $this->stringListOption($option),
-        )));
+        return $normalized;
     }
 
     private function renderText(RouteParityResult $result): void
