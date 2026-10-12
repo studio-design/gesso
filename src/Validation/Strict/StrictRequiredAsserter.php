@@ -9,7 +9,6 @@ use const E_USER_WARNING;
 use Studio\Gesso\Exception\InvalidOpenApiSpecException;
 use Studio\Gesso\Exception\SpecFileNotFoundException;
 use Studio\Gesso\Exception\StrictRequiredDriftException;
-use Studio\Gesso\PHPUnit\CoverageReportSubscriber;
 use Studio\Gesso\Schema\EnumDriftAsserter;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 
