@@ -189,6 +189,21 @@ to partial runs (#453) and v2.3.0 began rejecting `null` response content
 the `### Bug Fixes` entries for each intermediate release in `CHANGELOG.md`;
 this file cannot be relied on to list them.
 
+### Unreleased: Laravel validator cache per test case
+
+The Laravel `ValidatesOpenApiSchema` trait now caches its validators on the
+test-case instance instead of in process-wide statics, as the Symfony adapter
+already did. PHPUnit builds a fresh test case per test method, so each test
+reads its own `gesso.max_errors` / `gesso.skip_*` config and
+`self::resetValidatorCache()` (`@internal`) is no longer needed; delete it from
+`setUp()` / `tearDown()` (the Pest example did). It stays callable, but now
+only forgets which responses were already validated.
+
+One consequence: the validators are built on the first request or assertion
+of a test, so change those settings before then (in `setUp()` or at the top of
+the test). A change made after that point no longer rebuilds the validators
+within the same test method.
+
 ### From v2.3.0 → v2.4.0
 
 There are no backward-incompatible changes to the public API. The additions —

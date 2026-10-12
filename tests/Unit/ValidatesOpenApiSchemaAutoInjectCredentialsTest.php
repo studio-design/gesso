@@ -57,7 +57,6 @@ class ValidatesOpenApiSchemaAutoInjectCredentialsTest extends TestCase
     protected function tearDown(): void
     {
         restore_error_handler();
-        self::resetValidatorCache();
         unset($GLOBALS['__openapi_testing_config']);
         OpenApiSpecLoader::reset();
         OpenApiCoverageTracker::reset();
