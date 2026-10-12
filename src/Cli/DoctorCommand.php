@@ -74,11 +74,12 @@ use function strlen;
 use function strtoupper;
 use function substr;
 use function trim;
+use function var_export;
 
 /**
  * Pre-test compatibility diagnostics for one or more OpenAPI documents.
  *
- * @phpstan-type DoctorOptions array{specs?: list<string>, strip_prefixes?: list<string>, remote_ref_hosts?: list<string>, acknowledged_unvalidatable_schemes?: list<string>, remote_ref_max_bytes?: int|string, local_ref_root?: string, format?: string, output_file?: string, allow_remote_refs?: bool, phpunit_snippet?: bool, help?: bool, invalid_options?: list<string>}
+ * @phpstan-type DoctorOptions array{specs?: list<string>, strip_prefixes?: list<string>, remote_ref_hosts?: list<string>, acknowledged_unvalidatable_schemes?: list<string>, remote_ref_max_bytes?: int|string, local_ref_root?: string, format?: string, output_file?: string, allow_remote_refs?: bool, phpunit_snippet?: bool, emit_config?: bool, help?: bool, invalid_options?: list<string>}
  * @phpstan-type DoctorIssue array{severity: 'error'|'warning'|'skipped', category: string, spec: ?string, message: string, suggestion: ?string}
  * @phpstan-type SpecResult array{path: string, name: string, openapi: string, dialect: string, operations: int, responses: int}
  *
@@ -110,7 +111,7 @@ final class DoctorCommand
         /** @var DoctorOptions */
         return ArgvParser::parse(
             $argv,
-            flags: ['allow_remote_refs', 'phpunit_snippet'],
+            flags: ['allow_remote_refs', 'phpunit_snippet', 'emit_config'],
             values: ['format', 'output_file', 'remote_ref_max_bytes', 'local_ref_root'],
             lists: [
                 'spec' => 'specs',
@@ -148,6 +149,9 @@ final class DoctorCommand
                                          needed. Mirrors the acknowledged_unvalidatable_schemes
                                          PHPUnit / Laravel setting.
               --phpunit-snippet          Include the equivalent PHPUnit extension XML.
+              --emit-config              Print the equivalent gesso.php to stdout (the
+                                         report goes to stderr or --output-file).
+                                         Redirect: > gesso.php
               --help                     Show this message.
 
             Exit codes:
@@ -236,12 +240,37 @@ final class DoctorCommand
             }
         }
 
-        $rendered = $this->render($this->report($specResults, $issues, $options), $format);
+        $report = $this->report($specResults, $issues, $options);
+        $emitConfig = $options['emit_config'] ?? false;
+        $basePath = $this->sharedSpecBasePath($specResults, $options['local_ref_root'] ?? null);
+        if ($emitConfig && $specResults !== [] && $basePath === null) {
+            return $this->usageError(
+                '--emit-config requires every --spec to share one directory; pass --local-ref-root=<dir>.',
+                self::USAGE_PREFIX,
+            );
+        }
+        $rendered = $this->render($report, $format);
 
         try {
-            $this->writeReport($rendered, $options['output_file'] ?? null);
+            if ($emitConfig && ($options['output_file'] ?? '') === '') {
+                // stdout carries only the gesso.php source, so `> gesso.php` works.
+                $this->writeStderr($rendered);
+            } else {
+                $this->writeReport($rendered, $options['output_file'] ?? null);
+            }
         } catch (RuntimeException $e) {
             return $this->usageError($e->getMessage(), self::USAGE_PREFIX);
+        }
+
+        // A rejected spec emits nothing: an empty redirected gesso.php fails
+        // loudly on the next load instead of configuring a suite from it.
+        if ($emitConfig && $basePath !== null && $report['status'] !== 'error') {
+            $this->writeStdout($this->gessoConfigSource(
+                $specResults,
+                $options['strip_prefixes'] ?? [],
+                $basePath,
+                $options['acknowledged_unvalidatable_schemes'] ?? [],
+            ));
         }
 
         foreach ($issues as $issue) {
@@ -810,20 +839,12 @@ final class DoctorCommand
         if ($specs === []) {
             return null;
         }
-        $basePath = $localRefRoot ?? dirname($specs[0]['path']);
-        if ($localRefRoot === null) {
-            foreach ($specs as $spec) {
-                if (dirname($spec['path']) !== $basePath) {
-                    return '<!-- Specs use different directories; one PHPUnit extension instance requires a shared spec_base_path. -->';
-                }
-            }
+        $basePath = $this->sharedSpecBasePath($specs, $localRefRoot);
+        if ($basePath === null) {
+            return '<!-- Specs use different directories; one PHPUnit extension instance requires a shared spec_base_path. -->';
         }
         $names = implode(',', array_map(static fn(array $spec): string => $spec['name'], $specs));
         $prefixes = implode(',', $stripPrefixes);
-        $cwd = getcwd();
-        if ($cwd !== false && str_starts_with($basePath, rtrim($cwd, '/') . '/')) {
-            $basePath = substr($basePath, strlen(rtrim($cwd, '/')) + 1);
-        }
         $basePath = htmlspecialchars($basePath, ENT_XML1 | ENT_QUOTES, 'UTF-8');
         $names = htmlspecialchars($names, ENT_XML1 | ENT_QUOTES, 'UTF-8');
         $prefixLine = $prefixes === '' ? '' : "\n        <parameter name=\"strip_prefixes\" value=\"" . htmlspecialchars($prefixes, ENT_XML1 | ENT_QUOTES, 'UTF-8') . '"/>';
@@ -839,6 +860,78 @@ final class DoctorCommand
                 </bootstrap>
             </extensions>
             XML;
+    }
+
+    /**
+     * The one spec directory every entry document shares, relative to the cwd
+     * when it lies below it; `null` when there are no specs, or when they live
+     * in different directories and no `--local-ref-root` names a common one.
+     *
+     * @param list<SpecResult> $specs
+     */
+    private function sharedSpecBasePath(array $specs, ?string $localRefRoot): ?string
+    {
+        if ($specs === []) {
+            return null;
+        }
+        $basePath = $localRefRoot ?? dirname($specs[0]['path']);
+        if ($localRefRoot === null) {
+            foreach ($specs as $spec) {
+                if (dirname($spec['path']) !== $basePath) {
+                    return null;
+                }
+            }
+        }
+        $cwd = getcwd();
+        if ($cwd !== false && str_starts_with($basePath, rtrim($cwd, '/') . '/')) {
+            $basePath = substr($basePath, strlen(rtrim($cwd, '/')) + 1);
+        }
+
+        return $basePath;
+    }
+
+    /**
+     * The `gesso.php` equivalent of {@see self::phpunitSnippet()}. The base path
+     * is cwd-relative, which is what `gesso.php` resolves against when the file
+     * is written to the cwd.
+     *
+     * @param list<SpecResult> $specs
+     * @param list<string> $stripPrefixes
+     * @param list<string> $acknowledgedSchemes
+     */
+    private function gessoConfigSource(array $specs, array $stripPrefixes, string $basePath, array $acknowledgedSchemes): string
+    {
+        $list = static fn(array $values): string => '[' . implode(', ', array_map(
+            static fn(string $value): string => var_export($value, true),
+            $values,
+        )) . ']';
+
+        $spec = [
+            "        'base_path' => " . var_export($basePath, true) . ',',
+            "        'names' => " . $list(array_map(static fn(array $spec): string => $spec['name'], $specs)) . ',',
+        ];
+        if ($stripPrefixes !== []) {
+            $spec[] = "        'strip_prefixes' => " . $list($stripPrefixes) . ',';
+        }
+        $lines = [
+            '<?php',
+            '',
+            'declare(strict_types=1);',
+            '',
+            '// Generated by `gesso doctor --emit-config`. Keys: docs/configuration.md',
+            'return [',
+            "    'spec' => [",
+            ...$spec,
+            '    ],',
+        ];
+        if ($acknowledgedSchemes !== []) {
+            $lines[] = "    'validation' => [";
+            $lines[] = "        'acknowledged_unvalidatable_schemes' => " . $list($acknowledgedSchemes) . ',';
+            $lines[] = '    ],';
+        }
+        $lines[] = '];';
+
+        return implode("\n", $lines) . "\n";
     }
 
     private function categoryForException(InvalidOpenApiSpecException $e): string
