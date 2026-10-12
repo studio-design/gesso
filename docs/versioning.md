@@ -89,6 +89,13 @@ This library follows [Semantic Versioning 2.0](https://semver.org/). v1.0.0 is t
   `ContractCheckSummary`/`ContractCheckFailure`/`ContractCheckSkip` shapes.
   Failure/skip prose is not a contract, and neither is the placeholder value
   an `ignored_auth` invalid-credential probe writes.
+- The Arazzo workflow runner: `ArazzoWorkflowRunner`, `ArazzoWorkflowExecution`,
+  `ArazzoStepRequest`, `ArazzoWorkflowResult`, `ArazzoStepResult`,
+  `ArazzoFailure`, `ArazzoFailureKind` (and its string values),
+  `InvalidArazzoDescriptionException`, and `ArazzoDescriptionReason`. The
+  accepted Arazzo subset documented in [Arazzo workflows](arazzo.md#supported-subset)
+  may widen in a minor release; narrowing it is major. `failureMessage()` and
+  problem prose are not a contract.
 - CLI surfaces by major (commands, flags, exit codes, and versioned inputs and
   output where applicable):
   - v1.x: `bin/openapi-contract`, `bin/openapi-coverage-merge`, and the v1.10

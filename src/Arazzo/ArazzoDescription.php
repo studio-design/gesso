@@ -45,7 +45,7 @@ use function strtolower;
  * absolute `$self` URL. Local locations are filesystem paths, not `file:`
  * URIs.
  *
- * @internal Becomes public with the Arazzo workflow runner (#428).
+ * @internal Arazzo runner implementation detail; not public API.
  */
 final readonly class ArazzoDescription
 {

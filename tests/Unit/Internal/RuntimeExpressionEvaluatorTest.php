@@ -26,8 +26,9 @@ final class RuntimeExpressionEvaluatorTest extends TestCase
         yield 'list index with leading zero' => [RuntimeExpressionFailure::NotFound, '$response.body#/tags/01'];
         yield 'missing header' => [RuntimeExpressionFailure::NotFound, '$response.header.x-missing'];
         yield 'response query' => [RuntimeExpressionFailure::ContextUnavailable, '$response.query.limit'];
-        yield 'inputs' => [RuntimeExpressionFailure::UnsupportedFamily, '$inputs.name'];
-        yield 'steps' => [RuntimeExpressionFailure::UnsupportedFamily, '$steps.a.outputs.b'];
+        yield 'inputs outside a workflow' => [RuntimeExpressionFailure::ContextUnavailable, '$inputs.name'];
+        yield 'step that has not run' => [RuntimeExpressionFailure::NotFound, '$steps.a.outputs.b'];
+        yield 'outputs' => [RuntimeExpressionFailure::UnsupportedFamily, '$outputs.b'];
         yield 'workflows' => [RuntimeExpressionFailure::UnsupportedFamily, '$workflows.a.outputs.b'];
         yield 'message' => [RuntimeExpressionFailure::UnsupportedFamily, '$message.payload'];
         yield 'self' => [RuntimeExpressionFailure::UnsupportedFamily, '$self'];
@@ -85,6 +86,24 @@ final class RuntimeExpressionEvaluatorTest extends TestCase
     public function unsupported_or_missing_values_fail_loudly(RuntimeExpressionFailure $reason, string $expression): void
     {
         $this->assertFailure($reason, $expression, $this->context());
+    }
+
+    #[Test]
+    public function inputs_and_step_outputs_preserve_types_and_walk_pointers(): void
+    {
+        $context = new RuntimeExpressionContext(
+            inputs: ['name' => 'Rex', 'user.profile' => ['age' => 3]],
+            stepOutputs: ['create' => ['petId' => 7, 'pet' => (object) ['tags' => ['a']]]],
+        );
+
+        $this->assertSame('Rex', RuntimeExpressionEvaluator::evaluate('$inputs.name', $context));
+        $this->assertSame(3, RuntimeExpressionEvaluator::evaluate('$inputs.user.profile#/age', $context));
+        $this->assertSame(7, RuntimeExpressionEvaluator::evaluate('$steps.create.outputs.petId', $context));
+        $this->assertSame('a', RuntimeExpressionEvaluator::evaluate('$steps.create.outputs.pet#/tags/0', $context));
+        $this->assertSame('pet-7', RuntimeExpressionEvaluator::evaluateEmbedded('pet-{$steps.create.outputs.petId}', $context));
+        $this->assertFailure(RuntimeExpressionFailure::NotFound, '$inputs.missing', $context);
+        $this->assertFailure(RuntimeExpressionFailure::NotFound, '$steps.create.outputs.missing', $context);
+        $this->assertFailure(RuntimeExpressionFailure::NotFound, '$steps.create.outputs.pet#/nope', $context);
     }
 
     #[Test]
