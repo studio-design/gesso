@@ -106,6 +106,7 @@ final class GessoConfigTest extends TestCase
             'laravel.auto_inject_dummy_credentials',
             'laravel.route_parity.external_operation_ids',
             'laravel.route_parity.external_openapi_paths',
+            'laravel.route_parity.excluded_route_names',
         ];
     }
 
@@ -593,6 +594,7 @@ final class GessoConfigTest extends TestCase
                 'route_parity' => [
                     'external_operation_ids' => ['legacy.show'],
                     'external_openapi_paths' => ['/legacy/*'],
+                    'excluded_route_names' => ['internal.*'],
                 ],
             ],
         ], true) . ";\n"));
@@ -605,6 +607,7 @@ final class GessoConfigTest extends TestCase
         $this->assertFalse($config->bool('validation.enforce_discriminator'));
         $this->assertSame('bearer', $config->boolOrString('laravel.auto_inject_dummy_credentials'));
         $this->assertSame(['legacy.show'], $config->strings('laravel.route_parity.external_operation_ids'));
+        $this->assertSame(['internal.*'], $config->strings('laravel.route_parity.excluded_route_names'));
         $this->assertTrue($config->bool('coverage.min_coverage.strict'));
     }
 
