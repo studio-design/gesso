@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Arazzo;
 
+use InvalidArgumentException;
 use stdClass;
 use Studio\Gesso\Internal\RuntimeExpression;
 use Studio\Gesso\Internal\RuntimeExpressionException;
@@ -38,7 +39,7 @@ use function substr;
  * anything outside the supported subset is an `UnsupportedFeature`, never a
  * silent no-op.
  *
- * @internal Becomes public with the Arazzo workflow runner (#428).
+ * @internal Arazzo runner implementation detail; not public API.
  */
 final class ArazzoWorkflowPreflight
 {
@@ -494,7 +495,7 @@ final class ArazzoWorkflowPreflight
     /**
      * @param array<array-key, mixed> $step
      *
-     * @return list<string>
+     * @return list<ArazzoSimpleCondition>
      */
     private function criteria(string $at, array $step, int $position): array
     {
@@ -543,7 +544,30 @@ final class ArazzoWorkflowPreflight
                 continue;
             }
 
-            $conditions[] = $condition;
+            if ($type !== 'simple') {
+                continue; // already reported above
+            }
+
+            try {
+                $parsed = ArazzoSimpleCondition::parse($condition);
+            } catch (InvalidArgumentException $e) {
+                $this->problem(ArazzoDescriptionReason::UnsupportedFeature, '%s.condition: %s', $criterionAt, $e->getMessage());
+
+                continue;
+            } catch (RuntimeExpressionException $e) {
+                $this->problem(ArazzoDescriptionReason::InvalidExpression, '%s.condition: %s', $criterionAt, $e->getMessage());
+
+                continue;
+            }
+
+            $valid = true;
+            foreach ($parsed->expressions() as $expression) {
+                $valid = $this->expression($criterionAt . '.condition', $expression, $position, workflowLevel: false) && $valid;
+            }
+
+            if ($valid) {
+                $conditions[] = $parsed;
+            }
         }
 
         return $conditions;

@@ -20,6 +20,8 @@ final readonly class RuntimeExpressionContext
      * @param array<string, mixed> $requestHeaders lower-cased header name → string|list<string>
      * @param array<string, mixed> $requestQuery
      * @param array<string, mixed> $requestPath
+     * @param null|array<string, mixed> $inputs workflow inputs; null outside a workflow
+     * @param array<string, array<string, mixed>> $stepOutputs stepId → evaluated outputs of the steps run so far
      */
     public function __construct(
         public ?string $url = null,
@@ -29,5 +31,7 @@ final readonly class RuntimeExpressionContext
         public array $requestPath = [],
         public ?DecodedBody $requestBody = null,
         public ?ObservedResponse $response = null,
+        public ?array $inputs = null,
+        public array $stepOutputs = [],
     ) {}
 }

@@ -1,4 +1,727 @@
 {
+    "Studio\\Gesso\\Arazzo\\ArazzoDescriptionReason": {
+        "kind": "enum",
+        "final": true,
+        "abstract": false,
+        "readonly": false,
+        "instantiable": false,
+        "constructor": null,
+        "parent": null,
+        "interfaces": [
+            "UnitEnum"
+        ],
+        "traits": [],
+        "attributes": [],
+        "backing_type": null,
+        "cases": {
+            "FileNotFound": null,
+            "UnsupportedExtension": null,
+            "MalformedDocument": null,
+            "UnsupportedVersion": null,
+            "MissingRequiredField": null,
+            "InvalidField": null,
+            "DuplicateIdentifier": null,
+            "UnknownWorkflow": null,
+            "UnknownStep": null,
+            "UnknownSource": null,
+            "UnknownOutput": null,
+            "UnsupportedSourceType": null,
+            "UnsupportedSourceUrl": null,
+            "SourceNotConfigured": null,
+            "SourceNotFound": null,
+            "SourceOutsideBasePath": null,
+            "AmbiguousSourceFile": null,
+            "SourceUnloadable": null,
+            "MissingTarget": null,
+            "AmbiguousTarget": null,
+            "UnqualifiedOperationId": null,
+            "OperationNotFound": null,
+            "DuplicateParameter": null,
+            "ForwardStepReference": null,
+            "InvalidExpression": null,
+            "UnsupportedFeature": null,
+            "UnknownComponent": null
+        },
+        "constants": [],
+        "properties": {
+            "name": {
+                "type": "string",
+                "static": false,
+                "readonly": true,
+                "default": {
+                    "unavailable": true
+                }
+            }
+        },
+        "methods": {
+            "cases": {
+                "static": true,
+                "final": false,
+                "abstract": false,
+                "returns_reference": false,
+                "return_type": "array",
+                "attributes": [],
+                "parameters": []
+            }
+        }
+    },
+    "Studio\\Gesso\\Arazzo\\ArazzoFailure": {
+        "kind": "class",
+        "final": true,
+        "abstract": false,
+        "readonly": true,
+        "instantiable": true,
+        "constructor": {
+            "kind": "declared",
+            "visibility": "public"
+        },
+        "parent": null,
+        "interfaces": [],
+        "traits": [],
+        "attributes": [],
+        "backing_type": null,
+        "cases": [],
+        "constants": [],
+        "properties": {
+            "errors": {
+                "type": "array",
+                "static": false,
+                "readonly": true,
+                "default": {
+                    "unavailable": true
+                }
+            },
+            "kind": {
+                "type": "Studio\\Gesso\\Arazzo\\ArazzoFailureKind",
+                "static": false,
+                "readonly": true,
+                "default": {
+                    "unavailable": true
+                }
+            },
+            "message": {
+                "type": "string",
+                "static": false,
+                "readonly": true,
+                "default": {
+                    "unavailable": true
+                }
+            },
+            "stepId": {
+                "type": "?string",
+                "static": false,
+                "readonly": true,
+                "default": {
+                    "unavailable": true
+                }
+            }
+        },
+        "methods": []
+    },
+    "Studio\\Gesso\\Arazzo\\ArazzoFailureKind": {
+        "kind": "enum",
+        "final": true,
+        "abstract": false,
+        "readonly": false,
+        "instantiable": false,
+        "constructor": null,
+        "parent": null,
+        "interfaces": [
+            "BackedEnum",
+            "UnitEnum"
+        ],
+        "traits": [],
+        "attributes": [],
+        "backing_type": "string",
+        "cases": {
+            "RequestContract": "request_contract",
+            "Dispatch": "dispatch",
+            "ResponseContract": "response_contract",
+            "Criterion": "criterion",
+            "Workflow": "workflow"
+        },
+        "constants": [],
+        "properties": {
+            "name": {
+                "type": "string",
+                "static": false,
+                "readonly": true,
+                "default": {
+                    "unavailable": true
+                }
+            },
+            "value": {
+                "type": "string",
+                "static": false,
+                "readonly": true,
+                "default": {
+                    "unavailable": true
+                }
+            }
+        },
+        "methods": {
+            "cases": {
+                "static": true,
+                "final": false,
+                "abstract": false,
+                "returns_reference": false,
+                "return_type": "array",
+                "attributes": [],
+                "parameters": []
+            },
+            "from": {
+                "static": true,
+                "final": false,
+                "abstract": false,
+                "returns_reference": false,
+                "return_type": "static",
+                "attributes": [],
+                "parameters": [
+                    {
+                        "name": "value",
+                        "type": "string|int",
+                        "optional": false,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": {
+                            "unavailable": true
+                        },
+                        "attributes": []
+                    }
+                ]
+            },
+            "tryFrom": {
+                "static": true,
+                "final": false,
+                "abstract": false,
+                "returns_reference": false,
+                "return_type": "?static",
+                "attributes": [],
+                "parameters": [
+                    {
+                        "name": "value",
+                        "type": "string|int",
+                        "optional": false,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": {
+                            "unavailable": true
+                        },
+                        "attributes": []
+                    }
+                ]
+            }
+        }
+    },
+    "Studio\\Gesso\\Arazzo\\ArazzoStepRequest": {
+        "kind": "class",
+        "final": true,
+        "abstract": false,
+        "readonly": true,
+        "instantiable": true,
+        "constructor": {
+            "kind": "declared",
+            "visibility": "public"
+        },
+        "parent": null,
+        "interfaces": [],
+        "traits": [],
+        "attributes": [],
+        "backing_type": null,
+        "cases": [],
+        "constants": [],
+        "properties": {
+            "body": {
+                "type": "Studio\\Gesso\\DecodedBody",
+                "static": false,
+                "readonly": true,
+                "default": {
+                    "unavailable": true
+                }
+            },
+            "contentType": {
+                "type": "?string",
+                "static": false,
+                "readonly": true,
+                "default": {
+                    "unavailable": true
+                }
+            },
+            "cookies": {
+                "type": "array",
+                "static": false,
+                "readonly": true,
+                "default": {
+                    "unavailable": true
+                }
+            },
+            "headers": {
+                "type": "array",
+                "static": false,
+                "readonly": true,
+                "default": {
+                    "unavailable": true
+                }
+            },
+            "method": {
+                "type": "string",
+                "static": false,
+                "readonly": true,
+                "default": {
+                    "unavailable": true
+                }
+            },
+            "operationId": {
+                "type": "?string",
+                "static": false,
+                "readonly": true,
+                "default": {
+                    "unavailable": true
+                }
+            },
+            "pathParams": {
+                "type": "array",
+                "static": false,
+                "readonly": true,
+                "default": {
+                    "unavailable": true
+                }
+            },
+            "pathTemplate": {
+                "type": "string",
+                "static": false,
+                "readonly": true,
+                "default": {
+                    "unavailable": true
+                }
+            },
+            "query": {
+                "type": "array",
+                "static": false,
+                "readonly": true,
+                "default": {
+                    "unavailable": true
+                }
+            },
+            "specName": {
+                "type": "string",
+                "static": false,
+                "readonly": true,
+                "default": {
+                    "unavailable": true
+                }
+            },
+            "stepId": {
+                "type": "string",
+                "static": false,
+                "readonly": true,
+                "default": {
+                    "unavailable": true
+                }
+            }
+        },
+        "methods": {
+            "bodyAsJson": {
+                "static": false,
+                "final": false,
+                "abstract": false,
+                "returns_reference": false,
+                "return_type": "?string",
+                "attributes": [],
+                "parameters": []
+            },
+            "curlSnippet": {
+                "static": false,
+                "final": false,
+                "abstract": false,
+                "returns_reference": false,
+                "return_type": "string",
+                "attributes": [],
+                "parameters": [
+                    {
+                        "name": "baseUrl",
+                        "type": "string",
+                        "optional": true,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": "",
+                        "attributes": []
+                    },
+                    {
+                        "name": "redactSensitiveHeaders",
+                        "type": "bool",
+                        "optional": true,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": true,
+                        "attributes": []
+                    }
+                ]
+            },
+            "uri": {
+                "static": false,
+                "final": false,
+                "abstract": false,
+                "returns_reference": false,
+                "return_type": "string",
+                "attributes": [],
+                "parameters": [
+                    {
+                        "name": "prefix",
+                        "type": "string",
+                        "optional": true,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": "",
+                        "attributes": []
+                    }
+                ]
+            }
+        }
+    },
+    "Studio\\Gesso\\Arazzo\\ArazzoStepResult": {
+        "kind": "class",
+        "final": true,
+        "abstract": false,
+        "readonly": true,
+        "instantiable": true,
+        "constructor": {
+            "kind": "declared",
+            "visibility": "public"
+        },
+        "parent": null,
+        "interfaces": [],
+        "traits": [],
+        "attributes": [],
+        "backing_type": null,
+        "cases": [],
+        "constants": [],
+        "properties": {
+            "criteria": {
+                "type": "array",
+                "static": false,
+                "readonly": true,
+                "default": {
+                    "unavailable": true
+                }
+            },
+            "failure": {
+                "type": "?Studio\\Gesso\\Arazzo\\ArazzoFailure",
+                "static": false,
+                "readonly": true,
+                "default": {
+                    "unavailable": true
+                }
+            },
+            "outputs": {
+                "type": "array",
+                "static": false,
+                "readonly": true,
+                "default": {
+                    "unavailable": true
+                }
+            },
+            "request": {
+                "type": "Studio\\Gesso\\Arazzo\\ArazzoStepRequest",
+                "static": false,
+                "readonly": true,
+                "default": {
+                    "unavailable": true
+                }
+            },
+            "requestValidation": {
+                "type": "Studio\\Gesso\\OpenApiValidationResult",
+                "static": false,
+                "readonly": true,
+                "default": {
+                    "unavailable": true
+                }
+            },
+            "responseBody": {
+                "type": "?Studio\\Gesso\\DecodedBody",
+                "static": false,
+                "readonly": true,
+                "default": {
+                    "unavailable": true
+                }
+            },
+            "responseHeaders": {
+                "type": "array",
+                "static": false,
+                "readonly": true,
+                "default": {
+                    "unavailable": true
+                }
+            },
+            "responseValidation": {
+                "type": "?Studio\\Gesso\\OpenApiValidationResult",
+                "static": false,
+                "readonly": true,
+                "default": {
+                    "unavailable": true
+                }
+            },
+            "statusCode": {
+                "type": "?int",
+                "static": false,
+                "readonly": true,
+                "default": {
+                    "unavailable": true
+                }
+            },
+            "stepId": {
+                "type": "string",
+                "static": false,
+                "readonly": true,
+                "default": {
+                    "unavailable": true
+                }
+            }
+        },
+        "methods": []
+    },
+    "Studio\\Gesso\\Arazzo\\ArazzoWorkflowExecution": {
+        "kind": "class",
+        "final": true,
+        "abstract": false,
+        "readonly": false,
+        "instantiable": true,
+        "constructor": {
+            "kind": "declared",
+            "visibility": "public"
+        },
+        "parent": null,
+        "interfaces": [],
+        "traits": [],
+        "attributes": [],
+        "backing_type": null,
+        "cases": [],
+        "constants": [],
+        "properties": [],
+        "methods": {
+            "dispatchUsing": {
+                "static": false,
+                "final": false,
+                "abstract": false,
+                "returns_reference": false,
+                "return_type": "self",
+                "attributes": [],
+                "parameters": [
+                    {
+                        "name": "dispatch",
+                        "type": "callable",
+                        "optional": false,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": {
+                            "unavailable": true
+                        },
+                        "attributes": []
+                    }
+                ]
+            },
+            "inputs": {
+                "static": false,
+                "final": false,
+                "abstract": false,
+                "returns_reference": false,
+                "return_type": "self",
+                "attributes": [],
+                "parameters": [
+                    {
+                        "name": "inputs",
+                        "type": "array",
+                        "optional": false,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": {
+                            "unavailable": true
+                        },
+                        "attributes": []
+                    }
+                ]
+            },
+            "run": {
+                "static": false,
+                "final": false,
+                "abstract": false,
+                "returns_reference": false,
+                "return_type": "Studio\\Gesso\\Arazzo\\ArazzoWorkflowResult",
+                "attributes": [],
+                "parameters": []
+            }
+        }
+    },
+    "Studio\\Gesso\\Arazzo\\ArazzoWorkflowResult": {
+        "kind": "class",
+        "final": true,
+        "abstract": false,
+        "readonly": true,
+        "instantiable": true,
+        "constructor": {
+            "kind": "declared",
+            "visibility": "public"
+        },
+        "parent": null,
+        "interfaces": [],
+        "traits": [],
+        "attributes": [],
+        "backing_type": null,
+        "cases": [],
+        "constants": [],
+        "properties": {
+            "failure": {
+                "type": "?Studio\\Gesso\\Arazzo\\ArazzoFailure",
+                "static": false,
+                "readonly": true,
+                "default": {
+                    "unavailable": true
+                }
+            },
+            "outputs": {
+                "type": "array",
+                "static": false,
+                "readonly": true,
+                "default": {
+                    "unavailable": true
+                }
+            },
+            "steps": {
+                "type": "array",
+                "static": false,
+                "readonly": true,
+                "default": {
+                    "unavailable": true
+                }
+            },
+            "workflowId": {
+                "type": "string",
+                "static": false,
+                "readonly": true,
+                "default": {
+                    "unavailable": true
+                }
+            }
+        },
+        "methods": {
+            "failureMessage": {
+                "static": false,
+                "final": false,
+                "abstract": false,
+                "returns_reference": false,
+                "return_type": "string",
+                "attributes": [],
+                "parameters": []
+            },
+            "isSuccessful": {
+                "static": false,
+                "final": false,
+                "abstract": false,
+                "returns_reference": false,
+                "return_type": "bool",
+                "attributes": [],
+                "parameters": []
+            }
+        }
+    },
+    "Studio\\Gesso\\Arazzo\\ArazzoWorkflowRunner": {
+        "kind": "class",
+        "final": true,
+        "abstract": false,
+        "readonly": false,
+        "instantiable": false,
+        "constructor": {
+            "kind": "declared",
+            "visibility": "private"
+        },
+        "parent": null,
+        "interfaces": [],
+        "traits": [],
+        "attributes": [],
+        "backing_type": null,
+        "cases": [],
+        "constants": [],
+        "properties": [],
+        "methods": {
+            "workflow": {
+                "static": true,
+                "final": false,
+                "abstract": false,
+                "returns_reference": false,
+                "return_type": "Studio\\Gesso\\Arazzo\\ArazzoWorkflowExecution",
+                "attributes": [],
+                "parameters": [
+                    {
+                        "name": "path",
+                        "type": "string",
+                        "optional": false,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": {
+                            "unavailable": true
+                        },
+                        "attributes": []
+                    },
+                    {
+                        "name": "workflowId",
+                        "type": "string",
+                        "optional": false,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": {
+                            "unavailable": true
+                        },
+                        "attributes": []
+                    }
+                ]
+            }
+        }
+    },
+    "Studio\\Gesso\\Arazzo\\InvalidArazzoDescriptionException": {
+        "kind": "class",
+        "final": true,
+        "abstract": false,
+        "readonly": false,
+        "instantiable": true,
+        "constructor": {
+            "kind": "declared",
+            "visibility": "public"
+        },
+        "parent": "RuntimeException",
+        "interfaces": [],
+        "traits": [],
+        "attributes": [],
+        "backing_type": null,
+        "cases": [],
+        "constants": [],
+        "properties": {
+            "path": {
+                "type": "?string",
+                "static": false,
+                "readonly": true,
+                "default": {
+                    "unavailable": true
+                }
+            },
+            "problems": {
+                "type": "array",
+                "static": false,
+                "readonly": true,
+                "default": {
+                    "unavailable": true
+                }
+            },
+            "reason": {
+                "type": "Studio\\Gesso\\Arazzo\\ArazzoDescriptionReason",
+                "static": false,
+                "readonly": true,
+                "default": {
+                    "unavailable": true
+                }
+            }
+        },
+        "methods": []
+    },
     "Studio\\Gesso\\Attribute\\BoundToOpenApiEnum": {
         "kind": "class",
         "final": true,

@@ -31,7 +31,7 @@ use function substr;
  * fetches a source on its own: a remote source must be a configured
  * `remoteSpecs` entry.
  *
- * @internal Becomes public with the Arazzo workflow runner (#428).
+ * @internal Arazzo runner implementation detail; not public API.
  */
 final class ArazzoSourceResolver
 {

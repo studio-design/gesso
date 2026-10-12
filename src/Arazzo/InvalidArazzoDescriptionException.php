@@ -15,12 +15,12 @@ use function sprintf;
  * Every problem found while loading or preflighting an Arazzo description,
  * reported at once. `reason` is the first problem's reason; `problems` lists
  * each problem prefixed with its location.
- *
- * @internal Becomes public with the Arazzo workflow runner (#428).
  */
 final class InvalidArazzoDescriptionException extends RuntimeException
 {
     /**
+     * @internal Thrown by the Arazzo runner; construct it only in tests.
+     *
      * @param list<string> $problems
      */
     public function __construct(
@@ -42,6 +42,8 @@ final class InvalidArazzoDescriptionException extends RuntimeException
     }
 
     /**
+     * @internal Used by the Arazzo loader and preflight.
+     *
      * @param non-empty-list<array{0: ArazzoDescriptionReason, 1: string}> $problems
      */
     public static function fromProblems(array $problems, ?string $path = null): self
@@ -54,6 +56,9 @@ final class InvalidArazzoDescriptionException extends RuntimeException
         return new self($problems[0][0], $messages, $path);
     }
 
+    /**
+     * @internal Used by the Arazzo loader and preflight.
+     */
     public static function single(ArazzoDescriptionReason $reason, string $problem, ?string $path = null, ?Throwable $previous = null): self
     {
         return new self($reason, [$problem], $path, $previous);

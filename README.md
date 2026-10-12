@@ -32,6 +32,7 @@ when upgrading from `studio-design/openapi-contract-testing` v1.10.
 - **Laravel route/spec parity** — `gesso:routes` finds documented operations without routes and registered routes without OpenAPI operations, with filters, stable JSON, and independent CI gates
 - **Schema-driven request fuzzing** — Valid boundaries, composition branches, targeted negative cases with explicit expected status classes, deterministic replay/reduction, whole-spec filters, lifecycle/auth hooks, and explicit skip reasons
 - **Named negative contract checks** — Opt-in `ignored_auth` (does the API actually enforce declared `security`?), `missing_required_header`, and `unsupported_method` probes for the protocol-level holes schema validation cannot see, with deterministic replay and collect-then-assert reporting. See [`docs/fuzzing.md`](docs/fuzzing.md#named-contract-checks).
+- **Arazzo workflow runner** — Runs synchronous Arazzo 1.1 workflows over OpenAPI operations, validating every step's request and response against the contract and evaluating `simple` success criteria; unsupported Arazzo features fail before dispatch. See [`docs/arazzo.md`](docs/arazzo.md).
 - **Enum drift detection** — Static comparison between PHP backed enums and their `enum:` spec arrays, with PHPUnit-extension auto-discovery
 - **Schema under-description detection** — Optional strict mode that flags response fields the implementation always returns but the spec marks as optional, catching the spec gaps that conformance checks alone can't. See [`docs/strict-required.md`](docs/strict-required.md) for current scope and limitations.
 - **Undocumented response-property detection** — Optional strict mode that names returned fields absent from `properties` / `patternProperties` when a schema silently defaults open. See [`docs/strict-additional-properties.md`](docs/strict-additional-properties.md).
@@ -233,6 +234,7 @@ To validate every response automatically, set `'auto_assert' => true` and drop t
 | Laravel route/spec parity (`gesso:routes`) | [`docs/laravel-route-parity.md`](docs/laravel-route-parity.md) |
 | Pest plugin: `expect()->toMatchOpenApiResponseSchema()` and friends | [`docs/pest-plugin.md`](docs/pest-plugin.md) |
 | Schema-driven request fuzzing & named contract checks | [`docs/fuzzing.md`](docs/fuzzing.md) |
+| Arazzo workflow runner (synchronous OpenAPI steps) | [`docs/arazzo.md`](docs/arazzo.md) |
 | Enum drift detection | [`docs/enum-drift.md`](docs/enum-drift.md) |
 | Schema under-description detection (`strict_required`) | [`docs/strict-required.md`](docs/strict-required.md) |
 | Undocumented response-property detection (`strict_additional_properties`) | [`docs/strict-additional-properties.md`](docs/strict-additional-properties.md) |

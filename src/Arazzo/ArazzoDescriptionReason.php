@@ -7,8 +7,6 @@ namespace Studio\Gesso\Arazzo;
 /**
  * Why an Arazzo description, one of its sources, or a selected workflow was
  * rejected before anything was dispatched.
- *
- * @internal Becomes public with the Arazzo workflow runner (#428).
  */
 enum ArazzoDescriptionReason
 {
