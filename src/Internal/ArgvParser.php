@@ -32,7 +32,6 @@ final class ArgvParser
 
     /**
      * @param list<string> $argv excluding the script name
-     * @param string $command the subcommand name, skipped wherever it appears
      * @param list<string> $flags booleans: bare `--x` and `--x=1` are true; `--x=0`, `false`, `no` are false
      * @param list<string> $values kept as the raw string; a repeat overwrites
      * @param array<int|string, string> $lists comma-separated; blanks dropped, repeats accumulate. A string key is the
@@ -40,7 +39,7 @@ final class ArgvParser
      *
      * @return array<string, mixed>
      */
-    public static function parse(array $argv, string $command, array $flags = [], array $values = [], array $lists = []): array
+    public static function parse(array $argv, array $flags = [], array $values = [], array $lists = []): array
     {
         $options = [];
         $listKeys = [];
@@ -51,9 +50,6 @@ final class ArgvParser
         $options['invalid_options'] = [];
 
         foreach ($argv as $arg) {
-            if ($arg === $command) {
-                continue;
-            }
             if ($arg === '--help' || $arg === '-h') {
                 $options['help'] = true;
 

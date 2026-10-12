@@ -113,7 +113,6 @@ class StubsCommandTest extends TestCase
                 'dry_run' => true,
             ],
             StubsCommand::parseArgv([
-                'stubs',
                 '--spec=openapi.json',
                 '--coverage=build/coverage.json',
                 '--spec-name=front',
@@ -151,6 +150,16 @@ class StubsCommandTest extends TestCase
             $this->command()->run(StubsCommand::parseArgv(['--spec=x.json', '--adapter=codeception'])),
         );
         $this->assertStringContainsString('Unsupported --adapter=codeception', $this->stderr);
+    }
+
+    #[Test]
+    public function a_stray_positional_token_is_a_usage_error(): void
+    {
+        $options = StubsCommand::parseArgv(['stubs', '--spec=x.json']);
+        $this->assertSame(['stubs'], $options['invalid_options']);
+
+        $this->assertSame(StubsCommand::EXIT_USAGE, $this->command()->run($options));
+        $this->assertStringStartsWith('[Gesso] Unknown argument(s): stubs', $this->stderr);
     }
 
     #[Test]
