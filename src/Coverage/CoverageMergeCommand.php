@@ -27,15 +27,25 @@ use Studio\Gesso\Validation\Strict\StrictRequiredAsserter;
 use Studio\Gesso\Validation\Strict\StrictRequiredMode;
 use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 
+use function array_filter;
+use function array_intersect;
+use function array_keys;
+use function array_map;
+use function array_merge;
+use function array_values;
 use function count;
 use function ctype_digit;
+use function filemtime;
 use function getenv;
 use function implode;
 use function is_int;
 use function is_numeric;
 use function is_string;
+use function max;
 use function sprintf;
+use function trim;
 use function unlink;
+use function usort;
 
 /**
  * Aggregates worker sidecars (produced by {@see CoverageReportSubscriber} in
@@ -72,6 +82,7 @@ use function unlink;
  *     coverage_baseline_file?: string,
  *     coverage_baseline_stale?: string,
  *     expect_sidecars?: int|string,
+ *     run_id?: string,
  *     help?: bool,
  *     invalid_options?: list<string>,
  * }
@@ -114,7 +125,7 @@ final class CoverageMergeCommand
                 'sidecar_dir', 'spec_base_path', 'output_file', 'junit_output', 'json_output', 'html_output',
                 'github_step_summary', 'console_output', 'strict_required', 'strict_additional_properties',
                 'baseline_file', 'coverage_baseline_file', 'coverage_baseline_stale',
-                'min_endpoint_coverage', 'min_response_coverage', 'min_sdk_exercise_coverage', 'expect_sidecars',
+                'min_endpoint_coverage', 'min_response_coverage', 'min_sdk_exercise_coverage', 'expect_sidecars', 'run_id',
             ],
             lists: ['specs', 'strip_prefixes'],
         );
@@ -198,6 +209,9 @@ final class CoverageMergeCommand
                                             a cancelled or failed job writes no sidecar at all,
                                             and the merge would otherwise under-count silently
                                             (Issue #434).
+              --run-id=<id>                 Merge only the sidecars of this run (also consults
+                                            GESSO_RUN_ID). Defaults to the run that wrote the
+                                            newest sidecar; other runs' files are listed and left.
               --no-cleanup                  Keep sidecar files after merge (default: cleanup).
               --help                        Show this message.
 
@@ -324,8 +338,28 @@ final class CoverageMergeCommand
         // one missing worker means the report under-counts coverage, which
         // is exactly the silent failure parallel-mode introduced. Fail
         // loudly so CI gating sees a non-zero exit.
+        //
+        // Issue #596: both this check and --expect-sidecars apply to one run
+        // only, so leftovers from an earlier run are ignored instead of fatal.
+        $runId = trim($options['run_id'] ?? '');
+        if ($runId === '') {
+            $runId = trim((string) getenv('GESSO_RUN_ID'));
+        }
+
         try {
-            $failureMarkers = CoverageSidecarReader::listFailureMarkerPaths($sidecarDir);
+            [$sidecarPaths, $failureMarkers, $ignored, $ignoredRunIds] = self::scopeToRun(
+                $runId === '' ? null : CoverageSidecarWriter::sanitise($runId),
+                CoverageSidecarReader::listPaths($sidecarDir),
+                CoverageSidecarReader::listFailureMarkerPaths($sidecarDir),
+            );
+            if ($ignored !== []) {
+                $this->writeStderr(sprintf(
+                    "[Gesso] NOTE: ignoring %d sidecar/marker file(s) from other run(s) in %s (run ids: %s); they are neither merged nor deleted.\n",
+                    count($ignored),
+                    $sidecarDir,
+                    implode(', ', $ignoredRunIds),
+                ));
+            }
             if ($failureMarkers !== []) {
                 $this->writeStderr(sprintf(
                     "[OpenAPI Coverage] FATAL: %d worker(s) failed to write a sidecar; merge would under-count coverage. Markers in %s\n",
@@ -336,7 +370,7 @@ final class CoverageMergeCommand
                 return 1;
             }
 
-            $payloads = CoverageSidecarReader::readDir($sidecarDir);
+            $payloads = array_map(CoverageSidecarReader::read(...), $sidecarPaths);
         } catch (RuntimeException $e) {
             $this->writeStderr(sprintf("[OpenAPI Coverage] FATAL: %s\n", $e->getMessage()));
 
@@ -549,7 +583,7 @@ final class CoverageMergeCommand
                 );
             }
 
-            if ($cleanup && !$this->cleanup($sidecarDir)) {
+            if ($cleanup && !$this->cleanup($sidecarDir, $sidecarPaths)) {
                 return 1;
             }
 
@@ -603,7 +637,7 @@ final class CoverageMergeCommand
         // sidecars would make each of those cost a full parallel run.
         $cleanupFailure = $cleanup &&
             !$coverageBaselineFailure &&
-            !$this->cleanup($sidecarDir);
+            !$this->cleanup($sidecarDir, $sidecarPaths);
         if ($coverageBaselineFailure && $cleanup) {
             $this->writeStderr(sprintf(
                 "[Gesso] Sidecars kept in %s so the merge can be retried without re-running the suite.\n",
@@ -619,6 +653,48 @@ final class CoverageMergeCommand
             $cleanupFailure
             ? 1
             : 0;
+    }
+
+    /**
+     * Issue #596: split the directory into the selected run and the rest.
+     * The run is `$runId` when given, else the group that wrote the newest
+     * file; unscoped (pre-#596 or ext-posix-less) files form one group.
+     *
+     * @param list<string> $sidecars
+     * @param list<string> $markers
+     *
+     * @return array{list<string>, list<string>, list<string>, list<string>} the run's sidecars, its markers,
+     *                                                                       the ignored paths, their run ids
+     */
+    private static function scopeToRun(?string $runId, array $sidecars, array $markers): array
+    {
+        $groups = [];
+        foreach ([...$sidecars, ...$markers] as $path) {
+            $groups[CoverageSidecarReader::runIdOf($path) ?? ''][] = $path;
+        }
+        if ($runId === null) {
+            // ponytail: newest-group selection assumes runs share a directory
+            // one after another; concurrent runs in one directory must set
+            // GESSO_RUN_ID. Count and id break same-second mtime ties.
+            $rank = static fn(int|string $id): array => [
+                max(array_map(static fn(string $path): int => (int) @filemtime($path), $groups[$id])),
+                count($groups[$id]),
+                (string) $id,
+            ];
+            $ids = array_keys($groups);
+            usort($ids, static fn(int|string $a, int|string $b): int => $rank($b) <=> $rank($a));
+            $runId = (string) ($ids[0] ?? '');
+        }
+
+        $inRun = static fn(string $path): bool => (CoverageSidecarReader::runIdOf($path) ?? '') === $runId;
+        unset($groups[$runId]);
+
+        return [
+            array_values(array_filter($sidecars, $inRun)),
+            array_values(array_filter($markers, $inRun)),
+            array_merge(...array_values($groups)),
+            array_map(static fn(int|string $id): string => $id === '' ? '(none)' : (string) $id, array_keys($groups)),
+        ];
     }
 
     /** An option's absolutised path, or `null` when absent or empty. */
@@ -1016,8 +1092,10 @@ final class CoverageMergeCommand
     /**
      * Delete the merged sidecars and markers. Returns `false` when the
      * directory could not be inspected, so the caller exits non-zero.
+     *
+     * @param list<string> $merged only these are deleted; other runs' files stay (issue #596)
      */
-    private function cleanup(string $sidecarDir): bool
+    private function cleanup(string $sidecarDir, array $merged): bool
     {
         try {
             $paths = [
@@ -1033,7 +1111,7 @@ final class CoverageMergeCommand
             return false;
         }
 
-        foreach ($paths as $path) {
+        foreach (array_intersect($paths, $merged) as $path) {
             // Surface unlink failures: a leftover sidecar is silently merged
             // into the next run and would over-count coverage.
             if (!@unlink($path)) {

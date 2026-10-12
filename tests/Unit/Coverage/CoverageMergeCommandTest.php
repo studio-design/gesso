@@ -25,13 +25,17 @@ use function dirname;
 use function file_exists;
 use function file_get_contents;
 use function file_put_contents;
+use function getenv;
 use function glob;
 use function is_dir;
 use function json_decode;
 use function mkdir;
+use function putenv;
 use function rmdir;
 use function substr_count;
 use function sys_get_temp_dir;
+use function time;
+use function touch;
 use function uniqid;
 use function unlink;
 
@@ -44,10 +48,13 @@ class CoverageMergeCommandTest extends TestCase
 {
     private string $sidecarDir = '';
     private string $outputFile = '';
+    private false|string $previousRunId = false;
 
     protected function setUp(): void
     {
         parent::setUp();
+        $this->previousRunId = getenv('GESSO_RUN_ID');
+        putenv('GESSO_RUN_ID');
         OpenApiCoverageTracker::reset();
         StrictRequiredTracker::reset();
         StrictAdditionalPropertiesTracker::resetCurrent();
@@ -80,7 +87,104 @@ class CoverageMergeCommandTest extends TestCase
         StrictAdditionalPropertiesTracker::resetCurrent();
         SdkExerciseCoverageTracker::resetCurrent();
         OpenApiSpecLoader::reset();
+        putenv($this->previousRunId === false ? 'GESSO_RUN_ID' : 'GESSO_RUN_ID=' . $this->previousRunId);
         parent::tearDown();
+    }
+
+    #[Test]
+    public function stale_sidecars_from_an_earlier_run_are_ignored_with_a_note(): void
+    {
+        $this->writeTwoRuns();
+
+        $stderr = '';
+        $exit = $this->runMerge(['expect_sidecars' => 2, 'cleanup' => true], $stderr);
+
+        $this->assertSame(0, $exit, $stderr);
+        $report = (string) file_get_contents($this->outputFile);
+        $this->assertStringContainsString('`POST /v1/pets` | 1/', $report);
+        $this->assertStringContainsString('`GET /v1/pets` | 0/', $report);
+        $this->assertStringContainsString('[Gesso] NOTE: ignoring 2 sidecar/marker file(s)', $stderr);
+        $this->assertStringContainsString('(run ids: a)', $stderr);
+        $this->assertCount(2, glob($this->sidecarDir . '/*.a.json') ?: [], 'other runs are left alone');
+        $this->assertSame([], glob($this->sidecarDir . '/*.b.json') ?: [], 'the merged run is cleaned up');
+    }
+
+    #[Test]
+    public function run_id_option_selects_the_named_run(): void
+    {
+        $this->writeTwoRuns();
+
+        $stderr = '';
+        $exit = $this->runMerge(['expect_sidecars' => 2, 'run_id' => 'a'], $stderr);
+
+        $this->assertSame(0, $exit, $stderr);
+        $report = (string) file_get_contents($this->outputFile);
+        $this->assertStringContainsString('`GET /v1/pets` | 1/', $report);
+        $this->assertStringContainsString('`POST /v1/pets` | 0/', $report);
+        $this->assertStringContainsString('(run ids: b)', $stderr);
+        $this->assertCount(2, glob($this->sidecarDir . '/*.b.json') ?: []);
+    }
+
+    #[Test]
+    public function gesso_run_id_env_selects_the_run(): void
+    {
+        $this->writeTwoRuns();
+        putenv('GESSO_RUN_ID=a');
+
+        $stderr = '';
+        $exit = $this->runMerge(['expect_sidecars' => 2], $stderr);
+
+        $this->assertSame(0, $exit, $stderr);
+        $this->assertStringContainsString('`GET /v1/pets` | 1/', (string) file_get_contents($this->outputFile));
+        $this->assertStringContainsString('(run ids: b)', $stderr);
+    }
+
+    #[Test]
+    public function a_cancelled_shard_within_the_selected_run_is_still_fatal(): void
+    {
+        touch($this->writeSidecar('1', 'GET', '/v1/pets', '200', 'a'), time() - 120);
+        touch($this->writeSidecar('2', 'GET', '/v1/pets', '200', 'a'), time() - 120);
+        $this->writeSidecar('1', 'POST', '/v1/pets', '201', 'b');
+
+        $stderr = '';
+        $exit = $this->runMerge(['expect_sidecars' => 2], $stderr);
+
+        $this->assertSame(1, $exit);
+        $this->assertStringContainsString('under-count coverage', $stderr);
+    }
+
+    #[Test]
+    public function a_stale_failure_marker_from_another_run_does_not_fail_the_merge(): void
+    {
+        $marker = CoverageSidecarWriter::writeFailureMarker($this->sidecarDir, '9', 'simulated failure', runId: 'a');
+        $this->assertNotNull($marker);
+        touch($marker, time() - 120);
+        $this->writeSidecar('1', 'POST', '/v1/pets', '201', 'b');
+
+        $stderr = '';
+        $exit = $this->runMerge([], $stderr);
+
+        $this->assertSame(0, $exit, $stderr);
+        $this->assertStringContainsString('(run ids: a)', $stderr);
+    }
+
+    #[Test]
+    public function parse_argv_reads_run_id(): void
+    {
+        $this->assertSame('ci-7', CoverageMergeCommand::parseArgv(['--run-id=ci-7'])['run_id'] ?? null);
+    }
+
+    #[Test]
+    public function run_id_is_sanitised_like_the_filename(): void
+    {
+        $this->writeSidecar('1', 'GET', '/v1/pets', '200', 'ci/7');
+        touch($this->writeSidecar('2', 'POST', '/v1/pets', '201', 'other'), time() + 120);
+
+        $stderr = '';
+        $exit = $this->runMerge(['run_id' => 'ci/7', 'expect_sidecars' => 1], $stderr);
+
+        $this->assertSame(0, $exit, $stderr);
+        $this->assertStringContainsString('`GET /v1/pets` | 1/', (string) file_get_contents($this->outputFile));
     }
 
     #[Test]
@@ -2635,7 +2739,38 @@ class CoverageMergeCommandTest extends TestCase
      * One shard's coverage sidecar, named by its token the way an
      * `GESSO_SIDECAR_TOKEN` run names it (issue #434).
      */
-    private function writeSidecar(string $token, string $method, string $path, string $status): void
+    /**
+     * Run `a` (older) covers GET, run `b` (newer) covers POST; two sidecars each.
+     */
+    private function writeTwoRuns(): void
+    {
+        touch($this->writeSidecar('1', 'GET', '/v1/pets', '200', 'a'), time() - 120);
+        touch($this->writeSidecar('2', 'GET', '/v1/pets', '200', 'a'), time() - 120);
+        $this->writeSidecar('1', 'POST', '/v1/pets', '201', 'b');
+        $this->writeSidecar('2', 'POST', '/v1/pets', '201', 'b');
+    }
+
+    /** @param array<string, mixed> $options */
+    private function runMerge(array $options, string &$stderr): int
+    {
+        $command = new CoverageMergeCommand(
+            stderrWriter: static function (string $msg) use (&$stderr): void {
+                $stderr .= $msg;
+            },
+            stdoutWriter: static fn(string $msg): null => null,
+        );
+
+        /** @phpstan-ignore argument.type (test options are a valid MergeOptions subset) */
+        return $command->run([
+            'sidecar_dir' => $this->sidecarDir,
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => ['petstore-3.0'],
+            'output_file' => $this->outputFile,
+            ...$options,
+        ]);
+    }
+
+    private function writeSidecar(string $token, string $method, string $path, string $status, ?string $runId = null): string
     {
         $tracker = new OpenApiCoverageTracker();
         $tracker->recordResponseOn(
@@ -2647,7 +2782,7 @@ class CoverageMergeCommandTest extends TestCase
             schemaValidated: true,
         );
 
-        CoverageSidecarWriter::write($this->sidecarDir, $token, $tracker->exportStateOn());
+        return CoverageSidecarWriter::write($this->sidecarDir, $token, $tracker->exportStateOn(), $runId);
     }
 
     /** @return list<string> */
