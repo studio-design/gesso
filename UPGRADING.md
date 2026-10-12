@@ -63,6 +63,18 @@ structural rules as runtime validation. Previously clean doctor runs may now
 fail with `structure` errors; repair the reported nodes before running tests.
 No flags, exit codes, diagnostic categories, or versioned wire formats change.
 
+The Symfony and PSR-7 assertion traits now default `openApiSpec()`,
+`openApiMaxErrors()`, `openApiSkipResponseCodes()`, and
+`openApiSkipRequestValidationResponseCodes()` to the shared configuration
+(`gesso.php`, or the `default_spec` / `max_errors` / `skip_response_codes` /
+`skip_request_validation_response_codes` extension parameters). Suites that
+set none of these see no change. A suite that sets them for the
+framework-agnostic path now applies them to Symfony and PSR-7 assertions too —
+for example `skip_response_codes=""` now validates 5xx bodies there. Override
+the hook to keep a different per-suite value. The Symfony trait gains the two
+skip-code hooks PSR-7 already had; per-call `$extraSkipResponseCodes` add to
+`openApiSkipResponseCodes()` instead of to the built-in 5xx default.
+
 ## Deprecations
 
 Every surface v3 removes or renames is deprecated in a v2 minor first, per the

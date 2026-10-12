@@ -17,6 +17,7 @@ use function file_get_contents;
 use function file_put_contents;
 use function mkdir;
 use function str_replace;
+use function substr_count;
 use function sys_get_temp_dir;
 use function uniqid;
 use function var_export;
@@ -194,6 +195,39 @@ final class SharedConfigurationTest extends TestCase
             $this->assertSame(0, $process->getExitCode(), $process->getOutput() . $process->getErrorOutput());
             $this->assertFileExists($this->directory . '/build/coverage.json');
         }
+    }
+
+    #[Test]
+    public function symfony_hooks_default_from_the_shared_file_without_overrides(): void
+    {
+        file_put_contents($this->directory . '/specs/api.json', '{"openapi":"3.1.0","info":{"title":"test","version":"1"},"paths":{"/pets":{"get":{"responses":{"200":{"description":"OK","content":{"application/json":{"schema":{"type":"array","items":{"type":"object","properties":{"id":{"type":"integer"}}}}}}}}}}}}');
+        file_put_contents($this->directory . '/ContractTest.php', <<<'PHP'
+            <?php
+            declare(strict_types=1);
+            namespace Studio\Gesso\Tests\SharedFixture;
+            use PHPUnit\Framework\TestCase;
+            use Studio\Gesso\Symfony\OpenApiAssertions;
+            use Symfony\Component\HttpFoundation\JsonResponse;
+            use Symfony\Component\HttpFoundation\Request;
+            final class ContractTest extends TestCase {
+                use OpenApiAssertions;
+                public function test_symfony_defaults(): void {
+                    $body = [];
+                    for ($i = 0; $i < 30; $i++) {
+                        $body[] = ['id' => 'not-an-int'];
+                    }
+                    $this->assertResponseMatchesOpenApiSchema(Request::create('/api,v2/pets', 'GET'), new JsonResponse($body));
+                }
+            }
+            PHP);
+        $this->replace('gesso.php', "'format' => 'json'", "'format' => 'text'");
+
+        $process = $this->runPhpunit($this->directory);
+
+        $output = $process->getOutput();
+        $this->assertSame(1, $process->getExitCode(), $output . $process->getErrorOutput());
+        $this->assertStringContainsString('(spec: api)', $output);
+        $this->assertSame(7, substr_count($output, 'must match the type: integer'), $output);
     }
 
     #[Test]
