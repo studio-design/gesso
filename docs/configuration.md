@@ -147,6 +147,10 @@ require both Bearer and an API key. The named mode does not use the deprecated
 | `laravel.auto_inject_dummy_credentials` | — | `auto_inject_dummy_credentials` |
 | `laravel.route_parity.external_operation_ids` / `.external_openapi_paths` | — | `route_parity.external_operation_ids` / `.external_openapi_paths` |
 
+Enum-valued keys are matched after trimming and lower-casing, exactly like the
+equivalent PHPUnit parameters; the canonical lower-case value is what the
+surfaces receive.
+
 Use the existing [setup](setup.md) and [coverage](coverage.md) guides for each
 setting's behavior. `enum_spec_base_path` remains an XML-only v2 compatibility
 setting; it has no shared successor.

@@ -10,12 +10,12 @@ use const FILTER_VALIDATE_BOOLEAN;
 use InvalidArgumentException;
 use Studio\Gesso\OpenApiRequestValidator;
 use Studio\Gesso\OpenApiResponseValidator;
+use Studio\Gesso\Validation\Strict\ConfigEnumParser;
 use Studio\Gesso\Validation\Support\StatusCodePatternSet;
 use Throwable;
 
 use function array_is_list;
 use function array_key_exists;
-use function count;
 use function ctype_digit;
 use function dirname;
 use function explode;
@@ -442,9 +442,7 @@ final class GessoConfig
             'bool' => self::boolValue($value, $path, $origin),
             // A named mode wins over the boolean reading, so `'bearer'` stays
             // itself rather than being rejected as an unparseable boolean.
-            'bool_enum' => is_string($value) && self::isAllowed($value, $allowed)
-                ? $value
-                : self::boolValue($value, $path, $origin),
+            'bool_enum' => self::allowedValue($value, $allowed) ?? self::boolValue($value, $path, $origin),
             'enum' => self::enumValue($value, $allowed, $path, $origin),
             'int' => self::intValue($value, $path, $origin),
             'percent' => self::percentValue($value, $path, $origin),
@@ -472,11 +470,7 @@ final class GessoConfig
      */
     private static function enumValue(mixed $value, array $allowed, string $path, ?string $origin): string
     {
-        if (is_string($value) && self::isAllowed($value, $allowed)) {
-            return $value;
-        }
-
-        throw self::invalid($path, $origin, sprintf(
+        return self::allowedValue($value, $allowed) ?? throw self::invalid($path, $origin, sprintf(
             'expected one of %s, got %s',
             implode(', ', $allowed),
             self::describe($value),
@@ -615,11 +609,19 @@ final class GessoConfig
     }
 
     /**
-     * @param list<string> $allowed
+     * The canonical (trimmed, lower-cased) spelling of an allowed enum value,
+     * matched the way the PHPUnit parameters' `fromConfigValue()` matches.
+     *
+     * @param list<string> $allowed every entry already lower-case
      */
-    private static function isAllowed(string $value, array $allowed): bool
+    private static function allowedValue(mixed $value, array $allowed): ?string
     {
-        return count($allowed) > 0 && in_array($value, $allowed, true);
+        if (!is_string($value)) {
+            return null;
+        }
+        $normalized = ConfigEnumParser::normalize($value);
+
+        return in_array($normalized, $allowed, true) ? $normalized : null;
     }
 
     private static function isAbsolutePath(string $path): bool
