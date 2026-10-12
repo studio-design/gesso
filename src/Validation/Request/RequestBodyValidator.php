@@ -23,7 +23,6 @@ use Studio\Gesso\Validation\Support\DiscriminatorContext;
 use Studio\Gesso\Validation\Support\FormBodyDecoder;
 use Studio\Gesso\Validation\Support\MalformedSpecNode;
 use Studio\Gesso\Validation\Support\ObjectConverter;
-use Studio\Gesso\Validation\Support\QueryStyleDeserializer;
 use Studio\Gesso\Validation\Support\SchemaValidatorRunner;
 use Studio\Gesso\Validation\Support\SchemaViolation;
 use Studio\Gesso\Validation\Support\TypeCoercer;
@@ -690,7 +689,7 @@ final class RequestBodyValidator
         // A raw urlencoded body still holds the percent-encoded values, so a
         // non-exploded array splits before decoding, like a raw query string.
         $rawValues = is_string($requestBody->value) && $normalizedType === FormBodyDecoder::URLENCODED
-            ? QueryStyleDeserializer::parseRawValues($requestBody->value)
+            ? FormBodyDecoder::rawUrlencodedValues($requestBody->value)
             : [];
 
         [$data, $errors, $unverifiable, $headerSkips] = FormBodyDecoder::prepare(
