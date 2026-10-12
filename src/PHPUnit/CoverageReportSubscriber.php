@@ -4,8 +4,7 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\PHPUnit;
 
-use const STDERR;
-
+use Closure;
 use PHPUnit\Event\TestRunner\ExecutionFinished;
 use PHPUnit\Event\TestRunner\ExecutionFinishedSubscriber;
 use RuntimeException;
@@ -27,6 +26,7 @@ use Studio\Gesso\Exception\InvalidOpenApiSpecException;
 use Studio\Gesso\Exception\InvalidOpenApiSpecReason;
 use Studio\Gesso\Internal\CoverageReportWriter;
 use Studio\Gesso\Internal\Deprecations;
+use Studio\Gesso\Internal\Diagnostics;
 use Studio\Gesso\Internal\PartialRunDecision;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Validation\Strict\StrictAdditionalPropertiesAsserter;
@@ -37,10 +37,8 @@ use Studio\Gesso\Validation\Strict\StrictRequiredMode;
 use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 
 use function count;
-use function fflush;
 use function getenv;
 use function implode;
-use function is_callable;
 use function sprintf;
 use function trim;
 
@@ -70,9 +68,9 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
      *                                                     so the field remains non-null after the ctor and the
      *                                                     `readonly` invariant holds end-to-end.
      * @param null|StrictRequiredTracker $strictRequiredTracker Same shape as $coverageTracker.
-     * @param null|callable(string): void $stderrWriter Optional sink for warnings (stale/invalid specs,
-     *                                                  failed file_put_contents). Falls back to {@see OpenApiCoverageExtension::writeStderr()} when
-     *                                                  null. Injected for testability — the extension stays the default backstop in production.
+     * @param null|Closure(string): void $stderrWriter Optional sink for warnings (stale/invalid specs,
+     *                                                 failed file_put_contents). Falls back to {@see Diagnostics::stderr()} when
+     *                                                 null. Injected for testability.
      * @param null|string $sidecarDir Directory the worker-mode branch will drop its JSON sidecar into. When
      *                                {@see self::resolveWorkerToken()} finds a token — `TEST_TOKEN` from paratest,
      *                                or `GESSO_SIDECAR_TOKEN` naming a CI shard — the subscriber short-circuits
@@ -84,8 +82,8 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
      * @param null|float $minResponseCoverage Same idea, but at `(method, path, status, content-type)` granularity.
      * @param null|float $minSdkExerciseCoverage Gate SDK decoder exercise at eligible response-schema granularity.
      * @param bool $minCoverageStrict Treat threshold misses as exit non-zero (default warn-only).
-     * @param null|callable(int): void $exitHandler Test seam for the strict-miss exit. Defaults to native `exit()`
-     *                                              so production behavior matches PHPUnit's own coverage gate.
+     * @param null|Closure(int): void $exitHandler Test seam for the strict-miss exit. Defaults to native `exit()`
+     *                                             so production behavior matches PHPUnit's own coverage gate.
      * @param null|string $baselineGeneratePath Issue #402: destination of a violation-baseline generation run
      *                                          (`GESSO_BASELINE_GENERATE`). When non-null the subscriber writes the
      *                                          collected fingerprints here at run end; partial runs refuse the write
@@ -124,13 +122,13 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
         private ?string $githubSummaryPath,
         ?OpenApiCoverageTracker $coverageTracker = null,
         ?StrictRequiredTracker $strictRequiredTracker = null,
-        private mixed $stderrWriter = null,
+        private ?Closure $stderrWriter = null,
         private ?string $sidecarDir = null,
         private ?float $minEndpointCoverage = null,
         private ?float $minResponseCoverage = null,
         private ?float $minSdkExerciseCoverage = null,
         private bool $minCoverageStrict = false,
-        private mixed $exitHandler = null,
+        private ?Closure $exitHandler = null,
         private ?string $junitOutput = null,
         private ?string $jsonOutput = null,
         private ?string $htmlOutput = null,
@@ -341,7 +339,7 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
         $isFatal = $this->strictRequiredMode === StrictRequiredMode::Fail;
         $message = StrictRequiredAsserter::renderMessage($reports, $isFatal);
         $this->writeStderr($message . "\n");
-        OpenApiCoverageExtension::appendGithubStepSummaryStrictRequiredBlock(
+        Diagnostics::appendGithubStepSummaryStrictRequiredBlock(
             $this->githubSummaryPath,
             $message,
             $isFatal,
@@ -368,7 +366,7 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
         $isFatal = $this->strictAdditionalPropertiesMode === StrictAdditionalPropertiesMode::Fail;
         $message = StrictAdditionalPropertiesAsserter::renderMessage($reports, $isFatal);
         $this->writeStderr($message . "\n");
-        OpenApiCoverageExtension::appendGithubStepSummaryStrictAdditionalPropertiesBlock(
+        Diagnostics::appendGithubStepSummaryStrictAdditionalPropertiesBlock(
             $this->partialRun === null ? $this->githubSummaryPath : null,
             $message,
             $isFatal,
@@ -498,7 +496,7 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
 
     private function writeWorkerSidecar(string $token): void
     {
-        $dir = $this->sidecarDir ?? OpenApiCoverageExtension::defaultSidecarDir();
+        $dir = $this->sidecarDir ?? CoverageSidecarWriter::defaultDir();
 
         // Issue #417: a generation-mode worker hands its collected
         // fingerprints to the merge CLI through the envelope's baseline
@@ -721,7 +719,7 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
             count($stale),
             $body,
         ));
-        OpenApiCoverageExtension::appendGithubStepSummaryBaselineStaleBlock(
+        Diagnostics::appendGithubStepSummaryBaselineStaleBlock(
             $this->githubSummaryPath,
             $body,
             $isFatal,
@@ -879,11 +877,10 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
     private function exitNonZero(): void
     {
         if ($this->stderrWriter === null) {
-            fflush(STDERR);
+            Diagnostics::flushStderr();
         }
-        $exit = $this->exitHandler;
-        if (is_callable($exit)) {
-            $exit(1);
+        if ($this->exitHandler !== null) {
+            ($this->exitHandler)(1);
 
             return;
         }
@@ -893,14 +890,7 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
 
     private function writeStderr(string $message): void
     {
-        $writer = $this->stderrWriter;
-        if (is_callable($writer)) {
-            $writer($message);
-
-            return;
-        }
-
-        OpenApiCoverageExtension::writeStderr($message);
+        ($this->stderrWriter ?? Diagnostics::stderr(...))($message);
     }
 
     /**
