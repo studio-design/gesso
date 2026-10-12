@@ -40,8 +40,9 @@ Laravel discovers its application-root `gesso.php` automatically. Keep the
 usual `ValidatesOpenApiSchema` trait and assertions in your tests. You do not
 need to publish `config/gesso.php` for this setup.
 
-`spec.names` lists the specs PHPUnit must load and include in coverage;
-`spec.default` selects the fallback for assertions. Set both as above for a
+`spec.names` lists the specs PHPUnit must load and include in coverage (and
+that `gesso:routes` compares when `--spec` is absent); `spec.default` selects
+the fallback for assertions. Set both as above for a
 single-spec project. `spec.strip_prefixes` controls matching, independently
 of the `--request-prefix` option used to generate test requests.
 
@@ -123,7 +124,7 @@ require both Bearer and an API key. The named mode does not use the deprecated
 | --- | --- | --- |
 | `spec.base_path` | `spec_base_path` | `spec_base_path` |
 | `spec.default` | `default_spec` | `default_spec` |
-| `spec.names` | `specs` | — |
+| `spec.names` | `specs` | `specs` |
 | `spec.strip_prefixes` | `strip_prefixes` | `strip_prefixes` |
 | `validation.max_errors` | `max_errors` | `max_errors` |
 | `validation.enforce_discriminator` | `enforce_discriminator` | `enforce_discriminator` |
@@ -145,7 +146,7 @@ require both Bearer and an API key. The named mode does not use the deprecated
 | `laravel.auto_assert` | — | `auto_assert` |
 | `laravel.auto_validate_request` | — | `auto_validate_request` |
 | `laravel.auto_inject_dummy_credentials` | — | `auto_inject_dummy_credentials` |
-| `laravel.route_parity.external_operation_ids` / `.external_openapi_paths` | — | `route_parity.external_operation_ids` / `.external_openapi_paths` |
+| `laravel.route_parity.external_operation_ids` / `.external_openapi_paths` / `.excluded_route_names` | — | `route_parity.external_operation_ids` / `.external_openapi_paths` / `.excluded_route_names` |
 
 Use the existing [setup](setup.md) and [coverage](coverage.md) guides for each
 setting's behavior. `enum_spec_base_path` remains an XML-only v2 compatibility
