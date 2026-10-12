@@ -140,8 +140,12 @@ replacement.
 The named contract checks moved from `Studio\Gesso\Fuzz\` to
 `Studio\Gesso\Contract\` ([#503](https://github.com/studio-design/gesso/issues/503)).
 Migration is an import rewrite. The old names keep resolving through a lazy
-`class_alias()` loader (`src/Contract/Autoload.php`) that emits the notice the
-first time each old name is used and is removed in v3.0. An alias is source
+`class_alias()` loader (`src/Contract/Autoload.php`), removed in v3.0. The
+notice fires when an old name is what loads the class; an old name first
+referenced after Gesso already loaded the class through its new name resolves
+silently, so a run without notices does not prove the migration is complete —
+search for `Studio\Gesso\Fuzz\ContractCheck` and
+`Studio\Gesso\Fuzz\OpenApiContractChecks` instead. An alias is source
 compatibility, not a second identity: `get_class()`, reflection, and
 `serialize()` report the `Studio\Gesso\Contract\` name, so code comparing
 literal FQCN strings must switch now. Generator types (`ExploredCase`,
