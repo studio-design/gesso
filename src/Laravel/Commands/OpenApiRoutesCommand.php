@@ -30,8 +30,6 @@ use function in_array;
 use function is_array;
 use function is_string;
 use function json_encode;
-use function preg_match;
-use function str_starts_with;
 use function trim;
 
 /**
@@ -40,6 +38,8 @@ use function trim;
  */
 final class OpenApiRoutesCommand extends Command
 {
+    use ReadsSpecConfiguration;
+
     /** Issue #504: the pre-v3 spelling, accepted through v3 and removed in v4. */
     protected $aliases = ['openapi:routes'];
     protected $signature = 'gesso:routes
@@ -135,29 +135,14 @@ final class OpenApiRoutesCommand extends Command
     private function specNames(): array
     {
         $specs = $this->stringListOption('spec');
-        if ($specs !== []) {
-            return $specs;
-        }
 
-        $defaultSpec = config('gesso.default_spec');
-        if (!is_string($defaultSpec) || trim($defaultSpec) === '') {
-            throw new InvalidArgumentException(
-                'No OpenAPI spec selected. Pass --spec or configure gesso.default_spec.',
-            );
-        }
-
-        return [trim($defaultSpec)];
+        return $specs !== [] ? $specs : [$this->configuredDefaultSpec()];
     }
 
     /** @return array{string, list<string>} */
     private function loaderConfiguration(Application $application): array
     {
-        $basePath = config('gesso.spec_base_path');
-        if (!is_string($basePath) || trim($basePath) === '') {
-            throw new InvalidArgumentException(
-                'gesso.spec_base_path must be a non-empty directory path.',
-            );
-        }
+        $basePath = $this->configuredSpecBasePath($application);
 
         $stripPrefixes = config('gesso.strip_prefixes', []);
         if (!is_array($stripPrefixes)) {
@@ -174,19 +159,7 @@ final class OpenApiRoutesCommand extends Command
             $normalizedPrefixes[] = $prefix;
         }
 
-        $basePath = trim($basePath);
-        if (!$this->isAbsolutePath($basePath)) {
-            $basePath = $application->basePath($basePath);
-        }
-
         return [$basePath, $normalizedPrefixes];
-    }
-
-    private function isAbsolutePath(string $path): bool
-    {
-        return str_starts_with($path, '/') ||
-            str_starts_with($path, '\\\\') ||
-            preg_match('/^[A-Za-z]:[\\\\\/]/', $path) === 1;
     }
 
     private function nullableStringOption(string $name): ?string

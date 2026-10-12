@@ -14,7 +14,6 @@ use Studio\Gesso\Cli\StubsCommand;
 use Studio\Gesso\Internal\LegacyIdentity;
 use Studio\Gesso\Stubs\StubRenderer;
 
-use function config;
 use function implode;
 use function in_array;
 use function is_file;
@@ -24,7 +23,6 @@ use function rtrim;
 use function sprintf;
 use function str_contains;
 use function str_replace;
-use function str_starts_with;
 use function trim;
 
 /**
@@ -37,6 +35,8 @@ use function trim;
  */
 final class OpenApiStubsCommand extends Command
 {
+    use ReadsSpecConfiguration;
+
     /** Issue #504: the pre-v3 spelling, accepted through v3 and removed in v4. */
     protected $aliases = ['openapi:stubs'];
     protected $signature = 'gesso:stubs
@@ -113,23 +113,9 @@ final class OpenApiStubsCommand extends Command
     {
         $spec = trim((string) $this->option('spec'));
         if ($spec === '') {
-            $default = config('gesso.default_spec');
-            if (!is_string($default) || trim($default) === '') {
-                throw new InvalidArgumentException(
-                    'No OpenAPI spec selected. Pass --spec or configure gesso.default_spec.',
-                );
-            }
-            $spec = trim($default);
+            $spec = $this->configuredDefaultSpec();
         }
-
-        $basePath = config('gesso.spec_base_path');
-        if (!is_string($basePath) || trim($basePath) === '') {
-            throw new InvalidArgumentException('gesso.spec_base_path must be a non-empty directory path.');
-        }
-        $basePath = trim($basePath);
-        if (!str_starts_with($basePath, '/')) {
-            $basePath = $application->basePath($basePath);
-        }
+        $basePath = $this->configuredSpecBasePath($application);
 
         // A spec name is resolved under spec_base_path first — names carrying a
         // dot (`petstore-3.0`) are common enough that guessing "looks like a
