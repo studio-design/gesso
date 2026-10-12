@@ -14,8 +14,8 @@ use function array_fill_keys;
 use function array_filter;
 use function array_key_exists;
 use function array_key_first;
+use function array_key_last;
 use function array_keys;
-use function count;
 use function explode;
 use function implode;
 use function in_array;
@@ -89,12 +89,12 @@ final class FormBodyDecoder
     }
 
     /**
-     * The percent-encoded wire values of a raw urlencoded body, keyed by the
-     * field name {@see self::toFieldMap()} gives the same pair — parse_str()'s
-     * key mangling included (`a.b` becomes `a_b`), so the lookup in
-     * {@see self::prepare()} finds them.
+     * The percent-encoded wire value of each field of a raw urlencoded body,
+     * as {@see self::toFieldMap()} reads the same bytes: parse_str()'s key
+     * mangling (`a.b` becomes `a_b`) and its last-pair-wins rule included, so
+     * {@see self::prepare()} pairs every raw value with the parsed one.
      *
-     * @return array<string, list<string>>
+     * @return array<string, string>
      */
     public static function rawUrlencodedValues(string $body): array
     {
@@ -102,7 +102,7 @@ final class FormBodyDecoder
         foreach (QueryStyleDeserializer::parseRawValues($body) as $name => $raw) {
             parse_str(urlencode((string) $name) . '=', $parsed);
             $key = (string) array_key_first($parsed);
-            $values[$key] = [...$values[$key] ?? [], ...$raw];
+            $values[$key] = $raw[array_key_last($raw)];
         }
 
         return $values;
@@ -120,9 +120,9 @@ final class FormBodyDecoder
      *                                    the encoding object talks about
      * @param OpenApiVersion $version OpenAPI 3.0 applies `style` / `explode` / `allowReserved` to
      *                                urlencoded bodies only; 3.1 and later to multipart as well
-     * @param array<string, list<string>> $rawValues percent-encoded wire values per field, when the
-     *                                               caller parsed a raw urlencoded body itself
-     *                                               ({@see self::rawUrlencodedValues()})
+     * @param array<string, string> $rawValues percent-encoded wire value per field, when the
+     *                                         caller has the raw urlencoded body
+     *                                         ({@see self::rawUrlencodedValues()})
      *
      * @return array{array<string, mixed>, list<string>, array<string, array{reason: string, candidates: list<string>}>, list<string>}
      *                                                                                                                                 the prepared data; encoding-level errors (parts that contradict
@@ -210,9 +210,7 @@ final class FormBodyDecoder
                 array_key_exists('explode', $partEncoding) ||
                 array_key_exists('allowReserved', $partEncoding))) {
                 if ($propertySchema !== null) {
-                    $rawList = $rawValues[$name] ?? null;
-                    $rawValue = $rawList !== null && count($rawList) === 1 ? $rawList[0] : null;
-                    $value = QueryStyleDeserializer::deserialize($value, $partEncoding, $propertySchema, $rawValue);
+                    $value = QueryStyleDeserializer::deserialize($value, $partEncoding, $propertySchema, $rawValues[$name] ?? null);
                     $fields[$name] = TypeCoercer::coerceQuery($value, $propertySchema);
                 }
 

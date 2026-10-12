@@ -2021,6 +2021,20 @@ class RequestBodyValidatorTest extends TestCase
     }
 
     #[Test]
+    public function validate_splits_the_raw_value_of_the_pair_parse_str_keeps(): void
+    {
+        // parse_str() keeps the last of repeated keys; its raw value is used.
+        $result = $this->validateStyled(
+            'application/x-www-form-urlencoded',
+            ['tags' => ['style' => 'form', 'explode' => false]],
+            'tags=x&tags=a%2Cb',
+            ['type' => 'array', 'maxItems' => 1, 'items' => ['type' => 'string', 'enum' => ['a,b']]],
+        );
+
+        $this->assertSame([], $result->errors);
+    }
+
+    #[Test]
     public function validate_ignores_part_content_type_when_style_is_declared(): void
     {
         // OAS 3.1/3.2 Encoding Object: with style / explode / allowReserved
