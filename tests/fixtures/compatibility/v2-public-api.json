@@ -2968,6 +2968,14 @@
                     "unavailable": true
                 }
             },
+            "contentType": {
+                "type": "string",
+                "static": false,
+                "readonly": true,
+                "default": {
+                    "unavailable": true
+                }
+            },
             "cookies": {
                 "type": "array",
                 "static": false,
@@ -3200,6 +3208,15 @@
                         "by_reference": false,
                         "default": [],
                         "attributes": []
+                    },
+                    {
+                        "name": "contentType",
+                        "type": "string",
+                        "optional": true,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": "application/json",
+                        "attributes": []
                     }
                 ]
             },
@@ -3212,7 +3229,25 @@
                 "attributes": [],
                 "parameters": []
             },
+            "bodyAsFormFields": {
+                "static": false,
+                "final": false,
+                "abstract": false,
+                "returns_reference": false,
+                "return_type": "array",
+                "attributes": [],
+                "parameters": []
+            },
             "bodyAsJson": {
+                "static": false,
+                "final": false,
+                "abstract": false,
+                "returns_reference": false,
+                "return_type": "string",
+                "attributes": [],
+                "parameters": []
+            },
+            "bodyAsString": {
                 "static": false,
                 "final": false,
                 "abstract": false,

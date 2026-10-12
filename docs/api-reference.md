@@ -277,6 +277,10 @@ losing empty or nested objects, arrays, scalars, or numeric object keys. Encodin
 errors throw `JsonException`; a null value encodes as `'null'`, so omit content
 separately for no-body operations or missing-body probes. `bodyAsArray()` remains
 a lossy compatibility view, not the recommended HTTP dispatch path.
+`contentType` names the media type the body was generated for (`application/json`
+unless the operation only offers a `+json` or `application/x-www-form-urlencoded`
+schema); `bodyAsString()` serializes the body in that media type, and
+`bodyAsFormFields()` returns the form field map behind it.
 
 Call `negativeCases([4])` to switch a whole-spec plan to targeted invalid
 inputs and carry explicit expected response classes on each `ExploredCase`.

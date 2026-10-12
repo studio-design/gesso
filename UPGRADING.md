@@ -204,12 +204,23 @@ surface contract). Minor releases are additive by default, but "additive" does
 not mean "no behaviour changes" — a fix that closes a silent-pass gap changes
 what your suite reports.
 
-Only v2.4.0 has a section below. Earlier v2 minors carry behavioural fixes that
+Only v2.4.0 has a release section below. Earlier v2 minors carry behavioural fixes that
 were never written up here: v2.2.0 stopped applying the coverage threshold gate
 to partial runs (#453) and v2.3.0 began rejecting `null` response content
 (#466), among others. If you are jumping from v2.0.x, v2.1.x, or v2.2.x, read
 the `### Bug Fixes` entries for each intermediate release in `CHANGELOG.md`;
 this file cannot be relied on to list them.
+
+### Form-encoded explored cases (#498)
+
+`ExploredCase` gains an additive `$contentType` (default `application/json`, also a
+new optional trailing constructor parameter), `bodyAsString()`, and
+`bodyAsFormFields()`. The explorer now synthesizes an
+`application/x-www-form-urlencoded` body when that is an operation's only
+schema-carrying media type, instead of skipping the operation. Existing
+dispatchers keep working for JSON operations, but one that hardcodes
+`Content-Type: application/json` and `bodyAsJson()` will mislabel the new form
+cases — send `$case->contentType` and `$case->bodyAsString()` instead.
 
 ### From v2.3.0 → v2.4.0
 
