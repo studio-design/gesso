@@ -285,6 +285,7 @@ export default defineConfig({
           { text: 'SDK response round trips', link: '/sdk-roundtrip' },
           { text: 'Symfony contract testing', link: '/contract-testing-symfony' },
           { text: 'Spec-driven vs consumer-driven', link: '/spec-driven-vs-consumer-driven' },
+          { text: 'Consumer-side contract testing', link: '/consumer-side-contract-testing' },
           { text: 'PHP OpenAPI validation FAQ', link: '/php-openapi-validation-faq' }
         ]
       },

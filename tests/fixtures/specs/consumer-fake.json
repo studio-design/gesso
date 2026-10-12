@@ -1,0 +1,207 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Consumer fake fixture",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/v1/pets": {
+      "post": {
+        "parameters": [
+          {"name": "idempotency", "in": "query", "required": true, "schema": {"type": "string"}}
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["name"],
+                "properties": {"name": {"type": "string"}}
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["id", "name"],
+                  "properties": {
+                    "id": {"type": "integer", "minimum": 1},
+                    "name": {"type": "string", "minLength": 1}
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["title"],
+                  "properties": {"title": {"type": "string"}}
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/pets/{id}": {
+      "parameters": [
+        {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
+      ],
+      "get": {
+        "responses": {
+          "200": {
+            "description": "A pet",
+            "headers": {
+              "X-Request-Id": {"required": true, "schema": {"type": "string"}, "example": "req-1"},
+              "X-RateLimit-Remaining": {"schema": {"type": "integer", "minimum": 0}},
+              "Content-Type": {"schema": {"type": "string"}, "example": "text/plain"}
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["id", "name"],
+                  "properties": {
+                    "id": {"type": "integer"},
+                    "name": {"type": "string"},
+                    "tags": {"type": "array", "items": {"type": "string"}},
+                    "meta": {"type": "object"}
+                  }
+                },
+                "example": {"id": 7, "name": "Fido", "tags": [], "meta": {}}
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["title"],
+                  "properties": {"title": {"type": "string"}, "status": {"type": "integer"}}
+                },
+                "examples": {
+                  "notFound": {"value": {"title": "Pet not found", "status": 404}}
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["title"],
+                  "properties": {"title": {"type": "string"}}
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "responses": {
+          "400": {"description": "Bad request"}
+        }
+      },
+      "delete": {
+        "responses": {
+          "204": {
+            "description": "Deleted",
+            "headers": {
+              "X-Deleted-At": {"schema": {"type": "string"}}
+            }
+          }
+        }
+      }
+    },
+    "/v1/export": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "CSV export",
+            "content": {
+              "text/csv": {
+                "schema": {"type": "string"},
+                "example": "id,name\n7,Fido\n"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/anything": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Any application type",
+            "content": {
+              "application/*": {
+                "schema": {
+                  "type": "object",
+                  "required": ["ok"],
+                  "properties": {"ok": {"type": "boolean"}}
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/image": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "An image",
+            "content": {
+              "image/*": {}
+            }
+          }
+        }
+      }
+    },
+    "/v1/legacy": {
+      "get": {
+        "responses": {
+          "default": {
+            "description": "Anything",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["legacy"],
+                  "properties": {"legacy": {"type": "boolean"}}
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/html": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "HTML",
+            "content": {
+              "text/html": {}
+            }
+          }
+        }
+      }
+    }
+  }
+}

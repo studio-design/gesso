@@ -93,6 +93,10 @@ $this->assertPsr7ResponseMatchesOpenApiSchema($request, $response);
 $this->assertPsr7ResponseForOperationMatchesOpenApiSchema('POST', '/v1/pets', $response);
 ```
 
+The explicit-operation assertion also checks hand-written HTTP client fakes
+against an external API's spec; see
+[Consumer-side contract testing](consumer-side-contract-testing.md#asserting-hand-written-fakes).
+
 Assertion failures end with a redacted `Reproduce: curl …` line (for the
 exchange assertion, one line for the whole exchange, with each error prefixed
 by its `[request]` / `[response]` side). In the JSON failure output mode the

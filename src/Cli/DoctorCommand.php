@@ -567,10 +567,11 @@ final class DoctorCommand
             return [new Client(), new HttpFactory()];
         }
         if (class_exists(Psr18Client::class)) {
+            // Psr18Client is both the PSR-18 client and a PSR-17 request
+            // factory (since symfony/http-client 4.3).
             $client = new Psr18Client();
-            if ($client instanceof ClientInterface && $client instanceof RequestFactoryInterface) {
-                return [$client, $client];
-            }
+
+            return [$client, $client];
         }
 
         return null;

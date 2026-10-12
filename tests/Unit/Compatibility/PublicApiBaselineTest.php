@@ -39,7 +39,9 @@ use Studio\Gesso\Fuzz\ResponseSpecExplorationSummary;
 use Studio\Gesso\JsonValidationResultRenderer;
 use Studio\Gesso\Laravel\Commands\OpenApiRoutesCommand;
 use Studio\Gesso\Laravel\ExploresOpenApiEndpoint;
+use Studio\Gesso\Laravel\OpenApiHttpFake as LaravelOpenApiHttpFake;
 use Studio\Gesso\Laravel\ValidatesOpenApiSchema;
+use Studio\Gesso\OpenApiFakeResponse;
 use Studio\Gesso\OpenApiRequestValidator;
 use Studio\Gesso\OpenApiResponseValidator;
 use Studio\Gesso\OpenApiValidationResult;
@@ -50,6 +52,7 @@ use Studio\Gesso\SchemaContext;
 use Studio\Gesso\SkipOpenApiResolver;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Spec\RemoteSpecSource;
+use Studio\Gesso\Symfony\OpenApiHttpFake as SymfonyOpenApiHttpFake;
 use Studio\Gesso\Tests\Helpers\PublicApiInventory;
 use Studio\Gesso\Tests\Unit\Compatibility\Fixture\PublicApiImplicitConstructorFixture;
 use Studio\Gesso\Tests\Unit\Compatibility\Fixture\PublicApiInternalTraitConsumerFixture;
@@ -1873,6 +1876,11 @@ final class PublicApiBaselineTest extends TestCase
         // its exact signature stays pinned by
         // public_php_api_matches_the_v2_baseline().
         $expected[UploadedPart::class] = $actual[UploadedPart::class];
+        // #403: consumer-side HTTP client fakes (additive). Their exact
+        // signatures stay pinned by public_php_api_matches_the_v2_baseline().
+        foreach ([OpenApiFakeResponse::class, LaravelOpenApiHttpFake::class, SymfonyOpenApiHttpFake::class] as $fakeType) {
+            $expected[$fakeType] = $actual[$fakeType];
+        }
 
         ksort($expected);
 
