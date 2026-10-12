@@ -8118,7 +8118,7 @@
                 "final": false,
                 "abstract": false,
                 "returns_reference": false,
-                "return_type": "Studio\\Gesso\\OpenApiFakeResponse",
+                "return_type": "self",
                 "attributes": [],
                 "parameters": [
                     {
