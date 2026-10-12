@@ -227,6 +227,39 @@
         }
       }
     },
+    "/v1/search": {
+      "get": {
+        "parameters": [
+          {
+            "name": "tags",
+            "in": "query",
+            "required": true,
+            "explode": true,
+            "schema": {"type": "array", "minItems": 2, "items": {"type": "string"}}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Hits",
+            "content": {
+              "application/json": {"example": {"hits": []}},
+              "application/*": {"example": {"vendor": true}}
+            }
+          }
+        }
+      }
+    },
+    "/v1/headless": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Required header without schema",
+            "headers": {"X-Need": {"required": true}},
+            "content": {"application/json": {"example": {}}}
+          }
+        }
+      }
+    },
     "/v1/html": {
       "get": {
         "responses": {

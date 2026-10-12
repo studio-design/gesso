@@ -16,6 +16,7 @@ use RuntimeException;
 use Studio\Gesso\Baseline\ViolationFingerprint;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\DecodedBody;
+use Studio\Gesso\Internal\WireQueryParser;
 use Studio\Gesso\OpenApiRequestValidator;
 use Studio\Gesso\OpenApiResponseValidator;
 use Studio\Gesso\OpenApiValidationResult;
@@ -28,9 +29,7 @@ use Studio\Gesso\ValidationIssue;
 use Throwable;
 
 use function array_is_list;
-use function array_key_exists;
 use function array_merge;
-use function array_pad;
 use function array_values;
 use function explode;
 use function implode;
@@ -40,7 +39,6 @@ use function rawurldecode;
 use function sprintf;
 use function str_contains;
 use function trim;
-use function urldecode;
 
 /**
  * Framework-independent adapter for validating PSR-7 HTTP messages.
@@ -95,7 +93,7 @@ final class OpenApiPsr7Validator
             /** @var array<string, mixed> $cookies */
             $cookies = $request->getCookieParams();
         } else {
-            $queryParams = self::parseQuery($request);
+            $queryParams = WireQueryParser::parse($request->getUri()->getQuery());
             $cookies = self::parseCookieHeader($request);
         }
 
@@ -311,43 +309,6 @@ final class OpenApiPsr7Validator
         $contentType = trim($message->getHeaderLine('Content-Type'));
 
         return $contentType === '' ? null : $contentType;
-    }
-
-    /** @return array<string, mixed> */
-    private static function parseQuery(RequestInterface $request): array
-    {
-        /** @var array<string, mixed> $query */
-        $query = [];
-        $queryString = $request->getUri()->getQuery();
-        if ($queryString === '') {
-            return $query;
-        }
-
-        // OpenAPI `style: form, explode: true` serializes arrays by repeating
-        // the parameter name (`tags=a&tags=b`). PHP's parse_str() overwrites
-        // earlier unbracketed values, so parse the wire pairs directly and
-        // promote a repeated key to an ordered list instead.
-        foreach (explode('&', $queryString) as $pair) {
-            [$encodedName, $encodedValue] = array_pad(explode('=', $pair, 2), 2, '');
-            $name = urldecode($encodedName);
-            if ($name === '') {
-                continue;
-            }
-
-            $value = urldecode($encodedValue);
-            if (!array_key_exists($name, $query)) {
-                $query[$name] = $value;
-
-                continue;
-            }
-
-            if (!is_array($query[$name])) {
-                $query[$name] = [$query[$name]];
-            }
-            $query[$name][] = $value;
-        }
-
-        return $query;
     }
 
     /** @return array<string, string> */

@@ -13,8 +13,10 @@ use PHPUnit\Framework\Assert;
 use Studio\Gesso\DecodedBody;
 use Studio\Gesso\Internal\CurlCommandFormatter;
 use Studio\Gesso\Internal\FailureOutput;
+use Studio\Gesso\Internal\WireQueryParser;
 use Studio\Gesso\OpenApiFakeResponse;
 use Studio\Gesso\OpenApiRequestValidator;
+use Studio\Gesso\OpenApiValidationResult;
 use Studio\Gesso\Validation\Support\ContentTypeMatcher;
 use Symfony\Component\HttpClient\Response\MockResponse;
 
@@ -22,7 +24,6 @@ use function explode;
 use function is_array;
 use function is_resource;
 use function is_string;
-use function parse_str;
 use function parse_url;
 use function rewind;
 use function sprintf;
@@ -65,19 +66,20 @@ final class OpenApiHttpFake
             $path = is_string($path) && $path !== '' ? $path : '/';
             $rawQuery = parse_url($url, PHP_URL_QUERY);
             $rawQuery = is_string($rawQuery) && $rawQuery !== '' ? $rawQuery : null;
-            parse_str($rawQuery ?? '', $query);
+            $query = WireQueryParser::parse($rawQuery ?? '');
 
             $headers = self::headers($options);
             $contentType = $headers['content-type'][0] ?? null;
             $raw = self::body($options['body'] ?? '');
 
             $decoded = DecodedBody::absent();
+            $decodeError = null;
             if ($raw !== '') {
                 if (ContentTypeMatcher::isJsonOrUnspecified($contentType)) {
                     try {
                         $decoded = DecodedBody::decodeJson($raw);
                     } catch (JsonException $e) {
-                        Assert::fail(sprintf('OpenAPI fake could not parse the outgoing %s %s JSON body: %s', $method, $path, $e->getMessage()));
+                        $decodeError = 'Request body could not be parsed as JSON: ' . $e->getMessage();
                     }
                 } else {
                     // Form and other bodies go to the core as raw bytes: it
@@ -87,8 +89,9 @@ final class OpenApiHttpFake
                 }
             }
 
-            /** @var array<string, mixed> $query */
-            $result = $validator->validate($specName, $method, $path, $query, $headers, $decoded, $contentType, [], null, $rawQuery);
+            $result = $decodeError === null
+                ? $validator->validate($specName, $method, $path, $query, $headers, $decoded, $contentType, [], null, $rawQuery)
+                : OpenApiValidationResult::failure([$decodeError]);
             if (!$result->isValid()) {
                 Assert::fail(FailureOutput::compose(
                     sprintf('OpenAPI fake rejected outgoing request %s %s (spec: %s)', $method, $path, $specName),

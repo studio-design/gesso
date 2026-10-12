@@ -154,7 +154,10 @@ The path may be the spec template or a concrete path. See the
 - **Media type**: the JSON media type when one is declared, else the first one.
   `application/*` and `*/*` are sent as `application/json`; other ranges
   (`image/*`) need a concrete `$contentType` and an example. An explicit
-  `$contentType` must be declared for the response.
+  `$contentType` must be declared for the response, and is sent as given.
+  Bodies are generated only for the entry response validation would select (a
+  JSON media type, else `application/*`); any other entry, including `*/*`,
+  needs an example.
 - **Headers**: every declared response header, from its example or its schema,
   plus `Content-Type` when there is a body. `Content-Type` entries in the
   `headers` map are ignored, as OpenAPI requires; a declared `Content-Length`

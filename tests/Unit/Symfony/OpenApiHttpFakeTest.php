@@ -12,6 +12,8 @@ use Studio\Gesso\OpenApiResponseValidator;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Symfony\OpenApiHttpFake;
 use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
+use Studio\Gesso\ValidationOutput;
+use Studio\Gesso\ValidationOutputFormat;
 use Symfony\Component\HttpClient\MockHttpClient;
 
 final class OpenApiHttpFakeTest extends TestCase
@@ -96,6 +98,37 @@ final class OpenApiHttpFakeTest extends TestCase
         $this->expectException(AssertionFailedError::class);
         $this->expectExceptionMessage('text');
         $client->request('POST', 'https://pets.example/v1/pets/7/notes', ['body' => ['other' => 'hi']]);
+    }
+
+    #[Test]
+    public function repeated_query_keys_are_kept_as_a_list(): void
+    {
+        $client = new MockHttpClient(OpenApiHttpFake::respond('consumer-fake'));
+
+        $this->assertSame(200, $client->request('GET', 'https://pets.example/v1/search?tags=a&tags=b')->getStatusCode());
+
+        $this->expectException(AssertionFailedError::class);
+        $client->request('GET', 'https://pets.example/v1/search?tags=a');
+    }
+
+    #[Test]
+    public function unparseable_json_body_uses_the_json_failure_output(): void
+    {
+        $client = new MockHttpClient(OpenApiHttpFake::respond('consumer-fake'));
+        ValidationOutput::use(ValidationOutputFormat::Json);
+
+        try {
+            $client->request('POST', 'https://pets.example/v1/pets?idempotency=k', [
+                'body' => '{"name":',
+                'headers' => ['Content-Type' => 'application/json'],
+            ]);
+            $this->fail('An unparseable JSON body should be rejected.');
+        } catch (AssertionFailedError $e) {
+            $this->assertStringContainsString('OpenAPI fake rejected outgoing request POST /v1/pets', $e->getMessage());
+            $this->assertStringContainsString('"reproduce_command"', $e->getMessage());
+        } finally {
+            ValidationOutput::reset();
+        }
     }
 
     #[Test]

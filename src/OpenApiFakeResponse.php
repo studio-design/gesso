@@ -112,7 +112,8 @@ final readonly class OpenApiFakeResponse
         // The shared resolver falls back to the first JSON media type for an
         // undeclared JSON Content-Type (a validation policy); an explicit
         // fake selection must name a declared one.
-        if ($contentType !== null && ContentTypeMatcher::findContentTypeKey(ContentTypeMatcher::normalizeMediaType($contentType), $content) === null) {
+        $explicitKey = $contentType === null ? null : ContentTypeMatcher::findContentTypeKey(ContentTypeMatcher::normalizeMediaType($contentType), $content);
+        if ($contentType !== null && $explicitKey === null) {
             throw new InvalidArgumentException(sprintf(
                 "Media type '%s' is not declared for %s %s %d in '%s' spec.",
                 $contentType,
@@ -122,13 +123,16 @@ final readonly class OpenApiFakeResponse
                 $specName,
             ));
         }
-        $key = $resolution->contentType ?? (string) array_key_first($content);
-        $wireType = self::wireType($key, $contentType);
+        $key = $explicitKey ?? $resolution->contentType ?? (string) array_key_first($content);
+        $wireType = $contentType !== null ? ContentTypeMatcher::normalizeMediaType($contentType) : self::wireType($key);
 
         $media = is_array($content[$key] ?? null) ? $content[$key] : [];
         [$body, $hasExample] = self::example($media);
         if (!$hasExample) {
-            if ($resolution->outcome !== ResponseSchemaResolutionOutcome::Resolved) {
+            // Generation goes through the shared resolver (dialect,
+            // discriminator); it can only generate for the media entry the
+            // resolver selected, which excludes `*/*` by design.
+            if ($resolution->outcome !== ResponseSchemaResolutionOutcome::Resolved || $resolution->contentType !== $key) {
                 throw new InvalidArgumentException(sprintf(
                     "No example and no JSON schema to generate a body for %s %s %d %s in '%s' spec; add an example to the spec or write the fake by hand.",
                     strtoupper($method),
@@ -230,17 +234,13 @@ final readonly class OpenApiFakeResponse
     }
 
     /**
-     * A spec key that is a media range cannot be sent on the wire. The
-     * caller's concrete type wins; `application/*` and `*&#47;*` fall back to
-     * JSON, which is what this library can generate.
+     * A spec key that is a media range cannot be sent on the wire;
+     * `application/*` and `*&#47;*` are sent as JSON.
      */
-    private static function wireType(string $key, ?string $requested): string
+    private static function wireType(string $key): string
     {
         if (!str_contains($key, '*')) {
             return $key;
-        }
-        if ($requested !== null) {
-            return ContentTypeMatcher::normalizeMediaType($requested);
         }
 
         $normalized = ContentTypeMatcher::normalizeMediaType($key);
@@ -319,8 +319,16 @@ final readonly class OpenApiFakeResponse
                 continue;
             }
 
+            $hasSchema = is_array($header['schema'] ?? null);
+            if (!$hasSchema && ($header['required'] ?? false) === true) {
+                throw new RuntimeException(sprintf(
+                    '[response-header.%s] required header has no schema — cannot validate.',
+                    $name,
+                ));
+            }
+
             [$value, $found] = self::example($header);
-            if (!$found && is_array($header['schema'] ?? null)) {
+            if (!$found && $hasSchema) {
                 try {
                     /** @var array<string, mixed> $schema */
                     $schema = $header['schema'];

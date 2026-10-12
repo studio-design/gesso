@@ -257,6 +257,26 @@ final class OpenApiFakeResponseTest extends TestCase
     }
 
     #[Test]
+    public function explicit_media_type_selects_its_own_entry(): void
+    {
+        // The validator would fall back to the application/json entry; the
+        // fake answers from the application/* entry the type matches.
+        $fake = OpenApiFakeResponse::for('consumer-fake', 'GET', '/v1/search', 200, 'application/vnd.pets+json');
+
+        $this->assertSame('application/vnd.pets+json', $fake->headers()['Content-Type']);
+        $this->assertSame('{"vendor":true}', $fake->content());
+    }
+
+    #[Test]
+    public function required_header_without_schema_throws(): void
+    {
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('[response-header.X-Need] required header has no schema');
+
+        OpenApiFakeResponse::for('consumer-fake', 'GET', '/v1/headless');
+    }
+
+    #[Test]
     public function faking_records_no_coverage(): void
     {
         OpenApiFakeResponse::for('consumer-fake', 'GET', '/v1/pets/7');
