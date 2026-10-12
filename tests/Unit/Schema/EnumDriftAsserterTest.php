@@ -6,27 +6,41 @@ namespace Studio\Gesso\Tests\Unit\Schema;
 
 use const E_USER_WARNING;
 
+use InvalidArgumentException;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+use Studio\Gesso\Attribute\BoundToOpenApiEnum;
 use Studio\Gesso\Exception\EnumBindingException;
 use Studio\Gesso\Exception\EnumBindingReason;
 use Studio\Gesso\Exception\EnumDriftException;
 use Studio\Gesso\Internal\YamlAvailability;
 use Studio\Gesso\Schema\EnumDriftAsserter;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
+use Studio\Gesso\Tests\Unit\PHPUnit\Fixture\EnumDrift\ByName\Color as DriftingColor;
+use Studio\Gesso\Tests\Unit\Schema\Fixture\BothArgumentsEnum;
+use Studio\Gesso\Tests\Unit\Schema\Fixture\Broken;
+use Studio\Gesso\Tests\Unit\Schema\Fixture\Color;
+use Studio\Gesso\Tests\Unit\Schema\Fixture\ComponentOverrideEnum;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\EmptySpecEnum;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\EnumKeyNotArrayEnum;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\EscapingSpecEnum;
+use Studio\Gesso\Tests\Unit\Schema\Fixture\Flags;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\IntegerBackedDriftEnum;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\IntegerBackedEnum;
+use Studio\Gesso\Tests\Unit\Schema\Fixture\Keyed;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\MalformedSpecEnum;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\MatchingEnum;
+use Studio\Gesso\Tests\Unit\Schema\Fixture\MissingComponentEnum;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\NoEnumKeySpecEnum;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\NoExtensionSpecEnum;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\NonScalarSpecValueEnum;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\NotAnEnum;
+use Studio\Gesso\Tests\Unit\Schema\Fixture\PaymentStatus;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\PhpExtraEnum;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\PureEnum;
+use Studio\Gesso\Tests\Unit\Schema\Fixture\SharedCode;
+use Studio\Gesso\Tests\Unit\Schema\Fixture\ShippingMethodEnum;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\SpecExtraEnum;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\SpecFileMissingEnum;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\UnattributedEnum;
@@ -51,6 +65,7 @@ use function unlink;
 class EnumDriftAsserterTest extends TestCase
 {
     private const SPEC_BASE_PATH = __DIR__ . '/../../fixtures/specs';
+    private const COMPONENT_SPECS = ['enum-drift/components'];
 
     protected function setUp(): void
     {
@@ -64,6 +79,33 @@ class EnumDriftAsserterTest extends TestCase
         YamlAvailability::reset();
         OpenApiSpecLoader::reset();
         parent::tearDown();
+    }
+
+    /**
+     * @return iterable<string, array{list<string>, string}>
+     */
+    public static function provideComponent_attribute_naming_an_unknown_component_throws_component_not_foundCases(): iterable
+    {
+        yield 'configured specs' => [self::COMPONENT_SPECS, 'enum-drift/components'];
+        yield 'no specs' => [[], 'none configured'];
+    }
+
+    /**
+     * @return iterable<string, array{array{0?: string, 1?: string}}>
+     */
+    public static function provideAttribute_with_both_or_neither_argument_is_rejectedCases(): iterable
+    {
+        yield 'neither' => [[]];
+        yield 'both' => [['a.json', 'A']];
+    }
+
+    /**
+     * @return iterable<string, array{class-string, string}>
+     */
+    public static function provideMatched_component_with_a_non_list_enum_throws_enum_key_not_arrayCases(): iterable
+    {
+        yield 'scalar' => [Broken::class, 'Broken'];
+        yield 'object' => [Keyed::class, 'Keyed'];
     }
 
     #[Test]
@@ -746,5 +788,162 @@ class EnumDriftAsserterTest extends TestCase
             $this->assertSame(EnumBindingReason::EnumBasePathNotFound, $e->reason);
             $this->assertStringContainsString($missing, $e->getMessage());
         }
+    }
+
+    #[Test]
+    public function detect_all_matches_a_backed_enum_by_its_short_name(): void
+    {
+        $reports = EnumDriftAsserter::detectAll([Color::class], self::COMPONENT_SPECS);
+
+        $this->assertCount(1, $reports);
+        $this->assertSame('#/components/schemas/Color', $reports[0]->specPath);
+        $this->assertFalse($reports[0]->hasDrift());
+    }
+
+    #[Test]
+    public function detect_all_matches_with_enum_suffix_in_either_direction(): void
+    {
+        $reports = EnumDriftAsserter::detectAll(
+            [PaymentStatus::class, ShippingMethodEnum::class],
+            self::COMPONENT_SPECS,
+        );
+
+        $this->assertSame('#/components/schemas/PaymentStatusEnum', $reports[0]->specPath);
+        $this->assertSame('#/components/schemas/ShippingMethod', $reports[1]->specPath);
+        $this->assertFalse($reports[0]->hasDrift());
+        $this->assertFalse($reports[1]->hasDrift());
+    }
+
+    #[Test]
+    public function component_attribute_overrides_name_matching(): void
+    {
+        $reports = EnumDriftAsserter::detectAll([ComponentOverrideEnum::class], self::COMPONENT_SPECS);
+
+        $this->assertSame('#/components/schemas/Color', $reports[0]->specPath);
+        $this->assertFalse($reports[0]->hasDrift());
+    }
+
+    /**
+     * @param list<string> $specNames
+     */
+    #[Test]
+    #[DataProvider('provideComponent_attribute_naming_an_unknown_component_throws_component_not_foundCases')]
+    public function component_attribute_naming_an_unknown_component_throws_component_not_found(array $specNames, string $expectedSpecs): void
+    {
+        try {
+            EnumDriftAsserter::detectAll([MissingComponentEnum::class], $specNames);
+            $this->fail('expected EnumBindingException');
+        } catch (EnumBindingException $e) {
+            $this->assertSame(EnumBindingReason::ComponentNotFound, $e->reason);
+            $this->assertSame(MissingComponentEnum::class, $e->enumFqcn);
+            $this->assertSame('#/components/schemas/DoesNotExist', $e->specPath);
+            $this->assertStringContainsString($expectedSpecs, $e->getMessage());
+        }
+    }
+
+    #[Test]
+    public function unbound_enum_throws_attribute_missing_unless_skipped(): void
+    {
+        try {
+            EnumDriftAsserter::detectAll([UnattributedEnum::class], self::COMPONENT_SPECS);
+            $this->fail('expected EnumBindingException');
+        } catch (EnumBindingException $e) {
+            $this->assertSame(EnumBindingReason::AttributeMissing, $e->reason);
+        }
+
+        $this->assertSame([], EnumDriftAsserter::detectAll([UnattributedEnum::class], self::COMPONENT_SPECS, skipUnbound: true));
+    }
+
+    #[Test]
+    public function conflicting_component_definitions_fail_only_when_matched(): void
+    {
+        $specs = ['enum-drift/components', 'enum-drift/components-conflict'];
+
+        // Color is defined in both specs with the same value set (in another order).
+        $this->assertFalse(EnumDriftAsserter::detectAll([Color::class], $specs)[0]->hasDrift());
+
+        try {
+            EnumDriftAsserter::detectAll([SharedCode::class], $specs);
+            $this->fail('expected EnumBindingException');
+        } catch (EnumBindingException $e) {
+            $this->assertSame(EnumBindingReason::ComponentConflict, $e->reason);
+            $this->assertSame('#/components/schemas/SharedCode', $e->specPath);
+            $this->assertStringContainsString('enum-drift/components, enum-drift/components-conflict', $e->getMessage());
+        }
+    }
+
+    #[Test]
+    public function name_matched_drift_is_reported_in_both_directions(): void
+    {
+        $reports = EnumDriftAsserter::detectAll([DriftingColor::class], self::COMPONENT_SPECS);
+
+        $this->assertSame(['black'], $reports[0]->phpOnly);
+        $this->assertSame([], $reports[0]->specOnly);
+    }
+
+    #[Test]
+    public function component_enum_with_non_scalar_values_throws_only_when_matched(): void
+    {
+        // components.schemas.Flags is a boolean enum; Color never touches it.
+        $this->assertCount(1, EnumDriftAsserter::detectAll([Color::class], self::COMPONENT_SPECS));
+
+        try {
+            EnumDriftAsserter::detectAll([Flags::class], self::COMPONENT_SPECS);
+            $this->fail('expected EnumBindingException');
+        } catch (EnumBindingException $e) {
+            $this->assertSame(EnumBindingReason::EnumValueUnsupported, $e->reason);
+            $this->assertSame('#/components/schemas/Flags', $e->specPath);
+            $this->assertStringContainsString('components.schemas.Flags', $e->getMessage());
+        }
+    }
+
+    /**
+     * @param class-string $fqcn
+     */
+    #[Test]
+    #[DataProvider('provideMatched_component_with_a_non_list_enum_throws_enum_key_not_arrayCases')]
+    public function matched_component_with_a_non_list_enum_throws_enum_key_not_array(string $fqcn, string $component): void
+    {
+        try {
+            EnumDriftAsserter::detectAll([$fqcn], self::COMPONENT_SPECS, skipUnbound: true);
+            $this->fail('expected EnumBindingException');
+        } catch (EnumBindingException $e) {
+            $this->assertSame(EnumBindingReason::EnumKeyNotArray, $e->reason);
+            $this->assertSame('#/components/schemas/' . $component, $e->specPath);
+        }
+    }
+
+    #[Test]
+    public function invalid_attribute_arguments_surface_as_a_binding_exception(): void
+    {
+        try {
+            EnumDriftAsserter::detectAll([BothArgumentsEnum::class], self::COMPONENT_SPECS);
+            $this->fail('expected EnumBindingException');
+        } catch (EnumBindingException $e) {
+            $this->assertSame(EnumBindingReason::AttributeInvalid, $e->reason);
+            $this->assertSame(BothArgumentsEnum::class, $e->enumFqcn);
+            $this->assertInstanceOf(InvalidArgumentException::class, $e->getPrevious());
+        }
+    }
+
+    #[Test]
+    public function assert_no_drift_passes_spec_names_through(): void
+    {
+        EnumDriftAsserter::assertNoDrift([Color::class], true, self::COMPONENT_SPECS);
+
+        $this->expectException(EnumDriftException::class);
+        EnumDriftAsserter::assertNoDrift([DriftingColor::class], true, self::COMPONENT_SPECS);
+    }
+
+    /**
+     * @param array{0?: string, 1?: string} $arguments
+     */
+    #[Test]
+    #[DataProvider('provideAttribute_with_both_or_neither_argument_is_rejectedCases')]
+    public function attribute_with_both_or_neither_argument_is_rejected(array $arguments): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+
+        new BoundToOpenApiEnum(...$arguments);
     }
 }

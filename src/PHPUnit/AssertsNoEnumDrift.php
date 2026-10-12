@@ -37,10 +37,11 @@ trait AssertsNoEnumDrift
 {
     /**
      * @param list<class-string> $enumFqcns
+     * @param list<string> $specNames spec names searched for component bindings
      */
-    public function assertNoEnumDrift(array $enumFqcns): void
+    public function assertNoEnumDrift(array $enumFqcns, array $specNames = []): void
     {
-        $reports = EnumDriftAsserter::detectAll($enumFqcns);
+        $reports = EnumDriftAsserter::detectAll($enumFqcns, $specNames);
         $drifting = array_values(array_filter(
             $reports,
             static fn(EnumDriftReport $report): bool => $report->hasDrift(),

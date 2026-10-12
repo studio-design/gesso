@@ -11,6 +11,7 @@ use Studio\Gesso\Exception\EnumBindingException;
 use Studio\Gesso\Exception\EnumBindingReason;
 use Studio\Gesso\PHPUnit\AssertsNoEnumDrift;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
+use Studio\Gesso\Tests\Unit\Schema\Fixture\Color;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\IntegerBackedEnum;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\MatchingEnum;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\NotAnEnum;
@@ -50,6 +51,17 @@ class AssertsNoEnumDriftTest extends TestCase
         // Exactly one assertion was credited — that is the whole point of
         // the trait. The follow-up assertSame() does NOT skew the delta
         // because we capture both anchor values before it executes.
+        $after = $this->numberOfAssertionsPerformed();
+        $this->assertSame($before + 1, $after);
+    }
+
+    #[Test]
+    public function spec_names_resolve_a_name_matched_enum(): void
+    {
+        $before = $this->numberOfAssertionsPerformed();
+
+        $this->assertNoEnumDrift([Color::class], ['enum-drift/components']);
+
         $after = $this->numberOfAssertionsPerformed();
         $this->assertSame($before + 1, $after);
     }

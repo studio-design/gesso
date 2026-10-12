@@ -34,7 +34,7 @@ final class EnumScannerTest extends TestCase
     }
 
     #[Test]
-    public function scan_returns_attributed_enums_in_namespace(): void
+    public function scan_returns_every_backed_enum_in_namespace(): void
     {
         $loader = new ClassLoader();
         $loader->addClassMap([
@@ -49,18 +49,18 @@ final class EnumScannerTest extends TestCase
         $found = EnumScanner::scan([self::FIXTURE_NS]);
 
         $this->assertSame(
-            [AnotherBoundEnum::class, CleanBoundEnum::class],
+            [AnotherBoundEnum::class, CleanBoundEnum::class, UnattributedEnum::class],
             $found,
         );
     }
 
     #[Test]
-    public function scan_returns_empty_list_when_no_attributed_enums_found(): void
+    public function scan_returns_empty_list_when_only_pure_enums_and_classes_are_found(): void
     {
         $loader = new ClassLoader();
         $loader->addClassMap([
-            UnattributedEnum::class => self::FIXTURE_DIR . '/UnattributedEnum.php',
             PureUnattributedEnum::class => self::FIXTURE_DIR . '/PureUnattributedEnum.php',
+            PlainClass::class => self::FIXTURE_DIR . '/PlainClass.php',
         ]);
         EnumScanner::overrideClassLoaderForTesting($loader);
 
@@ -149,7 +149,7 @@ final class EnumScannerTest extends TestCase
         $found = EnumScanner::scan([self::FIXTURE_NS]);
 
         $this->assertSame(
-            [AnotherBoundEnum::class, CleanBoundEnum::class],
+            [AnotherBoundEnum::class, CleanBoundEnum::class, UnattributedEnum::class],
             $found,
         );
     }
@@ -167,7 +167,7 @@ final class EnumScannerTest extends TestCase
         $found = EnumScanner::scan([self::FIXTURE_NS]);
 
         $this->assertSame(
-            [AnotherBoundEnum::class, CleanBoundEnum::class],
+            [AnotherBoundEnum::class, CleanBoundEnum::class, UnattributedEnum::class],
             $found,
         );
     }
@@ -199,7 +199,7 @@ final class EnumScannerTest extends TestCase
         // SomeTrait.php and AbstractFixture.php live alongside the enum
         // fixtures; the walk must encounter and skip them without raising.
         $this->assertSame(
-            [AnotherBoundEnum::class, CleanBoundEnum::class],
+            [AnotherBoundEnum::class, CleanBoundEnum::class, UnattributedEnum::class],
             $found,
         );
     }
