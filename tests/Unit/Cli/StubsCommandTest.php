@@ -23,6 +23,7 @@ use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 use Symfony\Component\HttpFoundation\Request as SymfonyRequest;
 
 use function array_filter;
+use function array_keys;
 use function array_map;
 use function array_values;
 use function count;
@@ -110,6 +111,8 @@ class StubsCommandTest extends TestCase
                 'namespace' => 'Tests\Contract',
                 'base_class' => 'Tests\TestCase',
                 'request_prefix' => '/api',
+                'format' => 'json',
+                'output_file' => 'build/stubs.json',
                 'dry_run' => true,
             ],
             StubsCommand::parseArgv([
@@ -121,6 +124,8 @@ class StubsCommandTest extends TestCase
                 '--namespace=Tests\Contract',
                 '--base-class=Tests\TestCase',
                 '--request-prefix=/api',
+                '--format=json',
+                '--output-file=build/stubs.json',
                 '--dry-run',
             ]),
         );
@@ -667,6 +672,87 @@ class StubsCommandTest extends TestCase
                 $contentType,
             );
         }
+    }
+
+    #[Test]
+    public function json_format_lists_written_skipped_and_not_stubbed(): void
+    {
+        $spec = $this->writeInlineSpec('siblings', [
+            '/things' => ['get' => ['responses' => ['200' => [
+                'content' => [
+                    'application/json' => ['schema' => ['type' => 'object', 'required' => ['exact'], 'properties' => ['exact' => ['type' => 'integer']]]],
+                    'application/*' => ['schema' => ['type' => 'object', 'required' => ['range'], 'properties' => ['range' => ['type' => 'integer']]]],
+                ],
+            ]]]],
+            '/pets' => ['get' => ['responses' => ['200' => ['content' => ['application/json' => ['schema' => ['type' => 'array']]]]]]],
+        ]);
+        mkdir($this->workDir . '/out');
+        file_put_contents($this->workDir . '/out/GetThingsTest.php', '<?php');
+
+        $exit = $this->command()->run(StubsCommand::parseArgv([
+            '--spec=' . $spec,
+            '--output=' . $this->workDir . '/out',
+            '--format=json',
+            '--dry-run',
+        ]));
+
+        $this->assertSame(StubsCommand::EXIT_OK, $exit);
+        $report = json_decode($this->stdout, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertIsArray($report);
+        $this->assertSame(['schemaVersion', 'tool', 'dry_run', 'output_dir', 'written', 'skipped', 'not_stubbed'], array_keys($report));
+        $this->assertSame(StubsCommand::JSON_SCHEMA_VERSION, $report['schemaVersion']);
+        $this->assertTrue($report['dry_run']);
+        $this->assertSame([$this->workDir . '/out/GetPetsTest.php'], $report['written']);
+        $this->assertSame([$this->workDir . '/out/GetThingsTest.php'], $report['skipped']);
+        $this->assertSame([['reason' => 'unreachable', 'detail' => 'GET /things  200 application/*']], $report['not_stubbed']);
+        $this->assertSame(['GetThingsTest.php'], $this->generatedFiles());
+    }
+
+    #[Test]
+    public function json_format_when_nothing_is_left_to_stub(): void
+    {
+        $coverage = $this->writeCoverage([
+            'GET /pets' => [['200', 'application/json', 'validated']],
+            'POST /pets' => [['201', 'application/json', 'validated']],
+        ]);
+
+        $exit = $this->command()->run(StubsCommand::parseArgv([
+            '--spec=' . $this->writeSpec(),
+            '--coverage=' . $coverage,
+            '--format=json',
+        ]));
+
+        $this->assertSame(StubsCommand::EXIT_OK, $exit);
+        $report = json_decode($this->stdout, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertIsArray($report);
+        $this->assertSame([], $report['written']);
+        $this->assertSame([], $report['skipped']);
+    }
+
+    #[Test]
+    public function unsupported_format_is_a_usage_error(): void
+    {
+        $this->assertSame(
+            StubsCommand::EXIT_USAGE,
+            $this->command()->run(StubsCommand::parseArgv(['--spec=x.json', '--format=yaml'])),
+        );
+        $this->assertStringContainsString('[Gesso] Unsupported --format=yaml.', $this->stderr);
+    }
+
+    #[Test]
+    public function output_file_receives_the_same_bytes_as_stdout(): void
+    {
+        $spec = $this->writeSpec();
+        $argv = ['--spec=' . $spec, '--output=' . $this->workDir . '/out', '--dry-run'];
+
+        $this->assertSame(StubsCommand::EXIT_OK, $this->command()->run(StubsCommand::parseArgv($argv)));
+        $expected = $this->stdout;
+
+        $this->stdout = '';
+        $file = $this->workDir . '/summary.txt';
+        $this->assertSame(StubsCommand::EXIT_OK, $this->command()->run(StubsCommand::parseArgv([...$argv, '--output-file=' . $file])));
+        $this->assertSame('', $this->stdout);
+        $this->assertSame($expected, file_get_contents($file));
     }
 
     #[Test]

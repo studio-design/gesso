@@ -6,12 +6,16 @@ namespace Studio\Gesso\Internal;
 
 use const STDERR;
 
+use RuntimeException;
+
+use function file_put_contents;
 use function fwrite;
 use function getcwd;
 use function is_callable;
 use function realpath;
 use function rtrim;
 use function str_starts_with;
+use function strlen;
 
 /**
  * Writer seams and path resolution shared by the `gesso` subcommands.
@@ -49,6 +53,24 @@ trait CliIo
         $this->writeStderr("{$prefix} {$message}\n\n" . self::usage($this->invocation));
 
         return self::EXIT_USAGE;
+    }
+
+    /**
+     * The primary report goes to `--output-file`, or to stdout when it is absent.
+     * The parent directory must exist, like every other report sink.
+     *
+     * @throws RuntimeException when the file cannot be written in full
+     */
+    private function writeReport(string $report, ?string $outputFile): void
+    {
+        if ($outputFile === null || $outputFile === '') {
+            $this->writeStdout($report);
+
+            return;
+        }
+        if (@file_put_contents($this->absolutise($outputFile), $report) !== strlen($report)) {
+            throw new RuntimeException("Cannot write --output-file: {$outputFile}");
+        }
     }
 
     private function writeStdout(string $message): void
