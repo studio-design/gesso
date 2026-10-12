@@ -1213,7 +1213,8 @@
             "ScanComposerLoaderUnavailable": null,
             "NoNamespacesConfigured": null,
             "ComponentNotFound": null,
-            "ComponentConflict": null
+            "ComponentConflict": null,
+            "AttributeInvalid": null
         },
         "constants": [],
         "properties": {

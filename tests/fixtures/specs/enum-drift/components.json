@@ -9,6 +9,7 @@
             "ShippingMethod": {"type": "string", "enum": ["post", "pickup"]},
             "SharedCode": {"type": "string", "enum": ["a", "b"]},
             "Flags": {"type": "boolean", "enum": [true, false]},
+            "Broken": {"type": "string", "enum": "red"},
             "NotAnEnum": {"type": "string"}
         }
     }

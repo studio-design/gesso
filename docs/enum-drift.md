@@ -51,6 +51,8 @@ enum NotificationCode: string
   enum PushNotificationKind: string { /* ... */ }
   ```
 
+- Passing both a path and `component:` (or neither) throws `EnumBindingException` with reason `AttributeInvalid`.
+- A matched component whose `enum` is not an array throws `EnumKeyNotArray`.
 - A `component:` that no configured spec defines with an `enum` array throws `EnumBindingException` with reason `ComponentNotFound`.
 - If two specs define the same component name with different `enum` values, an enum that binds to it throws `ComponentConflict`. Unmatched duplicates are ignored, because unrelated APIs may both define `Status`. The same set in a different order is not a conflict.
 - Auto-discovery skips backed enums that match no component and have no attribute. An explicit list passed to `assertNoDrift()` / `detectAll()` throws `AttributeMissing` for them instead.

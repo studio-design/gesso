@@ -20,7 +20,8 @@ use Studio\Gesso\Schema\EnumDriftAsserter;
  *   configured enum root (`OpenApiSpecLoader::getEnumBasePath()`, falling
  *   back to `OpenApiSpecLoader::getBasePath()`). Removed in 3.0 (#508).
  *
- * Exactly one of the two must be given.
+ * Exactly one of the two must be given; the asserter reports a violation as
+ * `EnumBindingException` with reason `AttributeInvalid`.
  */
 #[Attribute(Attribute::TARGET_CLASS)]
 final class BoundToOpenApiEnum

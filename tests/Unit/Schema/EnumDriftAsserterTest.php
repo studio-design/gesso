@@ -18,6 +18,8 @@ use Studio\Gesso\Internal\YamlAvailability;
 use Studio\Gesso\Schema\EnumDriftAsserter;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Tests\Unit\PHPUnit\Fixture\EnumDrift\ByName\Color as DriftingColor;
+use Studio\Gesso\Tests\Unit\Schema\Fixture\BothArgumentsEnum;
+use Studio\Gesso\Tests\Unit\Schema\Fixture\Broken;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\Color;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\ComponentOverrideEnum;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\EmptySpecEnum;
@@ -882,6 +884,31 @@ class EnumDriftAsserterTest extends TestCase
             $this->assertSame(EnumBindingReason::EnumValueUnsupported, $e->reason);
             $this->assertSame('#/components/schemas/Flags', $e->specPath);
             $this->assertStringContainsString('components.schemas.Flags', $e->getMessage());
+        }
+    }
+
+    #[Test]
+    public function matched_component_with_a_non_array_enum_throws_enum_key_not_array(): void
+    {
+        try {
+            EnumDriftAsserter::detectAll([Broken::class], self::COMPONENT_SPECS, skipUnbound: true);
+            $this->fail('expected EnumBindingException');
+        } catch (EnumBindingException $e) {
+            $this->assertSame(EnumBindingReason::EnumKeyNotArray, $e->reason);
+            $this->assertSame('#/components/schemas/Broken', $e->specPath);
+        }
+    }
+
+    #[Test]
+    public function invalid_attribute_arguments_surface_as_a_binding_exception(): void
+    {
+        try {
+            EnumDriftAsserter::detectAll([BothArgumentsEnum::class], self::COMPONENT_SPECS);
+            $this->fail('expected EnumBindingException');
+        } catch (EnumBindingException $e) {
+            $this->assertSame(EnumBindingReason::AttributeInvalid, $e->reason);
+            $this->assertSame(BothArgumentsEnum::class, $e->enumFqcn);
+            $this->assertInstanceOf(InvalidArgumentException::class, $e->getPrevious());
         }
     }
 

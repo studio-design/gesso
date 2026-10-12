@@ -32,4 +32,5 @@ enum EnumBindingReason
     case NoNamespacesConfigured;
     case ComponentNotFound;
     case ComponentConflict;
+    case AttributeInvalid;
 }

@@ -9,6 +9,7 @@ use const JSON_THROW_ON_ERROR;
 use const PATHINFO_EXTENSION;
 
 use BackedEnum;
+use InvalidArgumentException;
 use JsonException;
 use ReflectionEnum;
 use ReflectionException;
@@ -25,6 +26,7 @@ use Symfony\Component\Yaml\Yaml;
 use Throwable;
 
 use function array_filter;
+use function array_key_exists;
 use function array_map;
 use function array_values;
 use function count;
@@ -84,7 +86,7 @@ use function trigger_error;
  *
  * @phpstan-type ComponentIndex array{
  *     specs: list<string>,
- *     components: array<string, array{specs: list<string>, values: null|list<mixed>}>,
+ *     components: array<string, array{specs: list<string>, enum: mixed, conflict: bool}>,
  * }
  */
 final class EnumDriftAsserter
@@ -258,7 +260,16 @@ final class EnumDriftAsserter
 
         $attrs = $reflection->getAttributes(BoundToOpenApiEnum::class);
         if ($attrs !== []) {
-            $binding = $attrs[0]->newInstance();
+            try {
+                $binding = $attrs[0]->newInstance();
+            } catch (InvalidArgumentException $e) {
+                throw new EnumBindingException(
+                    EnumBindingReason::AttributeInvalid,
+                    sprintf('%s: %s', $fqcn, $e->getMessage()),
+                    enumFqcn: $fqcn,
+                    previous: $e,
+                );
+            }
             if ($binding->component !== null) {
                 [$label, $specValues] = self::componentValues($index, $binding->component, $fqcn)
                     ?? throw new EnumBindingException(
@@ -307,10 +318,11 @@ final class EnumDriftAsserter
     }
 
     /**
-     * Index every `components.schemas` entry carrying an `enum` array across
+     * Index every `components.schemas` entry carrying an `enum` key across
      * `$specNames`. A name defined with different value sets in two specs is
-     * recorded as a conflict rather than thrown here: unrelated APIs may both
-     * define `Status`, and it only matters once an enum binds to it.
+     * recorded as a conflict, and a non-array `enum` is kept as is: both are
+     * thrown only once an enum binds to the name (unrelated APIs may both
+     * define `Status`).
      *
      * @param list<string> $specNames
      *
@@ -325,15 +337,15 @@ final class EnumDriftAsserter
                 continue;
             }
             foreach ($schemas as $name => $schema) {
-                if (!is_array($schema) || !is_array($schema['enum'] ?? null)) {
+                if (!is_array($schema) || !array_key_exists('enum', $schema)) {
                     continue;
                 }
                 $name = (string) $name;
                 $existing = $components[$name] ?? null;
                 if ($existing === null) {
-                    $components[$name] = ['specs' => [$specName], 'values' => array_values($schema['enum'])];
-                } elseif ($existing['values'] !== null && !self::sameValues($existing['values'], $schema['enum'])) {
-                    $components[$name] = ['specs' => [...$existing['specs'], $specName], 'values' => null];
+                    $components[$name] = ['specs' => [$specName], 'enum' => $schema['enum'], 'conflict' => false];
+                } elseif (!$existing['conflict'] && !self::sameValues($existing['enum'], $schema['enum'])) {
+                    $components[$name] = ['specs' => [...$existing['specs'], $specName], 'enum' => null, 'conflict' => true];
                 }
             }
         }
@@ -354,7 +366,7 @@ final class EnumDriftAsserter
         }
 
         $label = self::COMPONENT_POINTER . $name;
-        if ($entry['values'] === null) {
+        if ($entry['conflict']) {
             throw new EnumBindingException(
                 EnumBindingReason::ComponentConflict,
                 sprintf(
@@ -368,7 +380,19 @@ final class EnumDriftAsserter
             );
         }
 
-        return [$label, self::scalarEnumValues($entry['values'], $fqcn, 'components.schemas.' . $name, $label)];
+        if (!is_array($entry['enum'])) {
+            throw new EnumBindingException(
+                EnumBindingReason::EnumKeyNotArray,
+                sprintf(
+                    'components.schemas.%s has a non-array "enum" key — OpenAPI requires "enum" to be an array of values.',
+                    $name,
+                ),
+                enumFqcn: $fqcn,
+                specPath: $label,
+            );
+        }
+
+        return [$label, self::scalarEnumValues($entry['enum'], $fqcn, 'components.schemas.' . $name, $label)];
     }
 
     /**
@@ -385,13 +409,14 @@ final class EnumDriftAsserter
     }
 
     /**
-     * Order-insensitive strict set equality.
-     *
-     * @param list<mixed> $a
-     * @param array<mixed> $b
+     * Order-insensitive strict set equality; non-arrays compare strictly.
      */
-    private static function sameValues(array $a, array $b): bool
+    private static function sameValues(mixed $a, mixed $b): bool
     {
+        if (!is_array($a) || !is_array($b)) {
+            return $a === $b;
+        }
+
         foreach ([[$a, $b], [$b, $a]] as [$left, $right]) {
             foreach ($left as $value) {
                 if (!in_array($value, $right, true)) {

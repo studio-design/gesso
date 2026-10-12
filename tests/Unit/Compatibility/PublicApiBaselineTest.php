@@ -1890,6 +1890,7 @@ final class PublicApiBaselineTest extends TestCase
         ];
         $expected[EnumBindingReason::class]['cases']['ComponentNotFound'] = null;
         $expected[EnumBindingReason::class]['cases']['ComponentConflict'] = null;
+        $expected[EnumBindingReason::class]['cases']['AttributeInvalid'] = null;
         $expected[BoundToOpenApiEnum::class]['properties']['specPath']['type'] = '?string';
         $expected[BoundToOpenApiEnum::class]['properties']['component'] = $expected[BoundToOpenApiEnum::class]['properties']['specPath'];
         ksort($expected[BoundToOpenApiEnum::class]['properties']);
