@@ -113,6 +113,27 @@ final class ArazzoActionsTest extends TestCase
     }
 
     #[Test]
+    public function an_unbound_path_failure_is_routed_like_any_request_contract_failure(): void
+    {
+        $result = $this->runWorkflow('recoverFromUnboundPath', 'Rex');
+
+        $this->assertSame(ArazzoFailureKind::RequestContract, $result->failure?->kind);
+        $this->assertSame(['read', 'list'], $this->stepIds($result));
+        $this->assertSame(['GET /pets'], $this->dispatched);
+    }
+
+    #[Test]
+    public function a_failure_that_ends_a_recovery_is_kept_with_the_first_failure(): void
+    {
+        $result = $this->runWorkflow('recoveryAlsoFails', 'Rex');
+
+        $this->assertSame(ArazzoFailureKind::Criterion, $result->failure?->kind);
+        $this->assertSame('read', $result->failure->stepId);
+        $this->assertStringContainsString("The run then stopped at step 'create' (workflow)", $result->failureMessage());
+        $this->assertStringContainsString('Request: curl', $result->failureMessage());
+    }
+
+    #[Test]
     public function an_unconditional_loop_hits_the_execution_budget(): void
     {
         $result = ArazzoWorkflowRunner::workflow(self::DIR . '/actions-loop.arazzo.json', 'forever')
@@ -140,6 +161,7 @@ final class ArazzoActionsTest extends TestCase
             $this->assertStringContainsString("'retry' actions are not supported yet", $all);
             $this->assertStringContainsString("'\$components.failureActions.missing' names no component", $all);
             $this->assertStringContainsString("'missing' names no step", $all);
+            $this->assertStringContainsString("successActions[0].criteria[0].context: '\$workflows' expressions are not supported", $all);
             $this->assertContains($e->reason, [ArazzoDescriptionReason::UnsupportedFeature, ArazzoDescriptionReason::UnknownComponent]);
         }
 

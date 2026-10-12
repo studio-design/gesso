@@ -71,10 +71,10 @@ final readonly class ArazzoWorkflowResult
                 continue;
             }
 
-            if ($step->failure !== $failure) {
+            if ($requestShown || $step->stepId !== $failure->stepId || $step->failure->kind !== $failure->kind) {
                 // A goto routed around this failure; it still fails the run.
                 $lines[] = sprintf("Also failed: step '%s' (%s): %s", $step->stepId, $step->failure->kind->value, $step->failure->message);
-            } elseif (!$requestShown) {
+            } else {
                 $lines[] = 'Request: ' . $step->request->curlSnippet();
                 $requestShown = true;
             }

@@ -247,6 +247,63 @@
           "operationId": "listPets"
         }
       ]
+    },
+    {
+      "workflowId": "recoverFromUnboundPath",
+      "steps": [
+        {
+          "stepId": "read",
+          "operationId": "getPet",
+          "onFailure": [
+            {
+              "name": "cleanup",
+              "type": "goto",
+              "stepId": "list"
+            }
+          ]
+        },
+        {
+          "stepId": "list",
+          "operationId": "listPets"
+        }
+      ]
+    },
+    {
+      "workflowId": "recoveryAlsoFails",
+      "steps": [
+        {
+          "stepId": "read",
+          "operationId": "getPet",
+          "parameters": [
+            {
+              "name": "petId",
+              "in": "path",
+              "value": 999
+            }
+          ],
+          "successCriteria": [
+            {
+              "condition": "$statusCode == 200"
+            }
+          ],
+          "onFailure": [
+            {
+              "name": "recover",
+              "type": "goto",
+              "stepId": "create"
+            }
+          ]
+        },
+        {
+          "stepId": "create",
+          "operationId": "createPet",
+          "requestBody": {
+            "payload": {
+              "name": "$inputs.missing"
+            }
+          }
+        }
+      ]
     }
   ]
 }
