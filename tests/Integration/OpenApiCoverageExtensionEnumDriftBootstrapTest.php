@@ -65,6 +65,23 @@ class OpenApiCoverageExtensionEnumDriftBootstrapTest extends TestCase
     }
 
     #[Test]
+    public function phpunit_exits_non_zero_when_a_name_matched_enum_drifts(): void
+    {
+        [$exit, $output] = $this->runPhpunit(
+            [
+                'enum_drift_enabled' => 'true',
+                'enum_drift_scan_namespaces' =>
+                    'Studio\\Gesso\\Tests\\Integration\\Schema\\Fixture\\AutoDiscovery\\ByName\\',
+            ],
+            specs: 'enum-drift/components',
+        );
+
+        $this->assertNotSame(0, $exit, "Expected non-zero exit; output was:\n" . $output);
+        $this->assertStringContainsString('[OpenAPI Enum Drift] FATAL', $output);
+        $this->assertStringContainsString('AutoDiscovery\\ByName\\Color  ->  #/components/schemas/Color', $output);
+    }
+
+    #[Test]
     public function phpunit_exits_zero_when_auto_discovered_drift_is_lenient(): void
     {
         [$exit, $output] = $this->runPhpunit([

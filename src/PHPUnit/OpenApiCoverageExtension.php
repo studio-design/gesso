@@ -307,7 +307,7 @@ final class OpenApiCoverageExtension implements Extension
             }
         }
 
-        self::runEnumDriftCheck($parameters, $githubSummaryPath);
+        self::runEnumDriftCheck($parameters, $githubSummaryPath, $specs);
 
         $outputFile = null;
         if ($parameters->has('output_file')) {
@@ -1271,16 +1271,18 @@ final class OpenApiCoverageExtension implements Extension
     }
 
     /**
-     * Auto-discover `#[BoundToOpenApiEnum]` enums under the configured
-     * namespace prefixes and run a static drift check at bootstrap. A
-     * misconfiguration or strict-mode drift hard-fails the run; lenient
-     * mode only emits a WARNING block.
+     * Auto-discover backed enums under the configured namespace prefixes and
+     * run a static drift check at bootstrap for every one bound by attribute
+     * or by a `components.schemas` name in `$specs`; unbound enums are
+     * skipped. A misconfiguration or strict-mode drift hard-fails the run;
+     * lenient mode only emits a WARNING block.
      *
-     * Runs after the spec eager-load loop so `OpenApiSpecLoader::getBasePath()`
-     * is already configured by the time `EnumDriftAsserter` resolves
-     * `#[BoundToOpenApiEnum]` paths.
+     * Runs after the spec eager-load loop so every spec is cached and
+     * `OpenApiSpecLoader::getBasePath()` is configured.
+     *
+     * @param list<string> $specs
      */
-    private static function runEnumDriftCheck(ExtensionParameters $parameters, ?string $githubSummaryPath): void
+    private static function runEnumDriftCheck(ExtensionParameters $parameters, ?string $githubSummaryPath, array $specs): void
     {
         if (!self::resolveBooleanFlag($parameters, 'enum_drift_enabled', false)) {
             return;
@@ -1320,46 +1322,30 @@ final class OpenApiCoverageExtension implements Extension
 
         $failOnDrift = self::resolveBooleanFlag($parameters, 'enum_drift_fail_on_drift', true);
 
-        if ($fqcns === []) {
-            // No bound enums under the configured prefixes. Common in two
-            // cases: (a) a codebase mid-migration that hasn't annotated any
-            // enums yet, and (b) a typo'd `enum_drift_scan_namespaces`
-            // (e.g. `App\Enum` vs `App\Enums`). The first is intentional
-            // and must not fail; the second is a misconfiguration the user
-            // wants to see. A NOTE line surfaces the typo without breaking
-            // the migration use case.
-            self::writeStderr(
-                '[OpenAPI Enum Drift] NOTE: scan matched zero #[BoundToOpenApiEnum] enums under '
-                . 'configured prefixes (' . implode(', ', $namespaces) . '). '
-                . "Check enum_drift_scan_namespaces if you expected matches.\n",
-            );
-
-            return;
-        }
-
-        if ($failOnDrift) {
-            try {
-                EnumDriftAsserter::assertNoDrift($fqcns, true);
-            } catch (EnumBindingException|EnumDriftException $e) {
-                self::writeStderr($e->getMessage() . "\n");
-                self::appendGithubStepSummaryEnumDriftBlock($githubSummaryPath, $e->getMessage(), isFatal: true);
-
-                throw $e;
-            }
-
-            return;
-        }
-
         try {
-            $reports = EnumDriftAsserter::detectAll($fqcns);
+            $reports = EnumDriftAsserter::detectAll($fqcns, $specs, skipUnbound: true);
         } catch (EnumBindingException $e) {
             // Misconfigured bindings are setup errors, not drift signals,
-            // and they fail loud regardless of $failOnDrift — same policy
-            // as the asserter (`EnumDriftAsserter::detectOne`).
+            // and they fail loud regardless of $failOnDrift.
             self::writeStderr("[OpenAPI Enum Drift] FATAL: {$e->getMessage()}\n");
             self::appendGithubStepSummaryEnumDriftBlock($githubSummaryPath, $e->getMessage(), isFatal: true);
 
             throw $e;
+        }
+
+        if ($reports === []) {
+            // Common when a codebase has not bound any enum yet (must not
+            // fail) or when `enum_drift_scan_namespaces` is typo'd (the
+            // user wants to see it). A NOTE surfaces the typo without
+            // breaking the first case.
+            self::writeStderr(
+                '[OpenAPI Enum Drift] NOTE: scan matched zero bound enums under '
+                . 'configured prefixes (' . implode(', ', $namespaces) . '): no #[BoundToOpenApiEnum] '
+                . 'and no components.schemas enum named after a class. '
+                . "Check enum_drift_scan_namespaces if you expected matches.\n",
+            );
+
+            return;
         }
 
         $drifting = array_values(array_filter(
@@ -1371,9 +1357,13 @@ final class OpenApiCoverageExtension implements Extension
             return;
         }
 
-        $message = EnumDriftAsserter::renderMessage($drifting, false);
+        $message = EnumDriftAsserter::renderMessage($drifting, $failOnDrift);
         self::writeStderr($message . "\n");
-        self::appendGithubStepSummaryEnumDriftBlock($githubSummaryPath, $message, isFatal: false);
+        self::appendGithubStepSummaryEnumDriftBlock($githubSummaryPath, $message, isFatal: $failOnDrift);
+
+        if ($failOnDrift) {
+            throw new EnumDriftException($drifting, $message);
+        }
     }
 
     private static function appendGithubStepSummaryEnumDriftBlock(?string $path, string $body, bool $isFatal): void

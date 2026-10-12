@@ -24,8 +24,16 @@
         "cases": [],
         "constants": [],
         "properties": {
+            "component": {
+                "type": "?string",
+                "static": false,
+                "readonly": true,
+                "default": {
+                    "unavailable": true
+                }
+            },
             "specPath": {
-                "type": "string",
+                "type": "?string",
                 "static": false,
                 "readonly": true,
                 "default": {
@@ -44,13 +52,20 @@
                 "parameters": [
                     {
                         "name": "specPath",
-                        "type": "string",
-                        "optional": false,
+                        "type": "?string",
+                        "optional": true,
                         "variadic": false,
                         "by_reference": false,
-                        "default": {
-                            "unavailable": true
-                        },
+                        "default": null,
+                        "attributes": []
+                    },
+                    {
+                        "name": "component",
+                        "type": "?string",
+                        "optional": true,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": null,
                         "attributes": []
                     }
                 ]
@@ -1196,7 +1211,9 @@
             "EnumValueUnsupported": null,
             "ScanNamespaceUnresolvable": null,
             "ScanComposerLoaderUnavailable": null,
-            "NoNamespacesConfigured": null
+            "NoNamespacesConfigured": null,
+            "ComponentNotFound": null,
+            "ComponentConflict": null
         },
         "constants": [],
         "properties": {
@@ -8821,6 +8838,15 @@
                             "unavailable": true
                         },
                         "attributes": []
+                    },
+                    {
+                        "name": "specNames",
+                        "type": "array",
+                        "optional": true,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": [],
+                        "attributes": []
                     }
                 ]
             }
@@ -8847,6 +8873,15 @@
                             "default": {
                                 "unavailable": true
                             },
+                            "attributes": []
+                        },
+                        {
+                            "name": "specNames",
+                            "type": "array",
+                            "optional": true,
+                            "variadic": false,
+                            "by_reference": false,
+                            "default": [],
                             "attributes": []
                         }
                     ]
@@ -9966,6 +10001,15 @@
                         "by_reference": false,
                         "default": true,
                         "attributes": []
+                    },
+                    {
+                        "name": "specNames",
+                        "type": "array",
+                        "optional": true,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": [],
+                        "attributes": []
                     }
                 ]
             },
@@ -9986,6 +10030,24 @@
                         "default": {
                             "unavailable": true
                         },
+                        "attributes": []
+                    },
+                    {
+                        "name": "specNames",
+                        "type": "array",
+                        "optional": true,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": [],
+                        "attributes": []
+                    },
+                    {
+                        "name": "skipUnbound",
+                        "type": "bool",
+                        "optional": true,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": false,
                         "attributes": []
                     }
                 ]

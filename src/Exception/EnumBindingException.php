@@ -16,7 +16,8 @@ use Throwable;
  *
  * The exhaustive list of failure categories lives on `EnumBindingReason`;
  * consumers should branch on `$reason` rather than pattern-matching the
- * `$message`.
+ * `$message`. `$specPath` is the bound file path, or the
+ * `#/components/schemas/Name` pointer of a component binding.
  */
 final class EnumBindingException extends RuntimeException
 {

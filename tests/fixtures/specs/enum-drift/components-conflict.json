@@ -1,0 +1,11 @@
+{
+    "openapi": "3.1.0",
+    "info": {"title": "Enum drift conflicting components", "version": "1.0.0"},
+    "paths": {},
+    "components": {
+        "schemas": {
+            "Color": {"type": "string", "enum": ["blue", "green", "red"]},
+            "SharedCode": {"type": "string", "enum": ["a", "c"]}
+        }
+    }
+}

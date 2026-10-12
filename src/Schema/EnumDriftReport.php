@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Studio\Gesso\Schema;
 
 /**
- * Result of a single (PHP enum, OpenAPI enum file) drift comparison.
+ * Result of a single (PHP enum, OpenAPI enum) drift comparison. `specPath`
+ * is the file path or the `#/components/schemas/Name` pointer the enum was
+ * compared against.
  *
  * `phpOnly` and `specOnly` are zero-indexed and sorted by
  * {@see EnumDriftDetector} for deterministic output — consumers (JSON

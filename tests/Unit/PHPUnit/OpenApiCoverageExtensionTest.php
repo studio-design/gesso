@@ -42,6 +42,7 @@ use function rewind;
 use function rmdir;
 use function set_error_handler;
 use function stream_get_contents;
+use function substr_count;
 use function sys_get_temp_dir;
 use function tempnam;
 use function uniqid;
@@ -783,6 +784,47 @@ class OpenApiCoverageExtensionTest extends TestCase
     }
 
     #[Test]
+    public function bootstrap_detects_drift_in_enums_bound_by_component_name(): void
+    {
+        $extension = new OpenApiCoverageExtension();
+        $parameters = ParameterCollection::fromArray([
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => 'enum-drift/components',
+            'enum_drift_enabled' => 'true',
+            'enum_drift_scan_namespaces' => 'Studio\\Gesso\\Tests\\Unit\\PHPUnit\\Fixture\\EnumDrift\\ByName\\',
+        ]);
+
+        try {
+            $extension->setupExtension(null, $parameters, null);
+            $this->fail('Expected EnumDriftException');
+        } catch (EnumDriftException) {
+            $stderr = $this->readStderr();
+            $this->assertStringContainsString('[OpenAPI Enum Drift] FATAL', $stderr);
+            $this->assertStringContainsString('ByName\\Color  ->  #/components/schemas/Color', $stderr);
+            $this->assertStringContainsString('"black"', $stderr);
+            $this->assertStringNotContainsString('InternalOnly', $stderr);
+        }
+    }
+
+    #[Test]
+    public function bootstrap_skips_unbound_enums_silently(): void
+    {
+        $extension = new OpenApiCoverageExtension();
+        $parameters = ParameterCollection::fromArray([
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => 'refs-valid',
+            'enum_drift_enabled' => 'true',
+            'enum_drift_scan_namespaces' => 'Studio\\Gesso\\Tests\\Unit\\PHPUnit\\Fixture\\EnumDrift\\ByName\\',
+        ]);
+
+        $extension->setupExtension(null, $parameters, null);
+
+        $stderr = $this->readStderr();
+        $this->assertStringStartsWith('[OpenAPI Enum Drift] NOTE: scan matched zero bound enums', $stderr);
+        $this->assertSame(1, substr_count($stderr, "\n"));
+    }
+
+    #[Test]
     public function bootstrap_emits_note_when_no_attributed_enums_found(): void
     {
         // Resolvable namespace prefix that contains enums but none with the
@@ -807,7 +849,7 @@ class OpenApiCoverageExtensionTest extends TestCase
             // Fall-through path: NOTE was emitted, run continues.
             $stderr = $this->readStderr();
             $this->assertStringContainsString('[OpenAPI Enum Drift] NOTE', $stderr);
-            $this->assertStringContainsString('zero #[BoundToOpenApiEnum] enums', $stderr);
+            $this->assertStringContainsString('zero bound enums', $stderr);
         } catch (EnumBindingException) {
             // If the chosen prefix happens to be unresolvable on this host
             // (no PSR-4 longest-match registered for tests/), skip the
