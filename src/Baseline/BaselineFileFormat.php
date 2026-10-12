@@ -12,6 +12,8 @@ use const JSON_UNESCAPED_UNICODE;
 use InvalidArgumentException;
 use JsonException;
 use RuntimeException;
+use Studio\Gesso\Internal\ArgvParser;
+use Studio\Gesso\Internal\LegacyIdentity;
 
 use function array_diff;
 use function array_keys;
@@ -25,6 +27,8 @@ use function json_decode;
 use function json_encode;
 use function lcfirst;
 use function sprintf;
+use function strtolower;
+use function trim;
 
 /**
  * JSON envelope (version field plus one entry list) shared by the committed
@@ -36,6 +40,21 @@ use function sprintf;
 final class BaselineFileFormat
 {
     private function __construct() {}
+
+    /**
+     * Issue #402 / #481: whether this run is a baseline generation run. Any
+     * non-empty value except `0` / `false` / `no` requests generation. One
+     * env var drives both the sequential run and `gesso coverage:merge`.
+     */
+    public static function generationRequested(): bool
+    {
+        $value = LegacyIdentity::env('GESSO_BASELINE_GENERATE');
+        if ($value === false || trim($value) === '') {
+            return false;
+        }
+
+        return ArgvParser::bool(strtolower(trim($value)));
+    }
 
     /** @param array<string, mixed> $document */
     public static function render(array $document): string

@@ -6,6 +6,7 @@ namespace Studio\Gesso\Coverage;
 
 use InvalidArgumentException;
 use RuntimeException;
+use Studio\Gesso\Baseline\BaselineFileFormat;
 use Studio\Gesso\Baseline\BaselineStaleMode;
 use Studio\Gesso\Baseline\CoverageBaselineEvaluator;
 use Studio\Gesso\Baseline\CoverageBaselineFile;
@@ -15,9 +16,9 @@ use Studio\Gesso\Internal\ArgvParser;
 use Studio\Gesso\Internal\CliIo;
 use Studio\Gesso\Internal\CoverageReportWriter;
 use Studio\Gesso\Internal\Deprecations;
+use Studio\Gesso\Internal\Diagnostics;
 use Studio\Gesso\PHPUnit\ConsoleOutput;
 use Studio\Gesso\PHPUnit\CoverageReportSubscriber;
-use Studio\Gesso\PHPUnit\OpenApiCoverageExtension;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Validation\Strict\StrictAdditionalPropertiesAsserter;
 use Studio\Gesso\Validation\Strict\StrictAdditionalPropertiesMode;
@@ -215,7 +216,7 @@ final class CoverageMergeCommand
             return self::EXIT_OK;
         }
 
-        $sidecarDir = $this->pathOption($options['sidecar_dir'] ?? null) ?? OpenApiCoverageExtension::defaultSidecarDir();
+        $sidecarDir = $this->pathOption($options['sidecar_dir'] ?? null) ?? CoverageSidecarWriter::defaultDir();
 
         // Empty `--specs=` is treated as "use default" rather than "use no
         // specs". Otherwise a misconfigured CLI invocation would silently
@@ -274,7 +275,7 @@ final class CoverageMergeCommand
         // merged coverage state already is the whole-suite view, so this
         // command both generates and enforces from it.
         $coverageBaselineFile = $this->pathOption($options['coverage_baseline_file'] ?? null);
-        $coverageBaselineGenerate = $coverageBaselineFile !== null && OpenApiCoverageExtension::baselineGenerationRequested();
+        $coverageBaselineGenerate = $coverageBaselineFile !== null && BaselineFileFormat::generationRequested();
 
         try {
             $coverageBaselineStaleMode = BaselineStaleMode::fromConfigValue($options['coverage_baseline_stale'] ?? null);
@@ -928,7 +929,7 @@ final class CoverageMergeCommand
         $isFatal = $mode === StrictRequiredMode::Fail;
         $message = StrictRequiredAsserter::renderMessage($reports, $isFatal);
         $this->writeStderr($message . "\n");
-        OpenApiCoverageExtension::appendGithubStepSummaryStrictRequiredBlock(
+        Diagnostics::appendGithubStepSummaryStrictRequiredBlock(
             $githubSummaryPath,
             $message,
             $isFatal,
@@ -972,7 +973,7 @@ final class CoverageMergeCommand
         $isFatal = $mode === StrictAdditionalPropertiesMode::Fail;
         $message = StrictAdditionalPropertiesAsserter::renderMessage($reports, $isFatal);
         $this->writeStderr($message . "\n");
-        OpenApiCoverageExtension::appendGithubStepSummaryStrictAdditionalPropertiesBlock(
+        Diagnostics::appendGithubStepSummaryStrictAdditionalPropertiesBlock(
             $githubSummaryPath,
             $message,
             $isFatal,
