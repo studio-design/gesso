@@ -106,7 +106,7 @@ final class CoverageMergeCommand
     private const SHARED_STRINGS = [
         'sidecar_dir', 'spec_base_path', 'output_file', 'junit_output', 'json_output', 'html_output',
         'console_output', 'strict_required', 'strict_additional_properties',
-        'baseline_file', 'coverage_baseline_file', 'coverage_baseline_stale',
+        'coverage_baseline_file', 'coverage_baseline_stale',
     ];
 
     private const SHARED_LISTS = ['specs', 'strip_prefixes'];
@@ -722,6 +722,16 @@ final class CoverageMergeCommand
             if (!isset($options[$key]) && (is_int($value) || is_float($value))) {
                 $options[$key] = (float) $value;
             }
+        }
+        // `--baseline-file` only ever writes the merged violation baseline, so the
+        // file's `baseline.violations` (an enforcement input for the workers)
+        // defaults it only on a generation run.
+        if (
+            !isset($options['baseline_file']) &&
+            is_string($shared['baseline_file'] ?? null) &&
+            BaselineFileFormat::generationRequested()
+        ) {
+            $options['baseline_file'] = $shared['baseline_file'];
         }
         if (!isset($options['min_coverage_strict']) && is_bool($shared['min_coverage_strict'] ?? null)) {
             $options['min_coverage_strict'] = $shared['min_coverage_strict'];

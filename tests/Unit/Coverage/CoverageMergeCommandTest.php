@@ -2712,6 +2712,23 @@ class CoverageMergeCommandTest extends TestCase
         $this->assertStringContainsString('--config must name a gesso.php file', $stderr);
     }
 
+    #[Test]
+    public function the_violation_baseline_defaults_from_gesso_php_only_on_a_generation_run(): void
+    {
+        // `baseline.violations` is what the workers enforce against; an
+        // ordinary merge must not treat it as a request to write the union.
+        $this->writeConfig('', "'baseline' => ['violations' => 'baseline.json'],");
+        $this->recordOneWorker();
+
+        $exit = (new CoverageMergeCommand(
+            stdoutWriter: static fn(string $msg): null => null,
+            stderrWriter: static fn(string $msg): null => null,
+        ))->run(['config' => $this->configPath()]);
+
+        $this->assertSame(0, $exit);
+        $this->assertFileDoesNotExist(dirname($this->sidecarDir) . '/baseline.json');
+    }
+
     /**
      * Write a worker sidecar carrying an under-described drift observation:
      * a response that always returned `expires`/`signed_url`/`url` even
@@ -2910,7 +2927,7 @@ class CoverageMergeCommandTest extends TestCase
         return dirname($this->sidecarDir) . '/gesso.php';
     }
 
-    private function writeConfig(string $extraCoverage = ''): void
+    private function writeConfig(string $extraCoverage = '', string $extraSections = ''): void
     {
         $specs = var_export((string) realpath(__DIR__ . '/../../fixtures/specs'), true);
         file_put_contents($this->configPath(), <<<PHP
@@ -2922,6 +2939,7 @@ class CoverageMergeCommandTest extends TestCase
                     'report_output' => ['markdown' => 'coverage-report.md'],
                     {$extraCoverage}
                 ],
+                {$extraSections}
             ];
             PHP);
     }
