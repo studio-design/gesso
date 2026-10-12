@@ -418,21 +418,47 @@ class OpenApiEndpointExplorerTest extends TestCase
     }
 
     #[Test]
-    public function invalid_form_cases_only_carry_mutations_a_form_can_express(): void
+    public function every_invalid_form_case_is_rejected_on_the_wire(): void
     {
-        $cases = OpenApiEndpointExplorer::exploreInvalid('contract-checks', 'POST', '/oauth/revoke', [4], 20, seed: 7);
-
+        // A form carries strings and drops empty / null fields, so a mutation
+        // that is invalid as JSON can be valid as a form (`"42"` is a fine
+        // string, `tags=[]` disappears). Only the ones that survive are kept.
+        $validator = new OpenApiRequestValidator();
         $targets = [];
-        foreach ($cases as $case) {
-            $this->assertSame('application/x-www-form-urlencoded', $case->contentType);
-            $this->assertNotContains($case->targetKeyword, ['type', 'oneOf', 'anyOf', 'allOf', 'not']);
-            // Only removing the whole required body may target the root.
-            $this->assertTrue($case->targetPointer !== 'body' || $case->targetKeyword === 'required');
-            $case->bodyAsString(); // serializable as a form, never throws
-            $targets[] = $case->targetPointer . ' ' . $case->targetKeyword;
+        foreach (['/oauth/revoke', '/oauth/form-shapes'] as $path) {
+            foreach (OpenApiEndpointExplorer::exploreInvalid('contract-checks', 'POST', $path, [4], 30, seed: 7) as $case) {
+                $this->assertSame('application/x-www-form-urlencoded', $case->contentType);
+                if ($case->body !== null) {
+                    $result = $validator->validate('contract-checks', 'POST', $path, [], ['X-Api-Key' => 'k'], $case->bodyAsString(), $case->contentType);
+                    $this->assertFalse($result->isValid(), "{$path} {$case->targetPointer} {$case->targetKeyword}");
+                }
+                $targets[] = $case->targetPointer . ' ' . $case->targetKeyword;
+            }
         }
 
         $this->assertContains('body/token maxLength', $targets);
         $this->assertContains('body/token_type_hint enum', $targets);
+        $this->assertNotContains('body/tags minItems', $targets);
+    }
+
+    #[Test]
+    public function keeps_an_empty_object_field_an_object_on_the_wire(): void
+    {
+        $validator = new OpenApiRequestValidator();
+        foreach (OpenApiEndpointExplorer::explore('contract-checks', 'POST', '/oauth/form-shapes', 5, seed: 7) as $case) {
+            $result = $validator->validate('contract-checks', 'POST', '/oauth/form-shapes', [], [], $case->bodyAsString(), $case->contentType);
+            $this->assertTrue($result->isValid(), $result->errorMessage());
+            $this->assertStringContainsString('meta=%7B', $case->bodyAsString());
+        }
+    }
+
+    #[Test]
+    public function throws_for_a_valid_form_body_a_form_cannot_express(): void
+    {
+        // A required list that must stay empty vanishes from a form.
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('once form-encoded');
+
+        OpenApiEndpointExplorer::explore('contract-checks', 'POST', '/oauth/form-required-empty-list', 1, seed: 7);
     }
 }

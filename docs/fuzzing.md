@@ -70,9 +70,12 @@ verbatim), object-valued properties are JSON-encoded (the Encoding Object
 default for an object), `null` properties are dropped, and lists use PHP bracket
 notation (`tags[0]=a&tags[1]=b`), which is what `parse_str()` and HttpFoundation
 read back. `encoding.<part>.style` / `explode` are not applied by the generator.
-Negative cases for a form body skip mutations a form cannot express: a `type`
-mismatch (`"42"` is a valid string on the wire), a non-object root, and
-composition misses built from JSON-only values.
+Every form case is checked the way the request validator will read it: a valid
+case that no longer satisfies the schema once form-encoded (a required list that
+must stay empty, a part `encoding` the generator does not apply) makes the
+operation fail loudly, and a negative-case mutation that becomes valid on the
+wire (a `type` mismatch such as `"42"` for a string, an empty list that drops
+out) is not used.
 
 `uri($prefix)` substitutes and URL-encodes path
 parameters, prepends an optional application prefix, and appends the generated

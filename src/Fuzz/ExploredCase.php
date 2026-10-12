@@ -18,10 +18,12 @@ use Studio\Gesso\Validation\Support\FormBodyDecoder;
 use function array_is_list;
 use function array_map;
 use function base64_encode;
+use function get_object_vars;
 use function http_build_query;
 use function implode;
 use function is_array;
 use function is_bool;
+use function is_object;
 use function json_decode;
 use function json_encode;
 use function rawurlencode;
@@ -189,13 +191,15 @@ final readonly class ExploredCase
      *
      * @return array<string, mixed>
      *
-     * @throws JsonException when the body cannot be encoded
+     * @throws JsonException when a field cannot be encoded
      * @throws LogicException when the body is not a JSON object
      */
     public function bodyAsFormFields(): array
     {
-        $body = $this->bodyAsArray() ?? [];
-        if ($body !== [] && array_is_list($body)) {
+        // Read the original value tree: bodyAsArray() would turn `{}` into
+        // `[]`, which a form then drops or encodes as a JSON array.
+        $body = is_object($this->body) ? get_object_vars($this->body) : $this->body ?? [];
+        if (!is_array($body) || ($body !== [] && array_is_list($body))) {
             throw new LogicException('ExploredCase::bodyAsFormFields() requires a JSON object body.');
         }
 
@@ -293,14 +297,10 @@ final readonly class ExploredCase
         );
     }
 
-    /**
-     * One form field value. `bodyAsArray()` has already turned `{}` into `[]`,
-     * so an empty object property encodes as `[]`.
-     */
+    /** One form field value: objects (and nested lists) as JSON, scalars as text. */
     private static function formValue(mixed $value): string
     {
-        // ponytail: an empty object property is sent as `[]`; keep the JSON value tree if that matters.
-        return is_array($value)
+        return is_array($value) || is_object($value)
             ? json_encode($value, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION)
             : (string) self::serialiseParameterValue($value);
     }

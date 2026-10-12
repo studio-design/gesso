@@ -325,6 +325,75 @@
                 }
             }
         },
+        "/oauth/form-shapes": {
+            "post": {
+                "operationId": "formShapes",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "type": "object",
+                                "required": [
+                                    "meta"
+                                ],
+                                "properties": {
+                                    "meta": {
+                                        "type": "object",
+                                        "maxProperties": 0
+                                    },
+                                    "tags": {
+                                        "type": "array",
+                                        "minItems": 1,
+                                        "items": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "label": {
+                                        "type": "string",
+                                        "maxLength": 8
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "ok"
+                    }
+                }
+            }
+        },
+        "/oauth/form-required-empty-list": {
+            "post": {
+                "operationId": "formRequiredEmptyList",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "type": "object",
+                                "required": [
+                                    "tags"
+                                ],
+                                "properties": {
+                                    "tags": {
+                                        "type": "array",
+                                        "maxItems": 0
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "ok"
+                    }
+                }
+            }
+        },
         "/uploads/{uploadId}": {
             "put": {
                 "operationId": "replaceUpload",

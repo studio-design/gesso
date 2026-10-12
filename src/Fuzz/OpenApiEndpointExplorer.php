@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Fuzz;
 
+use Closure;
 use Faker\Generator;
 use InvalidArgumentException;
+use LogicException;
+use Studio\Gesso\DecodedBody;
 use Studio\Gesso\HttpMethod;
 use Studio\Gesso\OpenApiVersion;
 use Studio\Gesso\SchemaContext;
@@ -15,8 +18,10 @@ use Studio\Gesso\Spec\OpenApiSchemaConverter;
 use Studio\Gesso\Spec\OpenApiSchemaDialect;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Validation\Request\ParameterCollector;
+use Studio\Gesso\Validation\Request\RequestBodyValidator;
 use Studio\Gesso\Validation\Support\DiscriminatorContext;
 use Studio\Gesso\Validation\Support\FormBodyDecoder;
+use Studio\Gesso\Validation\Support\SchemaValidatorRunner;
 use ValueError;
 
 use function array_filter;
@@ -25,7 +30,6 @@ use function array_map;
 use function array_values;
 use function count;
 use function implode;
-use function in_array;
 use function is_array;
 use function is_string;
 use function sprintf;
@@ -95,8 +99,7 @@ final class OpenApiEndpointExplorer
         }
 
         $validCases = self::buildValidCases($specName, $method, $path, $cases, $seed);
-        [$bodySchema, $parameterSchemas, $bodyRequired, $bodyContentType] = self::schemasForOperation($specName, $method, $path);
-        $formBody = $bodyContentType === FormBodyDecoder::URLENCODED;
+        [$bodySchema, $parameterSchemas, $bodyRequired, $formWireErrors] = self::schemasForOperation($specName, $method, $path);
         $faker = SchemaDataGenerator::createFaker($seed);
         $built = [];
 
@@ -113,7 +116,9 @@ final class OpenApiEndpointExplorer
             if ($bodySchema !== null) {
                 try {
                     foreach (SchemaMutationGenerator::generate($bodySchema, 100, $faker, $index) as $mutation) {
-                        if ($formBody && !self::observableInForm($mutation)) {
+                        // A form carries strings and drops empty / null
+                        // fields, so a mutation can turn valid on the wire.
+                        if ($formWireErrors !== null && ($formWireErrors($validCase->withBody($mutation->value)) ?? []) === []) {
                             continue;
                         }
                         $targets[] = ['location' => 'body', 'name' => null, 'mutation' => $mutation, 'remove' => false];
@@ -270,17 +275,51 @@ final class OpenApiEndpointExplorer
     }
 
     /**
-     * Whether a body mutation still breaks the contract once sent as form
-     * fields. Every value reaches the server as a string and is coerced back,
-     * so a `type` mismatch (`"42"` is a fine string) cannot be expressed, nor
-     * can a non-object root. A composition (`oneOf` / `anyOf` / `allOf` /
-     * `not`) miss is built from JSON values (`null`, `false`, `[]`) that a
-     * form either drops or turns into a string some branch may accept.
+     * For a form body, a check that judges a case the way the runtime
+     * validator judges what it receives: the body serialized as a form and
+     * read back through {@see RequestBodyValidator} — coercion, `encoding`,
+     * and dropped empty / null fields included. JSON bodies need no such
+     * check (null). The closure returns the errors, or null when the body is
+     * not a form-serializable object at all.
+     *
+     * @param array<string, mixed> $operation
+     * @param array<string, mixed> $spec
+     *
+     * @return null|Closure(ExploredCase): ?list<string>
      */
-    private static function observableInForm(SchemaMutation $mutation): bool
-    {
-        return $mutation->pointer !== '' &&
-            !in_array($mutation->keyword, ['type', 'oneOf', 'anyOf', 'allOf', 'not'], true);
+    private static function formWireCheck(
+        string $contentType,
+        string $specName,
+        array $operation,
+        OpenApiVersion $version,
+        string $jsonSchemaDialect,
+        array $spec,
+    ): ?Closure {
+        if ($contentType !== FormBodyDecoder::URLENCODED) {
+            return null;
+        }
+
+        $validator = new RequestBodyValidator(new SchemaValidatorRunner(20));
+
+        return static function (ExploredCase $case) use ($validator, $specName, $operation, $version, $jsonSchemaDialect, $spec): ?array {
+            try {
+                $wire = $case->bodyAsString();
+            } catch (LogicException) {
+                return null;
+            }
+
+            return $validator->validate(
+                $specName,
+                $case->method->value,
+                $case->matchedPath,
+                $operation,
+                DecodedBody::present($wire),
+                $case->contentType,
+                $version,
+                new DiscriminatorContext($spec, true),
+                $jsonSchemaDialect,
+            )->errors;
+        };
     }
 
     private static function buildValidCases(
@@ -296,6 +335,7 @@ final class OpenApiEndpointExplorer
         $version = OpenApiVersion::fromSpec($spec);
         $jsonSchemaDialect = OpenApiSchemaDialect::fromSpec($spec, $version);
         [$bodySchema, $bodyContentType] = self::extractRequestBodySchema($operation, $version, $methodUpper, $matchedPath, $specName, $jsonSchemaDialect, $spec);
+        $formWireErrors = self::formWireCheck($bodyContentType, $specName, $operation, $version, $jsonSchemaDialect, $spec);
         /** @var list<array<string, mixed>> $parameters */
         $parameters = ParameterCollector::collect($methodUpper, $matchedPath, $pathSpec, $operation)->parameters;
         self::assertParametersGeneratable($parameters, $methodUpper, $matchedPath, $specName);
@@ -310,7 +350,7 @@ final class OpenApiEndpointExplorer
             $query = self::generateParameterValues($parameters, 'query', $version, $jsonSchemaDialect, $faker, $i);
             $headers = self::generateParameterValues($parameters, 'header', $version, $jsonSchemaDialect, $faker, $i);
             $pathParams = self::generateParameterValues($parameters, 'path', $version, $jsonSchemaDialect, $faker, $i);
-            $built[] = new ExploredCase(
+            $case = new ExploredCase(
                 body: $body,
                 query: $query,
                 headers: $headers,
@@ -321,6 +361,22 @@ final class OpenApiEndpointExplorer
                 caseIndex: $i,
                 contentType: $bodyContentType,
             );
+            // A value the schema accepts can still be inexpressible as a form
+            // (a required empty list, a part `encoding` the generator does
+            // not apply) — fail loudly rather than dispatch a broken case.
+            $wireErrors = $formWireErrors === null || $body === null ? [] : $formWireErrors($case);
+            if ($wireErrors !== []) {
+                throw new InvalidArgumentException(sprintf(
+                    "Operation %s '%s' in spec '%s': generated case %d does not satisfy the request body schema "
+                    . 'once form-encoded (%s). The explorer cannot synthesize this form body — skip this operation.',
+                    $methodUpper,
+                    $matchedPath,
+                    $specName,
+                    $i,
+                    $wireErrors === null ? 'not a form object' : implode('; ', $wireErrors),
+                ));
+            }
+            $built[] = $case;
         }
 
         return new ExplorationCases($built);
@@ -389,7 +445,7 @@ final class OpenApiEndpointExplorer
     }
 
     /**
-     * @return array{0: null|array<string, mixed>, 1: list<array{in: string, name: string, required: bool, schema: array<string, mixed>}>, 2: bool, 3: string}
+     * @return array{0: null|array<string, mixed>, 1: list<array{in: string, name: string, required: bool, schema: array<string, mixed>}>, 2: bool, 3: null|Closure(ExploredCase): ?list<string>}
      */
     private static function schemasForOperation(string $specName, string $method, string $path): array
     {
@@ -411,7 +467,12 @@ final class OpenApiEndpointExplorer
             ];
         }
 
-        return [$body, $parameterSchemas, ($operation['requestBody']['required'] ?? false) === true, $bodyContentType];
+        return [
+            $body,
+            $parameterSchemas,
+            ($operation['requestBody']['required'] ?? false) === true,
+            self::formWireCheck($bodyContentType, $specName, $operation, $version, $dialect, $spec),
+        ];
     }
 
     /**
