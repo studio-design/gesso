@@ -169,6 +169,23 @@ class CoverageMergeCommandTest extends TestCase
     }
 
     #[Test]
+    public function an_unscoped_failure_marker_fails_every_run(): void
+    {
+        // A pre-#596 worker in a mixed fleet writes no run id; its marker
+        // cannot be proven stale, so it still fails the merge.
+        $marker = CoverageSidecarWriter::writeFailureMarker($this->sidecarDir, '9', 'simulated failure');
+        $this->assertNotNull($marker);
+        touch($marker, time() - 120);
+        $this->writeSidecar('1', 'POST', '/v1/pets', '201', 'b');
+
+        $stderr = '';
+        $exit = $this->runMerge(['run_id' => 'b'], $stderr);
+
+        $this->assertSame(1, $exit);
+        $this->assertStringContainsString('failed to write a sidecar', $stderr);
+    }
+
+    #[Test]
     public function runs_that_tie_for_newest_fail_closed_without_a_run_id(): void
     {
         // filemtime() is whole seconds: guessing between two runs that wrote
