@@ -14,6 +14,7 @@ use Studio\Gesso\Exception\InvalidOpenApiSpecException;
 use Studio\Gesso\Exception\InvalidOpenApiSpecReason;
 use Studio\Gesso\Internal\ExternalRefLoader;
 use Studio\Gesso\Internal\HttpRefLoader;
+use Studio\Gesso\Internal\JsonPointer;
 use Studio\Gesso\Internal\RemoteAuthorization;
 use Studio\Gesso\OpenApiVersion;
 
@@ -21,6 +22,7 @@ use function array_diff_key;
 use function array_intersect_key;
 use function array_is_list;
 use function array_key_exists;
+use function array_map;
 use function array_pop;
 use function array_unique;
 use function array_values;
@@ -1872,20 +1874,7 @@ final class OpenApiRefResolver
             return [true, $root];
         }
 
-        $segments = explode('/', $pointer);
-
-        $node = $root;
-        foreach ($segments as $segment) {
-            $segment = self::decodePointerSegment($segment);
-
-            if (!is_array($node) || !array_key_exists($segment, $node)) {
-                return [false, null];
-            }
-
-            $node = $node[$segment];
-        }
-
-        return [true, $node];
+        return JsonPointer::walk(array_map(self::decodePointerSegment(...), explode('/', $pointer)), $root);
     }
 
     /**
