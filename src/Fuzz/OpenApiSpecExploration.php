@@ -15,6 +15,7 @@ use Throwable;
 use function array_intersect;
 use function count;
 use function crc32;
+use function explode;
 use function implode;
 use function in_array;
 use function sprintf;
@@ -209,6 +210,11 @@ final class OpenApiSpecExploration
         return new SpecExplorationSummary($executedOperations, $executedCases, $operations, $skips, $this->followedLinks);
     }
 
+    private static function requestPath(ExploredCase $case): string
+    {
+        return explode('?', $case->uri(), 2)[0];
+    }
+
     private static function chainLine(int $position, string $link, ExploredCase $case, string $status): string
     {
         return sprintf('%d. [%s] %s %s → %s', $position, $link, $case->method->value, $case->uri(), $status);
@@ -274,6 +280,8 @@ final class OpenApiSpecExploration
                 continue;
             }
 
+            LinkFollower::assertDispatchable($name, $target);
+
             $followUps[] = [$name, $link, $target, $operation];
         }
 
@@ -312,7 +320,7 @@ final class OpenApiSpecExploration
 
             $chainSoFar = [...$chain, self::chainLine(count($chain) + 1, $name, $child, (string) $observed->statusCode)];
             // A sibling branch that changed state since the parent response makes the pair unjudgeable.
-            $check = $checkable ? LinkFollower::check($parent->method, $parentResponse->statusCode, $child->method, $observed->statusCode) : null;
+            $check = $checkable ? LinkFollower::check($parent->method, $parentResponse->statusCode, self::requestPath($parent), $child->method, $observed->statusCode, self::requestPath($child)) : null;
             if ($check !== null) {
                 throw new RuntimeException($this->chainFailureMessage(sprintf("Link chain check '%s' failed.", $check->value), $root, $caseIndex, $chainSoFar, $child));
             }

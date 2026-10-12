@@ -85,13 +85,14 @@ final class LinkFollowerTest extends TestCase
     #[Test]
     public function chain_checks_only_fire_on_lifecycle_violations(): void
     {
-        $this->assertSame(LinkChainCheck::UseAfterFree, LinkFollower::check(HttpMethod::DELETE, 204, HttpMethod::GET, 200));
-        $this->assertNull(LinkFollower::check(HttpMethod::DELETE, 204, HttpMethod::GET, 404));
-        $this->assertNull(LinkFollower::check(HttpMethod::DELETE, 404, HttpMethod::GET, 200));
-        $this->assertSame(LinkChainCheck::EnsureResourceAvailability, LinkFollower::check(HttpMethod::POST, 201, HttpMethod::GET, 404));
-        $this->assertSame(LinkChainCheck::EnsureResourceAvailability, LinkFollower::check(HttpMethod::PUT, 200, HttpMethod::GET, 410));
-        $this->assertNull(LinkFollower::check(HttpMethod::POST, 201, HttpMethod::DELETE, 404));
-        $this->assertNull(LinkFollower::check(HttpMethod::POST, 400, HttpMethod::GET, 404));
+        $this->assertSame(LinkChainCheck::UseAfterFree, LinkFollower::check(HttpMethod::DELETE, 204, '/pets/1', HttpMethod::GET, 200, '/pets/1'));
+        $this->assertNull(LinkFollower::check(HttpMethod::DELETE, 204, '/pets/1', HttpMethod::GET, 404, '/pets/1'));
+        $this->assertNull(LinkFollower::check(HttpMethod::DELETE, 404, '/pets/1', HttpMethod::GET, 200, '/pets/1'));
+        $this->assertNull(LinkFollower::check(HttpMethod::DELETE, 204, '/pets/1', HttpMethod::GET, 200, '/pets'), 'a collection read is not use-after-free');
+        $this->assertSame(LinkChainCheck::EnsureResourceAvailability, LinkFollower::check(HttpMethod::POST, 201, '/pets', HttpMethod::GET, 404, '/pets/1'));
+        $this->assertSame(LinkChainCheck::EnsureResourceAvailability, LinkFollower::check(HttpMethod::PUT, 200, '/pets/1', HttpMethod::GET, 410, '/pets/1'));
+        $this->assertNull(LinkFollower::check(HttpMethod::POST, 201, '/pets', HttpMethod::DELETE, 404, '/pets/1'));
+        $this->assertNull(LinkFollower::check(HttpMethod::POST, 400, '/pets', HttpMethod::GET, 404, '/pets/1'));
     }
 
     /**

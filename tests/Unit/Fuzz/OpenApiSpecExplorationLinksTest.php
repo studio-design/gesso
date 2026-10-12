@@ -192,6 +192,19 @@ final class OpenApiSpecExplorationLinksTest extends TestCase
     }
 
     #[Test]
+    public function an_excluded_undispatchable_target_is_not_an_error(): void
+    {
+        $summary = OpenApiSpecExplorer::explore('links-malformed', 1, 7)
+            ->includeOperations(['options'])
+            ->excludeMethods(['OPTIONS'])
+            ->dispatchUsing(fn(ExploredCase $case): ResponseInterface => $this->record($case, new Response(201, ['Content-Type' => 'application/json'], '{"id": 1}')))
+            ->followLinksUsing(static fn(ResponseInterface $response): ResponseInterface => $response)
+            ->assertResponses();
+
+        $this->assertSame(0, $summary->followedLinks);
+    }
+
+    #[Test]
     public function max_depth_must_be_positive(): void
     {
         $this->expectException(InvalidArgumentException::class);

@@ -11,7 +11,7 @@ namespace Studio\Gesso\Fuzz;
  */
 enum LinkChainCheck: string
 {
-    /** A 2xx `GET` through a link after a successful `DELETE` — the resource outlived its deletion. */
+    /** A 2xx `GET` of the same path through a link after a successful `DELETE` — the resource outlived its deletion. */
     case UseAfterFree = 'use_after_free';
 
     /** A `404`/`410` `GET` through a link after a successful `POST`/`PUT`/`PATCH` — the created resource cannot be read. */

@@ -273,7 +273,7 @@ Each (parent, follow-up) pair is checked:
 
 | `LinkChainCheck` | Fails when |
 |---|---|
-| `use_after_free` | a 2xx `DELETE` is followed through a link by a 2xx `GET` |
+| `use_after_free` | a 2xx `DELETE` is followed through a link by a 2xx `GET` of the same request path |
 | `ensure_resource_availability` | a 2xx `POST`/`PUT`/`PATCH` is followed through a link by a `404`/`410` `GET` |
 
 A violation throws immediately with the ordered chain (`1. POST /pets → 201

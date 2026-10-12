@@ -63,14 +63,19 @@ final class LinkFollower
         $this->paths = SpecPathsPreflight::validatedPaths($specName, $spec);
     }
 
-    public static function check(HttpMethod $parentMethod, int $parentStatus, HttpMethod $childMethod, int $childStatus): ?LinkChainCheck
+    /**
+     * @param string $parentPath concrete request path (no query) of the parent
+     * @param string $childPath concrete request path (no query) of the follow-up
+     */
+    public static function check(HttpMethod $parentMethod, int $parentStatus, string $parentPath, HttpMethod $childMethod, int $childStatus, string $childPath): ?LinkChainCheck
     {
         $parentSucceeded = $parentStatus >= 200 && $parentStatus < 300;
         if (!$parentSucceeded || $childMethod !== HttpMethod::GET) {
             return null;
         }
 
-        if ($parentMethod === HttpMethod::DELETE && $childStatus >= 200 && $childStatus < 300) {
+        // Only a read of the very resource that was deleted proves use-after-free.
+        if ($parentMethod === HttpMethod::DELETE && $parentPath === $childPath && $childStatus >= 200 && $childStatus < 300) {
             return LinkChainCheck::UseAfterFree;
         }
 
@@ -79,6 +84,22 @@ final class LinkFollower
         }
 
         return null;
+    }
+
+    /**
+     * Called after exclusions, so an excluded undispatchable target is not an error.
+     *
+     * @param array{method: string, path: string, operation: array<string, mixed>} $target
+     */
+    public static function assertDispatchable(string $name, array $target): void
+    {
+        if (HttpMethod::tryFrom($target['method']) === null) {
+            throw new RuntimeException(sprintf(
+                "Link '%s': target method %s is not dispatchable; exclude it (excludeMethods(), excludeOperations()) or author the link differently.",
+                $name,
+                $target['method'],
+            ));
+        }
     }
 
     /**
@@ -148,14 +169,6 @@ final class LinkFollower
             );
             $target = $this->operations->findByPointer($segments)
                 ?? throw new RuntimeException(sprintf("Link '%s': operationRef '%s' does not point at an operation.", $name, $ref));
-        }
-
-        if (HttpMethod::tryFrom($target['method']) === null) {
-            throw new RuntimeException(sprintf(
-                "Link '%s': target method %s is not dispatchable; excludeOperations() the parent or author the link differently.",
-                $name,
-                $target['method'],
-            ));
         }
 
         return $target;
