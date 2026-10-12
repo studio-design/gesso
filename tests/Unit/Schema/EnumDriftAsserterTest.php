@@ -4,16 +4,19 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Tests\Unit\Schema;
 
+use const E_USER_DEPRECATED;
 use const E_USER_WARNING;
 
 use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\IgnoreDeprecations;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Studio\Gesso\Attribute\BoundToOpenApiEnum;
 use Studio\Gesso\Exception\EnumBindingException;
 use Studio\Gesso\Exception\EnumBindingReason;
 use Studio\Gesso\Exception\EnumDriftException;
+use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\Internal\YamlAvailability;
 use Studio\Gesso\Schema\EnumDriftAsserter;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
@@ -78,6 +81,7 @@ class EnumDriftAsserterTest extends TestCase
     {
         YamlAvailability::reset();
         OpenApiSpecLoader::reset();
+        Deprecations::resetForTesting();
         parent::tearDown();
     }
 
@@ -109,6 +113,25 @@ class EnumDriftAsserterTest extends TestCase
     }
 
     #[Test]
+    public function path_binding_emits_the_spec_path_deprecation_and_component_binding_does_not(): void
+    {
+        Deprecations::resetForTesting();
+        set_error_handler(static fn(): bool => true, E_USER_DEPRECATED);
+
+        try {
+            EnumDriftAsserter::detectAll([Color::class, ComponentOverrideEnum::class], self::COMPONENT_SPECS);
+            $this->assertSame([], Deprecations::counts());
+
+            EnumDriftAsserter::detectAll([MatchingEnum::class]);
+        } finally {
+            restore_error_handler();
+        }
+
+        $this->assertSame(['attribute.bound_to_open_api_enum.spec_path' => 1], Deprecations::counts());
+    }
+
+    #[Test]
+    #[IgnoreDeprecations]
     public function assert_no_drift_passes_for_matching_pair(): void
     {
         EnumDriftAsserter::assertNoDrift([MatchingEnum::class]);
@@ -122,6 +145,7 @@ class EnumDriftAsserterTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function assert_no_drift_throws_when_php_has_extra_cases(): void
     {
         try {
@@ -137,6 +161,7 @@ class EnumDriftAsserterTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function assert_no_drift_throws_when_spec_has_extra_values(): void
     {
         try {
@@ -152,6 +177,7 @@ class EnumDriftAsserterTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function assert_no_drift_aggregates_multiple_drifting_enums(): void
     {
         try {
@@ -171,6 +197,7 @@ class EnumDriftAsserterTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function assert_no_drift_skips_clean_enums_in_aggregated_report(): void
     {
         // Mixed input: one clean + one drifting. Only the drifting one
@@ -189,6 +216,7 @@ class EnumDriftAsserterTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function detect_all_returns_clean_reports_too(): void
     {
         // detectAll() is the inspection seam — callers building UI / CI
@@ -239,6 +267,7 @@ class EnumDriftAsserterTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function assert_no_drift_throws_binding_exception_when_base_path_unconfigured(): void
     {
         OpenApiSpecLoader::reset();
@@ -252,6 +281,7 @@ class EnumDriftAsserterTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function assert_no_drift_throws_binding_exception_when_spec_file_missing(): void
     {
         try {
@@ -264,6 +294,7 @@ class EnumDriftAsserterTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function assert_no_drift_throws_binding_exception_for_malformed_json(): void
     {
         try {
@@ -275,6 +306,7 @@ class EnumDriftAsserterTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function assert_no_drift_throws_binding_exception_when_enum_key_missing(): void
     {
         try {
@@ -286,6 +318,7 @@ class EnumDriftAsserterTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function assert_no_drift_throws_binding_exception_when_enum_key_not_array(): void
     {
         try {
@@ -304,7 +337,7 @@ class EnumDriftAsserterTest extends TestCase
             $captured[] = ['errno' => $errno, 'msg' => $msg];
 
             return true;
-        });
+        }, E_USER_WARNING);
 
         try {
             EnumDriftAsserter::assertNoDrift([PhpExtraEnum::class], failOnDrift: false);
@@ -325,7 +358,7 @@ class EnumDriftAsserterTest extends TestCase
             $captured[] = ['errno' => $errno, 'msg' => $msg];
 
             return true;
-        });
+        }, E_USER_WARNING);
 
         try {
             EnumDriftAsserter::assertNoDrift([MatchingEnum::class], failOnDrift: false);
@@ -345,6 +378,7 @@ class EnumDriftAsserterTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function diagnostic_message_contains_structured_block(): void
     {
         try {
@@ -373,6 +407,7 @@ class EnumDriftAsserterTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function assert_no_drift_passes_for_integer_backed_enum(): void
     {
         EnumDriftAsserter::assertNoDrift([IntegerBackedEnum::class]);
@@ -382,6 +417,7 @@ class EnumDriftAsserterTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function strict_comparison_surfaces_string_vs_int_drift(): void
     {
         // Spec carries `[200, 201, "201"]` against a PHP enum of `200, 201`.
@@ -397,6 +433,7 @@ class EnumDriftAsserterTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function diagnostic_renders_int_values_unquoted(): void
     {
         try {
@@ -421,6 +458,7 @@ class EnumDriftAsserterTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function non_scalar_spec_enum_value_throws_enum_value_unsupported(): void
     {
         try {
@@ -434,6 +472,7 @@ class EnumDriftAsserterTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function empty_spec_enum_array_reports_all_php_cases_as_drift(): void
     {
         try {
@@ -446,6 +485,7 @@ class EnumDriftAsserterTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function enum_base_path_resolves_attribute_paths_independently_of_spec_base_path(): void
     {
         // Issue #170: bundled-external layout. spec_base_path can point at
@@ -465,6 +505,7 @@ class EnumDriftAsserterTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function enum_base_path_unset_falls_back_to_spec_base_path(): void
     {
         // Default setUp() configures only spec_base_path. Existing tests
@@ -476,6 +517,7 @@ class EnumDriftAsserterTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function enum_base_path_equal_to_spec_base_path_is_a_no_op(): void
     {
         // Compare report objects field-by-field between the fallback branch
@@ -505,6 +547,7 @@ class EnumDriftAsserterTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function enum_base_path_with_trailing_slash_resolves_identically(): void
     {
         // OpenApiSpecLoader::configure() trims trailing slashes (covered at
@@ -526,6 +569,7 @@ class EnumDriftAsserterTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function enum_base_path_set_but_spec_file_missing_throws_spec_file_not_found(): void
     {
         // enum_spec_base_path resolves to a real directory, but the
@@ -550,6 +594,7 @@ class EnumDriftAsserterTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function enum_binding_cannot_escape_its_base_path_with_parent_traversal(): void
     {
         $scratchDir = sys_get_temp_dir() . '/gesso-enum-root-' . uniqid('', true);
@@ -588,6 +633,7 @@ class EnumDriftAsserterTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function enum_binding_cannot_follow_a_symlink_outside_its_base_path(): void
     {
         $scratchDir = sys_get_temp_dir() . '/gesso-enum-link-' . uniqid('', true);
@@ -627,6 +673,7 @@ class EnumDriftAsserterTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function yaml_bound_file_passes_for_matching_pair(): void
     {
         EnumDriftAsserter::assertNoDrift([YamlMatchingEnum::class]);
@@ -637,6 +684,7 @@ class EnumDriftAsserterTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function yml_extension_is_parsed_as_yaml(): void
     {
         EnumDriftAsserter::assertNoDrift([YmlMatchingEnum::class]);
@@ -646,6 +694,7 @@ class EnumDriftAsserterTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function uppercase_yaml_extension_is_parsed_as_yaml(): void
     {
         EnumDriftAsserter::assertNoDrift([UppercaseYamlExtensionEnum::class]);
@@ -655,6 +704,7 @@ class EnumDriftAsserterTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function yaml_bound_file_surfaces_spec_only_drift(): void
     {
         try {
@@ -667,6 +717,7 @@ class EnumDriftAsserterTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function malformed_yaml_throws_binding_exception_with_malformed_yaml_reason(): void
     {
         try {
@@ -679,6 +730,7 @@ class EnumDriftAsserterTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function yaml_scalar_root_throws_non_mapping_root(): void
     {
         try {
@@ -690,6 +742,7 @@ class EnumDriftAsserterTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function yaml_binding_without_symfony_yaml_throws_yaml_library_missing(): void
     {
         YamlAvailability::overrideForTesting(false);
@@ -706,6 +759,7 @@ class EnumDriftAsserterTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function json_binding_still_resolves_when_symfony_yaml_is_absent(): void
     {
         // The optional dependency must stay optional for JSON-only projects:
@@ -723,6 +777,7 @@ class EnumDriftAsserterTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function parser_follows_the_binding_path_extension_not_the_symlink_target(): void
     {
         // A within-root symlink is allowed, but the binding path's extension
@@ -763,6 +818,7 @@ class EnumDriftAsserterTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function extensionless_bound_file_is_still_parsed_as_json(): void
     {
         EnumDriftAsserter::assertNoDrift([NoExtensionSpecEnum::class]);
@@ -772,6 +828,7 @@ class EnumDriftAsserterTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function enum_base_path_pointing_at_nonexistent_dir_throws_enum_base_path_not_found(): void
     {
         $missing = sys_get_temp_dir() . '/openapi-contract-testing-missing-' . uniqid();
