@@ -60,27 +60,27 @@ final readonly class RuntimeExpression
         }
 
         $m = [];
-        if (preg_match('/^\$(request|response|message)\.(header|query|path|body|payload)(.*)$/s', $raw, $m, PREG_UNMATCHED_AS_NULL) === 1) {
+        if (preg_match('/^\$(request|response|message)\.(header|query|path|body|payload)(.*)$/sD', $raw, $m, PREG_UNMATCHED_AS_NULL) === 1) {
             return self::parseSource(RuntimeExpressionFamily::from('$' . $m[1]), $m[2], $m[3], $raw);
         }
 
-        if (preg_match('/^\$(inputs|outputs)\.(?<name>' . self::IDENTIFIER . ')' . self::POINTER . '$/s', $raw, $m, PREG_UNMATCHED_AS_NULL) === 1) {
+        if (preg_match('/^\$(inputs|outputs)\.(?<name>' . self::IDENTIFIER . ')' . self::POINTER . '$/sD', $raw, $m, PREG_UNMATCHED_AS_NULL) === 1) {
             return self::build(RuntimeExpressionFamily::from('$' . $m[1]), null, $m['name'], null, $m['pointer'], $raw);
         }
 
-        if (preg_match('/^\$steps\.(?<name>' . self::IDENTIFIER_STRICT . ')\.outputs\.(?<member>' . self::IDENTIFIER . ')' . self::POINTER . '$/s', $raw, $m, PREG_UNMATCHED_AS_NULL) === 1) {
+        if (preg_match('/^\$steps\.(?<name>' . self::IDENTIFIER_STRICT . ')\.outputs\.(?<member>' . self::IDENTIFIER . ')' . self::POINTER . '$/sD', $raw, $m, PREG_UNMATCHED_AS_NULL) === 1) {
             return self::build(RuntimeExpressionFamily::Steps, null, $m['name'], $m['member'], $m['pointer'], $raw);
         }
 
-        if (preg_match('/^\$workflows\.(?<name>' . self::IDENTIFIER_STRICT . ')\.(?<source>inputs|outputs)\.(?<member>' . self::IDENTIFIER . ')' . self::POINTER . '$/s', $raw, $m, PREG_UNMATCHED_AS_NULL) === 1) {
+        if (preg_match('/^\$workflows\.(?<name>' . self::IDENTIFIER_STRICT . ')\.(?<source>inputs|outputs)\.(?<member>' . self::IDENTIFIER . ')' . self::POINTER . '$/sD', $raw, $m, PREG_UNMATCHED_AS_NULL) === 1) {
             return self::build(RuntimeExpressionFamily::Workflows, $m['source'], $m['name'], $m['member'], $m['pointer'], $raw);
         }
 
-        if (preg_match('/^\$sourceDescriptions\.(?<name>' . self::IDENTIFIER_STRICT . ')\.(?<member>.+)$/s', $raw, $m, PREG_UNMATCHED_AS_NULL) === 1) {
+        if (preg_match('/^\$sourceDescriptions\.(?<name>' . self::IDENTIFIER_STRICT . ')\.(?<member>.+)$/sD', $raw, $m, PREG_UNMATCHED_AS_NULL) === 1) {
             return new self(RuntimeExpressionFamily::SourceDescriptions, null, $m['name'], $m['member'], null, $raw);
         }
 
-        if (preg_match('/^\$components\.(?<name>parameters|successActions|failureActions)\.(?<member>' . self::IDENTIFIER . ')$/', $raw, $m, PREG_UNMATCHED_AS_NULL) === 1) {
+        if (preg_match('/^\$components\.(?<name>parameters|successActions|failureActions)\.(?<member>' . self::IDENTIFIER . ')$/D', $raw, $m, PREG_UNMATCHED_AS_NULL) === 1) {
             return new self(RuntimeExpressionFamily::Components, null, $m['name'], $m['member'], null, $raw);
         }
 
@@ -148,10 +148,10 @@ final readonly class RuntimeExpression
     {
         $m = [];
         $valid = match ($source) {
-            'header' => preg_match('/^\.(?<name>' . self::TOKEN . ')$/', $rest, $m, PREG_UNMATCHED_AS_NULL) === 1,
-            'query', 'path' => preg_match('/^\.(?<name>[^{}]+)$/s', $rest, $m, PREG_UNMATCHED_AS_NULL) === 1,
-            'body' => preg_match('/^' . self::POINTER . '$/s', $rest, $m, PREG_UNMATCHED_AS_NULL) === 1,
-            'payload' => $family === RuntimeExpressionFamily::Message && preg_match('/^' . self::POINTER . '$/s', $rest, $m, PREG_UNMATCHED_AS_NULL) === 1,
+            'header' => preg_match('/^\.(?<name>' . self::TOKEN . ')$/D', $rest, $m, PREG_UNMATCHED_AS_NULL) === 1,
+            'query', 'path' => preg_match('/^\.(?<name>[^{}]+)$/sD', $rest, $m, PREG_UNMATCHED_AS_NULL) === 1,
+            'body' => preg_match('/^' . self::POINTER . '$/sD', $rest, $m, PREG_UNMATCHED_AS_NULL) === 1,
+            'payload' => $family === RuntimeExpressionFamily::Message && preg_match('/^' . self::POINTER . '$/sD', $rest, $m, PREG_UNMATCHED_AS_NULL) === 1,
             default => false,
         };
 

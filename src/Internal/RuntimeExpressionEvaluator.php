@@ -92,9 +92,9 @@ final class RuntimeExpressionEvaluator
     }
 
     /**
-     * Authored values: non-strings pass through, `$...` is a whole-value
-     * expression, a string containing `{` is an expression string, anything
-     * else is a literal.
+     * Authored values: non-strings pass through, a string containing `{` is
+     * an expression string, `$...` is a whole-value expression, anything else
+     * is a literal.
      *
      * @throws RuntimeExpressionException
      */
@@ -104,11 +104,12 @@ final class RuntimeExpressionEvaluator
             return $value;
         }
 
-        if (RuntimeExpression::isExpression($value)) {
-            return self::evaluate($value, $context);
+        // Braces first: `${$request.body#/price}` is an expression string, not a whole-value expression.
+        if (str_contains($value, '{')) {
+            return self::evaluateEmbedded($value, $context);
         }
 
-        return str_contains($value, '{') ? self::evaluateEmbedded($value, $context) : $value;
+        return RuntimeExpression::isExpression($value) ? self::evaluate($value, $context) : $value;
     }
 
     private static function request(RuntimeExpression $expression, RuntimeExpressionContext $context): mixed
