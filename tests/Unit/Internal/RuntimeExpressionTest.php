@@ -48,6 +48,7 @@ final class RuntimeExpressionTest extends TestCase
             '$', '$foo', '$request', '$request.', '$request.cookie.x', '$response.header.',
             '$request.query.', '$request.body#a', '$request.body#/a~2', '$steps.x', '$steps.x.inputs.y',
             '$components.inputs.x', '$statusCode1', '$request.payload', '$sourceDescriptions.a',
+            "\$request.header.x-id\n", "\$inputs.name\n", "\$url\n",
         ] as $raw) {
             yield $raw => [$raw];
         }
