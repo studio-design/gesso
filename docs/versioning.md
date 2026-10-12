@@ -83,9 +83,10 @@ This library follows [Semantic Versioning 2.0](https://semver.org/). v1.0.0 is t
   baselined, an uncovered response absent from the file fails the run, and
   entries that are covered now are reported per the stale mode. Unknown
   `coverage_baseline_version` values are rejected.
-- Named contract checks: `ContractCheck` names and default expected statuses
-  and status classes, the `OpenApiContractChecks`/`ContractCheckPlan` fluent
-  surface, and the
+- Named contract checks (`Studio\Gesso\Contract\`; the pre-2.7
+  `Studio\Gesso\Fuzz\` spellings are deprecated aliases removed in v3.0):
+  `ContractCheck` names and default expected statuses and status classes, the
+  `OpenApiContractChecks`/`ContractCheckPlan` fluent surface, and the
   `ContractCheckSummary`/`ContractCheckFailure`/`ContractCheckSkip` shapes.
   Failure/skip prose is not a contract, and neither is the placeholder value
   an `ignored_auth` invalid-credential probe writes.

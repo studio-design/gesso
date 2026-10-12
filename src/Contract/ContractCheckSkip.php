@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Studio\Gesso\Fuzz;
+namespace Studio\Gesso\Contract;
 
 /**
  * Contract check skipped (not probed) for a path or method.
