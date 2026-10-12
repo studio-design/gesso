@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Tests\Unit\PHPUnit;
 
+use PHPUnit\Framework\Attributes\IgnoreDeprecations;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use PHPUnit\Runner\Extension\ParameterCollection;
@@ -11,6 +12,7 @@ use Studio\Gesso\Baseline\CoverageBaseline;
 use Studio\Gesso\Baseline\CoverageBaselineEntry;
 use Studio\Gesso\Baseline\CoverageBaselineFile;
 use Studio\Gesso\Baseline\InvalidBaselineConfigurationException;
+use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\Internal\LegacyIdentity;
 use Studio\Gesso\PHPUnit\OpenApiCoverageExtension;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
@@ -29,6 +31,7 @@ use function unlink;
  * Issue #481: bootstrap-level handling of `coverage_baseline_file` /
  * `coverage_baseline_stale`.
  */
+#[IgnoreDeprecations]
 class OpenApiCoverageExtensionCoverageBaselineTest extends TestCase
 {
     /** @var null|resource */
@@ -53,6 +56,7 @@ class OpenApiCoverageExtensionCoverageBaselineTest extends TestCase
 
     protected function tearDown(): void
     {
+        Deprecations::resetForTesting();
         OpenApiCoverageExtension::overrideStderrForTesting(null);
         if ($this->stderrBuffer !== null) {
             fclose($this->stderrBuffer);

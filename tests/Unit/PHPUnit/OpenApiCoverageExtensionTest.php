@@ -6,6 +6,7 @@ namespace Studio\Gesso\Tests\Unit\PHPUnit;
 
 use const E_USER_WARNING;
 
+use PHPUnit\Framework\Attributes\IgnoreDeprecations;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use PHPUnit\Runner\Extension\ParameterCollection;
@@ -18,6 +19,7 @@ use Studio\Gesso\Exception\EnumDriftException;
 use Studio\Gesso\Exception\InvalidOpenApiSpecException;
 use Studio\Gesso\Exception\InvalidOpenApiSpecReason;
 use Studio\Gesso\Exception\SpecFileNotFoundException;
+use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\Internal\EnumScanner;
 use Studio\Gesso\PHPUnit\InvalidStrictRequiredConfigurationException;
 use Studio\Gesso\PHPUnit\OpenApiCoverageExtension;
@@ -47,6 +49,7 @@ use function tempnam;
 use function uniqid;
 use function unlink;
 
+#[IgnoreDeprecations]
 class OpenApiCoverageExtensionTest extends TestCase
 {
     /** @var null|resource */
@@ -72,6 +75,7 @@ class OpenApiCoverageExtensionTest extends TestCase
 
     protected function tearDown(): void
     {
+        Deprecations::resetForTesting();
         OpenApiCoverageExtension::overrideStderrForTesting(null);
         if ($this->stderrBuffer !== null) {
             fclose($this->stderrBuffer);
