@@ -33,6 +33,7 @@ use function array_keys;
 use function array_map;
 use function array_merge;
 use function array_values;
+use function arsort;
 use function count;
 use function ctype_digit;
 use function filemtime;
@@ -45,7 +46,6 @@ use function max;
 use function sprintf;
 use function trim;
 use function unlink;
-use function usort;
 
 /**
  * Aggregates worker sidecars (produced by {@see CoverageReportSubscriber} in
@@ -665,6 +665,8 @@ final class CoverageMergeCommand
      *
      * @return array{list<string>, list<string>, list<string>, list<string>} the run's sidecars, its markers,
      *                                                                       the ignored paths, their run ids
+     *
+     * @throws RuntimeException when two runs tie for newest and no run id was given
      */
     private static function scopeToRun(?string $runId, array $sidecars, array $markers): array
     {
@@ -675,14 +677,20 @@ final class CoverageMergeCommand
         if ($runId === null) {
             // ponytail: newest-group selection assumes runs share a directory
             // one after another; concurrent runs in one directory must set
-            // GESSO_RUN_ID. Count and id break same-second mtime ties.
-            $rank = static fn(int|string $id): array => [
-                max(array_map(static fn(string $path): int => (int) @filemtime($path), $groups[$id])),
-                count($groups[$id]),
-                (string) $id,
-            ];
-            $ids = array_keys($groups);
-            usort($ids, static fn(int|string $a, int|string $b): int => $rank($b) <=> $rank($a));
+            // GESSO_RUN_ID. filemtime() is whole seconds, so a tie fails closed.
+            $newest = array_map(
+                static fn(array $paths): int => max(array_map(static fn(string $path): int => (int) @filemtime($path), $paths)),
+                $groups,
+            );
+            arsort($newest);
+            $ids = array_keys($newest);
+            if (count($ids) > 1 && $newest[$ids[0]] === $newest[$ids[1]]) {
+                throw new RuntimeException(sprintf(
+                    'cannot tell which run is newest (run ids %s and %s wrote files in the same second); pass --run-id=<id> or set GESSO_RUN_ID',
+                    $ids[0] === '' ? '(none)' : (string) $ids[0],
+                    $ids[1] === '' ? '(none)' : (string) $ids[1],
+                ));
+            }
             $runId = (string) ($ids[0] ?? '');
         }
 
