@@ -1162,6 +1162,15 @@ final class OpenApiCoverageExtension implements Extension
             return;
         }
 
+        // Issue #597: paratest bootstraps this extension in its master (SuiteLoader)
+        // and again in every worker. The scan reads the same files in each, so a
+        // worker skips it and the master — the Pest --parallel orchestrator included —
+        // is the one process that evaluates and writes the step-summary block.
+        $slot = getenv('TEST_TOKEN');
+        if ($slot !== false && trim($slot) !== '') {
+            return;
+        }
+
         $namespaces = [];
         if ($parameters->has('enum_drift_scan_namespaces')) {
             $namespaces = array_values(array_filter(
