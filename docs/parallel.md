@@ -135,23 +135,19 @@ it owns those decisions for the whole matrix.
 ## Sidecar compatibility
 
 Sidecars are a versioned worker-to-merge protocol, separate from the coverage
-report produced by `json_output`. The current writer emits an
-`envelopeVersion: 8` envelope containing coverage state `version: 1`,
-strict-required state `version: 2`, and strict-additional-properties state
-`version: 1`, plus SDK exercise state `version: 1` and deprecation state
-`version: 1`. A baseline-generation run
-(`GESSO_BASELINE_GENERATE=1`) emits `envelopeVersion: 9` and adds the violation-baseline document
-(`baseline_version: 1`).
+report produced by `json_output`. The current writer emits
+`envelopeVersion: 10`: `coverage` is required, and `strictRequired`,
+`strictAdditionalProperties`, `sdkExercise`, `deprecations` and `baseline` are
+optional keys whose absence means the worker had no such tracker. Only a
+baseline-generation run (`GESSO_BASELINE_GENERATE=1`) writes `baseline`.
 
-The merge reader also accepts envelopes 2–7 and the older bare coverage state
-`version: 1`, so HTTP coverage can still be combined while a worker fleet is
-being upgraded. Envelopes 2/3 have no strict-additional-properties state,
-envelopes 2–5 have no SDK exercise state, and envelopes 2–7 have no deprecation
-state. A strict SDK exercise threshold
-therefore requires every worker on v6+; warn-only mode reports missing
-worker state and evaluates the available SDK observations. Likewise, plain
-envelopes carry no baseline data, so `--baseline-file` requires every worker
-to use a corresponding baseline envelope.
+The merge reader also accepts the legacy envelopes 2–9 and the older bare
+coverage state `version: 1`, so HTTP coverage can still be combined while a
+worker fleet is being upgraded. A missing half is reported, not treated as
+empty: a strict SDK exercise threshold requires every worker to carry SDK
+exercise state (warn-only mode reports the missing workers and evaluates the
+available observations), and `--baseline-file` requires every worker to carry
+the baseline half.
 
 Deprecation counts travel the same way. A worker never reaches the end-of-run
 report, so it stages its per-id counts in the envelope and `coverage:merge`

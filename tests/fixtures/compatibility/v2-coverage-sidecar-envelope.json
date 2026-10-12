@@ -1,0 +1,60 @@
+{
+    "envelopeVersion": 10,
+    "coverage": {
+        "version": 1,
+        "specs": {
+            "front": {
+                "GET /v1/pets": {
+                    "requestReached": true,
+                    "requestSkipReason": null,
+                    "responses": {
+                        "200:application/json": {
+                            "state": "validated",
+                            "hits": 1,
+                            "skipReason": null
+                        },
+                        "503:*": {
+                            "state": "skipped",
+                            "hits": 1,
+                            "skipReason": "status 503 matched skip pattern 5\\d\\d"
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "strictRequired": {
+        "version": 2,
+        "observations": {
+            "front": {
+                "GET /v1/pets": {
+                    "200:application/json": {
+                        "hits": 2,
+                        "pointers": {
+                            "/": [
+                                "data"
+                            ],
+                            "/data": [
+                                "id",
+                                "name"
+                            ]
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "strictAdditionalProperties": {
+        "version": 1,
+        "evaluations": 0,
+        "observations": []
+    },
+    "sdkExercise": {
+        "version": 1,
+        "observations": []
+    },
+    "deprecations": {
+        "version": 1,
+        "deprecations": []
+    }
+}

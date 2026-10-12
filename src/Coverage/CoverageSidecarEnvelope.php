@@ -12,72 +12,42 @@ use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 
 use function array_key_exists;
 use function get_debug_type;
-use function implode;
 use function in_array;
 use function is_array;
 use function is_int;
 use function sprintf;
 
 /**
- * Wire-format helper for the v2 sidecar envelope.
+ * Wire-format helper for the coverage sidecar envelope.
  *
- * v2 wraps two tracker payloads — the existing {@see OpenApiCoverageTracker}
- * coverage state and the {@see StrictRequiredTracker} observations — under
- * a single JSON object so paratest workers can hand both off in one atomic
- * write. The merge CLI then aggregates each side via its tracker's
- * `importState()` and runs the strict_required gate against the union.
+ * The envelope wraps each tracker's `exportState()` payload under one JSON
+ * object so paratest workers hand everything off in one atomic write; the
+ * merge CLI feeds each half back through its tracker's `importState()`.
  *
- * Wire shape (v2):
+ * Wire shape (v10):
  * ```json
  * {
- *   "envelopeVersion": 2,
- *   "coverage":       { "version": 1, "specs":        { ... } },
- *   "strictRequired": { "version": 2, "observations": { ... } }
+ *   "envelopeVersion": 10,
+ *   "coverage":                   { "version": 1, "specs": { } },
+ *   "strictRequired":             { "version": 2, "observations": { } },
+ *   "strictAdditionalProperties": { "version": 1, "...": { } },
+ *   "sdkExercise":                { "version": 1, "...": { } },
+ *   "deprecations":               { "version": 1, "deprecations": { } },
+ *   "baseline":                   { "baseline_version": 1, "violations": [ ] }
  * }
  * ```
  *
- * Wire shape (v3, issue #417) adds the violation-baseline half collected
- * during a parallel generation run (`GESSO_BASELINE_GENERATE` under
- * paratest). Its value is the baseline-file document verbatim
- * ({@see ViolationBaselineFile}), so the inner
- * `baseline_version` stays owned by the baseline format:
- * ```json
- * {
- *   "envelopeVersion": 3,
- *   "coverage":       { "version": 1, "specs":        { ... } },
- *   "strictRequired": { "version": 2, "observations": { ... } },
- *   "baseline":       { "baseline_version": 1, "violations": [ ... ] }
- * }
- * ```
+ * `envelopeVersion` and `coverage` are required. Every other key is optional
+ * and its presence is the signal: an absent key means the writer had no such
+ * tracker, so a new half is a new optional key, never a new version. Inner
+ * `version` fields stay owned by their trackers ({@see StrictRequiredTracker},
+ * {@see StrictAdditionalPropertiesTracker}, {@see Deprecations},
+ * {@see ViolationBaselineFile}) and evolve independently.
  *
- * Wire shapes v4/v5 add `strictAdditionalProperties` state. v4 is the
- * legacy plain-worker format; v5 is v4 plus the v3 baseline half.
- * Older v2/v3 envelopes remain readable and contribute no strict
- * additional-properties observations.
- *
- * Wire shapes v6/v7 add `sdkExercise` state. Versions v2-v5 remain readable
- * and contribute no SDK exercise observations.
- *
- * Wire shapes v8/v9 add the `deprecations` half (issue #499) — the per-id
- * counts {@see Deprecations} accumulated in the worker.
- * v8 is the current plain-worker format; v9 is v8 plus the baseline half. The
- * half is written even when the worker used no deprecated surface, because
- * "this worker saw none" is what the merged report has to be able to prove;
- * v2-v7 remain readable but cannot distinguish that from "not recorded", so
- * the merge CLI says so rather than reporting a zero it cannot stand behind.
- *
- * Backwards compatibility: workers running an older library version write
- * a bare v1 coverage payload (`{ "version": 1, "specs": { ... } }`) with no
- * `envelopeVersion` key. {@see self::parse()} detects this shape and
- * returns the legacy payload as `coverage` with `strictRequired => null`
- * and `strictAdditionalProperties => null`, so a mixed-version fleet can
- * still merge coverage cleanly.
- *
- * The envelope intentionally does NOT flatten the inner tracker payloads —
- * each `version` field remains owned by its respective tracker and can
- * evolve independently of the envelope version. The wrapper key is
- * `envelopeVersion` (not `version`) precisely so legacy v1 bare coverage
- * payloads — which already use `version` at the top level — remain
+ * The 2.x reader still accepts the legacy envelopes 2-9 (whose version
+ * enumerated the halves they carried) and the bare v1 coverage state with
+ * no `envelopeVersion` key; see docs/versioning.md. The wrapper key is
+ * `envelopeVersion` (not `version`) precisely so bare v1 payloads remain
  * distinguishable; see {@see self::parse()}'s discriminator order.
  *
  * @internal Used by the PHPUnit extension and merge CLI. The accepted wire
@@ -90,7 +60,7 @@ use function sprintf;
  * @phpstan-type SidecarEnvelopePayload array{
  *     envelopeVersion: int,
  *     coverage: CoverageStatePayload,
- *     strictRequired: StrictRequiredStatePayload,
+ *     strictRequired?: StrictRequiredStatePayload,
  *     strictAdditionalProperties?: StrictAdditionalPropertiesState,
  *     sdkExercise?: array<string, mixed>,
  *     deprecations?: array<string, mixed>,
@@ -107,67 +77,22 @@ use function sprintf;
  */
 final class CoverageSidecarEnvelope
 {
-    /**
-     * Envelope wire-format version. Importers reject unknown values rather
-     * than guessing — a future writer's version landing in an older merge
-     * CLI must fail loudly so partial-upgrade silos surface immediately.
-     */
-    public const ENVELOPE_VERSION = 2;
+    /** Current wire version. Readers reject anything newer; see parse(). */
+    public const ENVELOPE_VERSION = 10;
 
     /**
-     * Legacy envelope version carrying the violation-baseline half
-     * (issue #417). Current workers use v5 because they also export strict
-     * additional-properties state; v3 remains a supported input.
+     * Inputs the 2.x reader still accepts, written by Gesso 1.9-2.6 workers. The
+     * version enumerated which optional halves the writer carried; v10 stops that
+     * and signals presence by the key itself. Deleted by the v3.0 cutoff (#505).
      */
-    public const ENVELOPE_VERSION_WITH_BASELINE = 3;
+    private const LEGACY_VERSIONS = [2, 3, 4, 5, 6, 7, 8, 9];
 
-    public const ENVELOPE_VERSION_WITH_STRICT_ADDITIONAL_PROPERTIES = 4;
-    public const ENVELOPE_VERSION_WITH_STRICT_ADDITIONAL_PROPERTIES_AND_BASELINE = 5;
-    public const ENVELOPE_VERSION_WITH_SDK_EXERCISE = 6;
-    public const ENVELOPE_VERSION_WITH_SDK_EXERCISE_AND_BASELINE = 7;
-    public const ENVELOPE_VERSION_WITH_DEPRECATIONS = 8;
-    public const ENVELOPE_VERSION_WITH_DEPRECATIONS_AND_BASELINE = 9;
+    private const LEGACY_VERSIONS_WITH_STRICT_ADDITIONAL_PROPERTIES = [4, 5, 6, 7, 8, 9];
+    private const LEGACY_VERSIONS_WITH_SDK_EXERCISE = [6, 7, 8, 9];
+    private const LEGACY_VERSIONS_WITH_DEPRECATIONS = [8, 9];
 
-    /**
-     * Every accepted envelope version, in the order they were introduced.
-     * The pairs alternate plain / with-baseline because the baseline half is
-     * present only during an `GESSO_BASELINE_GENERATE` run, so it is
-     * orthogonal to the tracker half that raised the version.
-     */
-    private const ACCEPTED_VERSIONS = [
-        self::ENVELOPE_VERSION,
-        self::ENVELOPE_VERSION_WITH_BASELINE,
-        self::ENVELOPE_VERSION_WITH_STRICT_ADDITIONAL_PROPERTIES,
-        self::ENVELOPE_VERSION_WITH_STRICT_ADDITIONAL_PROPERTIES_AND_BASELINE,
-        self::ENVELOPE_VERSION_WITH_SDK_EXERCISE,
-        self::ENVELOPE_VERSION_WITH_SDK_EXERCISE_AND_BASELINE,
-        self::ENVELOPE_VERSION_WITH_DEPRECATIONS,
-        self::ENVELOPE_VERSION_WITH_DEPRECATIONS_AND_BASELINE,
-    ];
-
-    /** Versions whose writer always emits the `strictAdditionalProperties` half. */
-    private const VERSIONS_WITH_STRICT_ADDITIONAL_PROPERTIES = [
-        self::ENVELOPE_VERSION_WITH_STRICT_ADDITIONAL_PROPERTIES,
-        self::ENVELOPE_VERSION_WITH_STRICT_ADDITIONAL_PROPERTIES_AND_BASELINE,
-        self::ENVELOPE_VERSION_WITH_SDK_EXERCISE,
-        self::ENVELOPE_VERSION_WITH_SDK_EXERCISE_AND_BASELINE,
-        self::ENVELOPE_VERSION_WITH_DEPRECATIONS,
-        self::ENVELOPE_VERSION_WITH_DEPRECATIONS_AND_BASELINE,
-    ];
-
-    /** Versions whose writer always emits the `sdkExercise` half. */
-    private const VERSIONS_WITH_SDK_EXERCISE = [
-        self::ENVELOPE_VERSION_WITH_SDK_EXERCISE,
-        self::ENVELOPE_VERSION_WITH_SDK_EXERCISE_AND_BASELINE,
-        self::ENVELOPE_VERSION_WITH_DEPRECATIONS,
-        self::ENVELOPE_VERSION_WITH_DEPRECATIONS_AND_BASELINE,
-    ];
-
-    /** Versions whose writer always emits the `deprecations` half. */
-    private const VERSIONS_WITH_DEPRECATIONS = [
-        self::ENVELOPE_VERSION_WITH_DEPRECATIONS,
-        self::ENVELOPE_VERSION_WITH_DEPRECATIONS_AND_BASELINE,
-    ];
+    /** Legacy versions that must not carry a `baseline` key (their +1 sibling does). */
+    private const LEGACY_PLAIN_VERSIONS = [2, 4, 6, 8];
 
     private function __construct() {}
 
@@ -176,11 +101,8 @@ final class CoverageSidecarEnvelope
      * Typed `@phpstan-param`s flow the tracker shapes through so PHPStan
      * catches a tracker-side `exportState()` regression at this boundary.
      *
-     * `$baselineDocument` (the baseline-file document from
-     * {@see ViolationBaselineFile::toDocument()})
-     * upgrades a legacy v2 envelope to v3. When strict additional-properties
-     * state is supplied, the corresponding pair is v4 (plain) / v5
-     * (baseline).
+     * Each optional half is written only when supplied; `$baselineDocument`
+     * is the {@see ViolationBaselineFile::toDocument()} document.
      *
      * @param null|array<string, mixed> $baselineDocument
      * @param null|array<string, mixed> $strictAdditionalPropertiesState
@@ -201,51 +123,21 @@ final class CoverageSidecarEnvelope
         ?array $sdkExerciseState = null,
         ?array $deprecationsState = null,
     ): array {
-        // The halves were introduced in order, and each version implies every
-        // earlier one, so a caller that supplies a later half without an
-        // earlier one is describing an envelope no reader can represent.
-        if ($sdkExerciseState !== null && $strictAdditionalPropertiesState === null) {
-            throw new InvalidArgumentException('SDK exercise sidecar envelopes require strict additional-properties state.');
-        }
-
-        if ($deprecationsState !== null && $sdkExerciseState === null) {
-            throw new InvalidArgumentException('Deprecation sidecar envelopes require SDK exercise state.');
-        }
-
-        $withBaseline = $baselineDocument !== null;
         $payload = [
-            'envelopeVersion' => match (true) {
-                $deprecationsState !== null => $withBaseline
-                    ? self::ENVELOPE_VERSION_WITH_DEPRECATIONS_AND_BASELINE
-                    : self::ENVELOPE_VERSION_WITH_DEPRECATIONS,
-                $sdkExerciseState !== null => $withBaseline
-                    ? self::ENVELOPE_VERSION_WITH_SDK_EXERCISE_AND_BASELINE
-                    : self::ENVELOPE_VERSION_WITH_SDK_EXERCISE,
-                $strictAdditionalPropertiesState !== null => $withBaseline
-                    ? self::ENVELOPE_VERSION_WITH_STRICT_ADDITIONAL_PROPERTIES_AND_BASELINE
-                    : self::ENVELOPE_VERSION_WITH_STRICT_ADDITIONAL_PROPERTIES,
-                default => $withBaseline
-                    ? self::ENVELOPE_VERSION_WITH_BASELINE
-                    : self::ENVELOPE_VERSION,
-            },
+            'envelopeVersion' => self::ENVELOPE_VERSION,
             'coverage' => $coverageState,
             'strictRequired' => $strictRequiredState,
         ];
 
-        if ($strictAdditionalPropertiesState !== null) {
-            $payload['strictAdditionalProperties'] = $strictAdditionalPropertiesState;
-        }
-
-        if ($sdkExerciseState !== null) {
-            $payload['sdkExercise'] = $sdkExerciseState;
-        }
-
-        if ($deprecationsState !== null) {
-            $payload['deprecations'] = $deprecationsState;
-        }
-
-        if ($baselineDocument !== null) {
-            $payload['baseline'] = $baselineDocument;
+        foreach ([
+            'strictAdditionalProperties' => $strictAdditionalPropertiesState,
+            'sdkExercise' => $sdkExerciseState,
+            'deprecations' => $deprecationsState,
+            'baseline' => $baselineDocument,
+        ] as $key => $half) {
+            if ($half !== null) {
+                $payload[$key] = $half;
+            }
         }
 
         return $payload;
@@ -255,7 +147,8 @@ final class CoverageSidecarEnvelope
      * Route a sidecar payload into its tracker-shaped parts.
      *
      * Discriminator priority:
-     *  1. `envelopeVersion` present → v2–v5 path. Unknown values are rejected.
+     *  1. `envelopeVersion` present → v10 (presence-keyed) or a legacy 2–9
+     *     envelope. Unknown values are rejected.
      *  2. `version` + `specs` keys → legacy v1 bare coverage payload;
      *     returns `strictRequired => null`.
      *  3. Otherwise reject (unrecognised shape).
@@ -320,75 +213,112 @@ final class CoverageSidecarEnvelope
     private static function parseEnvelope(array $payload): array
     {
         $version = $payload['envelopeVersion'] ?? null;
-        if (!is_int($version) || !in_array($version, self::ACCEPTED_VERSIONS, true)) {
+        if ($version === self::ENVELOPE_VERSION) {
+            return [
+                'coverage' => self::requiredHalf($payload, 'coverage'),
+                'strictRequired' => self::optionalHalf($payload, 'strictRequired'),
+                'strictAdditionalProperties' => self::optionalHalf($payload, 'strictAdditionalProperties'),
+                'sdkExercise' => self::optionalHalf($payload, 'sdkExercise'),
+                'deprecations' => self::optionalHalf($payload, 'deprecations'),
+                'baseline' => self::optionalHalf($payload, 'baseline'),
+            ];
+        }
+
+        if (!is_int($version) || !in_array($version, self::LEGACY_VERSIONS, true)) {
             throw new InvalidArgumentException(sprintf(
-                'Unsupported sidecar envelope version: got %s, expected one of %s.',
+                'Unsupported sidecar envelope version: got %s, expected %d (current) or a legacy version 2-9.',
                 is_int($version) ? (string) $version : get_debug_type($version),
-                implode(', ', self::ACCEPTED_VERSIONS),
+                self::ENVELOPE_VERSION,
             ));
         }
 
-        $coverage = $payload['coverage'] ?? null;
-        if (!is_array($coverage)) {
+        return self::parseLegacyEnvelope($payload, $version);
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     *
+     * @return array<string, mixed>
+     */
+    private static function requiredHalf(array $payload, string $key): array
+    {
+        $value = $payload[$key] ?? null;
+        if (!is_array($value)) {
             throw new InvalidArgumentException(sprintf(
-                'Sidecar envelope "coverage" must be an array; got %s.',
-                get_debug_type($coverage),
+                'Sidecar envelope "%s" must be an array; got %s.',
+                $key,
+                get_debug_type($value),
             ));
         }
 
-        $strictRequired = $payload['strictRequired'] ?? null;
-        if ($strictRequired !== null && !is_array($strictRequired)) {
+        return $value;
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     *
+     * @return null|array<string, mixed>
+     */
+    private static function optionalHalf(array $payload, string $key): ?array
+    {
+        $value = $payload[$key] ?? null;
+        if ($value !== null && !is_array($value)) {
             throw new InvalidArgumentException(sprintf(
-                'Sidecar envelope "strictRequired" must be an array or absent; got %s.',
-                get_debug_type($strictRequired),
+                'Sidecar envelope "%s" must be an array or absent; got %s.',
+                $key,
+                get_debug_type($value),
             ));
         }
+
+        return $value;
+    }
+
+    /**
+     * Envelopes 2-9: the version decides which halves must and must not be
+     * present. Removed by the v3.0 cutoff (#505).
+     *
+     * @param array<string, mixed> $payload
+     *
+     * @return ParsedEnvelope
+     */
+    private static function parseLegacyEnvelope(array $payload, int $version): array
+    {
+        $coverage = self::requiredHalf($payload, 'coverage');
+        $strictRequired = self::optionalHalf($payload, 'strictRequired');
 
         $strictAdditionalProperties = self::readHalf(
             $payload,
             $version,
             'strictAdditionalProperties',
-            self::VERSIONS_WITH_STRICT_ADDITIONAL_PROPERTIES,
+            self::LEGACY_VERSIONS_WITH_STRICT_ADDITIONAL_PROPERTIES,
             '4, 5, 6, 7, 8, or 9',
         );
         $sdkExercise = self::readHalf(
             $payload,
             $version,
             'sdkExercise',
-            self::VERSIONS_WITH_SDK_EXERCISE,
+            self::LEGACY_VERSIONS_WITH_SDK_EXERCISE,
             '6, 7, 8, or 9',
         );
         $deprecations = self::readHalf(
             $payload,
             $version,
             'deprecations',
-            self::VERSIONS_WITH_DEPRECATIONS,
+            self::LEGACY_VERSIONS_WITH_DEPRECATIONS,
             '8 or 9',
         );
 
         $baseline = $payload['baseline'] ?? null;
-        if (in_array($version, [
-            self::ENVELOPE_VERSION,
-            self::ENVELOPE_VERSION_WITH_STRICT_ADDITIONAL_PROPERTIES,
-            self::ENVELOPE_VERSION_WITH_SDK_EXERCISE,
-            self::ENVELOPE_VERSION_WITH_DEPRECATIONS,
-        ], true)) {
+        if (in_array($version, self::LEGACY_PLAIN_VERSIONS, true)) {
             // A plain envelope must not smuggle a baseline half: accepting it
             // would silently drop generation data whenever a future writer
             // (or a hand-edited sidecar) forgets the version bump — mirror
             // the v1 `strictRequired` guard in parse().
             if (array_key_exists('baseline', $payload)) {
-                $expectedVersion = match ($version) {
-                    self::ENVELOPE_VERSION => self::ENVELOPE_VERSION_WITH_BASELINE,
-                    self::ENVELOPE_VERSION_WITH_STRICT_ADDITIONAL_PROPERTIES => self::ENVELOPE_VERSION_WITH_STRICT_ADDITIONAL_PROPERTIES_AND_BASELINE,
-                    self::ENVELOPE_VERSION_WITH_SDK_EXERCISE => self::ENVELOPE_VERSION_WITH_SDK_EXERCISE_AND_BASELINE,
-                    self::ENVELOPE_VERSION_WITH_DEPRECATIONS => self::ENVELOPE_VERSION_WITH_DEPRECATIONS_AND_BASELINE,
-                };
-
                 throw new InvalidArgumentException(sprintf(
                     'Sidecar envelope v%d must not contain a "baseline" key; expected envelopeVersion=%d when baseline data is present.',
                     $version,
-                    $expectedVersion,
+                    $version + 1,
                 ));
             }
         } elseif (!is_array($baseline)) {

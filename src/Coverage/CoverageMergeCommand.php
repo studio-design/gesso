@@ -503,7 +503,7 @@ final class CoverageMergeCommand
                 $minStrict ? 'FATAL' : 'WARNING',
                 sprintf(
                     '%d worker sidecar(s) have no SDK exercise state; '
-                    . 'the merged SDK exercise gate may be incomplete. Upgrade every worker to the v6/v7 sidecar envelope.',
+                    . 'the merged SDK exercise gate may be incomplete. Run every worker on the same Gesso version as the merge step.',
                     $sidecarsWithoutSdkExercise,
                 ),
             );
@@ -901,7 +901,7 @@ final class CoverageMergeCommand
             $this->writeStderr(
                 '[OpenAPI Strict Required] FATAL: --strict-required=fail requested but '
                 . 'no worker recorded any strict_required observations; the gate cannot '
-                . "be evaluated. Verify all workers are running the v2 sidecar envelope.\n",
+                . "be evaluated. Run every worker on the same Gesso version as the merge step.\n",
             );
 
             return true;
@@ -950,7 +950,7 @@ final class CoverageMergeCommand
         if ($mode === StrictAdditionalPropertiesMode::Fail && $sidecarsWithoutTracker > 0) {
             $this->writeStderr(sprintf(
                 '[OpenAPI Strict Additional Properties] FATAL: %d worker sidecar(s) have no strict additional-properties state; '
-                . "the merged gate would be incomplete. Upgrade every worker to the v4/v5 sidecar envelope.\n",
+                . "the merged gate would be incomplete. Run every worker on the same Gesso version as the merge step.\n",
                 $sidecarsWithoutTracker,
             ));
 
@@ -959,7 +959,7 @@ final class CoverageMergeCommand
         if ($mode === StrictAdditionalPropertiesMode::Fail && $tracker->evaluationsOn() === 0) {
             $this->writeStderr(
                 '[OpenAPI Strict Additional Properties] FATAL: --strict-additional-properties=fail requested but '
-                . "no worker exported strict additional-properties evaluations. Verify all workers use the v4/v5 sidecar envelope.\n",
+                . "no worker exported strict additional-properties evaluations. Run every worker on the same Gesso version as the merge step.\n",
             );
 
             return true;
