@@ -51,6 +51,9 @@ use function sprintf;
  */
 final class ArazzoWorkflowExecution
 {
+    // ponytail: fixed budget, make configurable if a real workflow needs more
+    private const MAX_STEP_EXECUTIONS = 1000;
+
     /** @var array<string, mixed> */
     private array $inputs = [];
 
@@ -119,20 +122,60 @@ final class ArazzoWorkflowExecution
 
         $requestValidator = new OpenApiRequestValidator();
         $responseValidator = new OpenApiResponseValidator(StrictRequiredTracker::current());
+        $positions = [];
+        foreach ($plan->steps as $position => $step) {
+            $positions[$step->stepId] = $position;
+        }
+
         $steps = [];
         $stepOutputs = [];
-        foreach ($plan->steps as $step) {
+        $firstFailure = null;
+        $executions = 0;
+        $index = 0;
+        while (isset($plan->steps[$index])) {
+            if (++$executions > self::MAX_STEP_EXECUTIONS) {
+                return $this->failed($steps, self::primary($firstFailure, new ArazzoFailure(ArazzoFailureKind::Workflow, null, sprintf(
+                    'Control-flow budget exhausted: %d step executions without reaching the end of the workflow (check goto actions for a loop).',
+                    self::MAX_STEP_EXECUTIONS,
+                ))));
+            }
+
+            $step = $plan->steps[$index];
             $result = $this->runStep($step, $stepOutputs, $dispatch, $requestValidator, $responseValidator);
             if ($result instanceof ArazzoFailure) {
-                return $this->failed($steps, $result);
+                return $this->failed($steps, self::primary($firstFailure, $result));
             }
 
             $steps[] = $result;
-            if ($result->failure !== null) {
-                return $this->failed($steps, $result->failure);
+            if ($result->failure === null) {
+                $stepOutputs[$step->stepId] = $result->outputs;
+            } else {
+                $firstFailure ??= $result->failure;
             }
 
-            $stepOutputs[$step->stepId] = $result->outputs;
+            // Workflow-kind failures (unevaluable expressions) are authoring errors, never routed.
+            $action = $result->failure?->kind === ArazzoFailureKind::Workflow
+                ? null
+                : $this->matchingAction($result->failure === null ? $step->onSuccess : $step->onFailure, $this->resultContext($result, $stepOutputs));
+            if ($action === null) {
+                if ($result->failure !== null) {
+                    return $this->failed($steps, $firstFailure);
+                }
+
+                $index++;
+
+                continue;
+            }
+
+            if ($action->type === 'end') {
+                break;
+            }
+
+            $index = $positions[(string) $action->stepId];
+        }
+
+        if ($firstFailure !== null) {
+            return $this->failed($steps, $firstFailure);
         }
 
         $context = new RuntimeExpressionContext(inputs: $this->inputs, stepOutputs: $stepOutputs);
@@ -222,6 +265,28 @@ final class ArazzoWorkflowExecution
     }
 
     /**
+     * The first failed step stays the run's failure; a later failure that
+     * ended the run after a goto recovery is kept as its trailing errors.
+     */
+    private static function primary(?ArazzoFailure $first, ArazzoFailure $terminal): ArazzoFailure
+    {
+        if ($first === null) {
+            return $terminal;
+        }
+
+        return new ArazzoFailure($first->kind, $first->stepId, $first->message, [
+            ...$first->errors,
+            sprintf(
+                'The run then stopped%s (%s): %s%s',
+                $terminal->stepId === null ? '' : sprintf(" at step '%s'", $terminal->stepId),
+                $terminal->kind->value,
+                $terminal->message,
+                $terminal->errors === [] ? '' : ' ' . implode('; ', $terminal->errors),
+            ),
+        ]);
+    }
+
+    /**
      * @param array<string, array<string, mixed>> $stepOutputs
      * @param callable(ArazzoStepRequest): mixed $dispatch
      *
@@ -246,16 +311,6 @@ final class ArazzoWorkflowExecution
             }
         }
 
-        if ($unbound !== []) {
-            return new ArazzoFailure(ArazzoFailureKind::RequestContract, $step->stepId, sprintf(
-                "Path parameter%s %s of '%s' %s no value; the request was not dispatched.",
-                count($unbound) === 1 ? '' : 's',
-                implode(', ', $unbound),
-                $step->pathTemplate,
-                count($unbound) === 1 ? 'has' : 'have',
-            ));
-        }
-
         $requestPath = RequestUriBuilder::path($step->pathTemplate, $request->pathParams);
         $requestValidation = $requestValidator->validate(
             $step->specName,
@@ -269,6 +324,20 @@ final class ArazzoWorkflowExecution
             null,
             RequestUriBuilder::query($request->query),
         );
+        if ($unbound !== []) {
+            return new ArazzoStepResult($step->stepId, $request, $requestValidation, failure: new ArazzoFailure(
+                ArazzoFailureKind::RequestContract,
+                $step->stepId,
+                sprintf(
+                    "Path parameter%s %s of '%s' %s no value; the request was not dispatched.",
+                    count($unbound) === 1 ? '' : 's',
+                    implode(', ', $unbound),
+                    $step->pathTemplate,
+                    count($unbound) === 1 ? 'has' : 'have',
+                ),
+            ));
+        }
+
         $matchedPath = $requestValidation->matchedPath();
         if ($matchedPath !== null && $matchedPath !== $step->pathTemplate) {
             return new ArazzoStepResult($step->stepId, $request, $requestValidation, failure: new ArazzoFailure(
@@ -376,6 +445,58 @@ final class ArazzoWorkflowExecution
         }
 
         return $partial($criteria, $outputs, null);
+    }
+
+    /**
+     * The first action whose criteria all hold; a criterion that cannot be
+     * evaluated does not hold.
+     *
+     * @param list<ArazzoAction> $actions
+     */
+    private function matchingAction(array $actions, RuntimeExpressionContext $context): ?ArazzoAction
+    {
+        foreach ($actions as $action) {
+            try {
+                $applies = true;
+                foreach ($action->criteria as $criterion) {
+                    $applies = $applies && $criterion->evaluate($context);
+                }
+            } catch (Throwable) {
+                $applies = false;
+            }
+
+            if ($applies) {
+                return $action;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param array<string, array<string, mixed>> $stepOutputs
+     */
+    private function resultContext(ArazzoStepResult $result, array $stepOutputs): RuntimeExpressionContext
+    {
+        $request = $result->request;
+
+        return new RuntimeExpressionContext(
+            url: $request->uri(),
+            method: $request->method,
+            requestHeaders: HeaderNormalizer::normalize($request->headers),
+            requestQuery: $request->query,
+            requestPath: $request->pathParams,
+            requestBody: $request->body,
+            response: $result->statusCode === null ? null : new ObservedResponse(
+                $result->statusCode,
+                $result->responseHeaders,
+                $result->responseHeaders['content-type'][0] ?? null,
+                '',
+                $result->responseBody ?? DecodedBody::absent(),
+            ),
+            inputs: $this->inputs,
+            stepOutputs: $stepOutputs,
+        );
     }
 
     private function buildRequest(ArazzoStepPlan $step, RuntimeExpressionContext $context): ArazzoFailure|ArazzoStepRequest

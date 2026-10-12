@@ -1,0 +1,70 @@
+{
+  "arazzo": "1.1.0",
+  "info": {
+    "title": "Actions",
+    "version": "1.0.0"
+  },
+  "sourceDescriptions": [
+    {
+      "name": "petstore",
+      "url": "../specs/arazzo-petstore.json"
+    }
+  ],
+  "workflows": [
+    {
+      "workflowId": "unsupported",
+      "steps": [
+        {
+          "stepId": "list",
+          "operationId": "listPets",
+          "onSuccess": [
+            {
+              "name": "elsewhere",
+              "type": "goto",
+              "workflowId": "other"
+            },
+            {
+              "name": "pattern",
+              "type": "end",
+              "criteria": [
+                {
+                  "condition": "^2",
+                  "context": "$statusCode",
+                  "type": "regex"
+                }
+              ]
+            }
+          ],
+          "onFailure": [
+            {
+              "name": "again",
+              "type": "retry",
+              "retryAfter": 1,
+              "retryLimit": 3
+            },
+            {
+              "reference": "$components.failureActions.missing"
+            },
+            {
+              "name": "nowhere",
+              "type": "goto",
+              "stepId": "missing"
+            }
+          ]
+        }
+      ],
+      "successActions": [
+        {
+          "name": "inherited",
+          "type": "end",
+          "criteria": [
+            {
+              "condition": "$statusCode == 200",
+              "context": "$workflows.other.outputs.x"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
