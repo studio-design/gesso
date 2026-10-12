@@ -555,4 +555,38 @@ class ResponseSchemaResolverTest extends TestCase
         $this->expectException(LogicException::class);
         $resolution->convertedSchema();
     }
+
+    #[Test]
+    public function resolve_resolves_a_form_urlencoded_response_schema(): void
+    {
+        // Issue #488: an urlencoded response is parsed and validated.
+        $resolution = $this->resolver->resolve('form-response', 'GET', '/form-response', 200, 'application/x-www-form-urlencoded');
+
+        $this->assertSame(ResponseSchemaResolutionOutcome::FormSchema, $resolution->outcome);
+        $this->assertSame('application/x-www-form-urlencoded', $resolution->contentType);
+        $this->assertSame(OpenApiVersion::V3_1, $resolution->version());
+        $this->assertArrayHasKey('properties', $resolution->convertedSchema());
+    }
+
+    #[Test]
+    public function resolve_keeps_a_multipart_response_schema_skipped(): void
+    {
+        $resolution = $this->resolver->resolve('form-response', 'GET', '/multipart-response', 200, 'multipart/form-data; boundary=x');
+
+        $this->assertSame(ResponseSchemaResolutionOutcome::NonJsonSchema, $resolution->outcome);
+        $this->assertStringContainsString('multipart', (string) $resolution->skipReason);
+    }
+
+    #[Test]
+    public function resolve_rejects_a_malformed_response_encoding_on_openapi_3_2(): void
+    {
+        // OAS 3.2 applies `encoding` to responses; 3.0 / 3.1 scope it to
+        // request bodies, so the same malformed node is ignored there.
+        $v32 = $this->resolver->resolve('form-response-3.2', 'GET', '/form-response-bad-encoding', 200, 'application/x-www-form-urlencoded');
+        $this->assertSame(ResponseSchemaResolutionOutcome::MalformedContent, $v32->outcome);
+        $this->assertStringContainsString('.encoding', (string) $v32->message);
+
+        $v31 = $this->resolver->resolve('form-response', 'GET', '/form-response-bad-encoding', 200, 'application/x-www-form-urlencoded');
+        $this->assertSame(ResponseSchemaResolutionOutcome::FormSchema, $v31->outcome);
+    }
 }

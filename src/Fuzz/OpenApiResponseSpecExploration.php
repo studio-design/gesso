@@ -303,6 +303,7 @@ final class OpenApiResponseSpecExploration
             ResponseSchemaResolutionOutcome::NoContent => 'the response declares no content block',
             ResponseSchemaResolutionOutcome::NoJsonContent => 'the response declares no JSON-compatible content type',
             ResponseSchemaResolutionOutcome::MissingSchema => 'the selected response media type declares no schema',
+            ResponseSchemaResolutionOutcome::FormSchema => 'form response bodies are validated but not synthesized',
             default => 'the response schema could not be resolved',
         };
 

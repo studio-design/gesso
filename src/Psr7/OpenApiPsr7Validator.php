@@ -558,7 +558,10 @@ final class OpenApiPsr7Validator
         ?string $contentType,
         string $subject,
     ): array {
-        if (!ContentTypeMatcher::isJsonOrUnspecified($contentType)) {
+        // A raw urlencoded body is handed over as-is; the response validator
+        // parses it (issue #488). Request-side form bodies never get here.
+        $isForm = ContentTypeMatcher::normalizeMediaType($contentType ?? '') === FormBodyDecoder::URLENCODED;
+        if (!$isForm && !ContentTypeMatcher::isJsonOrUnspecified($contentType)) {
             return ['body' => DecodedBody::absent(), 'errors' => []];
         }
 
@@ -569,6 +572,12 @@ final class OpenApiPsr7Validator
         }
 
         $content = $read['content'];
+
+        // An empty urlencoded body is a form with no fields, not a missing
+        // one; the schema decides whether that is acceptable.
+        if ($isForm) {
+            return ['body' => DecodedBody::present($content ?? ''), 'errors' => []];
+        }
 
         if ($content === null || $content === '') {
             return ['body' => DecodedBody::absent(), 'errors' => []];

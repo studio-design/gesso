@@ -386,6 +386,12 @@ final class OpenApiResponseValidator
         );
 
         if ($errors === []) {
+            // A form response arrives as the raw urlencoded string; the
+            // trackers observe the parsed fields the schema judged instead.
+            $observedBody = $resolution->outcome === ResponseSchemaResolutionOutcome::FormSchema
+                ? $bodyResult->formData
+                : $body->value;
+
             // Strict-required recording happens on the validated success path
             // so that conformance-failing or skipped responses do not
             // contribute to the "field appeared in every response" intersection.
@@ -400,7 +406,7 @@ final class OpenApiResponseValidator
                 $bodyResult->matchedContentType,
                 // The strict-required walker observes the decoded body value;
                 // an absent body carries `null` (issues #246 / #248).
-                $body->value,
+                $observedBody,
             );
             $this->maybeRecordStrictAdditionalProperties(
                 $responseSpec,
@@ -409,7 +415,7 @@ final class OpenApiResponseValidator
                 $matchedPath,
                 $statusCodeStr,
                 $bodyResult->matchedContentType,
-                $body->value,
+                $observedBody,
                 $version,
                 $jsonSchemaDialect,
             );
@@ -640,7 +646,8 @@ final class OpenApiResponseValidator
                 $resolution->contentType,
                 $resolution->skipReason,
             ),
-            ResponseSchemaResolutionOutcome::Resolved => $bodyDecodeFailed
+            ResponseSchemaResolutionOutcome::Resolved,
+            ResponseSchemaResolutionOutcome::FormSchema => $bodyDecodeFailed
                 ? new ResponseBodyValidationResult([], $resolution->contentType, 'body could not be decoded')
                 : $this->validateResolvedBody(
                     $specName,
