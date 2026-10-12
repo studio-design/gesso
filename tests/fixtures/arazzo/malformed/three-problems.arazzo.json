@@ -1,0 +1,18 @@
+{
+  "arazzo": "9",
+  "info": {
+    "title": "t"
+  },
+  "sourceDescriptions": [
+    {
+      "name": "petstore",
+      "url": "../../specs/arazzo-petstore.json"
+    }
+  ],
+  "workflows": [
+    {
+      "workflowId": "w",
+      "steps": []
+    }
+  ]
+}

@@ -367,6 +367,30 @@ final class OpenApiSpecLoader
     }
 
     /**
+     * @internal Arazzo source mapping. Canonical path load() would read for
+     * `$specName`, or the loader's own SpecFileNotFoundException.
+     */
+    public static function resolvedSpecFile(string $specName): string
+    {
+        return self::resolveSpecFile($specName)['path'];
+    }
+
+    /**
+     * @internal Arazzo source mapping. Spec name whose configured remote
+     * entry URL equals `$url` exactly, or null when none is configured.
+     */
+    public static function remoteSpecNameForUrl(string $url): ?string
+    {
+        foreach (self::$remoteSpecs as $specName => $source) {
+            if ($source->url === $url) {
+                return $specName;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Reject an absent, malformed, or unsupported `openapi` value before
      * resolving refs or running any endpoint assertions — version selection
      * changes schema semantics. This also makes PHPUnit extension bootstrap
