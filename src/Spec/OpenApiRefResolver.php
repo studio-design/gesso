@@ -377,6 +377,73 @@ final class OpenApiRefResolver
     }
 
     /**
+     * Minimal RFC 3986 reference resolution: combine a relative `$ref`
+     * with an HTTP(S) base URL. Handles absolute paths (`/foo`),
+     * dot-segment normalisation (`./`, `../`), and falls back to the
+     * raw ref when it's already an absolute URL.
+     *
+     * Not a full RFC 3986 implementation — query strings and fragments
+     * on the base URL are dropped before joining (matches what spec
+     * authors expect when their base is a JSON document URL). For
+     * pathological inputs the result is whatever `parse_url` produces;
+     * tests pin the common cases.
+     */
+    public static function resolveRelativeUrl(string $baseUrl, string $relativeRef): string
+    {
+        if (str_starts_with($relativeRef, 'http://') || str_starts_with($relativeRef, 'https://')) {
+            return $relativeRef;
+        }
+
+        $baseParts = parse_url($baseUrl);
+        if ($baseParts === false || !isset($baseParts['scheme'], $baseParts['host'])) {
+            return $relativeRef;
+        }
+
+        $scheme = $baseParts['scheme'];
+        $host = $baseParts['host'];
+        $port = isset($baseParts['port']) ? ':' . $baseParts['port'] : '';
+        $userInfo = isset($baseParts['user'])
+            ? $baseParts['user'] . (isset($baseParts['pass']) ? ':' . $baseParts['pass'] : '') . '@'
+            : '';
+
+        $authority = $userInfo . $host . $port;
+
+        if (str_starts_with($relativeRef, '/')) {
+            return sprintf('%s://%s%s', $scheme, $authority, $relativeRef);
+        }
+
+        $basePath = $baseParts['path'] ?? '/';
+        $baseDir = self::dirnameUrl($basePath);
+
+        $combined = $baseDir . '/' . $relativeRef;
+        $normalised = self::normaliseDotSegments($combined);
+
+        return sprintf('%s://%s%s', $scheme, $authority, $normalised);
+    }
+
+    /**
+     * Apply RFC 3986 §5.2.4 dot-segment removal. Implemented inline
+     * (rather than reaching for a library) because the rules are short
+     * and the surface area we hit is narrow: relative `./pet.yaml`,
+     * `../shared/error.json`, and combinations. Edge cases like a leading
+     * `..` past the root collapse to root, matching browser behaviour.
+     */
+    public static function normaliseDotSegments(string $path): string
+    {
+        $segments = explode('/', $path);
+        $resolved = [];
+        foreach ($segments as $segment) {
+            if ($segment === '..') {
+                array_pop($resolved);
+            } elseif ($segment !== '.' && $segment !== '') {
+                $resolved[] = $segment;
+            }
+        }
+
+        return '/' . implode('/', $resolved);
+    }
+
+    /**
      * The document's *effective* JSON Schema dialect, which is what decides
      * whether `$ref` siblings apply — not the OAS version: an OAS 3.1/3.2
      * document may declare `jsonSchemaDialect: draft-07`, and Draft 06/07
@@ -1425,51 +1492,6 @@ final class OpenApiRefResolver
         self::resolveExternalRef($node, $ref, $chain, $context, $documentCache, $targetIsSchema);
     }
 
-    /**
-     * Minimal RFC 3986 reference resolution: combine a relative `$ref`
-     * with an HTTP(S) base URL. Handles absolute paths (`/foo`),
-     * dot-segment normalisation (`./`, `../`), and falls back to the
-     * raw ref when it's already an absolute URL.
-     *
-     * Not a full RFC 3986 implementation — query strings and fragments
-     * on the base URL are dropped before joining (matches what spec
-     * authors expect when their base is a JSON document URL). For
-     * pathological inputs the result is whatever `parse_url` produces;
-     * tests pin the common cases.
-     */
-    private static function resolveRelativeUrl(string $baseUrl, string $relativeRef): string
-    {
-        if (str_starts_with($relativeRef, 'http://') || str_starts_with($relativeRef, 'https://')) {
-            return $relativeRef;
-        }
-
-        $baseParts = parse_url($baseUrl);
-        if ($baseParts === false || !isset($baseParts['scheme'], $baseParts['host'])) {
-            return $relativeRef;
-        }
-
-        $scheme = $baseParts['scheme'];
-        $host = $baseParts['host'];
-        $port = isset($baseParts['port']) ? ':' . $baseParts['port'] : '';
-        $userInfo = isset($baseParts['user'])
-            ? $baseParts['user'] . (isset($baseParts['pass']) ? ':' . $baseParts['pass'] : '') . '@'
-            : '';
-
-        $authority = $userInfo . $host . $port;
-
-        if (str_starts_with($relativeRef, '/')) {
-            return sprintf('%s://%s%s', $scheme, $authority, $relativeRef);
-        }
-
-        $basePath = $baseParts['path'] ?? '/';
-        $baseDir = self::dirnameUrl($basePath);
-
-        $combined = $baseDir . '/' . $relativeRef;
-        $normalised = self::normaliseDotSegments($combined);
-
-        return sprintf('%s://%s%s', $scheme, $authority, $normalised);
-    }
-
     private static function dirnameUrl(string $path): string
     {
         $lastSlash = strrpos($path, '/');
@@ -1478,28 +1500,6 @@ final class OpenApiRefResolver
         }
 
         return substr($path, 0, $lastSlash);
-    }
-
-    /**
-     * Apply RFC 3986 §5.2.4 dot-segment removal. Implemented inline
-     * (rather than reaching for a library) because the rules are short
-     * and the surface area we hit is narrow: relative `./pet.yaml`,
-     * `../shared/error.json`, and combinations. Edge cases like a leading
-     * `..` past the root collapse to root, matching browser behaviour.
-     */
-    private static function normaliseDotSegments(string $path): string
-    {
-        $segments = explode('/', $path);
-        $resolved = [];
-        foreach ($segments as $segment) {
-            if ($segment === '..') {
-                array_pop($resolved);
-            } elseif ($segment !== '.' && $segment !== '') {
-                $resolved[] = $segment;
-            }
-        }
-
-        return '/' . implode('/', $resolved);
     }
 
     /**

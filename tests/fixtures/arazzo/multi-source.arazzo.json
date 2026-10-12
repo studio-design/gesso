@@ -1,0 +1,67 @@
+{
+  "arazzo": "1.1.0",
+  "info": {
+    "title": "Multi source",
+    "version": "1.0.0"
+  },
+  "sourceDescriptions": [
+    {
+      "name": "petstore",
+      "url": "../specs/arazzo-petstore.json"
+    },
+    {
+      "name": "inventory",
+      "url": "../specs/arazzo-inventory.json"
+    }
+  ],
+  "workflows": [
+    {
+      "workflowId": "qualified",
+      "steps": [
+        {
+          "stepId": "a",
+          "operationId": "$sourceDescriptions.petstore.getPet",
+          "parameters": [
+            {
+              "name": "petId",
+              "in": "path",
+              "value": 1
+            }
+          ]
+        },
+        {
+          "stepId": "c",
+          "operationPath": "{$sourceDescriptions.inventory.url}#/paths/~1stock~1%7Bsku%7D/post",
+          "parameters": [
+            {
+              "name": "sku",
+              "in": "path",
+              "value": "abc"
+            }
+          ],
+          "requestBody": {
+            "payload": {
+              "quantity": 1
+            }
+          }
+        }
+      ]
+    },
+    {
+      "workflowId": "unqualified",
+      "steps": [
+        {
+          "stepId": "b",
+          "operationId": "getPet",
+          "parameters": [
+            {
+              "name": "petId",
+              "in": "path",
+              "value": 1
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "arazzo": "1.1.0",
+  "info": {
+    "title": "t",
+    "version": "1.0.0"
+  },
+  "sourceDescriptions": [],
+  "workflows": [
+    {
+      "workflowId": "w",
+      "steps": [
+        {
+          "stepId": "s",
+          "operationId": "listPets"
+        }
+      ]
+    }
+  ]
+}
