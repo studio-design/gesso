@@ -224,6 +224,39 @@ final class OpenApiFakeResponseTest extends TestCase
     }
 
     #[Test]
+    public function explicit_undeclared_media_type_is_rejected(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage("Media type 'application/json' is not declared");
+
+        // The validator's JSON fallback would otherwise answer with text/csv.
+        OpenApiFakeResponse::for('consumer-fake', 'GET', '/v1/export', 200, 'application/json');
+    }
+
+    #[Test]
+    public function explicit_declared_media_type_is_selected(): void
+    {
+        $fake = OpenApiFakeResponse::for('consumer-fake', 'GET', '/v1/pets/7', 404, 'application/problem+json');
+
+        $this->assertSame('application/problem+json', $fake->contentType());
+    }
+
+    #[Test]
+    public function malformed_header_entry_throws(): void
+    {
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('[response-header.X-Rate] header definition must be an object');
+
+        OpenApiFakeResponse::for('consumer-fake', 'GET', '/v1/broken-headers');
+    }
+
+    #[Test]
+    public function declared_content_length_is_left_to_the_client(): void
+    {
+        $this->assertArrayNotHasKey('Content-Length', OpenApiFakeResponse::for('consumer-fake', 'GET', '/v1/legacy')->headers());
+    }
+
+    #[Test]
     public function faking_records_no_coverage(): void
     {
         OpenApiFakeResponse::for('consumer-fake', 'GET', '/v1/pets/7');

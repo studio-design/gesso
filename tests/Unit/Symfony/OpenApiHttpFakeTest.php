@@ -87,6 +87,18 @@ final class OpenApiHttpFakeTest extends TestCase
     }
 
     #[Test]
+    public function urlencoded_body_is_validated_as_fields(): void
+    {
+        $client = new MockHttpClient(OpenApiHttpFake::respond('consumer-fake'));
+
+        $this->assertSame(204, $client->request('POST', 'https://pets.example/v1/pets/7/notes', ['body' => ['text' => 'hi']])->getStatusCode());
+
+        $this->expectException(AssertionFailedError::class);
+        $this->expectExceptionMessage('text');
+        $client->request('POST', 'https://pets.example/v1/pets/7/notes', ['body' => ['other' => 'hi']]);
+    }
+
+    #[Test]
     public function no_content_response_has_empty_body(): void
     {
         $response = (new MockHttpClient(OpenApiHttpFake::respond('consumer-fake')))

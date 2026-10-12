@@ -74,8 +74,9 @@ $client = new MockHttpClient(OpenApiHttpFake::respond('stripe'));
 $client = new MockHttpClient(OpenApiHttpFake::respond('stripe', ['POST /v1/charges' => 402]));
 ```
 
-Behaviour and failure output match the Laravel responder. JSON, form, and
-string bodies are read. The prepared request carries no cookie jar, so `apiKey`
+Behaviour and failure output match the Laravel responder. JSON and urlencoded
+form bodies are validated; a raw multipart body is reported as skipped, as for a
+PSR-7 client request. The prepared request carries no cookie jar, so `apiKey`
 security schemes declared `in: cookie` report as missing.
 
 ## Asserting hand-written fakes
@@ -152,10 +153,12 @@ The path may be the spec template or a concrete path. See the
   `[Gesso] fakerphp/faker is not installed` warning.
 - **Media type**: the JSON media type when one is declared, else the first one.
   `application/*` and `*/*` are sent as `application/json`; other ranges
-  (`image/*`) need a concrete `$contentType` and an example.
+  (`image/*`) need a concrete `$contentType` and an example. An explicit
+  `$contentType` must be declared for the response.
 - **Headers**: every declared response header, from its example or its schema,
   plus `Content-Type` when there is a body. `Content-Type` entries in the
-  `headers` map are ignored, as OpenAPI requires.
+  `headers` map are ignored, as OpenAPI requires; a declared `Content-Length`
+  is left to the client, which derives it from the body.
 
 ## Limits
 

@@ -14,6 +14,7 @@ use RuntimeException;
 use Studio\Gesso\Fuzz\FuzzGenerationException;
 use Studio\Gesso\Fuzz\OpenApiResponseExplorer;
 use Studio\Gesso\Fuzz\SchemaDataGenerator;
+use Studio\Gesso\Spec\OpenApiSchemaConverter;
 use Studio\Gesso\Validation\Response\ResponseSchemaResolutionOutcome;
 use Studio\Gesso\Validation\Response\ResponseSchemaResolver;
 use Studio\Gesso\Validation\Support\ContentTypeMatcher;
@@ -22,7 +23,9 @@ use function array_is_list;
 use function array_key_exists;
 use function array_key_first;
 use function array_map;
+use function get_debug_type;
 use function implode;
+use function in_array;
 use function is_array;
 use function is_bool;
 use function is_scalar;
@@ -85,6 +88,8 @@ final readonly class OpenApiFakeResponse
         }
 
         $matchedPath = (string) $operation->matchedPath;
+        $version = $operation->version ?? OpenApiVersion::V3_0;
+        $dialect = $operation->jsonSchemaDialect;
         $status ??= self::defaultStatus($operation->responses, $specName, $method, $matchedPath);
         $resolution = $resolver->resolveResponseSchema($operation, $status, $contentType);
 
@@ -96,7 +101,7 @@ final readonly class OpenApiFakeResponse
             case ResponseSchemaResolutionOutcome::MalformedContent:
                 throw new RuntimeException((string) $resolution->message);
             case ResponseSchemaResolutionOutcome::NoContent:
-                return new self($status, self::declaredHeaders($resolution->responseSpec ?? []), null, null, '');
+                return new self($status, self::declaredHeaders($resolution->responseSpec ?? [], $version, $dialect, $method, $matchedPath), null, null, '');
             default:
                 break;
         }
@@ -104,6 +109,19 @@ final readonly class OpenApiFakeResponse
         $responseSpec = $resolution->responseSpec ?? [];
         /** @var array<string, mixed> $content */
         $content = is_array($responseSpec['content'] ?? null) ? $responseSpec['content'] : [];
+        // The shared resolver falls back to the first JSON media type for an
+        // undeclared JSON Content-Type (a validation policy); an explicit
+        // fake selection must name a declared one.
+        if ($contentType !== null && ContentTypeMatcher::findContentTypeKey(ContentTypeMatcher::normalizeMediaType($contentType), $content) === null) {
+            throw new InvalidArgumentException(sprintf(
+                "Media type '%s' is not declared for %s %s %d in '%s' spec.",
+                $contentType,
+                strtoupper($method),
+                $matchedPath,
+                $status,
+                $specName,
+            ));
+        }
         $key = $resolution->contentType ?? (string) array_key_first($content);
         $wireType = self::wireType($key, $contentType);
 
@@ -126,7 +144,7 @@ final readonly class OpenApiFakeResponse
             $body = OpenApiResponseExplorer::explore($specName, $method, $path, $status, $contentType, 0)->cases[0]->body;
         }
 
-        $headers = self::declaredHeaders($responseSpec);
+        $headers = self::declaredHeaders($responseSpec, $version, $dialect, $method, $matchedPath);
         $headers['Content-Type'] = $wireType;
 
         $encoded = ContentTypeMatcher::isJsonContentType(ContentTypeMatcher::normalizeMediaType($wireType)) || !is_string($body)
@@ -262,19 +280,42 @@ final readonly class OpenApiFakeResponse
      * Every declared response header (not only the required ones, so client
      * code reading e.g. `X-RateLimit-Remaining` sees a value), from its
      * example or its schema. `Content-Type` entries are ignored, as OpenAPI
-     * requires; a header with neither example nor usable schema is left out.
+     * requires, and `Content-Length` is left to the client, which derives it
+     * from the body. A header with neither example nor usable schema is left
+     * out. Malformed nodes throw, as the response validator rejects them.
      *
      * @param array<array-key, mixed> $responseSpec
      *
      * @return array<string, string>
      */
-    private static function declaredHeaders(array $responseSpec): array
-    {
-        $declared = is_array($responseSpec['headers'] ?? null) ? $responseSpec['headers'] : [];
+    private static function declaredHeaders(
+        array $responseSpec,
+        OpenApiVersion $version,
+        ?string $dialect,
+        string $method,
+        string $matchedPath,
+    ): array {
+        $declared = $responseSpec['headers'] ?? [];
+        if (!is_array($declared)) {
+            throw new RuntimeException(sprintf(
+                "[response-header] spec 'headers' must be an object for %s %s; got %s.",
+                strtoupper($method),
+                $matchedPath,
+                get_debug_type($declared),
+            ));
+        }
+
         $headers = [];
         foreach ($declared as $name => $header) {
             $name = (string) $name;
-            if (!is_array($header) || strtolower(trim($name)) === 'content-type') {
+            if (!is_array($header)) {
+                throw new RuntimeException(sprintf(
+                    '[response-header.%s] header definition must be an object; got %s.',
+                    $name,
+                    get_debug_type($header),
+                ));
+            }
+            if (in_array(strtolower(trim($name)), ['content-type', 'content-length'], true)) {
                 continue;
             }
 
@@ -283,7 +324,11 @@ final readonly class OpenApiFakeResponse
                 try {
                     /** @var array<string, mixed> $schema */
                     $schema = $header['schema'];
-                    $value = SchemaDataGenerator::generate($schema, 1, 0)[0];
+                    $value = SchemaDataGenerator::generate(
+                        OpenApiSchemaConverter::convert($schema, $version, SchemaContext::Response, null, $dialect),
+                        1,
+                        0,
+                    )[0];
                     $found = true;
                 } catch (FuzzGenerationException|InvalidArgumentException) {
                     // An ungeneratable header schema leaves the header out

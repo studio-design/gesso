@@ -16,7 +16,6 @@ use Studio\Gesso\Internal\FailureOutput;
 use Studio\Gesso\OpenApiFakeResponse;
 use Studio\Gesso\OpenApiRequestValidator;
 use Studio\Gesso\Validation\Support\ContentTypeMatcher;
-use Studio\Gesso\Validation\Support\FormBodyDecoder;
 use Symfony\Component\HttpClient\Response\MockResponse;
 
 use function explode;
@@ -80,10 +79,10 @@ final class OpenApiHttpFake
                     } catch (JsonException $e) {
                         Assert::fail(sprintf('OpenAPI fake could not parse the outgoing %s %s JSON body: %s', $method, $path, $e->getMessage()));
                     }
-                } elseif (FormBodyDecoder::isFormMediaType(ContentTypeMatcher::normalizeMediaType((string) $contentType))) {
-                    parse_str($raw, $fields);
-                    $decoded = DecodedBody::present($fields);
                 } else {
+                    // Form and other bodies go to the core as raw bytes: it
+                    // parses urlencoded fields and reports raw multipart as
+                    // skipped, exactly as for a PSR-7 client request.
                     $decoded = DecodedBody::present($raw);
                 }
             }
