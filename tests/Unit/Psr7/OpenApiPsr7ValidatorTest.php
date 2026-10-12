@@ -897,4 +897,22 @@ final class OpenApiPsr7ValidatorTest extends TestCase
         $this->assertStringContainsString('not seekable', $issues[0]->message);
         $this->assertSame('application/json', $issues[0]->contentType);
     }
+
+    #[Test]
+    public function validates_a_form_urlencoded_response_body(): void
+    {
+        // Issue #488: the raw urlencoded response body is handed to the
+        // validator, which parses it against the declared schema.
+        $validator = new OpenApiPsr7Validator('form-response');
+        $request = new Request('GET', 'https://example.test/form-response');
+        $headers = ['Content-Type' => 'application/x-www-form-urlencoded'];
+
+        $valid = $validator->validateResponse($request, new Response(200, $headers, 'token=abc'));
+        $this->assertTrue($valid->isValid(), $valid->errorMessage());
+        $this->assertFalse($valid->isSkipped());
+
+        $invalid = $validator->validateResponse($request, new Response(200, $headers, 'token=abc&expires_in=soon'));
+        $this->assertFalse($invalid->isValid());
+        $this->assertStringContainsString('/expires_in', $invalid->errorMessage());
+    }
 }

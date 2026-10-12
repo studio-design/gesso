@@ -46,12 +46,18 @@ final class HttpFoundationBody
     }
 
     /**
-     * Decode only JSON; response content negotiation handles non-JSON types.
+     * Decode JSON and pass a raw urlencoded body through for the response
+     * validator to parse (issue #488); content negotiation handles every
+     * other non-JSON type.
      *
      * @throws JsonException
      */
     public static function json(string $content, string $contentType): DecodedBody
     {
+        if (ContentTypeMatcher::normalizeMediaType($contentType) === FormBodyDecoder::URLENCODED) {
+            return $content === '' ? DecodedBody::absent() : DecodedBody::present($content);
+        }
+
         if (!ContentTypeMatcher::isJsonOrUnspecified($contentType)) {
             return DecodedBody::absent();
         }

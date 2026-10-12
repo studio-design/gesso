@@ -66,8 +66,8 @@ final class BodyStructureInspector
                 }
             }
 
-            // Encoding is request-only. Sharing the walk must not widen the
-            // response validator's historical structural checks.
+            // Encoding is request-only before OpenAPI 3.2. Sharing the walk
+            // must not widen the 3.0 / 3.1 response structural checks.
             if (!$inspectEncoding || !array_key_exists('encoding', $mediaSpec)) {
                 continue;
             }

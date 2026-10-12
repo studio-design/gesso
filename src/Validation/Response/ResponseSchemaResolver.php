@@ -15,6 +15,7 @@ use Studio\Gesso\Validation\Support\BodyStructureInspector;
 use Studio\Gesso\Validation\Support\ContentTypeMatcher;
 use Studio\Gesso\Validation\Support\DiscriminatorContext;
 use Studio\Gesso\Validation\Support\DiscriminatorEnforcement;
+use Studio\Gesso\Validation\Support\FormBodyDecoder;
 use Studio\Gesso\Validation\Support\MalformedSpecNode;
 use Studio\Gesso\Validation\Support\PathDiagnosticsFormatter;
 use Studio\Gesso\Validation\Support\SpecResponseKeyResolver;
@@ -321,7 +322,10 @@ final class ResponseSchemaResolver
         $content = $responseSpec['content'];
 
         // Check every declared media type before content negotiation.
-        foreach (BodyStructureInspector::content($content, sprintf('responses[%s].content', $statusCode)) as $defect) {
+        // OAS 3.2 lets a response's form media type carry `encoding`; before
+        // that it "SHALL only apply to Request Body Objects".
+        $inspectEncoding = $operation->version === OpenApiVersion::V3_2;
+        foreach (BodyStructureInspector::content($content, sprintf('responses[%s].content', $statusCode), $inspectEncoding) as $defect) {
             return ResponseSchemaResolution::malformedContent($matchedPath, $matchedResponseKey, $responseSpec, sprintf(
                 "Malformed '%s' for %s %s in '%s' spec: expected object, got %s.",
                 $defect['location'],
@@ -366,14 +370,35 @@ final class ResponseSchemaResolver
                     // explicit `schema: null` was already rejected loudly by
                     // the per-media-type guard above.
                     if (isset($content[$matchedKey]['schema'])) {
+                        // A urlencoded body parses into fields the schema can
+                        // judge (issue #488); multipart would need a part parser.
+                        if (ContentTypeMatcher::normalizeMediaType($matchedKey) === FormBodyDecoder::URLENCODED) {
+                            /** @var array<string, mixed> $schema */
+                            $schema = $content[$matchedKey]['schema'];
+
+                            return ResponseSchemaResolution::formSchema(
+                                $matchedPath,
+                                $matchedResponseKey,
+                                $matchedKey,
+                                $responseSpec,
+                                $schema,
+                                $operation->version,
+                                $operation->jsonSchemaDialect,
+                                new DiscriminatorContext($operation->spec, DiscriminatorEnforcement::isEnabled()),
+                            );
+                        }
+
                         return ResponseSchemaResolution::nonJsonSchema(
                             $matchedPath,
                             $matchedResponseKey,
                             $matchedKey,
                             $responseSpec,
                             sprintf(
-                                "response Content-Type '%s' matched non-JSON spec media type '%s', "
-                                . 'which declares a schema this validator cannot evaluate (JSON Schema engine only)',
+                                $normalizedType === FormBodyDecoder::MULTIPART
+                                    ? "response Content-Type '%s' matched spec media type '%s', "
+                                      . 'which is a multipart response this validator does not reassemble into parts'
+                                    : "response Content-Type '%s' matched non-JSON spec media type '%s', "
+                                      . 'which declares a schema this validator cannot evaluate (JSON Schema engine only)',
                                 $normalizedType,
                                 $matchedKey,
                             ),
