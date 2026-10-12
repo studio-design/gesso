@@ -73,6 +73,8 @@ final class ArazzoWorkflowPreflightTest extends TestCase
         $this->assertSame('arazzo-inventory', $plan->steps[1]->specName);
         $this->assertSame('POST', $plan->steps[1]->method);
         $this->assertSame('/stock/{sku}', $plan->steps[1]->pathTemplate);
+        // An omitted requestBody.contentType comes from the target operation.
+        $this->assertSame('application/vnd.api+json', $plan->steps[1]->contentType);
     }
 
     #[Test]

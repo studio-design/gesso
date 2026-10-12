@@ -45,7 +45,8 @@ final class ArazzoSourceResolver
     public static function resolve(ArazzoDescription $description): array
     {
         $resolved = [];
-        foreach ($description->sources as $name => $source) {
+        foreach ($description->sources as $source) {
+            $name = $source->name;
             $at = sprintf('sourceDescriptions[%s]', $name);
             if ($source->type !== 'openapi') {
                 throw InvalidArazzoDescriptionException::single(
@@ -126,6 +127,14 @@ final class ArazzoSourceResolver
             $loaderFile = OpenApiSpecLoader::resolvedSpecFile($specName);
         } catch (SpecFileNotFoundException $e) {
             throw InvalidArazzoDescriptionException::single(ArazzoDescriptionReason::SourceNotFound, sprintf('%s: %s', $at, $e->getMessage()), $description->path, $e);
+        }
+
+        if (OpenApiSpecLoader::isRemoteSpecName($specName)) {
+            throw InvalidArazzoDescriptionException::single(
+                ArazzoDescriptionReason::AmbiguousSourceFile,
+                sprintf("%s: spec name '%s' is also a configured remoteSpecs entry, which the loader would use instead of '%s'.", $at, $specName, $real),
+                $description->path,
+            );
         }
 
         // The loader searches json, yaml, yml in order: `pet.yaml` beside

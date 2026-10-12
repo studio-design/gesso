@@ -13,6 +13,7 @@ use Studio\Gesso\Arazzo\InvalidArazzoDescriptionException;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 
 use function array_keys;
+use function array_values;
 use function dirname;
 use function realpath;
 
@@ -42,6 +43,17 @@ final class ArazzoDescriptionTest extends TestCase
         yield 'version 2' => ['malformed/version-2.arazzo.json', ArazzoDescriptionReason::UnsupportedVersion];
         yield 'not a mapping' => ['malformed/not-a-mapping.arazzo.json', ArazzoDescriptionReason::MalformedDocument];
         yield 'missing file' => ['missing.arazzo.json', ArazzoDescriptionReason::FileNotFound];
+    }
+
+    #[Test]
+    public function a_root_relative_self_replaces_the_path_and_numeric_names_stay_strings(): void
+    {
+        $description = ArazzoDescription::fromFile(self::DIR . '/self-root.arazzo.json');
+
+        $this->assertSame('/workflows/root.arazzo.json', $description->baseUri);
+        $source = array_values($description->sources)[0];
+        $this->assertSame('/workflows/specs/pets.json', $source->resolvedUrl);
+        $this->assertSame('123', $source->name);
     }
 
     #[Test]

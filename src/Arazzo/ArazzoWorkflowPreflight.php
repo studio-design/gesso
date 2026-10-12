@@ -92,6 +92,19 @@ final class ArazzoWorkflowPreflight
         return $plan;
     }
 
+    /**
+     * Arazzo: an omitted contentType is taken from the target operation.
+     *
+     * @param array<string, mixed> $operation
+     */
+    private static function operationJsonContentType(array $operation): string
+    {
+        $content = $operation['requestBody']['content'] ?? null;
+        $declared = is_array($content) ? ContentTypeMatcher::findJsonContentType($content) : null;
+
+        return $declared === null || str_contains($declared, '*') ? 'application/json' : $declared;
+    }
+
     private static function isSelector(mixed $value): bool
     {
         $members = ArazzoDescription::isObject($value) ? ArazzoDescription::members($value) : [];
@@ -173,7 +186,7 @@ final class ArazzoWorkflowPreflight
 
         $target = $this->target($at, $step);
         $parameters = $this->parameters($at . '.parameters', $step['parameters'] ?? null, $position);
-        [$contentType, $hasBody, $payload] = $this->requestBody($at . '.requestBody', $step['requestBody'] ?? null, $position);
+        [$contentType, $hasBody, $payload] = $this->requestBody($at . '.requestBody', $step['requestBody'] ?? null, $position, $target[1]['operation'] ?? []);
         $conditions = $this->criteria($at . '.successCriteria', $step, $position);
         $outputs = $this->outputs($at . '.outputs', $step['outputs'] ?? null, $position, workflowLevel: false);
 
@@ -415,9 +428,11 @@ final class ArazzoWorkflowPreflight
     }
 
     /**
+     * @param array<string, mixed> $operation the target operation, consulted when contentType is omitted
+     *
      * @return array{0: ?string, 1: bool, 2: mixed}
      */
-    private function requestBody(string $at, mixed $node, int $position): array
+    private function requestBody(string $at, mixed $node, int $position, array $operation): array
     {
         if ($node === null) {
             return [null, false, null];
@@ -448,7 +463,7 @@ final class ArazzoWorkflowPreflight
 
         $this->expressions($at . '.payload', $body['payload'], $position, recursive: true);
 
-        return [is_string($contentType) ? $contentType : 'application/json', true, $body['payload']];
+        return [is_string($contentType) ? $contentType : self::operationJsonContentType($operation), true, $body['payload']];
     }
 
     /**

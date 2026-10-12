@@ -38,7 +38,12 @@
               "in": "path",
               "value": "abc"
             }
-          ]
+          ],
+          "requestBody": {
+            "payload": {
+              "quantity": 1
+            }
+          }
         }
       ]
     },

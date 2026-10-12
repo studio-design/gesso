@@ -91,6 +91,29 @@ final class ArazzoSourceResolverTest extends TestCase
     }
 
     #[Test]
+    public function a_local_source_shadowed_by_a_remote_spec_name_is_rejected(): void
+    {
+        $client = new FakeHttpClient();
+        OpenApiSpecLoader::configure(
+            self::SPECS,
+            httpClient: $client,
+            requestFactory: new HttpFactory(),
+            allowRemoteRefs: true,
+            allowedRemoteRefHosts: ['workflows.example.test'],
+            remoteSpecs: ['arazzo-petstore' => 'https://workflows.example.test/other.json'],
+        );
+
+        try {
+            ArazzoSourceResolver::resolve(ArazzoDescription::fromFile(self::DIR . '/pet-purchase.arazzo.json'));
+            $this->fail('Expected InvalidArazzoDescriptionException.');
+        } catch (InvalidArazzoDescriptionException $e) {
+            $this->assertSame(ArazzoDescriptionReason::AmbiguousSourceFile, $e->reason);
+        }
+
+        $this->assertSame([], $client->sentUrls());
+    }
+
+    #[Test]
     public function a_configured_remote_source_loads_through_the_loader(): void
     {
         $url = 'https://workflows.example.test/petstore.json';

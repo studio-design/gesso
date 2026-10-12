@@ -391,6 +391,15 @@ final class OpenApiSpecLoader
     }
 
     /**
+     * @internal Arazzo source mapping. True when `$specName` is a configured
+     * remoteSpecs entry, which load() prefers over any local file.
+     */
+    public static function isRemoteSpecName(string $specName): bool
+    {
+        return isset(self::$remoteSpecs[$specName]);
+    }
+
+    /**
      * Reject an absent, malformed, or unsupported `openapi` value before
      * resolving refs or running any endpoint assertions — version selection
      * changes schema semantics. This also makes PHPUnit extension bootstrap

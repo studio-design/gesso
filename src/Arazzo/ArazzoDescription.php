@@ -181,7 +181,7 @@ final readonly class ArazzoDescription
             } elseif (preg_match('#^[A-Za-z][A-Za-z0-9+.-]*:#', $self) === 1) {
                 $baseUri = $self;
             } else {
-                $baseUri = OpenApiRefResolver::normaliseDotSegments(dirname($path) . '/' . $self);
+                $baseUri = OpenApiRefResolver::normaliseDotSegments(str_starts_with($self, '/') ? $self : dirname($path) . '/' . $self);
             }
         }
 
