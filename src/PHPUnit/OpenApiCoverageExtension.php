@@ -34,6 +34,7 @@ use Studio\Gesso\Exception\EnumDriftException;
 use Studio\Gesso\Exception\InvalidOpenApiSpecException;
 use Studio\Gesso\Exception\SpecFileNotFoundException;
 use Studio\Gesso\Internal\ArgvParser;
+use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\Internal\EnumScanner;
 use Studio\Gesso\Internal\LegacyIdentity;
 use Studio\Gesso\Internal\PartialRunDecision;
@@ -266,11 +267,10 @@ final class OpenApiCoverageExtension implements Extension
                 $stripPrefixes = $parameters->strings('strip_prefixes');
             }
 
-            OpenApiSpecLoader::configure(
-                $basePath,
-                $stripPrefixes,
-                enumBasePath: $enumBasePath,
-            );
+            OpenApiSpecLoader::configure($basePath, $stripPrefixes);
+            if ($enumBasePath !== null) {
+                OpenApiSpecLoader::setEnumBasePath($enumBasePath);
+            }
         } elseif ($parameters->has('strip_prefixes')) {
             OpenApiSpecLoader::setStripPrefixes($parameters->strings('strip_prefixes'));
         }
@@ -970,6 +970,13 @@ final class OpenApiCoverageExtension implements Extension
         if (!$parameters->has('enum_spec_base_path')) {
             return null;
         }
+
+        Deprecations::notice(
+            id: 'phpunit.enum_spec_base_path',
+            subject: "The PHPUnit config key 'enum_spec_base_path'",
+            replacement: 'none (delete the parameter: enum bindings resolve against components.schemas of the configured specs)',
+            removedIn: '3.0',
+        );
 
         $raw = trim($parameters->get('enum_spec_base_path'));
         if ($raw === '') {

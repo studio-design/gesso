@@ -19,6 +19,7 @@ use Studio\Gesso\Exception\EnumBindingReason;
 use Studio\Gesso\Exception\EnumDriftException;
 use Studio\Gesso\Exception\InvalidOpenApiSpecException;
 use Studio\Gesso\Exception\InvalidOpenApiSpecReason;
+use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\Internal\SpecPath;
 use Studio\Gesso\Internal\YamlAvailability;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
@@ -285,6 +286,12 @@ final class EnumDriftAsserter
                         specPath: self::COMPONENT_POINTER . $binding->component,
                     );
             } else {
+                Deprecations::notice(
+                    id: 'attribute.bound_to_open_api_enum.spec_path',
+                    subject: 'BoundToOpenApiEnum::$specPath (binding an enum to a spec file path)',
+                    replacement: "#[BoundToOpenApiEnum(component: 'Name')] (or no attribute when a components.schemas enum is named after the class)",
+                    removedIn: '3.0',
+                );
                 $label = (string) $binding->specPath;
                 $specValues = self::loadSpecEnumValues($fqcn, $label);
             }
