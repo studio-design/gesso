@@ -1754,6 +1754,37 @@ class StubsCommandTest extends TestCase
         $this->assertSame(['Version-controlThingsTest.php'], $this->generatedFiles());
     }
 
+    #[Test]
+    public function an_urlencoded_response_is_validated_but_a_multipart_one_is_not(): void
+    {
+        // Issue #488: an urlencoded response schema is enforced field by
+        // field, so its stub carries no skip note; multipart still does.
+        $schema = ['type' => 'object', 'properties' => ['a' => ['type' => 'integer']]];
+        $spec = $this->writeInlineSpec('formresponses', [
+            '/form' => ['get' => ['responses' => ['200' => ['content' => [
+                'application/x-www-form-urlencoded' => ['schema' => $schema],
+            ]]]]],
+            '/multipart' => ['get' => ['responses' => ['200' => ['content' => [
+                'multipart/form-data' => ['schema' => $schema],
+            ]]]]],
+        ]);
+
+        $this->command()->run(StubsCommand::parseArgv([
+            '--spec=' . $spec,
+            '--adapter=laravel',
+            '--output=' . $this->workDir . '/out',
+        ]));
+
+        $this->assertStringNotContainsString(
+            'can only validate as Skipped',
+            $this->unwrapComments((string) file_get_contents($this->workDir . '/out/GetFormTest.php')),
+        );
+        $this->assertStringContainsString(
+            'this response can only validate as Skipped',
+            $this->unwrapComments((string) file_get_contents($this->workDir . '/out/GetMultipartTest.php')),
+        );
+    }
+
     private function command(): StubsCommand
     {
         return new StubsCommand(

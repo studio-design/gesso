@@ -8,10 +8,14 @@ use LogicException;
 use stdClass;
 use Studio\Gesso\DecodedBody;
 use Studio\Gesso\OpenApiResponseValidator;
+use Studio\Gesso\OpenApiVersion;
+use Studio\Gesso\Validation\Support\FormBodyDecoder;
 use Studio\Gesso\Validation\Support\ObjectConverter;
 use Studio\Gesso\Validation\Support\SchemaValidatorRunner;
 use Studio\Gesso\Validation\Support\TypeCoercer;
 
+use function is_array;
+use function is_string;
 use function sprintf;
 
 /**
@@ -24,8 +28,8 @@ final class ResponseBodyValidator
     ) {}
 
     /**
-     * Validate the decoded response body against a `Resolved` response-schema
-     * resolution. Content negotiation, media-type guards, and schema
+     * Validate the decoded response body against a `Resolved` (JSON) or
+     * `FormSchema` (urlencoded) response-schema resolution. Content negotiation, media-type guards, and schema
      * selection happen upstream in {@see ResponseSchemaResolver}; every
      * non-`Resolved` outcome is mapped to a result by
      * {@see OpenApiResponseValidator} before this validator is invoked —
@@ -46,12 +50,13 @@ final class ResponseBodyValidator
     ): ResponseBodyValidationResult {
         $jsonContentType = $resolution->contentType;
         $schema = $resolution->schema;
-        if ($resolution->outcome !== ResponseSchemaResolutionOutcome::Resolved ||
+        $isForm = $resolution->outcome === ResponseSchemaResolutionOutcome::FormSchema;
+        if (($resolution->outcome !== ResponseSchemaResolutionOutcome::Resolved && !$isForm) ||
             $jsonContentType === null ||
             $schema === null
         ) {
             throw new LogicException(sprintf(
-                'ResponseBodyValidator requires a Resolved response schema resolution; got %s.',
+                'ResponseBodyValidator requires a Resolved or FormSchema response schema resolution; got %s.',
                 $resolution->outcome->name,
             ));
         }
@@ -66,10 +71,21 @@ final class ResponseBodyValidator
         if (!$responseBody->present) {
             return new ResponseBodyValidationResult(
                 [
-                    "Response body is empty but {$method} {$matchedPath} (status {$statusCode}) defines a JSON-compatible response schema in '{$specName}' spec.",
+                    sprintf(
+                        "Response body is empty but %s %s (status %d) defines a %s response schema in '%s' spec.",
+                        $method,
+                        $matchedPath,
+                        $statusCode,
+                        $isForm ? 'form' : 'JSON-compatible',
+                        $specName,
+                    ),
                 ],
                 $jsonContentType,
             );
+        }
+
+        if ($isForm) {
+            return $this->validateFormBody($resolution, $jsonContentType, $schema, $responseBody);
         }
 
         $bodyValue = $responseBody->value;
@@ -93,5 +109,59 @@ final class ResponseBodyValidator
         }
 
         return new ResponseBodyValidationResult($errors, $jsonContentType, violations: $violations);
+    }
+
+    /**
+     * Parse an urlencoded response body (the adapters hand over the raw
+     * string; direct callers may pass a field map) and validate it with the
+     * request-side form rules, `writeOnly` forbidden (issue #488).
+     *
+     * @param array<string, mixed> $schema
+     */
+    private function validateFormBody(
+        ResponseSchemaResolution $resolution,
+        string $contentType,
+        array $schema,
+        DecodedBody $responseBody,
+    ): ResponseBodyValidationResult {
+        $fields = FormBodyDecoder::toFieldMap($responseBody->value, FormBodyDecoder::URLENCODED);
+        if ($fields === null) {
+            return new ResponseBodyValidationResult([], $contentType, sprintf(
+                "response Content-Type matched spec media type '%s', but the form body was not available as a "
+                . 'parsed field map or raw urlencoded string, so its schema was not applied',
+                $contentType,
+            ));
+        }
+
+        $version = $resolution->version();
+        // OAS 3.0 / 3.1: the Media Type `encoding` "SHALL only apply to
+        // Request Body Objects"; 3.2 applies it to any form media type.
+        $media = $resolution->responseSpec['content'][$contentType] ?? null;
+        /** @var array<string, mixed> $encoding */
+        $encoding = $version === OpenApiVersion::V3_2 && is_array($media) && is_array($media['encoding'] ?? null)
+            ? $media['encoding']
+            : [];
+        $rawValues = is_string($responseBody->value) ? FormBodyDecoder::rawUrlencodedValues($responseBody->value) : [];
+
+        // urlencoded never yields unverifiable parts or header skips — both
+        // are multipart-only — so only the data and errors matter here.
+        [$data, $errors] = FormBodyDecoder::prepare(
+            $fields,
+            $schema,
+            $encoding,
+            FormBodyDecoder::URLENCODED,
+            $version ?? OpenApiVersion::V3_1,
+            $rawValues,
+        );
+
+        $violations = $this->runner->validateStructured(
+            ObjectConverter::convert($resolution->convertedSchema()),
+            ObjectConverter::convert($data === [] ? new stdClass() : $data),
+        );
+        foreach ($violations as $violation) {
+            $errors[] = "[{$violation->displayPath()}] {$violation->message}";
+        }
+
+        return new ResponseBodyValidationResult($errors, $contentType, violations: $violations);
     }
 }

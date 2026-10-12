@@ -1,0 +1,104 @@
+{
+    "openapi": "3.1.0",
+    "info": {
+        "title": "Form response fixture",
+        "version": "1.0.0"
+    },
+    "paths": {
+        "/form-response-styled": {
+            "get": {
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "application/x-www-form-urlencoded": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "tags": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "string",
+                                                "maxLength": 1
+                                            }
+                                        }
+                                    }
+                                },
+                                "encoding": {
+                                    "tags": {
+                                        "style": "form",
+                                        "explode": false
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/form-response": {
+            "get": {
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "application/x-www-form-urlencoded": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "token"
+                                    ],
+                                    "properties": {
+                                        "token": {
+                                            "type": "string"
+                                        },
+                                        "expires_in": {
+                                            "type": "integer"
+                                        },
+                                        "secret": {
+                                            "type": "string",
+                                            "writeOnly": true
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/multipart-response": {
+            "get": {
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "multipart/form-data": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/form-response-bad-encoding": {
+            "get": {
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "application/x-www-form-urlencoded": {
+                                "schema": {
+                                    "type": "object"
+                                },
+                                "encoding": "oops"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

@@ -110,4 +110,15 @@ final class HttpFoundationBodyTest extends TestCase
     {
         $this->assertFalse(HttpFoundationBody::json('<a/>', 'application/xml')->present);
     }
+
+    #[Test]
+    public function json_passes_a_raw_urlencoded_response_through(): void
+    {
+        // Issue #488: the response validator parses the raw form body.
+        $body = HttpFoundationBody::json('token=abc', 'application/x-www-form-urlencoded; charset=utf-8');
+        $this->assertTrue($body->present);
+        $this->assertSame('token=abc', $body->value);
+        $this->assertFalse(HttpFoundationBody::json('', 'application/x-www-form-urlencoded')->present);
+        $this->assertFalse(HttpFoundationBody::json('plain', 'text/plain')->present);
+    }
 }

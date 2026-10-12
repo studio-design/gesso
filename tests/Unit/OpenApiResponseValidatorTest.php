@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Tests\Unit;
 
+use const JSON_THROW_ON_ERROR;
+
 use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
@@ -12,6 +14,7 @@ use stdClass;
 use Studio\Gesso\DecodedBody;
 use Studio\Gesso\Exception\InvalidOpenApiSpecException;
 use Studio\Gesso\OpenApiResponseValidator;
+use Studio\Gesso\OpenApiValidationResult;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 
@@ -20,6 +23,7 @@ use function array_map;
 use function array_values;
 use function count;
 use function implode;
+use function json_encode;
 use function range;
 use function restore_error_handler;
 use function set_error_handler;
@@ -2911,5 +2915,114 @@ class OpenApiResponseValidatorTest extends TestCase
             $result->errors()[0],
         );
         $this->assertStringContainsString('expected object, got list', $result->errors()[0]);
+    }
+
+    #[Test]
+    public function form_urlencoded_response_body_is_validated(): void
+    {
+        // Issue #488: an urlencoded response with a schema is real coverage.
+        $result = $this->validateForm('/form-response', 'token=abc&expires_in=3600');
+
+        $this->assertTrue($result->isValid(), $result->errorMessage());
+        $this->assertFalse($result->isSkipped());
+        $this->assertSame('application/x-www-form-urlencoded', $result->matchedContentType());
+    }
+
+    #[Test]
+    public function form_urlencoded_response_body_reports_a_type_violation(): void
+    {
+        $result = $this->validateForm('/form-response', 'token=abc&expires_in=soon');
+
+        $this->assertFalse($result->isValid());
+        $this->assertStringContainsString('/expires_in', $result->errorMessage());
+    }
+
+    #[Test]
+    public function form_urlencoded_response_body_reports_a_missing_required_field(): void
+    {
+        $result = $this->validateForm('/form-response', 'expires_in=1');
+
+        $this->assertFalse($result->isValid());
+        $this->assertStringContainsString('token', $result->errorMessage());
+    }
+
+    #[Test]
+    public function form_urlencoded_response_body_rejects_a_write_only_field(): void
+    {
+        $result = $this->validateForm('/form-response', 'token=a&secret=x');
+
+        $this->assertFalse($result->isValid());
+        $this->assertStringContainsString('secret', $result->errorMessage());
+    }
+
+    #[Test]
+    public function form_urlencoded_response_accepts_a_parsed_field_map(): void
+    {
+        $result = $this->validateForm('/form-response', ['token' => 'abc', 'expires_in' => '5']);
+
+        $this->assertTrue($result->isValid(), $result->errorMessage());
+        $this->assertFalse($result->isSkipped());
+    }
+
+    #[Test]
+    public function empty_form_urlencoded_response_body_fails(): void
+    {
+        $result = $this->validateForm('/form-response', DecodedBody::absent());
+
+        $this->assertFalse($result->isValid());
+        $this->assertStringContainsString('form response schema', $result->errorMessage());
+    }
+
+    #[Test]
+    public function multipart_response_with_a_schema_stays_skipped(): void
+    {
+        $result = $this->validator->validate('form-response', 'GET', '/multipart-response', 200, 'raw', 'multipart/form-data; boundary=x');
+
+        $this->assertTrue($result->isSkipped());
+        $this->assertStringContainsString('multipart', (string) $result->skipReason());
+    }
+
+    #[Test]
+    public function form_urlencoded_response_feeds_the_strict_required_tracker(): void
+    {
+        // The trackers read keys, so they get the parsed field map, not the
+        // raw string (which would look like a body with no properties).
+        $tracker = new StrictRequiredTracker();
+        $validator = new OpenApiResponseValidator(strictRequiredTracker: $tracker);
+
+        $result = $validator->validate('form-response', 'GET', '/form-response', 200, 'token=abc&expires_in=1', 'application/x-www-form-urlencoded');
+
+        $this->assertTrue($result->isValid(), $result->errorMessage());
+        $observations = $tracker->getObservationsOn('form-response');
+        $this->assertArrayHasKey('GET /form-response', $observations);
+        $this->assertStringContainsString('expires_in', json_encode($observations, JSON_THROW_ON_ERROR));
+    }
+
+    #[Test]
+    public function form_urlencoded_response_decodes_a_json_part(): void
+    {
+        $this->assertTrue($this->validateForm('/form-response-json-part', 'address=%7B%22city%22%3A%22X%22%7D', 'form-response-3.2')->isValid());
+
+        $missingCity = $this->validateForm('/form-response-json-part', 'address=%7B%7D', 'form-response-3.2');
+        $this->assertFalse($missingCity->isValid());
+        $this->assertStringContainsString('city', $missingCity->errorMessage());
+    }
+
+    #[Test]
+    public function form_urlencoded_response_applies_encoding_only_on_openapi_3_2(): void
+    {
+        // OAS 3.2 applies a response's `encoding` (here a non-exploded array);
+        // 3.0 / 3.1 scope it to request bodies, so `a,b` stays one item.
+        $v32 = $this->validateForm('/form-response-styled', 'tags=a,b', 'form-response-3.2');
+        $this->assertTrue($v32->isValid(), $v32->errorMessage());
+
+        $v31 = $this->validateForm('/form-response-styled', 'tags=a,b');
+        $this->assertFalse($v31->isValid());
+        $this->assertStringContainsString('/tags/0', $v31->errorMessage());
+    }
+
+    private function validateForm(string $path, mixed $body, string $spec = 'form-response'): OpenApiValidationResult
+    {
+        return $this->validator->validate($spec, 'GET', $path, 200, $body, 'application/x-www-form-urlencoded');
     }
 }

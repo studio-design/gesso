@@ -491,7 +491,7 @@ final class DoctorCommand
                     if (str_starts_with((string) $status, 'x-')) {
                         continue;
                     }
-                    if ($this->inspectResponseDefinition($response, $declared['method'], (string) $path, (string) $status, $label, $issues)) {
+                    if ($this->inspectResponseDefinition($response, $declared['method'], (string) $path, (string) $status, $label, $issues, $version === OpenApiVersion::V3_2)) {
                         $responseCount++;
                     }
                 }
@@ -514,6 +514,7 @@ final class DoctorCommand
         string $status,
         string $label,
         array &$issues,
+        bool $inspectEncoding,
     ): bool {
         $location = sprintf('responses[%s]', $status);
         if (MalformedSpecNode::isMalformed($response)) {
@@ -534,7 +535,7 @@ final class DoctorCommand
         }
 
         $valid = true;
-        foreach (BodyStructureInspector::content($content, $location . '.content') as $defect) {
+        foreach (BodyStructureInspector::content($content, $location . '.content', $inspectEncoding) as $defect) {
             $issues[] = $this->malformedStructureIssue($label, $method, $path, $defect['location'], $defect['node']);
             $valid = false;
         }
