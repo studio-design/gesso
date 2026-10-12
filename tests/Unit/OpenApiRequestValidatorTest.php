@@ -1050,6 +1050,22 @@ class OpenApiRequestValidatorTest extends TestCase
         $this->assertStringContainsString('expected object, got list', $result->errors()[0]);
     }
 
+    #[Test]
+    public function malformed_responses_map_does_not_fail_request_validation(): void
+    {
+        // The `responses` guard is response-only: routing the request path
+        // through the shared operation resolution must not add this failure
+        // (ADR 0004 reduction rule).
+        foreach (['/scalar-responses-map', '/null-responses-map', '/list-responses-map'] as $path) {
+            $result = $this->validator->validate('malformed', 'GET', $path, [], [], null);
+
+            $this->assertTrue($result->isValid(), $path);
+            $this->assertFalse($result->isSkipped(), $path);
+            $this->assertSame([], $result->errors(), $path);
+            $this->assertSame($path, $result->matchedPath(), $path);
+        }
+    }
+
     // ========================================
     // Constructor validation (mirrors response validator)
     // ========================================
