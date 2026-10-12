@@ -18,9 +18,11 @@ use Studio\Gesso\Validation\Request\RequestBodyValidator;
 use Studio\Gesso\Validation\Support\SchemaValidatorRunner;
 
 use function array_column;
+use function chdir;
 use function explode;
 use function file_get_contents;
 use function file_put_contents;
+use function getcwd;
 use function glob;
 use function json_decode;
 use function json_encode;
@@ -954,6 +956,22 @@ class DoctorCommandTest extends TestCase
         $this->assertSame(['/api'], $config->strings('spec.strip_prefixes'));
         // No XML escaping leaks into the PHP source.
         $this->assertSame(['A&B'], $config->strings('validation.acknowledged_unvalidatable_schemes'));
+    }
+
+    #[Test]
+    public function emit_config_writes_a_portable_base_path_for_specs_in_the_working_directory(): void
+    {
+        $this->writeSpec('front.json', $this->validSpec('/pets'));
+        $cwd = (string) getcwd();
+        chdir($this->workDir);
+
+        try {
+            [, $stdout] = $this->runDoctor(['specs' => ['front.json'], 'emit_config' => true]);
+        } finally {
+            chdir($cwd);
+        }
+
+        $this->assertStringContainsString("'base_path' => '.',", $stdout);
     }
 
     #[Test]

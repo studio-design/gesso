@@ -864,7 +864,7 @@ final class DoctorCommand
 
     /**
      * The one spec directory every entry document shares, relative to the cwd
-     * when it lies below it; `null` when there are no specs, or when they live
+     * when it is the cwd or lies below it (a portable path); `null` when there are no specs, or when they live
      * in different directories and no `--local-ref-root` names a common one.
      *
      * @param list<SpecResult> $specs
@@ -883,8 +883,14 @@ final class DoctorCommand
             }
         }
         $cwd = getcwd();
-        if ($cwd !== false && str_starts_with($basePath, rtrim($cwd, '/') . '/')) {
-            $basePath = substr($basePath, strlen(rtrim($cwd, '/')) + 1);
+        if ($cwd !== false) {
+            $cwd = rtrim($cwd, '/');
+            if ($basePath === $cwd) {
+                return '.';
+            }
+            if (str_starts_with($basePath, $cwd . '/')) {
+                $basePath = substr($basePath, strlen($cwd) + 1);
+            }
         }
 
         return $basePath;
