@@ -24,6 +24,11 @@ use function str_starts_with;
  */
 trait CliIo
 {
+    // Shared by every subcommand: 0 success, 1 "the answer is no", 2 usage error.
+    public const EXIT_OK = 0;
+    public const EXIT_FAILURE = 1;
+    public const EXIT_USAGE = 2;
+
     private function absolutise(string $path): string
     {
         if (str_starts_with($path, '/')) {
@@ -35,12 +40,15 @@ trait CliIo
         return realpath($absolute) ?: $absolute;
     }
 
-    /** Usage errors exit 2 on every subcommand (their `EXIT_USAGE`). */
-    private function usageError(string $message): int
+    /**
+     * Report a usage error on stderr, followed by the usage text, and return `EXIT_USAGE`.
+     * `$prefix` exists for doctor's pinned diagnostic prefix; everything else uses the default.
+     */
+    private function usageError(string $message, string $prefix = '[Gesso]'): int
     {
-        $this->writeStderr("[Gesso] {$message}\n\n" . self::usage($this->invocation));
+        $this->writeStderr("{$prefix} {$message}\n\n" . self::usage($this->invocation));
 
-        return 2;
+        return self::EXIT_USAGE;
     }
 
     private function writeStdout(string $message): void

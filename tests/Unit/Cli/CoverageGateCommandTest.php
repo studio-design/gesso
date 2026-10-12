@@ -58,7 +58,6 @@ class CoverageGateCommandTest extends TestCase
                 'format' => 'markdown',
             ],
             CoverageGateCommand::parseArgv([
-                'coverage:gate',
                 '--base-spec=base.json',
                 '--spec=openapi.json',
                 '--coverage=build/coverage.json',
@@ -356,6 +355,16 @@ class CoverageGateCommandTest extends TestCase
         $this->assertStringContainsString('| Operation | Change | Response | Coverage |', $this->stdout);
         $this->assertStringContainsString('| `DELETE /pets/{id}` | added | `204 (no content)` | UNCOVERED |', $this->stdout);
         $this->assertStringContainsString('| `GET /legacy` | removed | — | — |', $this->stdout);
+    }
+
+    #[Test]
+    public function a_stray_positional_token_is_a_usage_error(): void
+    {
+        $options = CoverageGateCommand::parseArgv(['coverage:gate', '--base-spec=base.json', '--spec=openapi.json', '--coverage=c.json']);
+        $this->assertSame(['coverage:gate'], $options['invalid_options']);
+
+        $this->assertSame(CoverageGateCommand::EXIT_USAGE, $this->command()->run($options));
+        $this->assertStringStartsWith('[Gesso] Unknown argument(s): coverage:gate', $this->stderr);
     }
 
     #[Test]
