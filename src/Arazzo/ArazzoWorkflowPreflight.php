@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Arazzo;
 
+use const PHP_INT_MAX;
+
 use InvalidArgumentException;
 use stdClass;
 use Studio\Gesso\Internal\RuntimeExpression;
@@ -778,8 +780,9 @@ final class ArazzoWorkflowPreflight
             if (array_key_exists('context', $criterion)) {
                 if (!RuntimeExpression::isExpression($criterion['context'])) {
                     $this->problem(ArazzoDescriptionReason::InvalidField, '%s.context: must be a runtime expression.', $criterionAt);
-                } elseif ($position !== null) {
-                    $this->expressions($criterionAt . '.context', $criterion['context'], $position, recursive: false);
+                } else {
+                    // Deferred (workflow-level) contexts still get family and step checks; context does not affect simple evaluation.
+                    $this->expressions($criterionAt . '.context', $criterion['context'], $position ?? PHP_INT_MAX, recursive: false);
                 }
             }
 

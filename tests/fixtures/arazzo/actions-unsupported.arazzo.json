@@ -52,6 +52,18 @@
             }
           ]
         }
+      ],
+      "successActions": [
+        {
+          "name": "inherited",
+          "type": "end",
+          "criteria": [
+            {
+              "condition": "$statusCode == 200",
+              "context": "$workflows.other.outputs.x"
+            }
+          ]
+        }
       ]
     }
   ]
