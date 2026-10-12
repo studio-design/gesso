@@ -92,29 +92,110 @@ final class ContractNamespaceAliasIntegrationTest extends TestCase
 
         echo json_encode($out, JSON_THROW_ON_ERROR);
         PHP;
-    private ?string $script = null;
+
+    /**
+     * PHP checks parameter/return types and instanceof without autoloading,
+     * so these only pass if the alias is declared with its canonical class.
+     */
+    private const string TYPED_CONSUMER = <<<'PHP'
+        <?php
+
+        declare(strict_types=1);
+
+        require $argv[1];
+
+        $notices = [];
+        set_error_handler(static function (int $errno, string $errstr) use (&$notices): bool {
+            if ($errno !== E_USER_DEPRECATED) {
+                return false;
+            }
+            $notices[] = $errstr;
+
+            return true;
+        });
+
+        \Studio\Gesso\Spec\OpenApiSpecLoader::configure($argv[2]);
+
+        $plan = (static fn(): \Studio\Gesso\Fuzz\ContractCheckPlan => \Studio\Gesso\Fuzz\OpenApiContractChecks::run('contract-checks-root-security'))();
+        $enum = (static fn(): \Studio\Gesso\Fuzz\ContractCheck => \Studio\Gesso\Contract\ContractCheck::IgnoredAuth)();
+
+        echo json_encode([
+            'plan' => $plan::class,
+            'enum' => $enum->value,
+            'instanceof' => \Studio\Gesso\Contract\ContractCheck::UnsupportedMethod instanceof \Studio\Gesso\Fuzz\ContractCheck,
+            'notices' => $notices,
+        ], JSON_THROW_ON_ERROR);
+        PHP;
+
+    /** @var list<string> */
+    private array $temporaryFiles = [];
 
     protected function tearDown(): void
     {
-        if ($this->script !== null) {
-            unlink($this->script);
-            $this->script = null;
+        foreach ($this->temporaryFiles as $temporaryFile) {
+            unlink($temporaryFile);
         }
 
+        $this->temporaryFiles = [];
         parent::tearDown();
     }
 
     #[Test]
     public function legacy_fuzz_names_resolve_lazily_through_one_notice_each(): void
     {
+        $out = $this->runConsumer(self::CONSUMER);
+
+        $this->assertSame(array_fill_keys(self::SHORT_NAMES, false), $out['lazy']);
+        $this->assertSame(0, $out['deprecations_before']);
+        $this->assertSame(array_fill_keys(self::SHORT_NAMES, true), $out['resolved']);
+
+        $canonical = [];
+        foreach (self::SHORT_NAMES as $name) {
+            $canonical[$name] = 'Studio\\Gesso\\Contract\\' . $name;
+        }
+        $this->assertSame($canonical, $out['reflection']);
+
+        $this->assertTrue($out['identity']);
+        $this->assertSame('ignored_auth', $out['value']);
+        $this->assertSame(['explored_case' => true, 'unknown' => false], $out['untouched']);
+        $this->assertSame(array_map(self::notice(...), self::SHORT_NAMES), $out['notices']);
+        $this->assertSame(['laravel' => false, 'symfony' => false, 'pest' => false], $out['adapters_loaded']);
+    }
+
+    #[Test]
+    public function legacy_type_hints_accept_objects_loaded_through_the_new_names(): void
+    {
+        $out = $this->runConsumer(self::TYPED_CONSUMER);
+
+        $this->assertSame('Studio\\Gesso\\Contract\\ContractCheckPlan', $out['plan']);
+        $this->assertSame('ignored_auth', $out['enum']);
+        $this->assertTrue($out['instanceof']);
+        // Best-effort by design: ContractCheckPlan and ContractCheck were loaded
+        // through their canonical names, so only the entry point announces.
+        $this->assertSame([self::notice('OpenApiContractChecks')], $out['notices']);
+    }
+
+    private static function notice(string $name): string
+    {
+        return sprintf(
+            '[Gesso deprecation] Studio\\Gesso\\Fuzz\\%1$s is deprecated. Use Studio\\Gesso\\Contract\\%1$s instead. It is removed in Gesso 3.0. See UPGRADING.md#deprecations.',
+            $name,
+        );
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function runConsumer(string $consumer): array
+    {
         $script = tempnam(sys_get_temp_dir(), 'gesso-contract-alias-');
         $this->assertIsString($script);
-        $this->script = $script;
-        $this->assertNotFalse(file_put_contents($script, self::CONSUMER));
+        $this->temporaryFiles[] = $script;
+        $this->assertNotFalse(file_put_contents($script, $consumer));
 
         $root = __DIR__ . '/../..';
         $process = proc_open(
-            [PHP_BINARY, $script, $root . '/vendor/autoload.php'],
+            [PHP_BINARY, $script, $root . '/vendor/autoload.php', $root . '/tests/fixtures/specs'],
             [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
             $pipes,
             $root,
@@ -131,32 +212,8 @@ final class ContractNamespaceAliasIntegrationTest extends TestCase
         $this->assertSame('', $stderr);
 
         $out = json_decode($stdout, true, flags: JSON_THROW_ON_ERROR);
+        $this->assertIsArray($out);
 
-        $this->assertSame(array_fill_keys(self::SHORT_NAMES, false), $out['lazy']);
-        $this->assertSame(0, $out['deprecations_before']);
-        $this->assertSame(array_fill_keys(self::SHORT_NAMES, true), $out['resolved']);
-
-        $canonical = [];
-        foreach (self::SHORT_NAMES as $name) {
-            $canonical[$name] = 'Studio\\Gesso\\Contract\\' . $name;
-        }
-        $this->assertSame($canonical, $out['reflection']);
-
-        $this->assertTrue($out['identity']);
-        $this->assertSame('ignored_auth', $out['value']);
-        $this->assertSame(['explored_case' => true, 'unknown' => false], $out['untouched']);
-
-        $this->assertSame(
-            array_map(
-                static fn(string $name): string => sprintf(
-                    '[Gesso deprecation] Studio\\Gesso\\Fuzz\\%1$s is deprecated. Use Studio\\Gesso\\Contract\\%1$s instead. It is removed in Gesso 3.0. See UPGRADING.md#deprecations.',
-                    $name,
-                ),
-                self::SHORT_NAMES,
-            ),
-            $out['notices'],
-        );
-
-        $this->assertSame(['laravel' => false, 'symfony' => false, 'pest' => false], $out['adapters_loaded']);
+        return $out;
     }
 }
