@@ -58,6 +58,19 @@ final class LinkFollowerTest extends TestCase
     }
 
     #[Test]
+    public function linked_headers_replace_generated_headers_case_insensitively(): void
+    {
+        $link = ['operationId' => 'getPet', 'parameters' => ['path.petId' => 1, 'header.x-token' => 'new']];
+        $target = $this->follower->target('Token', $link);
+        $parent = new ExploredCase(null, [], [], [], HttpMethod::POST, '/pets');
+        $response = ObservedResponse::from(['status' => 201, 'headers' => [], 'body' => '']);
+
+        $child = $this->follower->apply('Token', $link, $target, $this->follower->generate('Token', $target, 1)->withHeaders(['X-Token' => 'old']), $parent, $response);
+
+        $this->assertSame(['x-token' => 'new'], $child->headers);
+    }
+
+    #[Test]
     public function generation_is_seed_deterministic(): void
     {
         $target = $this->follower->target('GetPet', $this->follower->links('POST', '/pets', 201)['GetPet']);

@@ -210,6 +210,17 @@
           }
         }
       }
+    },
+    "/null-links": {
+      "post": {
+        "operationId": "nullLinks",
+        "responses": {
+          "201": {
+            "description": "Created",
+            "links": null
+          }
+        }
+      }
     }
   }
 }

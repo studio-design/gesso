@@ -259,7 +259,12 @@ root case and the link names, so chains replay deterministically), applies
 and asserted through the same hooks, inside the root operation's
 `setUp`/`authenticate`/`tearDown` scope, and its own links are followed up to
 `maxDepth` hops (a `(method, path)` already in the chain is dispatched but not
-expanded again).
+expanded again). Explicit exclusions (`excludeMethods()`, `excludePaths()`,
+`excludeTags()`, `excludeOperations()`, and deprecated operations unless
+`includeDeprecated()`) also apply to link targets; inclusion filters only
+select the chain roots. Sibling links targeting `DELETE` run last, and a pair is
+only checked when no other state-changing follow-up ran between the parent
+response and the follow-up.
 
 `followLinksUsing()` receives whatever `dispatchUsing()` returned and must
 return a PSR-7 response or `['status' => int, 'headers' => array, 'body' => string]`.

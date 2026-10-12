@@ -12,11 +12,13 @@ use Studio\Gesso\Spec\OpenApiOperationResolver;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Throwable;
 
+use function array_intersect;
 use function count;
 use function crc32;
 use function implode;
 use function in_array;
 use function sprintf;
+use function usort;
 
 /**
  * Fluent, process-local whole-spec exploration plan.
@@ -46,6 +48,9 @@ final class OpenApiSpecExploration
     private $observeResponse;
     private int $maxLinkDepth = 0;
     private int $followedLinks = 0;
+
+    /** Non-read follow-ups dispatched so far; a lifecycle check is only sound when none ran between parent and child. */
+    private int $linkMutations = 0;
     private ?LinkFollower $linkFollower = null;
 
     public function __construct(
@@ -240,7 +245,7 @@ final class OpenApiSpecExploration
                 if ($this->linkFollower !== null) {
                     $observed = $this->observe($response, $operation, $case, $caseIndex);
                     $root = sprintf('1. %s %s → %d (case %d, operation seed %d)', $case->method->value, $case->uri(), $observed->statusCode, $caseIndex, $operation->seed);
-                    $this->followLinks($this->linkFollower, $operation, $caseIndex, $case, $observed, 1, [$root], [$case->method->value . ' ' . $case->matchedPath]);
+                    $this->followLinks($this->linkFollower, $operation, $caseIndex, $case, $observed, 1, [$root], [$case->method->value . ' ' . $case->matchedPath], $this->linkMutations);
                 }
             }
         });
@@ -259,10 +264,24 @@ final class OpenApiSpecExploration
         int $depth,
         array $chain,
         array $visited,
+        int $mutationsAtParent,
     ): void {
+        $followUps = [];
         foreach ($follower->links($parent->method->value, $parent->matchedPath, $parentResponse->statusCode) as $name => $link) {
             $target = $follower->target($name, $link);
             $operation = $this->operationFromDeclaration($target['path'], $target['method'], $target['operation']);
+            if (!$this->allowsLinkTarget($operation)) {
+                continue;
+            }
+
+            $followUps[] = [$name, $link, $target, $operation];
+        }
+
+        // Destructive follow-ups run last so read-backs observe the parent's state.
+        usort($followUps, static fn(array $a, array $b): int => ($a[2]['method'] === 'DELETE') <=> ($b[2]['method'] === 'DELETE'));
+
+        foreach ($followUps as [$name, $link, $target, $operation]) {
+            $checkable = $this->linkMutations === $mutationsAtParent;
             $seed = crc32(implode("\0", [(string) $root->seed, (string) $caseIndex, ...$chain, $name])) & 0x7fffffff;
             $child = $follower->generate($name, $target, $seed);
 
@@ -287,17 +306,36 @@ final class OpenApiSpecExploration
             }
 
             $this->followedLinks++;
+            if ($child->method !== HttpMethod::GET && $child->method !== HttpMethod::QUERY) {
+                $this->linkMutations++;
+            }
+
             $chainSoFar = [...$chain, self::chainLine(count($chain) + 1, $name, $child, (string) $observed->statusCode)];
-            $check = LinkFollower::check($parent->method, $parentResponse->statusCode, $child->method, $observed->statusCode);
+            // A sibling branch that changed state since the parent response makes the pair unjudgeable.
+            $check = $checkable ? LinkFollower::check($parent->method, $parentResponse->statusCode, $child->method, $observed->statusCode) : null;
             if ($check !== null) {
                 throw new RuntimeException($this->chainFailureMessage(sprintf("Link chain check '%s' failed.", $check->value), $root, $caseIndex, $chainSoFar, $child));
             }
 
             $key = $child->method->value . ' ' . $child->matchedPath;
             if ($depth < $this->maxLinkDepth && !in_array($key, $visited, true)) {
-                $this->followLinks($follower, $root, $caseIndex, $child, $observed, $depth + 1, $chainSoFar, [...$visited, $key]);
+                $this->followLinks($follower, $root, $caseIndex, $child, $observed, $depth + 1, $chainSoFar, [...$visited, $key], $this->linkMutations);
             }
         }
+    }
+
+    /**
+     * Explicit exclusions (and the default deprecated exclusion) are safety
+     * boundaries, so links never reach an excluded operation. Inclusion
+     * filters only select the chain roots.
+     */
+    private function allowsLinkTarget(ExploredOperation $operation): bool
+    {
+        return ($this->includeDeprecated || !$operation->deprecated) &&
+            array_intersect($this->excludedTags, $operation->tags) === [] &&
+            !in_array($operation->method, $this->excludedMethods, true) &&
+            !in_array($operation->path, $this->excludedPaths, true) &&
+            !in_array($operation->operationId, $this->excludedOperationIds, true);
     }
 
     private function observe(mixed $response, ExploredOperation $operation, ExploredCase $case, int $caseIndex): ObservedResponse

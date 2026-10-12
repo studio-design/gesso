@@ -53,6 +53,7 @@ final class OpenApiSpecExplorationLinksTest extends TestCase
         yield 'unknown operationId' => ['unknown', "Link 'Unknown' names an unknown operationId"];
         yield 'external operationRef' => ['external', "Link 'External': external operationRef is not supported"];
         yield 'undispatchable method' => ['options', "Link 'Options': target method OPTIONS is not dispatchable"];
+        yield 'explicit null links' => ['nullLinks', "Malformed 'links' on POST /null-links response 201"];
         yield 'ambiguous bare parameter' => ['ambiguous', "Link 'Ambiguous': parameter 'id' is ambiguous (path, query)"];
     }
 
@@ -103,6 +104,28 @@ final class OpenApiSpecExplorationLinksTest extends TestCase
             $this->assertStringContainsString("Link chain check 'ensure_resource_availability' failed.", $e->getMessage());
             $this->assertStringContainsString('2. [GetPet] GET /pets/99 → 404', $e->getMessage());
         }
+    }
+
+    #[Test]
+    public function excluded_operations_are_never_reached_through_links(): void
+    {
+        $summary = $this->plan(maxDepth: 3)->excludeMethods(['DELETE'])->assertResponses();
+
+        $this->assertSame(['POST /pets', 'GET /pets/1'], $this->dispatched);
+        $this->assertSame(1, $summary->followedLinks);
+    }
+
+    #[Test]
+    public function destructive_sibling_links_run_last_and_never_fake_a_lifecycle_failure(): void
+    {
+        $summary = OpenApiSpecExplorer::explore('links-chain-reversed', 1, 7)
+            ->includeOperations(['createPet'])
+            ->dispatchUsing($this->server(...))
+            ->followLinksUsing(static fn(ResponseInterface $response): ResponseInterface => $response, 1)
+            ->assertResponses();
+
+        $this->assertSame(['POST /pets', 'GET /pets/1', 'DELETE /pets/1'], $this->dispatched);
+        $this->assertSame(2, $summary->followedLinks);
     }
 
     #[Test]

@@ -19,6 +19,7 @@ use Studio\Gesso\Validation\Support\MalformedSpecNode;
 use Studio\Gesso\Validation\Support\SpecResponseKeyResolver;
 
 use function array_key_exists;
+use function array_keys;
 use function array_map;
 use function array_merge;
 use function array_unique;
@@ -32,6 +33,7 @@ use function is_string;
 use function rawurldecode;
 use function sprintf;
 use function str_starts_with;
+use function strcasecmp;
 use function strtolower;
 use function substr;
 
@@ -89,7 +91,7 @@ final class LinkFollower
         $responses = $this->operation($method, $path)['operation']['responses'] ?? [];
         $key = is_array($responses) ? SpecResponseKeyResolver::resolve((string) $status, $responses) : null;
         $response = $key === null ? null : $responses[$key];
-        $links = is_array($response) ? ($response['links'] ?? []) : [];
+        $links = is_array($response) && array_key_exists('links', $response) ? $response['links'] : [];
         if (MalformedSpecNode::isMalformed($links)) {
             throw new RuntimeException(sprintf(
                 "Malformed 'links' on %s %s response %s in '%s' spec: expected object, got %s.",
@@ -196,7 +198,7 @@ final class LinkFollower
             response: $response,
         );
 
-        $parameters = $link['parameters'] ?? [];
+        $parameters = array_key_exists('parameters', $link) ? $link['parameters'] : [];
         if (MalformedSpecNode::isMalformed($parameters)) {
             throw new RuntimeException(sprintf("Link '%s': 'parameters' must be an object.", $name));
         }
@@ -210,12 +212,36 @@ final class LinkFollower
         $child = $child
             ->withPathParams(array_merge($child->pathParams, $overrides['path']))
             ->withQuery(array_merge($child->query, $overrides['query']))
-            ->withHeaders(array_merge($child->headers, $overrides['header']))
+            ->withHeaders(self::mergeHeaders($child->headers, $overrides['header']))
             ->withCookies(array_merge($child->cookies, $overrides['cookie']));
 
         return array_key_exists('requestBody', $link)
             ? $child->withBody($this->evaluate($name, 'requestBody', $link['requestBody'], $context))
             : $child;
+    }
+
+    /**
+     * Header names are case-insensitive: an authored link value replaces a
+     * generated header of any spelling instead of being sent beside it.
+     *
+     * @param array<string, mixed> $headers
+     * @param array<string, mixed> $overrides
+     *
+     * @return array<string, mixed>
+     */
+    private static function mergeHeaders(array $headers, array $overrides): array
+    {
+        foreach ($overrides as $name => $value) {
+            foreach (array_keys($headers) as $existing) {
+                if (strcasecmp($existing, $name) === 0) {
+                    unset($headers[$existing]);
+                }
+            }
+
+            $headers[$name] = $value;
+        }
+
+        return $headers;
     }
 
     /**
