@@ -154,14 +154,12 @@ final class ResponseBodyValidator
             $rawValues,
         );
 
-        $violations = $this->runner->validateStructured(
-            ObjectConverter::convert($resolution->convertedSchema()),
-            ObjectConverter::convert($data === [] ? new stdClass() : $data),
-        );
+        $dataObject = ObjectConverter::convert($data === [] ? new stdClass() : $data);
+        $violations = $this->runner->validateStructured(ObjectConverter::convert($resolution->convertedSchema()), $dataObject);
         foreach ($violations as $violation) {
             $errors[] = "[{$violation->displayPath()}] {$violation->message}";
         }
 
-        return new ResponseBodyValidationResult($errors, $contentType, violations: $violations);
+        return new ResponseBodyValidationResult($errors, $contentType, violations: $violations, formData: $dataObject);
     }
 }
