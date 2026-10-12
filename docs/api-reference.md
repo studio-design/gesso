@@ -278,6 +278,12 @@ errors throw `JsonException`; a null value encodes as `'null'`, so omit content
 separately for no-body operations or missing-body probes. `bodyAsArray()` remains
 a lossy compatibility view, not the recommended HTTP dispatch path.
 
+Call `followLinksUsing(fn ($dispatched) => $psr7Response, maxDepth: 2)` to
+follow explicit response `links` from each valid case into seeded follow-up
+requests, checked for the `LinkChainCheck` cases `use_after_free` and
+`ensure_resource_availability`; `SpecExplorationSummary::$followedLinks`
+counts them. See [Follow response links](fuzzing.md#follow-response-links).
+
 Call `negativeCases([4])` to switch a whole-spec plan to targeted invalid
 inputs and carry explicit expected response classes on each `ExploredCase`.
 For one operation, use

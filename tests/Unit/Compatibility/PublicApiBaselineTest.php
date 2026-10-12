@@ -30,12 +30,15 @@ use Studio\Gesso\Fuzz\ContractCheckSummary;
 use Studio\Gesso\Fuzz\ExploredCase;
 use Studio\Gesso\Fuzz\GeneratedResponseCase;
 use Studio\Gesso\Fuzz\GeneratedResponseCases;
+use Studio\Gesso\Fuzz\LinkChainCheck;
 use Studio\Gesso\Fuzz\OpenApiContractChecks;
 use Studio\Gesso\Fuzz\OpenApiResponseExplorer;
 use Studio\Gesso\Fuzz\OpenApiResponseSpecExploration;
+use Studio\Gesso\Fuzz\OpenApiSpecExploration;
 use Studio\Gesso\Fuzz\ResponseSpecExplorationFailure;
 use Studio\Gesso\Fuzz\ResponseSpecExplorationSkip;
 use Studio\Gesso\Fuzz\ResponseSpecExplorationSummary;
+use Studio\Gesso\Fuzz\SpecExplorationSummary;
 use Studio\Gesso\JsonValidationResultRenderer;
 use Studio\Gesso\Laravel\Commands\OpenApiRoutesCommand;
 use Studio\Gesso\Laravel\ExploresOpenApiEndpoint;
@@ -1873,6 +1876,16 @@ final class PublicApiBaselineTest extends TestCase
         // its exact signature stays pinned by
         // public_php_api_matches_the_v2_baseline().
         $expected[UploadedPart::class] = $actual[UploadedPart::class];
+        // #400: opt-in explicit-Links chains during whole-spec exploration —
+        // one additive plan method, one optional trailing summary parameter
+        // and the chain-check enum.
+        $expected[OpenApiSpecExploration::class]['methods']['followLinksUsing'] = $actual[OpenApiSpecExploration::class]['methods']['followLinksUsing'];
+        ksort($expected[OpenApiSpecExploration::class]['methods']);
+        $expected[SpecExplorationSummary::class]['constructor'] = $actual[SpecExplorationSummary::class]['constructor'];
+        $expected[SpecExplorationSummary::class]['methods']['__construct'] = $actual[SpecExplorationSummary::class]['methods']['__construct'];
+        $expected[SpecExplorationSummary::class]['properties']['followedLinks'] = $actual[SpecExplorationSummary::class]['properties']['followedLinks'];
+        ksort($expected[SpecExplorationSummary::class]['properties']);
+        $expected[LinkChainCheck::class] = $actual[LinkChainCheck::class];
 
         ksort($expected);
 

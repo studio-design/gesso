@@ -4023,6 +4023,98 @@
             }
         }
     },
+    "Studio\\Gesso\\Fuzz\\LinkChainCheck": {
+        "kind": "enum",
+        "final": true,
+        "abstract": false,
+        "readonly": false,
+        "instantiable": false,
+        "constructor": null,
+        "parent": null,
+        "interfaces": [
+            "BackedEnum",
+            "UnitEnum"
+        ],
+        "traits": [],
+        "attributes": [],
+        "backing_type": "string",
+        "cases": {
+            "UseAfterFree": "use_after_free",
+            "EnsureResourceAvailability": "ensure_resource_availability"
+        },
+        "constants": [],
+        "properties": {
+            "name": {
+                "type": "string",
+                "static": false,
+                "readonly": true,
+                "default": {
+                    "unavailable": true
+                }
+            },
+            "value": {
+                "type": "string",
+                "static": false,
+                "readonly": true,
+                "default": {
+                    "unavailable": true
+                }
+            }
+        },
+        "methods": {
+            "cases": {
+                "static": true,
+                "final": false,
+                "abstract": false,
+                "returns_reference": false,
+                "return_type": "array",
+                "attributes": [],
+                "parameters": []
+            },
+            "from": {
+                "static": true,
+                "final": false,
+                "abstract": false,
+                "returns_reference": false,
+                "return_type": "static",
+                "attributes": [],
+                "parameters": [
+                    {
+                        "name": "value",
+                        "type": "string|int",
+                        "optional": false,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": {
+                            "unavailable": true
+                        },
+                        "attributes": []
+                    }
+                ]
+            },
+            "tryFrom": {
+                "static": true,
+                "final": false,
+                "abstract": false,
+                "returns_reference": false,
+                "return_type": "?static",
+                "attributes": [],
+                "parameters": [
+                    {
+                        "name": "value",
+                        "type": "string|int",
+                        "optional": false,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": {
+                            "unavailable": true
+                        },
+                        "attributes": []
+                    }
+                ]
+            }
+        }
+    },
     "Studio\\Gesso\\Fuzz\\OpenApiContractChecks": {
         "kind": "class",
         "final": true,
@@ -4970,6 +5062,36 @@
                     }
                 ]
             },
+            "followLinksUsing": {
+                "static": false,
+                "final": false,
+                "abstract": false,
+                "returns_reference": false,
+                "return_type": "self",
+                "attributes": [],
+                "parameters": [
+                    {
+                        "name": "observe",
+                        "type": "callable",
+                        "optional": false,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": {
+                            "unavailable": true
+                        },
+                        "attributes": []
+                    },
+                    {
+                        "name": "maxDepth",
+                        "type": "int",
+                        "optional": true,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": 2,
+                        "attributes": []
+                    }
+                ]
+            },
             "includeDeprecated": {
                 "static": false,
                 "final": false,
@@ -5792,6 +5914,14 @@
                     "unavailable": true
                 }
             },
+            "followedLinks": {
+                "type": "int",
+                "static": false,
+                "readonly": true,
+                "default": {
+                    "unavailable": true
+                }
+            },
             "operations": {
                 "type": "array",
                 "static": false,
@@ -5860,6 +5990,15 @@
                         "default": {
                             "unavailable": true
                         },
+                        "attributes": []
+                    },
+                    {
+                        "name": "followedLinks",
+                        "type": "int",
+                        "optional": true,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": 0,
                         "attributes": []
                     }
                 ]
