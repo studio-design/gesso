@@ -122,6 +122,10 @@ The v1.9 writer emits a sidecar envelope with `envelopeVersion: 2`, containing
 coverage state `version: 1` and strict-required state `version: 2`. The v1.9
 reader accepts that envelope and the legacy bare coverage state `version: 1`.
 It recognises `part-*.json` sidecars and `failed-*.json` failure markers.
+Since issue #596 the 2.x writer appends `.<run-id>` before `.json` when a run
+id is known (`part-<token>-<pid>.<run-id>.json`). Every 2.x reader still matches
+the same globs and treats a name without the suffix as "no run id", so the
+envelope version is unchanged and mixed fleets stay mergeable.
 
 The baseline-generation protocol introduced `envelopeVersion: 3` — the v2
 shape plus a `baseline` key holding the violation-baseline document
