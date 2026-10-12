@@ -23,6 +23,7 @@ use Studio\Gesso\Validation\Support\DiscriminatorContext;
 use Studio\Gesso\Validation\Support\FormBodyDecoder;
 use Studio\Gesso\Validation\Support\MalformedSpecNode;
 use Studio\Gesso\Validation\Support\ObjectConverter;
+use Studio\Gesso\Validation\Support\QueryStyleDeserializer;
 use Studio\Gesso\Validation\Support\SchemaValidatorRunner;
 use Studio\Gesso\Validation\Support\SchemaViolation;
 use Studio\Gesso\Validation\Support\TypeCoercer;
@@ -686,7 +687,20 @@ final class RequestBodyValidator
         /** @var array<string, mixed> $encoding */
         $encoding = is_array($mediaTypeSpec['encoding'] ?? null) ? $mediaTypeSpec['encoding'] : [];
 
-        [$data, $errors, $unverifiable] = FormBodyDecoder::prepare($fields, $schema, $encoding, $normalizedType);
+        // A raw urlencoded body still holds the percent-encoded values, so a
+        // non-exploded array splits before decoding, like a raw query string.
+        $rawValues = is_string($requestBody->value) && $normalizedType === FormBodyDecoder::URLENCODED
+            ? QueryStyleDeserializer::parseRawValues($requestBody->value)
+            : [];
+
+        [$data, $errors, $unverifiable, $headerSkips] = FormBodyDecoder::prepare(
+            $fields,
+            $schema,
+            $encoding,
+            $normalizedType,
+            $version,
+            $rawValues,
+        );
 
         $jsonSchema = OpenApiSchemaConverter::convert($schema, $version, SchemaContext::Request, $discriminatorContext, $jsonSchemaDialect);
 
@@ -713,7 +727,9 @@ final class RequestBodyValidator
         //    schema with the part read differently tells the two apart: what
         //    both readings agree on is a real violation, what they disagree
         //    on hinges on a Content-Type the wire did not preserve.
-        $reasons = array_column($unverifiable, 'reason');
+        // Header skips stay out of $unverifiable: those parts' values are
+        // readable, so violations inside them are real and need no re-read.
+        $reasons = [...array_column($unverifiable, 'reason'), ...$headerSkips];
 
         if ($unverifiable !== []) {
             $violations = self::withoutViolationsInside($violations, array_keys($unverifiable));
@@ -764,7 +780,7 @@ final class RequestBodyValidator
         // A genuine contradiction outranks the skip; only an otherwise clean
         // body is reported as unchecked, so the unverifiable part is never
         // counted as a pass either.
-        if ($errors === [] && $unverifiable !== []) {
+        if ($errors === [] && ($unverifiable !== [] || $headerSkips !== [])) {
             return new RequestBodyValidationResult(
                 [],
                 sprintf(
