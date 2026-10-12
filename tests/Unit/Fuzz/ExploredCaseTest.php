@@ -14,6 +14,9 @@ use Studio\Gesso\Fuzz\ExploredCase;
 use Studio\Gesso\Fuzz\FailureReducer;
 use Studio\Gesso\HttpMethod;
 
+use function http_build_query;
+use function parse_str;
+
 class ExploredCaseTest extends TestCase
 {
     #[Test]
@@ -219,6 +222,69 @@ class ExploredCaseTest extends TestCase
         );
 
         $this->assertSame(['trigger' => true], $reduced->body);
+    }
+
+    #[Test]
+    public function defaults_the_body_media_type_to_json(): void
+    {
+        $case = new ExploredCase(['a' => 1.0], [], [], [], HttpMethod::POST, '/things');
+
+        $this->assertSame('application/json', $case->contentType);
+        $this->assertSame($case->bodyAsJson(), $case->bodyAsString());
+
+        $form = new ExploredCase(['a' => 1], [], [], [], HttpMethod::POST, '/things', contentType: 'application/x-www-form-urlencoded');
+        $this->assertSame('application/x-www-form-urlencoded', $form->withBody(['b' => 2])->contentType);
+    }
+
+    #[Test]
+    public function serializes_a_form_body_as_urlencoded_fields(): void
+    {
+        // Issue #498: values travel as strings, objects JSON-encoded (the
+        // Encoding Object default), and null is an absent field.
+        $case = new ExploredCase(
+            body: ['grant_type' => 'client_credentials', 'ttl' => 30, 'remember' => true, 'scopes' => ['a', 'b'], 'meta' => ['k' => 'v'], 'nothing' => null],
+            query: [],
+            headers: [],
+            pathParams: [],
+            method: HttpMethod::POST,
+            matchedPath: '/oauth/token',
+            contentType: 'application/x-www-form-urlencoded',
+        );
+
+        $fields = ['grant_type' => 'client_credentials', 'ttl' => '30', 'remember' => 'true', 'scopes' => ['a', 'b'], 'meta' => '{"k":"v"}'];
+        $this->assertSame($fields, $case->bodyAsFormFields());
+        $this->assertSame(http_build_query($fields), $case->bodyAsString());
+        parse_str($case->bodyAsString(), $parsed);
+        $this->assertSame($fields, $parsed);
+    }
+
+    #[Test]
+    public function renders_the_form_media_type_in_the_curl_snippet(): void
+    {
+        $case = new ExploredCase(['grant_type' => 'x', 'client_secret' => 's3cr3t'], [], [], [], HttpMethod::POST, '/oauth/token', contentType: 'application/x-www-form-urlencoded');
+
+        $snippet = $case->curlSnippet();
+        $this->assertStringContainsString("-H 'Content-Type: application/x-www-form-urlencoded'", $snippet);
+        $this->assertStringContainsString("--data 'grant_type=x&client_secret=<redacted>'", $snippet);
+        $this->assertStringContainsString('client_secret=s3cr3t', $case->curlSnippet(redactSensitiveHeaders: false));
+    }
+
+    #[Test]
+    public function rejects_a_scalar_form_body(): void
+    {
+        $case = new ExploredCase(['a', 'b'], [], [], [], HttpMethod::POST, '/things', contentType: 'application/x-www-form-urlencoded');
+
+        $this->expectException(LogicException::class);
+        $case->bodyAsFormFields();
+    }
+
+    #[Test]
+    public function rejects_an_unserializable_media_type(): void
+    {
+        $case = new ExploredCase(['a' => 1], [], [], [], HttpMethod::POST, '/things', contentType: 'multipart/form-data');
+
+        $this->expectException(LogicException::class);
+        $case->bodyAsString();
     }
 
     private function caseWithBody(mixed $body): ExploredCase

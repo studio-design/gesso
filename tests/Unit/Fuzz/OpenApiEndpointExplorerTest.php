@@ -383,4 +383,56 @@ class OpenApiEndpointExplorerTest extends TestCase
             $this->assertNotSame('', $case->replayToken());
         }
     }
+
+    #[Test]
+    public function explores_an_operation_whose_only_body_media_type_is_form_urlencoded(): void
+    {
+        // Issue #498: generated form cases must validate as the form they are.
+        $validator = new OpenApiRequestValidator();
+
+        foreach (OpenApiEndpointExplorer::explore('contract-checks', 'POST', '/oauth/token', 3, seed: 7) as $case) {
+            $this->assertSame('application/x-www-form-urlencoded', $case->contentType);
+            $this->assertIsString($case->bodyAsFormFields()['grant_type'] ?? null);
+
+            $result = $validator->validate('contract-checks', 'POST', '/oauth/token', [], [], $case->bodyAsString(), $case->contentType);
+            $this->assertTrue($result->isValid(), $result->errorMessage());
+            $this->assertFalse($result->isSkipped());
+        }
+    }
+
+    #[Test]
+    public function prefers_json_over_a_form_media_type(): void
+    {
+        foreach (OpenApiEndpointExplorer::explore('contract-checks', 'POST', '/oauth/form-or-json', 1, seed: 7) as $case) {
+            $this->assertSame('application/json', $case->contentType);
+        }
+    }
+
+    #[Test]
+    public function still_throws_for_a_required_multipart_only_body(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/requestBody\.required: true.*multipart\/form-data/s');
+
+        OpenApiEndpointExplorer::explore('contract-checks', 'POST', '/uploads/multipart-only', 1);
+    }
+
+    #[Test]
+    public function invalid_form_cases_only_carry_mutations_a_form_can_express(): void
+    {
+        $cases = OpenApiEndpointExplorer::exploreInvalid('contract-checks', 'POST', '/oauth/revoke', [4], 20, seed: 7);
+
+        $targets = [];
+        foreach ($cases as $case) {
+            $this->assertSame('application/x-www-form-urlencoded', $case->contentType);
+            $this->assertNotContains($case->targetKeyword, ['type', 'oneOf', 'anyOf', 'allOf', 'not']);
+            // Only removing the whole required body may target the root.
+            $this->assertTrue($case->targetPointer !== 'body' || $case->targetKeyword === 'required');
+            $case->bodyAsString(); // serializable as a form, never throws
+            $targets[] = $case->targetPointer . ' ' . $case->targetKeyword;
+        }
+
+        $this->assertContains('body/token maxLength', $targets);
+        $this->assertContains('body/token_type_hint enum', $targets);
+    }
 }

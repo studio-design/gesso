@@ -29,9 +29,9 @@ class CreatePetTest extends TestCase
                 $case->uri('/api'),
                 cookies: $case->cookies,
                 server: $this->transformHeadersToServerVars([
-                    'Accept' => 'application/json', 'Content-Type' => 'application/json', ...$case->headers,
+                    'Accept' => 'application/json', 'Content-Type' => $case->contentType, ...$case->headers,
                 ]),
-                content: $case->bodyAsJson(),
+                content: $case->bodyAsString(),
             )->assertSuccessful());
     }
 }
@@ -41,7 +41,8 @@ What you get per case (`Studio\Gesso\Fuzz\ExploredCase`):
 
 | Property | Description |
 |--------|-------------|
-| `body` | Generated JSON body (or `null` when the operation has no `application/json` requestBody) |
+| `body` | Generated body value (or `null` when the operation has no requestBody, or none the explorer can synthesize) |
+| `contentType` | The media type `body` was generated for: `application/json` or a `+json` type, or `application/x-www-form-urlencoded` when that is the only schema-carrying media type. `multipart/form-data` is never synthesized; a required multipart-only body fails loudly |
 | `query` | name → value for every `in: query` parameter |
 | `headers` | name → value for every `in: header` parameter (excludes the OpenAPI-reserved `Accept`/`Content-Type`/`Authorization`) |
 | `pathParams` | name → value for every `{placeholder}` segment |
@@ -53,7 +54,8 @@ What you get per case (`Studio\Gesso\Fuzz\ExploredCase`):
 
 The collection is `Countable` and `IteratorAggregate`, so `foreach ($cases as $case)` works too if you prefer it over the fluent `each()` helper.
 
-Use `$case->bodyAsJson()` to encode the original value and send raw JSON, as above.
+Use `$case->bodyAsString()` to serialize the body in `$case->contentType`, as above; for
+JSON it is `$case->bodyAsJson()`, which encodes the original value without loss.
 `bodyAsArray()` is a lossy compatibility helper for array-only consumers:
 it recursively turns `{}` into `[]`, including nested objects. Feeding it to
 Laravel's `postJson()` or Symfony's `jsonRequest()` can turn a generated valid
@@ -61,6 +63,16 @@ object case into an invalid array. Do not use `JSON_FORCE_OBJECT`, which would
 also change genuine JSON arrays. `bodyAsJson()` encodes null as literal JSON
 `null`; when an operation declares no body or a check omits a required body,
 omit the raw content instead. Encoding failures throw `JsonException`.
+
+Form-encoded bodies (`application/x-www-form-urlencoded`) go through
+`bodyAsFormFields()`: values are sent as strings (`true` / `false`, numbers
+verbatim), object-valued properties are JSON-encoded (the Encoding Object
+default for an object), `null` properties are dropped, and lists use PHP bracket
+notation (`tags[0]=a&tags[1]=b`), which is what `parse_str()` and HttpFoundation
+read back. `encoding.<part>.style` / `explode` are not applied by the generator.
+Negative cases for a form body skip mutations a form cannot express: a `type`
+mismatch (`"42"` is a valid string on the wire), a non-object root, and
+composition misses built from JSON-only values.
 
 `uri($prefix)` substitutes and URL-encodes path
 parameters, prepends an optional application prefix, and appends the generated
@@ -156,9 +168,9 @@ class ApiContractTest extends TestCase
                     $case->uri('/api'),
                     cookies: $case->cookies,
                     server: $this->transformHeadersToServerVars([
-                        'Accept' => 'application/json', 'Content-Type' => 'application/json', ...$case->headers,
+                        'Accept' => 'application/json', 'Content-Type' => $case->contentType, ...$case->headers,
                     ]),
-                    content: $case->bodyAsJson(),
+                    content: $case->bodyAsString(),
                 ),
                 default => throw new LogicException('Add the method to the test dispatcher.'),
             })
@@ -307,9 +319,9 @@ $this->exploreInvalidEndpoint(
         $case->uri('/api'),
         cookies: $case->cookies,
         server: $this->transformHeadersToServerVars([
-            'Accept' => 'application/json', 'Content-Type' => 'application/json', ...$case->headers,
+            'Accept' => 'application/json', 'Content-Type' => $case->contentType, ...$case->headers,
         ]),
-        content: $case->bodyAsJson(),
+        content: $case->bodyAsString(),
     );
     self::assertContains(intdiv($response->getStatusCode(), 100), $case->expectedStatusClasses);
 });

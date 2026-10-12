@@ -96,8 +96,8 @@ that accepts any cookie value would pass. Forward them:
     [],
     $case->cookies,      // <- not optional for cookie-secured operations
     [],
-    $this->transformHeadersToServerVars($case->headers),
-    $case->body !== null ? $case->bodyAsJson() : null,
+    $this->transformHeadersToServerVars(['Content-Type' => $case->contentType, ...$case->headers]),
+    $case->body !== null ? $case->bodyAsString() : null,
 )->getStatusCode())
 ```
 
@@ -167,7 +167,9 @@ parameters are generated from a documented operation of the same path; the
 probe sends no body, query, or headers, so only path-parameter
 generatability gates it — a documented operation whose required request
 body is not JSON (for example a form-encoded OAuth token endpoint) does
-not prevent the probe. When the concrete probe URI is also an instance
+not prevent the probe. The per-operation checks such as `ignored_auth` do
+send a body; a form-encoded one is synthesized, so send it with
+`$case->contentType` and `$case->bodyAsString()`. When the concrete probe URI is also an instance
 of a different documented template (`/members/me` alongside
 `/members/{member_id}`), methods documented by that colliding template are
 excluded too — the application would route the probe to the documented

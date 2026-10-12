@@ -16,6 +16,7 @@ use Studio\Gesso\Spec\OpenApiSchemaDialect;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Validation\Request\ParameterCollector;
 use Studio\Gesso\Validation\Support\DiscriminatorContext;
+use Studio\Gesso\Validation\Support\FormBodyDecoder;
 use ValueError;
 
 use function array_filter;
@@ -24,6 +25,7 @@ use function array_map;
 use function array_values;
 use function count;
 use function implode;
+use function in_array;
 use function is_array;
 use function is_string;
 use function sprintf;
@@ -45,11 +47,14 @@ use function trim;
  * `in:path` parameters are always (re)generated from the operation's spec
  * so callers never depend on whichever URI form they passed.
  *
- * Only JSON-compatible request bodies and schema-form parameters are
- * generated; unsupported media/parameter forms fail loudly.
+ * Only JSON-compatible and `application/x-www-form-urlencoded` request
+ * bodies and schema-form parameters are generated; unsupported
+ * media/parameter forms fail loudly.
  */
 final class OpenApiEndpointExplorer
 {
+    private const DEFAULT_BODY_CONTENT_TYPE = 'application/json';
+
     /**
      * @throws InvalidArgumentException when $cases < 1, the spec path is not
      *                                  found, or the operation is not declared.
@@ -90,7 +95,8 @@ final class OpenApiEndpointExplorer
         }
 
         $validCases = self::buildValidCases($specName, $method, $path, $cases, $seed);
-        [$bodySchema, $parameterSchemas, $bodyRequired] = self::schemasForOperation($specName, $method, $path);
+        [$bodySchema, $parameterSchemas, $bodyRequired, $bodyContentType] = self::schemasForOperation($specName, $method, $path);
+        $formBody = $bodyContentType === FormBodyDecoder::URLENCODED;
         $faker = SchemaDataGenerator::createFaker($seed);
         $built = [];
 
@@ -107,6 +113,9 @@ final class OpenApiEndpointExplorer
             if ($bodySchema !== null) {
                 try {
                     foreach (SchemaMutationGenerator::generate($bodySchema, 100, $faker, $index) as $mutation) {
+                        if ($formBody && !self::observableInForm($mutation)) {
+                            continue;
+                        }
                         $targets[] = ['location' => 'body', 'name' => null, 'mutation' => $mutation, 'remove' => false];
                     }
                 } catch (InvalidArgumentException) {
@@ -171,6 +180,7 @@ final class OpenApiEndpointExplorer
                 $expectedStatusClasses,
                 $seed,
                 $index,
+                contentType: $mutated->contentType,
             );
         }
 
@@ -259,6 +269,20 @@ final class OpenApiEndpointExplorer
         return $names;
     }
 
+    /**
+     * Whether a body mutation still breaks the contract once sent as form
+     * fields. Every value reaches the server as a string and is coerced back,
+     * so a `type` mismatch (`"42"` is a fine string) cannot be expressed, nor
+     * can a non-object root. A composition (`oneOf` / `anyOf` / `allOf` /
+     * `not`) miss is built from JSON values (`null`, `false`, `[]`) that a
+     * form either drops or turns into a string some branch may accept.
+     */
+    private static function observableInForm(SchemaMutation $mutation): bool
+    {
+        return $mutation->pointer !== '' &&
+            !in_array($mutation->keyword, ['type', 'oneOf', 'anyOf', 'allOf', 'not'], true);
+    }
+
     private static function buildValidCases(
         string $specName,
         string $method,
@@ -271,7 +295,7 @@ final class OpenApiEndpointExplorer
 
         $version = OpenApiVersion::fromSpec($spec);
         $jsonSchemaDialect = OpenApiSchemaDialect::fromSpec($spec, $version);
-        $bodySchema = self::extractRequestBodySchema($operation, $version, $methodUpper, $matchedPath, $specName, $jsonSchemaDialect, $spec);
+        [$bodySchema, $bodyContentType] = self::extractRequestBodySchema($operation, $version, $methodUpper, $matchedPath, $specName, $jsonSchemaDialect, $spec);
         /** @var list<array<string, mixed>> $parameters */
         $parameters = ParameterCollector::collect($methodUpper, $matchedPath, $pathSpec, $operation)->parameters;
         self::assertParametersGeneratable($parameters, $methodUpper, $matchedPath, $specName);
@@ -295,6 +319,7 @@ final class OpenApiEndpointExplorer
                 matchedPath: $matchedPath,
                 seed: $seed,
                 caseIndex: $i,
+                contentType: $bodyContentType,
             );
         }
 
@@ -364,7 +389,7 @@ final class OpenApiEndpointExplorer
     }
 
     /**
-     * @return array{0: null|array<string, mixed>, 1: list<array{in: string, name: string, required: bool, schema: array<string, mixed>}>, 2: bool}
+     * @return array{0: null|array<string, mixed>, 1: list<array{in: string, name: string, required: bool, schema: array<string, mixed>}>, 2: bool, 3: string}
      */
     private static function schemasForOperation(string $specName, string $method, string $path): array
     {
@@ -372,7 +397,7 @@ final class OpenApiEndpointExplorer
         $methodUpper = $methodEnum->value;
         $version = OpenApiVersion::fromSpec($spec);
         $dialect = OpenApiSchemaDialect::fromSpec($spec, $version);
-        $body = self::extractRequestBodySchema($operation, $version, $methodUpper, $matchedPath, $specName, $dialect, $spec);
+        [$body, $bodyContentType] = self::extractRequestBodySchema($operation, $version, $methodUpper, $matchedPath, $specName, $dialect, $spec);
         $parameterSchemas = [];
         foreach (ParameterCollector::collect($methodUpper, $matchedPath, $pathSpec, $operation)->parameters as $parameter) {
             if (!is_string($parameter['in'] ?? null) || !is_string($parameter['name'] ?? null) || !is_array($parameter['schema'] ?? null)) {
@@ -386,7 +411,7 @@ final class OpenApiEndpointExplorer
             ];
         }
 
-        return [$body, $parameterSchemas, ($operation['requestBody']['required'] ?? false) === true];
+        return [$body, $parameterSchemas, ($operation['requestBody']['required'] ?? false) === true, $bodyContentType];
     }
 
     /**
@@ -459,15 +484,15 @@ final class OpenApiEndpointExplorer
     }
 
     /**
-     * Find the JSON-shaped requestBody schema and convert it to the dialect
-     * selected by the OpenAPI document.
-     * Returns null only when the operation declares no `requestBody` at all
-     * (or one that isn't required and lacks a JSON variant) — that's the
-     * "GET-style endpoint" case and the explorer correctly emits cases with
-     * `body = null`.
+     * Find the requestBody schema the explorer can synthesize (JSON, else
+     * urlencoded form) and convert it to the dialect selected by the OpenAPI
+     * document. The schema is null only when the operation declares no
+     * `requestBody` at all (or one that isn't required and lacks a
+     * synthesizable variant) — that's the "GET-style endpoint" case and the
+     * explorer correctly emits cases with `body = null`.
      *
      * Throws when the spec declares `requestBody.required: true` but the
-     * explorer cannot synthesize a JSON body. Without this guard every
+     * explorer cannot synthesize a body. Without this guard every
      * generated case would 4xx at the server with no signal back to the
      * test author about why fuzzing degraded — exactly the silent-failure
      * mode the rest of the library tries to avoid.
@@ -475,7 +500,8 @@ final class OpenApiEndpointExplorer
      * @param array<string, mixed> $operation
      * @param array<string, mixed> $spec
      *
-     * @return null|array<string, mixed>
+     * @return array{0: null|array<string, mixed>, 1: string} the converted body schema (null when there is
+     *                                                        none to synthesize) and the media type it belongs to
      *
      * @throws InvalidArgumentException
      */
@@ -487,10 +513,11 @@ final class OpenApiEndpointExplorer
         string $specName,
         string $jsonSchemaDialect,
         array $spec,
-    ): ?array {
+    ): array {
+        $none = [null, self::DEFAULT_BODY_CONTENT_TYPE];
         $requestBody = $operation['requestBody'] ?? null;
         if (!is_array($requestBody)) {
-            return null;
+            return $none;
         }
 
         $required = ($requestBody['required'] ?? false) === true;
@@ -507,15 +534,16 @@ final class OpenApiEndpointExplorer
                 ));
             }
 
-            return null;
+            return $none;
         }
 
-        $schema = self::pickJsonSchema($content);
-        if (!is_array($schema)) {
+        $picked = self::pickBodyMediaType($content);
+        if ($picked === null) {
             if ($required) {
                 throw new InvalidArgumentException(sprintf(
-                    "Operation %s '%s' in spec '%s' declares `requestBody.required: true` but no JSON-compatible "
-                    . 'media type (`application/json` / `+json`) carries a `schema` definition (saw: %s). '
+                    "Operation %s '%s' in spec '%s' declares `requestBody.required: true` but no media type this "
+                    . 'explorer can synthesize (`application/json`, `+json`, `application/x-www-form-urlencoded`) '
+                    . 'carries a `schema` definition (saw: %s). '
                     . 'The explorer cannot synthesize a body without one — add a schema or skip this operation.',
                     $method,
                     $matchedPath,
@@ -524,31 +552,37 @@ final class OpenApiEndpointExplorer
                 ));
             }
 
-            return null;
+            return $none;
         }
 
-        return OpenApiSchemaConverter::convert(
-            $schema,
-            $version,
-            SchemaContext::Request,
-            new DiscriminatorContext($spec, true),
-            $jsonSchemaDialect,
-        );
+        return [
+            OpenApiSchemaConverter::convert(
+                $picked[1],
+                $version,
+                SchemaContext::Request,
+                new DiscriminatorContext($spec, true),
+                $jsonSchemaDialect,
+            ),
+            $picked[0],
+        ];
     }
 
     /**
      * Prefer exact `application/json` over `+json` suffixes (problem+json,
      * merge+json, etc.) so a spec that defines both gets the canonical body
-     * generated. Both lookups are case-insensitive and tolerate media-type
-     * parameters (`application/json; charset=utf-8`).
+     * generated, and any JSON over `application/x-www-form-urlencoded`. All
+     * lookups are case-insensitive and tolerate media-type parameters
+     * (`application/json; charset=utf-8`). `multipart/form-data` is never
+     * picked: file parts have no bytes to generate.
      *
      * @param array<string, mixed> $content
      *
-     * @return null|array<string, mixed>
+     * @return null|array{0: string, 1: array<string, mixed>} the bare media type and its schema
      */
-    private static function pickJsonSchema(array $content): ?array
+    private static function pickBodyMediaType(array $content): ?array
     {
         $jsonFallback = null;
+        $formFallback = null;
         foreach ($content as $mediaType => $entry) {
             if (!is_array($entry)) {
                 continue;
@@ -559,14 +593,17 @@ final class OpenApiEndpointExplorer
 
             $bare = strtolower(trim((string) strtok($mediaType, ';')));
             if ($bare === 'application/json') {
-                return $entry['schema'];
+                return [$bare, $entry['schema']];
             }
             if ($jsonFallback === null && str_ends_with($bare, '+json')) {
-                $jsonFallback = $entry['schema'];
+                $jsonFallback = [$bare, $entry['schema']];
+            }
+            if ($formFallback === null && $bare === FormBodyDecoder::URLENCODED) {
+                $formFallback = [$bare, $entry['schema']];
             }
         }
 
-        return $jsonFallback;
+        return $jsonFallback ?? $formFallback;
     }
 
     /**
