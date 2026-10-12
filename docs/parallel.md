@@ -170,8 +170,9 @@ earlier run therefore no longer poisons the next merge, and the sidecar
 directory does not need to be emptied at the start of CI.
 
 Two limits: concurrent runs sharing one directory must each set
-`GESSO_RUN_ID`, since "newest" is a heuristic for runs that follow each other;
-and without `ext-posix` (Windows) and without `GESSO_RUN_ID`, sidecars are
+`GESSO_RUN_ID`, since "newest" is a heuristic for runs that follow each other
+(two runs whose newest files carry the same second fail the merge with a
+request for `--run-id` rather than a guess); and without `ext-posix` (Windows) and without `GESSO_RUN_ID`, sidecars are
 unscoped and every file in the directory counts, as in earlier releases.
 
 Each shard is a partial run on its own, which is why none of them writes

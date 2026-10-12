@@ -196,6 +196,23 @@ class CoverageMergeCommandTest extends TestCase
     }
 
     #[Test]
+    public function runs_that_tie_for_newest_fail_closed_without_a_run_id(): void
+    {
+        // filemtime() is whole seconds: guessing between two runs that wrote
+        // in the same second could merge stale coverage, so ask for --run-id.
+        $now = time();
+        touch($this->writeSidecar('1', 'GET', '/v1/pets', '200', 'a'), $now);
+        touch($this->writeSidecar('1', 'POST', '/v1/pets', '201', 'b'), $now);
+
+        $stderr = '';
+        $exit = $this->runMerge([], $stderr);
+
+        $this->assertSame(1, $exit);
+        $this->assertStringContainsString('pass --run-id', $stderr);
+        $this->assertCount(2, $this->sidecars(), 'nothing is deleted');
+    }
+
+    #[Test]
     public function parse_argv_reads_run_id(): void
     {
         $this->assertSame('ci-7', CoverageMergeCommand::parseArgv(['--run-id=ci-7'])['run_id'] ?? null);
