@@ -8,6 +8,7 @@ use const JSON_PRESERVE_ZERO_FRACTION;
 use const JSON_THROW_ON_ERROR;
 
 use Studio\Gesso\DecodedBody;
+use Studio\Gesso\Spec\OpenApiOperationResolver;
 
 use function array_key_exists;
 use function implode;
@@ -20,7 +21,6 @@ use function json_encode;
 use function sprintf;
 use function str_contains;
 use function strtolower;
-use function strtoupper;
 
 /**
  * Evaluates runtime expressions as typed lookups against a
@@ -47,7 +47,7 @@ final class RuntimeExpressionEvaluator
         return match ($expression->family) {
             RuntimeExpressionFamily::Url => $context->url ?? throw self::unavailable($expression, 'no request URL in this context.'),
             RuntimeExpressionFamily::Method => $context->method !== null
-                ? strtoupper($context->method)
+                ? OpenApiOperationResolver::normalizeMethodForKey($context->method)
                 : throw self::unavailable($expression, 'no request method in this context.'),
             RuntimeExpressionFamily::StatusCode => $context->response->statusCode ?? throw self::unavailable($expression, 'no response in this context.'),
             RuntimeExpressionFamily::Request => self::request($expression, $context),
