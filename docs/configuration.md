@@ -50,6 +50,9 @@ of the `--request-prefix` option used to generate test requests.
 - PHPUnit resolves the `config` parameter relative to the selected PHPUnit XML
   file. Without the parameter, it looks for `gesso.php` beside that XML file.
   If no XML file is selected, it uses the working directory.
+- `vendor/bin/gesso coverage:merge` and `coverage:gate` read `--config`
+  (relative to the working directory), or `gesso.php` in the working
+  directory when the flag is absent.
 - Laravel looks in `Application::basePath()`, independently of the working
   directory. A custom PHPUnit config path should point to that same root file
   when sharing settings with Laravel.
@@ -80,6 +83,8 @@ preserves the prefixes configured in bootstrap.
   parameters, then declared shared settings, then existing defaults.
 - Laravel: existing `config('gesso.…')` values, then declared shared settings,
   then package defaults. Arrays are replaced as whole values, not concatenated.
+- CLI: explicit flag, then declared shared settings, then the built-in
+  default; environment variables keep their existing priority.
 - Explicit per-test and per-call overrides keep their existing priority.
 
 To migrate, copy values into the root file, remove their matching XML
@@ -156,8 +161,9 @@ setting's behavior. `enum_spec_base_path` remains an XML-only v2 compatibility
 setting; it has no shared successor.
 
 This step connects PHPUnit and Laravel, including `gesso:routes` and
-`gesso:stubs`. Standalone `vendor/bin/gesso` commands still require their existing
-flags. The PSR-7 and Symfony policy hooks (`openApiSpec()`, `openApiMaxErrors()`,
+`gesso:stubs`, and the `coverage:merge` / `coverage:gate` defaults (see
+[parallel runners](parallel.md) and [coverage gate](coverage-gate.md)). The
+PSR-7 and Symfony policy hooks (`openApiSpec()`, `openApiMaxErrors()`,
 `openApiSkipResponseCodes()`, `openApiSkipRequestValidationResponseCodes()`)
 default to the shared `spec.default` and `validation.*` values; an override
 still wins. This does not yet migrate every surface or implement the complete

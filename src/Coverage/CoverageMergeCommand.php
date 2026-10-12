@@ -13,6 +13,9 @@ use Studio\Gesso\Baseline\CoverageBaselineEvaluator;
 use Studio\Gesso\Baseline\CoverageBaselineFile;
 use Studio\Gesso\Baseline\ViolationBaseline;
 use Studio\Gesso\Baseline\ViolationBaselineFile;
+use Studio\Gesso\Config\ConfigurationBridge;
+use Studio\Gesso\Config\GessoConfig;
+use Studio\Gesso\Config\InvalidGessoConfigurationException;
 use Studio\Gesso\Internal\ArgvParser;
 use Studio\Gesso\Internal\CliIo;
 use Studio\Gesso\Internal\CoverageReportWriter;
@@ -33,6 +36,9 @@ use function ctype_digit;
 use function getenv;
 use function implode;
 use function in_array;
+use function is_array;
+use function is_bool;
+use function is_float;
 use function is_int;
 use function is_numeric;
 use function is_string;
@@ -75,6 +81,7 @@ use function unlink;
  *     coverage_baseline_file?: string,
  *     coverage_baseline_stale?: string,
  *     expect_sidecars?: int|string,
+ *     config?: string,
  *     help?: bool,
  *     invalid_options?: list<string>,
  * }
@@ -90,6 +97,20 @@ final class CoverageMergeCommand
     use CliIo;
 
     private const FORMATS = ['text', 'markdown', 'json', 'junit', 'html'];
+
+    /**
+     * The `gesso.php` settings, by their {@see ConfigurationBridge::phpunit()} name,
+     * that default a merge option of the same name. Grouped by value type so the
+     * option shape stays provable.
+     */
+    private const SHARED_STRINGS = [
+        'sidecar_dir', 'spec_base_path', 'output_file', 'junit_output', 'json_output', 'html_output',
+        'console_output', 'strict_required', 'strict_additional_properties',
+        'baseline_file', 'coverage_baseline_file', 'coverage_baseline_stale',
+    ];
+
+    private const SHARED_LISTS = ['specs', 'strip_prefixes'];
+    private const SHARED_PERCENTS = ['min_endpoint_coverage', 'min_response_coverage', 'min_sdk_exercise_coverage'];
 
     /**
      * @param null|callable(string): void $stderrWriter Optional sink for warnings; defaults to STDERR.
@@ -119,6 +140,7 @@ final class CoverageMergeCommand
                 'github_step_summary', 'console_output', 'strict_required', 'strict_additional_properties',
                 'baseline_file', 'coverage_baseline_file', 'coverage_baseline_stale',
                 'min_endpoint_coverage', 'min_response_coverage', 'min_sdk_exercise_coverage', 'expect_sidecars',
+                'config',
             ],
             lists: ['specs', 'strip_prefixes'],
         );
@@ -206,6 +228,9 @@ final class CoverageMergeCommand
                                             and the merge would otherwise under-count silently
                                             (Issue #434).
               --no-cleanup                  Keep sidecar files after merge (default: cleanup).
+              --config=<path>               gesso.php to default the options above from
+                                            (default: ./gesso.php when present). Explicit
+                                            flags win; see docs/configuration.md.
               --help                        Show this message.
 
             Exit codes:
@@ -229,6 +254,18 @@ final class CoverageMergeCommand
 
             return self::EXIT_OK;
         }
+
+        try {
+            if (($options['config'] ?? null) === '') {
+                throw new InvalidGessoConfigurationException('--config must name a gesso.php file.');
+            }
+            $shared = ConfigurationBridge::phpunit(GessoConfig::load($options['config'] ?? null));
+        } catch (InvalidGessoConfigurationException $e) {
+            $this->writeStderr("[Gesso] FATAL: {$e->getMessage()}\n");
+
+            return self::EXIT_USAGE;
+        }
+        $options = self::withSharedDefaults($options, $shared);
 
         $sidecarDir = $this->pathOption($options['sidecar_dir'] ?? null) ?? CoverageSidecarWriter::defaultDir();
 
@@ -656,6 +693,43 @@ final class CoverageMergeCommand
     }
 
     /** An option's absolutised path, or `null` when absent or empty. */
+    /**
+     * Fill the options the command line left unset from `gesso.php`. Paths are
+     * already absolute (resolved against the file's directory). Everything the
+     * bridge emits that the merge has no option for is ignored.
+     *
+     * @param MergeOptions $options
+     * @param array<string, bool|float|int|list<string>|string> $shared
+     *
+     * @return MergeOptions
+     */
+    private static function withSharedDefaults(array $options, array $shared): array
+    {
+        foreach (self::SHARED_STRINGS as $key) {
+            if (!isset($options[$key]) && is_string($shared[$key] ?? null)) {
+                $options[$key] = $shared[$key];
+            }
+        }
+        // ArgvParser materialises every list as `[]`, and `run()` already
+        // reads an empty list as "use the default".
+        foreach (self::SHARED_LISTS as $key) {
+            if (($options[$key] ?? []) === [] && is_array($shared[$key] ?? null)) {
+                $options[$key] = $shared[$key];
+            }
+        }
+        foreach (self::SHARED_PERCENTS as $key) {
+            $value = $shared[$key] ?? null;
+            if (!isset($options[$key]) && (is_int($value) || is_float($value))) {
+                $options[$key] = (float) $value;
+            }
+        }
+        if (!isset($options['min_coverage_strict']) && is_bool($shared['min_coverage_strict'] ?? null)) {
+            $options['min_coverage_strict'] = $shared['min_coverage_strict'];
+        }
+
+        return $options;
+    }
+
     private function pathOption(?string $value): ?string
     {
         return $value !== null && $value !== '' ? $this->absolutise($value) : null;

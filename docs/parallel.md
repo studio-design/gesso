@@ -60,6 +60,13 @@ vendor/bin/gesso coverage:merge \
 | `--coverage-baseline-stale=<mode>` | `note` | `off` / `note` / `fail`. How baseline entries that are covered now are reported |
 | `--expect-sidecars=<n>` | — | Fail unless exactly `n` sidecars are present. See [Sharded CI jobs](#sharded-ci-jobs) |
 | `--no-cleanup` | (cleanup is on by default) | Keep sidecar files after merge |
+| `--config=<path>` | `./gesso.php` when present | [`gesso.php`](configuration.md) to default the options above from |
+
+Without flags, the merge reads `./gesso.php` (or `--config`) and takes the
+same keys the PHPUnit extension does: `spec.*`, `coverage.*`, `strict.*.run`,
+`baseline.*` and `baseline_stale.coverage`. Paths in the file resolve against
+its directory. An explicit flag wins over the file; `GESSO_CONSOLE_OUTPUT`
+still wins over both.
 
 Sidecar dir defaults are deliberately stable — workers and the merge CLI
 use the same `sys_get_temp_dir()/openapi-coverage-sidecars` path, so a
