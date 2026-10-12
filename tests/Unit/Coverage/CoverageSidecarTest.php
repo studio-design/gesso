@@ -18,6 +18,7 @@ use Studio\Gesso\Validation\Strict\StrictAdditionalPropertiesTracker;
 use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 
 use function array_map;
+use function basename;
 use function chmod;
 use function chown;
 use function file_get_contents;
@@ -579,5 +580,20 @@ class CoverageSidecarTest extends TestCase
         }
 
         return $dir;
+    }
+
+    #[Test]
+    public function a_run_id_is_sanitised_into_the_filename_and_read_back(): void
+    {
+        $sidecar = CoverageSidecarWriter::write($this->tmpDir, '1', ['version' => 1, 'specs' => []], runId: 'ci/7 a');
+        $marker = CoverageSidecarWriter::writeFailureMarker($this->tmpDir, '2', 'simulated failure', runId: 'ci/7 a');
+
+        $this->assertMatchesRegularExpression('/^part-1-\d+\.ci_7_a\.json$/', basename($sidecar));
+        $this->assertNotNull($marker);
+        $this->assertMatchesRegularExpression('/^failed-2-\d+\.ci_7_a\.json$/', basename($marker));
+        $this->assertSame('ci_7_a', CoverageSidecarReader::runIdOf($sidecar));
+        $this->assertSame('ci_7_a', CoverageSidecarReader::runIdOf($marker));
+        $this->assertNull(CoverageSidecarReader::runIdOf($this->tmpDir . '/part-1-4242.json'));
+        $this->assertSame(['version' => 1, 'specs' => []], CoverageSidecarReader::read($sidecar));
     }
 }

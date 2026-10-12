@@ -59,6 +59,7 @@ vendor/bin/gesso coverage:merge \
 | `--coverage-baseline-file=<path>` | — | Gate the merged coverage against a committed set of known-uncovered responses; writes the file instead when `GESSO_BASELINE_GENERATE=1` is set. See [`coverage-baseline.md`](coverage-baseline.md#parallel-runners) |
 | `--coverage-baseline-stale=<mode>` | `note` | `off` / `note` / `fail`. How baseline entries that are covered now are reported |
 | `--expect-sidecars=<n>` | — | Fail unless exactly `n` sidecars are present. See [Sharded CI jobs](#sharded-ci-jobs) |
+| `--run-id=<id>` | `$GESSO_RUN_ID`, else the run that wrote the newest sidecar | Merge only this run's sidecars; other runs' files are listed in a NOTE and left in place. See [Stale sidecars](#stale-sidecars-from-earlier-runs) |
 | `--no-cleanup` | (cleanup is on by default) | Keep sidecar files after merge |
 | `--config=<path>` | `./gesso.php` when present | [`gesso.php`](configuration.md) to default the options above from |
 
@@ -122,11 +123,17 @@ steps:
 
 `GESSO_SIDECAR_TOKEN` does exactly what `TEST_TOKEN` does for paratest — the
 process writes its sidecar and renders nothing — and its value names the
-sidecar (`part-<token>-<pid>.json`), so artifacts downloaded from several
-runners into one directory cannot collide. It takes priority over
+sidecar (`part-<token>-<pid>[.<run-id>].json`), so artifacts downloaded from
+several runners into one directory cannot collide. It takes priority over
 `TEST_TOKEN`, so a sharded job may still run paratest inside it: the shard
 name namespaces the files and the pid keeps that job's workers apart. A blank
 or unset value leaves the run rendering in process, unchanged.
+
+Optionally set `GESSO_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}`
+on the shard jobs *and* the merge job. It scopes every sidecar to this workflow
+run, so a re-run that downloads into a directory with older artifacts merges
+only its own. Without it all shards form one unscoped group, as before; setting
+it on only some shards splits the fleet, so set it everywhere or nowhere.
 
 The merge job then downloads every artifact into one directory and produces
 the single report and the single gate evaluation for the whole suite:
@@ -146,8 +153,26 @@ writes neither a sidecar nor a `failed-*.json` marker, because the marker only
 covers "ran but could not write". The declared count is the only evidence that
 absence leaves, and without it the merge reports the surviving shards' coverage
 as if it were the whole suite. A mismatch in either direction is FATAL (exit 1)
-and leaves the sidecars in place: a surplus means the directory still holds a
-previous run's files, which inflates coverage just as quietly.
+and leaves the sidecars in place. Only the selected run's sidecars are counted
+(see [Stale sidecars](#stale-sidecars-from-earlier-runs)), so a surplus means
+the run itself produced more files than declared.
+
+### Stale sidecars from earlier runs
+
+Every sidecar and failure marker carries the id of the run that wrote it:
+`GESSO_RUN_ID` when set, otherwise the paratest master's pid (every paratest or
+Pest `--parallel` worker is a direct child of it). `coverage:merge` selects one
+run — `--run-id`, then `GESSO_RUN_ID`, then the run that wrote the newest file —
+and applies the failure-marker check and `--expect-sidecars` to that run only.
+Files from other runs are named in one `[Gesso] NOTE` and are neither merged
+nor deleted; cleanup removes only what was merged. A crashed or merge-less
+earlier run therefore no longer poisons the next merge, and the sidecar
+directory does not need to be emptied at the start of CI.
+
+Two limits: concurrent runs sharing one directory must each set
+`GESSO_RUN_ID`, since "newest" is a heuristic for runs that follow each other;
+and without `ext-posix` (Windows) and without `GESSO_RUN_ID`, sidecars are
+unscoped and every file in the directory counts, as in earlier releases.
 
 Each shard is a partial run on its own, which is why none of them writes
 `output_file` / `json_output` / `GITHUB_STEP_SUMMARY` or evaluates a gate — see
@@ -232,13 +257,12 @@ changing a sidecar shape or filename pattern.
   demoted its failures on the promise that the merge unions its sidecar, so
   losing the sidecar fails the worker — otherwise the merge could write an
   incomplete baseline from the remaining workers.
-- **Stale sidecars across runs.** Cleanup-on-success removes sidecars after
-  every successful merge. If a previous run crashed before the merge step,
-  any leftover sidecars in the dir will be picked up by the next merge —
-  delete the sidecar dir at the start of CI if you can't trust the previous
-  run's exit code.
+- **Stale sidecars across runs are ignored.** The merge picks one run and
+  leaves other runs' files alone; see
+  [Stale sidecars](#stale-sidecars-from-earlier-runs). Delete the files the
+  NOTE lists by hand when you no longer need them.
 - **Worker write failures fail the merge loudly.** When a worker can't
-  persist its sidecar, it drops a `failed-<token>.json` marker. The merge
+  persist its sidecar, it drops a `failed-<token>-<pid>[.<run-id>].json` marker. The merge
   CLI exits non-zero (`FATAL`) when any markers are present, since a missing
   worker would silently under-count coverage.
 - **HTTP `$ref` auto-resolution from the merge CLI.** The CLI calls
