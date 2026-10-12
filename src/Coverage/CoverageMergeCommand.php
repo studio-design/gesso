@@ -31,11 +31,12 @@ use Studio\Gesso\Validation\Strict\StrictRequiredAsserter;
 use Studio\Gesso\Validation\Strict\StrictRequiredMode;
 use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 
+use function array_diff;
 use function array_filter;
 use function array_intersect;
 use function array_keys;
 use function array_map;
-use function array_merge;
+use function array_unique;
 use function array_values;
 use function arsort;
 use function count;
@@ -772,13 +773,23 @@ final class CoverageMergeCommand
         }
 
         $inRun = static fn(string $path): bool => (CoverageSidecarReader::runIdOf($path) ?? '') === $runId;
-        unset($groups[$runId]);
+        $runSidecars = array_values(array_filter($sidecars, $inRun));
+        // An unscoped marker (a pre-#596 worker in a mixed fleet) cannot be
+        // attributed to any run, so it always counts: fail closed, as before.
+        $runMarkers = array_values(array_filter(
+            $markers,
+            static fn(string $path): bool => $inRun($path) || CoverageSidecarReader::runIdOf($path) === null,
+        ));
+        $ignored = array_values(array_diff([...$sidecars, ...$markers], $runSidecars, $runMarkers));
 
         return [
-            array_values(array_filter($sidecars, $inRun)),
-            array_values(array_filter($markers, $inRun)),
-            array_merge(...array_values($groups)),
-            array_map(static fn(int|string $id): string => $id === '' ? '(none)' : (string) $id, array_keys($groups)),
+            $runSidecars,
+            $runMarkers,
+            $ignored,
+            array_values(array_unique(array_map(
+                static fn(string $path): string => CoverageSidecarReader::runIdOf($path) ?? '(none)',
+                $ignored,
+            ))),
         ];
     }
 
