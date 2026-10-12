@@ -113,7 +113,7 @@ final class QueryStyleDeserializer
      * Parse a raw query string into parameter name → percent-encoded values
      * in wire order. Names are decoded (to match framework-parsed maps);
      * values are kept encoded so non-exploded styles can be split before
-     * decoding. Mirrors the pair-splitting conventions of the PSR-7 adapter.
+     * decoding. The PSR-7 adapter parses its query through this too.
      *
      * @return array<string, list<string>>
      */
