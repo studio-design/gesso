@@ -82,8 +82,10 @@ preserves the prefixes configured in bootstrap.
   then package defaults. Arrays are replaced as whole values, not concatenated.
 - Explicit per-test and per-call overrides keep their existing priority.
 
-To migrate, copy values into the root file, remove their matching XML
-parameters, and remove the copied keys from `config/gesso.php`. Once all values
+To migrate, start from `vendor/bin/gesso doctor --spec=… --emit-config > gesso.php`
+([doctor](doctor.md#generate-a-gesso-php)) or copy values into the root file,
+then remove their matching XML parameters and the copied keys from
+`config/gesso.php`. Once all values
 have moved, delete `config/gesso.php` and clear any Laravel configuration cache.
 Leaving copies behind means each adapter's old values still win, which can
 keep the two adapters inconsistent. `vendor:publish --tag=gesso` still publishes
