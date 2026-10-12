@@ -210,6 +210,28 @@ final class OpenApiSpecLoader
         self::$cache = [];
     }
 
+    /**
+     * The last configure() call's arguments, or null before any.
+     *
+     * @internal Restore seam for CoverageReportSubscriber after a test called reset().
+     *
+     * @return null|array<string, mixed> keyed by configure()'s parameter names
+     */
+    public static function exportConfiguration(): ?array
+    {
+        return self::$basePath === null ? null : [
+            'basePath' => self::$basePath,
+            'stripPrefixes' => self::$stripPrefixes,
+            'httpClient' => self::$httpClient,
+            'requestFactory' => self::$requestFactory,
+            'allowRemoteRefs' => self::$allowRemoteRefs,
+            'enumBasePath' => self::$enumBasePath,
+            'allowedRemoteRefHosts' => self::$allowedRemoteRefHosts,
+            'maxRemoteRefBytes' => self::$maxRemoteRefBytes,
+            'remoteSpecs' => self::$remoteSpecs,
+        ];
+    }
+
     public static function getBasePath(): string
     {
         if (self::$basePath === null) {

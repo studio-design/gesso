@@ -505,12 +505,7 @@ trait ValidatesOpenApiSchema
 
         $specName = $this->resolveOpenApiSpec();
         if ($specName === '') {
-            $this->failOpenApi(
-                'openApiSpec() must return a non-empty spec name, but an empty string was returned. '
-                . 'Either add #[OpenApiSpec(\'your-spec\')] to your test class or method, '
-                . 'override openApiSpec() in your test class, or set the "default_spec" key '
-                . 'in config/gesso.php.',
-            );
+            $this->failOpenApi(self::EMPTY_SPEC_MESSAGE);
         }
 
         // Idempotency key includes the spec so that validating the same
@@ -646,12 +641,7 @@ trait ValidatesOpenApiSchema
     ): void {
         $specName = $this->resolveOpenApiSpec();
         if ($specName === '') {
-            $this->failOpenApi(
-                'openApiSpec() must return a non-empty spec name, but an empty string was returned. '
-                . 'Either add #[OpenApiSpec(\'your-spec\')] to your test class or method, '
-                . 'override openApiSpec() in your test class, or set the "default_spec" key '
-                . 'in config/gesso.php.',
-            );
+            $this->failOpenApi(self::EMPTY_SPEC_MESSAGE);
         }
 
         $resolvedMethod = $method->value;

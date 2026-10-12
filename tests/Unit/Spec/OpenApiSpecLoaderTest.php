@@ -1035,6 +1035,8 @@ class OpenApiSpecLoaderTest extends TestCase
             $this->assertSame(InvalidOpenApiSpecReason::MalformedJson, $e->reason);
             $this->assertSame('malformed-json', $e->specName);
             $this->assertStringContainsString('Failed to parse JSON', $e->getMessage());
+            // The entry document populates $ref with its resolved path, like external refs do.
+            $this->assertStringEndsWith('malformed-json.json', (string) $e->ref);
         }
     }
 

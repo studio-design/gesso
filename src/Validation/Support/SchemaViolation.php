@@ -30,8 +30,8 @@ final readonly class SchemaViolation
     ) {}
 
     /**
-     * The pointer as historically rendered in error strings and in
-     * {@see SchemaValidatorRunner::validate()} map keys: the document root
+     * The pointer as historically rendered in the `[{pointer}] {message}`
+     * error strings the body validators emit: the document root
      * shows as `'/'` (collapsing the RFC distinction with the empty-string
      * key, which also renders `'/'`). Kept so the flat error prose stays
      * byte-identical while `instancePath` itself is unambiguous.

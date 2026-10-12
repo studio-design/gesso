@@ -523,17 +523,8 @@ final class OpenApiRequestValidator
     }
 
     /**
-     * Run the request-body validator behind the same narrow
-     * `RuntimeException` boundary {@see ValidatorErrorBoundary::safelyNamed()}
-     * applies to the other sub-validators: a `RuntimeException` (typically
-     * an opis/json-schema `SchemaException` raised from schema conversion
-     * or validation) is converted to an error string instead of aborting
-     * the orchestrator. The body validator returns a
-     * {@see RequestBodyValidationResult} DTO carrying an optional
-     * `skipReason`, so it cannot reuse the string[]-returning helper as-is
-     * — same reasoning as {@see OpenApiResponseValidator::validateBody()}.
-     * `\LogicException` and `\Error` still bubble so programmer bugs are
-     * not silently downgraded to contract errors.
+     * Run the request-body validator behind the RuntimeException boundary of
+     * {@see ValidatorErrorBoundary::captureMessage()}.
      *
      * @param array<string, mixed> $operation
      */
@@ -552,22 +543,8 @@ final class OpenApiRequestValidator
         try {
             return $this->bodyValidator->validate($specName, $method, $matchedPath, $operation, $body, $contentType, $version, $discriminatorContext, $jsonSchemaDialect, $bodyPresence);
         } catch (RuntimeException $e) {
-            $previous = $e->getPrevious();
-            $previousSuffix = $previous !== null
-                ? sprintf(' (caused by %s: %s)', $previous::class, $previous->getMessage())
-                : '';
-
             return new RequestBodyValidationResult(
-                [sprintf(
-                    "[%s] %s %s in '%s' spec: %s threw: %s%s",
-                    'request-body',
-                    $method,
-                    $matchedPath,
-                    $specName,
-                    $e::class,
-                    $e->getMessage(),
-                    $previousSuffix,
-                )],
+                [ValidatorErrorBoundary::captureMessage('request-body', $specName, $method, $matchedPath, $e)],
                 matchedContentType: self::thrownBodyContentType($operation),
             );
         }

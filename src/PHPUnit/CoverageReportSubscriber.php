@@ -23,8 +23,6 @@ use Studio\Gesso\Coverage\CoverageThresholdEvaluator;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\Coverage\SdkExerciseCoverageReportBuilder;
 use Studio\Gesso\Coverage\SdkExerciseCoverageTracker;
-use Studio\Gesso\Exception\InvalidOpenApiSpecException;
-use Studio\Gesso\Exception\InvalidOpenApiSpecReason;
 use Studio\Gesso\Internal\CoverageReportWriter;
 use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\Internal\PartialRunDecision;
@@ -56,11 +54,9 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
     private StrictAdditionalPropertiesTracker $strictAdditionalPropertiesTracker;
     private StrictRequiredTracker $strictRequiredTracker;
     private SdkExerciseCoverageTracker $sdkExerciseCoverageTracker;
-    private ?string $specBasePath;
 
-    /** @var string[] */
-    private array $specStripPrefixes;
-    private ?string $enumBasePath;
+    /** @var null|array<string, mixed> */
+    private ?array $loaderConfiguration;
 
     /**
      * @param string[] $specs
@@ -158,23 +154,7 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
         $this->strictAdditionalPropertiesTracker = $strictAdditionalPropertiesTracker ?? StrictAdditionalPropertiesTracker::current();
         $this->sdkExerciseCoverageTracker = $sdkExerciseCoverageTracker ?? SdkExerciseCoverageTracker::current();
 
-        $specBasePath = null;
-        $specStripPrefixes = [];
-        $enumBasePath = null;
-
-        try {
-            $specBasePath = OpenApiSpecLoader::getBasePath();
-            $specStripPrefixes = OpenApiSpecLoader::getStripPrefixes();
-            $enumBasePath = OpenApiSpecLoader::getEnumBasePath();
-        } catch (InvalidOpenApiSpecException $e) {
-            if ($e->reason !== InvalidOpenApiSpecReason::BasePathNotConfigured) {
-                throw $e;
-            }
-        }
-
-        $this->specBasePath = $specBasePath;
-        $this->specStripPrefixes = $specStripPrefixes;
-        $this->enumBasePath = $enumBasePath;
+        $this->loaderConfiguration = OpenApiSpecLoader::exportConfiguration();
     }
 
     /** @phpcsSuppress SlevomatCodingStandard.Functions.UnusedParameter.UnusedParameter */
@@ -306,9 +286,7 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
             return;
         }
 
-        $reports = StrictRequiredAsserter::detectAll($this->strictRequiredMode);
-        $unresolved = StrictRequiredAsserter::detectUnresolvedGroups($this->strictRequiredMode);
-        $unwalkable = StrictRequiredAsserter::detectUnwalkableNodes($this->strictRequiredMode);
+        ['reports' => $reports, 'unresolved' => $unresolved, 'unwalkable' => $unwalkable] = StrictRequiredAsserter::analyse($this->strictRequiredMode);
 
         if ($unresolved !== []) {
             // Validator only records on Success, so reaching this branch
@@ -927,25 +905,9 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
 
     private function restoreSpecLoaderConfigurationIfReset(): void
     {
-        if ($this->specBasePath === null) {
-            return;
+        if ($this->loaderConfiguration !== null && OpenApiSpecLoader::exportConfiguration() === null) {
+            OpenApiSpecLoader::configure(...$this->loaderConfiguration);
         }
-
-        try {
-            OpenApiSpecLoader::getBasePath();
-
-            return;
-        } catch (InvalidOpenApiSpecException $e) {
-            if ($e->reason !== InvalidOpenApiSpecReason::BasePathNotConfigured) {
-                throw $e;
-            }
-        }
-
-        OpenApiSpecLoader::configure(
-            $this->specBasePath,
-            $this->specStripPrefixes,
-            enumBasePath: $this->enumBasePath,
-        );
     }
 
     /**

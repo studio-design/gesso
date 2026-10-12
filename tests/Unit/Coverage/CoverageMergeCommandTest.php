@@ -1858,7 +1858,7 @@ class CoverageMergeCommandTest extends TestCase
         // The merge CLI's unresolved-groups NOTE branch must surface
         // observations that have no matching response schema. Without this
         // pin, a refactor of evaluateStrictRequiredGate() could drop the
-        // detectUnresolvedGroups() call and the user would no longer be
+        // analyse()['unresolved'] read and the user would no longer be
         // told why no drift block appeared.
         OpenApiCoverageTracker::reset();
         StrictRequiredTracker::reset();

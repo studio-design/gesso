@@ -907,8 +907,7 @@ final class CoverageMergeCommand
             return true;
         }
 
-        $reports = StrictRequiredAsserter::detectAll($mode);
-        $unresolved = StrictRequiredAsserter::detectUnresolvedGroups($mode);
+        ['reports' => $reports, 'unresolved' => $unresolved] = StrictRequiredAsserter::analyse($mode);
 
         if ($unresolved !== []) {
             // Observed an endpoint with no matching response schema. The user

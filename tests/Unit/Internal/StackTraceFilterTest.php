@@ -14,6 +14,7 @@ use Studio\Gesso\Internal\StackTraceFilter;
 use function array_column;
 use function array_keys;
 use function dirname;
+use function str_replace;
 
 class StackTraceFilterTest extends TestCase
 {
@@ -21,43 +22,13 @@ class StackTraceFilterTest extends TestCase
     public function drops_frames_from_the_actual_source_root_regardless_of_checkout_name(): void
     {
         $trace = [
-            ['file' => dirname(__DIR__, 3) . '/src/Laravel/ValidatesOpenApiSchema.php', 'line' => 500],
+            ['file' => self::src() . '/Laravel/ValidatesOpenApiSchema.php', 'line' => 500],
             ['file' => '/app/tests/Feature/PetTest.php', 'line' => 47],
         ];
 
         $filtered = StackTraceFilter::filterFrames($trace);
 
         $this->assertSame(['/app/tests/Feature/PetTest.php'], array_column($filtered, 'file'));
-    }
-
-    #[Test]
-    public function drops_frames_inside_studio_design_library_path(): void
-    {
-        $trace = [
-            ['file' => '/app/vendor/studio-design/gesso/src/Laravel/ValidatesOpenApiSchema.php', 'line' => 500, 'function' => 'assertResponseMatchesOpenApiSchema'],
-            ['file' => '/app/tests/Feature/PetTest.php', 'line' => 47, 'function' => 'test_index'],
-        ];
-
-        $filtered = StackTraceFilter::filterFrames($trace);
-
-        $files = array_column($filtered, 'file');
-        $this->assertSame(['/app/tests/Feature/PetTest.php'], $files);
-    }
-
-    #[Test]
-    public function drops_frames_inside_local_path_repo_install(): void
-    {
-        $trace = [
-            ['file' => '/repos/gesso/src/Laravel/ValidatesOpenApiSchema.php', 'line' => 500],
-            ['file' => '/repos/gesso/src/Internal/SpecDocumentDecoder.php', 'line' => 12],
-            ['file' => '/repos/gesso/src/PHPUnit/Subscriber.php', 'line' => 33],
-            ['file' => '/repos/myapp/tests/Feature/PetTest.php', 'line' => 47],
-        ];
-
-        $filtered = StackTraceFilter::filterFrames($trace);
-
-        $this->assertCount(1, $filtered);
-        $this->assertSame('/repos/myapp/tests/Feature/PetTest.php', $filtered[0]['file']);
     }
 
     #[Test]
@@ -106,7 +77,7 @@ class StackTraceFilterTest extends TestCase
     public function preserves_order_of_remaining_frames(): void
     {
         $trace = [
-            ['file' => '/app/vendor/studio-design/gesso/src/Laravel/ValidatesOpenApiSchema.php', 'line' => 500],
+            ['file' => self::src() . '/Laravel/ValidatesOpenApiSchema.php', 'line' => 500],
             ['file' => '/app/tests/Feature/A.php', 'line' => 1],
             ['file' => '/app/vendor/laravel/framework/src/Illuminate/Foundation/Testing/Concerns/MakesHttpRequests.php', 'line' => 617],
             ['file' => '/app/tests/Feature/B.php', 'line' => 2],
@@ -137,7 +108,7 @@ class StackTraceFilterTest extends TestCase
     {
         $trace = [
             ['function' => '{closure}'],
-            ['file' => '/app/vendor/studio-design/gesso/src/Laravel/ValidatesOpenApiSchema.php', 'line' => 500],
+            ['file' => self::src() . '/Laravel/ValidatesOpenApiSchema.php', 'line' => 500],
             ['file' => '/app/tests/Feature/PetTest.php', 'line' => 47],
         ];
 
@@ -152,7 +123,7 @@ class StackTraceFilterTest extends TestCase
     public function normalizes_windows_style_backslash_paths(): void
     {
         $trace = [
-            ['file' => 'C:\\app\\vendor\\studio-design\\gesso\\src\\Laravel\\ValidatesOpenApiSchema.php', 'line' => 500],
+            ['file' => str_replace('/', '\\', self::src()) . '\\Laravel\\ValidatesOpenApiSchema.php', 'line' => 500],
             ['file' => 'C:\\app\\tests\\Feature\\PetTest.php', 'line' => 47],
         ];
 
@@ -169,7 +140,7 @@ class StackTraceFilterTest extends TestCase
 
         $traceProp = new ReflectionProperty(Exception::class, 'trace');
         $traceProp->setValue($exception, [
-            ['file' => '/app/vendor/studio-design/gesso/src/Laravel/ValidatesOpenApiSchema.php', 'line' => 500],
+            ['file' => self::src() . '/Laravel/ValidatesOpenApiSchema.php', 'line' => 500],
             ['file' => '/app/tests/Feature/PetTest.php', 'line' => 47],
         ]);
 
@@ -189,7 +160,7 @@ class StackTraceFilterTest extends TestCase
         $exception = new AssertionFailedError('boom');
 
         $originalTrace = [
-            ['file' => '/app/vendor/studio-design/gesso/src/Laravel/ValidatesOpenApiSchema.php', 'line' => 500],
+            ['file' => self::src() . '/Laravel/ValidatesOpenApiSchema.php', 'line' => 500],
             ['file' => '/app/vendor/laravel/framework/src/Illuminate/Foundation/Testing/Concerns/MakesHttpRequests.php', 'line' => 617],
         ];
 
@@ -201,5 +172,11 @@ class StackTraceFilterTest extends TestCase
         } catch (AssertionFailedError $thrown) {
             $this->assertSame($originalTrace, $thrown->getTrace());
         }
+    }
+
+    /** The real library source root, which StackTraceFilter drops by prefix. */
+    private static function src(): string
+    {
+        return dirname(__DIR__, 3) . '/src';
     }
 }

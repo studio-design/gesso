@@ -29,12 +29,10 @@ use function str_starts_with;
 final class StackTraceFilter
 {
     /**
-     * Frame `file` substrings (forward-slash form) that mark frames as
-     * library/framework noise and should be dropped from the trace. Each
-     * The library's own source root is derived from `__DIR__` separately so
-     * filtering does not depend on the Composer package or checkout directory
-     * name. The legacy substrings retain support for synthetic traces and
-     * traces captured before the repository was renamed.
+     * Frame `file` substrings (forward-slash form) that mark framework frames
+     * as noise. The library's own frames are dropped separately by the
+     * `sourceRoot()` prefix (derived from `__DIR__`), so this list holds
+     * framework frames only.
      *
      * The two `Illuminate/` entries cover the Laravel testing concerns
      * that sit between a Laravel trait's hook and the user test method;
@@ -49,12 +47,6 @@ final class StackTraceFilter
      * @var list<string>
      */
     private const DROP_PATTERNS = [
-        '/studio-design/gesso/src/',
-        '/gesso/src/Laravel/',
-        '/gesso/src/Psr7/',
-        '/gesso/src/Symfony/',
-        '/gesso/src/Internal/',
-        '/gesso/src/PHPUnit/',
         '/Illuminate/Foundation/Testing/Concerns/MakesHttpRequests.php',
         '/Illuminate/Testing/TestResponse.php',
     ];
