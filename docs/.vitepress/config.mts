@@ -310,6 +310,7 @@ export default defineConfig({
         items: [
           { text: 'Setup', link: '/setup' },
           { text: 'Shared configuration', link: '/configuration' },
+          { text: 'CLI reference', link: '/cli' },
           { text: 'Coverage', link: '/coverage' },
           { text: 'Supported features', link: '/supported-features' },
           { text: 'Conformance', link: '/conformance' },

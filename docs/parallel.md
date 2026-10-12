@@ -42,7 +42,8 @@ vendor/bin/gesso coverage:merge \
 | `--specs=<a,b>` | `front` | Comma-separated spec names |
 | `--strip-prefixes=<a,b>` | — | Comma-separated request-path prefixes to strip |
 | `--sidecar-dir=<path>` | `sys_get_temp_dir()/openapi-coverage-sidecars` | Where workers wrote sidecars |
-| `--output-file=<path>` | — | Markdown report output path |
+| `--format=<name>` | `text`; `markdown` with `--output-file` | `text` / `markdown` / `json` / `junit` / `html`. Rendering of the primary report. See [CLI reference](cli.md#merge-output) |
+| `--output-file=<path>` | — | Primary report output path: the `--format` rendering, Markdown by default |
 | `--junit-output=<path>` | — | JUnit XML report output path (CI dashboards). See [Coverage output formats](ci.md#coverage-output-formats) |
 | `--json-output=<path>` | — | Machine-readable JSON report output path. Schema: [`coverage-json-schema.md`](coverage-json-schema.md) |
 | `--html-output=<path>` | — | Self-contained HTML report output path. See [`coverage-html-output.md`](coverage-html-output.md) |
@@ -75,6 +76,16 @@ them, and requires each sidecar to be non-group/world-writable. The
 permission-bit checks are not applied on Windows, whose ACL model is not
 represented by POSIX mode bits. Use a dedicated directory rather than `/tmp`
 itself; the default already does this.
+
+## Exit codes
+
+| Code | Meaning |
+|---|---|
+| `0` | Merge completed; warnings may have been written to stderr. |
+| `1` | A gate failed (threshold, strict, baseline, expected shard count), a sidecar could not be read, or a report could not be written. |
+| `2` | Command-line usage is invalid. |
+
+Shared conventions: [CLI reference](cli.md#exit-codes).
 
 ## Sharded CI jobs
 
