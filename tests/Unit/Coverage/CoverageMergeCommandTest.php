@@ -32,12 +32,14 @@ use function glob;
 use function is_dir;
 use function json_decode;
 use function mkdir;
+use function realpath;
 use function rmdir;
 use function str_repeat;
 use function substr_count;
 use function sys_get_temp_dir;
 use function uniqid;
 use function unlink;
+use function var_export;
 
 /**
  * Pins the merge-CLI's behavior end-to-end — sidecar dir → combined report.
@@ -66,7 +68,7 @@ class CoverageMergeCommandTest extends TestCase
 
     protected function tearDown(): void
     {
-        foreach ([$this->outputFile, ...$this->sidecars()] as $path) {
+        foreach ([$this->outputFile, $this->configPath(), ...$this->sidecars()] as $path) {
             if (file_exists($path)) {
                 @unlink($path);
             }
@@ -2644,6 +2646,69 @@ class CoverageMergeCommandTest extends TestCase
         $this->assertNotSame($sentinel, OpenApiCoverageTracker::current());
     }
 
+    #[Test]
+    public function parse_argv_reads_the_config_flag(): void
+    {
+        $this->assertSame('x/gesso.php', CoverageMergeCommand::parseArgv(['--config=x/gesso.php'])['config'] ?? null);
+    }
+
+    #[Test]
+    public function options_default_from_gesso_php_relative_to_the_file(): void
+    {
+        $this->writeConfig();
+        $this->recordOneWorker();
+
+        $exit = (new CoverageMergeCommand(stdoutWriter: static fn(string $msg): null => null))
+            ->run(['config' => $this->configPath()]);
+
+        $this->assertSame(0, $exit);
+        // `report_output.markdown` and `sidecar_dir` are relative in the
+        // file: they resolve against its directory, not the cwd.
+        $this->assertFileExists($this->outputFile);
+        $this->assertStringContainsString('GET /v1/pets', (string) file_get_contents($this->outputFile));
+        $this->assertSame(['/api'], OpenApiSpecLoader::getStripPrefixes());
+    }
+
+    #[Test]
+    public function explicit_flags_win_over_gesso_php(): void
+    {
+        $this->writeConfig("'min_coverage' => ['response' => 100, 'strict' => true],");
+        $this->recordOneWorker();
+        $command = new CoverageMergeCommand(
+            stdoutWriter: static fn(string $msg): null => null,
+            stderrWriter: static fn(string $msg): null => null,
+        );
+
+        // The file alone fails the strict 100% response gate ...
+        $this->assertSame(1, $command->run(['config' => $this->configPath(), 'cleanup' => false]));
+        // ... an explicit threshold on the command line wins over it.
+        $this->assertSame(0, $command->run(['config' => $this->configPath(), 'min_response_coverage' => 0.0]));
+    }
+
+    #[Test]
+    public function an_invalid_gesso_php_is_fatal_with_exit_two(): void
+    {
+        $stderr = '';
+        $command = new CoverageMergeCommand(
+            stderrWriter: static function (string $msg) use (&$stderr): void {
+                $stderr .= $msg;
+            },
+        );
+
+        $this->assertSame(2, $command->run(['config' => $this->configPath()]));
+        $this->assertStringContainsString('[Gesso] FATAL:', $stderr);
+        $this->assertStringContainsString($this->configPath(), $stderr);
+
+        $stderr = '';
+        file_put_contents($this->configPath(), "<?php return ['coverage' => ['sidecar_directory' => 'x']];\n");
+        $this->assertSame(2, $command->run(['config' => $this->configPath()]));
+        $this->assertStringContainsString('coverage.sidecar_directory', $stderr);
+
+        $stderr = '';
+        $this->assertSame(2, $command->run(['config' => '']));
+        $this->assertStringContainsString('--config must name a gesso.php file', $stderr);
+    }
+
     /**
      * Write a worker sidecar carrying an under-described drift observation:
      * a response that always returned `expires`/`signed_url`/`url` even
@@ -2835,6 +2900,33 @@ class CoverageMergeCommandTest extends TestCase
         ]);
 
         return [$exit, $stdout];
+    }
+
+    private function configPath(): string
+    {
+        return dirname($this->sidecarDir) . '/gesso.php';
+    }
+
+    private function writeConfig(string $extraCoverage = ''): void
+    {
+        $specs = var_export((string) realpath(__DIR__ . '/../../fixtures/specs'), true);
+        file_put_contents($this->configPath(), <<<PHP
+            <?php
+            return [
+                'spec' => ['base_path' => {$specs}, 'names' => ['petstore-3.0'], 'strip_prefixes' => ['/api']],
+                'coverage' => [
+                    'sidecar_dir' => 'sidecars',
+                    'report_output' => ['markdown' => 'coverage-report.md'],
+                    {$extraCoverage}
+                ],
+            ];
+            PHP);
+    }
+
+    private function recordOneWorker(): void
+    {
+        OpenApiCoverageTracker::recordResponse('petstore-3.0', 'GET', '/v1/pets', '200', 'application/json', schemaValidated: true);
+        CoverageSidecarWriter::write($this->sidecarDir, '1', OpenApiCoverageTracker::exportState());
     }
 
     /** @return list<string> */

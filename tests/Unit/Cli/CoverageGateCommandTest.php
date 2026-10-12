@@ -60,6 +60,7 @@ class CoverageGateCommandTest extends TestCase
                 'spec_name' => 'front',
                 'format' => 'markdown',
                 'output_file' => 'build/gate.json',
+                'config' => 'gesso.php',
             ],
             CoverageGateCommand::parseArgv([
                 '--base-spec=base.json',
@@ -68,6 +69,7 @@ class CoverageGateCommandTest extends TestCase
                 '--spec-name=front',
                 '--format=markdown',
                 '--output-file=build/gate.json',
+                '--config=gesso.php',
             ]),
         );
     }
@@ -527,6 +529,55 @@ class CoverageGateCommandTest extends TestCase
             $this->gate(outputFile: $this->workDir . '/missing-dir/gate.txt'),
         );
         $this->assertStringContainsString('[Gesso] Cannot write --output-file: ', $this->stderr);
+    }
+
+    #[Test]
+    public function the_coverage_path_defaults_from_gesso_php(): void
+    {
+        $this->writeSpec('base.json', $this->baseSpec());
+        $this->writeSpec('openapi.json', $this->baseSpec());
+        $this->writeCoverage([]);
+        // Relative to the gesso.php directory, not the cwd.
+        file_put_contents($this->workDir . '/gesso.php', "<?php return ['coverage' => ['report_output' => ['json' => 'coverage.json']]];\n");
+
+        $this->assertSame(CoverageGateCommand::EXIT_OK, $this->command()->run([
+            'base_spec' => $this->workDir . '/base.json',
+            'spec' => $this->workDir . '/openapi.json',
+            'config' => $this->workDir . '/gesso.php',
+        ]), $this->stderr);
+        $this->assertStringContainsString('No operation changed', $this->stdout);
+    }
+
+    #[Test]
+    public function an_explicit_coverage_path_wins_over_gesso_php(): void
+    {
+        $this->writeSpec('base.json', $this->baseSpec());
+        $this->writeSpec('openapi.json', $this->baseSpec());
+        $this->writeCoverage([]);
+        file_put_contents($this->workDir . '/gesso.php', "<?php return ['coverage' => ['report_output' => ['json' => 'missing.json']]];\n");
+
+        $this->assertSame(CoverageGateCommand::EXIT_OK, $this->command()->run([
+            'base_spec' => $this->workDir . '/base.json',
+            'spec' => $this->workDir . '/openapi.json',
+            'coverage' => $this->workDir . '/coverage.json',
+            'config' => $this->workDir . '/gesso.php',
+        ]), $this->stderr);
+    }
+
+    #[Test]
+    public function an_invalid_gesso_php_is_a_usage_error(): void
+    {
+        $this->assertSame(CoverageGateCommand::EXIT_USAGE, $this->command()->run(['config' => $this->workDir . '/gesso.php']));
+        $this->assertStringContainsString('Gesso configuration file not found', $this->stderr);
+
+        $this->stderr = '';
+        file_put_contents($this->workDir . '/gesso.php', "<?php return ['coverage' => ['report_outputs' => []]];\n");
+        $this->assertSame(CoverageGateCommand::EXIT_USAGE, $this->command()->run(['config' => $this->workDir . '/gesso.php']));
+        $this->assertStringContainsString('coverage.report_outputs', $this->stderr);
+
+        $this->stderr = '';
+        $this->assertSame(CoverageGateCommand::EXIT_USAGE, $this->command()->run(['config' => '']));
+        $this->assertStringContainsString('--config must name a gesso.php file', $this->stderr);
     }
 
     private function gate(

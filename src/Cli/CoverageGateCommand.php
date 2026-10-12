@@ -12,6 +12,8 @@ use const PATHINFO_FILENAME;
 
 use JsonException;
 use RuntimeException;
+use Studio\Gesso\Config\GessoConfig;
+use Studio\Gesso\Config\InvalidGessoConfigurationException;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\Internal\ArgvParser;
 use Studio\Gesso\Internal\CliDocuments;
@@ -61,7 +63,7 @@ use function usort;
  * through {@see OpenApiSpecLoader}, a pure `$ref` reshuffle that resolves to
  * the same tree reads as unchanged.
  *
- * @phpstan-type GateOptions array{base_spec?: string, spec?: string, coverage?: string, spec_name?: string, format?: string, output_file?: string, help?: bool, invalid_options?: list<string>}
+ * @phpstan-type GateOptions array{base_spec?: string, spec?: string, coverage?: string, spec_name?: string, format?: string, output_file?: string, config?: string, help?: bool, invalid_options?: list<string>}
  * @phpstan-type GateResponse array{status: string, content_type: string, change: 'added'|'changed'|'removed', state: string, covered: bool}
  * @phpstan-type GateOperation array{endpoint: string, change: 'added'|'changed'|'removed', responses: list<GateResponse>}
  * @phpstan-type IndexedResponse array{status: string, content_type: string, hash: string}
@@ -91,7 +93,7 @@ final class CoverageGateCommand
     public static function parseArgv(array $argv): array
     {
         /** @var GateOptions */
-        return ArgvParser::parse($argv, values: ['base_spec', 'spec', 'coverage', 'spec_name', 'format', 'output_file']);
+        return ArgvParser::parse($argv, values: ['base_spec', 'spec', 'coverage', 'spec_name', 'format', 'output_file', 'config']);
     }
 
     public static function usage(string $invocation = 'gesso coverage:gate'): string
@@ -110,13 +112,16 @@ final class CoverageGateCommand
               --spec=<path>        Spec as it looks on this branch.
               --coverage=<path>    Coverage JSON (schema_version 3) written by the
                                    `json_output` extension parameter or
-                                   `gesso coverage:merge --json-output`.
+                                   `gesso coverage:merge --json-output`. Defaults to
+                                   `coverage.report_output.json` from gesso.php.
               --spec-name=<name>   Key under `specs` in the coverage document.
                                    Defaults to the --spec filename without extension.
               --format=text|markdown|json
                                    Output format (default: text). `markdown` is meant for
                                    \$GITHUB_STEP_SUMMARY, `json` for tooling.
               --output-file=<path> Write the report there instead of stdout.
+              --config=<path>      gesso.php to default --coverage from (default:
+                                   ./gesso.php when present). See docs/configuration.md.
               --help               Show this message.
 
             Exit codes:
@@ -134,6 +139,22 @@ final class CoverageGateCommand
             $this->writeStdout(self::usage($this->invocation));
 
             return self::EXIT_OK;
+        }
+
+        if (($options['config'] ?? null) === '') {
+            return $this->usageError('--config must name a gesso.php file.');
+        }
+
+        try {
+            $config = GessoConfig::load($options['config'] ?? null);
+        } catch (InvalidGessoConfigurationException $e) {
+            return $this->usageError($e->getMessage());
+        }
+        // Only the coverage document defaults from the file: --spec-name keeps
+        // following --spec, so a multi-spec project gating one spec per run
+        // never reads another spec's key.
+        if (($options['coverage'] ?? '') === '' && $config->has('coverage.report_output.json')) {
+            $options['coverage'] = (string) $config->string('coverage.report_output.json');
         }
 
         $format = $options['format'] ?? 'text';

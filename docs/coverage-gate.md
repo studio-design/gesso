@@ -113,10 +113,11 @@ the coverage document entirely counts as `UNCOVERED`.
 |---|---|
 | `--base-spec=<path>` | Spec as it looks on the base branch. Required. |
 | `--spec=<path>` | Spec as it looks on this branch. Required. |
-| `--coverage=<path>` | Coverage JSON, `schema_version` 3. Required. |
+| `--coverage=<path>` | Coverage JSON, `schema_version` 3. Required unless `gesso.php` sets `coverage.report_output.json`, which it then defaults to. |
 | `--spec-name=<name>` | Key under `specs` in the coverage document. Defaults to the `--spec` filename without its extension. |
 | `--format=text\|markdown\|json` | `markdown` renders a table for `$GITHUB_STEP_SUMMARY`; `json` is for tooling (below). Default `text`. |
 | `--output-file=<path>` | Write the report there instead of stdout. The parent directory must exist. |
+| `--config=<path>` | [`gesso.php`](configuration.md) to default `--coverage` from. Defaults to `./gesso.php` when present. `--spec-name` still follows `--spec`. |
 
 ## Machine-readable output
 
