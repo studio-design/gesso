@@ -4,9 +4,6 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\PHPUnit;
 
-use PHPUnit\Framework\Assert;
-use PHPUnit\Framework\AssertionFailedError;
-use Studio\Gesso\Internal\StackTraceFilter;
 use Studio\Gesso\Schema\EnumDriftAsserter;
 use Studio\Gesso\Schema\EnumDriftReport;
 
@@ -22,13 +19,13 @@ use function array_values;
  * `beStrictAboutTestsThatDoNotTestAnything=true` (the PHPUnit 13 default;
  * opt-in on earlier majors).
  *
- * This trait wraps the same comparison through `Assert::fail()` and bumps
+ * This trait wraps the same comparison through `CleanTraceAssert::fail()` and bumps
  * the assertion counter so passing drift tests stay green. The static
  * `assertNoDrift()` API is unchanged; non-PHPUnit drift CI scripts can
  * keep using it.
  *
  * Misconfiguration (`EnumBindingException`) is intentionally NOT routed
- * through `Assert::fail()` — a missing `#[BoundToOpenApiEnum]` or
+ * through `CleanTraceAssert::fail()` — a missing `#[BoundToOpenApiEnum]` or
  * unreadable spec file is a setup error, not a drift signal, and callers
  * want the structured exception properties (`$reason`, `$enumFqcn`,
  * `$specPath`) preserved.
@@ -52,10 +49,6 @@ trait AssertsNoEnumDrift
             return;
         }
 
-        try {
-            Assert::fail(EnumDriftAsserter::renderMessage($drifting, failOnDrift: true));
-        } catch (AssertionFailedError $e) {
-            StackTraceFilter::rethrowWithCleanTrace($e);
-        }
+        CleanTraceAssert::fail(EnumDriftAsserter::renderMessage($drifting, failOnDrift: true));
     }
 }

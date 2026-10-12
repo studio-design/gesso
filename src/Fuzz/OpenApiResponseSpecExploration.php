@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Studio\Gesso\Fuzz;
 
 use InvalidArgumentException;
-use PHPUnit\Framework\Assert;
+use Studio\Gesso\PHPUnit\CleanTraceAssert;
 use Studio\Gesso\Spec\OpenApiOperationResolver;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Validation\Response\ResponseSchemaResolution;
@@ -267,7 +267,7 @@ final class OpenApiResponseSpecExploration
         );
 
         if ($summary->hasFailures() || ($this->failOnUnmapped && $summary->hasMappingGaps())) {
-            Assert::fail(self::failureMessage($summary, $this->failOnUnmapped));
+            CleanTraceAssert::fail(self::failureMessage($summary, $this->failOnUnmapped));
         }
 
         return $summary;

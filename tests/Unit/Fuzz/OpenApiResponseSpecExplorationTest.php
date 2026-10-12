@@ -23,6 +23,7 @@ use function array_map;
 use function array_unique;
 use function explode;
 use function sort;
+use function str_replace;
 
 final class OpenApiResponseSpecExplorationTest extends TestCase
 {
@@ -359,6 +360,9 @@ final class OpenApiResponseSpecExplorationTest extends TestCase
             $this->assertStringContainsString('Round-trip failures', $e->getMessage());
             $this->assertStringContainsString('operation=createPet', $e->getMessage());
             $this->assertStringContainsString('replay:', $e->getMessage());
+            foreach ($e->getTrace() as $frame) {
+                $this->assertStringNotContainsString('/src/Fuzz/', str_replace('\\', '/', $frame['file'] ?? ''));
+            }
         }
 
         $this->assertGreaterThanOrEqual(2, $decodeAttempts);
