@@ -54,6 +54,13 @@ final class RuntimeExpressionEvaluatorTest extends TestCase
     }
 
     #[Test]
+    public function method_keeps_custom_method_case(): void
+    {
+        $this->assertSame('copy', RuntimeExpressionEvaluator::evaluate('$method', new RuntimeExpressionContext(method: 'copy')));
+        $this->assertSame('GET', RuntimeExpressionEvaluator::evaluate('$method', new RuntimeExpressionContext(method: 'get')));
+    }
+
+    #[Test]
     public function headers_are_case_insensitive_and_multi_values_join(): void
     {
         $context = $this->context();
