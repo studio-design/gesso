@@ -185,6 +185,17 @@ changing a sidecar shape or filename pattern.
   `--strict-required` flag decides whether to assert the gate; the
   `strict_required` parameter on the PHPUnit extension does not propagate
   to the merge step. See [`strict-required.md`](strict-required.md#paratest).
+- **Enum drift is evaluated once, by the process that starts the run.**
+  paratest bootstraps the extension in its master before spawning workers
+  (Pest `--parallel` does the same in its orchestrator). That process runs
+  the `enum_drift_*` scan and writes the single stderr /
+  `GITHUB_STEP_SUMMARY` block; a strict drift there aborts the run before any
+  worker starts. Workers (`TEST_TOKEN` set) skip the scan, and
+  `gesso coverage:merge` plays no part. `GESSO_SIDECAR_TOKEN` shards are
+  separate jobs and each evaluates once, as a sequential run does. A
+  sequential run whose environment pre-sets `TEST_TOKEN` is treated as a
+  worker and skips the scan too — unset `TEST_TOKEN`, or name shards with
+  `GESSO_SIDECAR_TOKEN` instead.
 - **Baseline generation aggregates across workers too.** An
   `GESSO_BASELINE_GENERATE=1` parallel run stages fingerprints in the
   sidecars; pass `--baseline-file=<path>` to the merge to write the union.
