@@ -58,10 +58,10 @@ final class ArazzoWorkflowPreflight
     private const QUERY_DELIMITERS = ['form' => ',', 'spaceDelimited' => '%20', 'pipeDelimited' => '%7C'];
 
     private const WORKFLOW_OUTPUT_FAMILIES = [RuntimeExpressionFamily::Inputs, RuntimeExpressionFamily::Steps];
-    private const WORKFLOW_FIELDS = ['workflowId', 'summary', 'description', 'inputs', 'steps', 'outputs', 'parameters'];
-    private const UNSUPPORTED_WORKFLOW_FIELDS = ['dependsOn', 'successActions', 'failureActions'];
-    private const STEP_FIELDS = ['stepId', 'description', 'operationId', 'operationPath', 'parameters', 'requestBody', 'successCriteria', 'outputs'];
-    private const UNSUPPORTED_STEP_FIELDS = ['workflowId', 'channelPath', 'dependsOn', 'onSuccess', 'onFailure', 'timeout', 'action', 'correlationId'];
+    private const WORKFLOW_FIELDS = ['workflowId', 'summary', 'description', 'inputs', 'steps', 'outputs', 'parameters', 'successActions', 'failureActions'];
+    private const UNSUPPORTED_WORKFLOW_FIELDS = ['dependsOn'];
+    private const STEP_FIELDS = ['stepId', 'description', 'operationId', 'operationPath', 'parameters', 'requestBody', 'successCriteria', 'outputs', 'onSuccess', 'onFailure'];
+    private const UNSUPPORTED_STEP_FIELDS = ['workflowId', 'channelPath', 'dependsOn', 'timeout', 'action', 'correlationId'];
     private const TARGET_FIELDS = ['operationId', 'operationPath', 'workflowId', 'channelPath'];
     private const PARAMETER_LOCATIONS = ['path', 'query', 'header', 'cookie'];
 
@@ -121,6 +121,177 @@ final class ArazzoWorkflowPreflight
     }
 
     /**
+     * @return list<ArazzoAction>
+     */
+    private function actions(string $at, mixed $node, bool $success, ?int $position): array
+    {
+        if ($node === null) {
+            return [];
+        }
+
+        if (!is_array($node) || !array_is_list($node)) {
+            $this->problem(ArazzoDescriptionReason::InvalidField, '%s: expected a list.', $at);
+
+            return [];
+        }
+
+        $actions = [];
+        foreach ($node as $index => $action) {
+            $actionAt = sprintf('%s[%d]', $at, $index);
+            if (!ArazzoDescription::isObject($action)) {
+                $this->problem(ArazzoDescriptionReason::InvalidField, '%s: expected object.', $actionAt);
+
+                continue;
+            }
+
+            $action = ArazzoDescription::members($action);
+            if (array_key_exists('reference', $action)) {
+                if (array_key_exists('value', $action)) {
+                    $this->problem(ArazzoDescriptionReason::InvalidField, '%s.value: only Reusable parameter objects take a value.', $actionAt);
+                }
+
+                $action = $this->component($actionAt, $action['reference'], $success ? 'successActions' : 'failureActions');
+                if ($action === null) {
+                    continue;
+                }
+            }
+
+            $parsed = $this->action($actionAt, $action, $success, $position);
+            if ($parsed === null) {
+                continue;
+            }
+
+            if (isset($actions[$parsed->name])) {
+                $this->problem(ArazzoDescriptionReason::DuplicateIdentifier, "%s.name: '%s' is declared more than once in this list.", $actionAt, $parsed->name);
+
+                continue;
+            }
+
+            $actions[$parsed->name] = $parsed;
+        }
+
+        return array_values($actions);
+    }
+
+    /**
+     * @param array<array-key, mixed> $action
+     */
+    private function action(string $at, array $action, bool $success, ?int $position): ?ArazzoAction
+    {
+        $this->fields($at, $action, ['name', 'type', 'stepId', 'criteria'], ['workflowId', 'retryAfter', 'retryLimit']);
+
+        $name = $action['name'] ?? null;
+        $type = $action['type'] ?? null;
+        if (!is_string($name) || $name === '') {
+            $this->problem(ArazzoDescriptionReason::MissingRequiredField, '%s.name: a string is required.', $at);
+
+            return null;
+        }
+
+        if ($type === 'retry' && !$success) {
+            $this->problem(ArazzoDescriptionReason::UnsupportedFeature, "%s.type: 'retry' actions are not supported yet.", $at);
+
+            return null;
+        }
+
+        if ($type !== 'end' && $type !== 'goto') {
+            $this->problem(ArazzoDescriptionReason::InvalidField, '%s.type: must be %s.', $at, $success ? 'end or goto' : 'end, goto or retry');
+
+            return null;
+        }
+
+        $stepId = null;
+        if ($type === 'goto') {
+            if (array_key_exists('workflowId', $action)) {
+                return null; // reported as an unsupported field above
+            }
+
+            $stepId = $action['stepId'] ?? null;
+            if (!is_string($stepId) || $stepId === '') {
+                $this->problem(ArazzoDescriptionReason::MissingRequiredField, '%s.stepId: a goto action needs a stepId.', $at);
+
+                return null;
+            }
+
+            if (!isset($this->stepPositions[$stepId])) {
+                $this->problem(ArazzoDescriptionReason::UnknownStep, "%s.stepId: '%s' names no step in this workflow.", $at, $stepId);
+
+                return null;
+            }
+        }
+
+        $criteria = array_key_exists('criteria', $action) ? $this->criteria($at . '.criteria', $action['criteria'], $position) : [];
+
+        return new ArazzoAction($name, $type, $stepId, $criteria);
+    }
+
+    /**
+     * Workflow-level actions apply to every step; a step action with the
+     * same name overrides the inherited one in place.
+     *
+     * @param list<ArazzoAction> $inherited
+     * @param list<ArazzoAction> $own
+     *
+     * @return list<ArazzoAction>
+     */
+    private function mergeActions(string $workflowAt, array $inherited, array $own, string $stepId, int $position): array
+    {
+        $merged = [];
+        foreach ($inherited as $action) {
+            $merged[$action->name] = $action;
+        }
+
+        foreach ($own as $action) {
+            $merged[$action->name] = $action;
+        }
+
+        foreach ($inherited as $action) {
+            if ($merged[$action->name] !== $action) {
+                continue;
+            }
+
+            foreach ($action->criteria as $criterion) {
+                foreach ($criterion->expressions() as $expression) {
+                    $this->expression(sprintf("%s[%s] (inherited by step '%s')", $workflowAt, $action->name, $stepId), $expression, $position, workflowLevel: false);
+                }
+            }
+        }
+
+        return array_values($merged);
+    }
+
+    /**
+     * Resolve a Reusable Object `reference` (`$components.<type>.<name>`).
+     *
+     * @return null|array<array-key, mixed> the referenced component
+     */
+    private function component(string $at, mixed $reference, string $type): ?array
+    {
+        try {
+            $expression = is_string($reference) ? RuntimeExpression::parse($reference) : null;
+        } catch (RuntimeExpressionException $e) {
+            $this->problem(ArazzoDescriptionReason::InvalidExpression, '%s.reference: %s', $at, $e->getMessage());
+
+            return null;
+        }
+
+        if ($expression === null || $expression->family !== RuntimeExpressionFamily::Components || $expression->name !== $type) {
+            $this->problem(ArazzoDescriptionReason::InvalidField, '%s.reference: must be $components.%s.<name>.', $at, $type);
+
+            return null;
+        }
+
+        $component = ArazzoDescription::members($this->description->components[$type] ?? [])[(string) $expression->member] ?? null;
+        if (!ArazzoDescription::isObject($component)) {
+            $this->problem(ArazzoDescriptionReason::UnknownComponent, "%s.reference: '%s' names no component.", $at, $expression->raw);
+
+            return null;
+        }
+
+        return ArazzoDescription::members($component);
+    }
+
+    /**
      * @param array<string, mixed> $workflow
      */
     private function workflow(string $workflowId, array $workflow): ArazzoWorkflowPlan
@@ -153,10 +324,14 @@ final class ArazzoWorkflowPreflight
         // Workflow parameters are expression-checked per step, after step
         // overrides, because their availability depends on the step position.
         $workflowParameters = $this->parameters($at . '.parameters', $workflow['parameters'] ?? null, null);
+        $workflowActions = [
+            $this->actions($at . '.successActions', $workflow['successActions'] ?? null, true, null),
+            $this->actions($at . '.failureActions', $workflow['failureActions'] ?? null, false, null),
+        ];
 
         $plans = [];
         foreach ($steps as $position => $step) {
-            $plan = $this->step($at, $position, ArazzoDescription::members($step), $workflowParameters);
+            $plan = $this->step($at, $position, ArazzoDescription::members($step), $workflowParameters, $workflowActions);
             if ($plan !== null) {
                 $plans[] = $plan;
             }
@@ -170,8 +345,9 @@ final class ArazzoWorkflowPreflight
     /**
      * @param array<array-key, mixed> $step
      * @param list<array{name: string, in: string, value: mixed}> $workflowParameters
+     * @param array{0: list<ArazzoAction>, 1: list<ArazzoAction>} $workflowActions success, failure
      */
-    private function step(string $workflowAt, int $position, array $step, array $workflowParameters): ?ArazzoStepPlan
+    private function step(string $workflowAt, int $position, array $step, array $workflowParameters, array $workflowActions): ?ArazzoStepPlan
     {
         $stepId = (string) $step['stepId'];
         $at = sprintf('%s.steps[%s]', $workflowAt, $stepId);
@@ -180,7 +356,17 @@ final class ArazzoWorkflowPreflight
         $target = $this->target($at, $step);
         $parameters = $this->parameters($at . '.parameters', $step['parameters'] ?? null, $position);
         [$contentType, $hasBody, $payload] = $this->requestBody($at . '.requestBody', $step['requestBody'] ?? null, $position, $target[1]['operation'] ?? []);
-        $conditions = $this->criteria($at . '.successCriteria', $step, $position);
+        $conditions = [];
+        if (array_key_exists('successCriteria', $step)) {
+            if (ArazzoDescription::isNonEmptyList($step['successCriteria'])) {
+                $conditions = $this->criteria($at . '.successCriteria', $step['successCriteria'], $position);
+            } else {
+                $this->problem(ArazzoDescriptionReason::InvalidField, '%s.successCriteria: must be a non-empty list when present.', $at);
+            }
+        }
+
+        $onSuccess = $this->mergeActions($workflowAt . '.successActions', $workflowActions[0], $this->actions($at . '.onSuccess', $step['onSuccess'] ?? null, true, $position), $stepId, $position);
+        $onFailure = $this->mergeActions($workflowAt . '.failureActions', $workflowActions[1], $this->actions($at . '.onFailure', $step['onFailure'] ?? null, false, $position), $stepId, $position);
         $outputs = $this->outputs($at . '.outputs', $step['outputs'] ?? null, $position, workflowLevel: false);
 
         $merged = [];
@@ -216,6 +402,8 @@ final class ArazzoWorkflowPreflight
             $conditions,
             $outputs,
             $this->queryDelimiters($at, $specName, $entry, $merged),
+            $onSuccess,
+            $onFailure,
         );
     }
 
@@ -421,9 +609,17 @@ final class ArazzoWorkflowPreflight
 
             $parameter = ArazzoDescription::members($parameter);
             if (array_key_exists('reference', $parameter)) {
-                $this->problem(ArazzoDescriptionReason::UnsupportedFeature, '%s: Reusable Object parameters (reference) are not supported yet.', $parameterAt);
+                $component = $this->component($parameterAt, $parameter['reference'], 'parameters');
+                if ($component === null) {
+                    continue;
+                }
 
-                continue;
+                // A Reusable Object's `value` overrides the component's value.
+                if (array_key_exists('value', $parameter)) {
+                    $component['value'] = $parameter['value'];
+                }
+
+                $parameter = $component;
             }
 
             $name = $parameter['name'] ?? null;
@@ -548,19 +744,14 @@ final class ArazzoWorkflowPreflight
     }
 
     /**
-     * @param array<array-key, mixed> $step
+     * @param ?int $position step position for expression checks; null defers them to each step
      *
      * @return list<ArazzoSimpleCondition>
      */
-    private function criteria(string $at, array $step, int $position): array
+    private function criteria(string $at, mixed $node, ?int $position): array
     {
-        if (!array_key_exists('successCriteria', $step)) {
-            return [];
-        }
-
-        $node = $step['successCriteria'];
-        if (!ArazzoDescription::isNonEmptyList($node)) {
-            $this->problem(ArazzoDescriptionReason::InvalidField, '%s: must be a non-empty list when present.', $at);
+        if (!is_array($node) || !array_is_list($node)) {
+            $this->problem(ArazzoDescriptionReason::InvalidField, '%s: expected a list.', $at);
 
             return [];
         }
@@ -587,7 +778,7 @@ final class ArazzoWorkflowPreflight
             if (array_key_exists('context', $criterion)) {
                 if (!RuntimeExpression::isExpression($criterion['context'])) {
                     $this->problem(ArazzoDescriptionReason::InvalidField, '%s.context: must be a runtime expression.', $criterionAt);
-                } else {
+                } elseif ($position !== null) {
                     $this->expressions($criterionAt . '.context', $criterion['context'], $position, recursive: false);
                 }
             }
@@ -616,7 +807,7 @@ final class ArazzoWorkflowPreflight
             }
 
             $valid = true;
-            foreach ($parsed->expressions() as $expression) {
+            foreach ($position === null ? [] : $parsed->expressions() as $expression) {
                 $valid = $this->expression($criterionAt . '.condition', $expression, $position, workflowLevel: false) && $valid;
             }
 

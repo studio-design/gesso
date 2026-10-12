@@ -20,6 +20,8 @@ final readonly class ArazzoStepPlan
      * @param list<ArazzoSimpleCondition> $conditions parsed `successCriteria`
      * @param array<string, RuntimeExpression> $outputs
      * @param array<string, string> $queryDelimiters query parameter name → wire delimiter of its non-exploded style
+     * @param list<ArazzoAction> $onSuccess workflow successActions merged with the step's onSuccess
+     * @param list<ArazzoAction> $onFailure workflow failureActions merged with the step's onFailure
      */
     public function __construct(
         public string $stepId,
@@ -35,5 +37,7 @@ final readonly class ArazzoStepPlan
         public array $conditions,
         public array $outputs,
         public array $queryDelimiters = [],
+        public array $onSuccess = [],
+        public array $onFailure = [],
     ) {}
 }

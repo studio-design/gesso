@@ -137,10 +137,34 @@ For each step, in order:
 4. The response is validated against the same source.
 5. `successCriteria` are evaluated, then the step's `outputs`.
 
-The first failure stops the run (Arazzo's default "break and return"). After
-the last step the workflow `outputs` are evaluated. Workflow `inputs` are
-validated against the `inputs` schema (JSON Schema 2020-12) before any step
-runs.
+Without actions, the first failure stops the run (Arazzo's default "break
+and return"). After the last step the workflow `outputs` are evaluated.
+Workflow `inputs` are validated against the `inputs` schema (JSON Schema
+2020-12) before any step runs.
+
+### Success and failure actions
+
+After a step succeeds, the first `onSuccess` action whose `criteria` all hold
+(evaluated against that step's request and response) decides what happens:
+`end` stops the run and evaluates the workflow `outputs`; `goto` continues at
+the named step of the same workflow. No matching action means the next step.
+
+After a step fails with a request-contract, dispatch, response-contract or
+criterion failure, the first matching `onFailure` action decides: `end` stops
+the run, `goto` continues at the named step. No matching action stops the run.
+A `Workflow` failure (an expression that cannot be evaluated) is never routed.
+
+Routing around a failure never turns the run green: the failed step stays in
+`steps` with its `failure`, `ArazzoWorkflowResult::$failure` is the first
+failed step's failure, `isSuccessful()` is false, workflow `outputs` are not
+evaluated, and `failureMessage()` lists every failed step.
+
+Workflow `successActions` / `failureActions` apply to every step; a step
+action with the same `name` overrides the inherited one. Actions and
+parameters may be Reusable Objects (`reference: $components.failureActions.abort`);
+a Reusable parameter's `value` overrides the component's. A run stops with a
+`Workflow` failure after 1,000 step executions, so a `goto` loop cannot hang a
+test suite.
 
 Both validations record coverage under the source's spec name, exactly like
 an adapter assertion, and the process-wide validation policy
@@ -197,9 +221,10 @@ The subset may widen in a minor release; it will not narrow within a major.
 |---|---|---|
 | Sources | `openapi` | `asyncapi`, `arazzo` |
 | Step target | `operationId` (bare only with exactly one source; `$sourceDescriptions.<name>.<operationId>` always), `operationPath` written `{$sourceDescriptions.<name>.url}#<json-pointer>` | `workflowId`, `channelPath` |
-| Step fields | `description`, `parameters`, `requestBody`, `successCriteria`, `outputs` | `dependsOn`, `onSuccess`, `onFailure`, `timeout` |
-| Workflow fields | `summary`, `description`, `inputs`, `steps`, `outputs`, `parameters` | `dependsOn`, `successActions`, `failureActions`, `$ref` inside `inputs` |
-| Parameters | `in: path`, `query`, `header`, `cookie`; constant, expression or embedded-expression values; workflow parameters merged with step parameters (the step wins) | `in: querystring`, `deepObject` query parameters, Reusable Objects, Selector Objects |
+| Step fields | `description`, `parameters`, `requestBody`, `successCriteria`, `outputs`, `onSuccess`, `onFailure` | `dependsOn`, `timeout` |
+| Workflow fields | `summary`, `description`, `inputs`, `steps`, `outputs`, `parameters`, `successActions`, `failureActions` | `dependsOn`, `$ref` inside `inputs` |
+| Parameters | `in: path`, `query`, `header`, `cookie`; constant, expression or embedded-expression values; Reusable Objects from `components.parameters`; workflow parameters merged with step parameters (the step wins) | `in: querystring`, `deepObject` query parameters, Selector Objects |
+| Actions | `end`, `goto` a step in the same workflow, `simple` criteria, Reusable Objects from `components.successActions` / `failureActions` | `retry`, `goto` a `workflowId` |
 | Request body | JSON (`application/json` or `+json`; an omitted `contentType` is taken from the operation), expressions anywhere in the payload | other content types, `replacements`, Selector Objects |
 | Criteria | `simple` | `regex`, `jsonpath`, `xpath`, Expression Type Objects |
 | Outputs | one runtime expression per output | Selector Objects, embedded strings, `$outputs`, `$workflows`, `$sourceDescriptions`, `$components`, `$message`, `$self` |
@@ -229,9 +254,10 @@ name. Use a JSON Pointer (`$response.body#/items/0/name`) instead of
 ## Limitations and roadmap
 
 Not supported yet, tracked under
-[#430](https://github.com/studio-design/gesso/issues/430): success and failure
-actions (`goto`, `end`, `retry`), reusable components, workflow calls and
-`dependsOn`, Selector Objects, `regex`/`jsonpath`/`xpath` criteria,
+[#430](https://github.com/studio-design/gesso/issues/430): `retry` actions
+(`retryAfter` / `retryLimit`), `timeout`, workflow calls (`workflowId` steps
+and `goto`), `$workflows.*` / `$outputs.*`, `dependsOn`, Selector Objects,
+`regex`/`jsonpath`/`xpath` criteria, `$ref` to `components.inputs`,
 `querystring` parameters, non-JSON request bodies, AsyncAPI and nested Arazzo
 sources, and JSON serialization of embedded arrays and objects.
 
