@@ -233,6 +233,61 @@ Summaries are local immutable values; the explorer adds no process-global
 aggregation. Run one plan per parallel worker partition and use the existing
 coverage sidecar/merge workflow to aggregate validated response rows.
 
+### Follow response links
+
+Opt in with `followLinksUsing()` to chain operations connected by explicit
+OpenAPI response [`links`](https://spec.openapis.org/oas/v3.2.0.html#link-object):
+
+```php
+use Psr\Http\Message\ResponseInterface;
+use Studio\Gesso\Fuzz\OpenApiSpecExplorer;
+
+$summary = OpenApiSpecExplorer::explore('front', casesPerOperation: 5, seed: 1)
+    ->dispatchUsing(fn ($case, $operation) => dispatch_request($case))
+    ->followLinksUsing(fn (ResponseInterface $response) => $response, maxDepth: 2)
+    ->assertResponses();
+
+// $summary->followedLinks counts the follow-up requests.
+```
+
+After every valid case, each link declared on the observed response status is
+followed: Gesso generates one request for the target operation (seeded from the
+root case and the link names, so chains replay deterministically), applies
+`mutateCasesUsing()`, then overrides it with the link's `parameters` and
+`requestBody` evaluated from the parent request and response
+(`$response.body#/id`, `$request.path.petId`, …). The follow-up is dispatched
+and asserted through the same hooks, inside the root operation's
+`setUp`/`authenticate`/`tearDown` scope, and its own links are followed up to
+`maxDepth` hops (a `(method, path)` already in the chain is dispatched but not
+expanded again). Explicit exclusions (`excludeMethods()`, `excludePaths()`,
+`excludeTags()`, `excludeOperations()`, and deprecated operations unless
+`includeDeprecated()`) also apply to link targets; inclusion filters only
+select the chain roots. Sibling links targeting `DELETE` run last, and a pair is
+only checked when no other state-changing follow-up ran between the parent
+response and the follow-up.
+
+`followLinksUsing()` receives whatever `dispatchUsing()` returned and must
+return a PSR-7 response or `['status' => int, 'headers' => array, 'body' => string]`.
+
+Each (parent, follow-up) pair is checked:
+
+| `LinkChainCheck` | Fails when |
+|---|---|
+| `use_after_free` | a 2xx `DELETE` is followed through a link by a 2xx `GET` of the same request path |
+| `ensure_resource_availability` | a 2xx `POST`/`PUT`/`PATCH` is followed through a link by a `404`/`410` `GET` |
+
+A violation throws immediately with the ordered chain (`1. POST /pets → 201
+(case 0, operation seed …)`, `2. [GetPet] GET /pets/1 → 404`), the replay call
+for the root case, and a curl command for the last request. Chains are reported,
+not reduced: `FailureReducer` keeps its single-case contract.
+
+Links are opt-in: plans without `followLinksUsing()`, specs without `links`, and
+`negativeCases()` plans behave exactly as before. A link with both or neither of
+`operationId`/`operationRef`, an external `operationRef`, an unknown target, a
+target method the explorer cannot dispatch, an ambiguous or unknown bare
+parameter name (qualify it as `path.id`, `query.id`, …) or an expression that
+does not resolve fails loudly instead of being skipped.
+
 ### Safety for mutating operations
 
 Whole-spec exploration can execute `POST`, `PUT`, `PATCH`, and `DELETE`. Run it
@@ -542,6 +597,8 @@ tracker already cover.
 - Structural shrinking inside nested arrays/objects; current reduction removes
   top-level body members.
 - Measurement-based feature parity with Schemathesis.
+- Stateful chains beyond explicit `links`: parameter-name inference and
+  `Location`-header learning (#400 phase 2).
 
 [schemathesis]: https://github.com/schemathesis/schemathesis
 [faker]: https://github.com/FakerPHP/Faker
