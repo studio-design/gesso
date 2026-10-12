@@ -2006,6 +2006,21 @@ class RequestBodyValidatorTest extends TestCase
     }
 
     #[Test]
+    public function validate_finds_the_raw_value_of_a_field_name_parse_str_mangles(): void
+    {
+        // parse_str() turns `tag.list` into `tag_list`; the raw lookup must too.
+        $result = $this->validateStyled(
+            'application/x-www-form-urlencoded',
+            ['tag_list' => ['style' => 'form', 'explode' => false]],
+            'tag.list=a%2Cb',
+            ['type' => 'array', 'items' => ['type' => 'string', 'enum' => ['a,b']]],
+            property: 'tag_list',
+        );
+
+        $this->assertSame([], $result->errors);
+    }
+
+    #[Test]
     public function validate_ignores_part_content_type_when_style_is_declared(): void
     {
         // OAS 3.1/3.2 Encoding Object: with style / explode / allowReserved

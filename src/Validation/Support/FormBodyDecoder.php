@@ -13,6 +13,7 @@ use Studio\Gesso\UploadedPart;
 use function array_fill_keys;
 use function array_filter;
 use function array_key_exists;
+use function array_key_first;
 use function array_keys;
 use function count;
 use function explode;
@@ -25,6 +26,7 @@ use function parse_str;
 use function sprintf;
 use function strtolower;
 use function trim;
+use function urlencode;
 
 /**
  * Turn a form request body (`application/x-www-form-urlencoded` or
@@ -87,6 +89,26 @@ final class FormBodyDecoder
     }
 
     /**
+     * The percent-encoded wire values of a raw urlencoded body, keyed by the
+     * field name {@see self::toFieldMap()} gives the same pair — parse_str()'s
+     * key mangling included (`a.b` becomes `a_b`), so the lookup in
+     * {@see self::prepare()} finds them.
+     *
+     * @return array<string, list<string>>
+     */
+    public static function rawUrlencodedValues(string $body): array
+    {
+        $values = [];
+        foreach (QueryStyleDeserializer::parseRawValues($body) as $name => $raw) {
+            parse_str(urlencode((string) $name) . '=', $parsed);
+            $key = (string) array_key_first($parsed);
+            $values[$key] = [...$values[$key] ?? [], ...$raw];
+        }
+
+        return $values;
+    }
+
+    /**
      * Coerce each field to the type its property subschema declares and apply
      * the `encoding` rules.
      *
@@ -100,7 +122,7 @@ final class FormBodyDecoder
      *                                urlencoded bodies only; 3.1 and later to multipart as well
      * @param array<string, list<string>> $rawValues percent-encoded wire values per field, when the
      *                                               caller parsed a raw urlencoded body itself
-     *                                               ({@see QueryStyleDeserializer::parseRawValues()})
+     *                                               ({@see self::rawUrlencodedValues()})
      *
      * @return array{array<string, mixed>, list<string>, array<string, array{reason: string, candidates: list<string>}>, list<string>}
      *                                                                                                                                 the prepared data; encoding-level errors (parts that contradict
