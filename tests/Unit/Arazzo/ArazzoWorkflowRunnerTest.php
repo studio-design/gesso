@@ -197,6 +197,20 @@ final class ArazzoWorkflowRunnerTest extends TestCase
     }
 
     #[Test]
+    public function unbound_or_list_path_parameters_are_not_dispatched(): void
+    {
+        foreach (['unboundPathParameter' => ArazzoFailureKind::RequestContract, 'listPathParameter' => ArazzoFailureKind::Workflow] as $workflowId => $kind) {
+            $result = ArazzoWorkflowRunner::workflow(self::DIR . '/runner-regressions.arazzo.json', $workflowId)
+                ->dispatchUsing($this->server(...))
+                ->run();
+
+            $this->assertSame($kind, $result->failure?->kind, $workflowId);
+        }
+
+        $this->assertSame([], $this->dispatched);
+    }
+
+    #[Test]
     public function a_malformed_inputs_schema_is_a_description_problem(): void
     {
         try {

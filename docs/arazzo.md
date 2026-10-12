@@ -77,7 +77,12 @@ public function test_buy_pet_workflow(): void
     $result = ArazzoWorkflowRunner::workflow(__DIR__ . '/../arazzo/pet-purchase.arazzo.yaml', 'buyPet')
         ->inputs(['name' => 'Rex'])
         ->dispatchUsing(fn (ArazzoStepRequest $request) => $this->client->send(
-            new Request($request->method, $request->uri('https://api.test'), $request->headers, $request->bodyAsJson()),
+            new Request(
+                $request->method,
+                $request->uri('https://api.test'),
+                $request->headers + ($request->contentType !== null ? ['Content-Type' => $request->contentType] : []),
+                $request->bodyAsJson(),
+            ),
         ))
         ->run();
 
@@ -94,7 +99,9 @@ In Laravel, dispatch through the test client and return the array shape:
         $request->method,
         $request->uri(),
         cookies: $request->cookies,
-        server: $this->transformHeadersToServerVars($request->headers),
+        server: $this->transformHeadersToServerVars(
+            $request->headers + ($request->contentType !== null ? ['Content-Type' => $request->contentType] : []),
+        ),
         content: $request->bodyAsJson(),
     );
 
@@ -102,6 +109,8 @@ In Laravel, dispatch through the test client and return the array shape:
 })
 ```
 
+`$request->contentType` carries the body's media type (taken from the step or,
+when omitted, from the operation); send it as the `Content-Type` header.
 `$request->uri()` is the path template with encoded path parameters plus the
 query string; pass a prefix (`uri('/api')`) when your routes live under one.
 Gesso has no server-URL semantics, so `$url` in an expression is this same

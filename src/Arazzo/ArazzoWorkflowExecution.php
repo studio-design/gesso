@@ -27,13 +27,19 @@ use Studio\Gesso\Validation\Support\SchemaValidatorRunner;
 use Studio\Gesso\Validation\Support\ValidationPolicyDefaults;
 use Throwable;
 
+use function array_filter;
 use function array_is_list;
+use function array_key_exists;
 use function array_map;
+use function array_values;
+use function count;
 use function get_object_vars;
+use function implode;
 use function is_array;
 use function is_scalar;
 use function json_decode;
 use function json_encode;
+use function preg_match_all;
 use function sprintf;
 
 /**
@@ -164,6 +170,17 @@ final class ArazzoWorkflowExecution
         return array_is_list($evaluated) ? $evaluated : (object) $evaluated;
     }
 
+    /**
+     * @return list<string>
+     */
+    private static function templateParameters(string $template): array
+    {
+        $m = [];
+        preg_match_all('/\{([^{}]+)\}/', $template, $m);
+
+        return $m[1];
+    }
+
     private static function isParameterValue(mixed $value): bool
     {
         if ($value === null || is_scalar($value)) {
@@ -220,6 +237,23 @@ final class ArazzoWorkflowExecution
         $request = $this->buildRequest($step, new RuntimeExpressionContext(inputs: $this->inputs, stepOutputs: $stepOutputs));
         if ($request instanceof ArazzoFailure) {
             return $request;
+        }
+
+        $unbound = [];
+        foreach (self::templateParameters($step->pathTemplate) as $name) {
+            if (!array_key_exists($name, $request->pathParams)) {
+                $unbound[] = $name;
+            }
+        }
+
+        if ($unbound !== []) {
+            return new ArazzoFailure(ArazzoFailureKind::RequestContract, $step->stepId, sprintf(
+                "Path parameter%s %s of '%s' %s no value; the request was not dispatched.",
+                count($unbound) === 1 ? '' : 's',
+                implode(', ', $unbound),
+                $step->pathTemplate,
+                count($unbound) === 1 ? 'has' : 'have',
+            ));
         }
 
         $requestPath = RequestUriBuilder::path($step->pathTemplate, $request->pathParams);
@@ -359,8 +393,19 @@ final class ArazzoWorkflowExecution
                     ));
                 }
 
-                // A null value means "not sent", exactly as uri() and http_build_query() treat it.
-                if ($value !== null) {
+                if ($parameter['in'] === 'path' && is_array($value)) {
+                    return new ArazzoFailure(ArazzoFailureKind::Workflow, $step->stepId, sprintf(
+                        "Path parameter '%s' evaluated to a list; path parameters must be scalars.",
+                        $parameter['name'],
+                    ));
+                }
+
+                // null (and null list items) mean "not sent", exactly as uri() and http_build_query() treat them.
+                if (is_array($value)) {
+                    $value = array_values(array_filter($value, static fn(mixed $item): bool => $item !== null));
+                }
+
+                if ($value !== null && $value !== []) {
                     $values[$parameter['in']][$parameter['name']] = $value;
                 }
             }

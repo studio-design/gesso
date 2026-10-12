@@ -21,6 +21,20 @@
       "steps": [{ "stepId": "list", "operationId": "listPets" }]
     },
     {
+      "workflowId": "unboundPathParameter",
+      "steps": [{ "stepId": "read", "operationId": "getPet" }]
+    },
+    {
+      "workflowId": "listPathParameter",
+      "steps": [
+        {
+          "stepId": "read",
+          "operationId": "getPet",
+          "parameters": [{ "name": "petId", "in": "path", "value": [1, 2] }]
+        }
+      ]
+    },
+    {
       "workflowId": "nullQueryValue",
       "steps": [
         {
