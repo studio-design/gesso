@@ -55,7 +55,9 @@ final class HttpFoundationBody
     public static function json(string $content, string $contentType): DecodedBody
     {
         if (ContentTypeMatcher::normalizeMediaType($contentType) === FormBodyDecoder::URLENCODED) {
-            return $content === '' ? DecodedBody::absent() : DecodedBody::present($content);
+            // An empty urlencoded body is a form with no fields, not a
+            // missing one; the schema decides whether that is acceptable.
+            return DecodedBody::present($content);
         }
 
         if (!ContentTypeMatcher::isJsonOrUnspecified($contentType)) {

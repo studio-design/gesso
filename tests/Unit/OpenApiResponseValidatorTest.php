@@ -2999,6 +2999,37 @@ class OpenApiResponseValidatorTest extends TestCase
     }
 
     #[Test]
+    public function form_urlencoded_response_is_validated_through_a_wildcard_media_type(): void
+    {
+        $valid = $this->validateForm('/form-response-wildcard', 'token=abc');
+        $this->assertTrue($valid->isValid(), $valid->errorMessage());
+        $this->assertFalse($valid->isSkipped());
+        $this->assertSame('application/*', $valid->matchedContentType());
+
+        $this->assertFalse($this->validateForm('/form-response-wildcard', 'expires_in=1')->isValid());
+    }
+
+    #[Test]
+    public function empty_form_urlencoded_string_is_judged_by_the_schema(): void
+    {
+        // A form with no fields: fine without `required`, a failure with it.
+        $this->assertTrue($this->validateForm('/form-response-styled', '')->isValid());
+        $this->assertStringContainsString('token', $this->validateForm('/form-response', '')->errorMessage());
+    }
+
+    #[Test]
+    public function form_urlencoded_response_feeds_decoded_json_parts_to_the_strict_tracker(): void
+    {
+        $tracker = new StrictRequiredTracker();
+        $validator = new OpenApiResponseValidator(strictRequiredTracker: $tracker);
+
+        $result = $validator->validate('form-response-3.2', 'GET', '/form-response-json-part', 200, 'address=%7B%22city%22%3A%22X%22%7D', 'application/x-www-form-urlencoded');
+
+        $this->assertTrue($result->isValid(), $result->errorMessage());
+        $this->assertStringContainsString('city', json_encode($tracker->getObservationsOn('form-response-3.2'), JSON_THROW_ON_ERROR));
+    }
+
+    #[Test]
     public function form_urlencoded_response_decodes_a_json_part(): void
     {
         $this->assertTrue($this->validateForm('/form-response-json-part', 'address=%7B%22city%22%3A%22X%22%7D', 'form-response-3.2')->isValid());

@@ -525,12 +525,14 @@ final class OpenApiPsr7Validator
 
         $content = $read['content'];
 
-        if ($content === null || $content === '') {
-            return ['body' => DecodedBody::absent(), 'errors' => []];
+        // An empty urlencoded body is a form with no fields, not a missing
+        // one; the schema decides whether that is acceptable.
+        if ($isForm) {
+            return ['body' => DecodedBody::present($content ?? ''), 'errors' => []];
         }
 
-        if ($isForm) {
-            return ['body' => DecodedBody::present($content), 'errors' => []];
+        if ($content === null || $content === '') {
+            return ['body' => DecodedBody::absent(), 'errors' => []];
         }
 
         try {

@@ -83,6 +83,37 @@
                 }
             }
         },
+        "/form-response-wildcard": {
+            "get": {
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "application/*": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "token"
+                                    ],
+                                    "properties": {
+                                        "token": {
+                                            "type": "string"
+                                        },
+                                        "expires_in": {
+                                            "type": "integer"
+                                        },
+                                        "secret": {
+                                            "type": "string",
+                                            "writeOnly": true
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/form-response-bad-encoding": {
             "get": {
                 "responses": {

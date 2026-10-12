@@ -372,7 +372,7 @@ final class ResponseSchemaResolver
                     if (isset($content[$matchedKey]['schema'])) {
                         // A urlencoded body parses into fields the schema can
                         // judge (issue #488); multipart would need a part parser.
-                        if (ContentTypeMatcher::normalizeMediaType($matchedKey) === FormBodyDecoder::URLENCODED) {
+                        if ($normalizedType === FormBodyDecoder::URLENCODED) {
                             /** @var array<string, mixed> $schema */
                             $schema = $content[$matchedKey]['schema'];
 

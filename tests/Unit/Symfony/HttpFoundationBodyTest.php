@@ -118,7 +118,8 @@ final class HttpFoundationBodyTest extends TestCase
         $body = HttpFoundationBody::json('token=abc', 'application/x-www-form-urlencoded; charset=utf-8');
         $this->assertTrue($body->present);
         $this->assertSame('token=abc', $body->value);
-        $this->assertFalse(HttpFoundationBody::json('', 'application/x-www-form-urlencoded')->present);
+        // An empty form is a form with no fields; the schema judges it.
+        $this->assertSame('', HttpFoundationBody::json('', 'application/x-www-form-urlencoded')->value);
         $this->assertFalse(HttpFoundationBody::json('plain', 'text/plain')->present);
     }
 }

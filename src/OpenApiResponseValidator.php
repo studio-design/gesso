@@ -22,7 +22,6 @@ use Studio\Gesso\Validation\Strict\StrictAdditionalPropertiesTracker;
 use Studio\Gesso\Validation\Strict\StrictRequiredBodyWalker;
 use Studio\Gesso\Validation\Strict\StrictRequiredPerCallChecker;
 use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
-use Studio\Gesso\Validation\Support\FormBodyDecoder;
 use Studio\Gesso\Validation\Support\NamedError;
 use Studio\Gesso\Validation\Support\SchemaValidatorRunner;
 use Studio\Gesso\Validation\Support\StatusCodePatternSet;
@@ -382,10 +381,10 @@ final class OpenApiResponseValidator
         $errors = array_map(static fn(ValidationIssue $issue): string => $issue->message, $issues);
 
         if ($errors === []) {
-            // A form response reaches the trackers as the raw urlencoded
-            // string; they read keys, so hand them the parsed field map.
+            // A form response arrives as the raw urlencoded string; the
+            // trackers observe the parsed fields the schema judged instead.
             $observedBody = $resolution->outcome === ResponseSchemaResolutionOutcome::FormSchema
-                ? FormBodyDecoder::toFieldMap($body->value, FormBodyDecoder::URLENCODED)
+                ? $bodyResult->formData
                 : $body->value;
 
             // Strict-required recording happens on the validated success path
