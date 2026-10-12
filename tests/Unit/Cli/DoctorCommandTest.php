@@ -10,6 +10,7 @@ use GuzzleHttp\Psr7\HttpFactory;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Studio\Gesso\Cli\DoctorCommand;
+use Studio\Gesso\Config\GessoConfig;
 use Studio\Gesso\DecodedBody;
 use Studio\Gesso\OpenApiVersion;
 use Studio\Gesso\Tests\Helpers\FakeHttpClient;
@@ -17,12 +18,17 @@ use Studio\Gesso\Validation\Request\RequestBodyValidator;
 use Studio\Gesso\Validation\Support\SchemaValidatorRunner;
 
 use function array_column;
+use function chdir;
+use function explode;
 use function file_get_contents;
 use function file_put_contents;
+use function getcwd;
 use function glob;
 use function json_decode;
 use function json_encode;
 use function mkdir;
+use function preg_match;
+use function realpath;
 use function rmdir;
 use function sys_get_temp_dir;
 use function uniqid;
@@ -64,6 +70,7 @@ class DoctorCommandTest extends TestCase
                 'remote_ref_max_bytes' => '4096',
                 'local_ref_root' => '/trusted/openapi',
                 'phpunit_snippet' => true,
+                'emit_config' => true,
             ],
             DoctorCommand::parseArgv([
                 '--spec=front.json,admin.yaml',
@@ -79,6 +86,7 @@ class DoctorCommandTest extends TestCase
                 '--acknowledge-unvalidatable-scheme=ClientBasicAuth,LegacyOAuth',
                 '--acknowledge-unvalidatable-scheme=mTLS',
                 '--phpunit-snippet',
+                '--emit-config',
             ]),
         );
     }
@@ -921,6 +929,127 @@ class DoctorCommandTest extends TestCase
         $this->assertSame(DoctorCommand::EXIT_USAGE, $exit);
         $this->assertStringContainsString('[OpenAPI Doctor] Cannot write --output-file: ', $stderr);
         $this->assertStringContainsString(DoctorCommand::usage(), $stderr);
+    }
+
+    #[Test]
+    public function emit_config_round_trips_through_gesso_config(): void
+    {
+        $front = $this->writeSpec('front.json', $this->validSpec('/pets'));
+        $admin = $this->writeSpec('admin.json', $this->validSpec('/users'));
+        $options = [
+            'specs' => [$front, $admin],
+            'strip_prefixes' => ['/api'],
+            'acknowledged_unvalidatable_schemes' => ['A&B'],
+        ];
+
+        [$exit, $stdout] = $this->runDoctor($options + ['emit_config' => true]);
+        $this->assertSame(DoctorCommand::EXIT_OK, $exit);
+        $configPath = $this->writeSpec('gesso.php', $stdout);
+        $config = GessoConfig::load($configPath);
+
+        [, $snippetReport] = $this->runDoctor($options + ['phpunit_snippet' => true, 'format' => 'json']);
+        $snippet = json_decode($snippetReport, true, flags: JSON_THROW_ON_ERROR)['phpunit'];
+        $this->assertSame(1, preg_match('/name="specs" value="([^"]*)"/', $snippet, $specs));
+
+        $this->assertSame(realpath($this->workDir), $config->string('spec.base_path'));
+        $this->assertSame(explode(',', $specs[1]), $config->strings('spec.names'));
+        $this->assertSame(['/api'], $config->strings('spec.strip_prefixes'));
+        // No XML escaping leaks into the PHP source.
+        $this->assertSame(['A&B'], $config->strings('validation.acknowledged_unvalidatable_schemes'));
+    }
+
+    #[Test]
+    public function emit_config_writes_a_portable_base_path_for_specs_in_the_working_directory(): void
+    {
+        $this->writeSpec('front.json', $this->validSpec('/pets'));
+        $cwd = (string) getcwd();
+        chdir($this->workDir);
+
+        try {
+            [, $stdout] = $this->runDoctor(['specs' => ['front.json'], 'emit_config' => true]);
+        } finally {
+            chdir($cwd);
+        }
+
+        $this->assertStringContainsString("'base_path' => '.',", $stdout);
+    }
+
+    #[Test]
+    public function emit_config_sends_the_report_to_stderr_and_only_php_to_stdout(): void
+    {
+        $spec = $this->writeSpec('front.json', $this->validSpec('/pets'));
+
+        [$exit, $stdout, $stderr] = $this->runDoctor(['specs' => [$spec], 'emit_config' => true]);
+        $this->assertSame(DoctorCommand::EXIT_OK, $exit);
+        $this->assertStringStartsWith("<?php\n", $stdout);
+        $this->assertStringContainsString('OpenAPI Doctor: COMPATIBLE', $stderr);
+        $this->assertStringNotContainsString("'validation'", $stdout);
+
+        [, $stdout, $stderr] = $this->runDoctor(['specs' => [$spec], 'emit_config' => true, 'format' => 'json']);
+        $this->assertStringStartsWith("<?php\n", $stdout);
+        $this->assertSame('ok', json_decode($stderr, true, flags: JSON_THROW_ON_ERROR)['status']);
+
+        // --output-file keeps receiving the report; stdout still carries only the PHP.
+        $reportFile = $this->workDir . '/doctor.txt';
+        [, $stdout, $stderr] = $this->runDoctor(['specs' => [$spec], 'emit_config' => true, 'output_file' => $reportFile]);
+        $this->assertStringStartsWith("<?php\n", $stdout);
+        $this->assertSame('', $stderr);
+        $this->assertStringContainsString('OpenAPI Doctor: COMPATIBLE', (string) file_get_contents($reportFile));
+    }
+
+    #[Test]
+    public function emit_config_emits_nothing_when_the_spec_is_rejected(): void
+    {
+        $spec = $this->writeSpec('broken.json', $this->specWithResponse('not-an-object'));
+
+        [$exit, $stdout, $stderr] = $this->runDoctor(['specs' => [$spec], 'emit_config' => true]);
+
+        $this->assertSame(DoctorCommand::EXIT_DIAGNOSTIC_FAILURE, $exit);
+        $this->assertSame('', $stdout);
+        $this->assertStringContainsString('OpenAPI Doctor: FAILED', $stderr);
+    }
+
+    #[Test]
+    public function emit_config_refuses_specs_in_different_directories(): void
+    {
+        $front = $this->writeSpec('front.json', $this->validSpec('/pets'));
+        mkdir($this->workDir . '/admin');
+        $admin = $this->workDir . '/admin/admin.json';
+        file_put_contents($admin, $this->validSpec('/users'));
+
+        try {
+            [$exit, $stdout, $stderr] = $this->runDoctor(['specs' => [$front, $admin], 'emit_config' => true]);
+        } finally {
+            @unlink($admin);
+            @rmdir($this->workDir . '/admin');
+        }
+
+        $this->assertSame(DoctorCommand::EXIT_USAGE, $exit);
+        $this->assertSame('', $stdout);
+        $this->assertStringContainsString('--local-ref-root', $stderr);
+    }
+
+    /**
+     * @param array<string, mixed> $options
+     *
+     * @return array{int, string, string}
+     */
+    private function runDoctor(array $options): array
+    {
+        $stdout = '';
+        $stderr = '';
+        $command = new DoctorCommand(
+            stdoutWriter: static function (string $message) use (&$stdout): void {
+                $stdout .= $message;
+            },
+            stderrWriter: static function (string $message) use (&$stderr): void {
+                $stderr .= $message;
+            },
+        );
+        /** @phpstan-ignore argument.type */
+        $exit = $command->run($options);
+
+        return [$exit, $stdout, $stderr];
     }
 
     private function writeSpec(string $name, string $contents): string
