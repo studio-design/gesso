@@ -60,7 +60,8 @@ Exit code `0` means stubs were written or there was nothing left to stub; `2`
 means a usage error or an unreadable input. Shared conventions:
 [CLI reference](cli.md#exit-codes).
 
-The Artisan command takes the same options. Its `--spec` accepts a spec *name*
+The Artisan command takes the same options except `--format` and
+`--output-file`: its summary goes to the Artisan console. Its `--spec` accepts a spec *name*
 resolved under `gesso.spec_base_path` as well as a path.
 
 ## Applications mounted under a prefix
