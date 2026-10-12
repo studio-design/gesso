@@ -261,11 +261,11 @@ class ExploredCaseTest extends TestCase
     #[Test]
     public function renders_the_form_media_type_in_the_curl_snippet(): void
     {
-        $case = new ExploredCase(['grant_type' => 'x', 'client_secret' => 's3cr3t'], [], [], [], HttpMethod::POST, '/oauth/token', contentType: 'application/x-www-form-urlencoded');
+        $case = new ExploredCase(['grant_type' => 'x', 'client_secret' => 's3cr3t', 'password' => 'pw'], [], [], [], HttpMethod::POST, '/oauth/token', contentType: 'application/x-www-form-urlencoded');
 
         $snippet = $case->curlSnippet();
         $this->assertStringContainsString("-H 'Content-Type: application/x-www-form-urlencoded'", $snippet);
-        $this->assertStringContainsString("--data 'grant_type=x&client_secret=<redacted>'", $snippet);
+        $this->assertStringContainsString("--data 'grant_type=x&client_secret=<redacted>&password=<redacted>'", $snippet);
         $this->assertStringContainsString('client_secret=s3cr3t', $case->curlSnippet(redactSensitiveHeaders: false));
     }
 

@@ -313,7 +313,8 @@ final class OpenApiEndpointExplorer
                 $case->method->value,
                 $case->matchedPath,
                 $operation,
-                DecodedBody::present($wire),
+                // The adapters read an empty form body as absent; so does this check.
+                $wire === '' ? DecodedBody::absent() : DecodedBody::present($wire),
                 $case->contentType,
                 $version,
                 new DiscriminatorContext($spec, true),

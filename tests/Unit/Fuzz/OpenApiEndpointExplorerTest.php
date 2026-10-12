@@ -461,4 +461,15 @@ class OpenApiEndpointExplorerTest extends TestCase
 
         OpenApiEndpointExplorer::explore('contract-checks', 'POST', '/oauth/form-required-empty-list', 1, seed: 7);
     }
+
+    #[Test]
+    public function throws_for_a_required_form_body_that_serializes_to_nothing(): void
+    {
+        // An empty form body reaches the validator as absent, so a required
+        // one cannot be sent — even though `{}` satisfies the schema.
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('once form-encoded');
+
+        OpenApiEndpointExplorer::explore('contract-checks', 'POST', '/oauth/form-required-empty-object', 1, seed: 7);
+    }
 }

@@ -30,7 +30,7 @@ final class CurlCommandFormatter
 {
     private const REDACTED_PLACEHOLDER = '<redacted>';
     private const SENSITIVE_HEADER_NAMES = ['authorization', 'proxy-authorization', 'cookie'];
-    private const SENSITIVE_NAME_PATTERN = '/api[-_]?key|token|secret/i';
+    private const SENSITIVE_NAME_PATTERN = '/api[-_]?key|token|secret|passw(or)?d/i';
 
     /**
      * @param array<string, mixed> $headers header name → scalar value or list of values
