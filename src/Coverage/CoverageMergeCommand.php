@@ -705,6 +705,12 @@ final class CoverageMergeCommand
     private static function withSharedDefaults(array $options, array $shared): array
     {
         foreach (self::SHARED_STRINGS as $key) {
+            // `--format` picks the primary report and where it goes (stdout
+            // without `--output-file`); the file's Markdown path must not
+            // capture a primary report of another format.
+            if ($key === 'output_file' && isset($options['format'])) {
+                continue;
+            }
             if (!isset($options[$key]) && is_string($shared[$key] ?? null)) {
                 $options[$key] = $shared[$key];
             }

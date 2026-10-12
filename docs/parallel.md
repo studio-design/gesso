@@ -66,7 +66,9 @@ Without flags, the merge reads `./gesso.php` (or `--config`) and takes the
 same keys the PHPUnit extension does: `spec.*`, `coverage.*`, `strict.*.run`,
 `baseline.coverage` and `baseline_stale.coverage`, plus `baseline.violations`
 on a `GESSO_BASELINE_GENERATE=1` run (the only time the merge writes it). Paths
-in the file resolve against its directory. An explicit flag wins over the file; `GESSO_CONSOLE_OUTPUT`
+in the file resolve against its directory. `coverage.report_output.markdown`
+defaults `--output-file` only when `--format` is not given, so `--format=json`
+still prints to stdout. An explicit flag wins over the file; `GESSO_CONSOLE_OUTPUT`
 still wins over both.
 
 Sidecar dir defaults are deliberately stable — workers and the merge CLI

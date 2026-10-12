@@ -2710,6 +2710,22 @@ class CoverageMergeCommandTest extends TestCase
     }
 
     #[Test]
+    public function an_explicit_format_keeps_the_primary_report_off_the_configured_markdown_path(): void
+    {
+        $this->writeConfig();
+        $this->recordOneWorker();
+        $stdout = '';
+
+        $exit = (new CoverageMergeCommand(stdoutWriter: static function (string $msg) use (&$stdout): void {
+            $stdout .= $msg;
+        }))->run(['config' => $this->configPath(), 'format' => 'json']);
+
+        $this->assertSame(0, $exit);
+        $this->assertFileDoesNotExist($this->outputFile);
+        $this->assertIsArray(json_decode($stdout, true, flags: JSON_THROW_ON_ERROR));
+    }
+
+    #[Test]
     public function the_violation_baseline_defaults_from_gesso_php_only_on_a_generation_run(): void
     {
         // `baseline.violations` is what the workers enforce against; an
