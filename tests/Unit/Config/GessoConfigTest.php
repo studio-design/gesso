@@ -328,6 +328,27 @@ final class GessoConfigTest extends TestCase
     }
 
     #[Test]
+    public function an_enum_accepts_case_and_whitespace_variants(): void
+    {
+        $config = GessoConfig::fromArray([
+            'strict' => ['required' => ['run' => ' FAIL ']],
+            'coverage' => ['console_report' => 'Uncovered_Only'],
+        ], '/tmp');
+
+        $this->assertSame('fail', $config->string('strict.required.run'));
+        $this->assertSame('uncovered_only', $config->string('coverage.console_report'));
+    }
+
+    #[Test]
+    public function a_bool_enum_accepts_a_case_variant_of_its_string_value(): void
+    {
+        $this->assertSame('bearer', GessoConfig::fromArray(
+            ['laravel' => ['auto_inject_dummy_credentials' => 'Bearer']],
+            '/tmp',
+        )->boolOrString('laravel.auto_inject_dummy_credentials'));
+    }
+
+    #[Test]
     public function a_string_list_rejects_a_map_and_a_non_string_entry(): void
     {
         $config = GessoConfig::fromArray(['spec' => ['strip_prefixes' => ['/api', '/v1']]], '/tmp');
