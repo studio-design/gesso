@@ -1428,7 +1428,10 @@ class CoverageMergeCommandTest extends TestCase
         $envelope = $this->sdkEnvelope([
             ['GET', '/pets', '200', 'application/json'],
         ]);
-        $envelope['envelopeVersion'] = CoverageSidecarEnvelope::ENVELOPE_VERSION_WITH_SDK_EXERCISE_AND_BASELINE;
+        // Legacy v7 input written by a 2.4 worker: the 2.x merge keeps
+        // reading it (#505). build() emits no deprecations half here, so the
+        // restamped payload is a valid v7 shape.
+        $envelope['envelopeVersion'] = 7;
         $envelope['baseline'] = ViolationBaselineFile::toDocument(new ViolationBaseline());
         CoverageSidecarWriter::write($this->sidecarDir, '1', $envelope);
         $baselinePath = dirname($this->sidecarDir) . '/baseline.json';

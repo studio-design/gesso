@@ -5,29 +5,138 @@ declare(strict_types=1);
 namespace Studio\Gesso\Tests\Unit\Coverage;
 
 use InvalidArgumentException;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Studio\Gesso\Coverage\CoverageSidecarEnvelope;
 
+use function array_key_exists;
+use function array_keys;
+use function get_debug_type;
+use function sprintf;
+
 /**
- * Pins the v2/v3 sidecar envelope wire formats and the v1 ↔ v2 ↔ v3
- * compatibility routing. The merge CLI relies on this discriminator to keep
- * working when a worker still on an older library version contributes a
- * bare v1 payload — and to fail loudly on shapes it cannot represent.
+ * Pins the sidecar envelope wire format: the v10 writer, plus the legacy 2–9
+ * and bare v1 inputs the 2.x reader still routes. The merge CLI relies on this
+ * discriminator to keep working when a worker still on an older library
+ * version contributes a legacy payload — and to fail loudly on shapes it
+ * cannot represent.
  */
 class CoverageSidecarEnvelopeTest extends TestCase
 {
-    #[Test]
-    public function build_emits_v2_shape_with_both_states(): void
+    /**
+     * @return iterable<string, array{int}>
+     */
+    public static function provideBuild_emits_version_10_with_only_the_supplied_optional_keysCases(): iterable
     {
-        $coverage = ['version' => 1, 'specs' => ['petstore' => []]];
-        $strictRequired = ['version' => 1, 'observations' => ['petstore' => []]];
+        for ($mask = 0; $mask < 16; $mask++) {
+            yield sprintf('mask %04b', $mask) => [$mask];
+        }
+    }
 
-        $envelope = CoverageSidecarEnvelope::build($coverage, $strictRequired);
+    /**
+     * @return iterable<string, array{string, null|string}>
+     */
+    public static function provideParse_rejects_version_10_with_non_array_halvesCases(): iterable
+    {
+        foreach (['coverage', 'strictRequired', 'strictAdditionalProperties', 'sdkExercise', 'deprecations', 'baseline'] as $key) {
+            yield $key => [$key, 'invalid'];
+            // v10 is presence-keyed: an explicit null is malformed, not "absent".
+            yield $key . ' null' => [$key, null];
+        }
+    }
 
-        $this->assertSame(2, $envelope['envelopeVersion']);
-        $this->assertSame($coverage, $envelope['coverage']);
-        $this->assertSame($strictRequired, $envelope['strictRequired']);
+    #[Test]
+    #[DataProvider('provideBuild_emits_version_10_with_only_the_supplied_optional_keysCases')]
+    public function build_emits_version_10_with_only_the_supplied_optional_keys(int $mask): void
+    {
+        // Every combination is representable now, including the ones the
+        // legacy versions could not express (SDK exercise without strict
+        // additional-properties, deprecations without SDK exercise).
+        $halves = [
+            'baseline' => ['baseline_version' => 1, 'violations' => []],
+            'strictAdditionalProperties' => ['version' => 1, 'evaluations' => 0, 'observations' => []],
+            'sdkExercise' => ['version' => 1, 'observations' => []],
+            'deprecations' => ['version' => 1, 'deprecations' => []],
+        ];
+        $supplied = [];
+        foreach (array_keys($halves) as $bit => $key) {
+            $supplied[$key] = ($mask & (1 << $bit)) !== 0;
+        }
+
+        $envelope = CoverageSidecarEnvelope::build(
+            coverageState: ['version' => 1, 'specs' => []],
+            strictRequiredState: ['version' => 2, 'observations' => []],
+            baselineDocument: $supplied['baseline'] ? $halves['baseline'] : null,
+            strictAdditionalPropertiesState: $supplied['strictAdditionalProperties'] ? $halves['strictAdditionalProperties'] : null,
+            sdkExerciseState: $supplied['sdkExercise'] ? $halves['sdkExercise'] : null,
+            deprecationsState: $supplied['deprecations'] ? $halves['deprecations'] : null,
+        );
+        $parsed = CoverageSidecarEnvelope::parse($envelope);
+
+        $this->assertSame(10, $envelope['envelopeVersion']);
+        foreach ($halves as $key => $half) {
+            $this->assertSame($supplied[$key], array_key_exists($key, $envelope), $key);
+            $this->assertSame($supplied[$key] ? $half : null, $parsed[$key], $key);
+        }
+    }
+
+    #[Test]
+    public function build_keeps_the_optional_keys_in_writer_order(): void
+    {
+        $envelope = CoverageSidecarEnvelope::build(
+            coverageState: ['version' => 1, 'specs' => []],
+            strictRequiredState: ['version' => 2, 'observations' => []],
+            baselineDocument: ['baseline_version' => 1, 'violations' => []],
+            strictAdditionalPropertiesState: ['version' => 1, 'evaluations' => 0, 'observations' => []],
+            sdkExerciseState: ['version' => 1, 'observations' => []],
+            deprecationsState: ['version' => 1, 'deprecations' => []],
+        );
+
+        $this->assertSame(
+            ['envelopeVersion', 'coverage', 'strictRequired', 'strictAdditionalProperties', 'sdkExercise', 'deprecations', 'baseline'],
+            array_keys($envelope),
+        );
+    }
+
+    #[Test]
+    public function parse_accepts_version_10_with_only_coverage(): void
+    {
+        $parsed = CoverageSidecarEnvelope::parse([
+            'envelopeVersion' => 10,
+            'coverage' => ['version' => 1, 'specs' => []],
+        ]);
+
+        $this->assertSame(['version' => 1, 'specs' => []], $parsed['coverage']);
+        foreach (['strictRequired', 'strictAdditionalProperties', 'sdkExercise', 'deprecations', 'baseline'] as $key) {
+            $this->assertNull($parsed[$key], $key);
+        }
+    }
+
+    #[Test]
+    #[DataProvider('provideParse_rejects_version_10_with_non_array_halvesCases')]
+    public function parse_rejects_version_10_with_non_array_halves(string $key, ?string $value): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('"' . $key . '" must be an array; got ' . get_debug_type($value));
+
+        CoverageSidecarEnvelope::parse([
+            'envelopeVersion' => 10,
+            'coverage' => ['version' => 1, 'specs' => []],
+            $key => $value,
+        ]);
+    }
+
+    #[Test]
+    public function parse_rejects_unknown_version_naming_the_current_one(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('expected 10');
+
+        CoverageSidecarEnvelope::parse([
+            'envelopeVersion' => 11,
+            'coverage' => ['version' => 1, 'specs' => []],
+        ]);
     }
 
     #[Test]
@@ -43,24 +152,6 @@ class CoverageSidecarEnvelopeTest extends TestCase
 
         $this->assertSame($payload['coverage'], $parsed['coverage']);
         $this->assertSame($payload['strictRequired'], $parsed['strictRequired']);
-    }
-
-    #[Test]
-    public function build_with_a_baseline_document_emits_v3_shape(): void
-    {
-        // Issue #417: the baseline half upgrades the envelope to v3. Plain
-        // runs must keep the exact v2 shape (previous test) so pre-#417
-        // merge CLIs stay compatible with coverage-only fleets.
-        $coverage = ['version' => 1, 'specs' => ['petstore' => []]];
-        $strictRequired = ['version' => 1, 'observations' => ['petstore' => []]];
-        $baseline = ['baseline_version' => 1, 'violations' => []];
-
-        $envelope = CoverageSidecarEnvelope::build($coverage, $strictRequired, $baseline);
-
-        $this->assertSame(3, $envelope['envelopeVersion']);
-        $this->assertSame($coverage, $envelope['coverage']);
-        $this->assertSame($strictRequired, $envelope['strictRequired']);
-        $this->assertSame($baseline, $envelope['baseline']);
     }
 
     #[Test]
@@ -210,31 +301,15 @@ class CoverageSidecarEnvelopeTest extends TestCase
     }
 
     #[Test]
-    public function build_with_sdk_exercise_emits_v6_and_v7_envelopes(): void
+    public function parse_keeps_accepting_an_explicit_null_strict_required_in_v2(): void
     {
-        $coverage = ['version' => 1, 'specs' => []];
-        $strictRequired = ['version' => 2, 'observations' => []];
-        $strictAdditional = ['version' => 1, 'evaluations' => 0, 'observations' => []];
-        $sdkExercise = ['version' => 1, 'observations' => []];
+        $parsed = CoverageSidecarEnvelope::parse([
+            'envelopeVersion' => 2,
+            'coverage' => ['version' => 1, 'specs' => []],
+            'strictRequired' => null,
+        ]);
 
-        $plain = CoverageSidecarEnvelope::build(
-            coverageState: $coverage,
-            strictRequiredState: $strictRequired,
-            strictAdditionalPropertiesState: $strictAdditional,
-            sdkExerciseState: $sdkExercise,
-        );
-        $baseline = CoverageSidecarEnvelope::build(
-            coverageState: $coverage,
-            strictRequiredState: $strictRequired,
-            baselineDocument: ['baseline_version' => 1, 'violations' => []],
-            strictAdditionalPropertiesState: $strictAdditional,
-            sdkExerciseState: $sdkExercise,
-        );
-
-        $this->assertSame(6, $plain['envelopeVersion']);
-        $this->assertSame($sdkExercise, $plain['sdkExercise']);
-        $this->assertSame(7, $baseline['envelopeVersion']);
-        $this->assertSame($sdkExercise, $baseline['sdkExercise']);
+        $this->assertNull($parsed['strictRequired']);
     }
 
     #[Test]
@@ -273,9 +348,9 @@ class CoverageSidecarEnvelopeTest extends TestCase
             ['envelopeVersion' => 6, ...$base, 'sdkExercise' => 'invalid'],
             ['envelopeVersion' => 4, ...$base, 'sdkExercise' => ['version' => 1, 'observations' => []]],
             ['envelopeVersion' => 7, ...$base, 'sdkExercise' => ['version' => 1, 'observations' => []]],
-            // Still an unknown version. v8/v9 became known when the
-            // deprecation half landed, so the unknown-version row moved up.
-            ['envelopeVersion' => 10, ...$base, 'sdkExercise' => ['version' => 1, 'observations' => []]],
+            // Still an unknown version. v10 became the current writer when
+            // the envelope switched to presence-keyed halves (#505).
+            ['envelopeVersion' => 11, ...$base, 'sdkExercise' => ['version' => 1, 'observations' => []]],
         ] as $payload) {
             try {
                 CoverageSidecarEnvelope::parse($payload);
@@ -297,56 +372,6 @@ class CoverageSidecarEnvelopeTest extends TestCase
             'specs' => [],
             'sdkExercise' => ['version' => 1, 'observations' => []],
         ]);
-    }
-
-    #[Test]
-    public function build_with_deprecations_emits_v8_and_v9_envelopes(): void
-    {
-        $coverage = ['version' => 1, 'specs' => []];
-        $strictRequired = ['version' => 2, 'observations' => []];
-        $strictAdditional = ['version' => 1, 'evaluations' => 0, 'observations' => []];
-        $sdkExercise = ['version' => 1, 'observations' => []];
-        $deprecations = ['version' => 1, 'deprecations' => []];
-
-        $plain = CoverageSidecarEnvelope::build(
-            coverageState: $coverage,
-            strictRequiredState: $strictRequired,
-            strictAdditionalPropertiesState: $strictAdditional,
-            sdkExerciseState: $sdkExercise,
-            deprecationsState: $deprecations,
-        );
-        $baseline = CoverageSidecarEnvelope::build(
-            coverageState: $coverage,
-            strictRequiredState: $strictRequired,
-            baselineDocument: ['baseline_version' => 1, 'violations' => []],
-            strictAdditionalPropertiesState: $strictAdditional,
-            sdkExerciseState: $sdkExercise,
-            deprecationsState: $deprecations,
-        );
-
-        $this->assertSame(8, $plain['envelopeVersion']);
-        $this->assertSame($deprecations, $plain['deprecations']);
-        $this->assertArrayNotHasKey('baseline', $plain);
-        $this->assertSame(9, $baseline['envelopeVersion']);
-        $this->assertSame($deprecations, $baseline['deprecations']);
-        $this->assertSame(['baseline_version' => 1, 'violations' => []], $baseline['baseline']);
-    }
-
-    #[Test]
-    public function build_rejects_deprecations_without_the_earlier_halves(): void
-    {
-        // Every version implies the halves below it, so an envelope with
-        // deprecation state but no SDK exercise state is one no reader can
-        // represent — building it would produce a v8 whose own parse() rejects.
-        $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('require SDK exercise state');
-
-        CoverageSidecarEnvelope::build(
-            coverageState: ['version' => 1, 'specs' => []],
-            strictRequiredState: ['version' => 2, 'observations' => []],
-            strictAdditionalPropertiesState: ['version' => 1, 'evaluations' => 0, 'observations' => []],
-            deprecationsState: ['version' => 1, 'deprecations' => []],
-        );
     }
 
     #[Test]

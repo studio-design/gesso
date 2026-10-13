@@ -316,7 +316,7 @@ class CoverageSidecarTest extends TestCase
     }
 
     #[Test]
-    public function envelope_v4_round_trips_strict_additional_properties_state(): void
+    public function envelope_round_trips_strict_additional_properties_state(): void
     {
         $tracker = new StrictAdditionalPropertiesTracker();
         $tracker->recordOn('petstore-3.0', 'GET', '/v1/pets', '200', 'application/json', [
@@ -328,10 +328,7 @@ class CoverageSidecarTest extends TestCase
             strictRequiredState: StrictRequiredTracker::exportState(),
             strictAdditionalPropertiesState: $tracker->exportStateOn(),
         );
-        $this->assertSame(
-            CoverageSidecarEnvelope::ENVELOPE_VERSION_WITH_STRICT_ADDITIONAL_PROPERTIES,
-            $envelope['envelopeVersion'],
-        );
+        $this->assertSame(CoverageSidecarEnvelope::ENVELOPE_VERSION, $envelope['envelopeVersion']);
 
         $parsed = CoverageSidecarEnvelope::parse($envelope);
         $this->assertNotNull($parsed['strictAdditionalProperties']);

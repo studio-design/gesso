@@ -216,12 +216,22 @@ surface contract). Minor releases are additive by default, but "additive" does
 not mean "no behaviour changes" — a fix that closes a silent-pass gap changes
 what your suite reports.
 
-Only v2.4.0 has a section below. Earlier v2 minors carry behavioural fixes that
+Besides the sidecar note below, only v2.4.0 has a section. Earlier v2 minors carry behavioural fixes that
 were never written up here: v2.2.0 stopped applying the coverage threshold gate
 to partial runs (#453) and v2.3.0 began rejecting `null` response content
 (#466), among others. If you are jumping from v2.0.x, v2.1.x, or v2.2.x, read
 the `### Bug Fixes` entries for each intermediate release in `CHANGELOG.md`;
 this file cannot be relied on to list them.
+
+### Sidecar envelope version 10
+
+Paratest workers on this release write sidecar `envelopeVersion: 10`, where
+each tracker half is an optional key instead of a new version number. A
+`gesso coverage:merge` from an older 2.x release rejects it as an unknown
+version — as every previous envelope bump did — so upgrade the merge step
+together with the workers. The 2.x merge keeps reading envelopes 2–9 and the
+bare v1 coverage state; dropping them is a v3.0 change (see
+[versioned sidecar compatibility](docs/versioning.md#versioned-sidecar-compatibility)).
 
 ### From v2.3.0 → v2.4.0
 
