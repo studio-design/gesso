@@ -45,6 +45,7 @@ Each `.md` link below is the raw Markdown of a documentation page. The same page
 
 - [Setup](https://studio-design.github.io/gesso/setup.md): end-to-end configuration, extension parameters, auto-validation, and per-test opt-out mechanisms.
 - [Shared configuration](https://studio-design.github.io/gesso/configuration.md): the `gesso.php` file that the PHPUnit extension and the Laravel service provider both read.
+- [CLI reference](https://studio-design.github.io/gesso/cli.md): rules every `gesso` subcommand shares — exit codes, `--format`, and `--output-file`.
 - [Coverage](https://studio-design.github.io/gesso/coverage.md): report formats, endpoint markers, and `(method, path, status, content-type)` coverage granularity.
 - [Supported features](https://studio-design.github.io/gesso/supported-features.md): what is validated, what is skipped, and known limitations per OpenAPI version.
 - [Conformance](https://studio-design.github.io/gesso/conformance.md): results against the JSON Schema Test Suite and the OpenAPI Initiative example documents, pinned by commit.
