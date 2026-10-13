@@ -9,6 +9,7 @@ use const JSON_THROW_ON_ERROR;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Route;
 use Orchestra\Testbench\TestCase;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use Studio\Gesso\Internal\LegacyIdentity;
 use Studio\Gesso\Laravel\GessoServiceProvider;
@@ -21,6 +22,7 @@ use function explode;
 use function file_get_contents;
 use function json_decode;
 use function max;
+use function preg_replace;
 use function strlen;
 use function trim;
 
@@ -43,6 +45,15 @@ final class OpenApiRoutesCommandIntegrationTest extends TestCase
         OpenApiSpecLoader::reset();
         LegacyIdentity::resetForTesting();
         parent::tearDown();
+    }
+
+    /** @return iterable<string, array{string}> */
+    public static function provideAn_absolute_spec_base_path_is_used_verbatimCases(): iterable
+    {
+        yield 'posix' => ['/abs/specs'];
+        yield 'drive letter, backslash' => ['C:\\specs'];
+        yield 'drive letter, slash' => ['D:/specs'];
+        yield 'unc share' => ['\\\\server\\share\\specs'];
     }
 
     /**
@@ -228,6 +239,38 @@ final class OpenApiRoutesCommandIntegrationTest extends TestCase
         $this->assertStringContainsString(
             'gesso.route_parity.external_operation_ids must be an array of strings',
             Artisan::output(),
+        );
+    }
+
+    /**
+     * The buggy output was `<root>/C:\\specs`, which still contains the base
+     * path, so only the negative check against the root discriminates. Laravel's
+     * console components strip `base_path()` from error lines while
+     * `path.base` is bound, which would hide that root, so it is unbound here.
+     */
+    #[Test]
+    #[DataProvider('provideAn_absolute_spec_base_path_is_used_verbatimCases')]
+    public function an_absolute_spec_base_path_is_used_verbatim(string $basePath): void
+    {
+        config()->set('gesso.spec_base_path', $basePath);
+        $this->app->offsetUnset('path.base');
+
+        $this->assertSame(1, Artisan::call('gesso:routes'));
+        $output = (string) preg_replace('/\s+/', ' ', Artisan::output());
+        $this->assertStringContainsString($basePath, $output);
+        $this->assertStringNotContainsString($this->app->basePath(), $output);
+    }
+
+    #[Test]
+    public function a_relative_spec_base_path_is_resolved_under_the_application(): void
+    {
+        config()->set('gesso.spec_base_path', 'openapi');
+        $this->app->offsetUnset('path.base');
+
+        $this->assertSame(1, Artisan::call('gesso:routes'));
+        $this->assertStringContainsString(
+            $this->app->basePath('openapi'),
+            (string) preg_replace('/\s+/', ' ', Artisan::output()),
         );
     }
 

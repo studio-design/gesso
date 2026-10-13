@@ -8,6 +8,7 @@ use const FILTER_NULL_ON_FAILURE;
 use const FILTER_VALIDATE_BOOLEAN;
 
 use InvalidArgumentException;
+use Studio\Gesso\Internal\SpecPath;
 use Studio\Gesso\OpenApiRequestValidator;
 use Studio\Gesso\OpenApiResponseValidator;
 use Studio\Gesso\Validation\Strict\ConfigEnumParser;
@@ -35,7 +36,6 @@ use function preg_match;
 use function realpath;
 use function rtrim;
 use function sprintf;
-use function str_starts_with;
 use function trim;
 
 /**
@@ -532,7 +532,7 @@ final class GessoConfig
             throw self::invalid($path, $origin, 'expected a path, got an empty string');
         }
 
-        return self::isAbsolutePath($raw) ? $raw : $baseDir . '/' . $raw;
+        return SpecPath::isAbsolute($raw) ? $raw : $baseDir . '/' . $raw;
     }
 
     /**
@@ -622,13 +622,6 @@ final class GessoConfig
         $normalized = ConfigEnumParser::normalize($value);
 
         return in_array($normalized, $allowed, true) ? $normalized : null;
-    }
-
-    private static function isAbsolutePath(string $path): bool
-    {
-        return str_starts_with($path, '/') ||
-            str_starts_with($path, '\\\\') ||
-            preg_match('/^[A-Za-z]:[\\\\\/]/', $path) === 1;
     }
 
     private static function describe(mixed $value): string
