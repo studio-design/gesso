@@ -139,8 +139,8 @@ class DoctorCliIntegrationTest extends TestCase
      */
     private function runCli(array $args): array
     {
-        // Every caller passes `doctor` as the first argument; the binary takes
-        // it as the subcommand and `DoctorCommand::parseArgv()` skips it.
+        // Every caller passes `doctor` as the first argument; the binary shifts
+        // it off as the subcommand before `DoctorCommand::parseArgv()` runs.
         $command = sprintf('php %s', escapeshellarg($this->repoRoot . '/bin/gesso'));
         foreach ($args as $arg) {
             $command .= ' ' . escapeshellarg($arg);

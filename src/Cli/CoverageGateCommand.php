@@ -69,9 +69,7 @@ final class CoverageGateCommand
 {
     use CliIo;
 
-    public const EXIT_OK = 0;
-    public const EXIT_UNCOVERED_CHANGE = 1;
-    public const EXIT_USAGE = 2;
+    public const EXIT_UNCOVERED_CHANGE = self::EXIT_FAILURE;
 
     /** @param null|callable(string): void $stdoutWriter */
     public function __construct(
@@ -88,7 +86,7 @@ final class CoverageGateCommand
     public static function parseArgv(array $argv): array
     {
         /** @var GateOptions */
-        return ArgvParser::parse($argv, 'coverage:gate', values: ['base_spec', 'spec', 'coverage', 'spec_name', 'format']);
+        return ArgvParser::parse($argv, values: ['base_spec', 'spec', 'coverage', 'spec_name', 'format']);
     }
 
     public static function usage(string $invocation = 'gesso coverage:gate'): string

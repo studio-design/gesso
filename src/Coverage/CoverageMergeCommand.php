@@ -89,8 +89,8 @@ final class CoverageMergeCommand
      * @param null|callable(string): void $stderrWriter Optional sink for warnings; defaults to STDERR.
      */
     public function __construct(
-        private mixed $stderrWriter = null,
         private mixed $stdoutWriter = null,
+        private mixed $stderrWriter = null,
         private readonly string $invocation = 'gesso coverage:merge',
     ) {}
 
@@ -107,7 +107,6 @@ final class CoverageMergeCommand
     {
         $opts = ArgvParser::parse(
             $argv,
-            'coverage:merge',
             flags: ['cleanup', 'no_cleanup', 'min_coverage_strict'],
             values: [
                 'sidecar_dir', 'spec_base_path', 'output_file', 'junit_output', 'json_output', 'html_output',
@@ -206,14 +205,14 @@ final class CoverageMergeCommand
     /**
      * @param MergeOptions $options
      *
-     * @return int 0 on success, non-zero on misconfiguration / I/O failure
+     * @return int `EXIT_OK`; `EXIT_USAGE` on misconfiguration; `EXIT_FAILURE` on a failed gate or I/O failure
      */
     public function run(array $options): int
     {
         if (($options['help'] ?? false) === true) {
             $this->writeStdout(self::usage($this->invocation));
 
-            return 0;
+            return self::EXIT_OK;
         }
 
         $sidecarDir = $this->pathOption($options['sidecar_dir'] ?? null) ?? OpenApiCoverageExtension::defaultSidecarDir();
@@ -242,7 +241,7 @@ final class CoverageMergeCommand
             // Strict-mode misconfiguration: a typo'd / out-of-range threshold
             // would otherwise silently disable the gate the user opted into.
             // Exit 2 mirrors the `--spec-base-path is required` config error.
-            return 2;
+            return self::EXIT_USAGE;
         }
         $minEndpointPct = $endpointResolution['value'];
         $minResponsePct = $responseResolution['value'];
@@ -255,7 +254,7 @@ final class CoverageMergeCommand
             // silently disables the gate the user opted into via CI flag.
             $this->writeStderr(sprintf("[OpenAPI Strict Required] FATAL: %s\n", $e->getMessage()));
 
-            return 2;
+            return self::EXIT_USAGE;
         }
 
         try {
@@ -265,7 +264,7 @@ final class CoverageMergeCommand
         } catch (InvalidArgumentException $e) {
             $this->writeStderr(sprintf("[OpenAPI Strict Additional Properties] FATAL: %s\n", $e->getMessage()));
 
-            return 2;
+            return self::EXIT_USAGE;
         }
 
         $baselineFile = $this->pathOption($options['baseline_file'] ?? null);
@@ -284,7 +283,7 @@ final class CoverageMergeCommand
             // silently changes the gate the user opted into.
             $this->writeStderr(sprintf("[Gesso] FATAL: %s\n", $e->getMessage()));
 
-            return 2;
+            return self::EXIT_USAGE;
         }
 
         if ($coverageBaselineFile === null && isset($options['coverage_baseline_stale'])) {
@@ -292,13 +291,13 @@ final class CoverageMergeCommand
                 "[Gesso] FATAL: --coverage-baseline-stale is set but --coverage-baseline-file was not given; there is no baseline to evaluate staleness against.\n",
             );
 
-            return 2;
+            return self::EXIT_USAGE;
         }
 
         if ($specBasePath === null) {
             $this->writeStderr("[OpenAPI Coverage] FATAL: --spec-base-path is required\n");
 
-            return 2;
+            return self::EXIT_USAGE;
         }
 
         // Issue #434: the expected shard count, validated alongside the other
@@ -314,7 +313,7 @@ final class CoverageMergeCommand
                     (string) $rawExpectSidecars,
                 ));
 
-                return 2;
+                return self::EXIT_USAGE;
             }
             $expectSidecars = $rawExpectSidecars;
         }
@@ -332,14 +331,14 @@ final class CoverageMergeCommand
                     $sidecarDir,
                 ));
 
-                return 1;
+                return self::EXIT_FAILURE;
             }
 
             $payloads = CoverageSidecarReader::readDir($sidecarDir);
         } catch (RuntimeException $e) {
             $this->writeStderr(sprintf("[OpenAPI Coverage] FATAL: %s\n", $e->getMessage()));
 
-            return 1;
+            return self::EXIT_FAILURE;
         }
 
         // Issue #434: a shard that was cancelled, or that died before
@@ -360,7 +359,7 @@ final class CoverageMergeCommand
                     : 'include sidecars from another run',
             ));
 
-            return 1;
+            return self::EXIT_FAILURE;
         }
 
         if ($payloads === []) {
@@ -373,7 +372,7 @@ final class CoverageMergeCommand
                     $sidecarDir,
                 ));
 
-                return 1;
+                return self::EXIT_FAILURE;
             }
 
             if ($coverageBaselineFile !== null) {
@@ -383,7 +382,7 @@ final class CoverageMergeCommand
                     $coverageBaselineGenerate ? 'generated' : 'evaluated',
                 ));
 
-                return 1;
+                return self::EXIT_FAILURE;
             }
 
             if ($strictAdditionalPropertiesMode === StrictAdditionalPropertiesMode::Fail) {
@@ -392,7 +391,7 @@ final class CoverageMergeCommand
                     $sidecarDir,
                 ));
 
-                return 1;
+                return self::EXIT_FAILURE;
             }
 
             // Strict-mode gate must fail-fast even before sidecars exist —
@@ -404,11 +403,11 @@ final class CoverageMergeCommand
                     $sidecarDir,
                 ));
 
-                return 1;
+                return self::EXIT_FAILURE;
             }
             $this->writeStderr(sprintf("[OpenAPI Coverage] WARNING: no sidecars found in %s\n", $sidecarDir));
 
-            return 0;
+            return self::EXIT_OK;
         }
 
         OpenApiSpecLoader::reset();
@@ -484,7 +483,7 @@ final class CoverageMergeCommand
             } catch (InvalidArgumentException $e) {
                 $this->writeStderr(sprintf("[OpenAPI Coverage] FATAL: invalid sidecar payload: %s\n", $e->getMessage()));
 
-                return 1;
+                return self::EXIT_FAILURE;
             }
         }
 
@@ -495,7 +494,7 @@ final class CoverageMergeCommand
         $this->reportDeprecations($deprecationStates, $sidecarsWithoutDeprecations, count($payloads));
 
         if (!$this->handleBaseline($baselineFile, $mergedBaseline, $sidecarsWithoutBaseline, count($payloads))) {
-            return 1;
+            return self::EXIT_FAILURE;
         }
 
         if ($minSdkExercisePct !== null && $sidecarsWithoutSdkExercise > 0) {
@@ -508,7 +507,7 @@ final class CoverageMergeCommand
                 ),
             );
             if ($minStrict) {
-                return 1;
+                return self::EXIT_FAILURE;
             }
         }
 
@@ -549,10 +548,10 @@ final class CoverageMergeCommand
             }
 
             if ($cleanup && !$this->cleanup($sidecarDir)) {
-                return 1;
+                return self::EXIT_FAILURE;
             }
 
-            return $strictGated || $strictAdditionalPropertiesFailure || $coverageBaselineFile !== null ? 1 : 0;
+            return $strictGated || $strictAdditionalPropertiesFailure || $coverageBaselineFile !== null ? self::EXIT_FAILURE : self::EXIT_OK;
         }
 
         $this->writeStdout(ConsoleCoverageRenderer::render($results, $consoleOutput, $sdkResults));
@@ -616,8 +615,8 @@ final class CoverageMergeCommand
             $strictAdditionalPropertiesFailure ||
             $coverageBaselineFailure ||
             $cleanupFailure
-            ? 1
-            : 0;
+            ? self::EXIT_FAILURE
+            : self::EXIT_OK;
     }
 
     /** An option's absolutised path, or `null` when absent or empty. */
