@@ -10971,6 +10971,26 @@
                     "attributes": [],
                     "parameters": []
                 },
+                "openApiSkipRequestValidationResponseCodes": {
+                    "visibility": "protected",
+                    "static": false,
+                    "final": false,
+                    "abstract": false,
+                    "returns_reference": false,
+                    "return_type": "array",
+                    "attributes": [],
+                    "parameters": []
+                },
+                "openApiSkipResponseCodes": {
+                    "visibility": "protected",
+                    "static": false,
+                    "final": false,
+                    "abstract": false,
+                    "returns_reference": false,
+                    "return_type": "array",
+                    "attributes": [],
+                    "parameters": []
+                },
                 "openApiSpec": {
                     "visibility": "protected",
                     "static": false,

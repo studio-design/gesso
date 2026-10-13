@@ -14,7 +14,8 @@ return [
 
     // Prefixes removed from registered Laravel route URIs before comparing
     // them with OpenAPI paths. Keep this aligned with the PHPUnit extension's
-    // `strip_prefixes` parameter so static parity and runtime validation agree.
+    // `strip_prefixes` parameter so static parity and runtime validation agree
+    // — or move both to the root gesso.php so nothing needs aligning.
     'strip_prefixes' => [],
 
     // Documented operations implemented by another service in a gateway
