@@ -12,6 +12,7 @@ use Studio\Gesso\Coverage\CoverageSidecarEnvelope;
 
 use function array_key_exists;
 use function array_keys;
+use function get_debug_type;
 use function sprintf;
 
 /**
@@ -34,12 +35,14 @@ class CoverageSidecarEnvelopeTest extends TestCase
     }
 
     /**
-     * @return iterable<string, array{string}>
+     * @return iterable<string, array{string, null|string}>
      */
     public static function provideParse_rejects_version_10_with_non_array_halvesCases(): iterable
     {
         foreach (['coverage', 'strictRequired', 'strictAdditionalProperties', 'sdkExercise', 'deprecations', 'baseline'] as $key) {
-            yield $key => [$key];
+            yield $key => [$key, 'invalid'];
+            // v10 is presence-keyed: an explicit null is malformed, not "absent".
+            yield $key . ' null' => [$key, null];
         }
     }
 
@@ -112,15 +115,15 @@ class CoverageSidecarEnvelopeTest extends TestCase
 
     #[Test]
     #[DataProvider('provideParse_rejects_version_10_with_non_array_halvesCases')]
-    public function parse_rejects_version_10_with_non_array_halves(string $key): void
+    public function parse_rejects_version_10_with_non_array_halves(string $key, ?string $value): void
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('"' . $key . '"');
+        $this->expectExceptionMessage('"' . $key . '" must be an array; got ' . get_debug_type($value));
 
         CoverageSidecarEnvelope::parse([
             'envelopeVersion' => 10,
             'coverage' => ['version' => 1, 'specs' => []],
-            $key => 'invalid',
+            $key => $value,
         ]);
     }
 
@@ -293,6 +296,18 @@ class CoverageSidecarEnvelopeTest extends TestCase
         ];
 
         $parsed = CoverageSidecarEnvelope::parse($payload);
+
+        $this->assertNull($parsed['strictRequired']);
+    }
+
+    #[Test]
+    public function parse_keeps_accepting_an_explicit_null_strict_required_in_v2(): void
+    {
+        $parsed = CoverageSidecarEnvelope::parse([
+            'envelopeVersion' => 2,
+            'coverage' => ['version' => 1, 'specs' => []],
+            'strictRequired' => null,
+        ]);
 
         $this->assertNull($parsed['strictRequired']);
     }

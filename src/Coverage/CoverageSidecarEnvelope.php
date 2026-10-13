@@ -216,11 +216,11 @@ final class CoverageSidecarEnvelope
         if ($version === self::ENVELOPE_VERSION) {
             return [
                 'coverage' => self::requiredHalf($payload, 'coverage'),
-                'strictRequired' => self::optionalHalf($payload, 'strictRequired'),
-                'strictAdditionalProperties' => self::optionalHalf($payload, 'strictAdditionalProperties'),
-                'sdkExercise' => self::optionalHalf($payload, 'sdkExercise'),
-                'deprecations' => self::optionalHalf($payload, 'deprecations'),
-                'baseline' => self::optionalHalf($payload, 'baseline'),
+                'strictRequired' => self::presentHalf($payload, 'strictRequired'),
+                'strictAdditionalProperties' => self::presentHalf($payload, 'strictAdditionalProperties'),
+                'sdkExercise' => self::presentHalf($payload, 'sdkExercise'),
+                'deprecations' => self::presentHalf($payload, 'deprecations'),
+                'baseline' => self::presentHalf($payload, 'baseline'),
             ];
         }
 
@@ -271,6 +271,23 @@ final class CoverageSidecarEnvelope
         }
 
         return $value;
+    }
+
+    /**
+     * v10 is presence-keyed: the writer omits an absent half, so a present
+     * key must hold an array — an explicit null is malformed, not "absent".
+     *
+     * @param array<string, mixed> $payload
+     *
+     * @return null|array<string, mixed>
+     */
+    private static function presentHalf(array $payload, string $key): ?array
+    {
+        if (!array_key_exists($key, $payload)) {
+            return null;
+        }
+
+        return self::requiredHalf($payload, $key);
     }
 
     /**
