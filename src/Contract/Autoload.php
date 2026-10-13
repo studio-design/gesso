@@ -8,14 +8,16 @@ declare(strict_types=1);
  * composer.json autoload.files. Removed in Gesso 3.0 together with its
  * registry rows.
  *
- * The alias is declared together with its canonical class, whichever name
- * loads it: PHP resolves parameter/return types, instanceof, and catch
- * without autoloading, so an alias created only when the legacy name reaches
- * an autoloader would be missing from a legacy type hint on an object built
- * through the new name. Prepending puts this loader ahead of Composer's for
- * the seven canonical names. The deprecation notice is therefore best-effort:
- * it fires when a legacy name is what loads the class, and a legacy name
- * referenced after its canonical class is already loaded resolves silently.
+ * Each canonical class file declares its own alias right after the class
+ * (see the class_alias() at the end of ContractCheck.php and its siblings):
+ * PHP resolves parameter/return types, instanceof, and catch without
+ * autoloading, and PHPUnit's separate-process runner with preserved global
+ * state require_once's the parent's class files directly, so an alias created
+ * only by an autoloader would be missing in both cases. This loader only
+ * covers a legacy name that is referenced before its canonical class is
+ * loaded. The deprecation notice is therefore best-effort: it fires when a
+ * legacy name is what loads the class, and a legacy name referenced after its
+ * canonical class is already loaded resolves silently.
  *
  * An explicit allowlist, not a Fuzz\ -> Contract\ prefix rewrite: the
  * generator types (ExploredCase, OpenApiSpecExplorer, ...) stay in Fuzz\.
@@ -27,34 +29,17 @@ namespace Studio\Gesso\Contract;
 
 use Studio\Gesso\Internal\Deprecations;
 
-use function class_alias;
 use function class_exists;
-use function in_array;
 use function spl_autoload_register;
-use function str_starts_with;
-use function strlen;
-use function substr;
 
 // Composer includes this file once, but a PSR-4 lookup of the name
-// Studio\Gesso\Contract\Autoload includes it again; a second prepended loader
-// registered from inside the autoload chain would re-enter it without end.
+// Studio\Gesso\Contract\Autoload includes it again; register the loader once.
 if (isset($GLOBALS['__gesso_contract_aliases'])) {
     return;
 }
 $GLOBALS['__gesso_contract_aliases'] = true;
 
 spl_autoload_register(static function (string $class): void {
-    $short = substr($class, strlen(__NAMESPACE__) + 1);
-    if (
-        str_starts_with($class, __NAMESPACE__ . '\\') &&
-        in_array($short, ['ContractCheck', 'ContractCheckPlan', 'ContractCheckProbe', 'ContractCheckFailure', 'ContractCheckSkip', 'ContractCheckSummary', 'OpenApiContractChecks'], true)
-    ) {
-        require __DIR__ . '/' . $short . '.php';
-        class_alias($class, 'Studio\\Gesso\\Fuzz\\' . $short);
-
-        return;
-    }
-
     switch ($class) {
         case 'Studio\\Gesso\\Fuzz\\ContractCheck':
             class_exists(ContractCheck::class);
@@ -127,4 +112,4 @@ spl_autoload_register(static function (string $class): void {
 
             return;
     }
-}, prepend: true);
+});

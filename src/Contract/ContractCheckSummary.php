@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Studio\Gesso\Contract;
 
 use function array_map;
+use function class_alias;
 use function implode;
 
 /**
@@ -39,3 +40,8 @@ final readonly class ContractCheckSummary
         return implode("\n", array_map(static fn(ContractCheckFailure $f): string => $f->describe(), $this->failures));
     }
 }
+
+// Declared beside the class, not by an autoloader, so the legacy name exists
+// whenever this file is included — including PHPUnit's direct require_once
+// in a separate process. See Autoload.php. Removed in Gesso 3.0.
+class_alias(ContractCheckSummary::class, 'Studio\\Gesso\\Fuzz\\ContractCheckSummary');
