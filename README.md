@@ -22,7 +22,7 @@ Gesso 2 is distributed as `studio-design/gesso` and declares its public PHP API
 under `Studio\Gesso\`. Follow the [staged v2 migration guide](docs/migration/v2.md)
 when upgrading from `studio-design/openapi-contract-testing` v1.10.
 
-**[Search the documentation](https://studio-design.github.io/gesso/)** · [Core quickstart](https://studio-design.github.io/gesso/quickstarts/core) · [Laravel](https://studio-design.github.io/gesso/quickstarts/laravel) · [Symfony](https://studio-design.github.io/gesso/quickstarts/symfony) · [Pest](https://studio-design.github.io/gesso/quickstarts/pest)
+**[Search the documentation](https://studio-design.github.io/gesso/)** · [Core quickstart](https://studio-design.github.io/gesso/quickstarts/core) · [Laravel](https://studio-design.github.io/gesso/quickstarts/laravel) · [Symfony](https://studio-design.github.io/gesso/quickstarts/symfony) · [Pest](https://studio-design.github.io/gesso/quickstarts/pest) · For agents: [llms.txt](https://studio-design.github.io/gesso/llms.txt) · [llms-full.txt](https://studio-design.github.io/gesso/llms-full.txt)
 
 ## Features
 

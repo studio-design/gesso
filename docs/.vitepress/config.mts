@@ -1,6 +1,7 @@
 import { defineConfig } from 'vitepress'
 
 import { githubSlug } from './github-slug.mjs'
+import { canonicalBase, emitMarkdown } from './llms.mts'
 
 const version = process.env.DOCS_VERSION ?? 'next'
 const repository = process.env.GITHUB_REPOSITORY ?? 'studio-design/gesso'
@@ -69,7 +70,6 @@ export default defineConfig({
   cleanUrls: true,
   lastUpdated: true,
   transformPageData(pageData) {
-    const canonicalBase = 'https://studio-design.github.io/gesso'
     const path = pageData.relativePath
       .replace(/(^|\/)index\.md$/, '$1')
       .replace(/\.md$/, '')
@@ -205,6 +205,7 @@ export default defineConfig({
     }
   },
   sitemap: { hostname: siteUrl },
+  buildEnd: emitMarkdown,
   vite: { define: { __DOCS_VERSION__: JSON.stringify(version) } },
   markdown: {
     lineNumbers: true,
