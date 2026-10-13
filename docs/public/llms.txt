@@ -2,44 +2,53 @@
 
 > Gesso provides framework-agnostic OpenAPI 3.0/3.1/3.2 contract testing for PHPUnit with endpoint coverage tracking.
 
+Each `.md` link below is the raw Markdown of a documentation page. The same pages, concatenated in this order, are at https://studio-design.github.io/gesso/llms-full.txt.
+
 ## Get started
 
 - [Overview](https://studio-design.github.io/gesso/): what Gesso is, what it validates, and how coverage tracking works.
-- [Core / PHPUnit](https://studio-design.github.io/gesso/quickstarts/core): validate a response with plain PHPUnit, no framework adapter.
-- [Laravel](https://studio-design.github.io/gesso/quickstarts/laravel): publish the config and assert responses with the `ValidatesOpenApiSchema` trait.
-- [Symfony](https://studio-design.github.io/gesso/quickstarts/symfony): register the PHPUnit extension and assert `WebTestCase` responses against a spec.
-- [Pest](https://studio-design.github.io/gesso/quickstarts/pest): use the `toMatchOpenApiResponseSchema()` expectation registered by the Pest plugin.
+- [Core / PHPUnit](https://studio-design.github.io/gesso/quickstarts/core.md): validate a response with plain PHPUnit, no framework adapter.
+- [Laravel](https://studio-design.github.io/gesso/quickstarts/laravel.md): publish the config and assert responses with the `ValidatesOpenApiSchema` trait.
+- [Symfony](https://studio-design.github.io/gesso/quickstarts/symfony.md): register the PHPUnit extension and assert `WebTestCase` responses against a spec.
+- [Pest](https://studio-design.github.io/gesso/quickstarts/pest.md): use the `toMatchOpenApiResponseSchema()` expectation registered by the Pest plugin.
 
 ## Guides
 
-- [Doctor command](https://studio-design.github.io/gesso/doctor): preflight a local spec for load and enforcement problems before tests run.
-- [Violation baseline](https://studio-design.github.io/gesso/baseline): adopt contract testing on a legacy API by baselining existing violations and failing only on new ones.
-- [Coverage baseline](https://studio-design.github.io/gesso/coverage-baseline): commit the set of uncovered responses and fail on new ones by name, instead of maintaining a coverage percentage.
-- [PSR-7 validation](https://studio-design.github.io/gesso/psr7): validate PSR-7 requests and responses from any HTTP client or middleware.
-- [Laravel route parity](https://studio-design.github.io/gesso/laravel-route-parity): compare registered Laravel routes with spec operations to catch undocumented drift.
-- [Schema-driven fuzzing](https://studio-design.github.io/gesso/fuzzing): generate deterministic valid and invalid request cases from schemas, with replay tokens.
-- [SDK response round trips](https://studio-design.github.io/gesso/sdk-roundtrip): generate branch-complete valid response payloads and exercise generated SDK decode/encode fidelity.
-- [Symfony contract testing](https://studio-design.github.io/gesso/contract-testing-symfony): full guide to spec-driven provider-side contract testing in a Symfony application.
-- [Spec-driven vs consumer-driven](https://studio-design.github.io/gesso/spec-driven-vs-consumer-driven): decision framework for choosing between spec-driven contract testing with Gesso and consumer-driven contract testing with Pact PHP.
+- [Doctor command](https://studio-design.github.io/gesso/doctor.md): preflight a local spec for load and enforcement problems before tests run.
+- [Violation baseline](https://studio-design.github.io/gesso/baseline.md): adopt contract testing on a legacy API by baselining existing violations and failing only on new ones.
+- [Coverage baseline](https://studio-design.github.io/gesso/coverage-baseline.md): commit the set of uncovered responses and fail on new ones by name, instead of maintaining a coverage percentage.
+- [Spec patch coverage gate](https://studio-design.github.io/gesso/coverage-gate.md): fail a pull request when it changes an operation that no test exercises.
+- [Test stub scaffolding](https://studio-design.github.io/gesso/stubs.md): generate PHPUnit test skeletons for the responses a coverage document reports as uncovered.
+- [PSR-7 validation](https://studio-design.github.io/gesso/psr7.md): validate PSR-7 requests and responses from any HTTP client or middleware.
+- [Laravel route parity](https://studio-design.github.io/gesso/laravel-route-parity.md): compare registered Laravel routes with spec operations to catch undocumented drift.
+- [Schema-driven fuzzing](https://studio-design.github.io/gesso/fuzzing.md): generate deterministic valid and invalid request cases from schemas, with replay tokens.
+- [SDK response round trips](https://studio-design.github.io/gesso/sdk-roundtrip.md): generate branch-complete valid response payloads and exercise generated SDK decode/encode fidelity.
+- [Symfony contract testing](https://studio-design.github.io/gesso/contract-testing-symfony.md): full guide to spec-driven provider-side contract testing in a Symfony application.
+- [Spec-driven vs consumer-driven](https://studio-design.github.io/gesso/spec-driven-vs-consumer-driven.md): decision framework for choosing between spec-driven contract testing with Gesso and consumer-driven contract testing with Pact PHP.
+- [PHP OpenAPI validation FAQ](https://studio-design.github.io/gesso/php-openapi-validation-faq.md): direct answers to the questions engineers ask most often about validating a PHP API against an OpenAPI spec, with tool comparisons.
 
 ## Recipes
 
-- [GitHub Actions](https://studio-design.github.io/gesso/recipes/github-actions): publish the coverage report as a Step Summary and workflow artifact.
-- [Fuzzing and drift checks](https://studio-design.github.io/gesso/recipes/advanced-validation): wire fuzzing, enum drift, and strict-required detection into CI jobs.
-- [Parallel test runners](https://studio-design.github.io/gesso/parallel): merge per-worker coverage sidecars from paratest or `pest --parallel`.
+- [GitHub Actions](https://studio-design.github.io/gesso/recipes/github-actions.md): publish the coverage report as a Step Summary and workflow artifact.
+- [Scramble + Laravel](https://studio-design.github.io/gesso/recipes/scramble.md): validate Laravel test responses against a Scramble-generated OpenAPI document.
+- [Fuzzing and drift checks](https://studio-design.github.io/gesso/recipes/advanced-validation.md): wire fuzzing, enum drift, and strict-required detection into CI jobs.
+- [Parallel test runners](https://studio-design.github.io/gesso/parallel.md): merge per-worker coverage sidecars from paratest or `pest --parallel`.
 
 ## Migration
 
-- [Prepare for Gesso 2.0](https://studio-design.github.io/gesso/migration/v2): staged path for the package rename and PHP namespace change.
-- [From other validators](https://studio-design.github.io/gesso/migration/from-other-validators): incremental migration from Spectator, league/openapi-psr7-validator, and osteel.
+- [Prepare for Gesso 2.0](https://studio-design.github.io/gesso/migration/v2.md): staged path for the package rename and PHP namespace change.
+- [From other validators](https://studio-design.github.io/gesso/migration/from-other-validators.md): incremental migration from Spectator, league/openapi-psr7-validator, and osteel.
 
 ## Reference
 
-- [Setup](https://studio-design.github.io/gesso/setup): end-to-end configuration, extension parameters, auto-validation, and per-test opt-out mechanisms.
-- [Coverage](https://studio-design.github.io/gesso/coverage): report formats, endpoint markers, and `(method, path, status, content-type)` coverage granularity.
-- [Supported features](https://studio-design.github.io/gesso/supported-features): what is validated, what is skipped, and known limitations per OpenAPI version.
-- [API reference](https://studio-design.github.io/gesso/api-reference): public classes — validators, spec loader, explorer, and coverage tracker.
-- [Versioning](https://studio-design.github.io/gesso/versioning): the v1.x compatibility policy and which symbols and formats it covers.
+- [Setup](https://studio-design.github.io/gesso/setup.md): end-to-end configuration, extension parameters, auto-validation, and per-test opt-out mechanisms.
+- [Shared configuration](https://studio-design.github.io/gesso/configuration.md): the `gesso.php` file that the PHPUnit extension and the Laravel service provider both read.
+- [Coverage](https://studio-design.github.io/gesso/coverage.md): report formats, endpoint markers, and `(method, path, status, content-type)` coverage granularity.
+- [Supported features](https://studio-design.github.io/gesso/supported-features.md): what is validated, what is skipped, and known limitations per OpenAPI version.
+- [Conformance](https://studio-design.github.io/gesso/conformance.md): results against the JSON Schema Test Suite and the OpenAPI Initiative example documents, pinned by commit.
+- [API reference](https://studio-design.github.io/gesso/api-reference.md): public classes — validators, spec loader, explorer, and coverage tracker.
+- [Decision records](https://studio-design.github.io/gesso/adr/index.md): architecture decision records that shape what Gesso is.
+- [Versioning](https://studio-design.github.io/gesso/versioning.md): the v1.x compatibility policy and which symbols and formats it covers.
 
 ## Optional
 

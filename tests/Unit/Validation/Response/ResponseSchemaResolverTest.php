@@ -14,6 +14,8 @@ use Studio\Gesso\Validation\Response\ResponseSchemaResolutionOutcome;
 use Studio\Gesso\Validation\Response\ResponseSchemaResolver;
 use Studio\Gesso\Validation\Support\DiscriminatorEnforcement;
 
+use function get_object_vars;
+
 /**
  * Shared response-schema resolution (issue #442): one implementation feeds
  * both the response validator and the response-payload explorer (#441), so
@@ -147,6 +149,68 @@ class ResponseSchemaResolverTest extends TestCase
             "Malformed 'paths[\"/scalar-responses-map\"].get.responses'",
             (string) $resolution->message,
         );
+    }
+
+    #[Test]
+    public function locate_operation_carries_the_operation_context_without_the_responses_map(): void
+    {
+        $located = $this->resolver->locateOperation('petstore-3.0', 'GET', '/v1/pets/1');
+
+        $this->assertSame(ResponseSchemaResolutionOutcome::Resolved, $located->outcome);
+        $this->assertSame('/v1/pets/{petId}', $located->matchedPath);
+        $this->assertSame(['petId' => '1'], $located->pathVariables);
+        $this->assertIsArray($located->pathSpec);
+        $this->assertArrayHasKey('get', $located->pathSpec);
+        $this->assertIsArray($located->operation);
+        $this->assertArrayHasKey('responses', $located->operation);
+        $this->assertNull($located->responses);
+        $this->assertSame(OpenApiVersion::V3_0, $located->version);
+        $this->assertSame(OpenApiSchemaDialect::DRAFT_07, $located->jsonSchemaDialect);
+
+        // A stage-0 resolution has not passed the `responses` guard, so it
+        // must not be accepted by stage 2.
+        $this->expectException(LogicException::class);
+        $this->resolver->resolveResponseSchema($located, 200, 'application/json');
+    }
+
+    #[Test]
+    public function locate_operation_does_not_verify_the_responses_map_but_resolve_operation_does(): void
+    {
+        $located = $this->resolver->locateOperation('malformed', 'GET', '/scalar-responses-map');
+
+        $this->assertSame(ResponseSchemaResolutionOutcome::Resolved, $located->outcome);
+        $this->assertIsArray($located->operation);
+        $this->assertIsString($located->operation['responses']);
+
+        $resolved = $this->resolver->resolveOperation('malformed', 'GET', '/scalar-responses-map');
+
+        $this->assertSame(ResponseSchemaResolutionOutcome::MalformedSpec, $resolved->outcome);
+        $this->assertSame('/scalar-responses-map', $resolved->matchedPath);
+        $this->assertStringContainsString("Malformed 'paths[\"/scalar-responses-map\"].get.responses'", (string) $resolved->message);
+        $this->assertStringContainsString('expected object, got string', (string) $resolved->message);
+    }
+
+    #[Test]
+    public function locate_operation_failures_match_resolve_operation(): void
+    {
+        $cases = [
+            ['malformed-paths', 'GET', '/things', ResponseSchemaResolutionOutcome::MalformedSpec],
+            ['petstore-3.0', 'GET', '/nope', ResponseSchemaResolutionOutcome::PathNotFound],
+            ['malformed', 'GET', '/scalar-path-item', ResponseSchemaResolutionOutcome::MalformedSpec],
+            ['petstore-3.0', 'DELETE', '/v1/health', ResponseSchemaResolutionOutcome::MethodNotDefined],
+            ['malformed', 'GET', '/scalar-operation', ResponseSchemaResolutionOutcome::MalformedSpec],
+        ];
+
+        foreach ($cases as [$spec, $method, $path, $outcome]) {
+            $located = $this->resolver->locateOperation($spec, $method, $path);
+
+            $this->assertSame($outcome, $located->outcome, $path);
+            $this->assertSame(
+                get_object_vars($this->resolver->resolveOperation($spec, $method, $path)),
+                get_object_vars($located),
+                $path,
+            );
+        }
     }
 
     #[Test]
