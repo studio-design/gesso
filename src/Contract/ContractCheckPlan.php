@@ -2,11 +2,17 @@
 
 declare(strict_types=1);
 
-namespace Studio\Gesso\Fuzz;
+namespace Studio\Gesso\Contract;
 
 use InvalidArgumentException;
 use RuntimeException;
 use stdClass;
+use Studio\Gesso\Fuzz\ExploredCase;
+use Studio\Gesso\Fuzz\ExploredOperation;
+use Studio\Gesso\Fuzz\OpenApiEndpointExplorer;
+use Studio\Gesso\Fuzz\RunsOperationHooks;
+use Studio\Gesso\Fuzz\SelectsExploredOperations;
+use Studio\Gesso\Fuzz\SpecPathsPreflight;
 use Studio\Gesso\HttpMethod;
 use Studio\Gesso\Spec\OpenApiOperationResolver;
 use Studio\Gesso\Spec\OpenApiPathMatcher;
@@ -22,6 +28,7 @@ use function array_key_exists;
 use function array_keys;
 use function array_map;
 use function array_values;
+use function class_alias;
 use function count;
 use function crc32;
 use function get_debug_type;
@@ -1028,3 +1035,8 @@ final class ContractCheckPlan
         });
     }
 }
+
+// Declared beside the class, not by an autoloader, so the legacy name exists
+// whenever this file is included — including PHPUnit's direct require_once
+// in a separate process. See Autoload.php. Removed in Gesso 3.0.
+class_alias(ContractCheckPlan::class, 'Studio\\Gesso\\Fuzz\\ContractCheckPlan');

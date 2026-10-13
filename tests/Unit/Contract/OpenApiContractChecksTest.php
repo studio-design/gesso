@@ -2,16 +2,16 @@
 
 declare(strict_types=1);
 
-namespace Studio\Gesso\Tests\Unit\Fuzz;
+namespace Studio\Gesso\Tests\Unit\Contract;
 
 use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
-use Studio\Gesso\Fuzz\ContractCheck;
+use Studio\Gesso\Contract\ContractCheck;
+use Studio\Gesso\Contract\OpenApiContractChecks;
 use Studio\Gesso\Fuzz\ExploredCase;
 use Studio\Gesso\Fuzz\ExploredOperation;
-use Studio\Gesso\Fuzz\OpenApiContractChecks;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 
 use function array_key_exists;

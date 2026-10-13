@@ -297,8 +297,8 @@ holes schema validation cannot see:
 | `UnsupportedMethod` | one deterministically chosen undocumented method per documented path | `405` |
 
 ```php
-use Studio\Gesso\Fuzz\ContractCheck;
-use Studio\Gesso\Fuzz\OpenApiContractChecks;
+use Studio\Gesso\Contract\ContractCheck;
+use Studio\Gesso\Contract\OpenApiContractChecks;
 
 $summary = OpenApiContractChecks::run('front', seed: 7)
     ->checks([ContractCheck::IgnoredAuth, ContractCheck::UnsupportedMethod])
@@ -323,7 +323,7 @@ which `MissingRequiredHeader` requires before probing a state-changing method. P
 returned `ContractCheckSummary` collects every `ContractCheckFailure` (naming
 the check, operation, dispatched mutation, and a replayable curl command) and
 every explained `ContractCheckSkip`, plus `probedPaths` / `dispatchedProbes`
-counts. See [named contract checks](fuzzing.md#named-contract-checks).
+counts. See [named contract checks](contract-checks.md).
 
 ## `OpenApiSpecLoader`
 
