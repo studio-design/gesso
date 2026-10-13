@@ -239,6 +239,8 @@ PHPUnit exits normally in `WARNING` mode. **`failOnWarning="true"` and `failOnPh
 
 If `enum_drift_scan_namespaces` resolves but no `#[BoundToOpenApiEnum]`-attributed enums are found, the extension emits one `[OpenAPI Enum Drift] NOTE:` line to stderr and continues. This surfaces typo'd namespaces ("`App\Enum`" vs "`App\Enums`") without failing codebases that are mid-migration.
 
+Under paratest or Pest `--parallel` the check runs once per run, in the process that starts it (paratest's master, Pest's orchestrator), so drift produces one stderr block and one `GITHUB_STEP_SUMMARY` block. Workers — processes with `TEST_TOKEN` set — skip the scan. A sequential run whose environment already sets `TEST_TOKEN` skips it as well; unset the variable, or use `GESSO_SIDECAR_TOKEN` for CI shards. See [Parallel test runners](parallel.md#notes).
+
 ## Known limitations
 
 - **No `$ref` traversal on the bound file.** Unlike `OpenApiSpecLoader::load()`, the asserter does not resolve `$ref` inside the bound file. Bind to the leaf file containing the literal `enum:` array.
