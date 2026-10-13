@@ -78,6 +78,12 @@ final class CreatePetTest extends TestCase
 }
 ```
 
+Without an attribute or override, `openApiSpec()` returns `spec.default` from
+[`gesso.php`](configuration.md) (or the `default_spec` extension parameter).
+Likewise `openApiMaxErrors()`, `openApiSkipResponseCodes()`, and
+`openApiSkipRequestValidationResponseCodes()` default to the shared
+`validation.*` settings; override a hook to pin a per-suite value.
+
 Request-only, response-only, and explicit-operation assertions are also
 available:
 

@@ -8,6 +8,12 @@ use const JSON_THROW_ON_ERROR;
 
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+use Studio\Gesso\Contract\ContractCheck;
+use Studio\Gesso\Contract\ContractCheckFailure;
+use Studio\Gesso\Contract\ContractCheckPlan;
+use Studio\Gesso\Contract\ContractCheckSkip;
+use Studio\Gesso\Contract\ContractCheckSummary;
+use Studio\Gesso\Contract\OpenApiContractChecks;
 use Studio\Gesso\Coverage\ConsoleCoverageRenderer;
 use Studio\Gesso\Coverage\CoverageSidecarEnvelope;
 use Studio\Gesso\Coverage\CoverageSidecarReader;
@@ -22,15 +28,9 @@ use Studio\Gesso\Coverage\MarkdownCoverageRenderer;
 use Studio\Gesso\DecodedBody;
 use Studio\Gesso\Exception\EnumBindingReason;
 use Studio\Gesso\Exception\InvalidOpenApiSpecReason;
-use Studio\Gesso\Fuzz\ContractCheck;
-use Studio\Gesso\Fuzz\ContractCheckFailure;
-use Studio\Gesso\Fuzz\ContractCheckPlan;
-use Studio\Gesso\Fuzz\ContractCheckSkip;
-use Studio\Gesso\Fuzz\ContractCheckSummary;
 use Studio\Gesso\Fuzz\ExploredCase;
 use Studio\Gesso\Fuzz\GeneratedResponseCase;
 use Studio\Gesso\Fuzz\GeneratedResponseCases;
-use Studio\Gesso\Fuzz\OpenApiContractChecks;
 use Studio\Gesso\Fuzz\OpenApiResponseExplorer;
 use Studio\Gesso\Fuzz\OpenApiResponseSpecExploration;
 use Studio\Gesso\Fuzz\ResponseSpecExplorationFailure;
@@ -887,7 +887,7 @@ final class PublicApiBaselineTest extends TestCase
                     ],
                 ],
                 'check' => [
-                    'type' => 'Studio\\Gesso\\Fuzz\\ContractCheck',
+                    'type' => 'Studio\\Gesso\\Contract\\ContractCheck',
                     'static' => false,
                     'readonly' => true,
                     'default' => [
@@ -954,7 +954,7 @@ final class PublicApiBaselineTest extends TestCase
                     'parameters' => [
                         [
                             'name' => 'check',
-                            'type' => 'Studio\\Gesso\\Fuzz\\ContractCheck',
+                            'type' => 'Studio\\Gesso\\Contract\\ContractCheck',
                             'optional' => false,
                             'variadic' => false,
                             'by_reference' => false,
@@ -1290,7 +1290,7 @@ final class PublicApiBaselineTest extends TestCase
                     'parameters' => [
                         [
                             'name' => 'check',
-                            'type' => 'Studio\\Gesso\\Fuzz\\ContractCheck',
+                            'type' => 'Studio\\Gesso\\Contract\\ContractCheck',
                             'optional' => false,
                             'variadic' => false,
                             'by_reference' => false,
@@ -1322,7 +1322,7 @@ final class PublicApiBaselineTest extends TestCase
                     'parameters' => [
                         [
                             'name' => 'check',
-                            'type' => 'Studio\\Gesso\\Fuzz\\ContractCheck',
+                            'type' => 'Studio\\Gesso\\Contract\\ContractCheck',
                             'optional' => false,
                             'variadic' => false,
                             'by_reference' => false,
@@ -1452,7 +1452,7 @@ final class PublicApiBaselineTest extends TestCase
                     'final' => false,
                     'abstract' => false,
                     'returns_reference' => false,
-                    'return_type' => 'Studio\\Gesso\\Fuzz\\ContractCheckSummary',
+                    'return_type' => 'Studio\\Gesso\\Contract\\ContractCheckSummary',
                     'attributes' => [],
                     'parameters' => [],
                 ],
@@ -1520,7 +1520,7 @@ final class PublicApiBaselineTest extends TestCase
             'constants' => [],
             'properties' => [
                 'check' => [
-                    'type' => 'Studio\\Gesso\\Fuzz\\ContractCheck',
+                    'type' => 'Studio\\Gesso\\Contract\\ContractCheck',
                     'static' => false,
                     'readonly' => true,
                     'default' => [
@@ -1563,7 +1563,7 @@ final class PublicApiBaselineTest extends TestCase
                     'parameters' => [
                         [
                             'name' => 'check',
-                            'type' => 'Studio\\Gesso\\Fuzz\\ContractCheck',
+                            'type' => 'Studio\\Gesso\\Contract\\ContractCheck',
                             'optional' => false,
                             'variadic' => false,
                             'by_reference' => false,
@@ -1770,7 +1770,7 @@ final class PublicApiBaselineTest extends TestCase
                     'final' => false,
                     'abstract' => false,
                     'returns_reference' => false,
-                    'return_type' => 'Studio\\Gesso\\Fuzz\\ContractCheckPlan',
+                    'return_type' => 'Studio\\Gesso\\Contract\\ContractCheckPlan',
                     'attributes' => [],
                     'parameters' => [
                         [

@@ -81,7 +81,8 @@
             "Studio\\Gesso\\": "src/"
         },
         "files": [
-            "src/Pest/Autoload.php"
+            "src/Pest/Autoload.php",
+            "src/Contract/Autoload.php"
         ]
     },
     "bin": [
