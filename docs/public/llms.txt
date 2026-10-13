@@ -25,6 +25,7 @@ Each `.md` link below is the raw Markdown of a documentation page. The same page
 - [Named contract checks](https://studio-design.github.io/gesso/contract-checks.md): probe protocol-level contract holes schema validation cannot see, with Schemathesis-style check names.
 - [SDK response round trips](https://studio-design.github.io/gesso/sdk-roundtrip.md): generate branch-complete valid response payloads and exercise generated SDK decode/encode fidelity.
 - [Symfony contract testing](https://studio-design.github.io/gesso/contract-testing-symfony.md): full guide to spec-driven provider-side contract testing in a Symfony application.
+- [Consumer-side contract testing](https://studio-design.github.io/gesso/consumer-side-contract-testing.md): fake an external API from its OpenAPI document in `Http::fake()` or `MockHttpClient`, so fakes fail when the provider spec changes.
 - [Spec-driven vs consumer-driven](https://studio-design.github.io/gesso/spec-driven-vs-consumer-driven.md): decision framework for choosing between spec-driven contract testing with Gesso and consumer-driven contract testing with Pact PHP.
 - [PHP OpenAPI validation FAQ](https://studio-design.github.io/gesso/php-openapi-validation-faq.md): direct answers to the questions engineers ask most often about validating a PHP API against an OpenAPI spec, with tool comparisons.
 
