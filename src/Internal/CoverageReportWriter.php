@@ -45,6 +45,23 @@ final class CoverageReportWriter
     ) {}
 
     /**
+     * Label and renderer for one file-report format.
+     *
+     * @param 'html'|'json'|'junit'|'markdown' $format
+     *
+     * @return array{string, Closure(array<string, CoverageResult>, array<string, SdkExerciseCoverageResult>): string}
+     */
+    public static function renderer(string $format): array
+    {
+        return match ($format) {
+            'markdown' => ['Markdown', static fn(array $r, array $s): string => MarkdownCoverageRenderer::render($r, $s)],
+            'junit' => ['JUnit XML', static fn(array $r, array $s): string => JUnitCoverageRenderer::render($r, $s)],
+            'json' => ['JSON', static fn(array $r, array $s): string => JsonCoverageRenderer::render($r, sdkResults: $s)],
+            'html' => ['HTML', static fn(array $r, array $s): string => HtmlCoverageRenderer::render($r, $s)],
+        };
+    }
+
+    /**
      * Dispatch each configured renderer to its output target. Per-entry render
      * or write failures emit one diagnostic line and continue — one format's
      * broken path must not suppress the others or block the threshold gate
@@ -53,6 +70,8 @@ final class CoverageReportWriter
      *
      * @param array<string, CoverageResult> $results
      * @param array<string, SdkExerciseCoverageResult> $sdkResults
+     * @param null|array{string, Closure(array<string, CoverageResult>, array<string, SdkExerciseCoverageResult>): string} $primary
+     *                                                                                                                              label + renderer for `$outputFile`; Markdown when null
      *
      * @return int Number of format outputs that failed to write
      */
@@ -63,12 +82,13 @@ final class CoverageReportWriter
         ?string $junitOutput,
         ?string $jsonOutput,
         ?string $htmlOutput,
+        ?array $primary = null,
     ): int {
         $entries = [
-            ['Markdown', static fn(array $r, array $s): string => MarkdownCoverageRenderer::render($r, $s), $outputFile],
-            ['JUnit XML', static fn(array $r, array $s): string => JUnitCoverageRenderer::render($r, $s), $junitOutput],
-            ['JSON', static fn(array $r, array $s): string => JsonCoverageRenderer::render($r, sdkResults: $s), $jsonOutput],
-            ['HTML', static fn(array $r, array $s): string => HtmlCoverageRenderer::render($r, $s), $htmlOutput],
+            [...($primary ?? self::renderer('markdown')), $outputFile],
+            [...self::renderer('junit'), $junitOutput],
+            [...self::renderer('json'), $jsonOutput],
+            [...self::renderer('html'), $htmlOutput],
         ];
         $failures = 0;
 

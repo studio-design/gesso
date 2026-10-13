@@ -17,6 +17,7 @@ use Studio\Gesso\Validation\Request\RequestBodyValidator;
 use Studio\Gesso\Validation\Support\SchemaValidatorRunner;
 
 use function array_column;
+use function file_get_contents;
 use function file_put_contents;
 use function glob;
 use function json_decode;
@@ -58,6 +59,7 @@ class DoctorCommandTest extends TestCase
                 'acknowledged_unvalidatable_schemes' => ['ClientBasicAuth', 'LegacyOAuth', 'mTLS'],
                 'invalid_options' => [],
                 'format' => 'json',
+                'output_file' => 'build/doctor.json',
                 'allow_remote_refs' => true,
                 'remote_ref_max_bytes' => '4096',
                 'local_ref_root' => '/trusted/openapi',
@@ -68,6 +70,7 @@ class DoctorCommandTest extends TestCase
                 '--strip-prefix=/api',
                 '--strip-prefix=/internal',
                 '--format=json',
+                '--output-file=build/doctor.json',
                 '--allow-remote-refs',
                 '--remote-ref-host=specs.example.com',
                 '--remote-ref-host=schemas.example.com',
@@ -878,6 +881,46 @@ class DoctorCommandTest extends TestCase
         $this->assertSame(DoctorCommand::EXIT_DIAGNOSTIC_FAILURE, $exit);
         $this->assertCount(5, $report['issues']);
         $this->assertSame(['structure', 'structure', 'structure', 'structure', 'structure'], array_column($report['issues'], 'category'));
+    }
+
+    #[Test]
+    public function output_file_receives_the_same_bytes_as_stdout(): void
+    {
+        $spec = $this->writeSpec('openapi.json', $this->validSpec('/pets'));
+
+        foreach (['json', 'text'] as $format) {
+            $stdout = '';
+            $command = new DoctorCommand(stdoutWriter: static function (string $message) use (&$stdout): void {
+                $stdout .= $message;
+            });
+            $this->assertSame(DoctorCommand::EXIT_OK, $command->run(['specs' => [$spec], 'format' => $format]));
+            $expected = $stdout;
+
+            $stdout = '';
+            $file = $this->workDir . '/doctor.' . $format;
+            $this->assertSame(DoctorCommand::EXIT_OK, $command->run(['specs' => [$spec], 'format' => $format, 'output_file' => $file]));
+            $this->assertSame('', $stdout, $format);
+            $this->assertSame($expected, file_get_contents($file), $format);
+        }
+    }
+
+    #[Test]
+    public function unwritable_output_file_is_a_usage_error(): void
+    {
+        $spec = $this->writeSpec('openapi.json', $this->validSpec('/pets'));
+        $stderr = '';
+        $command = new DoctorCommand(
+            stdoutWriter: static fn(string $message): null => null,
+            stderrWriter: static function (string $message) use (&$stderr): void {
+                $stderr .= $message;
+            },
+        );
+
+        $exit = $command->run(['specs' => [$spec], 'output_file' => $this->workDir . '/missing-dir/doctor.json']);
+
+        $this->assertSame(DoctorCommand::EXIT_USAGE, $exit);
+        $this->assertStringContainsString('[OpenAPI Doctor] Cannot write --output-file: ', $stderr);
+        $this->assertStringContainsString(DoctorCommand::usage(), $stderr);
     }
 
     private function writeSpec(string $name, string $contents): string

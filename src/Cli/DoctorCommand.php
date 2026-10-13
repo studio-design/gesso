@@ -21,6 +21,7 @@ use GuzzleHttp\Psr7\HttpFactory;
 use InvalidArgumentException;
 use Psr\Http\Client\ClientInterface;
 use Psr\Http\Message\RequestFactoryInterface;
+use RuntimeException;
 use Studio\Gesso\Exception\InvalidOpenApiSpecException;
 use Studio\Gesso\Exception\MalformedDiscriminatorException;
 use Studio\Gesso\Exception\SpecFileNotFoundException;
@@ -77,7 +78,7 @@ use function trim;
 /**
  * Pre-test compatibility diagnostics for one or more OpenAPI documents.
  *
- * @phpstan-type DoctorOptions array{specs?: list<string>, strip_prefixes?: list<string>, remote_ref_hosts?: list<string>, acknowledged_unvalidatable_schemes?: list<string>, remote_ref_max_bytes?: int|string, local_ref_root?: string, format?: string, allow_remote_refs?: bool, phpunit_snippet?: bool, help?: bool, invalid_options?: list<string>}
+ * @phpstan-type DoctorOptions array{specs?: list<string>, strip_prefixes?: list<string>, remote_ref_hosts?: list<string>, acknowledged_unvalidatable_schemes?: list<string>, remote_ref_max_bytes?: int|string, local_ref_root?: string, format?: string, output_file?: string, allow_remote_refs?: bool, phpunit_snippet?: bool, help?: bool, invalid_options?: list<string>}
  * @phpstan-type DoctorIssue array{severity: 'error'|'warning'|'skipped', category: string, spec: ?string, message: string, suggestion: ?string}
  * @phpstan-type SpecResult array{path: string, name: string, openapi: string, dialect: string, operations: int, responses: int}
  *
@@ -110,7 +111,7 @@ final class DoctorCommand
         return ArgvParser::parse(
             $argv,
             flags: ['allow_remote_refs', 'phpunit_snippet'],
-            values: ['format', 'remote_ref_max_bytes', 'local_ref_root'],
+            values: ['format', 'output_file', 'remote_ref_max_bytes', 'local_ref_root'],
             lists: [
                 'spec' => 'specs',
                 'strip_prefix' => 'strip_prefixes',
@@ -134,6 +135,7 @@ final class DoctorCommand
               --local-ref-root=<dir>     Filesystem boundary for local refs (default: each
                                          entry document's directory).
               --format=text|json         Output format (default: text).
+              --output-file=<path>       Write the report there instead of stdout.
               --allow-remote-refs        Resolve HTTP(S) refs with an installed Guzzle or
                                          Symfony PSR-18 implementation.
               --remote-ref-host=<host>   Exact host allowed for HTTP(S) refs. Required with
@@ -207,38 +209,40 @@ final class DoctorCommand
         }
 
         $transport = $allowRemoteRefs ? $this->remoteTransport() : null;
+        $specResults = [];
+        $issues = [];
         if ($allowRemoteRefs && $transport === null) {
-            $report = $this->report([], [[
+            $issues[] = [
                 'severity' => 'error',
                 'category' => 'dependency',
                 'spec' => null,
                 'message' => '--allow-remote-refs requires an installed PSR-18/PSR-17 implementation.',
                 'suggestion' => 'Install guzzlehttp/guzzle + guzzlehttp/psr7, or symfony/http-client.',
-            ]], $options);
-            $this->render($report, $format);
-
-            return self::EXIT_DIAGNOSTIC_FAILURE;
+            ];
+        } else {
+            foreach ($options['specs'] as $path) {
+                $this->diagnoseSpec(
+                    $path,
+                    $options['strip_prefixes'] ?? [],
+                    $allowRemoteRefs,
+                    $remoteRefHosts,
+                    $maxRemoteRefBytes,
+                    $options['local_ref_root'] ?? null,
+                    $transport,
+                    $options['acknowledged_unvalidatable_schemes'] ?? [],
+                    $specResults,
+                    $issues,
+                );
+            }
         }
 
-        $specResults = [];
-        $issues = [];
-        foreach ($options['specs'] as $path) {
-            $this->diagnoseSpec(
-                $path,
-                $options['strip_prefixes'] ?? [],
-                $allowRemoteRefs,
-                $remoteRefHosts,
-                $maxRemoteRefBytes,
-                $options['local_ref_root'] ?? null,
-                $transport,
-                $options['acknowledged_unvalidatable_schemes'] ?? [],
-                $specResults,
-                $issues,
-            );
-        }
+        $rendered = $this->render($this->report($specResults, $issues, $options), $format);
 
-        $report = $this->report($specResults, $issues, $options);
-        $this->render($report, $format);
+        try {
+            $this->writeReport($rendered, $options['output_file'] ?? null);
+        } catch (RuntimeException $e) {
+            return $this->usageError($e->getMessage(), self::USAGE_PREFIX);
+        }
 
         foreach ($issues as $issue) {
             if ($issue['severity'] === 'error') {
@@ -766,12 +770,10 @@ final class DoctorCommand
     }
 
     /** @param array<string, mixed> $report */
-    private function render(array $report, string $format): void
+    private function render(array $report, string $format): string
     {
         if ($format === 'json') {
-            $this->writeStdout(json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n");
-
-            return;
+            return json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n";
         }
 
         /** @var array{specs: int, operations: int, responses: int, errors: int, warnings: int, skipped: int} $summary */
@@ -793,7 +795,8 @@ final class DoctorCommand
         if (is_string($report['phpunit'])) {
             $lines[] = "\nEquivalent PHPUnit configuration:\n" . $report['phpunit'];
         }
-        $this->writeStdout(implode("\n", $lines) . "\n");
+
+        return implode("\n", $lines) . "\n";
     }
 
     /**

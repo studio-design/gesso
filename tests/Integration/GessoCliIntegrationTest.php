@@ -46,6 +46,14 @@ final class GessoCliIntegrationTest extends TestCase
         yield 'short help' => [['-h']];
     }
 
+    /** @return iterable<string, array{string}> */
+    public static function provideEvery_subcommand_help_lists_the_shared_output_flags_and_exit_codesCases(): iterable
+    {
+        foreach (['doctor', 'coverage:merge', 'coverage:gate', 'stubs'] as $command) {
+            yield $command => [$command];
+        }
+    }
+
     /** @param list<string> $arguments */
     #[Test]
     #[DataProvider('provideRoot_help_lists_the_v2_gesso_commandsCases')]
@@ -196,6 +204,18 @@ final class GessoCliIntegrationTest extends TestCase
         $this->assertSame(2, $errorExit);
         $this->assertSame('', $errorStdout);
         $this->assertStringContainsString('[Gesso] --spec is required.', $errorStderr);
+    }
+
+    #[Test]
+    #[DataProvider('provideEvery_subcommand_help_lists_the_shared_output_flags_and_exit_codesCases')]
+    public function every_subcommand_help_lists_the_shared_output_flags_and_exit_codes(string $command): void
+    {
+        [$exit, $stdout] = $this->runCli([$command, '--help']);
+
+        $this->assertSame(0, $exit);
+        $this->assertStringContainsString('--format=', $stdout);
+        $this->assertStringContainsString('--output-file=', $stdout);
+        $this->assertStringContainsString('Exit codes:', $stdout);
     }
 
     #[Test]

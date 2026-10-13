@@ -99,6 +99,8 @@ It writes to STDOUT, writes nothing to STDERR, and exits `0`. When Composer's `I
 
 Use `--format=json` for CI and tooling. The top-level `schemaVersion` is currently `1` and will change if the machine-readable contract requires an incompatible revision.
 
+Add `--output-file=<path>` to write the report, in either format, to a file instead of stdout. The file gets the same bytes stdout would.
+
 ```json
 {
     "schemaVersion": 1,
@@ -140,5 +142,7 @@ Categories currently emitted by schema version 1 are `io`, `parser`, `version`, 
 | `0` | All selected specs are compatible. Warnings and skipped features may still be present. |
 | `1` | At least one diagnostic error prevents reliable contract enforcement. |
 | `2` | The command-line invocation is invalid, such as a missing `--spec` or unknown format. |
+
+An `--output-file` that cannot be written also exits `2`. Shared conventions: [CLI reference](cli.md#exit-codes).
 
 Treat both `1` and `2` as CI failures. Always inspect warnings and skipped features even when the exit code is `0`.

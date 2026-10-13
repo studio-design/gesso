@@ -322,7 +322,7 @@
             "removed_in": null,
             "owner": "#507",
             "deprecation_id": null,
-            "$comment": "Markdown-only today, any format under --format in v3. The spelling and every invocation that uses it keep working, so nothing is deprecated."
+            "$comment": "Markdown by default since the v2 `--format` flag, any format under --format in v3. The spelling and every invocation that uses it keep working, so nothing is deprecated."
         },
         "--json-output": {
             "surface": "cli-flag",
