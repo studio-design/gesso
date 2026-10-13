@@ -6,7 +6,6 @@ namespace Studio\Gesso\Internal;
 
 use Error;
 use Exception;
-use PHPUnit\Framework\AssertionFailedError;
 use ReflectionException;
 use ReflectionProperty;
 
@@ -19,10 +18,8 @@ use function str_starts_with;
 /**
  * Trims this library's own frames (and known framework testing-concern
  * frames) out of an assertion-failure trace so a contract-test failure
- * points at the user's test line, not at vendor code. Consumed by the
- * Laravel traits (`ValidatesOpenApiSchema`, `ExploresOpenApiEndpoint`),
- * the Symfony trait (`OpenApiAssertions`), and the PHPUnit trait
- * (`AssertsNoEnumDrift`).
+ * points at the user's test line, not at vendor code. Reached through
+ * `PHPUnit\CleanTraceAssert`.
  *
  * @internal Not part of the package's public API. Do not use from user code.
  */
@@ -75,7 +72,7 @@ final class StackTraceFilter
      * (Sentry, custom reporters) would pay for the default renderer's
      * display preference.
      */
-    public static function rethrowWithCleanTrace(AssertionFailedError $exception): never
+    public static function rethrowWithCleanTrace(Exception $exception): never
     {
         /** @var list<array<string, mixed>> $original */
         $original = $exception->getTrace();

@@ -6,8 +6,6 @@ namespace Studio\Gesso\Laravel;
 
 use Closure;
 use InvalidArgumentException;
-use PHPUnit\Framework\Assert;
-use PHPUnit\Framework\AssertionFailedError;
 use RuntimeException;
 use Studio\Gesso\Fuzz\ExplorationCases;
 use Studio\Gesso\Fuzz\GeneratedResponseCases;
@@ -16,7 +14,7 @@ use Studio\Gesso\Fuzz\OpenApiResponseExplorer;
 use Studio\Gesso\Fuzz\OpenApiResponseSpecExploration;
 use Studio\Gesso\Fuzz\OpenApiSpecExploration;
 use Studio\Gesso\Fuzz\OpenApiSpecExplorer;
-use Studio\Gesso\Internal\StackTraceFilter;
+use Studio\Gesso\PHPUnit\CleanTraceAssert;
 
 /**
  * Schema-driven request fuzzing trait — issue #136.
@@ -157,17 +155,9 @@ trait ExploresOpenApiEndpoint
         }
     }
 
-    /**
-     * Strip vendor frames so the failure points at the user's test method
-     * rather than the trait's call site. The pattern matches
-     * {@see ValidatesOpenApiSchema} so the two failure shapes stay consistent.
-     */
+    /** Frozen private surface (docs/versioning.md); fails with a clean trace. */
     private function failExplore(string $message): never
     {
-        try {
-            Assert::fail($message);
-        } catch (AssertionFailedError $e) {
-            StackTraceFilter::rethrowWithCleanTrace($e);
-        }
+        CleanTraceAssert::fail($message);
     }
 }
