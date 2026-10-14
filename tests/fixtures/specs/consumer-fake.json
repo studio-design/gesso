@@ -271,6 +271,24 @@
           }
         }
       }
+    },
+    "/v1/empty-content": {
+      "delete": {
+        "responses": {
+          "204": {"description": "No content", "content": {}}
+        }
+      }
+    },
+    "/v1/patterned-header": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Required header the generator cannot satisfy",
+            "headers": {"X-Token": {"required": true, "schema": {"type": "string", "pattern": "^req-[0-9]+$"}}},
+            "content": {"application/json": {"example": {}}}
+          }
+        }
+      }
     }
   }
 }

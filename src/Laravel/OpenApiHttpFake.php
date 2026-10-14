@@ -8,10 +8,10 @@ use Closure;
 use GuzzleHttp\Promise\PromiseInterface;
 use Illuminate\Http\Client\Factory;
 use Illuminate\Http\Client\Request;
-use PHPUnit\Framework\Assert;
 use Studio\Gesso\Internal\CurlCommandFormatter;
 use Studio\Gesso\Internal\FailureOutput;
 use Studio\Gesso\OpenApiFakeResponse;
+use Studio\Gesso\PHPUnit\CleanTraceAssert;
 use Studio\Gesso\Psr7\OpenApiPsr7Validator;
 
 use function sprintf;
@@ -52,7 +52,7 @@ final class OpenApiHttpFake
 
             $result = $validator->validateRequest($psr);
             if (!$result->isValid()) {
-                Assert::fail(FailureOutput::compose(
+                CleanTraceAssert::fail(FailureOutput::compose(
                     sprintf('OpenAPI fake rejected outgoing request %s %s (spec: %s)', $method, $path, $specName),
                     $result,
                     static fn(): string => CurlCommandFormatter::format(

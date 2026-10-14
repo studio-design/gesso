@@ -123,6 +123,11 @@ final readonly class OpenApiFakeResponse
                 $specName,
             ));
         }
+        // OpenAPI sets no minimum on `content`: an empty map, like an absent
+        // one, declares a response without a body.
+        if ($content === []) {
+            return new self($status, self::declaredHeaders($responseSpec, $version, $dialect, $method, $matchedPath), null, null, '');
+        }
         $key = $explicitKey ?? $resolution->contentType ?? (string) array_key_first($content);
         $wireType = $contentType !== null ? ContentTypeMatcher::normalizeMediaType($contentType) : self::wireType($key);
 
@@ -345,6 +350,12 @@ final readonly class OpenApiFakeResponse
             }
 
             $rendered = $found ? self::headerValue($value) : null;
+            if ($rendered === null && ($header['required'] ?? false) === true) {
+                throw new InvalidArgumentException(sprintf(
+                    '[response-header.%s] required header cannot be generated from its schema; add an `example` to the header.',
+                    $name,
+                ));
+            }
             if ($rendered !== null) {
                 $headers[$name] = $rendered;
             }

@@ -9,7 +9,6 @@ use const PHP_URL_QUERY;
 
 use Closure;
 use JsonException;
-use PHPUnit\Framework\Assert;
 use Studio\Gesso\DecodedBody;
 use Studio\Gesso\Internal\CurlCommandFormatter;
 use Studio\Gesso\Internal\FailureOutput;
@@ -17,6 +16,7 @@ use Studio\Gesso\Internal\WireQueryParser;
 use Studio\Gesso\OpenApiFakeResponse;
 use Studio\Gesso\OpenApiRequestValidator;
 use Studio\Gesso\OpenApiValidationResult;
+use Studio\Gesso\PHPUnit\CleanTraceAssert;
 use Studio\Gesso\Validation\Support\ContentTypeMatcher;
 use Symfony\Component\HttpClient\Response\MockResponse;
 
@@ -93,7 +93,7 @@ final class OpenApiHttpFake
                 ? $validator->validate($specName, $method, $path, $query, $headers, $decoded, $contentType, [], null, $rawQuery)
                 : OpenApiValidationResult::failure([$decodeError]);
             if (!$result->isValid()) {
-                Assert::fail(FailureOutput::compose(
+                CleanTraceAssert::fail(FailureOutput::compose(
                     sprintf('OpenAPI fake rejected outgoing request %s %s (spec: %s)', $method, $path, $specName),
                     $result,
                     static fn(): string => CurlCommandFormatter::format($method, $url, $headers, $raw !== '' ? $raw : null, $contentType),

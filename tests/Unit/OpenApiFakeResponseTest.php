@@ -277,6 +277,27 @@ final class OpenApiFakeResponseTest extends TestCase
     }
 
     #[Test]
+    public function required_header_that_cannot_be_generated_throws(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('[response-header.X-Token] required header cannot be generated from its schema; add an `example`');
+
+        OpenApiFakeResponse::for('consumer-fake', 'GET', '/v1/patterned-header');
+    }
+
+    #[Test]
+    public function empty_content_map_fakes_a_response_without_a_body(): void
+    {
+        $fake = OpenApiFakeResponse::for('consumer-fake', 'DELETE', '/v1/empty-content');
+
+        $this->assertSame(204, $fake->status());
+        $this->assertNull($fake->body());
+        $this->assertSame('', $fake->content());
+        $this->assertNull($fake->contentType());
+        $this->assertResponseIsValid('DELETE', '/v1/empty-content', $fake);
+    }
+
+    #[Test]
     public function faking_records_no_coverage(): void
     {
         OpenApiFakeResponse::for('consumer-fake', 'GET', '/v1/pets/7');

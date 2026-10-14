@@ -161,7 +161,11 @@ The path may be the spec template or a concrete path. See the
 - **Headers**: every declared response header, from its example or its schema,
   plus `Content-Type` when there is a body. `Content-Type` entries in the
   `headers` map are ignored, as OpenAPI requires; a declared `Content-Length`
-  is left to the client, which derives it from the body.
+  is left to the client, which derives it from the body. An optional header the
+  generator cannot satisfy (a `pattern`, say) is left out; a required one throws
+  until you give it an `example`.
+- **No body**: a response with no `content`, or an empty `content: {}`, fakes
+  an empty body with no `Content-Type`.
 
 ## Limits
 
