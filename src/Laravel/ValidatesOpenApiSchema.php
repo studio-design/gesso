@@ -71,6 +71,10 @@ trait ValidatesOpenApiSchema
     // auto_inject_dummy_credentials. The value avoids `=` and `;` so it is
     // safe in cookie / query / header contexts without escaping concerns.
     private const DUMMY_API_KEY_VALUE = 'test-api-key';
+
+    // Frozen private names (docs/versioning.md): the validator cache moved to
+    // the instance fields below, so these seven are no longer read or written.
+    // Deleted in Gesso 3.0 — see #554. $validatedResponses is still live.
     private static ?OpenApiResponseValidator $cachedValidator = null;
     private static ?int $cachedMaxErrors = null;
     private static ?OpenApiRequestValidator $cachedRequestValidator = null;
@@ -106,6 +110,15 @@ trait ValidatesOpenApiSchema
      */
     private ?WeakMap $requestsBeforeDispatch = null;
 
+    /** @internal Per-test-case validator cache; PHPUnit builds a fresh TestCase per test method. */
+    private ?OpenApiResponseValidator $responseValidator = null;
+
+    /** @internal Per-test-case validator cache. */
+    private ?OpenApiRequestValidator $requestValidator = null;
+
+    /** @internal Per-test-case cache. */
+    private ?SecuritySchemeIntrospector $securitySchemeIntrospector = null;
+
     // Per-request skip flags set by withoutRequestValidation() /
     // withoutResponseValidation() / withoutValidation(). Consumed (and reset)
     // on the next auto-assert attempt, so the flag covers exactly one HTTP
@@ -123,21 +136,15 @@ trait ValidatesOpenApiSchema
     private array $skipNextResponseCodes = [];
 
     /**
-     * Drop the per-process validator cache so the next assertion rebuilds
-     * with current config. Intended for test isolation when multiple
-     * test classes share the same trait but want different settings.
+     * No longer needed: validators are cached per test-case instance, so each
+     * test method already builds them from its own config. Kept callable for
+     * suites that copied the call from the Pest example; it now only forgets
+     * which responses were already validated.
      *
      * @internal
      */
     public static function resetValidatorCache(): void
     {
-        self::$cachedValidator = null;
-        self::$cachedMaxErrors = null;
-        self::$cachedSkipResponseCodes = null;
-        self::$cachedRequestValidator = null;
-        self::$cachedRequestMaxErrors = null;
-        self::$cachedSkipRequestValidationResponseCodes = null;
-        self::$cachedSecuritySchemeIntrospector = null;
         self::$validatedResponses = null;
     }
 
@@ -527,8 +534,7 @@ trait ValidatesOpenApiSchema
         $contentType = $response->headers->get('Content-Type', '');
 
         // One-off validator when per-request skip codes are present — bypasses
-        // the static cache so test-local codes don't pollute it (and so
-        // cache-entry churn can't grow unbounded across tests).
+        // the per-instance cache so test-local codes don't pollute it.
         $validator = $extraSkipResponseCodes !== []
             ? $this->buildOneOffValidator($extraSkipResponseCodes)
             : $this->getOrCreateValidator();
@@ -758,28 +764,16 @@ trait ValidatesOpenApiSchema
     {
         $this->applyDiscriminatorEnforcementConfig();
         $this->applyAcknowledgedUnvalidatableSchemesConfig();
-        $resolvedMaxErrors = $this->resolveMaxErrors();
-        $resolvedSkipCodes = $this->resolveSkipRequestValidationResponseCodes();
 
-        if (
-            self::$cachedRequestValidator === null ||
-            self::$cachedRequestMaxErrors !== $resolvedMaxErrors ||
-            self::$cachedSkipRequestValidationResponseCodes !== $resolvedSkipCodes
-        ) {
-            self::$cachedRequestValidator = new OpenApiRequestValidator(
-                maxErrors: $resolvedMaxErrors,
-                skipRequestValidationResponseCodes: $resolvedSkipCodes,
-            );
-            self::$cachedRequestMaxErrors = $resolvedMaxErrors;
-            self::$cachedSkipRequestValidationResponseCodes = $resolvedSkipCodes;
-        }
-
-        return self::$cachedRequestValidator;
+        return $this->requestValidator ??= new OpenApiRequestValidator(
+            maxErrors: $this->resolveMaxErrors(),
+            skipRequestValidationResponseCodes: $this->resolveSkipRequestValidationResponseCodes(),
+        );
     }
 
     private function getSecuritySchemeIntrospector(): SecuritySchemeIntrospector
     {
-        return self::$cachedSecuritySchemeIntrospector ??= new SecuritySchemeIntrospector();
+        return $this->securitySchemeIntrospector ??= new SecuritySchemeIntrospector();
     }
 
     /**
@@ -955,24 +949,12 @@ trait ValidatesOpenApiSchema
     private function getOrCreateValidator(): OpenApiResponseValidator
     {
         $this->applyDiscriminatorEnforcementConfig();
-        $resolvedMaxErrors = $this->resolveMaxErrors();
-        $resolvedSkipCodes = $this->resolveSkipResponseCodes();
 
-        if (
-            self::$cachedValidator === null ||
-            self::$cachedMaxErrors !== $resolvedMaxErrors ||
-            self::$cachedSkipResponseCodes !== $resolvedSkipCodes
-        ) {
-            self::$cachedValidator = new OpenApiResponseValidator(
-                strictRequiredTracker: StrictRequiredTracker::current(),
-                maxErrors: $resolvedMaxErrors,
-                skipResponseCodes: $resolvedSkipCodes,
-            );
-            self::$cachedMaxErrors = $resolvedMaxErrors;
-            self::$cachedSkipResponseCodes = $resolvedSkipCodes;
-        }
-
-        return self::$cachedValidator;
+        return $this->responseValidator ??= new OpenApiResponseValidator(
+            strictRequiredTracker: StrictRequiredTracker::current(),
+            maxErrors: $this->resolveMaxErrors(),
+            skipResponseCodes: $this->resolveSkipResponseCodes(),
+        );
     }
 
     /**
@@ -1071,9 +1053,7 @@ trait ValidatesOpenApiSchema
 
         // A baseline generation run (issue #402) lifts the cap: a truncated
         // error list would drop violations from the generated baseline. The
-        // cached validators key on this resolved value, so the uncapped
-        // resolution also invalidates a validator built before the collector
-        // was installed.
+        // collector is installed before any validator is built on an instance.
         return ViolationBaselineCollector::uncap(is_numeric($maxErrors) ? (int) $maxErrors : 20);
     }
 

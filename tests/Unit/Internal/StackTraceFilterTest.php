@@ -174,6 +174,28 @@ class StackTraceFilterTest extends TestCase
         }
     }
 
+    #[Test]
+    public function rethrow_with_clean_trace_accepts_any_exception(): void
+    {
+        // Plain Exception, not AssertionFailedError: the filter is typed on
+        // the reflection target so it carries no PHPUnit dependency (#506).
+        $exception = new Exception('boom');
+
+        $traceProp = new ReflectionProperty(Exception::class, 'trace');
+        $traceProp->setValue($exception, [
+            ['file' => self::src() . '/Fuzz/GeneratedResponseCase.php', 'line' => 101],
+            ['file' => '/app/tests/Feature/PetTest.php', 'line' => 47],
+        ]);
+
+        try {
+            StackTraceFilter::rethrowWithCleanTrace($exception);
+        } catch (Exception $thrown) {
+            $this->assertSame($exception, $thrown);
+            $this->assertSame(['/app/tests/Feature/PetTest.php'], array_column($thrown->getTrace(), 'file'));
+            $this->assertSame('boom', $thrown->getMessage());
+        }
+    }
+
     /** The real library source root, which StackTraceFilter drops by prefix. */
     private static function src(): string
     {

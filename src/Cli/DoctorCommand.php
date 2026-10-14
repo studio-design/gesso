@@ -25,6 +25,7 @@ use Studio\Gesso\Exception\InvalidOpenApiSpecException;
 use Studio\Gesso\Exception\MalformedDiscriminatorException;
 use Studio\Gesso\Exception\SpecFileNotFoundException;
 use Studio\Gesso\Internal\ArgvParser;
+use Studio\Gesso\Internal\CliDocuments;
 use Studio\Gesso\Internal\CliIo;
 use Studio\Gesso\Internal\HttpRefLoader;
 use Studio\Gesso\Internal\ToolVersion;
@@ -87,9 +88,8 @@ final class DoctorCommand
     use CliIo;
 
     public const JSON_SCHEMA_VERSION = 1;
-    public const EXIT_OK = 0;
-    public const EXIT_DIAGNOSTIC_FAILURE = 1;
-    public const EXIT_USAGE = 2;
+    public const EXIT_DIAGNOSTIC_FAILURE = self::EXIT_FAILURE;
+    private const USAGE_PREFIX = '[OpenAPI Doctor]';
 
     /** @param null|callable(string): void $stdoutWriter */
     public function __construct(
@@ -109,7 +109,6 @@ final class DoctorCommand
         /** @var DoctorOptions */
         return ArgvParser::parse(
             $argv,
-            'doctor',
             flags: ['allow_remote_refs', 'phpunit_snippet'],
             values: ['format', 'remote_ref_max_bytes', 'local_ref_root'],
             lists: [
@@ -168,13 +167,14 @@ final class DoctorCommand
 
         $format = $options['format'] ?? 'text';
         $invalid = $options['invalid_options'] ?? [];
-        if (!in_array($format, ['text', 'json'], true) || $invalid !== [] || ($options['specs'] ?? []) === []) {
-            $message = $invalid !== []
-                ? 'Unknown argument(s): ' . implode(', ', $invalid)
-                : (($options['specs'] ?? []) === [] ? 'At least one --spec is required.' : "Unsupported --format={$format}.");
-            $this->writeUsageError($message);
-
-            return self::EXIT_USAGE;
+        if ($invalid !== []) {
+            return $this->usageError('Unknown argument(s): ' . implode(', ', $invalid), self::USAGE_PREFIX);
+        }
+        if (($options['specs'] ?? []) === []) {
+            return $this->usageError('At least one --spec is required.', self::USAGE_PREFIX);
+        }
+        if (!in_array($format, ['text', 'json'], true)) {
+            return $this->usageError("Unsupported --format={$format}.", self::USAGE_PREFIX);
         }
 
         $allowRemoteRefs = $options['allow_remote_refs'] ?? false;
@@ -183,32 +183,25 @@ final class DoctorCommand
             $message = $allowRemoteRefs
                 ? '--allow-remote-refs requires at least one --remote-ref-host.'
                 : '--remote-ref-host requires --allow-remote-refs.';
-            $this->writeUsageError($message);
 
-            return self::EXIT_USAGE;
+            return $this->usageError($message, self::USAGE_PREFIX);
         }
 
         $hasRemoteRefMaxBytes = array_key_exists('remote_ref_max_bytes', $options);
         if ($hasRemoteRefMaxBytes && !$allowRemoteRefs) {
-            $this->writeUsageError('--remote-ref-max-bytes requires --allow-remote-refs.');
-
-            return self::EXIT_USAGE;
+            return $this->usageError('--remote-ref-max-bytes requires --allow-remote-refs.', self::USAGE_PREFIX);
         }
         $maxRemoteRefBytes = $hasRemoteRefMaxBytes
             ? filter_var($options['remote_ref_max_bytes'], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]])
             : HttpRefLoader::DEFAULT_MAX_RESPONSE_BYTES;
         if ($maxRemoteRefBytes === false) {
-            $this->writeUsageError('--remote-ref-max-bytes must be a positive integer.');
-
-            return self::EXIT_USAGE;
+            return $this->usageError('--remote-ref-max-bytes must be a positive integer.', self::USAGE_PREFIX);
         }
 
         if (array_key_exists('local_ref_root', $options)) {
             $localRefRoot = realpath(trim($options['local_ref_root']));
             if ($localRefRoot === false || !is_dir($localRefRoot)) {
-                $this->writeUsageError('--local-ref-root must be an existing directory.');
-
-                return self::EXIT_USAGE;
+                return $this->usageError('--local-ref-root must be an existing directory.', self::USAGE_PREFIX);
             }
             $options['local_ref_root'] = $localRefRoot;
         }
@@ -317,24 +310,17 @@ final class DoctorCommand
             ? pathinfo($path, PATHINFO_FILENAME) . '.' . $extension
             : substr($path, strlen(rtrim($localRefRoot, '/\\')) + 1);
         $name = substr($relativePath, 0, -(strlen($extension) + 1));
-        foreach (['json', 'yaml', 'yml'] as $candidateExtension) {
-            $candidate = $basePath . '/' . $name . '.' . $candidateExtension;
-            if (!is_file($candidate)) {
-                continue;
-            }
-            if (realpath($candidate) !== realpath($path)) {
-                $issues[] = $this->issue(
-                    'error',
-                    'configuration',
-                    $label,
-                    sprintf('The runtime loader selects `%s` before the requested `%s`.', $candidate, $path),
-                    'Remove or rename the shadowing entry document so the doctor and PHPUnit select the same spec.',
-                );
+        $shadowing = CliDocuments::shadowingEntry($basePath, $name, $path);
+        if ($shadowing !== null) {
+            $issues[] = $this->issue(
+                'error',
+                'configuration',
+                $label,
+                sprintf('The runtime loader selects `%s` before the requested `%s`.', $shadowing, $path),
+                'Remove or rename the shadowing entry document so the doctor and PHPUnit select the same spec.',
+            );
 
-                return;
-            }
-
-            break;
+            return;
         }
         $warnings = [];
         set_error_handler(static function (int $severity, string $message) use (&$warnings): bool {
@@ -581,10 +567,11 @@ final class DoctorCommand
             return [new Client(), new HttpFactory()];
         }
         if (class_exists(Psr18Client::class)) {
+            // Psr18Client is both the PSR-18 client and a PSR-17 request
+            // factory (since symfony/http-client 4.3).
             $client = new Psr18Client();
-            if ($client instanceof ClientInterface && $client instanceof RequestFactoryInterface) {
-                return [$client, $client];
-            }
+
+            return [$client, $client];
         }
 
         return null;
@@ -868,11 +855,6 @@ final class DoctorCommand
         }
 
         return 'spec';
-    }
-
-    private function writeUsageError(string $message): void
-    {
-        $this->writeStderr("[OpenAPI Doctor] {$message}\n\n" . self::usage($this->invocation));
     }
 
     private function suggestionForException(InvalidOpenApiSpecException $e): ?string

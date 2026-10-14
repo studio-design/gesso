@@ -4,13 +4,10 @@ declare(strict_types=1);
 
 namespace Studio\Gesso;
 
+use LogicException;
 use RuntimeException;
 use Studio\Gesso\Baseline\ViolationFingerprint;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
-use Studio\Gesso\Spec\OpenApiOperationResolver;
-use Studio\Gesso\Spec\OpenApiPathMatcher;
-use Studio\Gesso\Spec\OpenApiSchemaDialect;
-use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Validation\Request\HeaderParameterValidator;
 use Studio\Gesso\Validation\Request\ParameterCollector;
 use Studio\Gesso\Validation\Request\PathParameterValidator;
@@ -18,21 +15,19 @@ use Studio\Gesso\Validation\Request\QueryParameterValidator;
 use Studio\Gesso\Validation\Request\RequestBodyValidationResult;
 use Studio\Gesso\Validation\Request\RequestBodyValidator;
 use Studio\Gesso\Validation\Request\SecurityValidator;
+use Studio\Gesso\Validation\Response\ResponseSchemaResolutionOutcome;
+use Studio\Gesso\Validation\Response\ResponseSchemaResolver;
 use Studio\Gesso\Validation\Support\ContentTypeMatcher;
 use Studio\Gesso\Validation\Support\DeferredBodyPresence;
 use Studio\Gesso\Validation\Support\DiscriminatorContext;
 use Studio\Gesso\Validation\Support\DiscriminatorEnforcement;
-use Studio\Gesso\Validation\Support\MalformedSpecNode;
 use Studio\Gesso\Validation\Support\NamedError;
-use Studio\Gesso\Validation\Support\PathDiagnosticsFormatter;
 use Studio\Gesso\Validation\Support\SchemaValidatorRunner;
 use Studio\Gesso\Validation\Support\SpecResponseKeyResolver;
 use Studio\Gesso\Validation\Support\StatusCodePatternSet;
 use Studio\Gesso\Validation\Support\ValidationPolicyDefaults;
 use Studio\Gesso\Validation\Support\ValidatorErrorBoundary;
 
-use function array_key_exists;
-use function array_keys;
 use function array_map;
 use function count;
 use function is_array;
@@ -51,9 +46,7 @@ final class OpenApiRequestValidator
      * Empty array disables the downgrade (strict request validation).
      */
     public const DEFAULT_SKIP_REQUEST_VALIDATION_RESPONSE_CODES = ['422', '400'];
-
-    /** @var array<string, OpenApiPathMatcher> */
-    private array $pathMatchers = [];
+    private readonly ResponseSchemaResolver $operationResolver;
     private readonly PathParameterValidator $pathValidator;
     private readonly QueryParameterValidator $queryValidator;
     private readonly HeaderParameterValidator $headerValidator;
@@ -87,6 +80,7 @@ final class OpenApiRequestValidator
     ) {
         $runner = new SchemaValidatorRunner($maxErrors ?? ValidationPolicyDefaults::maxErrors());
 
+        $this->operationResolver = new ResponseSchemaResolver();
         $this->pathValidator = new PathParameterValidator($runner);
         $this->queryValidator = new QueryParameterValidator($runner);
         $this->headerValidator = new HeaderParameterValidator($runner);
@@ -201,122 +195,41 @@ final class OpenApiRequestValidator
         // (a plain `null` becomes an absent body — see {@see DecodedBody}).
         $body = DecodedBody::fromLegacy($requestBody);
 
-        $spec = OpenApiSpecLoader::load($specName);
+        $resolution = $this->operationResolver->locateOperation($specName, $method, $requestPath);
 
-        $version = OpenApiVersion::fromSpec($spec);
-        $jsonSchemaDialect = OpenApiSchemaDialect::fromSpec($spec, $version);
-
-        // The root `paths` must decode to a JSON object; a scalar, `null`, or
-        // a JSON list is a malformed spec ({@see MalformedSpecNode}).
-        // Unguarded, a non-array reaches the `array_keys()` call below
-        // (uncaught TypeError) and a list mis-resolves silently. The presence
-        // test uses `array_key_exists` (not `isset`) so a present-but-`null`
-        // `paths` is caught here rather than coalesced to an empty map by
-        // `?? []`. Surface it as a loud spec error instead, mirroring the
-        // response-side traversal guards (issue #259).
-        if (array_key_exists('paths', $spec) && MalformedSpecNode::isMalformed($spec['paths'])) {
-            $message = sprintf(
-                "Malformed 'paths' for %s %s in '%s' spec: expected object, got %s.",
-                $method,
-                $requestPath,
-                $specName,
-                MalformedSpecNode::describe($spec['paths']),
-            );
+        if ($resolution->outcome !== ResponseSchemaResolutionOutcome::Resolved) {
+            $message = (string) $resolution->message;
+            // Malformed spec nodes are spec errors; an unmatched path or
+            // method is a request-context error.
+            $category = match ($resolution->outcome) {
+                ResponseSchemaResolutionOutcome::PathNotFound => 'request.path_match',
+                ResponseSchemaResolutionOutcome::MethodNotDefined => 'request.method',
+                default => 'request.spec',
+            };
 
             return OpenApiValidationResult::failure(
                 [$message],
-                issues: [new ValidationIssue('request.spec', $message, method: $method)],
+                $resolution->matchedPath,
+                issues: [new ValidationIssue($category, $message, method: $method, path: $resolution->matchedPath)],
             );
         }
 
-        /** @var string[] $specPaths */
-        $specPaths = array_keys($spec['paths'] ?? []);
-        $matcher = $this->getPathMatcher($specName, $specPaths);
-        $matched = $matcher->matchWithVariables($requestPath);
-
-        if ($matched === null) {
-            $message = PathDiagnosticsFormatter::pathNotFound($specName, $method, $requestPath, $matcher, $spec);
-
-            return OpenApiValidationResult::failure(
-                [$message],
-                issues: [new ValidationIssue('request.path_match', $message, method: $method)],
-            );
-        }
-
-        $matchedPath = $matched['path'];
-        $pathVariables = $matched['variables'];
-
-        // `$matchedPath` is always a key of `$spec['paths']` (the matcher was
-        // built from its `array_keys()`), so `?? null` here only fires for an
-        // explicit `null` *value* — which the guard below then treats as
-        // malformed, exactly like a scalar path item.
-        $pathSpec = $spec['paths'][$matchedPath] ?? null;
-
-        // A path item must decode to a JSON object; a scalar, `null`, or a
-        // JSON list is malformed ({@see MalformedSpecNode}). Unguarded, a
-        // non-array reaches the `array_key_exists()` method lookup below (and
-        // `ParameterCollector::collect()`'s `array $pathSpec` parameter),
-        // raising an uncaught TypeError, and a list mis-resolves silently.
-        // Surface it loudly instead (issue #259).
-        if (MalformedSpecNode::isMalformed($pathSpec)) {
-            $message = sprintf(
-                "Malformed 'paths[\"%s\"]' for %s %s in '%s' spec: expected object, got %s.",
-                $matchedPath,
-                $method,
-                $matchedPath,
-                $specName,
-                MalformedSpecNode::describe($pathSpec),
-            );
-
-            return OpenApiValidationResult::failure(
-                [$message],
-                $matchedPath,
-                issues: [new ValidationIssue('request.spec', $message, method: $method, path: $matchedPath)],
-            );
-        }
-
-        /** @var array<string, mixed> $pathSpec */
-        $resolvedOperation = OpenApiOperationResolver::resolve($pathSpec, $method);
-        if (!$resolvedOperation['found']) {
-            $message = PathDiagnosticsFormatter::methodNotDefined($specName, $method, $matchedPath, $spec);
-
-            return OpenApiValidationResult::failure(
-                [$message],
-                $matchedPath,
-                issues: [new ValidationIssue('request.method', $message, method: $method, path: $matchedPath)],
-            );
-        }
-
-        $operation = $resolvedOperation['operation'];
-        $operationLocation = $resolvedOperation['location'];
-
-        // An operation must decode to a JSON object; a scalar, `null`, or a
-        // JSON list is malformed ({@see MalformedSpecNode}). A non-array
-        // would reach `ParameterCollector::collect()`'s `array $operation`
-        // parameter (the first scalar-typed sink) and raise an uncaught
-        // TypeError; a list mis-resolves silently (issue #259).
-        if (MalformedSpecNode::isMalformed($operation)) {
-            $message = sprintf(
-                "Malformed 'paths[\"%s\"].%s' for %s %s in '%s' spec: expected object, got %s.",
-                $matchedPath,
-                $operationLocation,
-                $method,
-                $matchedPath,
-                $specName,
-                MalformedSpecNode::describe($operation),
-            );
-
-            return OpenApiValidationResult::failure(
-                [$message],
-                $matchedPath,
-                issues: [new ValidationIssue('request.spec', $message, method: $method, path: $matchedPath)],
-            );
+        $spec = $resolution->spec;
+        $version = $resolution->version;
+        $jsonSchemaDialect = $resolution->jsonSchemaDialect;
+        $matchedPath = $resolution->matchedPath;
+        $pathVariables = $resolution->pathVariables;
+        $pathSpec = $resolution->pathSpec;
+        $operation = $resolution->operation;
+        if ($spec === null || $version === null || $jsonSchemaDialect === null || $matchedPath === null ||
+            $pathVariables === null || $pathSpec === null || $operation === null
+        ) {
+            throw new LogicException('Resolved operation resolution must carry the spec, dialect, matched path, variables, path item, and operation.');
         }
 
         // Collect merged path/operation parameters once so path + query + header
         // validation share a single view of the spec and malformed-entry errors
         // are surfaced only once.
-        /** @var array<string, mixed> $operation */
         $collected = ParameterCollector::collect($method, $matchedPath, $pathSpec, $operation);
 
         // Each sub-validator is wrapped in ValidatorErrorBoundary::safelyNamed() so a
@@ -548,13 +461,5 @@ final class OpenApiRequestValidator
                 matchedContentType: self::thrownBodyContentType($operation),
             );
         }
-    }
-
-    /**
-     * @param string[] $specPaths
-     */
-    private function getPathMatcher(string $specName, array $specPaths): OpenApiPathMatcher
-    {
-        return $this->pathMatchers[$specName] ??= new OpenApiPathMatcher($specPaths, OpenApiSpecLoader::getStripPrefixes());
     }
 }

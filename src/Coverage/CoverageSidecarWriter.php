@@ -32,6 +32,7 @@ use function rtrim;
 use function sprintf;
 use function strlen;
 use function substr;
+use function sys_get_temp_dir;
 use function unlink;
 
 /**
@@ -55,6 +56,9 @@ use function unlink;
  */
 final class CoverageSidecarWriter
 {
+    /** Stable default under the system temp dir, so the merge CLI finds it without coordination. */
+    public const DEFAULT_SUBDIR = 'openapi-coverage-sidecars';
+
     public const FAILURE_MARKER_PREFIX = 'failed-';
     public const FILENAME_PREFIX = 'part-';
     public const FILENAME_SUFFIX = '.json';
@@ -62,6 +66,11 @@ final class CoverageSidecarWriter
     private const TEMP_FILE_PREFIX = '.gesso-sidecar-';
 
     private function __construct() {}
+
+    public static function defaultDir(): string
+    {
+        return sys_get_temp_dir() . '/' . self::DEFAULT_SUBDIR;
+    }
 
     /**
      * @param array<string, mixed> $state from {@see OpenApiCoverageTracker::exportState()}

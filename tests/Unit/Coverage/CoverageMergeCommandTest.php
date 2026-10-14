@@ -25,6 +25,7 @@ use function dirname;
 use function file_exists;
 use function file_get_contents;
 use function file_put_contents;
+use function getcwd;
 use function glob;
 use function is_dir;
 use function json_decode;
@@ -848,6 +849,60 @@ class CoverageMergeCommandTest extends TestCase
     }
 
     #[Test]
+    public function exit_code_constants_are_the_shared_set(): void
+    {
+        $this->assertSame(0, CoverageMergeCommand::EXIT_OK);
+        $this->assertSame(1, CoverageMergeCommand::EXIT_FAILURE);
+        $this->assertSame(2, CoverageMergeCommand::EXIT_USAGE);
+
+        $sink = static fn(string $msg): null => null;
+        $command = new CoverageMergeCommand(stdoutWriter: $sink, stderrWriter: $sink);
+        $this->assertSame(
+            CoverageMergeCommand::EXIT_USAGE,
+            $command->run(['sidecar_dir' => $this->sidecarDir, 'specs' => ['petstore-3.0']]),
+        );
+
+        CoverageSidecarWriter::writeFailureMarker($this->sidecarDir, '1', 'simulated I/O failure');
+        $this->assertSame(CoverageMergeCommand::EXIT_FAILURE, $command->run([
+            'sidecar_dir' => $this->sidecarDir,
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => ['petstore-3.0'],
+        ]));
+    }
+
+    #[Test]
+    public function a_stray_positional_token_is_still_ignored(): void
+    {
+        // Merge never reads `invalid_options`; rejecting them is #507's v3 half.
+        $options = CoverageMergeCommand::parseArgv(['coverage:merge', '--help']);
+
+        $this->assertSame(['coverage:merge'], $options['invalid_options'] ?? null);
+        $this->assertTrue($options['help'] ?? false);
+    }
+
+    #[Test]
+    public function relative_sidecar_dir_is_reported_absolutised(): void
+    {
+        $stderr = '';
+        $command = new CoverageMergeCommand(
+            stdoutWriter: static fn(string $msg): null => null,
+            stderrWriter: static function (string $msg) use (&$stderr): void {
+                $stderr .= $msg;
+            },
+        );
+
+        $exit = $command->run([
+            'sidecar_dir' => 'tests/fixtures/no-such-sidecars',
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => ['petstore-3.0'],
+        ]);
+
+        $this->assertSame(CoverageMergeCommand::EXIT_OK, $exit, $stderr);
+        $this->assertStringContainsString(getcwd() . '/tests/fixtures/no-such-sidecars', $stderr);
+        $this->assertStringNotContainsString('in tests/fixtures/no-such-sidecars', $stderr);
+    }
+
+    #[Test]
     public function exits_two_when_spec_base_path_is_missing(): void
     {
         $stderr = '';
@@ -1373,7 +1428,10 @@ class CoverageMergeCommandTest extends TestCase
         $envelope = $this->sdkEnvelope([
             ['GET', '/pets', '200', 'application/json'],
         ]);
-        $envelope['envelopeVersion'] = CoverageSidecarEnvelope::ENVELOPE_VERSION_WITH_SDK_EXERCISE_AND_BASELINE;
+        // Legacy v7 input written by a 2.4 worker: the 2.x merge keeps
+        // reading it (#505). build() emits no deprecations half here, so the
+        // restamped payload is a valid v7 shape.
+        $envelope['envelopeVersion'] = 7;
         $envelope['baseline'] = ViolationBaselineFile::toDocument(new ViolationBaseline());
         CoverageSidecarWriter::write($this->sidecarDir, '1', $envelope);
         $baselinePath = dirname($this->sidecarDir) . '/baseline.json';

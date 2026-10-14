@@ -64,7 +64,6 @@ class DoctorCommandTest extends TestCase
                 'phpunit_snippet' => true,
             ],
             DoctorCommand::parseArgv([
-                'doctor',
                 '--spec=front.json,admin.yaml',
                 '--strip-prefix=/api',
                 '--strip-prefix=/internal',
@@ -215,6 +214,37 @@ class DoctorCommandTest extends TestCase
         $this->assertSame(DoctorCommand::EXIT_OK, $exit);
         $this->assertSame('ok', $report['status']);
         $this->assertSame([$url], $client->sentUrls());
+    }
+
+    #[Test]
+    public function a_stray_positional_token_is_a_usage_error(): void
+    {
+        $options = DoctorCommand::parseArgv(['doctor', '--spec=x.json']);
+        $this->assertSame(['doctor'], $options['invalid_options']);
+
+        $stderr = '';
+        $command = new DoctorCommand(stderrWriter: static function (string $message) use (&$stderr): void {
+            $stderr .= $message;
+        });
+
+        $this->assertSame(DoctorCommand::EXIT_USAGE, $command->run($options));
+        $this->assertStringStartsWith('[OpenAPI Doctor] Unknown argument(s): doctor', $stderr);
+    }
+
+    #[Test]
+    public function usage_errors_keep_their_precedence(): void
+    {
+        $stderr = '';
+        $command = new DoctorCommand(stderrWriter: static function (string $message) use (&$stderr): void {
+            $stderr .= $message;
+        });
+
+        $this->assertSame(DoctorCommand::EXIT_USAGE, $command->run(['invalid_options' => ['--nope'], 'format' => 'yaml']));
+        $this->assertStringStartsWith('[OpenAPI Doctor] Unknown argument(s): --nope', $stderr);
+
+        $stderr = '';
+        $this->assertSame(DoctorCommand::EXIT_USAGE, $command->run(['format' => 'yaml']));
+        $this->assertStringStartsWith('[OpenAPI Doctor] At least one --spec is required.', $stderr);
     }
 
     #[Test]

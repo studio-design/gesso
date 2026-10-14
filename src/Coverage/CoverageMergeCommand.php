@@ -6,6 +6,7 @@ namespace Studio\Gesso\Coverage;
 
 use InvalidArgumentException;
 use RuntimeException;
+use Studio\Gesso\Baseline\BaselineFileFormat;
 use Studio\Gesso\Baseline\BaselineStaleMode;
 use Studio\Gesso\Baseline\CoverageBaselineEvaluator;
 use Studio\Gesso\Baseline\CoverageBaselineFile;
@@ -15,9 +16,9 @@ use Studio\Gesso\Internal\ArgvParser;
 use Studio\Gesso\Internal\CliIo;
 use Studio\Gesso\Internal\CoverageReportWriter;
 use Studio\Gesso\Internal\Deprecations;
+use Studio\Gesso\Internal\Diagnostics;
 use Studio\Gesso\PHPUnit\ConsoleOutput;
 use Studio\Gesso\PHPUnit\CoverageReportSubscriber;
-use Studio\Gesso\PHPUnit\OpenApiCoverageExtension;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Validation\Strict\StrictAdditionalPropertiesAsserter;
 use Studio\Gesso\Validation\Strict\StrictAdditionalPropertiesMode;
@@ -89,8 +90,8 @@ final class CoverageMergeCommand
      * @param null|callable(string): void $stderrWriter Optional sink for warnings; defaults to STDERR.
      */
     public function __construct(
-        private mixed $stderrWriter = null,
         private mixed $stdoutWriter = null,
+        private mixed $stderrWriter = null,
         private readonly string $invocation = 'gesso coverage:merge',
     ) {}
 
@@ -107,7 +108,6 @@ final class CoverageMergeCommand
     {
         $opts = ArgvParser::parse(
             $argv,
-            'coverage:merge',
             flags: ['cleanup', 'no_cleanup', 'min_coverage_strict'],
             values: [
                 'sidecar_dir', 'spec_base_path', 'output_file', 'junit_output', 'json_output', 'html_output',
@@ -206,17 +206,17 @@ final class CoverageMergeCommand
     /**
      * @param MergeOptions $options
      *
-     * @return int 0 on success, non-zero on misconfiguration / I/O failure
+     * @return int `EXIT_OK`; `EXIT_USAGE` on misconfiguration; `EXIT_FAILURE` on a failed gate or I/O failure
      */
     public function run(array $options): int
     {
         if (($options['help'] ?? false) === true) {
             $this->writeStdout(self::usage($this->invocation));
 
-            return 0;
+            return self::EXIT_OK;
         }
 
-        $sidecarDir = $this->pathOption($options['sidecar_dir'] ?? null) ?? OpenApiCoverageExtension::defaultSidecarDir();
+        $sidecarDir = $this->pathOption($options['sidecar_dir'] ?? null) ?? CoverageSidecarWriter::defaultDir();
 
         // Empty `--specs=` is treated as "use default" rather than "use no
         // specs". Otherwise a misconfigured CLI invocation would silently
@@ -242,7 +242,7 @@ final class CoverageMergeCommand
             // Strict-mode misconfiguration: a typo'd / out-of-range threshold
             // would otherwise silently disable the gate the user opted into.
             // Exit 2 mirrors the `--spec-base-path is required` config error.
-            return 2;
+            return self::EXIT_USAGE;
         }
         $minEndpointPct = $endpointResolution['value'];
         $minResponsePct = $responseResolution['value'];
@@ -255,7 +255,7 @@ final class CoverageMergeCommand
             // silently disables the gate the user opted into via CI flag.
             $this->writeStderr(sprintf("[OpenAPI Strict Required] FATAL: %s\n", $e->getMessage()));
 
-            return 2;
+            return self::EXIT_USAGE;
         }
 
         try {
@@ -265,7 +265,7 @@ final class CoverageMergeCommand
         } catch (InvalidArgumentException $e) {
             $this->writeStderr(sprintf("[OpenAPI Strict Additional Properties] FATAL: %s\n", $e->getMessage()));
 
-            return 2;
+            return self::EXIT_USAGE;
         }
 
         $baselineFile = $this->pathOption($options['baseline_file'] ?? null);
@@ -275,7 +275,7 @@ final class CoverageMergeCommand
         // merged coverage state already is the whole-suite view, so this
         // command both generates and enforces from it.
         $coverageBaselineFile = $this->pathOption($options['coverage_baseline_file'] ?? null);
-        $coverageBaselineGenerate = $coverageBaselineFile !== null && OpenApiCoverageExtension::baselineGenerationRequested();
+        $coverageBaselineGenerate = $coverageBaselineFile !== null && BaselineFileFormat::generationRequested();
 
         try {
             $coverageBaselineStaleMode = BaselineStaleMode::fromConfigValue($options['coverage_baseline_stale'] ?? null);
@@ -284,7 +284,7 @@ final class CoverageMergeCommand
             // silently changes the gate the user opted into.
             $this->writeStderr(sprintf("[Gesso] FATAL: %s\n", $e->getMessage()));
 
-            return 2;
+            return self::EXIT_USAGE;
         }
 
         if ($coverageBaselineFile === null && isset($options['coverage_baseline_stale'])) {
@@ -292,13 +292,13 @@ final class CoverageMergeCommand
                 "[Gesso] FATAL: --coverage-baseline-stale is set but --coverage-baseline-file was not given; there is no baseline to evaluate staleness against.\n",
             );
 
-            return 2;
+            return self::EXIT_USAGE;
         }
 
         if ($specBasePath === null) {
             $this->writeStderr("[OpenAPI Coverage] FATAL: --spec-base-path is required\n");
 
-            return 2;
+            return self::EXIT_USAGE;
         }
 
         // Issue #434: the expected shard count, validated alongside the other
@@ -314,7 +314,7 @@ final class CoverageMergeCommand
                     (string) $rawExpectSidecars,
                 ));
 
-                return 2;
+                return self::EXIT_USAGE;
             }
             $expectSidecars = $rawExpectSidecars;
         }
@@ -332,14 +332,14 @@ final class CoverageMergeCommand
                     $sidecarDir,
                 ));
 
-                return 1;
+                return self::EXIT_FAILURE;
             }
 
             $payloads = CoverageSidecarReader::readDir($sidecarDir);
         } catch (RuntimeException $e) {
             $this->writeStderr(sprintf("[OpenAPI Coverage] FATAL: %s\n", $e->getMessage()));
 
-            return 1;
+            return self::EXIT_FAILURE;
         }
 
         // Issue #434: a shard that was cancelled, or that died before
@@ -360,7 +360,7 @@ final class CoverageMergeCommand
                     : 'include sidecars from another run',
             ));
 
-            return 1;
+            return self::EXIT_FAILURE;
         }
 
         if ($payloads === []) {
@@ -373,7 +373,7 @@ final class CoverageMergeCommand
                     $sidecarDir,
                 ));
 
-                return 1;
+                return self::EXIT_FAILURE;
             }
 
             if ($coverageBaselineFile !== null) {
@@ -383,7 +383,7 @@ final class CoverageMergeCommand
                     $coverageBaselineGenerate ? 'generated' : 'evaluated',
                 ));
 
-                return 1;
+                return self::EXIT_FAILURE;
             }
 
             if ($strictAdditionalPropertiesMode === StrictAdditionalPropertiesMode::Fail) {
@@ -392,7 +392,7 @@ final class CoverageMergeCommand
                     $sidecarDir,
                 ));
 
-                return 1;
+                return self::EXIT_FAILURE;
             }
 
             // Strict-mode gate must fail-fast even before sidecars exist —
@@ -404,11 +404,11 @@ final class CoverageMergeCommand
                     $sidecarDir,
                 ));
 
-                return 1;
+                return self::EXIT_FAILURE;
             }
             $this->writeStderr(sprintf("[OpenAPI Coverage] WARNING: no sidecars found in %s\n", $sidecarDir));
 
-            return 0;
+            return self::EXIT_OK;
         }
 
         OpenApiSpecLoader::reset();
@@ -484,7 +484,7 @@ final class CoverageMergeCommand
             } catch (InvalidArgumentException $e) {
                 $this->writeStderr(sprintf("[OpenAPI Coverage] FATAL: invalid sidecar payload: %s\n", $e->getMessage()));
 
-                return 1;
+                return self::EXIT_FAILURE;
             }
         }
 
@@ -495,7 +495,7 @@ final class CoverageMergeCommand
         $this->reportDeprecations($deprecationStates, $sidecarsWithoutDeprecations, count($payloads));
 
         if (!$this->handleBaseline($baselineFile, $mergedBaseline, $sidecarsWithoutBaseline, count($payloads))) {
-            return 1;
+            return self::EXIT_FAILURE;
         }
 
         if ($minSdkExercisePct !== null && $sidecarsWithoutSdkExercise > 0) {
@@ -503,12 +503,12 @@ final class CoverageMergeCommand
                 $minStrict ? 'FATAL' : 'WARNING',
                 sprintf(
                     '%d worker sidecar(s) have no SDK exercise state; '
-                    . 'the merged SDK exercise gate may be incomplete. Upgrade every worker to the v6/v7 sidecar envelope.',
+                    . 'the merged SDK exercise gate may be incomplete. Run every worker on the same Gesso version as the merge step.',
                     $sidecarsWithoutSdkExercise,
                 ),
             );
             if ($minStrict) {
-                return 1;
+                return self::EXIT_FAILURE;
             }
         }
 
@@ -549,10 +549,10 @@ final class CoverageMergeCommand
             }
 
             if ($cleanup && !$this->cleanup($sidecarDir)) {
-                return 1;
+                return self::EXIT_FAILURE;
             }
 
-            return $strictGated || $strictAdditionalPropertiesFailure || $coverageBaselineFile !== null ? 1 : 0;
+            return $strictGated || $strictAdditionalPropertiesFailure || $coverageBaselineFile !== null ? self::EXIT_FAILURE : self::EXIT_OK;
         }
 
         $this->writeStdout(ConsoleCoverageRenderer::render($results, $consoleOutput, $sdkResults));
@@ -616,8 +616,8 @@ final class CoverageMergeCommand
             $strictAdditionalPropertiesFailure ||
             $coverageBaselineFailure ||
             $cleanupFailure
-            ? 1
-            : 0;
+            ? self::EXIT_FAILURE
+            : self::EXIT_OK;
     }
 
     /** An option's absolutised path, or `null` when absent or empty. */
@@ -901,7 +901,7 @@ final class CoverageMergeCommand
             $this->writeStderr(
                 '[OpenAPI Strict Required] FATAL: --strict-required=fail requested but '
                 . 'no worker recorded any strict_required observations; the gate cannot '
-                . "be evaluated. Verify all workers are running the v2 sidecar envelope.\n",
+                . "be evaluated. Run every worker on the same Gesso version as the merge step.\n",
             );
 
             return true;
@@ -928,7 +928,7 @@ final class CoverageMergeCommand
         $isFatal = $mode === StrictRequiredMode::Fail;
         $message = StrictRequiredAsserter::renderMessage($reports, $isFatal);
         $this->writeStderr($message . "\n");
-        OpenApiCoverageExtension::appendGithubStepSummaryStrictRequiredBlock(
+        Diagnostics::appendGithubStepSummaryStrictRequiredBlock(
             $githubSummaryPath,
             $message,
             $isFatal,
@@ -949,7 +949,7 @@ final class CoverageMergeCommand
         if ($mode === StrictAdditionalPropertiesMode::Fail && $sidecarsWithoutTracker > 0) {
             $this->writeStderr(sprintf(
                 '[OpenAPI Strict Additional Properties] FATAL: %d worker sidecar(s) have no strict additional-properties state; '
-                . "the merged gate would be incomplete. Upgrade every worker to the v4/v5 sidecar envelope.\n",
+                . "the merged gate would be incomplete. Run every worker on the same Gesso version as the merge step.\n",
                 $sidecarsWithoutTracker,
             ));
 
@@ -958,7 +958,7 @@ final class CoverageMergeCommand
         if ($mode === StrictAdditionalPropertiesMode::Fail && $tracker->evaluationsOn() === 0) {
             $this->writeStderr(
                 '[OpenAPI Strict Additional Properties] FATAL: --strict-additional-properties=fail requested but '
-                . "no worker exported strict additional-properties evaluations. Verify all workers use the v4/v5 sidecar envelope.\n",
+                . "no worker exported strict additional-properties evaluations. Run every worker on the same Gesso version as the merge step.\n",
             );
 
             return true;
@@ -972,7 +972,7 @@ final class CoverageMergeCommand
         $isFatal = $mode === StrictAdditionalPropertiesMode::Fail;
         $message = StrictAdditionalPropertiesAsserter::renderMessage($reports, $isFatal);
         $this->writeStderr($message . "\n");
-        OpenApiCoverageExtension::appendGithubStepSummaryStrictAdditionalPropertiesBlock(
+        Diagnostics::appendGithubStepSummaryStrictAdditionalPropertiesBlock(
             $githubSummaryPath,
             $message,
             $isFatal,

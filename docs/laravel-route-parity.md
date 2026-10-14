@@ -33,7 +33,8 @@ return [
 ```
 
 `spec_base_path` is the directory searched for `front.json`, `front.yaml`, or
-`front.yml`. Keep `strip_prefixes` aligned with the PHPUnit extension. The
+`front.yml`. Keep `strip_prefixes` aligned with the PHPUnit extension — or move both to
+the root [`gesso.php`](configuration.md) so nothing needs aligning. The
 command applies the runtime matcher's first-match prefix and trailing-slash
 rules, so the static result matches request/response validation.
 

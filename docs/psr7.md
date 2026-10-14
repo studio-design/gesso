@@ -78,6 +78,12 @@ final class CreatePetTest extends TestCase
 }
 ```
 
+Without an attribute or override, `openApiSpec()` returns `spec.default` from
+[`gesso.php`](configuration.md) (or the `default_spec` extension parameter).
+Likewise `openApiMaxErrors()`, `openApiSkipResponseCodes()`, and
+`openApiSkipRequestValidationResponseCodes()` default to the shared
+`validation.*` settings; override a hook to pin a per-suite value.
+
 Request-only, response-only, and explicit-operation assertions are also
 available:
 
@@ -86,6 +92,10 @@ $this->assertPsr7RequestMatchesOpenApiSchema($request, $response->getStatusCode(
 $this->assertPsr7ResponseMatchesOpenApiSchema($request, $response);
 $this->assertPsr7ResponseForOperationMatchesOpenApiSchema('POST', '/v1/pets', $response);
 ```
+
+The explicit-operation assertion also checks hand-written HTTP client fakes
+against an external API's spec; see
+[Consumer-side contract testing](consumer-side-contract-testing.md#asserting-hand-written-fakes).
 
 Assertion failures end with a redacted `Reproduce: curl …` line (for the
 exchange assertion, one line for the whole exchange, with each error prefixed

@@ -16,6 +16,7 @@ use RuntimeException;
 use Studio\Gesso\Baseline\ViolationFingerprint;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\DecodedBody;
+use Studio\Gesso\Internal\WireQueryParser;
 use Studio\Gesso\OpenApiRequestValidator;
 use Studio\Gesso\OpenApiResponseValidator;
 use Studio\Gesso\OpenApiValidationResult;
@@ -24,15 +25,12 @@ use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 use Studio\Gesso\Validation\Support\ContentTypeMatcher;
 use Studio\Gesso\Validation\Support\DeferredBodyPresence;
 use Studio\Gesso\Validation\Support\FormBodyDecoder;
-use Studio\Gesso\Validation\Support\QueryStyleDeserializer;
 use Studio\Gesso\ValidationIssue;
 use Throwable;
 
 use function array_is_list;
-use function array_map;
 use function array_merge;
 use function array_values;
-use function count;
 use function explode;
 use function implode;
 use function is_array;
@@ -41,7 +39,6 @@ use function rawurldecode;
 use function sprintf;
 use function str_contains;
 use function trim;
-use function urldecode;
 
 /**
  * Framework-independent adapter for validating PSR-7 HTTP messages.
@@ -96,7 +93,7 @@ final class OpenApiPsr7Validator
             /** @var array<string, mixed> $cookies */
             $cookies = $request->getCookieParams();
         } else {
-            $queryParams = self::parseQuery($request);
+            $queryParams = WireQueryParser::parse($request->getUri()->getQuery());
             $cookies = self::parseCookieHeader($request);
         }
 
@@ -303,19 +300,6 @@ final class OpenApiPsr7Validator
         $contentType = trim($message->getHeaderLine('Content-Type'));
 
         return $contentType === '' ? null : $contentType;
-    }
-
-    /** @return array<string, mixed> */
-    private static function parseQuery(RequestInterface $request): array
-    {
-        $query = [];
-        // A repeated key (`tags=a&tags=b`, form/explode) becomes an ordered list.
-        foreach (QueryStyleDeserializer::parseRawValues($request->getUri()->getQuery()) as $name => $encodedValues) {
-            $values = array_map(urldecode(...), $encodedValues);
-            $query[$name] = count($values) === 1 ? $values[0] : $values;
-        }
-
-        return $query;
     }
 
     /** @return array<string, string> */

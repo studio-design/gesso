@@ -48,8 +48,6 @@ final class StubsCommand
 {
     use CliIo;
 
-    public const EXIT_OK = 0;
-    public const EXIT_USAGE = 2;
     private const VALUE_OPTIONS = ['spec', 'coverage', 'spec_name', 'adapter', 'output', 'namespace', 'base_class', 'request_prefix'];
 
     /** @param null|callable(string): void $stdoutWriter */
@@ -67,7 +65,7 @@ final class StubsCommand
     public static function parseArgv(array $argv): array
     {
         /** @var StubsOptions */
-        return ArgvParser::parse($argv, 'stubs', flags: ['dry_run'], values: self::VALUE_OPTIONS);
+        return ArgvParser::parse($argv, flags: ['dry_run'], values: self::VALUE_OPTIONS);
     }
 
     public static function usage(string $invocation = 'gesso stubs'): string
