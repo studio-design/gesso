@@ -77,9 +77,9 @@ trait OpenApiAssertions
     use OpenApiSpecResolver;
 
     /**
-     * Validators are cached per test-case instance — not statically as in the
-     * Laravel adapter. PHPUnit builds a fresh TestCase per test method, so
-     * instance scope already gives per-test isolation with no reset hook.
+     * Validators are cached per test-case instance, like the Laravel adapter;
+     * PHPUnit builds a fresh TestCase per test method, so no reset hook is
+     * needed.
      */
     private ?OpenApiResponseValidator $cachedSymfonyResponseValidator = null;
     private ?OpenApiRequestValidator $cachedSymfonyRequestValidator = null;
