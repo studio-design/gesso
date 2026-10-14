@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Internal;
 
-use function array_key_exists;
-use function array_pad;
-use function explode;
-use function is_array;
+use Studio\Gesso\Validation\Support\QueryStyleDeserializer;
+
+use function array_map;
+use function count;
 use function urldecode;
 
 /**
@@ -31,30 +31,10 @@ final class WireQueryParser
      */
     public static function parse(string $queryString): array
     {
-        /** @var array<string, mixed> $query */
         $query = [];
-        if ($queryString === '') {
-            return $query;
-        }
-
-        foreach (explode('&', $queryString) as $pair) {
-            [$encodedName, $encodedValue] = array_pad(explode('=', $pair, 2), 2, '');
-            $name = urldecode($encodedName);
-            if ($name === '') {
-                continue;
-            }
-
-            $value = urldecode($encodedValue);
-            if (!array_key_exists($name, $query)) {
-                $query[$name] = $value;
-
-                continue;
-            }
-
-            if (!is_array($query[$name])) {
-                $query[$name] = [$query[$name]];
-            }
-            $query[$name][] = $value;
+        foreach (QueryStyleDeserializer::parseRawValues($queryString) as $name => $encodedValues) {
+            $values = array_map(urldecode(...), $encodedValues);
+            $query[$name] = count($values) === 1 ? $values[0] : $values;
         }
 
         return $query;

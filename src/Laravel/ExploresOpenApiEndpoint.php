@@ -140,12 +140,7 @@ trait ExploresOpenApiEndpoint
     {
         $specName = $this->resolveOpenApiSpec();
         if ($specName === '') {
-            $this->failExplore(
-                'openApiSpec() must return a non-empty spec name, but an empty string was returned. '
-                . 'Either add #[OpenApiSpec(\'your-spec\')] to your test class or method, '
-                . 'override openApiSpec() in your test class, or set the "default_spec" key '
-                . 'in config/gesso.php.',
-            );
+            $this->failExplore(self::EMPTY_SPEC_MESSAGE);
         }
 
         try {

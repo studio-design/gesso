@@ -10,6 +10,7 @@ use InvalidArgumentException;
 use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\Spec\OpenApiOperationResolver;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
+use Studio\Gesso\Stubs\StubGenerator;
 use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 use Studio\Gesso\Validation\Support\MalformedSpecNode;
 
@@ -864,7 +865,7 @@ final class OpenApiCoverageTracker
             foreach (OpenApiOperationResolver::declaredOperations($methods) as $declaredOperation) {
                 $upper = $declaredOperation['method'];
                 $operation = $declaredOperation['operation'];
-                $isBaselineMethod = in_array($upper, ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'QUERY'], true);
+                $isBaselineMethod = in_array($upper, StubGenerator::TRACKED_METHODS, true);
                 $isAdditionalOperation = str_starts_with($declaredOperation['location'], 'additionalOperations[');
                 if (!$isBaselineMethod && !$isAdditionalOperation) {
                     continue;
