@@ -256,3 +256,17 @@ API.
 - [RFC 6901: JSON Pointer](https://www.rfc-editor.org/rfc/rfc6901)
 - [Spectral's Arazzo ruleset](https://github.com/stoplightio/spectral)
 - [Speakeasy custom Arazzo contract tests](https://www.speakeasy.com/docs/sdks/sdk-contract-testing/custom-contract-tests)
+
+## Amendments
+
+### 2026-10-13 — embedded non-scalar values stay rejected for now
+
+Arazzo 1.1.0 §Runtime Expressions says a parsed structure embedded in a
+string with `{expression}` "MUST be serialized as JSON". The Decision above
+rejects non-scalar embedded results instead, and the phase-one evaluator
+([#427](https://github.com/studio-design/gesso/issues/427)) keeps that
+conservative behaviour: an embedded array or object fails with a
+`NonScalarEmbedded` reason rather than being serialised. This is a
+documented deviation from the specification, not an oversight. Lifting it
+(serialising embedded arrays and objects as JSON) is tracked under
+[#430](https://github.com/studio-design/gesso/issues/430).
