@@ -2065,6 +2065,19 @@ class RequestBodyValidatorTest extends TestCase
     }
 
     #[Test]
+    public function validate_percent_decodes_exploded_styled_multipart_items(): void
+    {
+        $result = $this->validateStyled(
+            'multipart/form-data',
+            ['tags' => ['style' => 'form', 'explode' => true]],
+            ['tags' => ['a%2Cb', 'c%20d']],
+            ['type' => 'array', 'items' => ['type' => 'string', 'enum' => ['a,b', 'c d']]],
+        );
+
+        $this->assertSame([], $result->errors);
+    }
+
+    #[Test]
     public function validate_ignores_file_part_content_type_when_style_is_declared(): void
     {
         $result = $this->validateStyled(

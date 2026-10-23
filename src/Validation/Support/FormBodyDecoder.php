@@ -16,6 +16,7 @@ use function array_key_exists;
 use function array_key_first;
 use function array_keys;
 use function array_pad;
+use function array_walk_recursive;
 use function explode;
 use function implode;
 use function in_array;
@@ -226,9 +227,17 @@ final class FormBodyDecoder
                 // value is still RFC 6570 percent-encoded: it is the raw wire
                 // value. RFC 6570 never emits `+` for a space, so a literal
                 // plus is data and is protected from urldecode().
+                // An exploded array arrives as repeated parts, each encoded.
                 if ($isMultipart && is_string($value)) {
                     $rawValue = str_replace('+', '%2B', $value);
                     $value = rawurldecode($value);
+                    $fields[$name] = $value;
+                } elseif ($isMultipart && is_array($value)) {
+                    array_walk_recursive($value, static function (mixed &$item): void {
+                        if (is_string($item)) {
+                            $item = rawurldecode($item);
+                        }
+                    });
                     $fields[$name] = $value;
                 }
 
