@@ -1,0 +1,12 @@
+{
+  "openapi": "3.1.0",
+  "info": { "title": "Duplicate operationIds", "version": "1.0.0" },
+  "paths": {
+    "/a": {
+      "get": { "operationId": "dup", "responses": { "200": { "description": "ok" } } }
+    },
+    "/b": {
+      "post": { "operationId": "dup", "responses": { "200": { "description": "ok" } } }
+    }
+  }
+}
