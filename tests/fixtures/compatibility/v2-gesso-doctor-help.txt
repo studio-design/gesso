@@ -9,6 +9,7 @@ Options:
   --local-ref-root=<dir>     Filesystem boundary for local refs (default: each
                              entry document's directory).
   --format=text|json         Output format (default: text).
+  --output-file=<path>       Write the report there instead of stdout.
   --allow-remote-refs        Resolve HTTP(S) refs with an installed Guzzle or
                              Symfony PSR-18 implementation.
   --remote-ref-host=<host>   Exact host allowed for HTTP(S) refs. Required with

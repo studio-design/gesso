@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Coverage;
 
+use Closure;
 use InvalidArgumentException;
 use RuntimeException;
 use Studio\Gesso\Baseline\BaselineFileFormat;
@@ -31,6 +32,7 @@ use function count;
 use function ctype_digit;
 use function getenv;
 use function implode;
+use function in_array;
 use function is_int;
 use function is_numeric;
 use function is_string;
@@ -56,6 +58,7 @@ use function unlink;
  *     specs?: list<string>,
  *     strip_prefixes?: list<string>,
  *     output_file?: string,
+ *     format?: string,
  *     junit_output?: string,
  *     json_output?: string,
  *     html_output?: string,
@@ -86,6 +89,8 @@ final class CoverageMergeCommand
 {
     use CliIo;
 
+    private const FORMATS = ['text', 'markdown', 'json', 'junit', 'html'];
+
     /**
      * @param null|callable(string): void $stderrWriter Optional sink for warnings; defaults to STDERR.
      */
@@ -110,7 +115,7 @@ final class CoverageMergeCommand
             $argv,
             flags: ['cleanup', 'no_cleanup', 'min_coverage_strict'],
             values: [
-                'sidecar_dir', 'spec_base_path', 'output_file', 'junit_output', 'json_output', 'html_output',
+                'sidecar_dir', 'spec_base_path', 'output_file', 'format', 'junit_output', 'json_output', 'html_output',
                 'github_step_summary', 'console_output', 'strict_required', 'strict_additional_properties',
                 'baseline_file', 'coverage_baseline_file', 'coverage_baseline_stale',
                 'min_endpoint_coverage', 'min_response_coverage', 'min_sdk_exercise_coverage', 'expect_sidecars',
@@ -156,6 +161,9 @@ final class CoverageMergeCommand
               --strip-prefixes=<a,b>        Comma-separated request-path prefixes to strip.
               --sidecar-dir=<path>          Worker sidecar directory. Defaults to
                                             sys_get_temp_dir()/openapi-coverage-sidecars.
+              --format=<name>               text | markdown | json | junit | html. Rendering of the
+                                            primary report: --output-file when given (default
+                                            markdown), else stdout (default text).
               --output-file=<path>          Markdown report output path.
               --junit-output=<path>         JUnit XML report output path (for CI dashboards
                                             like GitLab CI test reports, Jenkins, SonarQube).
@@ -200,6 +208,12 @@ final class CoverageMergeCommand
               --no-cleanup                  Keep sidecar files after merge (default: cleanup).
               --help                        Show this message.
 
+            Exit codes:
+              0  Merge completed; warnings may have been written to stderr.
+              1  A gate failed (threshold, strict, baseline, expected shard count), a
+                 sidecar could not be read, or a report could not be written.
+              2  Command-line usage is invalid.
+
             USAGE;
     }
 
@@ -226,6 +240,10 @@ final class CoverageMergeCommand
         $specBasePath = $this->pathOption($options['spec_base_path'] ?? null);
         $stripPrefixes = $options['strip_prefixes'] ?? [];
         $outputFile = $this->pathOption($options['output_file'] ?? null);
+        $format = $options['format'] ?? ($outputFile === null ? 'text' : 'markdown');
+        if (!in_array($format, self::FORMATS, true)) {
+            return $this->usageError("Unsupported --format={$format}.");
+        }
         $junitOutput = $this->pathOption($options['junit_output'] ?? null);
         $jsonOutput = $this->pathOption($options['json_output'] ?? null);
         $htmlOutput = $this->pathOption($options['html_output'] ?? null);
@@ -555,9 +573,12 @@ final class CoverageMergeCommand
             return $strictGated || $strictAdditionalPropertiesFailure || $coverageBaselineFile !== null ? self::EXIT_FAILURE : self::EXIT_OK;
         }
 
-        $this->writeStdout(ConsoleCoverageRenderer::render($results, $consoleOutput, $sdkResults));
+        [$label, $render] = self::primaryRenderer($format, $consoleOutput);
+        $this->writeStdout($outputFile === null
+            ? $render($results, $sdkResults)
+            : ConsoleCoverageRenderer::render($results, $consoleOutput, $sdkResults));
 
-        $writeFailures = $writer->writeReports($results, $sdkResults, $outputFile, $junitOutput, $jsonOutput, $htmlOutput);
+        $writeFailures = $writer->writeReports($results, $sdkResults, $outputFile, $junitOutput, $jsonOutput, $htmlOutput, [$label, $render]);
         $writer->appendGithubStepSummary($results, $sdkResults, $githubSummaryPath);
 
         $httpThresholdUnavailable = $results === [] && ($minEndpointPct !== null || $minResponsePct !== null);
@@ -618,6 +639,20 @@ final class CoverageMergeCommand
             $cleanupFailure
             ? self::EXIT_FAILURE
             : self::EXIT_OK;
+    }
+
+    /**
+     * Label and renderer for the primary report: `text` is the console rendering.
+     *
+     * @param 'html'|'json'|'junit'|'markdown'|'text' $format
+     *
+     * @return array{string, Closure(array<string, CoverageResult>, array<string, SdkExerciseCoverageResult>): string}
+     */
+    private static function primaryRenderer(string $format, ConsoleOutput $console): array
+    {
+        return $format === 'text'
+            ? ['console', static fn(array $r, array $s): string => ConsoleCoverageRenderer::render($r, $console, $s)]
+            : CoverageReportWriter::renderer($format);
     }
 
     /** An option's absolutised path, or `null` when absent or empty. */
