@@ -43,7 +43,7 @@ use function trim;
  *
  * `gesso.php` is a plain PHP file returning a nested array, read once and
  * handed to every surface that used to parse its own copy of the same
- * settings — 29 PHPUnit extension parameters, 13 Laravel config keys and the
+ * settings — 29 PHPUnit extension parameters, 14 Laravel config keys and the
  * merge CLI's flags. The key set is frozen by
  * [ADR 0005](../../docs/adr/0005-v3-configuration-and-cli-naming.md); take
  * names from there, and add a key here only after adding it there.
@@ -175,6 +175,7 @@ final class GessoConfig
             'route_parity' => [
                 'external_operation_ids' => ['type' => 'strings', 'default' => []],
                 'external_openapi_paths' => ['type' => 'strings', 'default' => []],
+                'excluded_route_names' => ['type' => 'strings', 'default' => []],
             ],
         ],
     ];

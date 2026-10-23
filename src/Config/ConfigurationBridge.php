@@ -64,6 +64,8 @@ final class ConfigurationBridge
             'auto_inject_dummy_credentials' => ['laravel.auto_inject_dummy_credentials', 'boolOrString'],
             'route_parity.external_operation_ids' => ['laravel.route_parity.external_operation_ids', 'strings'],
             'route_parity.external_openapi_paths' => ['laravel.route_parity.external_openapi_paths', 'strings'],
+            'route_parity.excluded_route_names' => ['laravel.route_parity.excluded_route_names', 'strings'],
+            'specs' => ['spec.names', 'strings'],
         ]);
     }
 
