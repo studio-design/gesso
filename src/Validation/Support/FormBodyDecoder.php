@@ -14,8 +14,8 @@ use function array_fill_keys;
 use function array_filter;
 use function array_key_exists;
 use function array_key_first;
-use function array_key_last;
 use function array_keys;
+use function array_pad;
 use function explode;
 use function implode;
 use function in_array;
@@ -23,10 +23,11 @@ use function is_array;
 use function is_string;
 use function json_decode;
 use function parse_str;
+use function rawurldecode;
 use function sprintf;
+use function str_replace;
 use function strtolower;
 use function trim;
-use function urlencode;
 
 /**
  * Turn a form request body (`application/x-www-form-urlencoded` or
@@ -98,11 +99,17 @@ final class FormBodyDecoder
      */
     public static function rawUrlencodedValues(string $body): array
     {
+        // Mangle each pair's name before applying last-wins: `a.b` and `a_b`
+        // collide only after mangling, so grouping by raw name first would
+        // keep the wrong pair.
         $values = [];
-        foreach (QueryStyleDeserializer::parseRawValues($body) as $name => $raw) {
-            parse_str(urlencode((string) $name) . '=', $parsed);
-            $key = (string) array_key_first($parsed);
-            $values[$key] = $raw[array_key_last($raw)];
+        foreach (explode('&', $body) as $pair) {
+            [$encodedName, $encodedValue] = array_pad(explode('=', $pair, 2), 2, '');
+            parse_str($encodedName . '=', $parsed);
+            $key = array_key_first($parsed);
+            if ($key !== null) {
+                $values[(string) $key] = $encodedValue;
+            }
         }
 
         return $values;
@@ -194,23 +201,39 @@ final class FormBodyDecoder
                 continue;
             }
 
+            // Any of style / explode / allowReserved selects RFC 6570 form
+            // serialization, and then "the value of contentType (implicit or
+            // explicit) SHALL be ignored".
+            $styled = $stylesApply && (array_key_exists('style', $partEncoding) ||
+                array_key_exists('explode', $partEncoding) ||
+                array_key_exists('allowReserved', $partEncoding));
+
             if ($value instanceof UploadedPart || self::containsPart($value)) {
-                $errors = [...$errors, ...self::checkPartContentTypes((string) $name, $value, $declaredContentType)];
+                if (!$styled) {
+                    $errors = [...$errors, ...self::checkPartContentTypes((string) $name, $value, $declaredContentType)];
+                }
                 $fields[$name] = self::substituteParts($value);
 
                 continue;
             }
 
-            // Any of style / explode / allowReserved selects RFC 6570 form
-            // serialization, and then "the value of contentType (implicit or
-            // explicit) SHALL be ignored" — so no JSON decoding below. Only
-            // the array split applies; allowReserved changes nothing a
-            // decoded value still shows.
-            if ($stylesApply && (array_key_exists('style', $partEncoding) ||
-                array_key_exists('explode', $partEncoding) ||
-                array_key_exists('allowReserved', $partEncoding))) {
+            // A styled part skips the JSON decoding below. Only the array
+            // split applies; allowReserved changes nothing a decoded value
+            // still shows.
+            if ($styled) {
+                $rawValue = $rawValues[$name] ?? null;
+                // Form parsing leaves a multipart part's body as sent, so the
+                // value is still RFC 6570 percent-encoded: it is the raw wire
+                // value. RFC 6570 never emits `+` for a space, so a literal
+                // plus is data and is protected from urldecode().
+                if ($isMultipart && is_string($value)) {
+                    $rawValue = str_replace('+', '%2B', $value);
+                    $value = rawurldecode($value);
+                    $fields[$name] = $value;
+                }
+
                 if ($propertySchema !== null) {
-                    $value = QueryStyleDeserializer::deserialize($value, $partEncoding, $propertySchema, $rawValues[$name] ?? null);
+                    $value = QueryStyleDeserializer::deserialize($value, $partEncoding, $propertySchema, $rawValue);
                     $fields[$name] = TypeCoercer::coerceQuery($value, $propertySchema);
                 }
 

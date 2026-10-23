@@ -2035,6 +2035,50 @@ class RequestBodyValidatorTest extends TestCase
     }
 
     #[Test]
+    public function validate_applies_last_wins_after_parse_str_key_mangling(): void
+    {
+        // `tag.list` and `tag_list` collide only after mangling; parse_str()
+        // keeps the last pair, so its raw value must be the one split.
+        $result = $this->validateStyled(
+            'application/x-www-form-urlencoded',
+            ['tag_list' => ['style' => 'form', 'explode' => false]],
+            'tag.list=x&tag_list=a,b&tag.list=a%2Cb',
+            ['type' => 'array', 'maxItems' => 1, 'items' => ['type' => 'string', 'enum' => ['a,b']]],
+            property: 'tag_list',
+        );
+
+        $this->assertSame([], $result->errors);
+    }
+
+    #[Test]
+    public function validate_percent_decodes_styled_multipart_values_after_splitting(): void
+    {
+        // Multipart parsing leaves the RFC 6570 percent-encoding in place.
+        $result = $this->validateStyled(
+            'multipart/form-data',
+            ['tags' => ['style' => 'form', 'explode' => false]],
+            ['tags' => 'a%2Cb,c+d'],
+            ['type' => 'array', 'maxItems' => 2, 'items' => ['type' => 'string', 'enum' => ['a,b', 'c+d']]],
+        );
+
+        $this->assertSame([], $result->errors);
+    }
+
+    #[Test]
+    public function validate_ignores_file_part_content_type_when_style_is_declared(): void
+    {
+        $result = $this->validateStyled(
+            'multipart/form-data',
+            ['avatar' => ['style' => 'form', 'contentType' => 'image/png']],
+            ['avatar' => new UploadedPart('text/plain', 'avatar.txt')],
+            ['type' => 'string', 'format' => 'binary'],
+            property: 'avatar',
+        );
+
+        $this->assertSame([], $result->errors);
+    }
+
+    #[Test]
     public function validate_ignores_part_content_type_when_style_is_declared(): void
     {
         // OAS 3.1/3.2 Encoding Object: with style / explode / allowReserved
