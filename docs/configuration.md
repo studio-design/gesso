@@ -89,7 +89,7 @@ preserves the prefixes configured in bootstrap.
 - Explicit per-test and per-call overrides keep their existing priority.
 
 To migrate, start from `vendor/bin/gesso doctor --spec=… --emit-config > gesso.php`
-([doctor](doctor.md#generate-a-gesso-php)) or copy values into the root file,
+([doctor](doctor.md#generate-a-gessophp)) or copy values into the root file,
 then remove their matching XML parameters and the copied keys from
 `config/gesso.php`. Once all values
 have moved, delete `config/gesso.php` and clear any Laravel configuration cache.
