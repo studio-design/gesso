@@ -58,6 +58,28 @@ spec name `bundled/front`. Targets that escape the canonical root through
 `../`, an absolute path, or a symlink are rejected; those forms remain valid
 when their canonical targets stay inside the root.
 
+## Generate a gesso.php
+
+`--emit-config` prints the same settings as a [`gesso.php`](configuration.md)
+file on stdout, so it can be redirected straight into place:
+
+```bash
+vendor/bin/gesso doctor \
+  --spec=openapi/front.yaml \
+  --spec=openapi/admin.json \
+  --strip-prefix=/api \
+  --emit-config > gesso.php
+```
+
+The file sets `spec.base_path`, `spec.names`, and, when given,
+`spec.strip_prefixes` and `validation.acknowledged_unvalidatable_schemes`.
+The base path is relative to the working directory, which is where
+`gesso.php` resolves it from when the file is written there. The report goes
+to stderr (or `--output-file`) so stdout carries only the PHP source. Nothing
+is printed to stdout when a spec is rejected, and, as with
+`--phpunit-snippet`, every entry document must share one directory unless
+`--local-ref-root` names a common one; otherwise the command exits `2`.
+
 ## Acknowledged unvalidatable security schemes
 
 When the test suite acknowledges an unvalidatable security scheme by name (see [Acknowledging an unvalidatable security scheme](setup.md#acknowledging-an-unvalidatable-security-scheme)), pass the same names so the doctor report reflects the acknowledgement:
