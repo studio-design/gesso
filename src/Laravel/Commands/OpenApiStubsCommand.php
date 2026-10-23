@@ -99,7 +99,7 @@ final class OpenApiStubsCommand extends Command
             invocation: 'php artisan gesso:stubs',
         );
 
-        return $command->run($options) === StubsCommand::EXIT_OK ? self::SUCCESS : self::INVALID;
+        return $command->run($options);
     }
 
     /**

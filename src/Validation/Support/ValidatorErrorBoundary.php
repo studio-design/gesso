@@ -62,7 +62,10 @@ final class ValidatorErrorBoundary
         }
     }
 
-    private static function captureMessage(
+    /**
+     * @internal Shared with the two body validators, whose DTO results cannot flow through safelyNamed().
+     */
+    public static function captureMessage(
         string $stage,
         string $specName,
         string $method,

@@ -1,10 +1,11 @@
 # GitHub Actions coverage recipe
 
-Register the PHPUnit extension with `output_file` and enable the GitHub Step Summary:
+Register the PHPUnit extension with `output_file`; when the job exposes
+`GITHUB_STEP_SUMMARY`, the extension appends the same Markdown report to it
+automatically:
 
 ```xml
 <parameter name="output_file" value="build/openapi-coverage.md"/>
-<parameter name="github_step_summary" value="true"/>
 ```
 
 Then preserve the same report as a workflow artifact:

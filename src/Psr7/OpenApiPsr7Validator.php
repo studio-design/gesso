@@ -215,15 +215,6 @@ final class OpenApiPsr7Validator
         );
     }
 
-    /** @return array{body: DecodedBody, errors: non-empty-list<string>} */
-    private static function bodyReadFailure(string $subject, string $reason): array
-    {
-        return [
-            'body' => DecodedBody::absent(),
-            'errors' => [sprintf('%s %s.', $subject, $reason)],
-        ];
-    }
-
     /**
      * Prepend adapter-level body errors (unreadable/non-seekable stream, JSON
      * parse failure) to the validator result. Adapter errors are tagged with
@@ -378,7 +369,7 @@ final class OpenApiPsr7Validator
      */
     private static function readFailure(string $subject, string $reason): array
     {
-        return ['content' => null, 'errors' => self::bodyReadFailure($subject, $reason)['errors']];
+        return ['content' => null, 'errors' => [sprintf('%s %s.', $subject, $reason)]];
     }
 
     /**

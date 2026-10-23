@@ -10,11 +10,13 @@ use stdClass;
 use Studio\Gesso\OpenApiVersion;
 use Studio\Gesso\Spec\OpenApiSchemaConverter;
 use Studio\Gesso\Spec\OpenApiSchemaDialect;
+use Studio\Gesso\Tests\Helpers\GroupsSchemaViolations;
 use Studio\Gesso\Validation\Support\ObjectConverter;
 use Studio\Gesso\Validation\Support\SchemaValidatorRunner;
 
 final class NativeJsonSchema202012Test extends TestCase
 {
+    use GroupsSchemaViolations;
     private SchemaValidatorRunner $runner;
 
     protected function setUp(): void
@@ -109,7 +111,7 @@ final class NativeJsonSchema202012Test extends TestCase
         ], OpenApiVersion::V3_1);
 
         $this->assertSame(['type' => 'object'], $converted['contentSchema']);
-        $this->assertSame([], $this->runner->validate(ObjectConverter::convert($converted), '{}'));
+        $this->assertSame([], self::groupedErrors($this->runner, ObjectConverter::convert($converted), '{}'));
     }
 
     #[Test]
@@ -122,7 +124,7 @@ final class NativeJsonSchema202012Test extends TestCase
         );
 
         $this->assertSame(OpenApiSchemaDialect::DRAFT_07, $converted['$schema']);
-        $this->assertSame([], $this->runner->validate(ObjectConverter::convert($converted), ['ok']));
+        $this->assertSame([], self::groupedErrors($this->runner, ObjectConverter::convert($converted), ['ok']));
     }
 
     #[Test]
@@ -140,7 +142,7 @@ final class NativeJsonSchema202012Test extends TestCase
         );
 
         $this->assertSame(OpenApiSchemaDialect::DRAFT_2020_12, $converted['$schema']);
-        $this->assertNotSame([], $this->runner->validate(ObjectConverter::convert($converted), ['ok', 'extra']));
+        $this->assertNotSame([], self::groupedErrors($this->runner, ObjectConverter::convert($converted), ['ok', 'extra']));
     }
 
     /**
@@ -152,6 +154,6 @@ final class NativeJsonSchema202012Test extends TestCase
     {
         $converted = OpenApiSchemaConverter::convert($schema, OpenApiVersion::V3_1);
 
-        return $this->runner->validate(ObjectConverter::convert($converted), ObjectConverter::convert($data));
+        return self::groupedErrors($this->runner, ObjectConverter::convert($converted), ObjectConverter::convert($data));
     }
 }
