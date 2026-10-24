@@ -43,6 +43,7 @@ use function scandir;
 use function sort;
 use function str_contains;
 use function str_replace;
+use function strtolower;
 use function substr;
 use function substr_count;
 use function sys_get_temp_dir;
@@ -1412,6 +1413,30 @@ class StubsCommandTest extends TestCase
             $this->assertMatchesRegularExpression('/^final class ' . substr($file, 0, -4) . ' extends \\w+$/m', $code);
             $this->assertSame(0, $this->lint($this->workDir . '/out/' . $file));
         }
+    }
+
+    #[Test]
+    public function class_names_differing_only_in_case_are_disambiguated(): void
+    {
+        $operation = ['responses' => ['200' => ['content' => ['application/json' => ['schema' => ['type' => 'object']]]]]];
+        $spec = $this->writeInlineSpec('casecollide', ['/things' => ['additionalOperations' => [
+            'VERSION-CONTROL' => $operation,
+            'VERSIONCONTROL' => $operation,
+        ]]]);
+
+        $exit = $this->command()->run(StubsCommand::parseArgv([
+            '--spec=' . $spec,
+            '--adapter=laravel',
+            '--output=' . $this->workDir . '/out',
+        ]));
+
+        $this->assertSame(StubsCommand::EXIT_OK, $exit);
+        $files = $this->generatedFiles();
+        $this->assertCount(2, $files);
+        foreach ($files as $file) {
+            $this->assertMatchesRegularExpression('/^Version[Cc]ontrolThings[0-9a-f]{7}Test\.php$/i', $file);
+        }
+        $this->assertNotSame(strtolower($files[0]), strtolower($files[1]));
     }
 
     #[Test]

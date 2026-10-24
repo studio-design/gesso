@@ -135,6 +135,9 @@ final class StubRenderer
      * operation. Every member of a colliding group is suffixed with a digest
      * of its own endpoint — not with its position — so a name does not shift
      * when an unrelated operation is added to or removed from the spec.
+     * Names are compared case-insensitively, as PHP compares class names and
+     * as macOS and Windows compare file names: `VERSION-CONTROL` and
+     * `VERSIONCONTROL` give `VersionControl…` and `Versioncontrol…`, one class.
      *
      * Class-based adapters fold the method to a PHP identifier as well; Pest
      * declares no class, so its file names keep the method key's spelling.
@@ -149,13 +152,13 @@ final class StubRenderer
         $counts = [];
         foreach ($plans as $plan) {
             $name = self::className($plan['method'], $plan['path'], $identifier);
-            $counts[$name] = ($counts[$name] ?? 0) + 1;
+            $counts[strtolower($name)] = ($counts[strtolower($name)] ?? 0) + 1;
         }
 
         $names = [];
         foreach ($plans as $plan) {
             $name = self::className($plan['method'], $plan['path'], $identifier);
-            $names[] = ($counts[$name] ?? 0) > 1
+            $names[] = ($counts[strtolower($name)] ?? 0) > 1
                 ? substr($name, 0, -4) . ucfirst(substr(
                     hash('xxh128', $plan['method'] . ' ' . $plan['path']),
                     0,
