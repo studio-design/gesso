@@ -8,6 +8,7 @@ use const SORT_STRING;
 
 use Psr\Http\Client\ClientInterface;
 use Psr\Http\Message\RequestFactoryInterface;
+use SensitiveParameter;
 use stdClass;
 use Studio\Gesso\Exception\InvalidOpenApiSpecException;
 use Studio\Gesso\Exception\InvalidOpenApiSpecReason;
@@ -1549,6 +1550,7 @@ final class OpenApiRefResolver
         string $ref,
         string $internalRef,
         array $root,
+        #[SensitiveParameter]
         string $chainKey,
         string $unresolvableMessage,
         array $chain,
@@ -1774,6 +1776,7 @@ final class OpenApiRefResolver
         string $ref,
         string $fragment,
         array $chain,
+        #[SensitiveParameter]
         string $absoluteUri,
         array $newRoot,
         RefResolutionContext $context,

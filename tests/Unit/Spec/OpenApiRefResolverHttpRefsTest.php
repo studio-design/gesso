@@ -6,6 +6,7 @@ namespace Studio\Gesso\Tests\Unit\Spec;
 
 use GuzzleHttp\Psr7\HttpFactory;
 use GuzzleHttp\Psr7\Response;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\RequestInterface;
@@ -18,6 +19,7 @@ use Studio\Gesso\Tests\Helpers\RemovesDirectories;
 use function file_put_contents;
 use function ini_set;
 use function mkdir;
+use function str_replace;
 use function sys_get_temp_dir;
 use function uniqid;
 
@@ -39,6 +41,20 @@ class OpenApiRefResolverHttpRefsTest extends TestCase
     {
         $this->removeDir($this->workDir);
         parent::tearDown();
+    }
+
+    /** @return iterable<string, array{string, string, InvalidOpenApiSpecReason}> */
+    public static function provideLoaded_document_failure_trace_redacts_remote_document_credentialsCases(): iterable
+    {
+        yield 'missing fragment' => ['{"components":{"schemas":{}}}', '#/components/schemas/Missing', InvalidOpenApiSpecReason::UnresolvableRef];
+        yield 'non-object target' => ['{"components":{"schemas":{"Leaf":1}}}', '#/components/schemas/Leaf', InvalidOpenApiSpecReason::NonObjectRefTarget];
+        yield 'circular fragment' => [
+            '{"components":{"schemas":{"Node":{"type":"object","properties":'
+            . '{"children":{"type":"array","items":{"$ref":"#/components/schemas/Node"}}}}}}}',
+            '#/components/schemas/Node',
+            InvalidOpenApiSpecReason::CircularRef,
+        ];
+        yield 'circular whole document' => ['{"$ref":"{url}"}', '', InvalidOpenApiSpecReason::CircularRef];
     }
 
     #[Test]
@@ -607,6 +623,51 @@ class OpenApiRefResolverHttpRefsTest extends TestCase
             $this->assertStringContainsString('https://example.com/front.json?token=[redacted]', (string) $e->ref);
             $this->assertStringNotContainsString('alice:secret', $e->getMessage() . $e->ref);
             $this->assertStringNotContainsString('query-secret', $e->getMessage() . $e->ref);
+        }
+    }
+
+    #[Test]
+    #[DataProvider('provideLoaded_document_failure_trace_redacts_remote_document_credentialsCases')]
+    public function loaded_document_failure_trace_redacts_remote_document_credentials(
+        string $document,
+        string $fragment,
+        InvalidOpenApiSpecReason $reason,
+    ): void {
+        $url = 'https://alice:secret@example.com/front.json?token=query-secret';
+        // `{url}` keeps the credential out of this method's own trace frame.
+        $client = new FakeHttpClient([$url => FakeHttpClient::jsonResponse(str_replace('{url}', $url, $document))]);
+        $spec = ['components' => ['schemas' => ['Entry' => ['$ref' => $url . $fragment]]]];
+
+        $previousIgnoreArgs = ini_set('zend.exception_ignore_args', '0');
+        if ($previousIgnoreArgs === false) {
+            $this->markTestSkipped('zend.exception_ignore_args cannot be changed at runtime');
+        }
+        $previousMaxLength = ini_set('zend.exception_string_param_max_len', '1024');
+        if ($previousMaxLength === false) {
+            ini_set('zend.exception_ignore_args', $previousIgnoreArgs);
+            $this->markTestSkipped('zend.exception_string_param_max_len cannot be changed at runtime');
+        }
+
+        try {
+            try {
+                OpenApiRefResolver::resolve(
+                    $spec,
+                    httpClient: $client,
+                    requestFactory: $this->factory,
+                    allowRemoteRefs: true,
+                    allowedRemoteRefHosts: ['example.com'],
+                );
+                $this->fail('expected InvalidOpenApiSpecException');
+            } catch (InvalidOpenApiSpecException $e) {
+                $rendered = (string) $e;
+
+                $this->assertSame($reason, $e->reason);
+                $this->assertStringNotContainsString('alice:secret', $rendered);
+                $this->assertStringNotContainsString('query-secret', $rendered);
+            }
+        } finally {
+            ini_set('zend.exception_ignore_args', $previousIgnoreArgs);
+            ini_set('zend.exception_string_param_max_len', $previousMaxLength);
         }
     }
 
