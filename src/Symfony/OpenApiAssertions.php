@@ -17,6 +17,7 @@ use Studio\Gesso\OpenApiValidationResult;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Spec\OpenApiSpecResolver;
 use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
+use Studio\Gesso\Validation\Support\ValidationPolicyDefaults;
 use Symfony\Component\BrowserKit\Exception\BadMethodCallException;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -76,9 +77,9 @@ trait OpenApiAssertions
     use OpenApiSpecResolver;
 
     /**
-     * Validators are cached per test-case instance — not statically as in the
-     * Laravel adapter. PHPUnit builds a fresh TestCase per test method, so
-     * instance scope already gives per-test isolation with no reset hook.
+     * Validators are cached per test-case instance, like the Laravel adapter;
+     * PHPUnit builds a fresh TestCase per test method, so no reset hook is
+     * needed.
      */
     private ?OpenApiResponseValidator $cachedSymfonyResponseValidator = null;
     private ?OpenApiRequestValidator $cachedSymfonyRequestValidator = null;
@@ -92,10 +93,10 @@ trait OpenApiAssertions
      *
      * @param string[] $extraSkipResponseCodes additional status-code regex
      *                                         patterns (without delimiters or anchors) to skip body validation
-     *                                         for. When non-empty they are merged with
-     *                                         {@see OpenApiResponseValidator::DEFAULT_SKIP_RESPONSE_CODES} into a
-     *                                         one-off validator for this call only; an empty array reuses the
-     *                                         cached validator unchanged.
+     *                                         for. When non-empty they are added to
+     *                                         {@see self::openApiSkipResponseCodes()} in a one-off validator for
+     *                                         this call only; an empty array reuses the cached validator
+     *                                         unchanged.
      */
     public function assertResponseMatchesOpenApiSchema(
         Request $request,
@@ -123,10 +124,7 @@ trait OpenApiAssertions
             : new OpenApiResponseValidator(
                 strictRequiredTracker: StrictRequiredTracker::current(),
                 maxErrors: ViolationBaselineCollector::uncap($this->openApiMaxErrors()),
-                skipResponseCodes: array_merge(
-                    OpenApiResponseValidator::DEFAULT_SKIP_RESPONSE_CODES,
-                    $extraSkipResponseCodes,
-                ),
+                skipResponseCodes: array_merge($this->openApiSkipResponseCodes(), $extraSkipResponseCodes),
             );
 
         $decodeFailureDemoted = false;
@@ -267,21 +265,50 @@ trait OpenApiAssertions
     /**
      * User-overridable default spec name, consulted by
      * {@see OpenApiSpecResolver} when no `#[OpenApiSpec]` attribute is present.
-     * Override in a base test case to pin a project-wide spec without an
-     * attribute on every class.
+     * Defaults to `spec.default` from gesso.php (or the `default_spec`
+     * extension parameter); override in a base test case to pin a spec
+     * without an attribute on every class.
      */
     protected function openApiSpec(): string
     {
-        return '';
+        return ValidationPolicyDefaults::defaultSpec();
     }
 
     /**
      * Maximum number of validation errors reported per request / response.
-     * Override to widen or narrow the cap (0 = unlimited).
+     * Defaults to `validation.max_errors` from gesso.php (or `max_errors`),
+     * else 20. Override to widen or narrow the cap (0 = unlimited).
      */
     protected function openApiMaxErrors(): int
     {
-        return 20;
+        return ValidationPolicyDefaults::maxErrors();
+    }
+
+    /**
+     * Status-code patterns whose response bodies are not validated. Override
+     * to pin a per-suite set; the default follows `skip_response_codes` from
+     * gesso.php / the extension parameter, else 5xx.
+     *
+     * @return string[]
+     */
+    protected function openApiSkipResponseCodes(): array
+    {
+        return ValidationPolicyDefaults::skipResponseCodes();
+    }
+
+    /**
+     * Status-code patterns that downgrade a request-validation failure to
+     * Skipped. Override to pin a per-suite set; the default follows
+     * `skip_request_validation_response_codes` from gesso.php / the extension
+     * parameter, else 422 and 400.
+     *
+     * @return string[]
+     */
+    protected function openApiSkipRequestValidationResponseCodes(): array
+    {
+        return ValidationPolicyDefaults::skipRequestValidationResponseCodes(
+            OpenApiRequestValidator::DEFAULT_SKIP_REQUEST_VALIDATION_RESPONSE_CODES,
+        );
     }
 
     /**
@@ -327,25 +354,18 @@ trait OpenApiAssertions
 
     private function symfonyResponseValidator(): OpenApiResponseValidator
     {
-        // Pin the default skip set explicitly (issue #502 review): the
-        // process-wide `skip_response_codes` extension parameter targets the
-        // framework-agnostic path only, and an omitted argument would now
-        // consult it. Mirrors the request validator below and the one-off
-        // extraSkipResponseCodes validator above.
         return $this->cachedSymfonyResponseValidator ??= new OpenApiResponseValidator(
             strictRequiredTracker: StrictRequiredTracker::current(),
             maxErrors: ViolationBaselineCollector::uncap($this->openApiMaxErrors()),
-            skipResponseCodes: OpenApiResponseValidator::DEFAULT_SKIP_RESPONSE_CODES,
+            skipResponseCodes: $this->openApiSkipResponseCodes(),
         );
     }
 
     private function symfonyRequestValidator(): OpenApiRequestValidator
     {
-        // The documented-4xx downgrade is on by default here, matching the
-        // Laravel adapter's `skip_request_validation_response_codes` default.
         return $this->cachedSymfonyRequestValidator ??= new OpenApiRequestValidator(
             maxErrors: ViolationBaselineCollector::uncap($this->openApiMaxErrors()),
-            skipRequestValidationResponseCodes: OpenApiRequestValidator::DEFAULT_SKIP_REQUEST_VALIDATION_RESPONSE_CODES,
+            skipRequestValidationResponseCodes: $this->openApiSkipRequestValidationResponseCodes(),
         );
     }
 

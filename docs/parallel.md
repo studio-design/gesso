@@ -42,7 +42,8 @@ vendor/bin/gesso coverage:merge \
 | `--specs=<a,b>` | `front` | Comma-separated spec names |
 | `--strip-prefixes=<a,b>` | — | Comma-separated request-path prefixes to strip |
 | `--sidecar-dir=<path>` | `sys_get_temp_dir()/openapi-coverage-sidecars` | Where workers wrote sidecars |
-| `--output-file=<path>` | — | Markdown report output path |
+| `--format=<name>` | `text`; `markdown` with `--output-file` | `text` / `markdown` / `json` / `junit` / `html`. Rendering of the primary report. See [CLI reference](cli.md#merge-output) |
+| `--output-file=<path>` | — | Primary report output path: the `--format` rendering, Markdown by default |
 | `--junit-output=<path>` | — | JUnit XML report output path (CI dashboards). See [Coverage output formats](ci.md#coverage-output-formats) |
 | `--json-output=<path>` | — | Machine-readable JSON report output path. Schema: [`coverage-json-schema.md`](coverage-json-schema.md) |
 | `--html-output=<path>` | — | Self-contained HTML report output path. See [`coverage-html-output.md`](coverage-html-output.md) |
@@ -59,6 +60,16 @@ vendor/bin/gesso coverage:merge \
 | `--coverage-baseline-stale=<mode>` | `note` | `off` / `note` / `fail`. How baseline entries that are covered now are reported |
 | `--expect-sidecars=<n>` | — | Fail unless exactly `n` sidecars are present. See [Sharded CI jobs](#sharded-ci-jobs) |
 | `--no-cleanup` | (cleanup is on by default) | Keep sidecar files after merge |
+| `--config=<path>` | `./gesso.php` when present | [`gesso.php`](configuration.md) to default the options above from |
+
+Without flags, the merge reads `./gesso.php` (or `--config`) and takes the
+same keys the PHPUnit extension does: `spec.*`, `coverage.*`, `strict.*.run`,
+`baseline.coverage` and `baseline_stale.coverage`, plus `baseline.violations`
+on a `GESSO_BASELINE_GENERATE=1` run (the only time the merge writes it). Paths
+in the file resolve against its directory. `coverage.report_output.markdown`
+defaults `--output-file` only when `--format` is not given, so `--format=json`
+still prints to stdout. An explicit flag wins over the file; `GESSO_CONSOLE_OUTPUT`
+still wins over both.
 
 Sidecar dir defaults are deliberately stable — workers and the merge CLI
 use the same `sys_get_temp_dir()/openapi-coverage-sidecars` path, so a
@@ -69,12 +80,24 @@ path if `sys_get_temp_dir()` is unavailable in your runner.
 On POSIX systems, Gesso creates a missing sidecar directory with mode `0700`
 and publishes sidecars and worker-failure markers with mode `0600`. For
 local-user safety, both workers and the merge command reject a `sidecar_dir`
-that is itself a symbolic link or is writable by group or other users. The
-merge command also rejects symbolic-link sidecar files instead of following
-them, and requires each sidecar to be non-group/world-writable. The
-permission-bit checks are not applied on Windows, whose ACL model is not
-represented by POSIX mode bits. Use a dedicated directory rather than `/tmp`
-itself; the default already does this.
+that is itself a symbolic link, is writable by group or other users, or is
+owned by a different user than the one running them. The merge command also
+rejects symbolic-link sidecar files instead of following them, and requires
+each sidecar to be non-group/world-writable and owned by the current user. The
+permission-bit and ownership checks are not applied on Windows, whose ACL model
+is not represented by POSIX mode bits; the ownership check also needs the
+`posix` extension. Use a dedicated directory rather than `/tmp` itself; the
+default already does this.
+
+## Exit codes
+
+| Code | Meaning |
+|---|---|
+| `0` | Merge completed; warnings may have been written to stderr. |
+| `1` | A gate failed (threshold, strict, baseline, expected shard count), a sidecar could not be read, or a report could not be written. |
+| `2` | Command-line usage is invalid. |
+
+Shared conventions: [CLI reference](cli.md#exit-codes).
 
 ## Sharded CI jobs
 
@@ -135,23 +158,19 @@ it owns those decisions for the whole matrix.
 ## Sidecar compatibility
 
 Sidecars are a versioned worker-to-merge protocol, separate from the coverage
-report produced by `json_output`. The current writer emits an
-`envelopeVersion: 8` envelope containing coverage state `version: 1`,
-strict-required state `version: 2`, and strict-additional-properties state
-`version: 1`, plus SDK exercise state `version: 1` and deprecation state
-`version: 1`. A baseline-generation run
-(`GESSO_BASELINE_GENERATE=1`) emits `envelopeVersion: 9` and adds the violation-baseline document
-(`baseline_version: 1`).
+report produced by `json_output`. The current writer emits
+`envelopeVersion: 10`: `coverage` is required, and `strictRequired`,
+`strictAdditionalProperties`, `sdkExercise`, `deprecations` and `baseline` are
+optional keys whose absence means the worker had no such tracker. Only a
+baseline-generation run (`GESSO_BASELINE_GENERATE=1`) writes `baseline`.
 
-The merge reader also accepts envelopes 2–7 and the older bare coverage state
-`version: 1`, so HTTP coverage can still be combined while a worker fleet is
-being upgraded. Envelopes 2/3 have no strict-additional-properties state,
-envelopes 2–5 have no SDK exercise state, and envelopes 2–7 have no deprecation
-state. A strict SDK exercise threshold
-therefore requires every worker on v6+; warn-only mode reports missing
-worker state and evaluates the available SDK observations. Likewise, plain
-envelopes carry no baseline data, so `--baseline-file` requires every worker
-to use a corresponding baseline envelope.
+The merge reader also accepts the legacy envelopes 2–9 and the older bare
+coverage state `version: 1`, so HTTP coverage can still be combined while a
+worker fleet is being upgraded. A missing half is reported, not treated as
+empty: a strict SDK exercise threshold requires every worker to carry SDK
+exercise state (warn-only mode reports the missing workers and evaluates the
+available observations), and `--baseline-file` requires every worker to carry
+the baseline half.
 
 Deprecation counts travel the same way. A worker never reaches the end-of-run
 report, so it stages its per-id counts in the envelope and `coverage:merge`
@@ -185,6 +204,17 @@ changing a sidecar shape or filename pattern.
   `--strict-required` flag decides whether to assert the gate; the
   `strict_required` parameter on the PHPUnit extension does not propagate
   to the merge step. See [`strict-required.md`](strict-required.md#paratest).
+- **Enum drift is evaluated once, by the process that starts the run.**
+  paratest bootstraps the extension in its master before spawning workers
+  (Pest `--parallel` does the same in its orchestrator). That process runs
+  the `enum_drift_*` scan and writes the single stderr /
+  `GITHUB_STEP_SUMMARY` block; a strict drift there aborts the run before any
+  worker starts. Workers (`TEST_TOKEN` set) skip the scan, and
+  `gesso coverage:merge` plays no part. `GESSO_SIDECAR_TOKEN` shards are
+  separate jobs and each evaluates once, as a sequential run does. A
+  sequential run whose environment pre-sets `TEST_TOKEN` is treated as a
+  worker and skips the scan too — unset `TEST_TOKEN`, or name shards with
+  `GESSO_SIDECAR_TOKEN` instead.
 - **Baseline generation aggregates across workers too.** An
   `GESSO_BASELINE_GENERATE=1` parallel run stages fingerprints in the
   sidecars; pass `--baseline-file=<path>` to the merge to write the union.

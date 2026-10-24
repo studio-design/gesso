@@ -16,8 +16,10 @@ use function bin2hex;
 use function chmod;
 use function fclose;
 use function fflush;
+use function fileowner;
 use function fileperms;
 use function fopen;
+use function function_exists;
 use function fwrite;
 use function getmypid;
 use function is_dir;
@@ -25,6 +27,7 @@ use function is_link;
 use function is_resource;
 use function json_encode;
 use function mkdir;
+use function posix_geteuid;
 use function preg_replace;
 use function random_bytes;
 use function rename;
@@ -32,6 +35,7 @@ use function rtrim;
 use function sprintf;
 use function strlen;
 use function substr;
+use function sys_get_temp_dir;
 use function unlink;
 
 /**
@@ -55,6 +59,9 @@ use function unlink;
  */
 final class CoverageSidecarWriter
 {
+    /** Stable default under the system temp dir, so the merge CLI finds it without coordination. */
+    public const DEFAULT_SUBDIR = 'openapi-coverage-sidecars';
+
     public const FAILURE_MARKER_PREFIX = 'failed-';
     public const FILENAME_PREFIX = 'part-';
     public const FILENAME_SUFFIX = '.json';
@@ -62,6 +69,11 @@ final class CoverageSidecarWriter
     private const TEMP_FILE_PREFIX = '.gesso-sidecar-';
 
     private function __construct() {}
+
+    public static function defaultDir(): string
+    {
+        return sys_get_temp_dir() . '/' . self::DEFAULT_SUBDIR;
+    }
 
     /**
      * @param array<string, mixed> $state from {@see OpenApiCoverageTracker::exportState()}
@@ -135,6 +147,9 @@ final class CoverageSidecarWriter
             $permissions = @fileperms($dir);
             if ($permissions !== false && ($permissions & 0o022) !== 0) {
                 throw new RuntimeException(sprintf('sidecar dir must not be writable by group or other users: "%s"', $dir));
+            }
+            if (function_exists('posix_geteuid') && @fileowner($dir) !== posix_geteuid()) {
+                throw new RuntimeException(sprintf('sidecar dir must be owned by the current user: "%s"', $dir));
             }
         }
 

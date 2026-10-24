@@ -152,7 +152,7 @@ No. The OpenAPI file lives in the repository and Gesso runs inside PHPUnit or Pe
 3.0.x, 3.1.x, and 3.2.x. `oneOf`/`anyOf`/`allOf`/`not` are validated in every supported dialect, and `discriminator` mappings are enforced rather than treated as a hint. 3.1 and 3.2 run against native JSON Schema 2020-12 semantics where the underlying validator supports them; the handful of 2019-09/2020-12 keywords the validator doesn't implement emit a one-shot warning rather than being silently ignored. 3.0 runs through a Draft 07 compatibility pipeline.
 
 **Can Gesso test consumer code, the way Pact does on the consumer side?**
-Not in the pact sense. Gesso validates HTTP traffic against a spec on either side of the wire, so you can point it at a consumer's outgoing requests to check they match the spec. It won't, however, record a pact that a provider then verifies — that workflow belongs to Pact.
+Not in the pact sense. Gesso validates HTTP traffic against a spec on either side of the wire, so you can point it at a consumer's outgoing requests to check they match the spec. It won't, however, record a pact that a provider then verifies — that workflow belongs to Pact. To fake an external API in your own tests from its OpenAPI document — `Http::fake()` or `MockHttpClient` answered from the spec, with every outgoing request validated — see [Consumer-side contract testing](consumer-side-contract-testing.md).
 
 **Does spec-driven testing catch the same regressions as consumer-driven testing?**
 It catches every drift between the implementation and the published spec. It does *not* catch consumer expectations that the spec never encoded — for example, a consumer that depends on an optional field always being present in practice, or on one particular enum value it branches on. The spec permits both variations; the pact records that this consumer needs one of them. If those expectations matter, Pact is complementary, not redundant.
@@ -162,7 +162,7 @@ Dredd is closer to spec-driven than consumer-driven — it runs the examples in 
 
 ## Next step
 
-If your API is spec-first and you want to try spec-driven contract testing today, start from the [Core quickstart](quickstarts/core.md), or jump straight to the framework you use: [Laravel](quickstarts/laravel.md), [Symfony](quickstarts/symfony.md), or [Pest](quickstarts/pest.md). See also [Contract testing a Symfony API with OpenAPI](contract-testing-symfony.md) for a full end-to-end walkthrough of the spec-driven path.
+If your API is spec-first and you want to try spec-driven contract testing today, start from the [Core quickstart](quickstarts/core.md), or jump straight to the framework you use: [Laravel](quickstarts/laravel.md), [Symfony](quickstarts/symfony.md), or [Pest](quickstarts/pest.md). See also [Contract testing a Symfony API with OpenAPI](contract-testing-symfony.md) for a full end-to-end walkthrough of the spec-driven path. If you consume someone else's OpenAPI-described API, [Consumer-side contract testing](consumer-side-contract-testing.md) shows how to fake it from that spec.
 
 If your integration surface is consumer-owned and you'd get more from pacts, the [Pact PHP documentation](https://docs.pact.io/implementation_guides/php/readme) is the right starting point — the choice is a fit question, not a loyalty one.
 

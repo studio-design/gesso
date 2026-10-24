@@ -37,8 +37,10 @@ use function fclose;
 use function file_get_contents;
 use function fopen;
 use function getcwd;
+use function getenv;
 use function is_writable;
 use function mkdir;
+use function putenv;
 use function restore_error_handler;
 use function rewind;
 use function rmdir;
@@ -55,10 +57,15 @@ class OpenApiCoverageExtensionTest extends TestCase
     /** @var null|resource */
     private $stderrBuffer;
     private ?string $githubSummaryTmp = null;
+    private false|string $previousTestToken = false;
 
     protected function setUp(): void
     {
         parent::setUp();
+        // Snapshot TEST_TOKEN so the enum-drift tests keep asserting the
+        // evaluating (non-worker) path even when this suite runs under paratest.
+        $this->previousTestToken = getenv('TEST_TOKEN');
+        putenv('TEST_TOKEN');
         OpenApiSpecLoader::reset();
         EnumScanner::reset();
         StrictAdditionalPropertiesPerCallChecker::reset();
@@ -90,6 +97,7 @@ class OpenApiCoverageExtensionTest extends TestCase
         StrictAdditionalPropertiesPerCallChecker::reset();
         StrictAdditionalPropertiesTracker::resetCurrent();
         SdkExerciseCoverageTracker::resetCurrent();
+        putenv($this->previousTestToken === false ? 'TEST_TOKEN' : 'TEST_TOKEN=' . $this->previousTestToken);
         parent::tearDown();
     }
 
@@ -851,6 +859,33 @@ class OpenApiCoverageExtensionTest extends TestCase
         $this->assertStringContainsString('FATAL OpenAPI enum drift', $contents);
         $this->assertStringContainsString('DriftingNotification', $contents);
         $this->assertStringContainsString('PHP-only', $contents);
+    }
+
+    #[Test]
+    public function bootstrap_skips_enum_drift_in_a_paratest_worker(): void
+    {
+        $tmp = tempnam(sys_get_temp_dir(), 'openapi-enum-summary-');
+        if ($tmp === false) {
+            $this->fail('Could not create temp file for GITHUB_STEP_SUMMARY');
+        }
+        $this->githubSummaryTmp = $tmp;
+        putenv('TEST_TOKEN=2');
+
+        $extension = new OpenApiCoverageExtension();
+        $parameters = ParameterCollection::fromArray([
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => 'refs-valid',
+            'enum_drift_enabled' => 'true',
+            'enum_drift_scan_namespaces' => 'Studio\\Gesso\\Tests\\Unit\\PHPUnit\\Fixture\\EnumDrift\\Drifting\\',
+            'enum_drift_fail_on_drift' => 'true',
+        ]);
+
+        // The paratest master is the single evaluator; a worker must neither
+        // throw nor duplicate the stderr line or the step-summary block.
+        $extension->setupExtension(null, $parameters, $tmp);
+
+        $this->assertStringNotContainsString('[OpenAPI Enum Drift]', $this->readStderr());
+        $this->assertSame('', (string) file_get_contents($tmp));
     }
 
     #[Test]

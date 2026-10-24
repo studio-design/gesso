@@ -23,6 +23,7 @@ use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 use Symfony\Component\HttpFoundation\Request as SymfonyRequest;
 
 use function array_filter;
+use function array_keys;
 use function array_map;
 use function array_values;
 use function count;
@@ -42,6 +43,8 @@ use function scandir;
 use function sort;
 use function str_contains;
 use function str_replace;
+use function strtolower;
+use function substr;
 use function substr_count;
 use function sys_get_temp_dir;
 use function uniqid;
@@ -96,6 +99,22 @@ class StubsCommandTest extends TestCase
         }
     }
 
+    /** @return iterable<string, array{string}> */
+    public static function provideA_method_key_that_would_leave_the_output_directory_is_refusedCases(): iterable
+    {
+        yield 'slash' => ['X/../../escaped/Evil'];
+        yield 'backslash' => ['X\\..\\..\\escaped\\Evil'];
+        yield 'nul' => ["X\0Evil"];
+    }
+
+    /** @return iterable<string, array{string}> */
+    public static function provideA_custom_method_key_cannot_inject_code_into_the_class_declarationCases(): iterable
+    {
+        yield 'phpunit' => ['phpunit'];
+        yield 'laravel' => ['laravel'];
+        yield 'symfony' => ['symfony'];
+    }
+
     #[Test]
     public function parses_every_supported_flag(): void
     {
@@ -110,10 +129,11 @@ class StubsCommandTest extends TestCase
                 'namespace' => 'Tests\Contract',
                 'base_class' => 'Tests\TestCase',
                 'request_prefix' => '/api',
+                'format' => 'json',
+                'output_file' => 'build/stubs.json',
                 'dry_run' => true,
             ],
             StubsCommand::parseArgv([
-                'stubs',
                 '--spec=openapi.json',
                 '--coverage=build/coverage.json',
                 '--spec-name=front',
@@ -122,6 +142,8 @@ class StubsCommandTest extends TestCase
                 '--namespace=Tests\Contract',
                 '--base-class=Tests\TestCase',
                 '--request-prefix=/api',
+                '--format=json',
+                '--output-file=build/stubs.json',
                 '--dry-run',
             ]),
         );
@@ -151,6 +173,16 @@ class StubsCommandTest extends TestCase
             $this->command()->run(StubsCommand::parseArgv(['--spec=x.json', '--adapter=codeception'])),
         );
         $this->assertStringContainsString('Unsupported --adapter=codeception', $this->stderr);
+    }
+
+    #[Test]
+    public function a_stray_positional_token_is_a_usage_error(): void
+    {
+        $options = StubsCommand::parseArgv(['stubs', '--spec=x.json']);
+        $this->assertSame(['stubs'], $options['invalid_options']);
+
+        $this->assertSame(StubsCommand::EXIT_USAGE, $this->command()->run($options));
+        $this->assertStringStartsWith('[Gesso] Unknown argument(s): stubs', $this->stderr);
     }
 
     #[Test]
@@ -658,6 +690,87 @@ class StubsCommandTest extends TestCase
                 $contentType,
             );
         }
+    }
+
+    #[Test]
+    public function json_format_lists_written_skipped_and_not_stubbed(): void
+    {
+        $spec = $this->writeInlineSpec('siblings', [
+            '/things' => ['get' => ['responses' => ['200' => [
+                'content' => [
+                    'application/json' => ['schema' => ['type' => 'object', 'required' => ['exact'], 'properties' => ['exact' => ['type' => 'integer']]]],
+                    'application/*' => ['schema' => ['type' => 'object', 'required' => ['range'], 'properties' => ['range' => ['type' => 'integer']]]],
+                ],
+            ]]]],
+            '/pets' => ['get' => ['responses' => ['200' => ['content' => ['application/json' => ['schema' => ['type' => 'array']]]]]]],
+        ]);
+        mkdir($this->workDir . '/out');
+        file_put_contents($this->workDir . '/out/GetThingsTest.php', '<?php');
+
+        $exit = $this->command()->run(StubsCommand::parseArgv([
+            '--spec=' . $spec,
+            '--output=' . $this->workDir . '/out',
+            '--format=json',
+            '--dry-run',
+        ]));
+
+        $this->assertSame(StubsCommand::EXIT_OK, $exit);
+        $report = json_decode($this->stdout, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertIsArray($report);
+        $this->assertSame(['schemaVersion', 'tool', 'dry_run', 'output_dir', 'written', 'skipped', 'not_stubbed'], array_keys($report));
+        $this->assertSame(StubsCommand::JSON_SCHEMA_VERSION, $report['schemaVersion']);
+        $this->assertTrue($report['dry_run']);
+        $this->assertSame([$this->workDir . '/out/GetPetsTest.php'], $report['written']);
+        $this->assertSame([$this->workDir . '/out/GetThingsTest.php'], $report['skipped']);
+        $this->assertSame([['reason' => 'unreachable', 'detail' => 'GET /things  200 application/*']], $report['not_stubbed']);
+        $this->assertSame(['GetThingsTest.php'], $this->generatedFiles());
+    }
+
+    #[Test]
+    public function json_format_when_nothing_is_left_to_stub(): void
+    {
+        $coverage = $this->writeCoverage([
+            'GET /pets' => [['200', 'application/json', 'validated']],
+            'POST /pets' => [['201', 'application/json', 'validated']],
+        ]);
+
+        $exit = $this->command()->run(StubsCommand::parseArgv([
+            '--spec=' . $this->writeSpec(),
+            '--coverage=' . $coverage,
+            '--format=json',
+        ]));
+
+        $this->assertSame(StubsCommand::EXIT_OK, $exit);
+        $report = json_decode($this->stdout, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertIsArray($report);
+        $this->assertSame([], $report['written']);
+        $this->assertSame([], $report['skipped']);
+    }
+
+    #[Test]
+    public function unsupported_format_is_a_usage_error(): void
+    {
+        $this->assertSame(
+            StubsCommand::EXIT_USAGE,
+            $this->command()->run(StubsCommand::parseArgv(['--spec=x.json', '--format=yaml'])),
+        );
+        $this->assertStringContainsString('[Gesso] Unsupported --format=yaml.', $this->stderr);
+    }
+
+    #[Test]
+    public function output_file_receives_the_same_bytes_as_stdout(): void
+    {
+        $spec = $this->writeSpec();
+        $argv = ['--spec=' . $spec, '--output=' . $this->workDir . '/out', '--dry-run'];
+
+        $this->assertSame(StubsCommand::EXIT_OK, $this->command()->run(StubsCommand::parseArgv($argv)));
+        $expected = $this->stdout;
+
+        $this->stdout = '';
+        $file = $this->workDir . '/summary.txt';
+        $this->assertSame(StubsCommand::EXIT_OK, $this->command()->run(StubsCommand::parseArgv([...$argv, '--output-file=' . $file])));
+        $this->assertSame('', $this->stdout);
+        $this->assertSame($expected, file_get_contents($file));
     }
 
     #[Test]
@@ -1221,6 +1334,112 @@ class StubsCommandTest extends TestCase
     }
 
     #[Test]
+    public function a_header_name_cannot_break_out_of_its_line_comment(): void
+    {
+        $spec = $this->writeInlineSpec('headercomment', ['/pets' => ['get' => [
+            'parameters' => [[
+                'name' => "X\r\n}}system('id');?>class Q{function f(){//",
+                'in' => 'header',
+                'required' => true,
+                'schema' => ['type' => 'string'],
+            ]],
+            'responses' => ['200' => ['content' => ['application/json' => ['schema' => ['type' => 'object']]]]],
+        ]]]);
+
+        $exit = $this->command()->run(StubsCommand::parseArgv([
+            '--spec=' . $spec,
+            '--output=' . $this->workDir . '/out',
+        ]));
+
+        $this->assertSame(StubsCommand::EXIT_OK, $exit);
+        $file = $this->workDir . '/out/GetPetsTest.php';
+        $code = (string) file_get_contents($file);
+        // The payload is valid PHP once it escapes, so lint alone would pass:
+        // pin that it stays on the comment line instead.
+        $this->assertStringContainsString("// Required request headers: X  }}system('id');? >class Q{function f(){//.\n", $code);
+        $this->assertStringNotContainsString("\r", $code);
+        $this->assertStringNotContainsString('?>', $code);
+        $this->assertSame(0, $this->lint($file));
+    }
+
+    #[Test]
+    public function a_custom_method_key_cannot_break_out_of_its_line_comment(): void
+    {
+        // No `/` in the key: it also names the generated file.
+        $spec = $this->writeInlineSpec('methodcomment', ['/things' => ['additionalOperations' => ["COPY\r\n}}system('id');?>#" => [
+            'requestBody' => ['required' => true, 'content' => ['application/x-www-form-urlencoded' => [
+                'schema' => ['type' => 'object'],
+                'example' => ['name' => 'a'],
+            ]]],
+            'responses' => ['200' => ['content' => ['application/json' => ['schema' => ['type' => 'object']]]]],
+        ]]]]);
+
+        $this->command()->run(StubsCommand::parseArgv([
+            '--spec=' . $spec,
+            '--adapter=laravel',
+            '--output=' . $this->workDir . '/out',
+        ]));
+
+        $files = $this->generatedFiles();
+        $this->assertCount(1, $files);
+        $code = (string) file_get_contents($this->workDir . '/out/' . $files[0]);
+        $this->assertStringContainsString("// to the query bag for COPY  }}system('id');? >#, so they would never reach the body.\n", $code);
+    }
+
+    #[DataProvider('provideA_custom_method_key_cannot_inject_code_into_the_class_declarationCases')]
+    #[Test]
+    public function a_custom_method_key_cannot_inject_code_into_the_class_declaration(string $adapter): void
+    {
+        $operation = ['responses' => ['200' => ['content' => ['application/json' => ['schema' => ['type' => 'object']]]]]];
+        $spec = $this->writeInlineSpec('classinject', ['/things' => ['additionalOperations' => [
+            "X{};print('review_marker');class Y" => $operation,
+            'VERSION-CONTROL' => $operation,
+            '1X' => $operation,
+        ]]]);
+
+        $exit = $this->command()->run(StubsCommand::parseArgv([
+            '--spec=' . $spec,
+            '--adapter=' . $adapter,
+            '--output=' . $this->workDir . '/out',
+        ]));
+
+        $this->assertSame(StubsCommand::EXIT_OK, $exit);
+        $this->assertSame(
+            ['Operation1xThingsTest.php', 'VersionControlThingsTest.php', 'XPrintReviewMarkerClassYThingsTest.php'],
+            $this->generatedFiles(),
+        );
+        foreach ($this->generatedFiles() as $file) {
+            $code = (string) file_get_contents($this->workDir . '/out/' . $file);
+            $this->assertMatchesRegularExpression('/^final class ' . substr($file, 0, -4) . ' extends \\w+$/m', $code);
+            $this->assertSame(0, $this->lint($this->workDir . '/out/' . $file));
+        }
+    }
+
+    #[Test]
+    public function class_names_differing_only_in_case_are_disambiguated(): void
+    {
+        $operation = ['responses' => ['200' => ['content' => ['application/json' => ['schema' => ['type' => 'object']]]]]];
+        $spec = $this->writeInlineSpec('casecollide', ['/things' => ['additionalOperations' => [
+            'VERSION-CONTROL' => $operation,
+            'VERSIONCONTROL' => $operation,
+        ]]]);
+
+        $exit = $this->command()->run(StubsCommand::parseArgv([
+            '--spec=' . $spec,
+            '--adapter=laravel',
+            '--output=' . $this->workDir . '/out',
+        ]));
+
+        $this->assertSame(StubsCommand::EXIT_OK, $exit);
+        $files = $this->generatedFiles();
+        $this->assertCount(2, $files);
+        foreach ($files as $file) {
+            $this->assertMatchesRegularExpression('/^Version[Cc]ontrolThings[0-9a-f]{7}Test\.php$/i', $file);
+        }
+        $this->assertNotSame(strtolower($files[0]), strtolower($files[1]));
+    }
+
+    #[Test]
     public function a_shadowing_entry_document_is_rejected(): void
     {
         // The loader resolves a name and searches .json before .yaml, so
@@ -1510,6 +1729,29 @@ class StubsCommandTest extends TestCase
         ])));
         $this->assertStringContainsString('phpunit', $this->stderr);
         $this->assertDirectoryDoesNotExist($this->workDir . '/out');
+    }
+
+    #[DataProvider('provideA_method_key_that_would_leave_the_output_directory_is_refusedCases')]
+    #[Test]
+    public function a_method_key_that_would_leave_the_output_directory_is_refused(string $method): void
+    {
+        $operation = ['responses' => ['200' => ['description' => 'ok']]];
+        $spec = $this->writeInlineSpec('escape', ['/things' => ['additionalOperations' => [
+            'VERSION-CONTROL' => $operation,
+            $method => $operation,
+        ]]]);
+        $argv = ['--spec=' . $spec, '--adapter=pest', '--output=' . $this->workDir . '/out'];
+
+        $this->assertSame(StubsCommand::EXIT_USAGE, $this->command()->run(StubsCommand::parseArgv([...$argv, '--dry-run'])));
+        $this->assertStringNotContainsString('Would write', $this->stdout);
+        $this->assertDirectoryDoesNotExist($this->workDir . '/out');
+
+        $this->stderr = '';
+        $this->assertSame(StubsCommand::EXIT_USAGE, $this->command()->run(StubsCommand::parseArgv($argv)));
+        $this->assertStringContainsString('/things', $this->stderr);
+        $this->assertDirectoryDoesNotExist($this->workDir . '/escaped');
+        // A name that stays inside --output keeps the file name it always had.
+        $this->assertSame(['Version-controlThingsTest.php'], $this->generatedFiles());
     }
 
     private function command(): StubsCommand

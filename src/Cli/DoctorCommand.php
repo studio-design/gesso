@@ -21,10 +21,12 @@ use GuzzleHttp\Psr7\HttpFactory;
 use InvalidArgumentException;
 use Psr\Http\Client\ClientInterface;
 use Psr\Http\Message\RequestFactoryInterface;
+use RuntimeException;
 use Studio\Gesso\Exception\InvalidOpenApiSpecException;
 use Studio\Gesso\Exception\MalformedDiscriminatorException;
 use Studio\Gesso\Exception\SpecFileNotFoundException;
 use Studio\Gesso\Internal\ArgvParser;
+use Studio\Gesso\Internal\CliDocuments;
 use Studio\Gesso\Internal\CliIo;
 use Studio\Gesso\Internal\HttpRefLoader;
 use Studio\Gesso\Internal\ToolVersion;
@@ -38,7 +40,9 @@ use Studio\Gesso\Validation\Request\SecurityValidator;
 use Studio\Gesso\Validation\Support\BodyStructureInspector;
 use Studio\Gesso\Validation\Support\DiscriminatorContext;
 use Studio\Gesso\Validation\Support\MalformedSpecNode;
+use Symfony\Component\HttpClient\HttpClient;
 use Symfony\Component\HttpClient\Psr18Client;
+use Symfony\Contracts\HttpClient\HttpClientInterface;
 use Throwable;
 
 use function array_key_exists;
@@ -72,11 +76,12 @@ use function strlen;
 use function strtoupper;
 use function substr;
 use function trim;
+use function var_export;
 
 /**
  * Pre-test compatibility diagnostics for one or more OpenAPI documents.
  *
- * @phpstan-type DoctorOptions array{specs?: list<string>, strip_prefixes?: list<string>, remote_ref_hosts?: list<string>, acknowledged_unvalidatable_schemes?: list<string>, remote_ref_max_bytes?: int|string, local_ref_root?: string, format?: string, allow_remote_refs?: bool, phpunit_snippet?: bool, help?: bool, invalid_options?: list<string>}
+ * @phpstan-type DoctorOptions array{specs?: list<string>, strip_prefixes?: list<string>, remote_ref_hosts?: list<string>, acknowledged_unvalidatable_schemes?: list<string>, remote_ref_max_bytes?: int|string, local_ref_root?: string, format?: string, output_file?: string, allow_remote_refs?: bool, phpunit_snippet?: bool, emit_config?: bool, help?: bool, invalid_options?: list<string>}
  * @phpstan-type DoctorIssue array{severity: 'error'|'warning'|'skipped', category: string, spec: ?string, message: string, suggestion: ?string}
  * @phpstan-type SpecResult array{path: string, name: string, openapi: string, dialect: string, operations: int, responses: int}
  *
@@ -87,9 +92,8 @@ final class DoctorCommand
     use CliIo;
 
     public const JSON_SCHEMA_VERSION = 1;
-    public const EXIT_OK = 0;
-    public const EXIT_DIAGNOSTIC_FAILURE = 1;
-    public const EXIT_USAGE = 2;
+    public const EXIT_DIAGNOSTIC_FAILURE = self::EXIT_FAILURE;
+    private const USAGE_PREFIX = '[OpenAPI Doctor]';
 
     /** @param null|callable(string): void $stdoutWriter */
     public function __construct(
@@ -109,9 +113,8 @@ final class DoctorCommand
         /** @var DoctorOptions */
         return ArgvParser::parse(
             $argv,
-            'doctor',
-            flags: ['allow_remote_refs', 'phpunit_snippet'],
-            values: ['format', 'remote_ref_max_bytes', 'local_ref_root'],
+            flags: ['allow_remote_refs', 'phpunit_snippet', 'emit_config'],
+            values: ['format', 'output_file', 'remote_ref_max_bytes', 'local_ref_root'],
             lists: [
                 'spec' => 'specs',
                 'strip_prefix' => 'strip_prefixes',
@@ -135,6 +138,7 @@ final class DoctorCommand
               --local-ref-root=<dir>     Filesystem boundary for local refs (default: each
                                          entry document's directory).
               --format=text|json         Output format (default: text).
+              --output-file=<path>       Write the report there instead of stdout.
               --allow-remote-refs        Resolve HTTP(S) refs with an installed Guzzle or
                                          Symfony PSR-18 implementation.
               --remote-ref-host=<host>   Exact host allowed for HTTP(S) refs. Required with
@@ -147,6 +151,9 @@ final class DoctorCommand
                                          needed. Mirrors the acknowledged_unvalidatable_schemes
                                          PHPUnit / Laravel setting.
               --phpunit-snippet          Include the equivalent PHPUnit extension XML.
+              --emit-config              Print the equivalent gesso.php to stdout (the
+                                         report goes to stderr or --output-file).
+                                         Redirect: > gesso.php
               --help                     Show this message.
 
             Exit codes:
@@ -168,13 +175,14 @@ final class DoctorCommand
 
         $format = $options['format'] ?? 'text';
         $invalid = $options['invalid_options'] ?? [];
-        if (!in_array($format, ['text', 'json'], true) || $invalid !== [] || ($options['specs'] ?? []) === []) {
-            $message = $invalid !== []
-                ? 'Unknown argument(s): ' . implode(', ', $invalid)
-                : (($options['specs'] ?? []) === [] ? 'At least one --spec is required.' : "Unsupported --format={$format}.");
-            $this->writeUsageError($message);
-
-            return self::EXIT_USAGE;
+        if ($invalid !== []) {
+            return $this->usageError('Unknown argument(s): ' . implode(', ', $invalid), self::USAGE_PREFIX);
+        }
+        if (($options['specs'] ?? []) === []) {
+            return $this->usageError('At least one --spec is required.', self::USAGE_PREFIX);
+        }
+        if (!in_array($format, ['text', 'json'], true)) {
+            return $this->usageError("Unsupported --format={$format}.", self::USAGE_PREFIX);
         }
 
         $allowRemoteRefs = $options['allow_remote_refs'] ?? false;
@@ -183,69 +191,89 @@ final class DoctorCommand
             $message = $allowRemoteRefs
                 ? '--allow-remote-refs requires at least one --remote-ref-host.'
                 : '--remote-ref-host requires --allow-remote-refs.';
-            $this->writeUsageError($message);
 
-            return self::EXIT_USAGE;
+            return $this->usageError($message, self::USAGE_PREFIX);
         }
 
         $hasRemoteRefMaxBytes = array_key_exists('remote_ref_max_bytes', $options);
         if ($hasRemoteRefMaxBytes && !$allowRemoteRefs) {
-            $this->writeUsageError('--remote-ref-max-bytes requires --allow-remote-refs.');
-
-            return self::EXIT_USAGE;
+            return $this->usageError('--remote-ref-max-bytes requires --allow-remote-refs.', self::USAGE_PREFIX);
         }
         $maxRemoteRefBytes = $hasRemoteRefMaxBytes
             ? filter_var($options['remote_ref_max_bytes'], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]])
             : HttpRefLoader::DEFAULT_MAX_RESPONSE_BYTES;
         if ($maxRemoteRefBytes === false) {
-            $this->writeUsageError('--remote-ref-max-bytes must be a positive integer.');
-
-            return self::EXIT_USAGE;
+            return $this->usageError('--remote-ref-max-bytes must be a positive integer.', self::USAGE_PREFIX);
         }
 
         if (array_key_exists('local_ref_root', $options)) {
             $localRefRoot = realpath(trim($options['local_ref_root']));
             if ($localRefRoot === false || !is_dir($localRefRoot)) {
-                $this->writeUsageError('--local-ref-root must be an existing directory.');
-
-                return self::EXIT_USAGE;
+                return $this->usageError('--local-ref-root must be an existing directory.', self::USAGE_PREFIX);
             }
             $options['local_ref_root'] = $localRefRoot;
         }
 
         $transport = $allowRemoteRefs ? $this->remoteTransport() : null;
+        $specResults = [];
+        $issues = [];
         if ($allowRemoteRefs && $transport === null) {
-            $report = $this->report([], [[
+            $issues[] = [
                 'severity' => 'error',
                 'category' => 'dependency',
                 'spec' => null,
                 'message' => '--allow-remote-refs requires an installed PSR-18/PSR-17 implementation.',
                 'suggestion' => 'Install guzzlehttp/guzzle + guzzlehttp/psr7, or symfony/http-client.',
-            ]], $options);
-            $this->render($report, $format);
-
-            return self::EXIT_DIAGNOSTIC_FAILURE;
-        }
-
-        $specResults = [];
-        $issues = [];
-        foreach ($options['specs'] as $path) {
-            $this->diagnoseSpec(
-                $path,
-                $options['strip_prefixes'] ?? [],
-                $allowRemoteRefs,
-                $remoteRefHosts,
-                $maxRemoteRefBytes,
-                $options['local_ref_root'] ?? null,
-                $transport,
-                $options['acknowledged_unvalidatable_schemes'] ?? [],
-                $specResults,
-                $issues,
-            );
+            ];
+        } else {
+            foreach ($options['specs'] as $path) {
+                $this->diagnoseSpec(
+                    $path,
+                    $options['strip_prefixes'] ?? [],
+                    $allowRemoteRefs,
+                    $remoteRefHosts,
+                    $maxRemoteRefBytes,
+                    $options['local_ref_root'] ?? null,
+                    $transport,
+                    $options['acknowledged_unvalidatable_schemes'] ?? [],
+                    $specResults,
+                    $issues,
+                );
+            }
         }
 
         $report = $this->report($specResults, $issues, $options);
-        $this->render($report, $format);
+        $emitConfig = $options['emit_config'] ?? false;
+        $basePath = $this->sharedSpecBasePath($specResults, $options['local_ref_root'] ?? null);
+        if ($emitConfig && $specResults !== [] && $basePath === null) {
+            return $this->usageError(
+                '--emit-config requires every --spec to share one directory; pass --local-ref-root=<dir>.',
+                self::USAGE_PREFIX,
+            );
+        }
+        $rendered = $this->render($report, $format);
+
+        try {
+            if ($emitConfig && ($options['output_file'] ?? '') === '') {
+                // stdout carries only the gesso.php source, so `> gesso.php` works.
+                $this->writeStderr($rendered);
+            } else {
+                $this->writeReport($rendered, $options['output_file'] ?? null);
+            }
+        } catch (RuntimeException $e) {
+            return $this->usageError($e->getMessage(), self::USAGE_PREFIX);
+        }
+
+        // A rejected spec emits nothing: an empty redirected gesso.php fails
+        // loudly on the next load instead of configuring a suite from it.
+        if ($emitConfig && $basePath !== null && $report['status'] !== 'error') {
+            $this->writeStdout($this->gessoConfigSource(
+                $specResults,
+                $options['strip_prefixes'] ?? [],
+                $basePath,
+                $options['acknowledged_unvalidatable_schemes'] ?? [],
+            ));
+        }
 
         foreach ($issues as $issue) {
             if ($issue['severity'] === 'error') {
@@ -261,6 +289,14 @@ final class DoctorCommand
         $root = rtrim($root, '/\\');
 
         return $path === $root || str_starts_with($path, $root . DIRECTORY_SEPARATOR);
+    }
+
+    private static function symfonyHttpClientWithoutRedirects(): HttpClientInterface
+    {
+        // Symfony follows up to 20 redirects by default, below HttpRefLoader's
+        // --remote-ref-host check. Returning the 3xx lets HttpRefLoader reject
+        // it, matching Guzzle's PSR-18 behaviour.
+        return HttpClient::create(['max_redirects' => 0]);
     }
 
     /**
@@ -317,24 +353,17 @@ final class DoctorCommand
             ? pathinfo($path, PATHINFO_FILENAME) . '.' . $extension
             : substr($path, strlen(rtrim($localRefRoot, '/\\')) + 1);
         $name = substr($relativePath, 0, -(strlen($extension) + 1));
-        foreach (['json', 'yaml', 'yml'] as $candidateExtension) {
-            $candidate = $basePath . '/' . $name . '.' . $candidateExtension;
-            if (!is_file($candidate)) {
-                continue;
-            }
-            if (realpath($candidate) !== realpath($path)) {
-                $issues[] = $this->issue(
-                    'error',
-                    'configuration',
-                    $label,
-                    sprintf('The runtime loader selects `%s` before the requested `%s`.', $candidate, $path),
-                    'Remove or rename the shadowing entry document so the doctor and PHPUnit select the same spec.',
-                );
+        $shadowing = CliDocuments::shadowingEntry($basePath, $name, $path);
+        if ($shadowing !== null) {
+            $issues[] = $this->issue(
+                'error',
+                'configuration',
+                $label,
+                sprintf('The runtime loader selects `%s` before the requested `%s`.', $shadowing, $path),
+                'Remove or rename the shadowing entry document so the doctor and PHPUnit select the same spec.',
+            );
 
-                return;
-            }
-
-            break;
+            return;
         }
         $warnings = [];
         set_error_handler(static function (int $severity, string $message) use (&$warnings): bool {
@@ -581,10 +610,11 @@ final class DoctorCommand
             return [new Client(), new HttpFactory()];
         }
         if (class_exists(Psr18Client::class)) {
-            $client = new Psr18Client();
-            if ($client instanceof ClientInterface && $client instanceof RequestFactoryInterface) {
-                return [$client, $client];
-            }
+            // Psr18Client is both the PSR-18 client and a PSR-17 request
+            // factory (since symfony/http-client 4.3).
+            $client = new Psr18Client(self::symfonyHttpClientWithoutRedirects());
+
+            return [$client, $client];
         }
 
         return null;
@@ -780,12 +810,10 @@ final class DoctorCommand
     }
 
     /** @param array<string, mixed> $report */
-    private function render(array $report, string $format): void
+    private function render(array $report, string $format): string
     {
         if ($format === 'json') {
-            $this->writeStdout(json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n");
-
-            return;
+            return json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n";
         }
 
         /** @var array{specs: int, operations: int, responses: int, errors: int, warnings: int, skipped: int} $summary */
@@ -807,7 +835,8 @@ final class DoctorCommand
         if (is_string($report['phpunit'])) {
             $lines[] = "\nEquivalent PHPUnit configuration:\n" . $report['phpunit'];
         }
-        $this->writeStdout(implode("\n", $lines) . "\n");
+
+        return implode("\n", $lines) . "\n";
     }
 
     /**
@@ -820,20 +849,12 @@ final class DoctorCommand
         if ($specs === []) {
             return null;
         }
-        $basePath = $localRefRoot ?? dirname($specs[0]['path']);
-        if ($localRefRoot === null) {
-            foreach ($specs as $spec) {
-                if (dirname($spec['path']) !== $basePath) {
-                    return '<!-- Specs use different directories; one PHPUnit extension instance requires a shared spec_base_path. -->';
-                }
-            }
+        $basePath = $this->sharedSpecBasePath($specs, $localRefRoot);
+        if ($basePath === null) {
+            return '<!-- Specs use different directories; one PHPUnit extension instance requires a shared spec_base_path. -->';
         }
         $names = implode(',', array_map(static fn(array $spec): string => $spec['name'], $specs));
         $prefixes = implode(',', $stripPrefixes);
-        $cwd = getcwd();
-        if ($cwd !== false && str_starts_with($basePath, rtrim($cwd, '/') . '/')) {
-            $basePath = substr($basePath, strlen(rtrim($cwd, '/')) + 1);
-        }
         $basePath = htmlspecialchars($basePath, ENT_XML1 | ENT_QUOTES, 'UTF-8');
         $names = htmlspecialchars($names, ENT_XML1 | ENT_QUOTES, 'UTF-8');
         $prefixLine = $prefixes === '' ? '' : "\n        <parameter name=\"strip_prefixes\" value=\"" . htmlspecialchars($prefixes, ENT_XML1 | ENT_QUOTES, 'UTF-8') . '"/>';
@@ -849,6 +870,84 @@ final class DoctorCommand
                 </bootstrap>
             </extensions>
             XML;
+    }
+
+    /**
+     * The one spec directory every entry document shares, relative to the cwd
+     * when it is the cwd or lies below it (a portable path); `null` when there are no specs, or when they live
+     * in different directories and no `--local-ref-root` names a common one.
+     *
+     * @param list<SpecResult> $specs
+     */
+    private function sharedSpecBasePath(array $specs, ?string $localRefRoot): ?string
+    {
+        if ($specs === []) {
+            return null;
+        }
+        $basePath = $localRefRoot ?? dirname($specs[0]['path']);
+        if ($localRefRoot === null) {
+            foreach ($specs as $spec) {
+                if (dirname($spec['path']) !== $basePath) {
+                    return null;
+                }
+            }
+        }
+        $cwd = getcwd();
+        if ($cwd !== false) {
+            $cwd = rtrim($cwd, '/');
+            if ($basePath === $cwd) {
+                return '.';
+            }
+            if (str_starts_with($basePath, $cwd . '/')) {
+                $basePath = substr($basePath, strlen($cwd) + 1);
+            }
+        }
+
+        return $basePath;
+    }
+
+    /**
+     * The `gesso.php` equivalent of {@see self::phpunitSnippet()}. The base path
+     * is cwd-relative, which is what `gesso.php` resolves against when the file
+     * is written to the cwd.
+     *
+     * @param list<SpecResult> $specs
+     * @param list<string> $stripPrefixes
+     * @param list<string> $acknowledgedSchemes
+     */
+    private function gessoConfigSource(array $specs, array $stripPrefixes, string $basePath, array $acknowledgedSchemes): string
+    {
+        $list = static fn(array $values): string => '[' . implode(', ', array_map(
+            static fn(string $value): string => var_export($value, true),
+            $values,
+        )) . ']';
+
+        $spec = [
+            "        'base_path' => " . var_export($basePath, true) . ',',
+            "        'names' => " . $list(array_map(static fn(array $spec): string => $spec['name'], $specs)) . ',',
+        ];
+        if ($stripPrefixes !== []) {
+            $spec[] = "        'strip_prefixes' => " . $list($stripPrefixes) . ',';
+        }
+        $lines = [
+            '<?php',
+            '',
+            'declare(strict_types=1);',
+            '',
+            '// Generated by `gesso doctor --emit-config`. Keys: docs/configuration.md',
+            'return [',
+            "    'spec' => [",
+            ...$spec,
+            '    ],',
+        ];
+        if ($acknowledgedSchemes !== []) {
+            $lines[] = "    'validation' => [";
+            $lines[] = "        'acknowledged_unvalidatable_schemes' => " . $list($acknowledgedSchemes) . ',';
+            $lines[] = '    ],';
+        }
+        $lines[] = '];';
+
+        return implode("\n", $lines) . "\n";
     }
 
     private function categoryForException(InvalidOpenApiSpecException $e): string
@@ -868,11 +967,6 @@ final class DoctorCommand
         }
 
         return 'spec';
-    }
-
-    private function writeUsageError(string $message): void
-    {
-        $this->writeStderr("[OpenAPI Doctor] {$message}\n\n" . self::usage($this->invocation));
     }
 
     private function suggestionForException(InvalidOpenApiSpecException $e): ?string

@@ -63,6 +63,18 @@ structural rules as runtime validation. Previously clean doctor runs may now
 fail with `structure` errors; repair the reported nodes before running tests.
 No flags, exit codes, diagnostic categories, or versioned wire formats change.
 
+The Symfony and PSR-7 assertion traits now default `openApiSpec()`,
+`openApiMaxErrors()`, `openApiSkipResponseCodes()`, and
+`openApiSkipRequestValidationResponseCodes()` to the shared configuration
+(`gesso.php`, or the `default_spec` / `max_errors` / `skip_response_codes` /
+`skip_request_validation_response_codes` extension parameters). Suites that
+set none of these see no change. A suite that sets them for the
+framework-agnostic path now applies them to Symfony and PSR-7 assertions too —
+for example `skip_response_codes=""` now validates 5xx bodies there. Override
+the hook to keep a different per-suite value. The Symfony trait gains the two
+skip-code hooks PSR-7 already had; per-call `$extraSkipResponseCodes` add to
+`openApiSkipResponseCodes()` instead of to the built-in 5xx default.
+
 ## Deprecations
 
 Every surface v3 removes or renames is deprecated in a v2 minor first, per the
@@ -110,6 +122,13 @@ nothing there.
 | 2.7.0 | `coverage_baseline_file` (PHPUnit parameter) | `baseline['coverage']` in `gesso.php` | 3.0 |
 | 2.7.0 | `baseline_stale` (PHPUnit parameter) | `baseline_stale['violations']` in `gesso.php` | 3.0 |
 | 2.7.0 | `coverage_baseline_stale` (PHPUnit parameter) | `baseline_stale['coverage']` in `gesso.php` | 3.0 |
+| 2.7.0 | `Studio\Gesso\Fuzz\ContractCheck` | `Studio\Gesso\Contract\ContractCheck` | 3.0 |
+| 2.7.0 | `Studio\Gesso\Fuzz\ContractCheckPlan` | `Studio\Gesso\Contract\ContractCheckPlan` | 3.0 |
+| 2.7.0 | `Studio\Gesso\Fuzz\ContractCheckProbe` (`@internal`) | `Studio\Gesso\Contract\ContractCheckProbe` | 3.0 |
+| 2.7.0 | `Studio\Gesso\Fuzz\ContractCheckFailure` | `Studio\Gesso\Contract\ContractCheckFailure` | 3.0 |
+| 2.7.0 | `Studio\Gesso\Fuzz\ContractCheckSkip` | `Studio\Gesso\Contract\ContractCheckSkip` | 3.0 |
+| 2.7.0 | `Studio\Gesso\Fuzz\ContractCheckSummary` | `Studio\Gesso\Contract\ContractCheckSummary` | 3.0 |
+| 2.7.0 | `Studio\Gesso\Fuzz\OpenApiContractChecks` | `Studio\Gesso\Contract\OpenApiContractChecks` | 3.0 |
 
 The behaviour-equivalent replacement is
 `laravel.auto_inject_dummy_credentials = 'bearer'`, which
@@ -153,6 +172,21 @@ The table mirrors `tests/fixtures/compatibility/v2-deprecations.json`, which a
 test keeps in sync with the emitters in `src/`. The `Deprecated in` column names
 the release that started warning, not the release that introduced the
 replacement.
+
+The named contract checks moved from `Studio\Gesso\Fuzz\` to
+`Studio\Gesso\Contract\` ([#503](https://github.com/studio-design/gesso/issues/503)).
+Migration is an import rewrite. The old names keep resolving through a lazy
+`class_alias()` loader (`src/Contract/Autoload.php`), removed in v3.0. The
+notice fires when an old name is what loads the class; an old name first
+referenced after Gesso already loaded the class through its new name resolves
+silently, so a run without notices does not prove the migration is complete —
+search for `Studio\Gesso\Fuzz\ContractCheck` and
+`Studio\Gesso\Fuzz\OpenApiContractChecks` instead. An alias is source
+compatibility, not a second identity: `get_class()`, reflection, and
+`serialize()` report the `Studio\Gesso\Contract\` name, so code comparing
+literal FQCN strings must switch now. Generator types (`ExploredCase`,
+`ExploredOperation`, `OpenApiSpecExplorer`, …) stay in `Studio\Gesso\Fuzz\`
+and are not aliased.
 
 ### Renamed environment variables and Artisan commands
 
@@ -206,12 +240,37 @@ surface contract). Minor releases are additive by default, but "additive" does
 not mean "no behaviour changes" — a fix that closes a silent-pass gap changes
 what your suite reports.
 
-Only v2.4.0 has a section below. Earlier v2 minors carry behavioural fixes that
+Besides the sidecar note below, only v2.4.0 has a section. Earlier v2 minors carry behavioural fixes that
 were never written up here: v2.2.0 stopped applying the coverage threshold gate
 to partial runs (#453) and v2.3.0 began rejecting `null` response content
 (#466), among others. If you are jumping from v2.0.x, v2.1.x, or v2.2.x, read
 the `### Bug Fixes` entries for each intermediate release in `CHANGELOG.md`;
 this file cannot be relied on to list them.
+
+### Unreleased: Laravel validator cache per test case
+
+The Laravel `ValidatesOpenApiSchema` trait now caches its validators on the
+test-case instance instead of in process-wide statics, as the Symfony adapter
+already did. PHPUnit builds a fresh test case per test method, so each test
+reads its own `gesso.max_errors` / `gesso.skip_*` config and
+`self::resetValidatorCache()` (`@internal`) is no longer needed; delete it from
+`setUp()` / `tearDown()` (the Pest example did). It stays callable, but now
+only forgets which responses were already validated.
+
+One consequence: the validators are built on the first request or assertion
+of a test, so change those settings before then (in `setUp()` or at the top of
+the test). A change made after that point no longer rebuilds the validators
+within the same test method.
+
+### Sidecar envelope version 10
+
+Paratest workers on this release write sidecar `envelopeVersion: 10`, where
+each tracker half is an optional key instead of a new version number. A
+`gesso coverage:merge` from an older 2.x release rejects it as an unknown
+version — as every previous envelope bump did — so upgrade the merge step
+together with the workers. The 2.x merge keeps reading envelopes 2–9 and the
+bare v1 coverage state; dropping them is a v3.0 change (see
+[versioned sidecar compatibility](docs/versioning.md#versioned-sidecar-compatibility)).
 
 ### From v2.3.0 → v2.4.0
 

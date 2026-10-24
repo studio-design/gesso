@@ -40,8 +40,9 @@ Laravel discovers its application-root `gesso.php` automatically. Keep the
 usual `ValidatesOpenApiSchema` trait and assertions in your tests. You do not
 need to publish `config/gesso.php` for this setup.
 
-`spec.names` lists the specs PHPUnit must load and include in coverage;
-`spec.default` selects the fallback for assertions. Set both as above for a
+`spec.names` lists the specs PHPUnit must load and include in coverage (and
+that `gesso:routes` compares when `--spec` is absent); `spec.default` selects
+the fallback for assertions. Set both as above for a
 single-spec project. `spec.strip_prefixes` controls matching, independently
 of the `--request-prefix` option used to generate test requests.
 
@@ -50,6 +51,9 @@ of the `--request-prefix` option used to generate test requests.
 - PHPUnit resolves the `config` parameter relative to the selected PHPUnit XML
   file. Without the parameter, it looks for `gesso.php` beside that XML file.
   If no XML file is selected, it uses the working directory.
+- `vendor/bin/gesso coverage:merge` and `coverage:gate` read `--config`
+  (relative to the working directory), or `gesso.php` in the working
+  directory when the flag is absent.
 - Laravel looks in `Application::basePath()`, independently of the working
   directory. A custom PHPUnit config path should point to that same root file
   when sharing settings with Laravel.
@@ -80,10 +84,14 @@ preserves the prefixes configured in bootstrap.
   parameters, then declared shared settings, then existing defaults.
 - Laravel: existing `config('gesso.…')` values, then declared shared settings,
   then package defaults. Arrays are replaced as whole values, not concatenated.
+- CLI: explicit flag, then declared shared settings, then the built-in
+  default; environment variables keep their existing priority.
 - Explicit per-test and per-call overrides keep their existing priority.
 
-To migrate, copy values into the root file, remove their matching XML
-parameters, and remove the copied keys from `config/gesso.php`. Once all values
+To migrate, start from `vendor/bin/gesso doctor --spec=… --emit-config > gesso.php`
+([doctor](doctor.md#generate-a-gessophp)) or copy values into the root file,
+then remove their matching XML parameters and the copied keys from
+`config/gesso.php`. Once all values
 have moved, delete `config/gesso.php` and clear any Laravel configuration cache.
 Leaving copies behind means each adapter's old values still win, which can
 keep the two adapters inconsistent. `vendor:publish --tag=gesso` still publishes
@@ -123,7 +131,7 @@ require both Bearer and an API key. The named mode does not use the deprecated
 | --- | --- | --- |
 | `spec.base_path` | `spec_base_path` | `spec_base_path` |
 | `spec.default` | `default_spec` | `default_spec` |
-| `spec.names` | `specs` | — |
+| `spec.names` | `specs` | `specs` |
 | `spec.strip_prefixes` | `strip_prefixes` | `strip_prefixes` |
 | `validation.max_errors` | `max_errors` | `max_errors` |
 | `validation.enforce_discriminator` | `enforce_discriminator` | `enforce_discriminator` |
@@ -145,15 +153,22 @@ require both Bearer and an API key. The named mode does not use the deprecated
 | `laravel.auto_assert` | — | `auto_assert` |
 | `laravel.auto_validate_request` | — | `auto_validate_request` |
 | `laravel.auto_inject_dummy_credentials` | — | `auto_inject_dummy_credentials` |
-| `laravel.route_parity.external_operation_ids` / `.external_openapi_paths` | — | `route_parity.external_operation_ids` / `.external_openapi_paths` |
+| `laravel.route_parity.external_operation_ids` / `.external_openapi_paths` / `.excluded_route_names` | — | `route_parity.external_operation_ids` / `.external_openapi_paths` / `.excluded_route_names` |
+
+Enum-valued keys are matched after trimming and lower-casing, exactly like the
+equivalent PHPUnit parameters; the canonical lower-case value is what the
+surfaces receive.
 
 Use the existing [setup](setup.md) and [coverage](coverage.md) guides for each
 setting's behavior. `enum_spec_base_path` remains an XML-only v2 compatibility
 setting; it has no shared successor.
 
 This step connects PHPUnit and Laravel, including `gesso:routes` and
-`gesso:stubs`. Standalone `vendor/bin/gesso` commands still require their existing
-flags. PSR-7 and Symfony adapter-specific policy hooks are unchanged; this does
-not yet migrate all adapters or implement the complete
+`gesso:stubs`, and the `coverage:merge` / `coverage:gate` defaults (see
+[parallel runners](parallel.md) and [coverage gate](coverage-gate.md)). The
+PSR-7 and Symfony policy hooks (`openApiSpec()`, `openApiMaxErrors()`,
+`openApiSkipResponseCodes()`, `openApiSkipRequestValidationResponseCodes()`)
+default to the shared `spec.default` and `validation.*` values; an override
+still wins. This does not yet migrate every surface or implement the complete
 [v3 configuration plan](adr/0005-v3-configuration-and-cli-naming.md).
 Legacy-input deprecations and removals are separate follow-up work.

@@ -30,7 +30,7 @@ use function realpath;
 use function sprintf;
 
 /**
- * Input documents the `gesso stubs` / `gesso coverage:gate` commands read:
+ * Input documents the `gesso` subcommands read:
  * an OpenAPI entry document resolved through the runtime loader, and one
  * spec's entry in a `schema_version: 3` coverage JSON.
  *
@@ -60,27 +60,16 @@ final class CliDocuments
             throw new RuntimeException("Unsupported spec extension: .{$extension} ({$inputPath})");
         }
 
-        // The loader resolves a *name*, searching .json before .yaml before
-        // .yml, so `--spec=openapi.yaml` next to an openapi.json would silently
-        // pick the JSON document instead. Fail the way `gesso doctor` does
-        // rather than act on a file the user did not name.
         $directory = pathinfo($path, PATHINFO_DIRNAME);
         $name = pathinfo($path, PATHINFO_FILENAME);
-        foreach (['json', 'yaml', 'yml'] as $candidateExtension) {
-            $candidate = $directory . '/' . $name . '.' . $candidateExtension;
-            if (!is_file($candidate)) {
-                continue;
-            }
-            if (realpath($candidate) !== realpath($path)) {
-                throw new RuntimeException(sprintf(
-                    'The runtime loader selects %s before the requested %s. '
-                    . 'Remove or rename the shadowing entry document.',
-                    $candidate,
-                    $inputPath,
-                ));
-            }
-
-            break;
+        $shadowing = self::shadowingEntry($directory, $name, $path);
+        if ($shadowing !== null) {
+            throw new RuntimeException(sprintf(
+                'The runtime loader selects %s before the requested %s. '
+                . 'Remove or rename the shadowing entry document.',
+                $shadowing,
+                $inputPath,
+            ));
         }
 
         try {
@@ -96,6 +85,26 @@ final class CliDocuments
         } finally {
             OpenApiSpecLoader::reset();
         }
+    }
+
+    /**
+     * The entry document the runtime loader would select for `$name` under
+     * `$directory` when that is not `$path` itself. The loader resolves a *name*,
+     * searching .json before .yaml before .yml, so `openapi.yaml` next to an
+     * `openapi.json` silently loses to it. Null when `$path` is what the loader picks.
+     */
+    public static function shadowingEntry(string $directory, string $name, string $path): ?string
+    {
+        foreach (['json', 'yaml', 'yml'] as $extension) {
+            $candidate = $directory . '/' . $name . '.' . $extension;
+            if (!is_file($candidate)) {
+                continue;
+            }
+
+            return realpath($candidate) !== realpath($path) ? $candidate : null;
+        }
+
+        return null;
     }
 
     /**

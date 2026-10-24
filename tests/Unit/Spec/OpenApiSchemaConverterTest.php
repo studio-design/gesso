@@ -13,6 +13,7 @@ use Studio\Gesso\OpenApiVersion;
 use Studio\Gesso\SchemaContext;
 use Studio\Gesso\Spec\OpenApiRefResolver;
 use Studio\Gesso\Spec\OpenApiSchemaConverter;
+use Studio\Gesso\Tests\Helpers\GroupsSchemaViolations;
 use Studio\Gesso\Validation\Support\DiscriminatorContext;
 use Studio\Gesso\Validation\Support\ObjectConverter;
 use Studio\Gesso\Validation\Support\SchemaValidatorRunner;
@@ -23,6 +24,8 @@ use function str_contains;
 
 class OpenApiSchemaConverterTest extends TestCase
 {
+    use GroupsSchemaViolations;
+
     protected function setUp(): void
     {
         // Reset the converter's "warned-once" set. The set is process-global,
@@ -1350,22 +1353,22 @@ class OpenApiSchemaConverterTest extends TestCase
 
         $this->assertSame(
             [],
-            $runner->validate($schemaObject, ObjectConverter::convert((object) ['kind' => 'Cat', 'meow' => true])),
+            self::groupedErrors($runner, $schemaObject, ObjectConverter::convert((object) ['kind' => 'Cat', 'meow' => true])),
             'an implicit Cat mapping must be selected before defaultMapping',
         );
         $this->assertSame(
             [],
-            $runner->validate($schemaObject, ObjectConverter::convert((object) ['kind' => 'doggo', 'bark' => true])),
+            self::groupedErrors($runner, $schemaObject, ObjectConverter::convert((object) ['kind' => 'doggo', 'bark' => true])),
             'an explicit mapping must continue to override the implicit schema name',
         );
         $this->assertSame(
             [],
-            $runner->validate($schemaObject, ObjectConverter::convert((object) ['kind' => 'unknown', 'other' => true])),
+            self::groupedErrors($runner, $schemaObject, ObjectConverter::convert((object) ['kind' => 'unknown', 'other' => true])),
             'an unmapped value must use defaultMapping',
         );
         $this->assertNotSame(
             [],
-            $runner->validate($schemaObject, ObjectConverter::convert((object) ['kind' => 'Cat', 'other' => true])),
+            self::groupedErrors($runner, $schemaObject, ObjectConverter::convert((object) ['kind' => 'Cat', 'other' => true])),
             'a known implicit value must not be routed to defaultMapping',
         );
     }
@@ -1515,17 +1518,17 @@ class OpenApiSchemaConverterTest extends TestCase
 
         $this->assertSame(
             [],
-            $runner->validate($schemaObject, ObjectConverter::convert((object) ['kind' => 'cat', 'meow' => true])),
+            self::groupedErrors($runner, $schemaObject, ObjectConverter::convert((object) ['kind' => 'cat', 'meow' => true])),
             'a truthful cat body must validate',
         );
         $this->assertNotSame(
             [],
-            $runner->validate($schemaObject, ObjectConverter::convert((object) ['kind' => 'cat', 'bark' => true])),
+            self::groupedErrors($runner, $schemaObject, ObjectConverter::convert((object) ['kind' => 'cat', 'bark' => true])),
             'a body claiming kind=cat but carrying Dog-only fields must fail',
         );
         $this->assertNotSame(
             [],
-            $runner->validate($schemaObject, ObjectConverter::convert((object) ['kind' => 'fish', 'meow' => true])),
+            self::groupedErrors($runner, $schemaObject, ObjectConverter::convert((object) ['kind' => 'fish', 'meow' => true])),
             'an unknown discriminator value must fail the guard',
         );
     }
@@ -1609,12 +1612,12 @@ class OpenApiSchemaConverterTest extends TestCase
 
         $this->assertNotSame(
             [],
-            $runner->validate($schemaObject, ObjectConverter::convert(null)),
+            self::groupedErrors($runner, $schemaObject, ObjectConverter::convert(null)),
             'a null body must fail the discriminated-object branch',
         );
         $this->assertSame(
             [],
-            $runner->validate($schemaObject, ObjectConverter::convert((object) ['kind' => 'cat', 'meow' => true])),
+            self::groupedErrors($runner, $schemaObject, ObjectConverter::convert((object) ['kind' => 'cat', 'meow' => true])),
             'a valid cat body still validates',
         );
     }
@@ -2381,7 +2384,8 @@ class OpenApiSchemaConverterTest extends TestCase
             OpenApiVersion::V3_1,
         );
 
-        $errors = $runner->validate(
+        $errors = self::groupedErrors(
+            $runner,
             ObjectConverter::convert($schema),
             ObjectConverter::convert((object) ['kind' => 'tuple', 'data' => [123, 'oops']]),
         );
@@ -2410,7 +2414,8 @@ class OpenApiSchemaConverterTest extends TestCase
             SchemaContext::Response,
         );
 
-        $errors = $runner->validate(
+        $errors = self::groupedErrors(
+            $runner,
             ObjectConverter::convert($schema),
             ObjectConverter::convert((object) [
                 'x-meta' => (object) ['secret' => 'leaked', 'public' => 'ok'],
@@ -2443,7 +2448,8 @@ class OpenApiSchemaConverterTest extends TestCase
             OpenApiVersion::V3_1,
         );
 
-        $errors = $runner->validate(
+        $errors = self::groupedErrors(
+            $runner,
             ObjectConverter::convert($schema),
             ObjectConverter::convert((object) ['x-tuple' => [123, 'oops']]),
         );
@@ -2872,7 +2878,8 @@ class OpenApiSchemaConverterTest extends TestCase
             OpenApiVersion::V3_0,
         );
 
-        $errors = $runner->validate(
+        $errors = self::groupedErrors(
+            $runner,
             ObjectConverter::convert($schema),
             ObjectConverter::convert((object) ['anything' => 'x', 'whatever' => 1]),
         );
@@ -2908,7 +2915,8 @@ class OpenApiSchemaConverterTest extends TestCase
         $runner = new SchemaValidatorRunner(20);
         $this->assertSame(
             [],
-            $runner->validate(
+            self::groupedErrors(
+                $runner,
                 ObjectConverter::convert($result),
                 ObjectConverter::convert((object) ['kind' => 'any', 'whatever' => 1]),
             ),
@@ -2943,7 +2951,8 @@ class OpenApiSchemaConverterTest extends TestCase
         $runner = new SchemaValidatorRunner(20);
         $this->assertSame(
             [],
-            $runner->validate(
+            self::groupedErrors(
+                $runner,
                 ObjectConverter::convert($result),
                 ObjectConverter::convert((object) ['kind' => 'unmapped']),
             ),
@@ -2957,7 +2966,7 @@ class OpenApiSchemaConverterTest extends TestCase
         $runner = new SchemaValidatorRunner(20);
         $schema = OpenApiSchemaConverter::convert(['not' => []], OpenApiVersion::V3_0);
 
-        $this->assertNotSame([], $runner->validate(ObjectConverter::convert($schema), 'anything'));
+        $this->assertNotSame([], self::groupedErrors($runner, ObjectConverter::convert($schema), 'anything'));
     }
 
     /**

@@ -49,7 +49,6 @@ class ValidatesOpenApiSchemaAutoValidateRequestTest extends TestCase
 
     protected function tearDown(): void
     {
-        self::resetValidatorCache();
         unset($GLOBALS['__openapi_testing_config']);
         OpenApiSpecLoader::reset();
         OpenApiCoverageTracker::reset();
@@ -644,12 +643,11 @@ class ValidatesOpenApiSchemaAutoValidateRequestTest extends TestCase
     }
 
     #[Test]
-    public function request_validator_cache_invalidates_when_skip_codes_config_changes(): void
+    public function request_validator_reads_skip_codes_config_per_test_case(): void
     {
-        // The trait's cache is keyed on (maxErrors, skipRequestValidationResponseCodes).
-        // When the second value changes mid-test (e.g. one test toggles it off
-        // for strict assertions), the cached validator must be rebuilt or the
-        // new config silently won't take effect.
+        // The validator is cached per TestCase instance (#554). A config
+        // change made after one test case built its validator must still
+        // reach the next test case, which PHPUnit constructs fresh.
         $GLOBALS['__openapi_testing_config']['gesso.auto_validate_request'] = true;
         $GLOBALS['__openapi_testing_config']['gesso.default_spec'] = 'request-validation-skip';
 
@@ -658,14 +656,15 @@ class ValidatesOpenApiSchemaAutoValidateRequestTest extends TestCase
         $request = $this->makeJsonRequest('POST', '/exact-422', []);
         $this->maybeAutoValidateOpenApiRequest($request, HttpMethod::POST, '/exact-422', 422);
 
-        // Toggle to strict mode mid-test — the cached validator must be
-        // rebuilt with the new (empty) skip set so the next call fails loud.
+        // Strict mode for the next test case: its validator is built with the
+        // new (empty) skip set, so the call fails loud.
         $GLOBALS['__openapi_testing_config']['gesso.skip_request_validation_response_codes'] = [];
+        $other = new self($this->name());
 
         $this->expectException(AssertionFailedError::class);
         $this->expectExceptionMessage('OpenAPI request validation failed');
 
-        $this->maybeAutoValidateOpenApiRequest(
+        $other->maybeAutoValidateOpenApiRequest(
             $this->makeJsonRequest('POST', '/exact-422', []),
             HttpMethod::POST,
             '/exact-422',

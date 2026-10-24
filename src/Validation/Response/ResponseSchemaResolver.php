@@ -55,13 +55,16 @@ final class ResponseSchemaResolver
     private array $pathMatchers = [];
 
     /**
-     * Stage 1: load the spec and resolve the operation's `responses` map.
+     * Stage 0: load the spec, match the path, and resolve the operation —
+     * without inspecting its `responses` map. This is also the request
+     * validator's traversal, so the `paths` / path-item / operation guard
+     * diagnostics exist exactly once.
      *
      * Spec-loading failures (unknown name, undecodable document) throw the
      * loader's usual exceptions; everything below that surfaces as a
      * structured outcome.
      */
-    public function resolveOperation(string $specName, string $method, string $requestPath): ResponseOperationResolution
+    public function locateOperation(string $specName, string $method, string $requestPath): ResponseOperationResolution
     {
         $spec = OpenApiSpecLoader::load($specName);
 
@@ -88,15 +91,17 @@ final class ResponseSchemaResolver
         /** @var string[] $specPaths */
         $specPaths = array_keys($spec['paths'] ?? []);
         $matcher = $this->pathMatchers[$specName] ??= new OpenApiPathMatcher($specPaths, OpenApiSpecLoader::getStripPrefixes());
-        $matchedPath = $matcher->match($requestPath);
+        $matched = $matcher->matchWithVariables($requestPath);
 
-        if ($matchedPath === null) {
+        if ($matched === null) {
             return ResponseOperationResolution::pathNotFound(
                 $specName,
                 $method,
                 PathDiagnosticsFormatter::pathNotFound($specName, $method, $requestPath, $matcher, $spec),
             );
         }
+
+        $matchedPath = $matched['path'];
 
         // `$matchedPath` is always a key of `$spec['paths']` (the matcher was
         // built from its `array_keys()`), so `?? null` here only fires for an
@@ -115,6 +120,7 @@ final class ResponseSchemaResolver
             ), $matchedPath);
         }
 
+        /** @var array<string, mixed> $pathSpec */
         $resolvedOperation = OpenApiOperationResolver::resolve($pathSpec, $method);
         if (!$resolvedOperation['found']) {
             return ResponseOperationResolution::methodNotDefined(
@@ -141,6 +147,46 @@ final class ResponseSchemaResolver
         }
 
         /** @var array<string, mixed> $operation */
+        return ResponseOperationResolution::resolved(
+            $specName,
+            $method,
+            $matchedPath,
+            $spec,
+            $version,
+            $jsonSchemaDialect,
+            $matched['variables'],
+            $pathSpec,
+            $operation,
+        );
+    }
+
+    /**
+     * Stage 1: stage 0 plus the operation's `responses` map guard. The guard
+     * lives here, not in stage 0, because the request validator reads
+     * `responses` leniently (its skip-downgrade) and must not gain a failure
+     * mode (ADR 0004 reduction rule).
+     */
+    public function resolveOperation(string $specName, string $method, string $requestPath): ResponseOperationResolution
+    {
+        $located = $this->locateOperation($specName, $method, $requestPath);
+        if ($located->outcome !== ResponseSchemaResolutionOutcome::Resolved) {
+            return $located;
+        }
+
+        if ($located->matchedPath === null ||
+            $located->spec === null ||
+            $located->version === null ||
+            $located->jsonSchemaDialect === null ||
+            $located->pathVariables === null ||
+            $located->pathSpec === null ||
+            $located->operation === null
+        ) {
+            throw new LogicException('Located operation resolution must carry the spec, dialect, matched path, variables, path item, and operation.');
+        }
+
+        $matchedPath = $located->matchedPath;
+        $operation = $located->operation;
+
         // `array_key_exists` (not `?? []`) so a present-but-`null` `responses`
         // is caught by the guard below as malformed, while a genuinely absent
         // `responses` key still falls back to an empty map (resolved later as
@@ -151,7 +197,7 @@ final class ResponseSchemaResolver
             return ResponseOperationResolution::malformedSpec($specName, $method, sprintf(
                 "Malformed 'paths[\"%s\"].%s.responses' for %s %s in '%s' spec: expected object, got %s.",
                 $matchedPath,
-                $operationLocation,
+                OpenApiOperationResolver::resolve($located->pathSpec, $method)['location'],
                 $method,
                 $matchedPath,
                 $specName,
@@ -164,9 +210,12 @@ final class ResponseSchemaResolver
             $specName,
             $method,
             $matchedPath,
-            $spec,
-            $version,
-            $jsonSchemaDialect,
+            $located->spec,
+            $located->version,
+            $located->jsonSchemaDialect,
+            $located->pathVariables,
+            $located->pathSpec,
+            $operation,
             $responses,
         );
     }

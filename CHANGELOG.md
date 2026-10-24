@@ -10,6 +10,46 @@ the README for the full surface contract.
 
 ## Unreleased
 
+## [2.7.1](https://github.com/studio-design/gesso/compare/v2.7.0...v2.7.1) (2026-10-24)
+
+
+### Bug Fixes
+
+* **cli:** disable redirects for the symfony client in doctor ([#637](https://github.com/studio-design/gesso/issues/637)) ([a8aa59d](https://github.com/studio-design/gesso/commit/a8aa59d2de5cf5ba220754d0cea045b37802584c))
+* **coverage:merge:** neutralize control characters in merge output ([#640](https://github.com/studio-design/gesso/issues/640)) ([10b7a7c](https://github.com/studio-design/gesso/commit/10b7a7c1f224a82a089009db33331f6d295d43e2))
+* **coverage:** reject sidecar directories and files owned by another user ([#638](https://github.com/studio-design/gesso/issues/638)) ([91c1549](https://github.com/studio-design/gesso/commit/91c154913addd5136b5d95fbda73d9eb9e200be6))
+* **internal:** redact php auth headers and url userinfo in curl repros ([#635](https://github.com/studio-design/gesso/issues/635)) ([464cedf](https://github.com/studio-design/gesso/commit/464cedf8f0c94b1b362703ca211346a3f3e28be2))
+* **spec:** redact credentials from remote ref diagnostics ([#636](https://github.com/studio-design/gesso/issues/636)) ([6ebe336](https://github.com/studio-design/gesso/commit/6ebe3366968e5ef79ce4b28c3359458ad97525dd))
+* **stubs:** keep generated files inside the output directory and comments single-line ([#639](https://github.com/studio-design/gesso/issues/639)) ([6c17649](https://github.com/studio-design/gesso/commit/6c17649b787206674d4bd181d56e28d71f48403b))
+
+## [2.7.0](https://github.com/studio-design/gesso/compare/v2.6.0...v2.7.0) (2026-10-23)
+
+
+### Features
+
+* **adapters:** default the symfony and psr-7 policy hooks from the shared configuration ([#614](https://github.com/studio-design/gesso/issues/614)) ([a44de39](https://github.com/studio-design/gesso/commit/a44de39f1d878bc02d29e25e42337c55c17e455c))
+* **adapters:** spec-driven http client fakes for consumer-side contract testing ([#617](https://github.com/studio-design/gesso/issues/617)) ([1ac0609](https://github.com/studio-design/gesso/commit/1ac060962ac93ed9764c09837d3cc199966533c4))
+* **cli:** accept --format and --output-file on every gesso subcommand ([#620](https://github.com/studio-design/gesso/issues/620)) ([d61d272](https://github.com/studio-design/gesso/commit/d61d272920d870d3c56e1c6eb5800a4b1727d360))
+* **cli:** default coverage:merge and coverage:gate from gesso.php via --config ([#626](https://github.com/studio-design/gesso/issues/626)) ([c40877d](https://github.com/studio-design/gesso/commit/c40877d719b42d77bb667e246de1750f8e4630f6))
+* **config:** share configuration between phpunit and laravel ([#593](https://github.com/studio-design/gesso/issues/593)) ([cfd51e4](https://github.com/studio-design/gesso/commit/cfd51e49ee328f1fab4299afe2c2c6bb98dbb097))
+* **contract:** move named contract checks to the Contract namespace behind a deprecated Fuzz alias ([#608](https://github.com/studio-design/gesso/issues/608)) ([fd09867](https://github.com/studio-design/gesso/commit/fd0986733056bedc3bb0474857ebf04b6fefb8c2))
+* **doctor:** emit an equivalent gesso.php with --emit-config ([#627](https://github.com/studio-design/gesso/issues/627)) ([4928950](https://github.com/studio-design/gesso/commit/49289502a0dd00c898884ba75b4155173dec6a6f))
+* **enum-drift:** evaluate enum drift once per paratest run ([#613](https://github.com/studio-design/gesso/issues/613)) ([22d66a5](https://github.com/studio-design/gesso/commit/22d66a54328cee77ec04844cb305ee598b11f4b7))
+* **laravel:** read route-side parity exclusions and the spec list from config ([#621](https://github.com/studio-design/gesso/issues/621)) ([7100c9b](https://github.com/studio-design/gesso/commit/7100c9b42d5ac29d9fa13c35b12a8a95f3f4a655))
+* **stubs:** support explicit request prefixes ([#592](https://github.com/studio-design/gesso/issues/592)) ([0a4bb67](https://github.com/studio-design/gesso/commit/0a4bb6769b2ce03e194c2e8a4e7cdb22cbf07673))
+* **validation:** honor form encoding style, explode, and part headers ([#619](https://github.com/studio-design/gesso/issues/619)) ([1ac648b](https://github.com/studio-design/gesso/commit/1ac648b135a3fbdf1db3827e0f3d38c16986e9ba))
+* **validation:** preserve body boundaries across adapters and doctor ([#566](https://github.com/studio-design/gesso/issues/566)) ([b305a8c](https://github.com/studio-design/gesso/commit/b305a8c21d11aa9add02b9f6c10805202405270e))
+
+
+### Bug Fixes
+
+* **ci:** resolve phpstan 2.3 findings and pin dev analysis tools ([#600](https://github.com/studio-design/gesso/issues/600)) ([53a47f1](https://github.com/studio-design/gesso/commit/53a47f1d2be006306828862ce98e947c81f73478))
+* **config:** lower-case setting values without ext-mbstring ([#570](https://github.com/studio-design/gesso/issues/570)) ([53a728f](https://github.com/studio-design/gesso/commit/53a728f0831aa388edff425c9c6434ea776c0907))
+* **config:** normalise gesso.php enum values like the extension parameters ([#609](https://github.com/studio-design/gesso/issues/609)) ([e127a4b](https://github.com/studio-design/gesso/commit/e127a4b0b90fd64604156b528d52a391d296ebb7))
+* **docs:** update locked vue and source-map-js past high advisories ([#601](https://github.com/studio-design/gesso/issues/601)) ([35bd5d3](https://github.com/studio-design/gesso/commit/35bd5d3eeda4e34e37587666dab80f1ecd6ba53d))
+* **phpunit:** tolerate the sealed event facade in the pest --parallel orchestrator ([#599](https://github.com/studio-design/gesso/issues/599)) ([8a0f745](https://github.com/studio-design/gesso/commit/8a0f74541748653c804455c06b1f0843782ce4d3))
+* **validation:** decode adapter JSON bodies as objects so a nested {} is not read as [] ([#561](https://github.com/studio-design/gesso/issues/561)) ([006aeaa](https://github.com/studio-design/gesso/commit/006aeaad962040af37576efb1bf7649566fc8001))
+
 ## [2.6.0](https://github.com/studio-design/gesso/compare/v2.5.0...v2.6.0) (2026-08-12)
 
 

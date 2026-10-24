@@ -25,6 +25,8 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 use Symfony\Component\HttpKernel\HttpKernelBrowser;
 use Symfony\Component\HttpKernel\HttpKernelInterface;
 
+use function base64_encode;
+
 #[OpenApiSpec('petstore-3.0')]
 final class OpenApiAssertionsTest extends TestCase
 {
@@ -325,6 +327,29 @@ final class OpenApiAssertionsTest extends TestCase
             $this->assertStringContainsString("--data '{}'", $e->getMessage());
             $this->assertStringContainsString(': <redacted>', $e->getMessage());
             $this->assertStringNotContainsString('real-token', $e->getMessage());
+        }
+    }
+
+    #[Test]
+    public function request_failure_reproduction_omits_decoded_basic_auth_credentials(): void
+    {
+        $request = Request::create(
+            '/v1/pets',
+            'POST',
+            [],
+            [],
+            [],
+            ['CONTENT_TYPE' => 'application/json', 'HTTP_AUTHORIZATION' => 'Basic ' . base64_encode('svc:hunter2')],
+            '{}',
+        );
+
+        try {
+            $this->assertRequestMatchesOpenApiSchema($request);
+            $this->fail('Expected the request assertion to fail.');
+        } catch (AssertionFailedError $e) {
+            $this->assertStringContainsString("-H 'authorization: <redacted>'", $e->getMessage());
+            $this->assertStringNotContainsString('hunter2', $e->getMessage());
+            $this->assertStringNotContainsString('php-auth', $e->getMessage());
         }
     }
 

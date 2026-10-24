@@ -170,7 +170,7 @@ with nothing to contradict it.
 | --- | --- |
 | `spec.base_path` | `spec_base_path` (extension + Laravel) |
 | `spec.default` | Laravel `default_spec` |
-| `spec.names` | `specs` |
+| `spec.names` | `specs` (extension + Laravel) |
 | `spec.strip_prefixes` | `strip_prefixes` (extension + Laravel) |
 | `validation.format` | `validation_output` |
 | `validation.max_errors` | Laravel `max_errors` |
@@ -195,6 +195,13 @@ with nothing to contradict it.
 | `laravel.auto_inject_dummy_credentials` | Laravel `auto_inject_dummy_credentials` → `laravel.auto_inject_dummy_credentials`, `auto_inject_dummy_bearer` → `laravel.auto_inject_dummy_credentials = 'bearer'` (the legacy key's behaviour becomes the value `bearer`) |
 | `laravel.route_parity` | Laravel `route_parity` |
 | — removed — | `enum_spec_base_path` (#508) |
+
+Amendment, 2026-10-13: #485 adds the leaf
+`laravel.route_parity.excluded_route_names` under the existing
+`laravel.route_parity` section and bridges `spec.names` to the Laravel command
+surface as `specs`; both are deleted by their existing rows. The Laravel v2 key
+count above becomes 14 (43 declarations, five duplicated pairs), so the 38
+distinct settings and 26 v3 keys are unchanged.
 
 `baseline` and `baseline_stale` are top-level keys rather than a `baseline`
 section with four leaves: under rule 1 the array must transcribe #502's two string

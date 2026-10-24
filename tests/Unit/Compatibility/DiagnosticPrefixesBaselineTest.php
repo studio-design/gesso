@@ -15,15 +15,20 @@ use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 use SplFileInfo;
 
+use function array_diff;
 use function array_fill_keys;
 use function array_filter;
 use function array_keys;
+use function array_unique;
+use function array_values;
 use function dirname;
 use function file_get_contents;
 use function in_array;
 use function is_array;
 use function json_decode;
 use function ksort;
+use function ltrim;
+use function preg_match;
 use function str_replace;
 use function substr_count;
 use function token_get_all;
@@ -34,23 +39,21 @@ final class DiagnosticPrefixesBaselineTest extends TestCase
     public function diagnostic_prefixes_match_the_v2_inventory(): void
     {
         $fixture = $this->fixture('v2-diagnostic-prefixes.json');
+        $sources = $this->sourceFiles();
+
+        // Discovery puts every prefix src/ emits into the accumulator, so one
+        // missing from the fixture fails the comparison below.
+        $prefixes = array_keys($fixture);
+        foreach ($sources as $contents) {
+            $prefixes = [...$prefixes, ...self::discoverPrefixes($contents)];
+        }
+        $prefixes = array_values(array_unique($prefixes));
+
         /** @var array<string, array<string, positive-int>|array{}> $actual */
-        $actual = array_fill_keys(array_keys($fixture), []);
-
-        foreach ($this->sourceFiles() as $file => $contents) {
-            foreach (token_get_all($contents) as $token) {
-                if (!is_array($token) || !in_array(
-                    $token[0],
-                    [T_CONSTANT_ENCAPSED_STRING, T_ENCAPSED_AND_WHITESPACE],
-                    true,
-                )) {
-                    continue;
-                }
-
-                // PHP token text retains the escape in a double-quoted
-                // `\$self`; normalize it to the emitted diagnostic prefix.
-                $literal = str_replace('\\$', '$', $token[1]);
-                foreach (array_keys($fixture) as $prefix) {
+        $actual = array_fill_keys($prefixes, []);
+        foreach ($sources as $file => $contents) {
+            foreach (self::stringLiterals($contents) as $literal) {
+                foreach ($prefixes as $prefix) {
                     $count = substr_count($literal, $prefix);
                     if ($count === 0) {
                         continue;
@@ -90,12 +93,63 @@ final class DiagnosticPrefixesBaselineTest extends TestCase
             ARRAY_FILTER_USE_KEY,
         );
 
-        // The v1.9 map records where each literal lived at the time; the
-        // parity contract is the prefix set itself, not the source layout.
-        $this->assertSame(array_keys($v1), array_keys($v2));
+        // Parity contract: every identity-neutral prefix v1.9 emitted is still
+        // emitted somewhere under src/. v2 may add prefixes (discovery forces
+        // each into the v2 fixture); where a literal lives is not pinned.
+        $this->assertSame(
+            [],
+            array_values(array_diff(array_keys($v1), array_keys($v2))),
+            'a v1.9 identity-neutral prefix disappeared from the v2 inventory',
+        );
         foreach ($v2 as $prefix => $files) {
             $this->assertNotSame([], $files, $prefix . ' is no longer emitted anywhere under src/.');
         }
+    }
+
+    #[Test]
+    public function discovery_reports_a_prefix_absent_from_the_fixture(): void
+    {
+        $this->assertSame(
+            ['[OpenAPI Something New]'],
+            self::discoverPrefixes(
+                '<?php trigger_error("[OpenAPI Something New] WARNING: x"); $r = "/^[A-Z]+$/"; $a = "#[OpenApiSpec] y"; $l = "[request] z";',
+            ),
+        );
+    }
+
+    /**
+     * A diagnostic channel prefix is a bracketed tag at the very start of a
+     * string literal whose first character is an uppercase letter. That
+     * excludes regex classes, `#[Attribute]` mentions, `[%s]` placeholders
+     * and lowercase location labels such as `[request]`.
+     *
+     * @return list<string>
+     */
+    private static function discoverPrefixes(string $phpSource): array
+    {
+        $prefixes = [];
+        foreach (self::stringLiterals($phpSource) as $literal) {
+            if (preg_match('/^\[[A-Z][A-Za-z0-9 .$-]*\]/', ltrim($literal, '\'"'), $m) === 1) {
+                $prefixes[] = $m[0];
+            }
+        }
+
+        return $prefixes;
+    }
+
+    /** @return list<string> */
+    private static function stringLiterals(string $phpSource): array
+    {
+        $literals = [];
+        foreach (token_get_all($phpSource) as $token) {
+            if (is_array($token) && in_array($token[0], [T_CONSTANT_ENCAPSED_STRING, T_ENCAPSED_AND_WHITESPACE], true)) {
+                // PHP token text retains the escape in a double-quoted
+                // `\$self`; normalize it to the emitted diagnostic prefix.
+                $literals[] = str_replace('\\$', '$', $token[1]);
+            }
+        }
+
+        return $literals;
     }
 
     /** @return array<string, string> */

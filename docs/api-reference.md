@@ -156,6 +156,35 @@ Use `validateRequest()`, `validateResponse()`, or
 [PSR-7 guide](psr7.md) for PHPUnit assertions, stream handling, and a PSR-15
 test integration recipe.
 
+## `OpenApiFakeResponse`
+
+Builds one response for a consumer-side fake from a named spec: the declared
+status, headers, and a body taken from the media type's `example` / first
+`examples` entry, or generated from its JSON schema. Building a fake records no
+coverage.
+
+```php
+use Studio\Gesso\OpenApiFakeResponse;
+
+$fake = OpenApiFakeResponse::for('stripe', 'GET', '/v1/charges/{id}');
+```
+
+| Member | Returns |
+|---|---|
+| `for(string $specName, string $method, string $path, ?int $status = null, ?string $contentType = null)` | the fake; `$path` may be a template or a concrete path, `null` status selects the lowest declared `2xx` |
+| `status()` | `int` wire status |
+| `headers()` | `array<string, string>`, including `Content-Type` when there is a body |
+| `body()` | the decoded body, `null` for a response without content |
+| `content()` | the wire body (`''` without content) |
+| `contentType()` | the sent media type, or `null` |
+
+`for()` throws `InvalidArgumentException` when the operation, status, or media
+type is not declared, or when the response has neither an example nor a JSON
+schema to generate from; it throws `RuntimeException` for a malformed spec node,
+with the same message the response validator reports. The `Http::fake()` and
+`MockHttpClient` responders built on it are described in
+[Consumer-side contract testing](consumer-side-contract-testing.md).
+
 ## `OpenApiResponseExplorer`
 
 Generates deterministic, branch-complete valid payloads for one response
@@ -297,8 +326,8 @@ holes schema validation cannot see:
 | `UnsupportedMethod` | one deterministically chosen undocumented method per documented path | `405` |
 
 ```php
-use Studio\Gesso\Fuzz\ContractCheck;
-use Studio\Gesso\Fuzz\OpenApiContractChecks;
+use Studio\Gesso\Contract\ContractCheck;
+use Studio\Gesso\Contract\OpenApiContractChecks;
 
 $summary = OpenApiContractChecks::run('front', seed: 7)
     ->checks([ContractCheck::IgnoredAuth, ContractCheck::UnsupportedMethod])
@@ -323,7 +352,7 @@ which `MissingRequiredHeader` requires before probing a state-changing method. P
 returned `ContractCheckSummary` collects every `ContractCheckFailure` (naming
 the check, operation, dispatched mutation, and a replayable curl command) and
 every explained `ContractCheckSkip`, plus `probedPaths` / `dispatchedProbes`
-counts. See [named contract checks](fuzzing.md#named-contract-checks).
+counts. See [named contract checks](contract-checks.md).
 
 ## `OpenApiSpecLoader`
 

@@ -8,6 +8,7 @@ use const SORT_STRING;
 
 use Psr\Http\Client\ClientInterface;
 use Psr\Http\Message\RequestFactoryInterface;
+use SensitiveParameter;
 use stdClass;
 use Studio\Gesso\Exception\InvalidOpenApiSpecException;
 use Studio\Gesso\Exception\InvalidOpenApiSpecReason;
@@ -1549,6 +1550,7 @@ final class OpenApiRefResolver
         string $ref,
         string $internalRef,
         array $root,
+        #[SensitiveParameter]
         string $chainKey,
         string $unresolvableMessage,
         array $chain,
@@ -1560,7 +1562,7 @@ final class OpenApiRefResolver
         if (in_array($chainKey, $chain, true)) {
             throw new InvalidOpenApiSpecException(
                 InvalidOpenApiSpecReason::CircularRef,
-                sprintf('Circular $ref detected: %s', implode(' -> ', [...$chain, $chainKey])),
+                sprintf('Circular $ref detected: %s', self::diagnosticRefChain([...$chain, $chainKey])),
                 ref: $ref,
             );
         }
@@ -1737,7 +1739,7 @@ final class OpenApiRefResolver
 
         self::descendIntoLoadedDocument(
             $node,
-            $rawRef,
+            $ref,
             $fragment,
             $chain,
             $document->canonicalIdentifier,
@@ -1774,6 +1776,7 @@ final class OpenApiRefResolver
         string $ref,
         string $fragment,
         array $chain,
+        #[SensitiveParameter]
         string $absoluteUri,
         array $newRoot,
         RefResolutionContext $context,
@@ -1795,7 +1798,7 @@ final class OpenApiRefResolver
                 $internalRef,
                 $newRoot,
                 self::canonicalChainKey($absoluteUri, $internalRef),
-                sprintf('Unresolvable $ref: fragment %s not found in %s', $fragment, $absoluteUri),
+                sprintf('Unresolvable $ref: fragment %s not found in %s', $fragment, HttpRefLoader::redactSensitiveUrlData($absoluteUri)),
                 $chain,
                 $documentContext,
                 $context,
@@ -1813,7 +1816,7 @@ final class OpenApiRefResolver
         if (in_array($chainKey, $chain, true)) {
             throw new InvalidOpenApiSpecException(
                 InvalidOpenApiSpecReason::CircularRef,
-                sprintf('Circular $ref detected: %s', implode(' -> ', [...$chain, $chainKey])),
+                sprintf('Circular $ref detected: %s', self::diagnosticRefChain([...$chain, $chainKey])),
                 ref: $ref,
             );
         }

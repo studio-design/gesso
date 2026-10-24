@@ -17,6 +17,8 @@ use Studio\Gesso\Coverage\EndpointCoverageState;
 use Studio\Gesso\Coverage\JsonCoverageRenderer;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\Coverage\ResponseCoverageState;
+use Studio\Gesso\Coverage\SdkExerciseCoverageTracker;
+use Studio\Gesso\Validation\Strict\StrictAdditionalPropertiesTracker;
 use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 
 use function dirname;
@@ -124,12 +126,12 @@ final class MachineReadableFormatsBaselineTest extends TestCase
     }
 
     #[Test]
-    public function sidecar_envelope_matches_the_v1_9_fixture(): void
+    public function sidecar_envelope_matches_the_v2_fixture(): void
     {
         $envelope = $this->buildSidecarEnvelope();
 
         $this->assertSame(
-            $this->fixture('v1.9-coverage-sidecar-envelope.json'),
+            $this->fixture('v2-coverage-sidecar-envelope.json'),
             json_encode(
                 $envelope,
                 JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE,
@@ -207,9 +209,14 @@ final class MachineReadableFormatsBaselineTest extends TestCase
             '/data' => ['extra', 'id', 'name'],
         ]);
 
+        // Every half the production worker writes outside a baseline
+        // generation run, so the fixture pins the full current writer shape.
         return CoverageSidecarEnvelope::build(
             $coverage->exportStateOn(),
             $strictRequired->exportStateOn(),
+            strictAdditionalPropertiesState: (new StrictAdditionalPropertiesTracker())->exportStateOn(),
+            sdkExerciseState: (new SdkExerciseCoverageTracker())->exportStateOn(),
+            deprecationsState: ['version' => 1, 'deprecations' => []],
         );
     }
 
