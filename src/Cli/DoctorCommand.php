@@ -40,7 +40,9 @@ use Studio\Gesso\Validation\Request\SecurityValidator;
 use Studio\Gesso\Validation\Support\BodyStructureInspector;
 use Studio\Gesso\Validation\Support\DiscriminatorContext;
 use Studio\Gesso\Validation\Support\MalformedSpecNode;
+use Symfony\Component\HttpClient\HttpClient;
 use Symfony\Component\HttpClient\Psr18Client;
+use Symfony\Contracts\HttpClient\HttpClientInterface;
 use Throwable;
 
 use function array_key_exists;
@@ -287,6 +289,14 @@ final class DoctorCommand
         $root = rtrim($root, '/\\');
 
         return $path === $root || str_starts_with($path, $root . DIRECTORY_SEPARATOR);
+    }
+
+    private static function symfonyHttpClientWithoutRedirects(): HttpClientInterface
+    {
+        // Symfony follows up to 20 redirects by default, below HttpRefLoader's
+        // --remote-ref-host check. Returning the 3xx lets HttpRefLoader reject
+        // it, matching Guzzle's PSR-18 behaviour.
+        return HttpClient::create(['max_redirects' => 0]);
     }
 
     /**
@@ -602,7 +612,7 @@ final class DoctorCommand
         if (class_exists(Psr18Client::class)) {
             // Psr18Client is both the PSR-18 client and a PSR-17 request
             // factory (since symfony/http-client 4.3).
-            $client = new Psr18Client();
+            $client = new Psr18Client(self::symfonyHttpClientWithoutRedirects());
 
             return [$client, $client];
         }
