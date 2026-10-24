@@ -42,6 +42,8 @@ use function is_float;
 use function is_int;
 use function is_numeric;
 use function is_string;
+use function ord;
+use function preg_replace_callback;
 use function sprintf;
 use function unlink;
 
@@ -94,7 +96,9 @@ use function unlink;
  */
 final class CoverageMergeCommand
 {
-    use CliIo;
+    use CliIo {
+        writeStderr as private writeUnfilteredStderr;
+    }
 
     private const FORMATS = ['text', 'markdown', 'json', 'junit', 'html'];
 
@@ -612,8 +616,10 @@ final class CoverageMergeCommand
 
         [$label, $render] = self::primaryRenderer($format, $consoleOutput);
         $this->writeStdout($outputFile === null
-            ? $render($results, $sdkResults)
-            : ConsoleCoverageRenderer::render($results, $consoleOutput, $sdkResults));
+            ? ($format === 'json'
+                ? self::escapeJsonControls($render($results, $sdkResults))
+                : self::terminalSafe($render($results, $sdkResults)))
+            : self::terminalSafe(ConsoleCoverageRenderer::render($results, $consoleOutput, $sdkResults)));
 
         $writeFailures = $writer->writeReports($results, $sdkResults, $outputFile, $junitOutput, $jsonOutput, $htmlOutput, [$label, $render]);
         $writer->appendGithubStepSummary($results, $sdkResults, $githubSummaryPath);
@@ -744,6 +750,42 @@ final class CoverageMergeCommand
         }
 
         return $options;
+    }
+
+    /**
+     * Sidecars are untrusted input, so their strings must not drive the
+     * reader's terminal: C0 controls other than TAB and LF, DEL, and C1
+     * controls become `?` — both UTF-8 encoded (U+0080-U+009F) and as the lone
+     * 0x80-0x9F bytes an 8-bit terminal reads as CSI/OSC. Byte-level (no `/u`),
+     * so invalid UTF-8 cannot void the filter; well-formed multibyte sequences
+     * are matched whole and kept, so their continuation bytes are not C1.
+     */
+    private static function terminalSafe(string $text): string
+    {
+        return preg_replace_callback(
+            '/\xC2[\x80-\x9F]'
+            . '|([\xC2-\xDF][\x80-\xBF]|\xE0[\xA0-\xBF][\x80-\xBF]|[\xE1-\xEC\xEE\xEF][\x80-\xBF]{2}'
+            . '|\xED[\x80-\x9F][\x80-\xBF]|\xF0[\x90-\xBF][\x80-\xBF]{2}|[\xF1-\xF3][\x80-\xBF]{3}'
+            . '|\xF4[\x80-\x8F][\x80-\xBF]{2})'
+            . '|[\x00-\x08\x0B-\x1F\x7F-\x9F]/',
+            static fn(array $m): string => ($m[1] ?? '') !== '' ? $m[1] : '?',
+            $text,
+        ) ?? $text;
+    }
+
+    /**
+     * `json_encode` already escapes C0 controls but leaves DEL and (under
+     * `JSON_UNESCAPED_UNICODE`) C1 controls raw. Those bytes can only occur
+     * inside string literals, so re-escaping them keeps the report
+     * decode-identical while keeping them off the terminal.
+     */
+    private static function escapeJsonControls(string $json): string
+    {
+        return preg_replace_callback(
+            '/\x7F|\xC2[\x80-\x9F]/',
+            static fn(array $m): string => sprintf('\\u%04x', $m[0] === "\x7F" ? 0x7F : ord($m[0][1])),
+            $json,
+        ) ?? $json;
     }
 
     private function pathOption(?string $value): ?string
@@ -1173,5 +1215,16 @@ final class CoverageMergeCommand
     private function writeCoverageDiagnostic(string $severity, string $detail): void
     {
         $this->writeStderr(sprintf("[OpenAPI Coverage] %s: %s\n", $severity, $detail));
+    }
+
+    /**
+     * Every merge diagnostic can carry sidecar-derived text (payload errors,
+     * strict-gate reports, deprecation and baseline notes), so stderr gets the
+     * same neutralisation as the stdout report. Overrides the {@see CliIo}
+     * writer for this command only.
+     */
+    private function writeStderr(string $message): void
+    {
+        $this->writeUnfilteredStderr(self::terminalSafe($message));
     }
 }
