@@ -32,6 +32,7 @@ use function mkdir;
 use function pathinfo;
 use function rtrim;
 use function sprintf;
+use function strpbrk;
 
 /**
  * Scaffolding for the responses no test exercises (issue #406).
@@ -184,7 +185,7 @@ final class StubsCommand
         $allPlans = (new StubGenerator())->plan($spec, $states);
         [$plans, $classNames, $unreachable] = $this->partitionStubbable(
             $allPlans,
-            StubRenderer::classNames($allPlans),
+            $renderer->classNames($allPlans),
             $renderer,
         );
         $outputDir = rtrim($options['output'] ?? StubRenderer::DEFAULT_OUTPUT_DIRS[$adapter], '/');
@@ -361,6 +362,20 @@ final class StubsCommand
         foreach ($plans as $index => $plan) {
             $className = $classNames[$index];
             $file = $outputDir . '/' . $className . '.php';
+
+            // The class name carries the spec's method key verbatim, and an
+            // `additionalOperations` key can hold any string. A separator would
+            // turn the name into a path that leaves --output; no HTTP method
+            // token can contain one.
+            if (strpbrk($className, "/\\\0") !== false) {
+                throw new RuntimeException(sprintf(
+                    'Refusing to write a stub outside %s for %s %s: %s',
+                    $outputDir,
+                    $plan['method'],
+                    $plan['path'],
+                    $file,
+                ));
+            }
 
             if (file_exists($this->absolutise($file))) {
                 $skipped[] = $file;

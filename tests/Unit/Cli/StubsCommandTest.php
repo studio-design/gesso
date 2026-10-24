@@ -43,6 +43,8 @@ use function scandir;
 use function sort;
 use function str_contains;
 use function str_replace;
+use function strtolower;
+use function substr;
 use function substr_count;
 use function sys_get_temp_dir;
 use function uniqid;
@@ -95,6 +97,22 @@ class StubsCommandTest extends TestCase
         foreach (['api', 'https://example.test/api', '//example.test/api', '/api?q=1', '/api#fragment', '/api path', "/api\n", '/api\\path', '/api%ZZ'] as $prefix) {
             yield $prefix => [$prefix];
         }
+    }
+
+    /** @return iterable<string, array{string}> */
+    public static function provideA_method_key_that_would_leave_the_output_directory_is_refusedCases(): iterable
+    {
+        yield 'slash' => ['X/../../escaped/Evil'];
+        yield 'backslash' => ['X\\..\\..\\escaped\\Evil'];
+        yield 'nul' => ["X\0Evil"];
+    }
+
+    /** @return iterable<string, array{string}> */
+    public static function provideA_custom_method_key_cannot_inject_code_into_the_class_declarationCases(): iterable
+    {
+        yield 'phpunit' => ['phpunit'];
+        yield 'laravel' => ['laravel'];
+        yield 'symfony' => ['symfony'];
     }
 
     #[Test]
@@ -1316,6 +1334,112 @@ class StubsCommandTest extends TestCase
     }
 
     #[Test]
+    public function a_header_name_cannot_break_out_of_its_line_comment(): void
+    {
+        $spec = $this->writeInlineSpec('headercomment', ['/pets' => ['get' => [
+            'parameters' => [[
+                'name' => "X\r\n}}system('id');?>class Q{function f(){//",
+                'in' => 'header',
+                'required' => true,
+                'schema' => ['type' => 'string'],
+            ]],
+            'responses' => ['200' => ['content' => ['application/json' => ['schema' => ['type' => 'object']]]]],
+        ]]]);
+
+        $exit = $this->command()->run(StubsCommand::parseArgv([
+            '--spec=' . $spec,
+            '--output=' . $this->workDir . '/out',
+        ]));
+
+        $this->assertSame(StubsCommand::EXIT_OK, $exit);
+        $file = $this->workDir . '/out/GetPetsTest.php';
+        $code = (string) file_get_contents($file);
+        // The payload is valid PHP once it escapes, so lint alone would pass:
+        // pin that it stays on the comment line instead.
+        $this->assertStringContainsString("// Required request headers: X  }}system('id');? >class Q{function f(){//.\n", $code);
+        $this->assertStringNotContainsString("\r", $code);
+        $this->assertStringNotContainsString('?>', $code);
+        $this->assertSame(0, $this->lint($file));
+    }
+
+    #[Test]
+    public function a_custom_method_key_cannot_break_out_of_its_line_comment(): void
+    {
+        // No `/` in the key: it also names the generated file.
+        $spec = $this->writeInlineSpec('methodcomment', ['/things' => ['additionalOperations' => ["COPY\r\n}}system('id');?>#" => [
+            'requestBody' => ['required' => true, 'content' => ['application/x-www-form-urlencoded' => [
+                'schema' => ['type' => 'object'],
+                'example' => ['name' => 'a'],
+            ]]],
+            'responses' => ['200' => ['content' => ['application/json' => ['schema' => ['type' => 'object']]]]],
+        ]]]]);
+
+        $this->command()->run(StubsCommand::parseArgv([
+            '--spec=' . $spec,
+            '--adapter=laravel',
+            '--output=' . $this->workDir . '/out',
+        ]));
+
+        $files = $this->generatedFiles();
+        $this->assertCount(1, $files);
+        $code = (string) file_get_contents($this->workDir . '/out/' . $files[0]);
+        $this->assertStringContainsString("// to the query bag for COPY  }}system('id');? >#, so they would never reach the body.\n", $code);
+    }
+
+    #[DataProvider('provideA_custom_method_key_cannot_inject_code_into_the_class_declarationCases')]
+    #[Test]
+    public function a_custom_method_key_cannot_inject_code_into_the_class_declaration(string $adapter): void
+    {
+        $operation = ['responses' => ['200' => ['content' => ['application/json' => ['schema' => ['type' => 'object']]]]]];
+        $spec = $this->writeInlineSpec('classinject', ['/things' => ['additionalOperations' => [
+            "X{};print('review_marker');class Y" => $operation,
+            'VERSION-CONTROL' => $operation,
+            '1X' => $operation,
+        ]]]);
+
+        $exit = $this->command()->run(StubsCommand::parseArgv([
+            '--spec=' . $spec,
+            '--adapter=' . $adapter,
+            '--output=' . $this->workDir . '/out',
+        ]));
+
+        $this->assertSame(StubsCommand::EXIT_OK, $exit);
+        $this->assertSame(
+            ['Operation1xThingsTest.php', 'VersionControlThingsTest.php', 'XPrintReviewMarkerClassYThingsTest.php'],
+            $this->generatedFiles(),
+        );
+        foreach ($this->generatedFiles() as $file) {
+            $code = (string) file_get_contents($this->workDir . '/out/' . $file);
+            $this->assertMatchesRegularExpression('/^final class ' . substr($file, 0, -4) . ' extends \\w+$/m', $code);
+            $this->assertSame(0, $this->lint($this->workDir . '/out/' . $file));
+        }
+    }
+
+    #[Test]
+    public function class_names_differing_only_in_case_are_disambiguated(): void
+    {
+        $operation = ['responses' => ['200' => ['content' => ['application/json' => ['schema' => ['type' => 'object']]]]]];
+        $spec = $this->writeInlineSpec('casecollide', ['/things' => ['additionalOperations' => [
+            'VERSION-CONTROL' => $operation,
+            'VERSIONCONTROL' => $operation,
+        ]]]);
+
+        $exit = $this->command()->run(StubsCommand::parseArgv([
+            '--spec=' . $spec,
+            '--adapter=laravel',
+            '--output=' . $this->workDir . '/out',
+        ]));
+
+        $this->assertSame(StubsCommand::EXIT_OK, $exit);
+        $files = $this->generatedFiles();
+        $this->assertCount(2, $files);
+        foreach ($files as $file) {
+            $this->assertMatchesRegularExpression('/^Version[Cc]ontrolThings[0-9a-f]{7}Test\.php$/i', $file);
+        }
+        $this->assertNotSame(strtolower($files[0]), strtolower($files[1]));
+    }
+
+    #[Test]
     public function a_shadowing_entry_document_is_rejected(): void
     {
         // The loader resolves a name and searches .json before .yaml, so
@@ -1605,6 +1729,29 @@ class StubsCommandTest extends TestCase
         ])));
         $this->assertStringContainsString('phpunit', $this->stderr);
         $this->assertDirectoryDoesNotExist($this->workDir . '/out');
+    }
+
+    #[DataProvider('provideA_method_key_that_would_leave_the_output_directory_is_refusedCases')]
+    #[Test]
+    public function a_method_key_that_would_leave_the_output_directory_is_refused(string $method): void
+    {
+        $operation = ['responses' => ['200' => ['description' => 'ok']]];
+        $spec = $this->writeInlineSpec('escape', ['/things' => ['additionalOperations' => [
+            'VERSION-CONTROL' => $operation,
+            $method => $operation,
+        ]]]);
+        $argv = ['--spec=' . $spec, '--adapter=pest', '--output=' . $this->workDir . '/out'];
+
+        $this->assertSame(StubsCommand::EXIT_USAGE, $this->command()->run(StubsCommand::parseArgv([...$argv, '--dry-run'])));
+        $this->assertStringNotContainsString('Would write', $this->stdout);
+        $this->assertDirectoryDoesNotExist($this->workDir . '/out');
+
+        $this->stderr = '';
+        $this->assertSame(StubsCommand::EXIT_USAGE, $this->command()->run(StubsCommand::parseArgv($argv)));
+        $this->assertStringContainsString('/things', $this->stderr);
+        $this->assertDirectoryDoesNotExist($this->workDir . '/escaped');
+        // A name that stays inside --output keeps the file name it always had.
+        $this->assertSame(['Version-controlThingsTest.php'], $this->generatedFiles());
     }
 
     private function command(): StubsCommand
