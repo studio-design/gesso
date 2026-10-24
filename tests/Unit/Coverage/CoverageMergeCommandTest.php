@@ -7,6 +7,7 @@ namespace Studio\Gesso\Tests\Unit\Coverage;
 use const DIRECTORY_SEPARATOR;
 use const JSON_THROW_ON_ERROR;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Studio\Gesso\Baseline\ViolationBaseline;
@@ -22,6 +23,7 @@ use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Validation\Strict\StrictAdditionalPropertiesTracker;
 use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 
+use function array_walk_recursive;
 use function chmod;
 use function dirname;
 use function file_exists;
@@ -31,6 +33,7 @@ use function getcwd;
 use function glob;
 use function is_dir;
 use function json_decode;
+use function json_encode;
 use function mkdir;
 use function realpath;
 use function rmdir;
@@ -48,6 +51,11 @@ use function var_export;
  */
 class CoverageMergeCommandTest extends TestCase
 {
+    /** A sidecar string carrying CSI, OSC 52 + BEL, 8-bit CSI, DEL, CR and BS around printable UTF-8. */
+    private const HOSTILE = "red\e[31m\e]52;c;cHduZWQ=\x07\xC2\x9B2J\x7F\r\x08 é日本\tok";
+
+    /** Every byte a terminal could act on, except the TAB and LF the reports print themselves. */
+    private const TERMINAL_CONTROL = '/[\x00-\x08\x0B-\x1F\x7F]|\xC2[\x80-\x9F]/';
     private string $sidecarDir = '';
     private string $outputFile = '';
 
@@ -87,6 +95,19 @@ class CoverageMergeCommandTest extends TestCase
         SdkExerciseCoverageTracker::resetCurrent();
         OpenApiSpecLoader::reset();
         parent::tearDown();
+    }
+
+    /** @return iterable<string, array{array{format?: string, console_output?: string}, bool, string}> */
+    public static function provideStdout_report_neutralises_terminal_controls_from_sidecar_stringsCases(): iterable
+    {
+        $neutralised = 'red?[31m?]52;c;cHduZWQ=??2J??? é日本';
+
+        yield 'text' => [['console_output' => 'all'], false, $neutralised];
+        yield 'markdown' => [['format' => 'markdown'], false, $neutralised];
+        yield 'html' => [['format' => 'html'], false, $neutralised];
+        // The XML writer already substitutes C0 controls; DEL and 8-bit CSI were left raw.
+        yield 'junit' => [['format' => 'junit'], false, 'é日本'];
+        yield 'console beside --output-file' => [['console_output' => 'all'], true, $neutralised];
     }
 
     #[Test]
@@ -999,6 +1020,100 @@ class CoverageMergeCommandTest extends TestCase
         $this->assertSame(CoverageMergeCommand::EXIT_OK, $exit);
         $this->assertSame('', $stdout);
         $this->assertStringContainsString('no sidecars found', $stderr);
+    }
+
+    /** @param array{format?: string, console_output?: string} $options */
+    #[Test]
+    #[DataProvider('provideStdout_report_neutralises_terminal_controls_from_sidecar_stringsCases')]
+    public function stdout_report_neutralises_terminal_controls_from_sidecar_strings(array $options, bool $withOutputFile, string $printable): void
+    {
+        OpenApiCoverageTracker::recordResponse('petstore-3.0', 'GET', '/v1/pets', '200', 'application/json', schemaValidated: false, skipReason: self::HOSTILE);
+        OpenApiCoverageTracker::recordResponse('petstore-3.0', 'GET', '/v1/pets', '299', 'application/' . self::HOSTILE, schemaValidated: true);
+        CoverageSidecarWriter::write($this->sidecarDir, '1', OpenApiCoverageTracker::exportState());
+
+        $stdout = '';
+        $command = new CoverageMergeCommand(
+            stdoutWriter: static function (string $msg) use (&$stdout): void {
+                $stdout .= $msg;
+            },
+            stderrWriter: static fn(string $msg): null => null,
+        );
+        $exit = $command->run([
+            'sidecar_dir' => $this->sidecarDir,
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => ['petstore-3.0'],
+            ...$options,
+            ...($withOutputFile ? ['output_file' => $this->outputFile] : []),
+        ]);
+
+        $this->assertSame(CoverageMergeCommand::EXIT_OK, $exit);
+        $this->assertDoesNotMatchRegularExpression(self::TERMINAL_CONTROL, $stdout);
+        $this->assertStringContainsString($printable, $stdout);
+        if ($withOutputFile) {
+            // A file is not a terminal sink: the report written there keeps the sidecar bytes.
+            $this->assertStringContainsString("red\e[31m", (string) file_get_contents($this->outputFile));
+        }
+    }
+
+    #[Test]
+    public function format_json_on_stdout_escapes_del_and_c1_controls_but_decodes_unchanged(): void
+    {
+        OpenApiCoverageTracker::recordResponse('petstore-3.0', 'GET', '/v1/pets', '200', 'application/json', schemaValidated: false, skipReason: self::HOSTILE);
+        CoverageSidecarWriter::write($this->sidecarDir, '1', OpenApiCoverageTracker::exportState());
+
+        $stdout = '';
+        $command = new CoverageMergeCommand(
+            stdoutWriter: static function (string $msg) use (&$stdout): void {
+                $stdout .= $msg;
+            },
+            stderrWriter: static fn(string $msg): null => null,
+        );
+        $exit = $command->run([
+            'format' => 'json',
+            'sidecar_dir' => $this->sidecarDir,
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => ['petstore-3.0'],
+        ]);
+
+        $this->assertSame(CoverageMergeCommand::EXIT_OK, $exit);
+        $this->assertDoesNotMatchRegularExpression(self::TERMINAL_CONTROL, $stdout);
+        $strings = [];
+        $report = json_decode($stdout, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertIsArray($report);
+        array_walk_recursive($report, static function (mixed $value) use (&$strings): void {
+            $strings[] = $value;
+        });
+        $this->assertContains(self::HOSTILE, $strings);
+    }
+
+    #[Test]
+    public function stderr_neutralises_terminal_controls_from_an_invalid_sidecar_payload(): void
+    {
+        file_put_contents($this->sidecarDir . '/part-1-9999.json', (string) json_encode([
+            'version' => 1,
+            'specs' => ['petstore-3.0' => ['GET /v1/pets' => [
+                'requestReached' => false,
+                'requestSkipReason' => null,
+                'responses' => ['200:application/json' => ['state' => "\e]0;pwned\x07", 'hits' => 1, 'skipReason' => null]],
+            ]]],
+        ]));
+
+        $stderr = '';
+        $command = new CoverageMergeCommand(
+            stdoutWriter: static fn(string $msg): null => null,
+            stderrWriter: static function (string $msg) use (&$stderr): void {
+                $stderr .= $msg;
+            },
+        );
+        $exit = $command->run([
+            'sidecar_dir' => $this->sidecarDir,
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => ['petstore-3.0'],
+        ]);
+
+        $this->assertSame(CoverageMergeCommand::EXIT_FAILURE, $exit);
+        $this->assertStringContainsString('?]0;pwned?', $stderr);
+        $this->assertDoesNotMatchRegularExpression(self::TERMINAL_CONTROL, $stderr);
     }
 
     #[Test]
