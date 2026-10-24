@@ -43,7 +43,6 @@ use function is_int;
 use function is_numeric;
 use function is_string;
 use function ord;
-use function preg_replace;
 use function preg_replace_callback;
 use function sprintf;
 use function unlink;
@@ -755,13 +754,23 @@ final class CoverageMergeCommand
 
     /**
      * Sidecars are untrusted input, so their strings must not drive the
-     * reader's terminal: C0 controls other than TAB and LF, DEL, and UTF-8
-     * encoded C1 controls (U+0080-U+009F) become `?`. Byte-level (no `/u`), so
-     * printable UTF-8 is untouched and invalid UTF-8 cannot void the filter.
+     * reader's terminal: C0 controls other than TAB and LF, DEL, and C1
+     * controls become `?` — both UTF-8 encoded (U+0080-U+009F) and as the lone
+     * 0x80-0x9F bytes an 8-bit terminal reads as CSI/OSC. Byte-level (no `/u`),
+     * so invalid UTF-8 cannot void the filter; well-formed multibyte sequences
+     * are matched whole and kept, so their continuation bytes are not C1.
      */
     private static function terminalSafe(string $text): string
     {
-        return preg_replace('/[\x00-\x08\x0B-\x1F\x7F]|\xC2[\x80-\x9F]/', '?', $text) ?? $text;
+        return preg_replace_callback(
+            '/\xC2[\x80-\x9F]'
+            . '|([\xC2-\xDF][\x80-\xBF]|\xE0[\xA0-\xBF][\x80-\xBF]|[\xE1-\xEC\xEE\xEF][\x80-\xBF]{2}'
+            . '|\xED[\x80-\x9F][\x80-\xBF]|\xF0[\x90-\xBF][\x80-\xBF]{2}|[\xF1-\xF3][\x80-\xBF]{3}'
+            . '|\xF4[\x80-\x8F][\x80-\xBF]{2})'
+            . '|[\x00-\x08\x0B-\x1F\x7F-\x9F]/',
+            static fn(array $m): string => ($m[1] ?? '') !== '' ? $m[1] : '?',
+            $text,
+        ) ?? $text;
     }
 
     /**

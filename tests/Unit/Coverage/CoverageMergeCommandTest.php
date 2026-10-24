@@ -1117,6 +1117,29 @@ class CoverageMergeCommandTest extends TestCase
     }
 
     #[Test]
+    public function stderr_neutralises_lone_c1_bytes_but_keeps_well_formed_utf8(): void
+    {
+        // Not valid UTF-8: a Linux file name can carry the bare 8-bit CSI (0x9B)
+        // and OSC (0x9D) that 8-bit terminals act on.
+        $stderr = '';
+        $command = new CoverageMergeCommand(
+            stdoutWriter: static fn(string $msg): null => null,
+            stderrWriter: static function (string $msg) use (&$stderr): void {
+                $stderr .= $msg;
+            },
+        );
+        $command->run([
+            'sidecar_dir' => $this->sidecarDir . "/a\x9B2J\x9D0;x\x07\x80 é…日本🎉",
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => ['petstore-3.0'],
+        ]);
+
+        $this->assertStringContainsString('/a?2J?0;x?? é…日本🎉', $stderr);
+        $this->assertStringNotContainsString("\x9B", $stderr);
+        $this->assertStringNotContainsString("\x9D", $stderr);
+    }
+
+    #[Test]
     public function usage_lists_the_exit_codes(): void
     {
         $this->assertStringContainsString('Exit codes:', CoverageMergeCommand::usage());
