@@ -461,6 +461,7 @@ is rendered:
   or `secret` (case-insensitive), become `<redacted>`.
 - Query-string values whose parameter name matches the same pattern are
   redacted too (OpenAPI supports `apiKey` security in query parameters).
+- URL userinfo (`https://user:pass@host`) becomes `https://<redacted>@host`.
 - The request body is rendered only for JSON content types and is **not**
   redacted. A body can itself carry credentials (a login password, a token
   refresh payload), so treat the failure output as sensitive as a whole —

@@ -53,6 +53,11 @@ trait OpenApiAssertionCore
         // parameters would silently vanish from the curl command. The
         // formatter redacts the value.
         $headers = $request->headers->all();
+        // ServerBag decodes Basic/Digest auth into php-auth-* entries. They
+        // are PHP server-var artifacts, not wire headers, and would print the
+        // plaintext password; the Authorization header already carries the
+        // credential (redacted by the formatter).
+        unset($headers['php-auth-user'], $headers['php-auth-pw'], $headers['php-auth-digest']);
         $cookiePairs = [];
         foreach ($request->cookies->all() as $name => $value) {
             $cookiePairs[] = $name . '=' . (is_scalar($value) ? (string) $value : '');
