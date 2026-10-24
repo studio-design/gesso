@@ -555,6 +555,62 @@ class OpenApiRefResolverHttpRefsTest extends TestCase
     }
 
     #[Test]
+    public function circular_ref_diagnostic_redacts_remote_document_credentials(): void
+    {
+        $url = 'https://alice:secret@example.com/front.json?token=query-secret';
+        $client = new FakeHttpClient([
+            $url => FakeHttpClient::jsonResponse(
+                '{"components":{"schemas":{"Node":{"type":"object","properties":'
+                . '{"children":{"type":"array","items":{"$ref":"#/components/schemas/Node"}}}}}}}',
+            ),
+        ]);
+        $spec = ['components' => ['schemas' => ['Tree' => ['$ref' => $url . '#/components/schemas/Node']]]];
+
+        try {
+            OpenApiRefResolver::resolve(
+                $spec,
+                httpClient: $client,
+                requestFactory: $this->factory,
+                allowRemoteRefs: true,
+                allowedRemoteRefHosts: ['example.com'],
+            );
+            $this->fail('expected InvalidOpenApiSpecException');
+        } catch (InvalidOpenApiSpecException $e) {
+            $this->assertSame(InvalidOpenApiSpecReason::CircularRef, $e->reason);
+            $this->assertStringContainsString('https://example.com/front.json?token=[redacted]', $e->getMessage());
+            $this->assertStringNotContainsString('alice:secret', $e->getMessage() . $e->ref);
+            $this->assertStringNotContainsString('query-secret', $e->getMessage() . $e->ref);
+        }
+    }
+
+    #[Test]
+    public function missing_fragment_diagnostic_redacts_remote_document_credentials(): void
+    {
+        $url = 'https://alice:secret@example.com/front.json?token=query-secret';
+        $client = new FakeHttpClient([
+            $url => FakeHttpClient::jsonResponse('{"components":{"schemas":{}}}'),
+        ]);
+        $spec = ['components' => ['schemas' => ['Missing' => ['$ref' => $url . '#/components/schemas/Missing']]]];
+
+        try {
+            OpenApiRefResolver::resolve(
+                $spec,
+                httpClient: $client,
+                requestFactory: $this->factory,
+                allowRemoteRefs: true,
+                allowedRemoteRefHosts: ['example.com'],
+            );
+            $this->fail('expected InvalidOpenApiSpecException');
+        } catch (InvalidOpenApiSpecException $e) {
+            $this->assertSame(InvalidOpenApiSpecReason::UnresolvableRef, $e->reason);
+            $this->assertStringContainsString('https://example.com/front.json?token=[redacted]', $e->getMessage());
+            $this->assertStringContainsString('https://example.com/front.json?token=[redacted]', (string) $e->ref);
+            $this->assertStringNotContainsString('alice:secret', $e->getMessage() . $e->ref);
+            $this->assertStringNotContainsString('query-secret', $e->getMessage() . $e->ref);
+        }
+    }
+
+    #[Test]
     public function throws_bare_fragment_for_trailing_hash_on_https_ref(): void
     {
         $url = 'https://example.com/pet.json';

@@ -1560,7 +1560,7 @@ final class OpenApiRefResolver
         if (in_array($chainKey, $chain, true)) {
             throw new InvalidOpenApiSpecException(
                 InvalidOpenApiSpecReason::CircularRef,
-                sprintf('Circular $ref detected: %s', implode(' -> ', [...$chain, $chainKey])),
+                sprintf('Circular $ref detected: %s', self::diagnosticRefChain([...$chain, $chainKey])),
                 ref: $ref,
             );
         }
@@ -1737,7 +1737,7 @@ final class OpenApiRefResolver
 
         self::descendIntoLoadedDocument(
             $node,
-            $rawRef,
+            $ref,
             $fragment,
             $chain,
             $document->canonicalIdentifier,
@@ -1795,7 +1795,7 @@ final class OpenApiRefResolver
                 $internalRef,
                 $newRoot,
                 self::canonicalChainKey($absoluteUri, $internalRef),
-                sprintf('Unresolvable $ref: fragment %s not found in %s', $fragment, $absoluteUri),
+                sprintf('Unresolvable $ref: fragment %s not found in %s', $fragment, HttpRefLoader::redactSensitiveUrlData($absoluteUri)),
                 $chain,
                 $documentContext,
                 $context,
@@ -1813,7 +1813,7 @@ final class OpenApiRefResolver
         if (in_array($chainKey, $chain, true)) {
             throw new InvalidOpenApiSpecException(
                 InvalidOpenApiSpecReason::CircularRef,
-                sprintf('Circular $ref detected: %s', implode(' -> ', [...$chain, $chainKey])),
+                sprintf('Circular $ref detected: %s', self::diagnosticRefChain([...$chain, $chainKey])),
                 ref: $ref,
             );
         }
