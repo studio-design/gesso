@@ -185,7 +185,7 @@ final class StubsCommand
         $allPlans = (new StubGenerator())->plan($spec, $states);
         [$plans, $classNames, $unreachable] = $this->partitionStubbable(
             $allPlans,
-            StubRenderer::classNames($allPlans),
+            $renderer->classNames($allPlans),
             $renderer,
         );
         $outputDir = rtrim($options['output'] ?? StubRenderer::DEFAULT_OUTPUT_DIRS[$adapter], '/');

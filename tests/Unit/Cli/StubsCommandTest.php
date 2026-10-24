@@ -43,6 +43,7 @@ use function scandir;
 use function sort;
 use function str_contains;
 use function str_replace;
+use function substr;
 use function substr_count;
 use function sys_get_temp_dir;
 use function uniqid;
@@ -103,6 +104,14 @@ class StubsCommandTest extends TestCase
         yield 'slash' => ['X/../../escaped/Evil'];
         yield 'backslash' => ['X\\..\\..\\escaped\\Evil'];
         yield 'nul' => ["X\0Evil"];
+    }
+
+    /** @return iterable<string, array{string}> */
+    public static function provideA_custom_method_key_cannot_inject_code_into_the_class_declarationCases(): iterable
+    {
+        yield 'phpunit' => ['phpunit'];
+        yield 'laravel' => ['laravel'];
+        yield 'symfony' => ['symfony'];
     }
 
     #[Test]
@@ -1374,6 +1383,35 @@ class StubsCommandTest extends TestCase
         $this->assertCount(1, $files);
         $code = (string) file_get_contents($this->workDir . '/out/' . $files[0]);
         $this->assertStringContainsString("// to the query bag for COPY  }}system('id');? >#, so they would never reach the body.\n", $code);
+    }
+
+    #[DataProvider('provideA_custom_method_key_cannot_inject_code_into_the_class_declarationCases')]
+    #[Test]
+    public function a_custom_method_key_cannot_inject_code_into_the_class_declaration(string $adapter): void
+    {
+        $operation = ['responses' => ['200' => ['content' => ['application/json' => ['schema' => ['type' => 'object']]]]]];
+        $spec = $this->writeInlineSpec('classinject', ['/things' => ['additionalOperations' => [
+            "X{};print('review_marker');class Y" => $operation,
+            'VERSION-CONTROL' => $operation,
+            '1X' => $operation,
+        ]]]);
+
+        $exit = $this->command()->run(StubsCommand::parseArgv([
+            '--spec=' . $spec,
+            '--adapter=' . $adapter,
+            '--output=' . $this->workDir . '/out',
+        ]));
+
+        $this->assertSame(StubsCommand::EXIT_OK, $exit);
+        $this->assertSame(
+            ['Operation1xThingsTest.php', 'VersionControlThingsTest.php', 'XPrintReviewMarkerClassYThingsTest.php'],
+            $this->generatedFiles(),
+        );
+        foreach ($this->generatedFiles() as $file) {
+            $code = (string) file_get_contents($this->workDir . '/out/' . $file);
+            $this->assertMatchesRegularExpression('/^final class ' . substr($file, 0, -4) . ' extends \\w+$/m', $code);
+            $this->assertSame(0, $this->lint($this->workDir . '/out/' . $file));
+        }
     }
 
     #[Test]

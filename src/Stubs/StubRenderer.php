@@ -20,6 +20,7 @@ use function array_keys;
 use function array_map;
 use function array_merge;
 use function count;
+use function ctype_digit;
 use function explode;
 use function hash;
 use function http_build_query;
@@ -135,21 +136,25 @@ final class StubRenderer
      * of its own endpoint — not with its position — so a name does not shift
      * when an unrelated operation is added to or removed from the spec.
      *
+     * Class-based adapters fold the method to a PHP identifier as well; Pest
+     * declares no class, so its file names keep the method key's spelling.
+     *
      * @param list<StubOperation> $plans
      *
      * @return list<string> parallel to $plans
      */
-    public static function classNames(array $plans): array
+    public function classNames(array $plans): array
     {
+        $identifier = $this->adapter !== 'pest';
         $counts = [];
         foreach ($plans as $plan) {
-            $name = self::className($plan['method'], $plan['path']);
+            $name = self::className($plan['method'], $plan['path'], $identifier);
             $counts[$name] = ($counts[$name] ?? 0) + 1;
         }
 
         $names = [];
         foreach ($plans as $plan) {
-            $name = self::className($plan['method'], $plan['path']);
+            $name = self::className($plan['method'], $plan['path'], $identifier);
             $names[] = ($counts[$name] ?? 0) > 1
                 ? substr($name, 0, -4) . ucfirst(substr(
                     hash('xxh128', $plan['method'] . ' ' . $plan['path']),
@@ -230,14 +235,23 @@ final class StubRenderer
      * construction — `(method, path)` is unique in a document, `operationId`
      * is only unique when the author kept it so. Collisions this can still
      * produce are resolved by {@see self::classNames()}.
+     *
+     * An `additionalOperations` key can be any string, so with $identifier the
+     * method is split like the path (`VERSION-CONTROL` → `VersionControl`) and
+     * a name that would start with a digit is prefixed: the result is pasted
+     * into `final class %s`.
      */
-    private static function className(string $method, string $path): string
+    private static function className(string $method, string $path, bool $identifier): string
     {
         $words = preg_split('/[^A-Za-z0-9]+/', $path) ?: [];
         // The method is a constant shouted in the spec; path segments carry the
         // author's own casing (`{petId}` → `PetId`), so only the method is
         // folded before capitalising.
-        $studly = ucfirst(strtolower($method));
+        $methodWords = $identifier ? preg_split('/[^A-Za-z0-9]+/', $method) ?: [] : [$method];
+        $studly = '';
+        foreach ($methodWords as $word) {
+            $studly .= ucfirst(strtolower($word));
+        }
         foreach ($words as $word) {
             if ($word === '') {
                 continue;
@@ -245,7 +259,11 @@ final class StubRenderer
             $studly .= ucfirst($word);
         }
 
-        return ($studly === '' ? 'Operation' : $studly) . 'Test';
+        if ($studly === '' || ($identifier && ctype_digit($studly[0]))) {
+            $studly = 'Operation' . $studly;
+        }
+
+        return $studly . 'Test';
     }
 
     /**
@@ -310,6 +328,9 @@ final class StubRenderer
 
         if ($this->adapter !== 'phpunit') {
             $lines[] = sprintf('#[OpenApiSpec(%s)]', $this->literal($this->specName));
+        }
+        if (preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $className) !== 1) {
+            throw new InvalidArgumentException(sprintf('Stub class name is not a PHP identifier: %s', $className));
         }
         $lines[] = sprintf('final class %s extends %s', $className, $baseShortName);
         $lines[] = '{';
