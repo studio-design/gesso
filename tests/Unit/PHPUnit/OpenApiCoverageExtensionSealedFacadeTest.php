@@ -6,6 +6,7 @@ namespace Studio\Gesso\Tests\Unit\PHPUnit;
 
 use PHPUnit\Event\EventFacadeIsSealedException;
 use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\IgnoreDeprecations;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use PHPUnit\Runner\Extension\ExtensionFacade;
@@ -16,6 +17,7 @@ use Studio\Gesso\Baseline\ViolationBaseline;
 use Studio\Gesso\Baseline\ViolationBaselineEnforcer;
 use Studio\Gesso\Baseline\ViolationBaselineFile;
 use Studio\Gesso\Baseline\ViolationFingerprint;
+use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\PHPUnit\OpenApiCoverageExtension;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 
@@ -37,6 +39,7 @@ use function unlink;
  * process's own facade is already sealed, so a real runner facade reproduces
  * that state without a stub.
  */
+#[IgnoreDeprecations]
 final class OpenApiCoverageExtensionSealedFacadeTest extends TestCase
 {
     private const SUITE_LOADER = 'ParaTest\WrapperRunner\SuiteLoader';
@@ -74,6 +77,7 @@ final class OpenApiCoverageExtensionSealedFacadeTest extends TestCase
 
     protected function tearDown(): void
     {
+        Deprecations::resetForTesting();
         OpenApiCoverageExtension::overrideStderrForTesting(null);
         if ($this->stderrBuffer !== null) {
             fclose($this->stderrBuffer);

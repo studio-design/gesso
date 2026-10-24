@@ -145,7 +145,7 @@ final class V3RenameRegistryTest extends TestCase
      */
     private const NO_SUCCESSOR = 'none';
 
-    private const UNSTAGED_CEILING = 53;
+    private const UNSTAGED_CEILING = 36;
 
     #[Test]
     public function every_old_spelling_the_adr_names_is_listed(): void
