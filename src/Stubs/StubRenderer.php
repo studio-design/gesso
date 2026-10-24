@@ -433,6 +433,16 @@ final class StubRenderer
     }
 
     /**
+     * Neutralise a spec string bound for a `//` comment. CR, LF and `?>` are
+     * the only sequences that end one, and anything after them would run as
+     * generated code. `?>` goes last so a removed line break cannot rebuild it.
+     */
+    private function lineCommentSafe(string $value): string
+    {
+        return str_replace(["\r", "\n", '?>'], [' ', ' ', '? >'], $value);
+    }
+
+    /**
      * A multi-line spec string as docblock lines, each carrying its own ` * `
      * prefix so an embedded newline cannot escape the comment.
      *
@@ -513,7 +523,7 @@ final class StubRenderer
         $lines = [];
 
         if ($operation['headers'] !== []) {
-            $lines[] = '// Required request headers: ' . implode(', ', array_keys($operation['headers'])) . '.';
+            $lines[] = '// Required request headers: ' . $this->lineCommentSafe(implode(', ', array_keys($operation['headers']))) . '.';
         }
 
         if ($noContent) {
@@ -737,7 +747,7 @@ final class StubRenderer
         // multipart Content-Type is a request no decoder can read.
         $lines = ['// TODO: adjust the fields your application expects.'];
         $lines[] = '// Sent as a raw urlencoded body: Request::create() routes parameters';
-        $lines[] = sprintf('// to the query bag for %s, so they would never reach the body.', $operation['method']);
+        $lines[] = sprintf('// to the query bag for %s, so they would never reach the body.', $this->lineCommentSafe($operation['method']));
         $lines[] = '$payload = ' . $this->literal($this->urlencode($fields)) . ';';
         $lines[] = '';
         $lines[] = '$response = $this->call(';
