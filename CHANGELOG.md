@@ -10,6 +10,18 @@ the README for the full surface contract.
 
 ## Unreleased
 
+## [2.7.1](https://github.com/studio-design/gesso/compare/v2.7.0...v2.7.1) (2026-10-24)
+
+
+### Bug Fixes
+
+* **cli:** disable redirects for the symfony client in doctor ([#637](https://github.com/studio-design/gesso/issues/637)) ([a8aa59d](https://github.com/studio-design/gesso/commit/a8aa59d2de5cf5ba220754d0cea045b37802584c))
+* **coverage:merge:** neutralize control characters in merge output ([#640](https://github.com/studio-design/gesso/issues/640)) ([10b7a7c](https://github.com/studio-design/gesso/commit/10b7a7c1f224a82a089009db33331f6d295d43e2))
+* **coverage:** reject sidecar directories and files owned by another user ([#638](https://github.com/studio-design/gesso/issues/638)) ([91c1549](https://github.com/studio-design/gesso/commit/91c154913addd5136b5d95fbda73d9eb9e200be6))
+* **internal:** redact php auth headers and url userinfo in curl repros ([#635](https://github.com/studio-design/gesso/issues/635)) ([464cedf](https://github.com/studio-design/gesso/commit/464cedf8f0c94b1b362703ca211346a3f3e28be2))
+* **spec:** redact credentials from remote ref diagnostics ([#636](https://github.com/studio-design/gesso/issues/636)) ([6ebe336](https://github.com/studio-design/gesso/commit/6ebe3366968e5ef79ce4b28c3359458ad97525dd))
+* **stubs:** keep generated files inside the output directory and comments single-line ([#639](https://github.com/studio-design/gesso/issues/639)) ([6c17649](https://github.com/studio-design/gesso/commit/6c17649b787206674d4bd181d56e28d71f48403b))
+
 ## [2.7.0](https://github.com/studio-design/gesso/compare/v2.6.0...v2.7.0) (2026-10-23)
 
 
