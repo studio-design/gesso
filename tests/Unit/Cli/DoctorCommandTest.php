@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace Studio\Gesso\Tests\Unit\Cli;
 
 use const JSON_THROW_ON_ERROR;
+use const PHP_BINARY;
 
 use GuzzleHttp\Psr7\HttpFactory;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+use ReflectionMethod;
 use Studio\Gesso\Cli\DoctorCommand;
 use Studio\Gesso\Config\GessoConfig;
 use Studio\Gesso\DecodedBody;
@@ -20,19 +22,27 @@ use Studio\Gesso\Validation\Support\SchemaValidatorRunner;
 use function array_column;
 use function chdir;
 use function explode;
+use function fclose;
 use function file_get_contents;
 use function file_put_contents;
+use function fsockopen;
 use function getcwd;
 use function glob;
 use function json_decode;
 use function json_encode;
 use function mkdir;
 use function preg_match;
+use function proc_close;
+use function proc_open;
+use function proc_terminate;
 use function realpath;
 use function rmdir;
+use function stream_socket_get_name;
+use function stream_socket_server;
 use function sys_get_temp_dir;
 use function uniqid;
 use function unlink;
+use function usleep;
 
 class DoctorCommandTest extends TestCase
 {
@@ -225,6 +235,59 @@ class DoctorCommandTest extends TestCase
         $this->assertSame(DoctorCommand::EXIT_OK, $exit);
         $this->assertSame('ok', $report['status']);
         $this->assertSame([$url], $client->sentUrls());
+    }
+
+    #[Test]
+    public function auto_wired_symfony_client_returns_redirects_instead_of_following_them(): void
+    {
+        // Guzzle is present in the dev tree, so remoteTransport() never picks
+        // the Symfony branch here; drive the client it wraps directly. A real
+        // loopback server is required because MockHttpClient never follows
+        // redirects.
+        $router = $this->workDir . '/router.php';
+        file_put_contents($router, <<<'PHP'
+            <?php
+            if ($_SERVER['REQUEST_URI'] === '/redirect.json') {
+                header('Location: /target.json', true, 302);
+
+                return;
+            }
+            header('Content-Type: application/json');
+            echo '{"type":"object"}';
+            PHP);
+        $socket = stream_socket_server('tcp://127.0.0.1:0');
+        $this->assertNotFalse($socket);
+        $address = (string) stream_socket_get_name($socket, false);
+        fclose($socket);
+        $base = 'http://' . $address;
+        $process = proc_open([PHP_BINARY, '-S', $address, $router], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+        $this->assertNotFalse($process);
+
+        try {
+            $probe = false;
+            for ($attempt = 0; $attempt < 100 && $probe === false; $attempt++) {
+                usleep(50_000);
+                $probe = @fsockopen('tcp://' . $address);
+            }
+            $this->assertNotFalse($probe, 'php -S did not start');
+            fclose($probe);
+
+            $client = (new ReflectionMethod(DoctorCommand::class, 'symfonyHttpClientWithoutRedirects'))->invoke(null);
+
+            $redirect = $client->request('GET', $base . '/redirect.json');
+            $this->assertSame(302, $redirect->getStatusCode());
+            $this->assertSame(['/target.json'], $redirect->getHeaders(false)['location'] ?? null);
+
+            $direct = $client->request('GET', $base . '/target.json');
+            $this->assertSame(200, $direct->getStatusCode());
+            $this->assertSame('{"type":"object"}', $direct->getContent());
+        } finally {
+            foreach ($pipes as $pipe) {
+                fclose($pipe);
+            }
+            proc_terminate($process);
+            proc_close($process);
+        }
     }
 
     #[Test]
