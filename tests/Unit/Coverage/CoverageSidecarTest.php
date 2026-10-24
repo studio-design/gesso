@@ -19,14 +19,18 @@ use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 
 use function array_map;
 use function chmod;
+use function chown;
 use function file_get_contents;
 use function file_put_contents;
+use function fileowner;
 use function fileperms;
+use function function_exists;
 use function getmypid;
 use function glob;
 use function is_dir;
 use function is_link;
 use function mkdir;
+use function posix_geteuid;
 use function rmdir;
 use function sort;
 use function sprintf;
@@ -210,6 +214,16 @@ class CoverageSidecarTest extends TestCase
         } finally {
             @unlink($link);
         }
+    }
+
+    #[Test]
+    public function writer_rejects_a_sidecar_directory_owned_by_another_user(): void
+    {
+        $dir = $this->directoryOwnedByAnotherUserOrSkip();
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('sidecar dir must be owned by the current user');
+        CoverageSidecarWriter::write($dir, 'slot', ['version' => 1, 'specs' => []]);
     }
 
     #[Test]
@@ -467,6 +481,35 @@ class CoverageSidecarTest extends TestCase
     }
 
     #[Test]
+    public function reader_rejects_a_sidecar_directory_owned_by_another_user(): void
+    {
+        $dir = $this->directoryOwnedByAnotherUserOrSkip();
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('sidecar dir must be owned by the current user');
+        CoverageSidecarReader::readDir($dir);
+    }
+
+    #[Test]
+    public function reader_rejects_a_sidecar_file_owned_by_another_user(): void
+    {
+        if (DIRECTORY_SEPARATOR === '\\' || !function_exists('posix_geteuid') || posix_geteuid() !== 0) {
+            $this->markTestSkipped('planting a file owned by another user requires root on POSIX');
+        }
+
+        $path = $this->tmpDir . '/part-1-9999.json';
+        file_put_contents($path, '{"version":1,"specs":[]}');
+        $this->assertTrue(chmod($path, 0o644));
+        if (!@chown($path, 65534)) {
+            $this->markTestSkipped('chown to another user is not available');
+        }
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('sidecar must be owned by the current user');
+        CoverageSidecarReader::readDir($this->tmpDir);
+    }
+
+    #[Test]
     public function reader_throws_on_malformed_json(): void
     {
         file_put_contents($this->tmpDir . '/part-1-9999.json', '{not valid json');
@@ -508,5 +551,33 @@ class CoverageSidecarTest extends TestCase
         // Compare via realpath both sides — macOS resolves /var → /private/var
         // so the writer's logical path and the glob's resolved path can diverge.
         $this->assertSame(array_map('realpath', $expected), array_map('realpath', $paths));
+    }
+
+    /**
+     * A non-group/world-writable directory owned by someone else, so only the
+     * ownership check can reject it. As root the test dir is handed to
+     * `nobody`; otherwise the root-owned `/usr` stands in.
+     */
+    private function directoryOwnedByAnotherUserOrSkip(): string
+    {
+        if (DIRECTORY_SEPARATOR === '\\' || !function_exists('posix_geteuid')) {
+            $this->markTestSkipped('ownership checks require POSIX and ext-posix');
+        }
+
+        if (posix_geteuid() === 0) {
+            if (!@chown($this->tmpDir, 65534)) {
+                $this->markTestSkipped('chown to another user is not available');
+            }
+
+            return $this->tmpDir;
+        }
+
+        $dir = '/usr';
+        $permissions = @fileperms($dir);
+        if (is_link($dir) || @fileowner($dir) !== 0 || $permissions === false || ($permissions & 0o022) !== 0) {
+            $this->markTestSkipped('no root-owned, non-writable directory available');
+        }
+
+        return $dir;
     }
 }

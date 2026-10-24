@@ -16,8 +16,10 @@ use function bin2hex;
 use function chmod;
 use function fclose;
 use function fflush;
+use function fileowner;
 use function fileperms;
 use function fopen;
+use function function_exists;
 use function fwrite;
 use function getmypid;
 use function is_dir;
@@ -25,6 +27,7 @@ use function is_link;
 use function is_resource;
 use function json_encode;
 use function mkdir;
+use function posix_geteuid;
 use function preg_replace;
 use function random_bytes;
 use function rename;
@@ -144,6 +147,9 @@ final class CoverageSidecarWriter
             $permissions = @fileperms($dir);
             if ($permissions !== false && ($permissions & 0o022) !== 0) {
                 throw new RuntimeException(sprintf('sidecar dir must not be writable by group or other users: "%s"', $dir));
+            }
+            if (function_exists('posix_geteuid') && @fileowner($dir) !== posix_geteuid()) {
+                throw new RuntimeException(sprintf('sidecar dir must be owned by the current user: "%s"', $dir));
             }
         }
 

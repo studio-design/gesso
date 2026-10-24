@@ -80,12 +80,14 @@ path if `sys_get_temp_dir()` is unavailable in your runner.
 On POSIX systems, Gesso creates a missing sidecar directory with mode `0700`
 and publishes sidecars and worker-failure markers with mode `0600`. For
 local-user safety, both workers and the merge command reject a `sidecar_dir`
-that is itself a symbolic link or is writable by group or other users. The
-merge command also rejects symbolic-link sidecar files instead of following
-them, and requires each sidecar to be non-group/world-writable. The
-permission-bit checks are not applied on Windows, whose ACL model is not
-represented by POSIX mode bits. Use a dedicated directory rather than `/tmp`
-itself; the default already does this.
+that is itself a symbolic link, is writable by group or other users, or is
+owned by a different user than the one running them. The merge command also
+rejects symbolic-link sidecar files instead of following them, and requires
+each sidecar to be non-group/world-writable and owned by the current user. The
+permission-bit and ownership checks are not applied on Windows, whose ACL model
+is not represented by POSIX mode bits; the ownership check also needs the
+`posix` extension. Use a dedicated directory rather than `/tmp` itself; the
+default already does this.
 
 ## Exit codes
 

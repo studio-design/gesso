@@ -11,13 +11,16 @@ use JsonException;
 use RuntimeException;
 
 use function file_get_contents;
+use function fileowner;
 use function fileperms;
+use function function_exists;
 use function glob;
 use function is_array;
 use function is_dir;
 use function is_file;
 use function is_link;
 use function json_decode;
+use function posix_geteuid;
 use function rtrim;
 use function sort;
 use function sprintf;
@@ -59,6 +62,9 @@ final class CoverageSidecarReader
                 $permissions = @fileperms($path);
                 if ($permissions !== false && ($permissions & 0o022) !== 0) {
                     throw new RuntimeException(sprintf('sidecar must not be writable by group or other users: "%s"', $path));
+                }
+                if (function_exists('posix_geteuid') && @fileowner($path) !== posix_geteuid()) {
+                    throw new RuntimeException(sprintf('sidecar must be owned by the current user: "%s"', $path));
                 }
             }
 
@@ -119,6 +125,9 @@ final class CoverageSidecarReader
             $permissions = @fileperms($dir);
             if ($permissions !== false && ($permissions & 0o022) !== 0) {
                 throw new RuntimeException(sprintf('sidecar dir must not be writable by group or other users: "%s"', $dir));
+            }
+            if (function_exists('posix_geteuid') && @fileowner($dir) !== posix_geteuid()) {
+                throw new RuntimeException(sprintf('sidecar dir must be owned by the current user: "%s"', $dir));
             }
         }
 
