@@ -12,6 +12,7 @@ use function in_array;
 use function is_array;
 use function is_scalar;
 use function preg_match;
+use function preg_replace;
 use function rawurldecode;
 use function sprintf;
 use function str_ends_with;
@@ -29,12 +30,19 @@ use function trim;
 final class CurlCommandFormatter
 {
     private const REDACTED_PLACEHOLDER = '<redacted>';
-    private const SENSITIVE_HEADER_NAMES = ['authorization', 'proxy-authorization', 'cookie'];
-    private const SENSITIVE_NAME_PATTERN = '/api[-_]?key|token|secret/i';
+    private const SENSITIVE_HEADER_NAMES = [
+        'authorization',
+        'proxy-authorization',
+        'cookie',
+        'php-auth-user',
+        'php-auth-pw',
+        'php-auth-digest',
+    ];
+    private const SENSITIVE_NAME_PATTERN = '/api[-_]?key|token|secret|passw(or)?d/i';
 
     /**
      * @param array<string, mixed> $headers header name → scalar value or list of values
-     * @param ?string $body raw request body; rendered only for JSON content types
+     * @param ?string $body raw request body; rendered only for JSON and urlencoded content types
      */
     public static function format(
         string $method,
@@ -45,7 +53,7 @@ final class CurlCommandFormatter
         bool $redact = true,
     ): string {
         if ($redact) {
-            $uri = self::redactQueryValues($uri);
+            $uri = self::redactQueryValues(self::redactUserInfo($uri));
         }
         // OpenAPI 3.2 additionalOperations allow arbitrary custom method
         // strings, so anything beyond plain token characters must be quoted
@@ -62,11 +70,29 @@ final class CurlCommandFormatter
             }
         }
 
-        if ($body !== null && $body !== '' && $contentType !== null && self::isJsonContentType($contentType)) {
-            $command .= ' --data ' . escapeshellarg($body);
+        if ($body !== null && $body !== '' && $contentType !== null) {
+            if (self::isJsonContentType($contentType)) {
+                $command .= ' --data ' . escapeshellarg($body);
+            } elseif (self::mime($contentType) === 'application/x-www-form-urlencoded') {
+                // Form fields carry credentials as often as query strings do
+                // (OAuth `client_secret`), so they get the same redaction.
+                $command .= ' --data ' . escapeshellarg($redact ? self::redactPairs($body) : $body);
+            }
         }
 
         return str_replace(["\r", "\n"], ' ', $command);
+    }
+
+    /**
+     * URL userinfo (`user:pass@host`) commonly carries credentials. The match
+     * runs to the last `@` of the authority, as parse_url() does, so a raw `@`
+     * inside a password cannot leave its tail behind.
+     */
+    private static function redactUserInfo(string $uri): string
+    {
+        // Fail closed: on a PCRE error, print no URI rather than a raw one.
+        return preg_replace('~^((?:[a-z][a-z0-9+.-]*:)?//)[^/?#]*@~i', '$1' . self::REDACTED_PLACEHOLDER . '@', $uri)
+            ?? self::REDACTED_PLACEHOLDER;
     }
 
     /**
@@ -82,7 +108,16 @@ final class CurlCommandFormatter
             return $uri;
         }
 
-        $pairs = explode('&', $split[1]);
+        return $split[0] . '?' . self::redactPairs($split[1]);
+    }
+
+    /**
+     * Redact the values of `name=value` pairs (a query string or an
+     * urlencoded body) whose decoded names look sensitive.
+     */
+    private static function redactPairs(string $encoded): string
+    {
+        $pairs = explode('&', $encoded);
         foreach ($pairs as $index => $pair) {
             $parts = explode('=', $pair, 2);
             if (count($parts) !== 2) {
@@ -93,7 +128,7 @@ final class CurlCommandFormatter
             }
         }
 
-        return $split[0] . '?' . implode('&', $pairs);
+        return implode('&', $pairs);
     }
 
     private static function isSensitiveName(string $name): bool
@@ -104,8 +139,13 @@ final class CurlCommandFormatter
 
     private static function isJsonContentType(string $contentType): bool
     {
-        $mime = strtolower(trim(explode(';', $contentType, 2)[0]));
+        $mime = self::mime($contentType);
 
         return $mime === 'application/json' || str_ends_with($mime, '+json');
+    }
+
+    private static function mime(string $contentType): string
+    {
+        return strtolower(trim(explode(';', $contentType, 2)[0]));
     }
 }

@@ -10,14 +10,20 @@ use const JSON_THROW_ON_ERROR;
 use JsonException;
 use RuntimeException;
 
+use function array_map;
+use function basename;
 use function file_get_contents;
+use function fileowner;
 use function fileperms;
+use function function_exists;
 use function glob;
 use function is_array;
 use function is_dir;
 use function is_file;
 use function is_link;
 use function json_decode;
+use function posix_geteuid;
+use function preg_match;
 use function rtrim;
 use function sort;
 use function sprintf;
@@ -50,35 +56,56 @@ final class CoverageSidecarReader
      */
     public static function readDir(string $sidecarDir): array
     {
-        $payloads = [];
-        foreach (self::listPaths($sidecarDir) as $path) {
-            if (is_link($path) || !is_file($path)) {
-                throw new RuntimeException(sprintf('sidecar must be a regular non-symlink file: "%s"', $path));
-            }
-            if (DIRECTORY_SEPARATOR !== '\\') {
-                $permissions = @fileperms($path);
-                if ($permissions !== false && ($permissions & 0o022) !== 0) {
-                    throw new RuntimeException(sprintf('sidecar must not be writable by group or other users: "%s"', $path));
-                }
-            }
+        return array_map(self::read(...), self::listPaths($sidecarDir));
+    }
 
-            $contents = @file_get_contents($path);
-            if ($contents === false) {
-                throw new RuntimeException(sprintf('failed to read sidecar "%s"', $path));
+    /**
+     * Decode one sidecar file.
+     *
+     * @return array<string, mixed>
+     *
+     * @throws RuntimeException when the sidecar cannot be read or decoded
+     */
+    public static function read(string $path): array
+    {
+        if (is_link($path) || !is_file($path)) {
+            throw new RuntimeException(sprintf('sidecar must be a regular non-symlink file: "%s"', $path));
+        }
+        if (DIRECTORY_SEPARATOR !== '\\') {
+            $permissions = @fileperms($path);
+            if ($permissions !== false && ($permissions & 0o022) !== 0) {
+                throw new RuntimeException(sprintf('sidecar must not be writable by group or other users: "%s"', $path));
             }
-
-            try {
-                $decoded = json_decode($contents, true, flags: JSON_THROW_ON_ERROR);
-            } catch (JsonException $e) {
-                throw new RuntimeException(sprintf('failed to decode sidecar "%s": %s', $path, $e->getMessage()), 0, $e);
+            if (function_exists('posix_geteuid') && @fileowner($path) !== posix_geteuid()) {
+                throw new RuntimeException(sprintf('sidecar must be owned by the current user: "%s"', $path));
             }
-            if (!is_array($decoded)) {
-                throw new RuntimeException(sprintf('failed to decode sidecar "%s": expected JSON object, got scalar', $path));
-            }
-            $payloads[] = $decoded;
         }
 
-        return $payloads;
+        $contents = @file_get_contents($path);
+        if ($contents === false) {
+            throw new RuntimeException(sprintf('failed to read sidecar "%s"', $path));
+        }
+
+        try {
+            $decoded = json_decode($contents, true, flags: JSON_THROW_ON_ERROR);
+        } catch (JsonException $e) {
+            throw new RuntimeException(sprintf('failed to decode sidecar "%s": %s', $path, $e->getMessage()), 0, $e);
+        }
+        if (!is_array($decoded)) {
+            throw new RuntimeException(sprintf('failed to decode sidecar "%s": expected JSON object, got scalar', $path));
+        }
+
+        /** @var array<string, mixed> */
+        return $decoded;
+    }
+
+    /**
+     * Run id a sidecar or failure marker was scoped to (issue #596), from the
+     * `.<run-id>` before `.json`; `null` for a legacy unscoped name.
+     */
+    public static function runIdOf(string $path): ?string
+    {
+        return preg_match('/\.([A-Za-z0-9_-]+)\.json$/', basename($path), $m) === 1 ? $m[1] : null;
     }
 
     /**
@@ -119,6 +146,9 @@ final class CoverageSidecarReader
             $permissions = @fileperms($dir);
             if ($permissions !== false && ($permissions & 0o022) !== 0) {
                 throw new RuntimeException(sprintf('sidecar dir must not be writable by group or other users: "%s"', $dir));
+            }
+            if (function_exists('posix_geteuid') && @fileowner($dir) !== posix_geteuid()) {
+                throw new RuntimeException(sprintf('sidecar dir must be owned by the current user: "%s"', $dir));
             }
         }
 

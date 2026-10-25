@@ -311,8 +311,9 @@ final class StubGenerator
      * properties of the spec, not of the stub: OpenAPI 3.2 `itemSchema`
      * streaming cannot be checked from a buffered body, and a non-JSON media
      * type carrying a `schema` is a contract this JSON Schema engine does not
-     * evaluate — the one exception being a form request body, which
-     * {@see RequestBodyValidator} still checks field by field. The stub is
+     * evaluate — the exceptions being a form request body, which
+     * {@see RequestBodyValidator} still checks field by field, and an
+     * urlencoded response, which the response validator parses the same way. The stub is
      * still worth writing — it exercises the endpoint and moves the tuple off
      * `uncovered` — but the reason belongs in the file rather than in a
      * surprise.
@@ -333,12 +334,14 @@ final class StubGenerator
         }
 
         // The non-JSON route checks `itemSchema` first, then rejects any other
-        // schema as unevaluatable — bar a form body, whose fields are coerced
-        // and validated against the declared schema.
+        // schema as unevaluatable — bar a form request body and an urlencoded
+        // response, whose fields are coerced and validated against the
+        // declared schema (a multipart response has no part parser).
         return match (true) {
             isset($media['itemSchema']) => $itemSchema,
             !isset($media['schema']) => null,
-            $forRequest && FormBodyDecoder::isFormMediaType($normalized) => null,
+            FormBodyDecoder::isFormMediaType($normalized) &&
+                ($forRequest || $normalized === FormBodyDecoder::URLENCODED) => null,
             default => 'a non-JSON media type declaring a `schema` is a contract this validator '
                 . 'cannot evaluate, so ' . $subject . ' can only validate as Skipped',
         };

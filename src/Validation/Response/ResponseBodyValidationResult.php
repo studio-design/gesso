@@ -59,6 +59,10 @@ final readonly class ResponseBodyValidationResult
         public ?string $matchedContentType,
         public ?string $skipReason = null,
         public array $violations = [],
+        // The parsed and coerced form fields the schema judged, for a form
+        // response (issue #488) — what the strict trackers should observe
+        // in place of the raw urlencoded string. Null otherwise.
+        public mixed $formData = null,
     ) {
         if ($skipReason !== null && $errors !== []) {
             throw new InvalidArgumentException(

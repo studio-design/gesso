@@ -14,8 +14,18 @@ use Studio\Gesso\Spec\OpenApiSpecLoader;
 
 use function array_keys;
 use function array_values;
+use function bin2hex;
 use function dirname;
+use function file_get_contents;
+use function file_put_contents;
+use function mkdir;
+use function random_bytes;
 use function realpath;
+use function rmdir;
+use function str_replace;
+use function sys_get_temp_dir;
+use function touch;
+use function unlink;
 
 final class ArazzoDescriptionTest extends TestCase
 {
@@ -89,6 +99,37 @@ final class ArazzoDescriptionTest extends TestCase
 
         $directory = ArazzoDescription::fromFile(self::DIR . '/self-directory.arazzo.json');
         $this->assertSame(realpath(self::DIR . '/../specs/arazzo-petstore.json'), $directory->sources['petstore']->resolvedUrl);
+    }
+
+    #[Test]
+    public function source_urls_resolve_as_uri_references(): void
+    {
+        $network = ArazzoDescription::fromFile(self::DIR . '/self-network-path.arazzo.json');
+        $encoded = ArazzoDescription::fromFile(self::DIR . '/percent-encoded-source.arazzo.json');
+
+        $this->assertSame('https://api.example.test/pets.json', $network->sources['api']->resolvedUrl);
+        $this->assertSame('https://workflows.example.test/wf.json?format=openapi', $network->sources['query']->resolvedUrl);
+        $this->assertSame(realpath(self::DIR . '/../specs/arazzo-petstore.json'), $encoded->sources['petstore']->resolvedUrl);
+    }
+
+    #[Test]
+    public function an_encoded_looking_directory_name_is_not_decoded(): void
+    {
+        $dir = sys_get_temp_dir() . '/gesso-arazzo-' . bin2hex(random_bytes(4)) . '/suite%20name';
+        mkdir($dir, 0o777, true);
+        $workflow = str_replace('../specs/arazzo-petstore.json', 'pets.json', (string) file_get_contents(self::DIR . '/pet-purchase.arazzo.json'));
+        file_put_contents($dir . '/workflow.arazzo.json', $workflow);
+        touch($dir . '/pets.json');
+
+        try {
+            $description = ArazzoDescription::fromFile($dir . '/workflow.arazzo.json');
+            $this->assertSame(realpath($dir . '/pets.json'), $description->sources['petstore']->resolvedUrl);
+        } finally {
+            unlink($dir . '/workflow.arazzo.json');
+            unlink($dir . '/pets.json');
+            rmdir($dir);
+            rmdir(dirname($dir));
+        }
     }
 
     #[Test]

@@ -10,6 +10,7 @@ use PHPUnit\Framework\TestCase;
 use ReflectionProperty;
 use Studio\Gesso\OpenApiVersion;
 use Studio\Gesso\Spec\OpenApiSchemaConverter;
+use Studio\Gesso\Tests\Helpers\GroupsSchemaViolations;
 use Studio\Gesso\Validation\Support\ObjectConverter;
 use Studio\Gesso\Validation\Support\SchemaValidatorRunner;
 
@@ -22,13 +23,15 @@ use function str_contains;
 
 class SchemaValidatorRunnerTest extends TestCase
 {
+    use GroupsSchemaViolations;
+
     #[Test]
     public function validate_returns_empty_array_for_valid_data(): void
     {
         $runner = new SchemaValidatorRunner(20);
         $schema = ObjectConverter::convert(['type' => 'integer']);
 
-        $this->assertSame([], $runner->validate($schema, 42));
+        $this->assertSame([], self::groupedErrors($runner, $schema, 42));
     }
 
     #[Test]
@@ -37,7 +40,7 @@ class SchemaValidatorRunnerTest extends TestCase
         $runner = new SchemaValidatorRunner(20);
         $schema = ObjectConverter::convert(['type' => 'integer']);
 
-        $errors = $runner->validate($schema, 'not-an-int');
+        $errors = self::groupedErrors($runner, $schema, 'not-an-int');
 
         $this->assertNotSame([], $errors);
         $this->assertArrayHasKey('/', $errors);
@@ -56,7 +59,7 @@ class SchemaValidatorRunnerTest extends TestCase
         ]);
         $data = ObjectConverter::convert(['count' => 'not-an-int']);
 
-        $errors = $runner->validate($schema, $data);
+        $errors = self::groupedErrors($runner, $schema, $data);
 
         $this->assertArrayHasKey('/count', $errors);
     }
@@ -92,7 +95,7 @@ class SchemaValidatorRunnerTest extends TestCase
             $freshSchema = ObjectConverter::convert(
                 OpenApiSchemaConverter::convert($schema, OpenApiVersion::V3_1),
             );
-            $this->assertSame([], $runner->validate($freshSchema, $data));
+            $this->assertSame([], self::groupedErrors($runner, $freshSchema, $data));
         }
         gc_collect_cycles();
 
@@ -120,7 +123,7 @@ class SchemaValidatorRunnerTest extends TestCase
                 'type' => 'integer',
                 'const' => $i,
             ]);
-            $this->assertSame([], $runner->validate($schema, $i));
+            $this->assertSame([], self::groupedErrors($runner, $schema, $i));
         }
 
         $cache = (new ReflectionProperty($runner, 'canonicalSchemas'))->getValue($runner);
@@ -145,7 +148,7 @@ class SchemaValidatorRunnerTest extends TestCase
     {
         $runner = new SchemaValidatorRunner(0);
 
-        $this->assertSame([], $runner->validate(ObjectConverter::convert(['type' => 'string']), 'ok'));
+        $this->assertSame([], self::groupedErrors($runner, ObjectConverter::convert(['type' => 'string']), 'ok'));
     }
 
     #[Test]
@@ -165,8 +168,8 @@ class SchemaValidatorRunnerTest extends TestCase
         ]);
         $data = ObjectConverter::convert(['a' => 'not-int', 'b' => 'also-not-int']);
 
-        $cappedErrors = (new SchemaValidatorRunner(1))->validate($schema, $data);
-        $uncappedErrors = (new SchemaValidatorRunner(20))->validate($schema, $data);
+        $cappedErrors = self::groupedErrors(new SchemaValidatorRunner(1), $schema, $data);
+        $uncappedErrors = self::groupedErrors(new SchemaValidatorRunner(20), $schema, $data);
 
         $this->assertCount(1, $cappedErrors);
         $this->assertGreaterThan(1, count($uncappedErrors));
@@ -210,7 +213,7 @@ class SchemaValidatorRunnerTest extends TestCase
         ]);
         $data = ObjectConverter::convert(['message' => 'oops', 'code' => 'notInEnum']);
 
-        $errors = (new SchemaValidatorRunner(0))->validate($schema, $data);
+        $errors = self::groupedErrors(new SchemaValidatorRunner(0), $schema, $data);
 
         $this->assertArrayHasKey('/code', $errors, 'real enum sub-error must remain');
         $this->assertArrayNotHasKey(
@@ -238,7 +241,7 @@ class SchemaValidatorRunnerTest extends TestCase
         ]);
         $data = ObjectConverter::convert(['id' => 1, 'extra' => 'nope']);
 
-        $errors = (new SchemaValidatorRunner(0))->validate($schema, $data);
+        $errors = self::groupedErrors(new SchemaValidatorRunner(0), $schema, $data);
 
         $this->assertArrayHasKey('/', $errors);
         $this->assertCount(1, $errors['/']);
@@ -263,7 +266,7 @@ class SchemaValidatorRunnerTest extends TestCase
         ]);
         $data = ObjectConverter::convert(['code' => 'notInEnum', 'extra' => 'nope']);
 
-        $errors = (new SchemaValidatorRunner(0))->validate($schema, $data);
+        $errors = self::groupedErrors(new SchemaValidatorRunner(0), $schema, $data);
 
         $this->assertArrayHasKey('/code', $errors);
         $this->assertArrayHasKey('/', $errors);
@@ -298,7 +301,7 @@ class SchemaValidatorRunnerTest extends TestCase
         ]);
         $data = ObjectConverter::convert(['wrapper' => ['code' => 'notInEnum']]);
 
-        $errors = (new SchemaValidatorRunner(0))->validate($schema, $data);
+        $errors = self::groupedErrors(new SchemaValidatorRunner(0), $schema, $data);
 
         $this->assertArrayHasKey('/wrapper/code', $errors);
         $this->assertArrayNotHasKey(
@@ -327,7 +330,7 @@ class SchemaValidatorRunnerTest extends TestCase
         ]);
         $data = ObjectConverter::convert(['code' => 'notInEnum']);
 
-        $errors = (new SchemaValidatorRunner(0))->validate($schema, $data);
+        $errors = self::groupedErrors(new SchemaValidatorRunner(0), $schema, $data);
 
         $this->assertArrayHasKey('/code', $errors);
         $this->assertArrayNotHasKey('/', $errors);
@@ -350,7 +353,7 @@ class SchemaValidatorRunnerTest extends TestCase
         ]);
         $data = ObjectConverter::convert(['code' => 'notInEnum', 'extra' => 'nope']);
 
-        $errors = (new SchemaValidatorRunner(0))->validate($schema, $data);
+        $errors = self::groupedErrors(new SchemaValidatorRunner(0), $schema, $data);
 
         $this->assertSame(
             ['Additional object properties are not allowed: extra'],
@@ -379,7 +382,7 @@ class SchemaValidatorRunnerTest extends TestCase
         // Both `message` (wrong type, integer) and `code` (wrong enum) fail.
         $data = ObjectConverter::convert(['message' => 42, 'code' => 'notInEnum']);
 
-        $errors = (new SchemaValidatorRunner(0))->validate($schema, $data);
+        $errors = self::groupedErrors(new SchemaValidatorRunner(0), $schema, $data);
 
         $this->assertArrayHasKey('/message', $errors, 'first real sub-error must survive');
         $this->assertArrayHasKey('/code', $errors, 'second real sub-error must survive');
@@ -393,7 +396,7 @@ class SchemaValidatorRunnerTest extends TestCase
         // requires a stdClass root to introspect; the early-return must NOT
         // suppress real errors that come back when the boolean schema rejects
         // every value.
-        $errors = (new SchemaValidatorRunner(0))->validate(false, ObjectConverter::convert(['x' => 1]));
+        $errors = self::groupedErrors(new SchemaValidatorRunner(0), false, ObjectConverter::convert(['x' => 1]));
 
         $this->assertNotSame([], $errors, 'real validation error must surface against `false` schema');
     }
@@ -418,7 +421,7 @@ class SchemaValidatorRunnerTest extends TestCase
         ]);
         $data = ObjectConverter::convert(['b' => 'y']);
 
-        $errors = (new SchemaValidatorRunner(0))->validate($schema, $data);
+        $errors = self::groupedErrors(new SchemaValidatorRunner(0), $schema, $data);
 
         $this->assertNotSame(
             [],
@@ -458,7 +461,7 @@ class SchemaValidatorRunnerTest extends TestCase
         // Real undeclared property — both branches must reject.
         $data = ObjectConverter::convert(['kind' => 'a', 'extra' => 'nope']);
 
-        $errors = (new SchemaValidatorRunner(0))->validate($schema, $data);
+        $errors = self::groupedErrors(new SchemaValidatorRunner(0), $schema, $data);
 
         $foundExtraReport = false;
         foreach ($errors as $messages) {
@@ -502,7 +505,7 @@ class SchemaValidatorRunnerTest extends TestCase
         ]);
         $data = ObjectConverter::convert(['a' => 'ok', 'b' => 'ok', 'a,b' => 'real-extra']);
 
-        $errors = (new SchemaValidatorRunner(0))->validate($schema, $data);
+        $errors = self::groupedErrors(new SchemaValidatorRunner(0), $schema, $data);
 
         $this->assertArrayHasKey('/', $errors);
         $this->assertCount(1, $errors['/']);
@@ -532,7 +535,7 @@ class SchemaValidatorRunnerTest extends TestCase
         ]);
         $data = ObjectConverter::convert(['a' => 'ok', '' => 'real-extra']);
 
-        $errors = (new SchemaValidatorRunner(0))->validate($schema, $data);
+        $errors = self::groupedErrors(new SchemaValidatorRunner(0), $schema, $data);
 
         $this->assertArrayHasKey(
             '/',
@@ -558,7 +561,7 @@ class SchemaValidatorRunnerTest extends TestCase
         ]);
         $data = ObjectConverter::convert(['code' => 'ok', ' code' => 'real-extra']);
 
-        $errors = (new SchemaValidatorRunner(0))->validate($schema, $data);
+        $errors = self::groupedErrors(new SchemaValidatorRunner(0), $schema, $data);
 
         $this->assertArrayHasKey('/', $errors);
         $this->assertCount(1, $errors['/']);
@@ -609,7 +612,7 @@ class SchemaValidatorRunnerTest extends TestCase
             'data' => [['name' => 'a', 'plan' => 'NOT-RFC']],
         ]);
 
-        $errors = (new SchemaValidatorRunner(0))->validate($schema, $data);
+        $errors = self::groupedErrors(new SchemaValidatorRunner(0), $schema, $data);
 
         $this->assertArrayHasKey('/data/0/plan', $errors, 'real format sub-error must remain');
         $this->assertArrayNotHasKey(
@@ -664,7 +667,7 @@ class SchemaValidatorRunnerTest extends TestCase
             'data' => [['name' => 'a', 'plan' => ['ts' => 'NOT-RFC', 'level' => 'pro']]],
         ]);
 
-        $errors = (new SchemaValidatorRunner(0))->validate($schema, $data);
+        $errors = self::groupedErrors(new SchemaValidatorRunner(0), $schema, $data);
 
         $this->assertArrayHasKey('/data/0/plan/ts', $errors, 'real format sub-error must remain');
         $this->assertArrayNotHasKey('/data/0/plan', $errors, 'inner-object cascade must drop');
@@ -696,7 +699,7 @@ class SchemaValidatorRunnerTest extends TestCase
         ]);
         $data = ObjectConverter::convert(['ok', ['code' => 'notInEnum']]);
 
-        $errors = (new SchemaValidatorRunner(0))->validate($schema, $data);
+        $errors = self::groupedErrors(new SchemaValidatorRunner(0), $schema, $data);
 
         $this->assertArrayHasKey('/1/code', $errors, 'real enum sub-error must remain');
         $this->assertArrayNotHasKey(
@@ -735,7 +738,7 @@ class SchemaValidatorRunnerTest extends TestCase
         ]);
         $data = ObjectConverter::convert(['data' => [1], 'extra' => 'real']);
 
-        $errors = (new SchemaValidatorRunner(0))->validate($schema, $data);
+        $errors = self::groupedErrors(new SchemaValidatorRunner(0), $schema, $data);
 
         $this->assertArrayHasKey(
             '/',
@@ -778,7 +781,7 @@ class SchemaValidatorRunnerTest extends TestCase
             'data' => [['name' => 'a', 'rogue' => 'real-extra']],
         ]);
 
-        $errors = (new SchemaValidatorRunner(0))->validate($schema, $data);
+        $errors = self::groupedErrors(new SchemaValidatorRunner(0), $schema, $data);
 
         $this->assertArrayHasKey('/data/0', $errors);
         $this->assertCount(1, $errors['/data/0']);
@@ -823,7 +826,7 @@ class SchemaValidatorRunnerTest extends TestCase
         ]);
         $data = ObjectConverter::convert(['ok', 'ok', ['declared' => 'x', 'rogue' => 'real-extra']]);
 
-        $errors = (new SchemaValidatorRunner(0))->validate($schema, $data);
+        $errors = self::groupedErrors(new SchemaValidatorRunner(0), $schema, $data);
 
         $foundRogue = false;
         foreach ($errors as $messages) {
@@ -885,7 +888,7 @@ class SchemaValidatorRunnerTest extends TestCase
         ]);
         $data = ObjectConverter::convert(['data' => [['name' => 'a', 'rogue' => 'real']], 'extra' => 'real']);
 
-        $errors = (new SchemaValidatorRunner(0))->validate($schema, $data);
+        $errors = self::groupedErrors(new SchemaValidatorRunner(0), $schema, $data);
 
         $foundExtra = false;
         $foundRogue = false;
@@ -941,7 +944,7 @@ class SchemaValidatorRunnerTest extends TestCase
         ]);
         $data = ObjectConverter::convert(['list' => ['declared' => 'notAllowed']]);
 
-        $errors = (new SchemaValidatorRunner(0))->validate($schema, $data);
+        $errors = self::groupedErrors(new SchemaValidatorRunner(0), $schema, $data);
 
         // Real enum failure must remain at the property's path.
         $this->assertArrayHasKey(
@@ -985,7 +988,7 @@ class SchemaValidatorRunnerTest extends TestCase
         ]);
         $data = ObjectConverter::convert(['42' => 'notAllowed', 'extra' => 'real']);
 
-        $errors = (new SchemaValidatorRunner(0))->validate($schema, $data);
+        $errors = self::groupedErrors(new SchemaValidatorRunner(0), $schema, $data);
 
         // Real enum violation surfaces (even at the int-segment path).
         $foundEnum = false;
@@ -1042,7 +1045,7 @@ class SchemaValidatorRunnerTest extends TestCase
         ]);
         $data = ObjectConverter::convert(['data' => [], 'extra' => 'real']);
 
-        $errors = (new SchemaValidatorRunner(0))->validate($schema, $data);
+        $errors = self::groupedErrors(new SchemaValidatorRunner(0), $schema, $data);
 
         $this->assertArrayHasKey('/', $errors, 'real root cascade must survive');
         $this->assertSame(
@@ -1085,7 +1088,7 @@ class SchemaValidatorRunnerTest extends TestCase
         // path that should still dedup correctly.
         $data = ObjectConverter::convert([['anything' => 'goes'], ['name' => 'a', 'rogue' => 'real']]);
 
-        $errors = (new SchemaValidatorRunner(0))->validate($schema, $data);
+        $errors = self::groupedErrors(new SchemaValidatorRunner(0), $schema, $data);
 
         // Index 1 cascade must keep the real `rogue` (declared `name` filtered).
         $this->assertArrayHasKey('/1', $errors, 'real additional at index 1 must surface');
@@ -1118,7 +1121,7 @@ class SchemaValidatorRunnerTest extends TestCase
         ]);
         $data = ObjectConverter::convert(['a/b' => 'notAllowed']);
 
-        $errors = (new SchemaValidatorRunner(0))->validate($schema, $data);
+        $errors = self::groupedErrors(new SchemaValidatorRunner(0), $schema, $data);
 
         // The enum sub-error fires at the JSON-Pointer-encoded path.
         $this->assertArrayHasKey('/a~1b', $errors, 'enum sub-error must survive at the encoded path');
@@ -1151,8 +1154,8 @@ class SchemaValidatorRunnerTest extends TestCase
         ]);
 
         $this->assertSame(
-            $runner->validate($absentSchema, $body),
-            $runner->validate($explicitTrueSchema, $body),
+            self::groupedErrors($runner, $absentSchema, $body),
+            self::groupedErrors($runner, $explicitTrueSchema, $body),
             'absent additionalItems must validate the same as additionalItems: true under opis Draft 07',
         );
     }
@@ -1178,7 +1181,8 @@ class SchemaValidatorRunnerTest extends TestCase
             OpenApiVersion::V3_1,
         );
 
-        $errors = (new SchemaValidatorRunner(0))->validate(
+        $errors = self::groupedErrors(
+            new SchemaValidatorRunner(0),
             ObjectConverter::convert($converted),
             ObjectConverter::convert(['hello', 42, 'oops']),
         );
@@ -1253,7 +1257,7 @@ class SchemaValidatorRunnerTest extends TestCase
         $this->assertCount(1, $rootViolations);
         $this->assertSame('', $rootViolations[0]->instancePath);
         $this->assertSame('/', $rootViolations[0]->displayPath());
-        $this->assertArrayHasKey('/', $runner->validate($rootViolationSchema, 'not-an-object'));
+        $this->assertArrayHasKey('/', self::groupedErrors($runner, $rootViolationSchema, 'not-an-object'));
 
         $emptyKeySchema = ObjectConverter::convert([
             'type' => 'object',
@@ -1266,7 +1270,7 @@ class SchemaValidatorRunnerTest extends TestCase
         $this->assertCount(1, $emptyKeyViolations);
         $this->assertSame('/', $emptyKeyViolations[0]->instancePath);
         $this->assertSame('/', $emptyKeyViolations[0]->displayPath());
-        $this->assertArrayHasKey('/', $runner->validate($emptyKeySchema, $emptyKeyData));
+        $this->assertArrayHasKey('/', self::groupedErrors($runner, $emptyKeySchema, $emptyKeyData));
     }
 
     #[Test]
@@ -1282,7 +1286,7 @@ class SchemaValidatorRunnerTest extends TestCase
         ]);
         $data = ObjectConverter::convert(['a' => 'not-int', 'b' => 'not-ok']);
 
-        $mapView = (new SchemaValidatorRunner(0))->validate($schema, $data);
+        $mapView = self::groupedErrors(new SchemaValidatorRunner(0), $schema, $data);
         $structured = (new SchemaValidatorRunner(0))->validateStructured($schema, $data);
 
         $flattenedMap = [];

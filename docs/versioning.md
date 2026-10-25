@@ -83,9 +83,10 @@ This library follows [Semantic Versioning 2.0](https://semver.org/). v1.0.0 is t
   baselined, an uncovered response absent from the file fails the run, and
   entries that are covered now are reported per the stale mode. Unknown
   `coverage_baseline_version` values are rejected.
-- Named contract checks: `ContractCheck` names and default expected statuses
-  and status classes, the `OpenApiContractChecks`/`ContractCheckPlan` fluent
-  surface, and the
+- Named contract checks (`Studio\Gesso\Contract\`; the pre-2.7
+  `Studio\Gesso\Fuzz\` spellings are deprecated aliases removed in v3.0):
+  `ContractCheck` names and default expected statuses and status classes, the
+  `OpenApiContractChecks`/`ContractCheckPlan` fluent surface, and the
   `ContractCheckSummary`/`ContractCheckFailure`/`ContractCheckSkip` shapes.
   Failure/skip prose is not a contract, and neither is the placeholder value
   an `ignored_auth` invalid-credential probe writes.
@@ -129,31 +130,38 @@ The v1.9 writer emits a sidecar envelope with `envelopeVersion: 2`, containing
 coverage state `version: 1` and strict-required state `version: 2`. The v1.9
 reader accepts that envelope and the legacy bare coverage state `version: 1`.
 It recognises `part-*.json` sidecars and `failed-*.json` failure markers.
+Since issue #596 the 2.x writer appends `.<run-id>` before `.json` when a run
+id is known (`part-<token>-<pid>.<run-id>.json`). Every 2.x reader still matches
+the same globs and treats a name without the suffix as "no run id", so the
+envelope version is unchanged and mixed fleets stay mergeable.
 
-The baseline-generation protocol introduced `envelopeVersion: 3` — the v2
-shape plus a `baseline` key holding the violation-baseline document
-(`baseline_version: 1`). It remains an accepted compatibility input.
+The current writer emits `envelopeVersion: 10`. `envelopeVersion` and
+`coverage` are required; every other key is optional, and its absence means
+the writer had no such tracker. A new tracker half is a new optional key, not
+a new envelope version.
 
-The current writer emits `envelopeVersion: 8` for plain worker runs. It carries
-coverage state `version: 1`, strict-required state `version: 2`,
-strict-additional-properties state `version: 1`, SDK exercise state
-`version: 1`, and deprecation state `version: 1`. A baseline-generation worker
-emits `envelopeVersion: 9`, which adds the `baseline` document to the v8
-tracker halves.
+| Key | Inner version owned by |
+| --- | --- |
+| `coverage` (required) | coverage state `version: 1` |
+| `strictRequired` | strict-required state `version: 2` |
+| `strictAdditionalProperties` | strict-additional-properties state `version: 1` |
+| `sdkExercise` | SDK exercise state `version: 1` |
+| `deprecations` | deprecation state `version: 1` |
+| `baseline` | violation-baseline document `baseline_version: 1` (generation runs only) |
 
-The reader accepts envelopes 2–9 and the legacy bare coverage state. Versions
-4/5 are the older strict-additional-properties shapes; versions 2/3 contribute
-no strict-additional-properties state, versions 2–5 contribute no SDK
-exercise state, and versions 2–7 contribute no deprecation state — for which
-the merge reports that its count is a lower bound rather than treating a
-missing half as "this worker used none". A plain envelope carrying a `baseline` key or a baseline
-envelope missing one is rejected as malformed; `coverage:merge
---baseline-file` refuses to write a union when any sidecar lacks the baseline
-half. Likewise, a strict parallel SDK exercise threshold rejects any worker
-sidecar without the SDK half instead of treating an old/mixed fleet as complete
-evidence. Warn-only SDK gating reports the missing-worker count and evaluates
-the available observations.
+The 2.x reader also accepts the legacy envelopes 2–9 written by Gesso 1.9–2.6
+workers, and the legacy bare coverage state. In those envelopes the version
+number enumerated the halves: 3/5/7/9 carry `baseline` and their even
+sibling must not; 4–9 carry strict-additional-properties state, 6–9 SDK
+exercise state, and 8/9 deprecation state. Those rules still apply to legacy
+inputs, and a half that a legacy version does not carry reads as absent.
 
+Absence is reported, never treated as "this worker recorded none". The merge
+says its deprecation count is a lower bound when a sidecar has no deprecation
+half; `coverage:merge --baseline-file` refuses to write a union when any
+sidecar lacks the baseline half; a strict parallel SDK exercise threshold
+rejects any worker sidecar without the SDK half, while warn-only SDK gating
+reports the missing-worker count and evaluates the available observations.
 `--strict-additional-properties=fail` fails loudly when any worker lacks that
 state, or when no worker exported an evaluation, instead of treating an
 incomplete/old-fleet merge as clean. Unknown envelope versions and unknown

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { withBase } from 'vitepress'
 import DefaultTheme, { useSidebar } from 'vitepress/theme'
 
 declare const __DOCS_VERSION__: string
@@ -18,13 +19,14 @@ const docsVersion = __DOCS_VERSION__
     </template>
     <template #layout-bottom>
       <div class="tombo-site-footer-frame" :class="{ 'has-sidebar': hasSidebar }">
-        <footer class="tombo-site-footer tombo-shell" aria-label="Site design information">
+        <footer class="tombo-site-footer tombo-shell" aria-label="Site information">
           <span class="tombo-logo" aria-hidden="true">
             <i class="h"></i><i class="b"></i><i class="w1"></i><i class="w2"></i><i class="t"></i>
           </span>
           <p>
             GESSO / STUDIO-DESIGN / MIT LICENSE<br>
-            SET IN TOMBO — WADAKATU DESIGN SYSTEM
+            SET IN TOMBO — WADAKATU DESIGN SYSTEM<br>
+            FOR AGENTS: <a :href="withBase('/llms.txt')">llms.txt</a> · <a :href="withBase('/llms-full.txt')">llms-full.txt</a>
           </p>
         </footer>
       </div>

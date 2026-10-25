@@ -2,16 +2,16 @@
 
 declare(strict_types=1);
 
-namespace Studio\Gesso\Tests\Unit\Fuzz;
+namespace Studio\Gesso\Tests\Unit\Contract;
 
 use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
-use Studio\Gesso\Fuzz\ContractCheck;
+use Studio\Gesso\Contract\ContractCheck;
+use Studio\Gesso\Contract\OpenApiContractChecks;
 use Studio\Gesso\Fuzz\ExploredCase;
 use Studio\Gesso\Fuzz\ExploredOperation;
-use Studio\Gesso\Fuzz\OpenApiContractChecks;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 
 use function array_key_exists;
@@ -962,5 +962,30 @@ class OpenApiContractChecksTest extends TestCase
     {
         $this->expectException(InvalidArgumentException::class);
         OpenApiContractChecks::run('contract-checks')->expectedStatusClasses(ContractCheck::MissingRequiredHeader, []);
+    }
+
+    #[Test]
+    public function ignored_auth_dispatches_both_probes_for_a_form_only_operation(): void
+    {
+        // Issue #498: an OAuth-style form-only operation used to be skipped
+        // because no valid case could be generated for it.
+        $dispatched = [];
+
+        $summary = OpenApiContractChecks::run('contract-checks', seed: 7)
+            ->checks([ContractCheck::IgnoredAuth])
+            ->includePaths(['/oauth/revoke'])
+            ->dispatchUsing(static function (ExploredCase $case) use (&$dispatched): int {
+                $dispatched[] = $case;
+
+                return 401;
+            })
+            ->report();
+
+        $this->assertSame([], $summary->skips);
+        $this->assertSame(2, $summary->dispatchedProbes);
+        foreach ($dispatched as $case) {
+            $this->assertSame('application/x-www-form-urlencoded', $case->contentType);
+            $this->assertStringContainsString('token=', $case->bodyAsString());
+        }
     }
 }

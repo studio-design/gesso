@@ -18,12 +18,14 @@ use function ctype_digit;
 use function hash;
 use function pathinfo;
 use function preg_replace;
+use function preg_replace_callback;
 use function preg_split;
 use function rtrim;
 use function sprintf;
 use function str_ends_with;
 use function strcspn;
 use function strlen;
+use function strrpos;
 use function strtolower;
 use function substr;
 use function trim;
@@ -254,7 +256,25 @@ final class HttpRefLoader
         // Cover both absolute (`https://user:pass@host`) and network-path
         // (`//user:pass@host`) references. HTTP client exception messages may
         // contain either form rather than only the original URL string.
-        $redacted = preg_replace('#((?:[a-z][a-z0-9+.-]*:)?//)[^/@\s]+@#i', '$1', $value);
+        // Userinfo ends at the LAST `@` of the authority (as WHATWG URL,
+        // parse_url() and PSR-7 URIs split it), so a raw `@` inside a password
+        // must not stop the redaction early. The userinfo runs are possessive
+        // and nothing repeats a group, so a long run cannot exhaust the PCRE
+        // limits and drop us into the raw-value fallback below.
+        $redacted = preg_replace_callback(
+            '#((?:[a-z][a-z0-9+.-]*:)?//)(?:([^/?\#\s@]*+@[^/?\#\s]*+)|[^/@\s]++@)#i',
+            static function (array $match): string {
+                if (!isset($match[2])) {
+                    return $match[1];
+                }
+
+                $lastAt = (int) strrpos($match[2], '@');
+
+                // `//@host` has no userinfo to hide; keep it verbatim.
+                return $lastAt === 0 ? $match[0] : $match[1] . substr($match[2], $lastAt + 1);
+            },
+            $value,
+        );
         if ($redacted === null) {
             return $value;
         }

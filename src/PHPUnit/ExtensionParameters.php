@@ -9,6 +9,8 @@ use PHPUnit\Runner\Extension\ParameterCollection;
 use Studio\Gesso\Config\ConfigurationBridge;
 use Studio\Gesso\Config\GessoConfig;
 use Studio\Gesso\Config\InvalidGessoConfigurationException;
+use Studio\Gesso\Config\LegacyConfigurationKeys;
+use Studio\Gesso\Internal\Diagnostics;
 
 use function array_key_exists;
 use function array_map;
@@ -47,9 +49,14 @@ final readonly class ExtensionParameters
             }
             $config = $explicit || is_file($path) ? GessoConfig::load($path) : GessoConfig::defaults();
         } catch (InvalidGessoConfigurationException $e) {
-            OpenApiCoverageExtension::writeStderr('[Gesso] FATAL: ' . $e->getMessage() . "\n");
+            Diagnostics::stderr('[Gesso] FATAL: ' . $e->getMessage() . "\n");
 
             throw $e;
+        }
+        foreach (LegacyConfigurationKeys::PHPUNIT as $name) {
+            if ($legacy->has($name)) {
+                LegacyConfigurationKeys::deprecate($name);
+            }
         }
 
         return new self($legacy, ConfigurationBridge::phpunit($config));

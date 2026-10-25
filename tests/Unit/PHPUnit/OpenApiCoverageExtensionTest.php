@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Tests\Unit\PHPUnit;
 
+use const E_USER_DEPRECATED;
 use const E_USER_WARNING;
 
+use PHPUnit\Framework\Attributes\IgnoreDeprecations;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use PHPUnit\Runner\Extension\ParameterCollection;
@@ -18,6 +20,7 @@ use Studio\Gesso\Exception\EnumDriftException;
 use Studio\Gesso\Exception\InvalidOpenApiSpecException;
 use Studio\Gesso\Exception\InvalidOpenApiSpecReason;
 use Studio\Gesso\Exception\SpecFileNotFoundException;
+use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\Internal\EnumScanner;
 use Studio\Gesso\PHPUnit\InvalidStrictRequiredConfigurationException;
 use Studio\Gesso\PHPUnit\OpenApiCoverageExtension;
@@ -35,29 +38,39 @@ use function fclose;
 use function file_get_contents;
 use function fopen;
 use function getcwd;
+use function getenv;
 use function is_writable;
 use function mkdir;
+use function putenv;
 use function restore_error_handler;
 use function rewind;
 use function rmdir;
 use function set_error_handler;
 use function stream_get_contents;
+use function substr_count;
 use function sys_get_temp_dir;
 use function tempnam;
 use function uniqid;
 use function unlink;
 
+#[IgnoreDeprecations]
 class OpenApiCoverageExtensionTest extends TestCase
 {
     /** @var null|resource */
     private $stderrBuffer;
     private ?string $githubSummaryTmp = null;
+    private false|string $previousTestToken = false;
 
     protected function setUp(): void
     {
         parent::setUp();
+        // Snapshot TEST_TOKEN so the enum-drift tests keep asserting the
+        // evaluating (non-worker) path even when this suite runs under paratest.
+        $this->previousTestToken = getenv('TEST_TOKEN');
+        putenv('TEST_TOKEN');
         OpenApiSpecLoader::reset();
         EnumScanner::reset();
+        Deprecations::resetForTesting();
         StrictAdditionalPropertiesPerCallChecker::reset();
         StrictAdditionalPropertiesTracker::resetCurrent();
         SdkExerciseCoverageTracker::resetCurrent();
@@ -72,6 +85,7 @@ class OpenApiCoverageExtensionTest extends TestCase
 
     protected function tearDown(): void
     {
+        Deprecations::resetForTesting();
         OpenApiCoverageExtension::overrideStderrForTesting(null);
         if ($this->stderrBuffer !== null) {
             fclose($this->stderrBuffer);
@@ -83,9 +97,11 @@ class OpenApiCoverageExtensionTest extends TestCase
         }
         OpenApiSpecLoader::reset();
         EnumScanner::reset();
+        Deprecations::resetForTesting();
         StrictAdditionalPropertiesPerCallChecker::reset();
         StrictAdditionalPropertiesTracker::resetCurrent();
         SdkExerciseCoverageTracker::resetCurrent();
+        putenv($this->previousTestToken === false ? 'TEST_TOKEN' : 'TEST_TOKEN=' . $this->previousTestToken);
         parent::tearDown();
     }
 
@@ -163,6 +179,7 @@ class OpenApiCoverageExtensionTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function bootstrap_passes_absolute_enum_spec_base_path_to_loader(): void
     {
         $extension = new OpenApiCoverageExtension();
@@ -178,6 +195,39 @@ class OpenApiCoverageExtensionTest extends TestCase
     }
 
     #[Test]
+    public function enum_spec_base_path_emits_one_deprecation_notice(): void
+    {
+        $extension = new OpenApiCoverageExtension();
+        $parameters = ParameterCollection::fromArray([
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => 'refs-valid',
+            'enum_spec_base_path' => '/absolute/path/to/openapi',
+        ]);
+
+        $captured = [];
+        set_error_handler(static function (int $errno, string $message) use (&$captured): bool {
+            $captured[] = [$errno, $message];
+
+            return true;
+        });
+
+        try {
+            $extension->setupExtension(null, $parameters, null);
+        } finally {
+            restore_error_handler();
+        }
+
+        $this->assertCount(1, $captured);
+        $this->assertSame(E_USER_DEPRECATED, $captured[0][0]);
+        $this->assertStringStartsWith(Deprecations::PREFIX, $captured[0][1]);
+        $this->assertStringContainsString("'enum_spec_base_path'", $captured[0][1]);
+        // The loader's own configure(enumBasePath:) notice must not fire too.
+        $this->assertSame(['phpunit.enum_spec_base_path' => 1], Deprecations::counts());
+        $this->assertSame('/absolute/path/to/openapi', OpenApiSpecLoader::getEnumBasePath());
+    }
+
+    #[Test]
+    #[IgnoreDeprecations]
     public function bootstrap_resolves_relative_enum_spec_base_path_against_cwd(): void
     {
         // Pin that the extension absolutises a relative `enum_spec_base_path`
@@ -197,6 +247,7 @@ class OpenApiCoverageExtensionTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function bootstrap_trims_whitespace_around_enum_spec_base_path(): void
     {
         // XML editors sometimes wrap parameter values in stray newlines or
@@ -216,6 +267,7 @@ class OpenApiCoverageExtensionTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function bootstrap_fatal_when_enum_spec_base_path_is_empty(): void
     {
         // <parameter name="enum_spec_base_path" value=""/> would otherwise
@@ -242,6 +294,7 @@ class OpenApiCoverageExtensionTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function bootstrap_fatal_when_enum_spec_base_path_set_without_spec_base_path(): void
     {
         // C1 from review: a typo in spec_base_path that leaves
@@ -264,6 +317,7 @@ class OpenApiCoverageExtensionTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function bootstrap_fatal_writes_block_to_github_step_summary_for_orphaned_enum_spec_base_path(): void
     {
         // FATAL diagnostics for spec misconfiguration already land in
@@ -651,6 +705,7 @@ class OpenApiCoverageExtensionTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function bootstrap_fatals_on_drift_when_strict(): void
     {
         $extension = new OpenApiCoverageExtension();
@@ -707,6 +762,7 @@ class OpenApiCoverageExtensionTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function bootstrap_succeeds_when_no_drift(): void
     {
         $extension = new OpenApiCoverageExtension();
@@ -723,6 +779,7 @@ class OpenApiCoverageExtensionTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function bootstrap_fatals_on_misconfigured_binding_even_when_lenient(): void
     {
         $extension = new OpenApiCoverageExtension();
@@ -764,6 +821,7 @@ class OpenApiCoverageExtensionTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function bootstrap_parses_namespaces_csv_with_whitespace(): void
     {
         $extension = new OpenApiCoverageExtension();
@@ -780,6 +838,47 @@ class OpenApiCoverageExtensionTest extends TestCase
         $extension->setupExtension(null, $parameters, null);
 
         $this->assertSame('', $this->readStderr());
+    }
+
+    #[Test]
+    public function bootstrap_detects_drift_in_enums_bound_by_component_name(): void
+    {
+        $extension = new OpenApiCoverageExtension();
+        $parameters = ParameterCollection::fromArray([
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => 'enum-drift/components',
+            'enum_drift_enabled' => 'true',
+            'enum_drift_scan_namespaces' => 'Studio\\Gesso\\Tests\\Unit\\PHPUnit\\Fixture\\EnumDrift\\ByName\\',
+        ]);
+
+        try {
+            $extension->setupExtension(null, $parameters, null);
+            $this->fail('Expected EnumDriftException');
+        } catch (EnumDriftException) {
+            $stderr = $this->readStderr();
+            $this->assertStringContainsString('[OpenAPI Enum Drift] FATAL', $stderr);
+            $this->assertStringContainsString('ByName\\Color  ->  #/components/schemas/Color', $stderr);
+            $this->assertStringContainsString('"black"', $stderr);
+            $this->assertStringNotContainsString('InternalOnly', $stderr);
+        }
+    }
+
+    #[Test]
+    public function bootstrap_skips_unbound_enums_silently(): void
+    {
+        $extension = new OpenApiCoverageExtension();
+        $parameters = ParameterCollection::fromArray([
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => 'refs-valid',
+            'enum_drift_enabled' => 'true',
+            'enum_drift_scan_namespaces' => 'Studio\\Gesso\\Tests\\Unit\\PHPUnit\\Fixture\\EnumDrift\\ByName\\',
+        ]);
+
+        $extension->setupExtension(null, $parameters, null);
+
+        $stderr = $this->readStderr();
+        $this->assertStringStartsWith('[OpenAPI Enum Drift] NOTE: scan matched zero bound enums', $stderr);
+        $this->assertSame(1, substr_count($stderr, "\n"));
     }
 
     #[Test]
@@ -807,7 +906,7 @@ class OpenApiCoverageExtensionTest extends TestCase
             // Fall-through path: NOTE was emitted, run continues.
             $stderr = $this->readStderr();
             $this->assertStringContainsString('[OpenAPI Enum Drift] NOTE', $stderr);
-            $this->assertStringContainsString('zero #[BoundToOpenApiEnum] enums', $stderr);
+            $this->assertStringContainsString('zero bound enums', $stderr);
         } catch (EnumBindingException) {
             // If the chosen prefix happens to be unresolvable on this host
             // (no PSR-4 longest-match registered for tests/), skip the
@@ -820,6 +919,7 @@ class OpenApiCoverageExtensionTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function bootstrap_appends_fatal_block_to_step_summary_for_enum_drift(): void
     {
         $tmp = tempnam(sys_get_temp_dir(), 'openapi-enum-summary-');
@@ -850,6 +950,34 @@ class OpenApiCoverageExtensionTest extends TestCase
     }
 
     #[Test]
+    public function bootstrap_skips_enum_drift_in_a_paratest_worker(): void
+    {
+        $tmp = tempnam(sys_get_temp_dir(), 'openapi-enum-summary-');
+        if ($tmp === false) {
+            $this->fail('Could not create temp file for GITHUB_STEP_SUMMARY');
+        }
+        $this->githubSummaryTmp = $tmp;
+        putenv('TEST_TOKEN=2');
+
+        $extension = new OpenApiCoverageExtension();
+        $parameters = ParameterCollection::fromArray([
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => 'refs-valid',
+            'enum_drift_enabled' => 'true',
+            'enum_drift_scan_namespaces' => 'Studio\\Gesso\\Tests\\Unit\\PHPUnit\\Fixture\\EnumDrift\\Drifting\\',
+            'enum_drift_fail_on_drift' => 'true',
+        ]);
+
+        // The paratest master is the single evaluator; a worker must neither
+        // throw nor duplicate the stderr line or the step-summary block.
+        $extension->setupExtension(null, $parameters, $tmp);
+
+        $this->assertStringNotContainsString('[OpenAPI Enum Drift]', $this->readStderr());
+        $this->assertSame('', (string) file_get_contents($tmp));
+    }
+
+    #[Test]
+    #[IgnoreDeprecations]
     public function bootstrap_appends_warning_block_to_step_summary_for_lenient_drift(): void
     {
         $tmp = tempnam(sys_get_temp_dir(), 'openapi-enum-summary-');
@@ -928,6 +1056,7 @@ class OpenApiCoverageExtensionTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function bootstrap_fatals_on_drift_when_fail_on_drift_omitted(): void
     {
         // Default for `enum_drift_fail_on_drift` is `true`. Pin the default

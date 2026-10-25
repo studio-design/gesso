@@ -211,7 +211,7 @@ final class StrictRequiredAsserterTest extends TestCase
             '/' => ['id', 'name'],
         ]);
 
-        $this->assertSame([], StrictRequiredAsserter::detectUnresolvedGroups(StrictRequiredMode::Warn));
+        $this->assertSame([], StrictRequiredAsserter::analyse(StrictRequiredMode::Warn)['unresolved']);
     }
 
     #[Test]
@@ -221,7 +221,7 @@ final class StrictRequiredAsserterTest extends TestCase
             '/' => ['expires'],
         ]);
 
-        $unresolved = StrictRequiredAsserter::detectUnresolvedGroups(StrictRequiredMode::Warn);
+        $unresolved = StrictRequiredAsserter::analyse(StrictRequiredMode::Warn)['unresolved'];
         $this->assertCount(1, $unresolved);
         $this->assertStringContainsString('GET /signed-url', $unresolved[0]);
     }
@@ -233,7 +233,7 @@ final class StrictRequiredAsserterTest extends TestCase
             '/' => ['expires'],
         ]);
 
-        $unresolved = StrictRequiredAsserter::detectUnresolvedGroups(StrictRequiredMode::Warn);
+        $unresolved = StrictRequiredAsserter::analyse(StrictRequiredMode::Warn)['unresolved'];
         $this->assertCount(1, $unresolved);
         $this->assertStringContainsString('text/plain', $unresolved[0]);
     }
@@ -261,7 +261,7 @@ final class StrictRequiredAsserterTest extends TestCase
 
         $this->assertSame([], StrictRequiredAsserter::detectAll(StrictRequiredMode::Warn));
 
-        $unwalkable = StrictRequiredAsserter::detectUnwalkableNodes(StrictRequiredMode::Warn);
+        $unwalkable = StrictRequiredAsserter::analyse(StrictRequiredMode::Warn)['unwalkable'];
         $this->assertCount(1, $unwalkable);
         $this->assertStringContainsString('GET /either-shape', $unwalkable[0]);
         $this->assertStringContainsString('anyOf', $unwalkable[0]);
@@ -280,7 +280,7 @@ final class StrictRequiredAsserterTest extends TestCase
 
         $this->assertSame([], StrictRequiredAsserter::detectAll(StrictRequiredMode::Warn));
 
-        $unwalkable = StrictRequiredAsserter::detectUnwalkableNodes(StrictRequiredMode::Warn);
+        $unwalkable = StrictRequiredAsserter::analyse(StrictRequiredMode::Warn)['unwalkable'];
         $this->assertCount(1, $unwalkable);
         $this->assertStringContainsString('GET /either-shape-oneof', $unwalkable[0]);
         $this->assertStringContainsString('oneOf', $unwalkable[0]);
@@ -414,7 +414,7 @@ final class StrictRequiredAsserterTest extends TestCase
 
         // Map-covered observations are silent by design — they are the
         // documented "this is a map" case, not an unwalkable diagnostic.
-        $this->assertSame([], StrictRequiredAsserter::detectUnwalkableNodes(StrictRequiredMode::Warn));
+        $this->assertSame([], StrictRequiredAsserter::analyse(StrictRequiredMode::Warn)['unwalkable']);
     }
 
     #[Test]
@@ -447,7 +447,7 @@ final class StrictRequiredAsserterTest extends TestCase
             '/' => ['a'],
         ]);
 
-        $unresolved = StrictRequiredAsserter::detectUnresolvedGroups(StrictRequiredMode::Warn);
+        $unresolved = StrictRequiredAsserter::analyse(StrictRequiredMode::Warn)['unresolved'];
 
         $this->assertCount(1, $unresolved);
         $this->assertStringContainsString('does-not-exist', $unresolved[0]);

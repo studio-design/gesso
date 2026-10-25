@@ -9,7 +9,6 @@ use const E_USER_WARNING;
 use Studio\Gesso\Exception\InvalidOpenApiSpecException;
 use Studio\Gesso\Exception\SpecFileNotFoundException;
 use Studio\Gesso\Exception\StrictRequiredDriftException;
-use Studio\Gesso\PHPUnit\CoverageReportSubscriber;
 use Studio\Gesso\Schema\EnumDriftAsserter;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 
@@ -102,51 +101,6 @@ final class StrictRequiredAsserter
     }
 
     /**
-     * Diagnostic accessor: groups whose observation was recorded but whose
-     * spec response schema could not be resolved at run end. Empty under
-     * the normal happy path (validator records only on Success, so every
-     * group should round-trip back to a schema).
-     *
-     * A non-empty result is bug-level: it means the validator's match key
-     * disagrees with the asserter's lookup, or a `$ref` resolved to an
-     * unexpected shape, or a spec file was unlinked mid-run. The subscriber
-     * surfaces these as a NOTE so users can tell "no drift" apart from
-     * "no schema to compare against".
-     *
-     * @return list<string> human-readable identifiers in the form
-     *                      `"specName :: METHOD path :: statusKey:contentTypeKey"`
-     *
-     * @internal Consumed by {@see CoverageReportSubscriber}.
-     */
-    public static function detectUnresolvedGroups(StrictRequiredMode $mode): array
-    {
-        return self::analyse($mode)['unresolved'];
-    }
-
-    /**
-     * Diagnostic accessor: observation pointers that fell under a schema
-     * node where descent could not proceed safely — `anyOf` / `oneOf` /
-     * scalar / malformed nodes. `required` has no AND-semantic at a
-     * disjunction node, so producing "add to `required`" drift advice for
-     * these would be actively misleading; the subscriber surfaces them as
-     * a NOTE instead.
-     *
-     * Observed pointers under a property that the spec does NOT declare
-     * (e.g. impl returns a field never mentioned in `properties`) still
-     * surface as drift — only the disjunction / unresolved-schema case
-     * lands here.
-     *
-     * @return list<string> identifiers in the form
-     *                      `"specName :: METHOD path :: statusKey:contentTypeKey:pointer (reason)"`
-     *
-     * @internal Consumed by {@see CoverageReportSubscriber}.
-     */
-    public static function detectUnwalkableNodes(StrictRequiredMode $mode): array
-    {
-        return self::analyse($mode)['unwalkable'];
-    }
-
-    /**
      * Render the diagnostic block describing every drifting endpoint.
      *
      * @param list<StrictRequiredReport> $reports
@@ -193,9 +147,22 @@ final class StrictRequiredAsserter
     }
 
     /**
+     * One end-of-run walk producing drift reports plus the two diagnostic
+     * lists the subscriber and merge CLI print as NOTEs.
+     *
+     * `unresolved` (`"spec :: METHOD path :: status:contentType"`): recorded
+     * groups whose response schema could not be resolved at run end — a
+     * bug-level signal (match-key disagreement, odd `$ref`, spec unlinked
+     * mid-run) that tells "no drift" apart from "nothing to compare against".
+     * `unwalkable` (`"... :pointer (reason)"`): observed pointers under
+     * `anyOf` / `oneOf` / scalar / malformed nodes, where `required` has no
+     * AND-semantic, so drift advice would mislead.
+     *
      * @return array{reports: list<StrictRequiredReport>, unresolved: list<string>, unwalkable: list<string>}
+     *
+     * @internal Consumed by CoverageReportSubscriber and CoverageMergeCommand.
      */
-    private static function analyse(StrictRequiredMode $mode): array
+    public static function analyse(StrictRequiredMode $mode): array
     {
         if ($mode === StrictRequiredMode::Off) {
             return ['reports' => [], 'unresolved' => [], 'unwalkable' => []];

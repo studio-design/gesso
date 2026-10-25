@@ -39,7 +39,6 @@ class ValidatesOpenApiSchemaBaselineGenerateTest extends TestCase
     protected function tearDown(): void
     {
         ViolationBaselineCollector::resetCurrent();
-        self::resetValidatorCache();
         OpenApiSpecLoader::reset();
         OpenApiCoverageTracker::reset();
         parent::tearDown();

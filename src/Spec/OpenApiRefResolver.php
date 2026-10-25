@@ -8,6 +8,7 @@ use const SORT_STRING;
 
 use Psr\Http\Client\ClientInterface;
 use Psr\Http\Message\RequestFactoryInterface;
+use SensitiveParameter;
 use stdClass;
 use Studio\Gesso\Exception\InvalidOpenApiSpecException;
 use Studio\Gesso\Exception\InvalidOpenApiSpecReason;
@@ -44,6 +45,7 @@ use function sprintf;
 use function str_contains;
 use function str_replace;
 use function str_starts_with;
+use function strcspn;
 use function strlen;
 use function strrpos;
 use function substr;
@@ -59,6 +61,40 @@ final class OpenApiRefResolver
      * component name needed for OpenAPI discriminator implicit mappings.
      */
     public const IMPLICIT_SCHEMA_NAME_EXTENSION = 'x-studio-gesso-implicit-schema-name';
+
+    /**
+     * Keys whose value is a map of USER-DEFINED names → entries — i.e. keys
+     * inside this map are arbitrary strings the spec author chose, not OAS
+     * keywords. The walker treats them just like the existing `properties`
+     * carve-out: keys at this level are names, not directives, and the
+     * opaque-key carve-out must NOT fire here (a schema named `default`
+     * inside `components.schemas` is just a schema name, and a property
+     * named `default` inside `properties` is just a property name).
+     *
+     * Includes the historical `properties` / `patternProperties` for which
+     * the carve-out was originally introduced. Expanding the set covers the
+     * other OAS-defined user-named maps so behavior is consistent across
+     * all of them.
+     *
+     * @var list<string>
+     */
+    public const USER_NAMED_MAP_KEYS = [
+        'properties',
+        'patternProperties',
+        '$defs',
+        'dependentSchemas',
+        'schemas',
+        'responses',
+        'parameters',
+        'requestBodies',
+        'headers',
+        'securitySchemes',
+        'links',
+        'callbacks',
+        'pathItems',
+        'paths',
+        'definitions',
+    ];
 
     private const LEGACY_IMPLICIT_SCHEMA_NAME_EXTENSION = 'x-studio-openapi-contract-testing-implicit-schema-name';
 
@@ -86,40 +122,6 @@ final class OpenApiRefResolver
      * @var list<string>
      */
     private const ALWAYS_OPAQUE_KEYS = ['default', 'example', 'enum', 'const'];
-
-    /**
-     * Keys whose value is a map of USER-DEFINED names → entries — i.e. keys
-     * inside this map are arbitrary strings the spec author chose, not OAS
-     * keywords. The walker treats them just like the existing `properties`
-     * carve-out: keys at this level are names, not directives, and the
-     * opaque-key carve-out must NOT fire here (a schema named `default`
-     * inside `components.schemas` is just a schema name, and a property
-     * named `default` inside `properties` is just a property name).
-     *
-     * Includes the historical `properties` / `patternProperties` for which
-     * the carve-out was originally introduced. Expanding the set covers the
-     * other OAS-defined user-named maps so behavior is consistent across
-     * all of them.
-     *
-     * @var list<string>
-     */
-    private const USER_NAMED_MAP_KEYS = [
-        'properties',
-        'patternProperties',
-        '$defs',
-        'dependentSchemas',
-        'schemas',
-        'responses',
-        'parameters',
-        'requestBodies',
-        'headers',
-        'securitySchemes',
-        'links',
-        'callbacks',
-        'pathItems',
-        'paths',
-        'definitions',
-    ];
 
     /**
      * Schema Object keywords whose value is a single subschema. `items` is
@@ -400,6 +402,11 @@ final class OpenApiRefResolver
         }
 
         $scheme = $baseParts['scheme'];
+        // RFC 3986 §5.2.2: a network-path reference (`//host/x`) keeps only the base scheme.
+        if (str_starts_with($relativeRef, '//')) {
+            return $scheme . ':' . $relativeRef;
+        }
+
         $host = $baseParts['host'];
         $port = isset($baseParts['port']) ? ':' . $baseParts['port'] : '';
         $userInfo = isset($baseParts['user'])
@@ -413,12 +420,20 @@ final class OpenApiRefResolver
         }
 
         $basePath = $baseParts['path'] ?? '/';
+        // An empty-path reference (`?q`, `#f`, ``) keeps the base path, and the base query unless it brings its own.
+        if ($relativeRef === '' || $relativeRef[0] === '?' || $relativeRef[0] === '#') {
+            $baseQuery = isset($baseParts['query']) && !str_starts_with($relativeRef, '?') ? '?' . $baseParts['query'] : '';
+
+            return sprintf('%s://%s%s%s%s', $scheme, $authority, $basePath, $baseQuery, $relativeRef);
+        }
+
         $baseDir = self::dirnameUrl($basePath);
 
-        $combined = $baseDir . '/' . $relativeRef;
-        $normalised = self::normaliseDotSegments($combined);
+        // Dot-segment removal applies to the path only, never to a query or fragment.
+        $pathLength = strcspn($relativeRef, '?#');
+        $normalised = self::normaliseDotSegments($baseDir . '/' . substr($relativeRef, 0, $pathLength));
 
-        return sprintf('%s://%s%s', $scheme, $authority, $normalised);
+        return sprintf('%s://%s%s%s', $scheme, $authority, $normalised, substr($relativeRef, $pathLength));
     }
 
     /**
@@ -1551,6 +1566,7 @@ final class OpenApiRefResolver
         string $ref,
         string $internalRef,
         array $root,
+        #[SensitiveParameter]
         string $chainKey,
         string $unresolvableMessage,
         array $chain,
@@ -1562,7 +1578,7 @@ final class OpenApiRefResolver
         if (in_array($chainKey, $chain, true)) {
             throw new InvalidOpenApiSpecException(
                 InvalidOpenApiSpecReason::CircularRef,
-                sprintf('Circular $ref detected: %s', implode(' -> ', [...$chain, $chainKey])),
+                sprintf('Circular $ref detected: %s', self::diagnosticRefChain([...$chain, $chainKey])),
                 ref: $ref,
             );
         }
@@ -1739,7 +1755,7 @@ final class OpenApiRefResolver
 
         self::descendIntoLoadedDocument(
             $node,
-            $rawRef,
+            $ref,
             $fragment,
             $chain,
             $document->canonicalIdentifier,
@@ -1776,6 +1792,7 @@ final class OpenApiRefResolver
         string $ref,
         string $fragment,
         array $chain,
+        #[SensitiveParameter]
         string $absoluteUri,
         array $newRoot,
         RefResolutionContext $context,
@@ -1797,7 +1814,7 @@ final class OpenApiRefResolver
                 $internalRef,
                 $newRoot,
                 self::canonicalChainKey($absoluteUri, $internalRef),
-                sprintf('Unresolvable $ref: fragment %s not found in %s', $fragment, $absoluteUri),
+                sprintf('Unresolvable $ref: fragment %s not found in %s', $fragment, HttpRefLoader::redactSensitiveUrlData($absoluteUri)),
                 $chain,
                 $documentContext,
                 $context,
@@ -1815,7 +1832,7 @@ final class OpenApiRefResolver
         if (in_array($chainKey, $chain, true)) {
             throw new InvalidOpenApiSpecException(
                 InvalidOpenApiSpecReason::CircularRef,
-                sprintf('Circular $ref detected: %s', implode(' -> ', [...$chain, $chainKey])),
+                sprintf('Circular $ref detected: %s', self::diagnosticRefChain([...$chain, $chainKey])),
                 ref: $ref,
             );
         }

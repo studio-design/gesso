@@ -1,10 +1,12 @@
 {
     "default_spec": "",
+    "specs": [],
     "spec_base_path": "openapi",
     "strip_prefixes": [],
     "route_parity": {
         "external_operation_ids": [],
-        "external_openapi_paths": []
+        "external_openapi_paths": [],
+        "excluded_route_names": []
     },
     "max_errors": 20,
     "enforce_discriminator": true,

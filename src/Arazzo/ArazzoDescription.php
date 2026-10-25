@@ -19,6 +19,7 @@ use function count;
 use function dirname;
 use function file_get_contents;
 use function get_debug_type;
+use function get_object_vars;
 use function implode;
 use function in_array;
 use function is_array;
@@ -26,6 +27,7 @@ use function is_file;
 use function is_string;
 use function pathinfo;
 use function preg_match;
+use function rawurldecode;
 use function realpath;
 use function rtrim;
 use function sprintf;
@@ -127,7 +129,7 @@ final readonly class ArazzoDescription
      */
     public static function members(mixed $value): array
     {
-        return is_array($value) ? $value : [];
+        return $value instanceof stdClass ? get_object_vars($value) : (is_array($value) ? $value : []);
     }
 
     /**
@@ -183,7 +185,8 @@ final readonly class ArazzoDescription
             } elseif (preg_match('#^[A-Za-z][A-Za-z0-9+.-]*:#', $self) === 1) {
                 $baseUri = $self;
             } else {
-                $baseUri = OpenApiRefResolver::normaliseDotSegments(str_starts_with($self, '/') ? $self : dirname($path) . '/' . $self);
+                $decoded = rawurldecode($self);
+                $baseUri = OpenApiRefResolver::normaliseDotSegments(str_starts_with($decoded, '/') ? $decoded : dirname($path) . '/' . $decoded);
                 // A directory-valued reference (`./`, `..`) keeps its trailing slash so it is not dirname()'d again.
                 if (preg_match('#(^|/)\.{0,2}$#', $self) === 1) {
                     $baseUri = rtrim($baseUri, '/') . '/';
@@ -351,12 +354,16 @@ final readonly class ArazzoDescription
             return OpenApiRefResolver::resolveRelativeUrl($baseUri, $url);
         }
 
-        if (preg_match('#^[A-Za-z][A-Za-z0-9+.-]*:#', $baseUri) === 1) {
+        // A network-path reference (`//host/x`) names an authority, never a local file.
+        if (preg_match('#^[A-Za-z][A-Za-z0-9+.-]*:#', $baseUri) === 1 || str_starts_with($url, '//')) {
             return null;
         }
 
         $directory = str_ends_with($baseUri, '/') ? $baseUri : dirname($baseUri) . '/';
 
-        return OpenApiRefResolver::normaliseDotSegments(str_starts_with($url, '/') ? $url : $directory . $url);
+        // The reference is percent-encoded; the base is already a real file path.
+        $path = rawurldecode($url);
+
+        return OpenApiRefResolver::normaliseDotSegments(str_starts_with($path, '/') ? $path : $directory . $path);
     }
 }

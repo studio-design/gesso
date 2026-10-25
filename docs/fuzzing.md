@@ -24,15 +24,20 @@ class CreatePetTest extends TestCase
     public function test_create_pet_contract(): void
     {
         $this->exploreEndpoint('POST', '/v1/pets', cases: 50, seed: 1)
-            ->each(fn (ExploredCase $case) => $this->call(
-                'POST',
-                $case->uri('/api'),
-                cookies: $case->cookies,
-                server: $this->transformHeadersToServerVars([
-                    'Accept' => 'application/json', 'Content-Type' => 'application/json', ...$case->headers,
-                ]),
-                content: $case->bodyAsJson(),
-            )->assertSuccessful());
+            ->each(function (ExploredCase $case): void {
+                // Laravel parses form fields only from `parameters`, never from raw content.
+                $form = $case->contentType === 'application/x-www-form-urlencoded';
+                $this->call(
+                    'POST',
+                    $case->uri('/api'),
+                    parameters: $form ? $case->bodyAsFormFields() : [],
+                    cookies: $case->cookies,
+                    server: $this->transformHeadersToServerVars([
+                        'Accept' => 'application/json', 'Content-Type' => $case->contentType, ...$case->headers,
+                    ]),
+                    content: $form ? null : $case->bodyAsString(),
+                )->assertSuccessful();
+            });
     }
 }
 ```
@@ -41,7 +46,8 @@ What you get per case (`Studio\Gesso\Fuzz\ExploredCase`):
 
 | Property | Description |
 |--------|-------------|
-| `body` | Generated JSON body (or `null` when the operation has no `application/json` requestBody) |
+| `body` | Generated body value (or `null` when the operation has no requestBody, or none the explorer can synthesize) |
+| `contentType` | The media type `body` was generated for: `application/json` or a `+json` type, or `application/x-www-form-urlencoded` when that is the only schema-carrying media type. `multipart/form-data` is never synthesized; a required multipart-only body fails loudly |
 | `query` | name → value for every `in: query` parameter |
 | `headers` | name → value for every `in: header` parameter (excludes the OpenAPI-reserved `Accept`/`Content-Type`/`Authorization`) |
 | `pathParams` | name → value for every `{placeholder}` segment |
@@ -53,7 +59,12 @@ What you get per case (`Studio\Gesso\Fuzz\ExploredCase`):
 
 The collection is `Countable` and `IteratorAggregate`, so `foreach ($cases as $case)` works too if you prefer it over the fluent `each()` helper.
 
-Use `$case->bodyAsJson()` to encode the original value and send raw JSON, as above.
+Use `$case->bodyAsString()` to serialize the body in `$case->contentType` for a
+client that sends raw bytes; for JSON it is `$case->bodyAsJson()`, which encodes
+the original value without loss. Laravel's `call()` and Symfony's
+`KernelBrowser::request()` do not parse raw form content into the request's
+input, so pass `$case->bodyAsFormFields()` as their `parameters` for a form case
+instead, as above.
 `bodyAsArray()` is a lossy compatibility helper for array-only consumers:
 it recursively turns `{}` into `[]`, including nested objects. Feeding it to
 Laravel's `postJson()` or Symfony's `jsonRequest()` can turn a generated valid
@@ -61,6 +72,19 @@ object case into an invalid array. Do not use `JSON_FORCE_OBJECT`, which would
 also change genuine JSON arrays. `bodyAsJson()` encodes null as literal JSON
 `null`; when an operation declares no body or a check omits a required body,
 omit the raw content instead. Encoding failures throw `JsonException`.
+
+Form-encoded bodies (`application/x-www-form-urlencoded`) go through
+`bodyAsFormFields()`: values are sent as strings (`true` / `false`, numbers
+verbatim), object-valued properties are JSON-encoded (the Encoding Object
+default for an object), `null` properties are dropped, and lists use PHP bracket
+notation (`tags[0]=a&tags[1]=b`), which is what `parse_str()` and HttpFoundation
+read back. `encoding.<part>.style` / `explode` are not applied by the generator.
+Every form case is checked the way the request validator will read it: a valid
+case that no longer satisfies the schema once form-encoded (a required list that
+must stay empty, a part `encoding` the generator does not apply) makes the
+operation fail loudly, and a negative-case mutation that becomes valid on the
+wire (a `type` mismatch such as `"42"` for a string, an empty list that drops
+out) is not used.
 
 `uri($prefix)` substitutes and URL-encodes path
 parameters, prepends an optional application prefix, and appends the generated
@@ -149,18 +173,23 @@ class ApiContractTest extends TestCase
             ->includeTags(['public'])
             ->excludeOperations(['admin.users.destroy'])
             ->authenticateUsing(fn (ExploredOperation $operation) => $this->actingAs($this->userFor($operation)))
-            ->dispatchUsing(fn (ExploredCase $case) => match ($case->method) {
-                HttpMethod::GET => $this->get($case->uri('/api'), $case->headers),
-                HttpMethod::POST => $this->call(
-                    'POST',
-                    $case->uri('/api'),
-                    cookies: $case->cookies,
-                    server: $this->transformHeadersToServerVars([
-                        'Accept' => 'application/json', 'Content-Type' => 'application/json', ...$case->headers,
-                    ]),
-                    content: $case->bodyAsJson(),
-                ),
-                default => throw new LogicException('Add the method to the test dispatcher.'),
+            ->dispatchUsing(function (ExploredCase $case) {
+                $form = $case->contentType === 'application/x-www-form-urlencoded';
+
+                return match ($case->method) {
+                    HttpMethod::GET => $this->get($case->uri('/api'), $case->headers),
+                    HttpMethod::POST => $this->call(
+                        'POST',
+                        $case->uri('/api'),
+                        parameters: $form ? $case->bodyAsFormFields() : [],
+                        cookies: $case->cookies,
+                        server: $this->transformHeadersToServerVars([
+                            'Accept' => 'application/json', 'Content-Type' => $case->contentType, ...$case->headers,
+                        ]),
+                        content: $form ? null : $case->bodyAsString(),
+                    ),
+                    default => throw new LogicException('Add the method to the test dispatcher.'),
+                };
             })
             ->assertResponses(); // ValidatesOpenApiSchema auto_assert validates each response
 
@@ -225,8 +254,9 @@ index, and a minimal `OpenApiEndpointExplorer::explore(...)` replay expression.
 Each case also exposes `replayToken()`, `replaySnippet($specName)`, and
 `curlSnippet($baseUrl)`. The token identifies generation inputs; the PHP and
 curl output include the concrete generated request. `curlSnippet()` redacts
-sensitive header values (`Authorization`, `Cookie`, API-key/token/secret-style
-names) as `<redacted>` so the command is safe to paste into CI logs; pass
+sensitive header, query, and form-field values (`Authorization`, `Cookie`,
+API-key/token/secret/password-style names) as `<redacted>` so the command is
+safe to paste into CI logs; pass
 `redactSensitiveHeaders: false` to keep the raw values.
 
 Summaries are local immutable values; the explorer adds no process-global
@@ -302,14 +332,16 @@ $this->exploreInvalidEndpoint(
     cases: 20,
     seed: 7,
 )->each(function (ExploredCase $case): void {
+    $form = $case->contentType === 'application/x-www-form-urlencoded';
     $response = $this->call(
         'POST',
         $case->uri('/api'),
+        parameters: $form ? $case->bodyAsFormFields() : [],
         cookies: $case->cookies,
         server: $this->transformHeadersToServerVars([
-            'Accept' => 'application/json', 'Content-Type' => 'application/json', ...$case->headers,
+            'Accept' => 'application/json', 'Content-Type' => $case->contentType, ...$case->headers,
         ]),
-        content: $case->bodyAsJson(),
+        content: $form ? null : $case->bodyAsString(),
     );
     self::assertContains(intdiv($response->getStatusCode(), 100), $case->expectedStatusClasses);
 });
@@ -326,214 +358,12 @@ deliberately classification-preserving; it never equates every failure.
 
 ## Named contract checks
 
-Schema validation cannot see protocol-level contract holes. Named checks probe
-them directly, mirroring [Schemathesis check names][schemathesis-checks] where
-behavior matches. The pipeline is opt-in per check, deterministic under
-`seed`, and collects every result before you assert — one run reports all
-holes, not just the first:
-
-```php
-use Studio\Gesso\Fuzz\ContractCheck;
-use Studio\Gesso\Fuzz\ExploredCase;
-use Studio\Gesso\Fuzz\OpenApiContractChecks;
-
-$summary = OpenApiContractChecks::run('petstore', seed: 7)
-    ->checks([
-        ContractCheck::IgnoredAuth,
-        ContractCheck::MissingRequiredHeader,
-        ContractCheck::UnsupportedMethod,
-    ])
-    ->dispatchUsing(fn (ExploredCase $case): int => $this->send($case)->getStatusCode())
-    ->report();
-
-self::assertSame([], $summary->failures, $summary->describeFailures());
-```
-
-| Check | Probe | Default pass statuses |
-|---|---|---|
-| `ignored_auth` | per operation with an effective `security` requirement: the valid request with no credentials, then again with credentials the API cannot have issued | `401`, `403` |
-| `missing_required_header` | per `required: true` header parameter: the valid request with that one header omitted, gated behind a 2xx control request; state-changing methods need `dispatchIsolatedUsing()` | any `4xx` |
-| `unsupported_method` | one deterministically chosen undocumented method per documented path | `405` |
-
-`dispatchUsing()` may return an `int` status, a PSR-7 response, or any object
-exposing `getStatusCode(): int` (Symfony `Response`, Laravel `TestResponse`).
-The same `includeTags()`/`excludePaths()`/… filters and
-`setUpUsing()`/`authenticateUsing()`/`tearDownUsing()` hooks as whole-spec
-exploration apply; a path is probed when at least one of its documented
-operations passes the filters. `ignored_auth` is the one exception to
-`authenticateUsing()`: its probes deliberately bypass the hook, because
-handing them credentials is exactly what the check exists to prevent.
-
-Override an expectation per check with
-`expectedStatuses(ContractCheck::UnsupportedMethod, [405, 404])` for frameworks
-that answer unknown methods with 404, or
-`expectedStatusClasses(ContractCheck::IgnoredAuth, [4])` to accept any client
-error. Either call replaces the check's whole default expectation, so
-`expectedStatuses(ContractCheck::MissingRequiredHeader, [400])` means exactly
-400 — the default `4xx` class no longer widens it.
-
-### `ignored_auth`
-
-An operation is probed when its effective `security` — operation-level if
-declared, root-level otherwise — actually demands credentials. `security: []`
-and a requirement list containing an empty `{}` entry both document
-unauthenticated access, so they are skipped rather than reported. Anything else
-malformed is a hard error instead — reading it as "no authentication required",
-or probing a declaration the runtime validator rejects, would turn a broken spec
-into a green run. That covers the outer node (`security: "not-a-list"`, a scalar
-requirement entry) and the inside of each entry: non-list scopes, non-string
-scope items, undefined scheme names, and malformed scheme definitions. The
-detection rules are the runtime validator's own
-(`SecurityValidator::inspectRequirementPair()`), shared rather than
-re-derived, so the two cannot disagree about which specs are broken.
-
-The invalid-credential probe writes a placeholder into every credential
-location the operation declares (all of them, so an AND-style requirement is
-genuinely exercised): `Authorization: Bearer …` for `http` + `bearer`, and the
-declared header / query / cookie name for `apiKey`. Those are the schemes
-[request validation can locate](supported-features.md#security-schemes);
-operations secured
-solely by `oauth2`, `openIdConnect`, `mutualTLS`, or non-bearer `http` schemes
-get the no-credential probe plus a skip for the other one, rather than a
-fabricated credential in a guessed location.
-
-The no-credential probe also strips any `apiKey` header, query, or cookie value
-the generated valid case happened to carry, so it is genuinely credential-free.
-It cannot, however, see credentials your own `dispatchUsing()` closure adds —
-send the case as-is there.
-
-**Cookie credentials require dispatcher cooperation.** `apiKey` + `in: cookie`
-values land in `$case->cookies`, not in a `Cookie:` request header, because
-Laravel's and Symfony's test clients build their cookie bag from a separate
-`SymfonyRequest::create()` argument — a header alone leaves
-`$request->cookie(...)` empty. A dispatcher that drops `$case->cookies` makes
-the invalid-credential probe identical to the no-credential one, and an API
-that accepts any cookie value would pass. Forward them:
-
-```php
-->dispatchUsing(fn (ExploredCase $case): int => $this->call(
-    $case->method->value,
-    $case->uri(),
-    [],
-    $case->cookies,      // <- not optional for cookie-secured operations
-    [],
-    $this->transformHeadersToServerVars($case->headers),
-    $case->body !== null ? $case->bodyAsJson() : null,
-)->getStatusCode())
-```
-
-### `missing_required_header`
-
-One probe per `required: true` `in: header` parameter, each omitting exactly
-that header so the failure names the one that was not enforced.
-`Accept`/`Content-Type`/`Authorization` parameter declarations are excluded:
-per OAS 3.x §4.7.12.1 they are ignored, and content negotiation and security
-schemes own them. Operations that declare no required header are skipped with
-a reason.
-
-The default expectation is the `4xx` class rather than a status list, because
-frameworks answer a missing required header with 400, 406, 422, or a
-scheme-specific 401/403 — pinning one of them would report framework choice as
-contract drift.
-
-Accepting a family that wide is only sound with a control: each operation first
-dispatches the **unmutated** valid case, and the omission probes run only when
-that control answers a 2xx. Without it, an operation that never enforces the
-header would score green because the request was rejected for an unrelated
-reason — no credentials configured, a missing fixture, a 404. A 3xx does not
-qualify either: Laravel answers an unauthenticated non-JSON request with a 302
-to the login page, and comparing the omission probes against that redirect
-proves nothing. When the control does not return 2xx, the operation is skipped
-with its status in the reason, so use `setUpUsing()` / `authenticateUsing()` to
-make the valid request succeed. The control counts toward
-`$summary->dispatchedProbes`.
-
-**State-changing methods are skipped by default.** On `POST` / `PUT` / `PATCH`
-/ `DELETE`, the control request's own effect can answer the probes that follow
-it — a duplicate create is a 409, an already-deleted resource is a 404, and
-both sit inside the accepted 4xx class — so the status cannot distinguish them
-from real header enforcement.
-
-Nothing observable from inside the plan tells an isolated dispatcher from a
-leaky one. Repeating the control does not: an idempotent create answers 201
-twice and still leaves the row behind, so the next probe collides with it.
-General hooks do not either — `setUpUsing()` / `tearDownUsing()` may exist for
-authentication, logging, or fixtures, and a no-op one proves nothing. So the
-decision is the caller's, stated on the dispatcher that has to honour it:
-
-```php
-->dispatchIsolatedUsing(fn (ExploredCase $case): int => $this->send($case)->getStatusCode())
-```
-
-`dispatchIsolatedUsing()` registers the dispatcher **and** promises that every
-dispatch starts from state indistinguishable from the one before it — a
-transaction rolled back around each call, a database refreshed per call, a
-fixture rebuilt per call. Only make that promise where the isolation is really
-implemented; the plan cannot check it. `dispatchUsing()` is the same dispatcher
-without the promise, and leaves state-changing methods skipped with the reason
-naming this method (calling it after `dispatchIsolatedUsing()` withdraws the
-promise). `GET` and `QUERY` are safe methods (RFC 9110 §9.2.1) and are probed
-either way.
-
-### `unsupported_method`
-
-Probe construction: candidates are the explorer-supported methods (`GET`,
-`POST`, `PUT`, `PATCH`, `DELETE`, `QUERY`) minus every method the path
-documents — fixed fields and `additionalOperations` keys, matched
-case-sensitively, so a (spec-invalid but runtime-honored) `"PUT"` entry
-under `additionalOperations` removes `PUT` from the candidates while a
-custom `"copy"` entry removes nothing. OpenAPI 3.2 `additionalOperations`
-are never probed themselves (case-sensitive custom methods). Concrete path
-parameters are generated from a documented operation of the same path; the
-probe sends no body, query, or headers, so only path-parameter
-generatability gates it — a documented operation whose required request
-body is not JSON (for example a form-encoded OAuth token endpoint) does
-not prevent the probe. When the concrete probe URI is also an instance
-of a different documented template (`/members/me` alongside
-`/members/{member_id}`), methods documented by that colliding template are
-excluded too — the application would route the probe to the documented
-operation, so a failure there would be a false positive. Paths where every
-explorable method is documented, where every remaining candidate collides
-with another template, or where no documented operation's path parameters
-can be generated, appear in `$summary->skips` with a reason.
-
-Two caveats: `HEAD`/`OPTIONS`/`TRACE` are outside the explorer's method set
-and are not probed, and a probe response cannot pass normal response
-validation (its method is undocumented by definition) — disable Laravel's
-`auto_assert` in contract-check tests or dispatch outside the trait's helpers.
-
-### Reading the results
-
-`ContractCheckFailure::describe()` names the check, the operation, the mutation
-the probe dispatched, the expected and actual status, and a replayable curl
-command:
-
-```text
-ignored_auth: GET /orders/{orderId} (showOrder) [no credentials] — expected 401 or 403, got 200
-  Curl: curl -X GET '/orders/42'
-```
-
-Every reason a probe was not dispatched lands in `$summary->skips` as a
-`ContractCheckSkip` carrying the check, path, method (null for path-level
-skips), and an explanation. Nothing is dropped silently — a check that found no
-work says so.
-
-### Compared with Schemathesis
-
-Check names match [Schemathesis][schemathesis-checks] so cross-tool
-documentation and CI dashboards line up, and the probes match its behavior:
-`ignored_auth` sends two extra requests per operation (no credentials, then
-invalid ones), `unsupported_method` expects 405, and
-`missing_required_header` expects a client error. Two deliberate differences:
-Gesso accepts 403 alongside 401 for `ignored_auth` (many PHP frameworks answer
-an unauthenticated request with 403), and it does not assert the RFC 9110
-`Allow` header on a 405 — only the status. The rest of the Schemathesis check
-catalog (`use_after_free`, `ensure_resource_availability`,
-`max_response_time`, and the response-conformance family) is out of scope here;
-response conformance is what `OpenApiResponseValidator` and the coverage
-tracker already cover.
-
-[schemathesis-checks]: https://schemathesis.readthedocs.io/en/stable/reference/checks/
+Schema validation cannot see protocol-level contract holes — an ignored
+`security` requirement, a `required: true` header nobody checks, an
+undocumented method that answers 200. The opt-in `ignored_auth`,
+`missing_required_header`, and `unsupported_method` checks probe those
+directly and live in `Studio\Gesso\Contract\`. See
+[named contract checks](contract-checks.md).
 
 ## Remaining gaps
 

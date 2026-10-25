@@ -5,9 +5,6 @@ declare(strict_types=1);
 namespace Studio\Gesso\PHPUnit;
 
 use const DEBUG_BACKTRACE_IGNORE_ARGS;
-use const FILE_APPEND;
-use const PHP_EOL;
-use const STDERR;
 
 use InvalidArgumentException;
 use PHPUnit\Event\EventFacadeIsSealedException;
@@ -15,6 +12,7 @@ use PHPUnit\Runner\Extension\Extension;
 use PHPUnit\Runner\Extension\Facade;
 use PHPUnit\Runner\Extension\ParameterCollection;
 use PHPUnit\TextUI\Configuration\Configuration;
+use Studio\Gesso\Baseline\BaselineFileFormat;
 use Studio\Gesso\Baseline\BaselineStaleMode;
 use Studio\Gesso\Baseline\CoverageBaseline;
 use Studio\Gesso\Baseline\CoverageBaselineFile;
@@ -23,6 +21,7 @@ use Studio\Gesso\Baseline\ViolationBaselineCollector;
 use Studio\Gesso\Baseline\ViolationBaselineEnforcer;
 use Studio\Gesso\Baseline\ViolationBaselineFile;
 use Studio\Gesso\Config\InvalidGessoConfigurationException;
+use Studio\Gesso\Coverage\CoverageSidecarWriter;
 use Studio\Gesso\Coverage\CoverageThresholdEvaluator;
 use Studio\Gesso\Coverage\InvalidCoverageOutputPathException;
 use Studio\Gesso\Coverage\InvalidThresholdConfigurationException;
@@ -34,8 +33,9 @@ use Studio\Gesso\Exception\EnumDriftException;
 use Studio\Gesso\Exception\InvalidOpenApiSpecException;
 use Studio\Gesso\Exception\SpecFileNotFoundException;
 use Studio\Gesso\Internal\ArgvParser;
+use Studio\Gesso\Internal\Deprecations;
+use Studio\Gesso\Internal\Diagnostics;
 use Studio\Gesso\Internal\EnumScanner;
-use Studio\Gesso\Internal\LegacyIdentity;
 use Studio\Gesso\Internal\PartialRunDecision;
 use Studio\Gesso\Schema\EnumDriftAsserter;
 use Studio\Gesso\Schema\EnumDriftReport;
@@ -62,9 +62,6 @@ use function ctype_digit;
 use function debug_backtrace;
 use function dirname;
 use function explode;
-use function fflush;
-use function file_put_contents;
-use function fwrite;
 use function getcwd;
 use function getenv;
 use function implode;
@@ -77,7 +74,6 @@ use function mkdir;
 use function sprintf;
 use function str_starts_with;
 use function strtolower;
-use function sys_get_temp_dir;
 use function trim;
 
 final class OpenApiCoverageExtension implements Extension
@@ -88,18 +84,11 @@ final class OpenApiCoverageExtension implements Extension
      * can find it without coordination, and namespaced enough that other
      * tools won't collide with it.
      */
-    public const DEFAULT_SIDECAR_SUBDIR = 'openapi-coverage-sidecars';
-
-    /**
-     * Test-only override for STDERR writes.
-     *
-     * @var null|resource
-     */
-    private static $stderrOverride;
+    public const DEFAULT_SIDECAR_SUBDIR = CoverageSidecarWriter::DEFAULT_SUBDIR;
 
     public static function defaultSidecarDir(): string
     {
-        return sys_get_temp_dir() . '/' . self::DEFAULT_SIDECAR_SUBDIR;
+        return CoverageSidecarWriter::defaultDir();
     }
 
     /**
@@ -111,88 +100,7 @@ final class OpenApiCoverageExtension implements Extension
      */
     public static function overrideStderrForTesting($stream): void
     {
-        self::$stderrOverride = $stream;
-    }
-
-    /**
-     * @internal exposed so the extension's subscriber can reuse the stream override.
-     */
-    public static function writeStderr(string $message): void
-    {
-        fwrite(self::$stderrOverride ?? STDERR, $message);
-    }
-
-    /**
-     * Append a strict_required outcome to the GitHub Actions Step Summary.
-     * Each channel below keeps its own title and intro wording so log
-     * scrapers can route them by grepping the title.
-     *
-     * @internal Exposed so {@see CoverageReportSubscriber} can reuse the same
-     *           rendering path when invoking the asserter at ExecutionFinished.
-     */
-    public static function appendGithubStepSummaryStrictRequiredBlock(?string $path, string $body, bool $isFatal): void
-    {
-        self::appendGithubStepSummaryBlock(
-            $path,
-            $isFatal ? '## :rotating_light: FATAL OpenAPI strict_required drift' : '## :warning: OpenAPI strict_required drift',
-            $isFatal
-                ? 'strict_required detected schema under-description and the test run was aborted.'
-                : 'strict_required detected schema under-description (warn-only).',
-            $body,
-            '[OpenAPI Strict Required] WARNING: Failed to append block',
-        );
-    }
-
-    /**
-     * @internal Exposed for the execution-finished subscriber.
-     */
-    public static function appendGithubStepSummaryStrictAdditionalPropertiesBlock(?string $path, string $body, bool $isFatal): void
-    {
-        self::appendGithubStepSummaryBlock(
-            $path,
-            $isFatal
-                ? '## :rotating_light: FATAL OpenAPI undocumented response properties'
-                : '## :warning: OpenAPI undocumented response properties',
-            $isFatal
-                ? 'strict_additional_properties found undocumented response fields and the test run was aborted.'
-                : 'strict_additional_properties found undocumented response fields (warn-only).',
-            $body,
-            '[OpenAPI Strict Additional Properties] WARNING: Failed to append block',
-        );
-    }
-
-    /**
-     * @internal Exposed so {@see CoverageReportSubscriber} can render the
-     *           stale gate outcome at ExecutionFinished.
-     */
-    public static function appendGithubStepSummaryBaselineStaleBlock(?string $path, string $body, bool $isFatal): void
-    {
-        self::appendGithubStepSummaryBlock(
-            $path,
-            $isFatal ? '## :rotating_light: FATAL OpenAPI baseline stale entries' : '## :warning: OpenAPI baseline stale entries',
-            $isFatal
-                ? 'Baseline entries no longer occurred and the test run was aborted (baseline_stale=fail). Remove them from the baseline file.'
-                : 'Baseline entries no longer occurred and can be removed from the baseline file.',
-            $body,
-            '[Gesso] WARNING: Failed to append baseline block',
-        );
-    }
-
-    /**
-     * Issue #402 / #481: whether this run is a baseline generation run. Any
-     * non-empty value except `0` / `false` / `no` requests generation. One
-     * env var drives both the sequential run and `gesso coverage:merge`.
-     *
-     * @internal Shared with the merge CLI.
-     */
-    public static function baselineGenerationRequested(): bool
-    {
-        $value = LegacyIdentity::env('GESSO_BASELINE_GENERATE');
-        if ($value === false || trim($value) === '') {
-            return false;
-        }
-
-        return ArgvParser::bool(strtolower(trim($value)));
+        Diagnostics::overrideStderrForTesting($stream);
     }
 
     public function bootstrap(Configuration $configuration, Facade $facade, ParameterCollection $parameters): void
@@ -218,9 +126,7 @@ final class OpenApiCoverageExtension implements Extension
             // would re-open the silent-pass hole this extension exists to
             // close, so force a non-zero exit here. fflush guards against
             // output ordering surprises on exit().
-            if (self::$stderrOverride === null) {
-                fflush(STDERR);
-            }
+            Diagnostics::flushStderr();
 
             exit(1);
         }
@@ -266,11 +172,10 @@ final class OpenApiCoverageExtension implements Extension
                 $stripPrefixes = $parameters->strings('strip_prefixes');
             }
 
-            OpenApiSpecLoader::configure(
-                $basePath,
-                $stripPrefixes,
-                enumBasePath: $enumBasePath,
-            );
+            OpenApiSpecLoader::configure($basePath, $stripPrefixes);
+            if ($enumBasePath !== null) {
+                OpenApiSpecLoader::setEnumBasePath($enumBasePath);
+            }
         } elseif ($parameters->has('strip_prefixes')) {
             OpenApiSpecLoader::setStripPrefixes($parameters->strings('strip_prefixes'));
         }
@@ -292,22 +197,22 @@ final class OpenApiCoverageExtension implements Extension
             try {
                 OpenApiSpecLoader::load($spec);
             } catch (SpecFileNotFoundException $e) {
-                self::writeStderr(
+                Diagnostics::stderr(
                     "[OpenAPI Coverage] FATAL: spec '{$spec}' configured in `specs=` is not loadable: {$e->getMessage()}\n"
                     . "  Action: regenerate the bundle (e.g. `cd openapi && npm run bundle`) or remove '{$spec}' from `specs=`.\n",
                 );
-                self::appendGithubStepSummaryFatalBlock($githubSummaryPath, $spec, $e->getMessage());
+                Diagnostics::appendGithubStepSummaryFatalSpecBlock($githubSummaryPath, $spec, $e->getMessage());
 
                 throw $e;
             } catch (InvalidOpenApiSpecException $e) {
-                self::writeStderr("[OpenAPI Coverage] FATAL: Invalid OpenAPI spec '{$spec}': {$e->getMessage()}\n");
-                self::appendGithubStepSummaryFatalBlock($githubSummaryPath, $spec, $e->getMessage());
+                Diagnostics::stderr("[OpenAPI Coverage] FATAL: Invalid OpenAPI spec '{$spec}': {$e->getMessage()}\n");
+                Diagnostics::appendGithubStepSummaryFatalSpecBlock($githubSummaryPath, $spec, $e->getMessage());
 
                 throw $e;
             }
         }
 
-        self::runEnumDriftCheck($parameters, $githubSummaryPath);
+        self::runEnumDriftCheck($parameters, $githubSummaryPath, $specs);
 
         $outputFile = null;
         if ($parameters->has('output_file')) {
@@ -338,7 +243,7 @@ final class OpenApiCoverageExtension implements Extension
                 // gesso-wide validation failure output, and the migration
                 // baseline pins identity-neutral prefix counts (ADR 0001) —
                 // new diagnostics go through the branded channel.
-                self::writeStderr("[Gesso] WARNING: Invalid validation_output parameter '{$rawValidationOutput}'. Valid values: text, json. Falling back to the configured format.\n");
+                Diagnostics::stderr("[Gesso] WARNING: Invalid validation_output parameter '{$rawValidationOutput}'. Valid values: text, json. Falling back to the configured format.\n");
             } else {
                 ValidationOutput::use($validationOutput);
             }
@@ -381,12 +286,12 @@ final class OpenApiCoverageExtension implements Extension
             $coverageBaselineFile !== null,
         );
 
-        $generationRequested = self::baselineGenerationRequested();
+        $generationRequested = BaselineFileFormat::generationRequested();
         if ($generationRequested && $baselineFile === null && $coverageBaselineFile === null) {
             // A generation run with nowhere to write would complete "green"
             // (all failures demoted) and then drop every recorded violation
             // on the floor — abort bootstrap instead.
-            self::writeStderr(
+            Diagnostics::stderr(
                 "[Gesso] FATAL: GESSO_BASELINE_GENERATE is set but neither `baseline_file` nor `coverage_baseline_file` is configured.\n"
                 . "  Action: add <parameter name=\"baseline_file\" value=\"gesso-baseline.json\"/> (violations) or\n"
                 . "          <parameter name=\"coverage_baseline_file\" value=\"gesso-coverage-baseline.json\"/> (coverage)\n"
@@ -430,7 +335,7 @@ final class OpenApiCoverageExtension implements Extension
             try {
                 $baseline = ViolationBaselineFile::read($baselineFile);
             } catch (InvalidArgumentException $e) {
-                self::writeStderr(
+                Diagnostics::stderr(
                     "[Gesso] FATAL: baseline_file could not be loaded: {$e->getMessage()}\n"
                     . "  Action: generate it with `GESSO_BASELINE_GENERATE=1 vendor/bin/phpunit`, fix the path, or remove the `baseline_file` parameter.\n",
                 );
@@ -485,7 +390,7 @@ final class OpenApiCoverageExtension implements Extension
             StrictRequiredMode::Off,
             'off, warn, fail',
             '[OpenAPI Strict Required]',
-            self::appendGithubStepSummaryStrictRequiredBlock(...),
+            Diagnostics::appendGithubStepSummaryStrictRequiredBlock(...),
             $githubSummaryPath,
         );
 
@@ -505,7 +410,7 @@ final class OpenApiCoverageExtension implements Extension
             StrictRequiredPerCallMode::Off,
             'off, warn',
             '[OpenAPI Strict Required per-call]',
-            self::appendGithubStepSummaryStrictRequiredBlock(...),
+            Diagnostics::appendGithubStepSummaryStrictRequiredBlock(...),
             $githubSummaryPath,
         );
         StrictRequiredPerCallChecker::reset();
@@ -518,7 +423,7 @@ final class OpenApiCoverageExtension implements Extension
             StrictAdditionalPropertiesMode::Off,
             'off, warn, fail',
             '[OpenAPI Strict Additional Properties]',
-            self::appendGithubStepSummaryStrictAdditionalPropertiesBlock(...),
+            Diagnostics::appendGithubStepSummaryStrictAdditionalPropertiesBlock(...),
             $githubSummaryPath,
         );
         $strictAdditionalPropertiesPerCallMode = self::resolveMode(
@@ -528,7 +433,7 @@ final class OpenApiCoverageExtension implements Extension
             StrictAdditionalPropertiesPerCallMode::Off,
             'off, warn',
             '[OpenAPI Strict Additional Properties per-call]',
-            self::appendGithubStepSummaryStrictAdditionalPropertiesBlock(...),
+            Diagnostics::appendGithubStepSummaryStrictAdditionalPropertiesBlock(...),
             $githubSummaryPath,
         );
         StrictAdditionalPropertiesPerCallChecker::reset();
@@ -642,7 +547,7 @@ final class OpenApiCoverageExtension implements Extension
                 throw $e;
             }
 
-            self::writeStderr(
+            Diagnostics::stderr(
                 '[Gesso] NOTE: PHPUnit\'s event facade was already sealed when OpenApiCoverageExtension bootstrapped in the Pest --parallel orchestrator,'
                 . " so this process registers no coverage subscriber. It runs no tests; worker sidecars and `gesso coverage:merge` are unaffected.\n",
             );
@@ -688,35 +593,6 @@ final class OpenApiCoverageExtension implements Extension
     }
 
     /**
-     * Append one fenced Markdown block to the GitHub Actions Step Summary
-     * file; a failed append is a WARNING on `$failureWarning`'s channel.
-     */
-    private static function appendGithubStepSummaryBlock(
-        ?string $path,
-        string $title,
-        string $intro,
-        string $body,
-        string $failureWarning,
-    ): void {
-        if ($path === null) {
-            return;
-        }
-
-        $block = $title . PHP_EOL
-            . PHP_EOL
-            . $intro . PHP_EOL
-            . PHP_EOL
-            . '```' . PHP_EOL
-            . $body . PHP_EOL
-            . '```' . PHP_EOL
-            . PHP_EOL;
-
-        if (file_put_contents($path, $block, FILE_APPEND) === false) {
-            self::writeStderr("{$failureWarning} to GITHUB_STEP_SUMMARY ({$path})\n");
-        }
-    }
-
-    /**
      * Read a baseline path parameter, resolving a relative value against the
      * working directory. Empty values are treated as "not configured" so a
      * blank `value=""` does not point the baseline at the cwd itself.
@@ -744,7 +620,7 @@ final class OpenApiCoverageExtension implements Extension
         try {
             return CoverageBaselineFile::read($path);
         } catch (InvalidArgumentException $e) {
-            self::writeStderr(
+            Diagnostics::stderr(
                 "[Gesso] FATAL: coverage_baseline_file could not be loaded: {$e->getMessage()}\n"
                 . "  Action: generate it with `GESSO_BASELINE_GENERATE=1 vendor/bin/phpunit`, fix the path, or remove the `coverage_baseline_file` parameter.\n",
             );
@@ -782,7 +658,7 @@ final class OpenApiCoverageExtension implements Extension
                 $fileName,
                 $name,
             );
-            self::writeStderr("[Gesso] FATAL: {$reason}\n");
+            Diagnostics::stderr("[Gesso] FATAL: {$reason}\n");
 
             throw new InvalidBaselineConfigurationException($reason);
         }
@@ -792,7 +668,7 @@ final class OpenApiCoverageExtension implements Extension
         try {
             return BaselineStaleMode::fromConfigValue($raw);
         } catch (InvalidArgumentException $e) {
-            self::writeStderr("[Gesso] FATAL: {$e->getMessage()}\n");
+            Diagnostics::stderr("[Gesso] FATAL: {$e->getMessage()}\n");
 
             throw new InvalidBaselineConfigurationException($e->getMessage(), previous: $e);
         }
@@ -913,7 +789,7 @@ final class OpenApiCoverageExtension implements Extension
     ): ?string {
         if (!$configuration->hasDefaultTestSuite()) {
             if ($warnOnInertOptIn) {
-                self::writeStderr(
+                Diagnostics::stderr(
                     '[OpenAPI Coverage] WARNING: default_testsuite_as_full=true but phpunit.xml does not declare '
                     . 'a `defaultTestSuite` attribute on <phpunit>. The opt-in will be inert; partial-run '
                     . 'detection remains active. Either set `defaultTestSuite="..."` on <phpunit> or remove '
@@ -935,7 +811,7 @@ final class OpenApiCoverageExtension implements Extension
 
         if ($value === '') {
             if ($warnOnInertOptIn) {
-                self::writeStderr(
+                Diagnostics::stderr(
                     '[OpenAPI Coverage] WARNING: default_testsuite_as_full=true but phpunit.xml declares an '
                     . 'empty `defaultTestSuite=""` attribute. The opt-in cannot match an empty default and '
                     . "will be inert. Set a non-empty `defaultTestSuite` or remove `default_testsuite_as_full`.\n",
@@ -971,12 +847,19 @@ final class OpenApiCoverageExtension implements Extension
             return null;
         }
 
+        Deprecations::notice(
+            id: 'phpunit.enum_spec_base_path',
+            subject: "The PHPUnit config key 'enum_spec_base_path'",
+            replacement: 'none (delete the parameter: enum bindings resolve against components.schemas of the configured specs)',
+            removedIn: '3.0',
+        );
+
         $raw = trim($parameters->get('enum_spec_base_path'));
         if ($raw === '') {
             $reason = 'enum_spec_base_path is set but empty. '
                 . 'Either provide a directory path or remove the parameter to fall back to spec_base_path.';
-            self::writeStderr("[OpenAPI Enum Drift] FATAL: {$reason}\n");
-            self::appendGithubStepSummaryEnumDriftBlock($githubSummaryPath, $reason, isFatal: true);
+            Diagnostics::stderr("[OpenAPI Enum Drift] FATAL: {$reason}\n");
+            Diagnostics::appendGithubStepSummaryEnumDriftBlock($githubSummaryPath, $reason, isFatal: true);
 
             throw EnumBindingException::forConfig(
                 EnumBindingReason::EnumSpecBasePathOrphaned,
@@ -989,8 +872,8 @@ final class OpenApiCoverageExtension implements Extension
                 . 'enum_spec_base_path is a secondary root that complements spec_base_path; '
                 . 'the loader currently requires spec_base_path to be configured for any spec-name lookup. '
                 . "Set spec_base_path too, or remove enum_spec_base_path if you don't need it.";
-            self::writeStderr("[OpenAPI Enum Drift] FATAL: {$reason}\n");
-            self::appendGithubStepSummaryEnumDriftBlock($githubSummaryPath, $reason, isFatal: true);
+            Diagnostics::stderr("[OpenAPI Enum Drift] FATAL: {$reason}\n");
+            Diagnostics::appendGithubStepSummaryEnumDriftBlock($githubSummaryPath, $reason, isFatal: true);
 
             throw EnumBindingException::forConfig(
                 EnumBindingReason::EnumSpecBasePathOrphaned,
@@ -1043,8 +926,8 @@ final class OpenApiCoverageExtension implements Extension
                 '%s is set but empty. Either provide an output file path or remove the parameter.',
                 $name,
             );
-            self::writeStderr("[OpenAPI Coverage] FATAL: {$reason}\n");
-            self::appendGithubStepSummaryFatalBlock($githubSummaryPath, $name, $reason);
+            Diagnostics::stderr("[OpenAPI Coverage] FATAL: {$reason}\n");
+            Diagnostics::appendGithubStepSummaryFatalSpecBlock($githubSummaryPath, $name, $reason);
 
             throw new InvalidCoverageOutputPathException($name, $reason);
         }
@@ -1078,8 +961,8 @@ final class OpenApiCoverageExtension implements Extension
         }
 
         if ($reason !== null) {
-            self::writeStderr("[OpenAPI Coverage] FATAL: {$reason}\n");
-            self::appendGithubStepSummaryFatalBlock($githubSummaryPath, $name, $reason);
+            Diagnostics::stderr("[OpenAPI Coverage] FATAL: {$reason}\n");
+            Diagnostics::appendGithubStepSummaryFatalSpecBlock($githubSummaryPath, $name, $reason);
 
             throw new InvalidCoverageOutputPathException($name, $reason);
         }
@@ -1131,7 +1014,7 @@ final class OpenApiCoverageExtension implements Extension
     {
         $severity = $strict ? 'FATAL' : 'WARNING';
         $message = sprintf('%s; skipping threshold gate.', $detail);
-        self::writeStderr(sprintf("[OpenAPI Coverage] %s: %s\n", $severity, $message));
+        Diagnostics::stderr(sprintf("[OpenAPI Coverage] %s: %s\n", $severity, $message));
 
         if ($strict) {
             throw new InvalidThresholdConfigurationException($name, $message);
@@ -1175,7 +1058,7 @@ final class OpenApiCoverageExtension implements Extension
 
         if (!ctype_digit($raw)) {
             $reason = "Invalid max_errors parameter '{$raw}'. Expected a non-negative integer (0 = unlimited).";
-            self::writeStderr("[Gesso] FATAL: {$reason}\n");
+            Diagnostics::stderr("[Gesso] FATAL: {$reason}\n");
 
             throw new InvalidValidationPolicyConfigurationException($reason);
         }
@@ -1213,7 +1096,7 @@ final class OpenApiCoverageExtension implements Extension
         try {
             new StatusCodePatternSet($patterns, $name);
         } catch (InvalidArgumentException $e) {
-            self::writeStderr("[Gesso] FATAL: {$e->getMessage()}\n");
+            Diagnostics::stderr("[Gesso] FATAL: {$e->getMessage()}\n");
 
             throw new InvalidValidationPolicyConfigurationException($e->getMessage(), $e);
         }
@@ -1263,7 +1146,7 @@ final class OpenApiCoverageExtension implements Extension
                 trim($raw) === '' ? '<empty>' : $raw,
                 $accepted,
             );
-            self::writeStderr("{$prefix} FATAL: {$reason}\n");
+            Diagnostics::stderr("{$prefix} FATAL: {$reason}\n");
             $summaryBlock($githubSummaryPath, $reason, true);
 
             throw new InvalidStrictRequiredConfigurationException($reason, $e);
@@ -1271,18 +1154,29 @@ final class OpenApiCoverageExtension implements Extension
     }
 
     /**
-     * Auto-discover `#[BoundToOpenApiEnum]` enums under the configured
-     * namespace prefixes and run a static drift check at bootstrap. A
-     * misconfiguration or strict-mode drift hard-fails the run; lenient
-     * mode only emits a WARNING block.
+     * Auto-discover backed enums under the configured namespace prefixes and
+     * run a static drift check at bootstrap for every one bound by attribute
+     * or by a `components.schemas` name in `$specs`; unbound enums are
+     * skipped. A misconfiguration or strict-mode drift hard-fails the run;
+     * lenient mode only emits a WARNING block.
      *
-     * Runs after the spec eager-load loop so `OpenApiSpecLoader::getBasePath()`
-     * is already configured by the time `EnumDriftAsserter` resolves
-     * `#[BoundToOpenApiEnum]` paths.
+     * Runs after the spec eager-load loop so every spec is cached and
+     * `OpenApiSpecLoader::getBasePath()` is configured.
+     *
+     * @param list<string> $specs
      */
-    private static function runEnumDriftCheck(ExtensionParameters $parameters, ?string $githubSummaryPath): void
+    private static function runEnumDriftCheck(ExtensionParameters $parameters, ?string $githubSummaryPath, array $specs): void
     {
         if (!self::resolveBooleanFlag($parameters, 'enum_drift_enabled', false)) {
+            return;
+        }
+
+        // Issue #597: paratest bootstraps this extension in its master (SuiteLoader)
+        // and again in every worker. The scan reads the same files in each, so a
+        // worker skips it and the master — the Pest --parallel orchestrator included —
+        // is the one process that evaluates and writes the step-summary block.
+        $slot = getenv('TEST_TOKEN');
+        if ($slot !== false && trim($slot) !== '') {
             return;
         }
 
@@ -1296,12 +1190,12 @@ final class OpenApiCoverageExtension implements Extension
 
         if ($namespaces === []) {
             $reason = 'enum_drift_enabled=true but enum_drift_scan_namespaces is empty.';
-            self::writeStderr(
+            Diagnostics::stderr(
                 "[OpenAPI Enum Drift] FATAL: {$reason}\n"
                 . '  Action: provide one or more PSR-4 namespace prefixes '
                 . "(e.g. enum_drift_scan_namespaces=\"App\\Enums\").\n",
             );
-            self::appendGithubStepSummaryEnumDriftBlock($githubSummaryPath, $reason, isFatal: true);
+            Diagnostics::appendGithubStepSummaryEnumDriftBlock($githubSummaryPath, $reason, isFatal: true);
 
             throw EnumBindingException::forScan(
                 EnumBindingReason::NoNamespacesConfigured,
@@ -1312,54 +1206,38 @@ final class OpenApiCoverageExtension implements Extension
         try {
             $fqcns = EnumScanner::scan($namespaces);
         } catch (EnumBindingException $e) {
-            self::writeStderr("[OpenAPI Enum Drift] FATAL: {$e->getMessage()}\n");
-            self::appendGithubStepSummaryEnumDriftBlock($githubSummaryPath, $e->getMessage(), isFatal: true);
+            Diagnostics::stderr("[OpenAPI Enum Drift] FATAL: {$e->getMessage()}\n");
+            Diagnostics::appendGithubStepSummaryEnumDriftBlock($githubSummaryPath, $e->getMessage(), isFatal: true);
 
             throw $e;
         }
 
         $failOnDrift = self::resolveBooleanFlag($parameters, 'enum_drift_fail_on_drift', true);
 
-        if ($fqcns === []) {
-            // No bound enums under the configured prefixes. Common in two
-            // cases: (a) a codebase mid-migration that hasn't annotated any
-            // enums yet, and (b) a typo'd `enum_drift_scan_namespaces`
-            // (e.g. `App\Enum` vs `App\Enums`). The first is intentional
-            // and must not fail; the second is a misconfiguration the user
-            // wants to see. A NOTE line surfaces the typo without breaking
-            // the migration use case.
-            self::writeStderr(
-                '[OpenAPI Enum Drift] NOTE: scan matched zero #[BoundToOpenApiEnum] enums under '
-                . 'configured prefixes (' . implode(', ', $namespaces) . '). '
+        try {
+            $reports = EnumDriftAsserter::detectAll($fqcns, $specs, skipUnbound: true);
+        } catch (EnumBindingException $e) {
+            // Misconfigured bindings are setup errors, not drift signals,
+            // and they fail loud regardless of $failOnDrift.
+            Diagnostics::stderr("[OpenAPI Enum Drift] FATAL: {$e->getMessage()}\n");
+            Diagnostics::appendGithubStepSummaryEnumDriftBlock($githubSummaryPath, $e->getMessage(), isFatal: true);
+
+            throw $e;
+        }
+
+        if ($reports === []) {
+            // Common when a codebase has not bound any enum yet (must not
+            // fail) or when `enum_drift_scan_namespaces` is typo'd (the
+            // user wants to see it). A NOTE surfaces the typo without
+            // breaking the first case.
+            Diagnostics::stderr(
+                '[OpenAPI Enum Drift] NOTE: scan matched zero bound enums under '
+                . 'configured prefixes (' . implode(', ', $namespaces) . '): no #[BoundToOpenApiEnum] '
+                . 'and no components.schemas enum named after a class. '
                 . "Check enum_drift_scan_namespaces if you expected matches.\n",
             );
 
             return;
-        }
-
-        if ($failOnDrift) {
-            try {
-                EnumDriftAsserter::assertNoDrift($fqcns, true);
-            } catch (EnumBindingException|EnumDriftException $e) {
-                self::writeStderr($e->getMessage() . "\n");
-                self::appendGithubStepSummaryEnumDriftBlock($githubSummaryPath, $e->getMessage(), isFatal: true);
-
-                throw $e;
-            }
-
-            return;
-        }
-
-        try {
-            $reports = EnumDriftAsserter::detectAll($fqcns);
-        } catch (EnumBindingException $e) {
-            // Misconfigured bindings are setup errors, not drift signals,
-            // and they fail loud regardless of $failOnDrift — same policy
-            // as the asserter (`EnumDriftAsserter::detectOne`).
-            self::writeStderr("[OpenAPI Enum Drift] FATAL: {$e->getMessage()}\n");
-            self::appendGithubStepSummaryEnumDriftBlock($githubSummaryPath, $e->getMessage(), isFatal: true);
-
-            throw $e;
         }
 
         $drifting = array_values(array_filter(
@@ -1371,32 +1249,12 @@ final class OpenApiCoverageExtension implements Extension
             return;
         }
 
-        $message = EnumDriftAsserter::renderMessage($drifting, false);
-        self::writeStderr($message . "\n");
-        self::appendGithubStepSummaryEnumDriftBlock($githubSummaryPath, $message, isFatal: false);
-    }
+        $message = EnumDriftAsserter::renderMessage($drifting, $failOnDrift);
+        Diagnostics::stderr($message . "\n");
+        Diagnostics::appendGithubStepSummaryEnumDriftBlock($githubSummaryPath, $message, isFatal: $failOnDrift);
 
-    private static function appendGithubStepSummaryEnumDriftBlock(?string $path, string $body, bool $isFatal): void
-    {
-        self::appendGithubStepSummaryBlock(
-            $path,
-            $isFatal ? '## :rotating_light: FATAL OpenAPI enum drift' : '## :warning: OpenAPI enum drift',
-            $isFatal
-                ? 'One or more `#[BoundToOpenApiEnum]` checks failed and the test run was aborted.'
-                : 'One or more `#[BoundToOpenApiEnum]` checks reported drift.',
-            $body,
-            '[OpenAPI Enum Drift] WARNING: Failed to append block',
-        );
-    }
-
-    private static function appendGithubStepSummaryFatalBlock(?string $path, string $spec, string $reason): void
-    {
-        self::appendGithubStepSummaryBlock(
-            $path,
-            '## :rotating_light: FATAL OpenAPI spec error',
-            "Spec `{$spec}` could not be loaded and the test run was aborted.",
-            $reason,
-            '[OpenAPI Coverage] WARNING: Failed to append FATAL block',
-        );
+        if ($failOnDrift) {
+            throw new EnumDriftException($drifting, $message);
+        }
     }
 }

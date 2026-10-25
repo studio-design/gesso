@@ -46,12 +46,22 @@ php artisan gesso:stubs --coverage=build/coverage.json
 | `--namespace=<ns>` | per adapter | Namespace for the generated classes. Ignored by `pest`. |
 | `--base-class=<fqcn>` | per adapter | Test class to extend — `PHPUnit\Framework\TestCase`, or `Tests\TestCase` for `laravel`. Ignored by `pest`. |
 | `--dry-run` | off | Report what would be written without writing it. |
+| `--format=<name>` | `text` | `text` or `json`: how the run summary is rendered. |
+| `--output-file=<path>` | stdout | Write the run summary there. This is the summary of what was written, not the stubs. |
 | `--request-prefix=<path>` | none | Prepend the application's mount path to generated Laravel, Symfony, or Pest requests, e.g. `/api`. Does not configure runtime path matching. |
 
-Exit code `0` means stubs were written or there was nothing left to stub; `2`
-means a usage error or an unreadable input.
+`--format=json` prints `schemaVersion` (currently `1`), `tool`, `dry_run`,
+`output_dir`, `written`, `skipped`, and `not_stubbed` (each entry has a
+`reason` of `unreachable`, `malformed`, or `unsupported`, plus a `detail`). The
+stubs themselves are always separate files under `--output`. See the
+[CLI reference](cli.md#stubs-json) for an example.
 
-The Artisan command takes the same options. Its `--spec` accepts a spec *name*
+Exit code `0` means stubs were written or there was nothing left to stub; `2`
+means a usage error or an unreadable input. Shared conventions:
+[CLI reference](cli.md#exit-codes).
+
+The Artisan command takes the same options except `--format` and
+`--output-file`: its summary goes to the Artisan console. Its `--spec` accepts a spec *name*
 resolved under `gesso.spec_base_path` as well as a path.
 
 ## Applications mounted under a prefix

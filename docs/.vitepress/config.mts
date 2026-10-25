@@ -1,6 +1,7 @@
 import { defineConfig } from 'vitepress'
 
 import { githubSlug } from './github-slug.mjs'
+import { canonicalBase, emitMarkdown } from './llms.mts'
 
 const version = process.env.DOCS_VERSION ?? 'next'
 const repository = process.env.GITHUB_REPOSITORY ?? 'studio-design/gesso'
@@ -69,7 +70,6 @@ export default defineConfig({
   cleanUrls: true,
   lastUpdated: true,
   transformPageData(pageData) {
-    const canonicalBase = 'https://studio-design.github.io/gesso'
     const path = pageData.relativePath
       .replace(/(^|\/)index\.md$/, '$1')
       .replace(/\.md$/, '')
@@ -205,6 +205,7 @@ export default defineConfig({
     }
   },
   sitemap: { hostname: siteUrl },
+  buildEnd: emitMarkdown,
   vite: { define: { __DOCS_VERSION__: JSON.stringify(version) } },
   markdown: {
     lineNumbers: true,
@@ -280,10 +281,12 @@ export default defineConfig({
           { text: 'PSR-7 validation', link: '/psr7' },
           { text: 'Laravel route parity', link: '/laravel-route-parity' },
           { text: 'Schema-driven fuzzing', link: '/fuzzing' },
+          { text: 'Named contract checks', link: '/contract-checks' },
           { text: 'Arazzo workflows', link: '/arazzo' },
           { text: 'SDK response round trips', link: '/sdk-roundtrip' },
           { text: 'Symfony contract testing', link: '/contract-testing-symfony' },
           { text: 'Spec-driven vs consumer-driven', link: '/spec-driven-vs-consumer-driven' },
+          { text: 'Consumer-side contract testing', link: '/consumer-side-contract-testing' },
           { text: 'PHP OpenAPI validation FAQ', link: '/php-openapi-validation-faq' }
         ]
       },
@@ -308,6 +311,7 @@ export default defineConfig({
         items: [
           { text: 'Setup', link: '/setup' },
           { text: 'Shared configuration', link: '/configuration' },
+          { text: 'CLI reference', link: '/cli' },
           { text: 'Coverage', link: '/coverage' },
           { text: 'Supported features', link: '/supported-features' },
           { text: 'Conformance', link: '/conformance' },
