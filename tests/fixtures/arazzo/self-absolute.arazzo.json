@@ -1,0 +1,25 @@
+{
+  "arazzo": "1.1.0",
+  "$self": "https://workflows.example.test/wf.json",
+  "info": {
+    "title": "t",
+    "version": "1.0.0"
+  },
+  "sourceDescriptions": [
+    {
+      "name": "petstore",
+      "url": "./petstore.json"
+    }
+  ],
+  "workflows": [
+    {
+      "workflowId": "w",
+      "steps": [
+        {
+          "stepId": "s",
+          "operationId": "listPets"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "arazzo": "1.1.0",
+  "info": { "title": "Pet purchase", "version": "1.0.0" },
+  "sourceDescriptions": [
+    { "name": "petstore", "url": "../specs/arazzo-petstore.json", "type": "openapi" }
+  ],
+  "workflows": [
+    {
+      "workflowId": "buyPet",
+      "inputs": {
+        "type": "object",
+        "properties": { "name": { "type": "string" } }
+      },
+      "steps": [
+        {
+          "stepId": "create",
+          "operationId": "createPet",
+          "requestBody": {
+            "contentType": "application/json",
+            "payload": { "name": "$inputs.name" }
+          },
+          "successCriteria": [{ "condition": "$statusCode == 201" }],
+          "outputs": { "petId": "$response.body#/id" }
+        },
+        {
+          "stepId": "read",
+          "operationId": "getPet",
+          "parameters": [
+            { "name": "petId", "in": "path", "value": "$steps.create.outputs.petId" },
+            { "name": "X-Request-Id", "in": "header", "value": "req-{$steps.create.outputs.petId}" }
+          ],
+          "successCriteria": [
+            { "condition": "$statusCode == 200" },
+            { "condition": "$response.body#/name == $inputs.name" }
+          ],
+          "outputs": { "name": "$response.body#/name" }
+        }
+      ],
+      "outputs": { "name": "$steps.read.outputs.name" }
+    }
+  ]
+}
