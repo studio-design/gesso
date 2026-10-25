@@ -6,11 +6,14 @@ namespace Studio\Gesso\Tests\Unit\Spec;
 
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+use stdClass;
 use Studio\Gesso\Exception\InvalidOpenApiSpecException;
 use Studio\Gesso\Exception\InvalidOpenApiSpecReason;
 use Studio\Gesso\Internal\OpenApiDocumentShapeNormalizer;
 use Studio\Gesso\Spec\OpenApiRefResolver;
 
+use function get_object_vars;
+use function json_encode;
 use function memory_get_usage;
 use function serialize;
 use function str_repeat;
@@ -1751,5 +1754,37 @@ class OpenApiRefResolverTest extends TestCase
 
         $this->assertSame(['type' => 'string'], $schemaOf(OpenApiRefResolver::resolve($spec('string'))));
         $this->assertSame(['type' => 'integer'], $schemaOf(OpenApiRefResolver::resolve($spec('integer'))));
+    }
+
+    #[Test]
+    public function leaves_objects_in_a_shared_target_unmodified_by_per_site_processing(): void
+    {
+        // The decoder keeps some nodes as stdClass (empty maps, a tagged
+        // `links` list). Arrays are shared copy-on-write, but object handles
+        // are shared by every site — already before memoization, since each
+        // site copied the same frozen root. They stay correct only while no
+        // per-site step writes into them; pin that.
+        $blob = new stdClass();
+        $links = (object) [(object) ['operationId' => 'getA']];
+        $site = static fn(array $siblings): array => ['get' => ['responses' => ['200' => [
+            'description' => 'ok',
+            'links' => ['$ref' => '#/components/links/Shared'],
+            'content' => ['application/json' => ['schema' => ['$ref' => '#/components/schemas/Shared'] + $siblings]],
+        ]]]];
+        $spec = [
+            'openapi' => '3.1.0',
+            'paths' => ['/a' => $site(['minProperties' => 1]), '/b' => $site(['maxProperties' => 3])],
+            'components' => [
+                'schemas' => ['Shared' => ['type' => 'object', 'x-blob' => $blob]],
+                'links' => ['Shared' => ['l' => $links]],
+            ],
+        ];
+
+        $resolved = OpenApiDocumentShapeNormalizer::normalizeResolvedDocument(OpenApiRefResolver::resolve($spec));
+
+        $this->assertSame(1, $resolved['paths']['/a']['get']['responses']['200']['content']['application/json']['schema']['minProperties']);
+        $this->assertArrayNotHasKey('minProperties', $resolved['paths']['/b']['get']['responses']['200']['content']['application/json']['schema']);
+        $this->assertSame([], get_object_vars($blob));
+        $this->assertSame('{"0":{"operationId":"getA"}}', json_encode($links));
     }
 }

@@ -1,0 +1,26 @@
+{
+  "openapi": "3.1.0",
+  "info": {"title": "Shared ref targets holding objects", "version": "1.0.0"},
+  "paths": {
+    "/a": {"get": {"responses": {"200": {"description": "A", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Shared", "minProperties": 1}}}}}}},
+    "/b": {"get": {"responses": {"200": {"description": "B", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Shared", "maxProperties": 3}}}}}}},
+    "/c": {"get": {"responses": {"200": {"$ref": "#/components/responses/Linked"}}}},
+    "/d": {"get": {"responses": {"200": {"$ref": "#/components/responses/Linked"}}}}
+  },
+  "components": {
+    "schemas": {
+      "Shared": {
+        "type": "object",
+        "properties": {"meta": {"type": "object", "properties": {}}},
+        "x-blob": {}
+      }
+    },
+    "responses": {
+      "Linked": {
+        "description": "Linked",
+        "links": [{"operationId": "getA"}],
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Shared"}}}
+      }
+    }
+  }
+}
