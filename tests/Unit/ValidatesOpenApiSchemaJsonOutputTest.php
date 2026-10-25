@@ -42,7 +42,6 @@ class ValidatesOpenApiSchemaJsonOutputTest extends TestCase
 
     protected function tearDown(): void
     {
-        self::resetValidatorCache();
         OpenApiSpecLoader::reset();
         OpenApiCoverageTracker::reset();
         LegacyIdentity::resetEnvForTesting('GESSO_VALIDATION_FORMAT');

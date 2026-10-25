@@ -26,8 +26,8 @@ use function dirname;
  *    `spec_base_path` parameter — see phpunit.xml.dist).
  *  - `config('gesso.default_spec', '...')`.
  *  - The static-state resets in `setUp()` / `tearDown()`
- *    (`OpenApiSpecLoader::reset`, `OpenApiCoverageTracker::reset`,
- *    `self::resetValidatorCache()`). Orchestra Testbench shares these
+ *    (`OpenApiSpecLoader::reset`, `OpenApiCoverageTracker::reset`).
+ *    Orchestra Testbench shares these
  *    statics across every `it(...)` in the file, so a real project running
  *    on a fresh per-test process boundary may not need them — but they
  *    are defensive defaults a copy-paste user is unlikely to regret.
@@ -54,7 +54,6 @@ class TestCase extends TestbenchTestCase
 
     protected function tearDown(): void
     {
-        self::resetValidatorCache();
         OpenApiSpecLoader::reset();
         OpenApiCoverageTracker::reset();
 

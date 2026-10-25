@@ -14,6 +14,7 @@ use Studio\Gesso\Fuzz\GeneratedResponseCase;
 use function fclose;
 use function fopen;
 use function sprintf;
+use function str_replace;
 use function var_export;
 
 class GeneratedResponseCaseTest extends TestCase
@@ -204,6 +205,9 @@ class GeneratedResponseCaseTest extends TestCase
         } catch (AssertionFailedError $e) {
             $this->assertStringContainsString("missing generated key 'aud'", $e->getMessage());
             $this->assertFailureCarriesReplayContext($e);
+            foreach ($e->getTrace() as $frame) {
+                $this->assertStringNotContainsString('/src/Fuzz/', str_replace('\\', '/', $frame['file'] ?? ''));
+            }
         }
     }
 

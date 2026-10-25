@@ -32,7 +32,6 @@ class ValidatesOpenApiSchemaEnforceDiscriminatorTest extends TestCase
         parent::setUp();
         OpenApiSpecLoader::reset();
         OpenApiSpecLoader::configure(__DIR__ . '/../fixtures/specs');
-        self::resetValidatorCache();
         DiscriminatorEnforcement::reset();
         $GLOBALS['__openapi_testing_config'] = [
             'gesso.default_spec' => 'petstore-3.0',
@@ -41,7 +40,6 @@ class ValidatesOpenApiSchemaEnforceDiscriminatorTest extends TestCase
 
     protected function tearDown(): void
     {
-        self::resetValidatorCache();
         DiscriminatorEnforcement::reset();
         unset($GLOBALS['__openapi_testing_config']);
         OpenApiSpecLoader::reset();

@@ -9,7 +9,7 @@ use const JSON_THROW_ON_ERROR;
 
 use JsonException;
 use LogicException;
-use PHPUnit\Framework\Assert;
+use Studio\Gesso\PHPUnit\CleanTraceAssert;
 use Studio\Gesso\Spec\OpenApiRefResolver;
 
 use function array_is_list;
@@ -98,7 +98,7 @@ final readonly class GeneratedResponseCase
         try {
             $actual = self::normaliseForComparison($reEncoded);
         } catch (JsonException $e) {
-            Assert::fail(sprintf(
+            CleanTraceAssert::fail(sprintf(
                 'SDK round trip result cannot be encoded as JSON: %s. %s',
                 $e->getMessage(),
                 $this->failureContext(),
@@ -106,7 +106,7 @@ final readonly class GeneratedResponseCase
         }
 
         if (!SchemaValueValidator::isValid($reEncoded, $this->schema)) {
-            Assert::fail(
+            CleanTraceAssert::fail(
                 'SDK round trip does not satisfy the resolved response schema. ' . $this->failureContext(),
             );
         }
@@ -114,7 +114,7 @@ final readonly class GeneratedResponseCase
         $generated = self::normaliseForComparison($this->body);
         $mismatch = self::fidelityMismatch($generated, $actual, '');
         if ($mismatch !== null) {
-            Assert::fail('SDK round trip lost generated response fidelity: ' . $mismatch . '. ' . $this->failureContext());
+            CleanTraceAssert::fail('SDK round trip lost generated response fidelity: ' . $mismatch . '. ' . $this->failureContext());
         }
     }
 

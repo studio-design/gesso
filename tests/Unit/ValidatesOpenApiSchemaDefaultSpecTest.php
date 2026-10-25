@@ -41,7 +41,6 @@ class ValidatesOpenApiSchemaDefaultSpecTest extends TestCase
 
     protected function tearDown(): void
     {
-        self::resetValidatorCache();
         unset($GLOBALS['__openapi_testing_config']);
         OpenApiSpecLoader::reset();
         OpenApiCoverageTracker::reset();
@@ -193,6 +192,23 @@ class ValidatesOpenApiSchemaDefaultSpecTest extends TestCase
         }
     }
 
+    /**
+     * #554: the validator cache is per TestCase instance, so a config change
+     * reaches the next test case without a reset hook. Each instance gets a
+     * fresh TestResponse: the static validated-response WeakMap would
+     * otherwise short-circuit before any validator is built.
+     */
+    #[Test]
+    public function a_fresh_test_case_instance_builds_its_own_validator(): void
+    {
+        $GLOBALS['__openapi_testing_config']['gesso.default_spec'] = 'petstore-3.0';
+        $GLOBALS['__openapi_testing_config']['gesso.max_errors'] = 1;
+        $this->assertSame(1, $this->countReportedErrors($this));
+
+        $GLOBALS['__openapi_testing_config']['gesso.max_errors'] = 20;
+        $this->assertGreaterThan(1, $this->countReportedErrors(new self($this->name())));
+    }
+
     // ========================================
     // skip_response_codes config tests
     // ========================================
@@ -317,5 +333,26 @@ class ValidatesOpenApiSchemaDefaultSpecTest extends TestCase
             HttpMethod::GET,
             '/v1/pets',
         );
+    }
+
+    private function countReportedErrors(self $testCase): int
+    {
+        $body = (string) json_encode(
+            ['data' => [['id' => 'bad', 'name' => 123], ['id' => 'bad', 'name' => 456]]],
+            JSON_THROW_ON_ERROR,
+        );
+
+        try {
+            $testCase->assertResponseMatchesOpenApiSchema(
+                $this->makeTestResponse($body, 200),
+                HttpMethod::GET,
+                '/v1/pets',
+            );
+        } catch (AssertionFailedError $e) {
+            $lines = explode("\n", $e->getMessage());
+
+            return count(array_filter($lines, static fn(string $line) => str_starts_with(trim($line), '[')));
+        }
+        $this->fail('Expected AssertionFailedError was not thrown.');
     }
 }

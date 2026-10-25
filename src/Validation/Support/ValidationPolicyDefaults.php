@@ -20,10 +20,9 @@ use Studio\Gesso\Spec\OpenApiSpecResolver;
  * {@see OpenApiRequestValidator} / {@see OpenApiResponseValidator}
  * constructors when the caller omits the corresponding argument, and by
  * {@see OpenApiSpecResolver::openApiSpecFallback()}. An explicit constructor
- * argument always wins, and the framework adapters (Laravel config, PSR-7 /
- * Symfony trait hooks) pass explicit arguments from their own configuration
- * surfaces — these defaults only reach validators built without one, i.e.
- * the framework-agnostic PHPUnit path.
+ * argument always wins. The PSR-7 and Symfony trait hooks default to these
+ * values (issue #563), so overriding a hook still pins a per-suite setting;
+ * the Laravel adapter keeps reading `config('gesso.*')`.
  *
  * Static singleton mirroring {@see DiscriminatorEnforcement} so the
  * defaults reach the validators without giving them a second constructor.
@@ -88,15 +87,17 @@ final class ValidationPolicyDefaults
      * Unconfigured default is `[]`, not
      * {@see OpenApiRequestValidator::DEFAULT_SKIP_REQUEST_VALIDATION_RESPONSE_CODES}:
      * direct constructor callers stay strict, exactly as before this class
-     * existed. The `['422', '400']` default belongs to the adapters.
+     * existed. The adapters pass their `['422', '400']` default as `$default`.
+     *
+     * @param string[] $default returned when the setting is not configured
      *
      * @return string[]
      *
      * @internal
      */
-    public static function skipRequestValidationResponseCodes(): array
+    public static function skipRequestValidationResponseCodes(array $default = []): array
     {
-        return self::$skipRequestValidationResponseCodes ?? [];
+        return self::$skipRequestValidationResponseCodes ?? $default;
     }
 
     /**

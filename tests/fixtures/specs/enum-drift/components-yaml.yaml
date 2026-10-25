@@ -1,0 +1,13 @@
+openapi: 3.1.0
+info:
+  title: Enum drift YAML component bindings
+  version: 1.0.0
+paths: {}
+components:
+  schemas:
+    NumericKeyed:
+      type: string
+      enum: {0: red}
+    EmptyKeyed:
+      type: string
+      enum: {}

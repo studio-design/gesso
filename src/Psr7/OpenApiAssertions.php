@@ -13,9 +13,9 @@ use Studio\Gesso\Internal\CurlCommandFormatter;
 use Studio\Gesso\Internal\FailureOutput;
 use Studio\Gesso\Internal\OpenApiAssertionCore;
 use Studio\Gesso\OpenApiRequestValidator;
-use Studio\Gesso\OpenApiResponseValidator;
 use Studio\Gesso\OpenApiValidationResult;
 use Studio\Gesso\Spec\OpenApiSpecResolver;
+use Studio\Gesso\Validation\Support\ValidationPolicyDefaults;
 use Studio\Gesso\ValidationOutput;
 use Studio\Gesso\ValidationOutputFormat;
 use Throwable;
@@ -156,27 +156,44 @@ trait OpenApiAssertions
         $this->assertPsr7(false, $message);
     }
 
-    /** User-overridable fallback when no #[OpenApiSpec] attribute is present. */
+    /**
+     * User-overridable fallback when no #[OpenApiSpec] attribute is present.
+     * Defaults to `spec.default` from gesso.php (or the `default_spec`
+     * extension parameter).
+     */
     protected function openApiSpec(): string
     {
-        return '';
+        return ValidationPolicyDefaults::defaultSpec();
     }
 
+    /** Defaults to `validation.max_errors` from gesso.php (or `max_errors`), else 20. */
     protected function openApiMaxErrors(): int
     {
-        return 20;
+        return ValidationPolicyDefaults::maxErrors();
     }
 
-    /** @return string[] */
+    /**
+     * Defaults to `validation.skip_response_codes` from gesso.php (or
+     * `skip_response_codes`), else 5xx.
+     *
+     * @return string[]
+     */
     protected function openApiSkipResponseCodes(): array
     {
-        return OpenApiResponseValidator::DEFAULT_SKIP_RESPONSE_CODES;
+        return ValidationPolicyDefaults::skipResponseCodes();
     }
 
-    /** @return string[] */
+    /**
+     * Defaults to `validation.skip_request_validation_response_codes` from
+     * gesso.php (or the like-named parameter), else 422 and 400.
+     *
+     * @return string[]
+     */
     protected function openApiSkipRequestValidationResponseCodes(): array
     {
-        return OpenApiRequestValidator::DEFAULT_SKIP_REQUEST_VALIDATION_RESPONSE_CODES;
+        return ValidationPolicyDefaults::skipRequestValidationResponseCodes(
+            OpenApiRequestValidator::DEFAULT_SKIP_REQUEST_VALIDATION_RESPONSE_CODES,
+        );
     }
 
     protected function openApiSpecFallback(): string

@@ -15,6 +15,8 @@ use Studio\Gesso\Validation\Request\RequestBodyValidationResult;
 use Studio\Gesso\Validation\Request\RequestBodyValidator;
 use Studio\Gesso\Validation\Support\SchemaValidatorRunner;
 
+use function implode;
+
 class RequestBodyValidatorTest extends TestCase
 {
     private RequestBodyValidator $validator;
@@ -1949,6 +1951,328 @@ class RequestBodyValidatorTest extends TestCase
         $this->assertNull($result->skipReason);
     }
 
+    #[Test]
+    public function validate_splits_a_non_exploded_form_array_part_before_validation(): void
+    {
+        // Issue #487: `style: form, explode: false` sends `tags=1,2`.
+        $result = $this->validateStyled(
+            'application/x-www-form-urlencoded',
+            ['tags' => ['style' => 'form', 'explode' => false]],
+            ['tags' => '1,2'],
+        );
+
+        $this->assertSame([], $result->errors);
+        $this->assertNull($result->skipReason);
+    }
+
+    #[Test]
+    public function validate_reports_a_non_exploded_array_item_at_its_pointer(): void
+    {
+        $result = $this->validateStyled(
+            'application/x-www-form-urlencoded',
+            ['tags' => ['style' => 'form', 'explode' => false]],
+            ['tags' => '1,x'],
+        );
+
+        $this->assertCount(1, $result->errors);
+        $this->assertStringContainsString('/tags/1', $result->errors[0]);
+    }
+
+    #[Test]
+    #[TestWith(['pipeDelimited', '1|2'])]
+    #[TestWith(['spaceDelimited', '1 2'])]
+    public function validate_splits_pipe_and_space_delimited_form_parts(string $style, string $value): void
+    {
+        $result = $this->validateStyled(
+            'application/x-www-form-urlencoded',
+            ['tags' => ['style' => $style]],
+            ['tags' => $value],
+        );
+
+        $this->assertSame([], $result->errors);
+    }
+
+    #[Test]
+    public function validate_splits_a_raw_urlencoded_part_before_percent_decoding(): void
+    {
+        // `%2C` is a comma inside a value; only the literal comma delimits.
+        // Splitting after decoding would yield ['a', 'b', 'c'] and fail the enum.
+        $result = $this->validateStyled(
+            'application/x-www-form-urlencoded',
+            ['tags' => ['style' => 'form', 'explode' => false]],
+            'tags=a%2Cb,c',
+            ['type' => 'array', 'items' => ['type' => 'string', 'enum' => ['a,b', 'c']]],
+        );
+
+        $this->assertSame([], $result->errors);
+    }
+
+    #[Test]
+    public function validate_finds_the_raw_value_of_a_field_name_parse_str_mangles(): void
+    {
+        // parse_str() turns `tag.list` into `tag_list`; the raw lookup must too.
+        $result = $this->validateStyled(
+            'application/x-www-form-urlencoded',
+            ['tag_list' => ['style' => 'form', 'explode' => false]],
+            'tag.list=a%2Cb',
+            ['type' => 'array', 'items' => ['type' => 'string', 'enum' => ['a,b']]],
+            property: 'tag_list',
+        );
+
+        $this->assertSame([], $result->errors);
+    }
+
+    #[Test]
+    public function validate_splits_the_raw_value_of_the_pair_parse_str_keeps(): void
+    {
+        // parse_str() keeps the last of repeated keys; its raw value is used.
+        $result = $this->validateStyled(
+            'application/x-www-form-urlencoded',
+            ['tags' => ['style' => 'form', 'explode' => false]],
+            'tags=x&tags=a%2Cb',
+            ['type' => 'array', 'maxItems' => 1, 'items' => ['type' => 'string', 'enum' => ['a,b']]],
+        );
+
+        $this->assertSame([], $result->errors);
+    }
+
+    #[Test]
+    public function validate_rebuilds_an_exploded_array_from_repeated_raw_keys(): void
+    {
+        // Exploded (the default) repeats the name per element; parse_str()
+        // keeps only the last pair, so every element must come from the wire.
+        $schema = ['type' => 'array', 'items' => ['type' => 'string', 'enum' => ['a', 'b']]];
+        // A `contentType` encodes each element, so it repeats the name too.
+        $encodings = [[], ['tags' => ['style' => 'form', 'explode' => true]], ['tags' => ['contentType' => 'text/plain']]];
+        foreach ($encodings as $encoding) {
+            $invalid = $this->validateStyled('application/x-www-form-urlencoded', $encoding, 'tags=INVALID&tags=b', $schema);
+            $this->assertStringContainsString('/tags/0', implode("\n", $invalid->errors));
+
+            $valid = $this->validateStyled('application/x-www-form-urlencoded', $encoding, 'tags=a&tags=b', $schema);
+            $this->assertSame([], $valid->errors);
+        }
+    }
+
+    #[Test]
+    public function validate_decodes_each_json_element_of_a_rebuilt_exploded_array(): void
+    {
+        // `contentType` encodes each element, so each repeated pair is its own
+        // JSON document; invalid JSON must not slip past a string item schema.
+        $encoding = ['tags' => ['contentType' => 'application/json']];
+        $schema = ['type' => 'array', 'items' => ['type' => 'string', 'enum' => ['a', 'b']]];
+
+        $valid = $this->validateStyled('application/x-www-form-urlencoded', $encoding, 'tags=%22a%22&tags=%22b%22', $schema);
+        $this->assertSame([], $valid->errors);
+
+        $invalid = $this->validateStyled('application/x-www-form-urlencoded', $encoding, 'tags=a&tags=%22b%22', $schema);
+        $this->assertStringContainsString('[/tags/0] part is declared as application/json but its content is not valid JSON', implode("\n", $invalid->errors));
+
+        $objects = ['type' => 'array', 'items' => ['type' => 'object', 'required' => ['city']]];
+        $missingCity = $this->validateStyled('application/x-www-form-urlencoded', [], 'addr=%7B%22city%22%3A%22X%22%7D&addr=%7B%7D', $objects, property: 'addr');
+        $this->assertStringContainsString('/addr/1', implode("\n", $missingCity->errors));
+    }
+
+    #[Test]
+    public function validate_keeps_a_single_json_element_an_array(): void
+    {
+        // One pair is still a one-element array: each item is its own JSON
+        // document, so the array is never unwrapped to its only element.
+        $encoding = ['tags' => ['contentType' => 'application/json']];
+        $schema = ['type' => 'array', 'items' => ['type' => 'string', 'enum' => ['a', 'b']]];
+
+        $single = $this->validateStyled('application/x-www-form-urlencoded', $encoding, 'tags=%22a%22', $schema);
+        $this->assertSame([], $single->errors);
+
+        // A parsed field map (adapters hand one over) decodes per element too.
+        $parsed = $this->validateStyled('application/x-www-form-urlencoded', $encoding, ['tags' => ['"a"', 'b']], $schema);
+        $this->assertStringContainsString('[/tags/1] part is declared as application/json but its content is not valid JSON', implode("\n", $parsed->errors));
+    }
+
+    #[Test]
+    public function validate_rebuilds_an_exploded_array_declared_through_all_of(): void
+    {
+        $schema = ['allOf' => [['type' => 'array', 'items' => ['type' => 'string', 'enum' => ['a', 'b']]]]];
+
+        $result = $this->validateStyled(
+            'application/x-www-form-urlencoded',
+            ['tags' => ['style' => 'form', 'explode' => true]],
+            'tags=INVALID&tags=b',
+            $schema,
+        );
+
+        $this->assertStringContainsString('/tags/0', implode("\n", $result->errors));
+    }
+
+    #[Test]
+    public function validate_applies_last_wins_after_parse_str_key_mangling(): void
+    {
+        // `tag.list` and `tag_list` collide only after mangling; parse_str()
+        // keeps the last pair, so its raw value must be the one split.
+        $result = $this->validateStyled(
+            'application/x-www-form-urlencoded',
+            ['tag_list' => ['style' => 'form', 'explode' => false]],
+            'tag.list=x&tag_list=a,b&tag.list=a%2Cb',
+            ['type' => 'array', 'maxItems' => 1, 'items' => ['type' => 'string', 'enum' => ['a,b']]],
+            property: 'tag_list',
+        );
+
+        $this->assertSame([], $result->errors);
+    }
+
+    #[Test]
+    public function validate_percent_decodes_styled_multipart_values_after_splitting(): void
+    {
+        // Multipart parsing leaves the RFC 6570 percent-encoding in place.
+        $result = $this->validateStyled(
+            'multipart/form-data',
+            ['tags' => ['style' => 'form', 'explode' => false]],
+            ['tags' => 'a%2Cb,c+d'],
+            ['type' => 'array', 'maxItems' => 2, 'items' => ['type' => 'string', 'enum' => ['a,b', 'c+d']]],
+        );
+
+        $this->assertSame([], $result->errors);
+    }
+
+    #[Test]
+    public function validate_percent_decodes_exploded_styled_multipart_items(): void
+    {
+        $result = $this->validateStyled(
+            'multipart/form-data',
+            ['tags' => ['style' => 'form', 'explode' => true]],
+            ['tags' => ['a%2Cb', 'c%20d']],
+            ['type' => 'array', 'items' => ['type' => 'string', 'enum' => ['a,b', 'c d']]],
+        );
+
+        $this->assertSame([], $result->errors);
+    }
+
+    #[Test]
+    public function validate_ignores_file_part_content_type_when_style_is_declared(): void
+    {
+        $result = $this->validateStyled(
+            'multipart/form-data',
+            ['avatar' => ['style' => 'form', 'contentType' => 'image/png']],
+            ['avatar' => new UploadedPart('text/plain', 'avatar.txt')],
+            ['type' => 'string', 'format' => 'binary'],
+            property: 'avatar',
+        );
+
+        $this->assertSame([], $result->errors);
+    }
+
+    #[Test]
+    public function validate_ignores_part_content_type_when_style_is_declared(): void
+    {
+        // OAS 3.1/3.2 Encoding Object: with style / explode / allowReserved
+        // declared, "the value of contentType (implicit or explicit) SHALL be
+        // ignored" — an object part is not decoded as JSON.
+        $result = $this->validateStyled(
+            'multipart/form-data',
+            ['tags' => ['style' => 'form']],
+            ['tags' => '{"label":"x"}'],
+            ['type' => 'object'],
+        );
+
+        $this->assertCount(1, $result->errors);
+        $this->assertStringContainsString('/tags', $result->errors[0]);
+        $this->assertStringNotContainsString('not valid JSON', $result->errors[0]);
+    }
+
+    #[Test]
+    public function validate_ignores_multipart_style_on_openapi_3_0(): void
+    {
+        // OAS 3.0 scopes style / explode to urlencoded bodies only.
+        $encoding = ['tags' => ['style' => 'form', 'explode' => false]];
+        $schema = ['type' => 'array', 'items' => ['type' => 'string', 'maxLength' => 1]];
+
+        $v30 = $this->validateStyled('multipart/form-data', $encoding, ['tags' => 'a,b'], $schema, OpenApiVersion::V3_0);
+        $this->assertCount(1, $v30->errors);
+        $this->assertStringContainsString('/tags/0', $v30->errors[0]);
+
+        $v31 = $this->validateStyled('multipart/form-data', $encoding, ['tags' => 'a,b'], $schema, OpenApiVersion::V3_1);
+        $this->assertSame([], $v31->errors);
+    }
+
+    #[Test]
+    public function validate_skips_a_part_that_declares_per_part_headers(): void
+    {
+        $result = $this->validateStyled(
+            'multipart/form-data',
+            ['avatar' => ['contentType' => 'image/*', 'headers' => ['X-Part-Id' => ['schema' => ['type' => 'string']]]]],
+            ['avatar' => new UploadedPart('image/png', 'a.png')],
+            ['type' => 'string', 'format' => 'binary'],
+            property: 'avatar',
+        );
+
+        $this->assertSame([], $result->errors);
+        $this->assertNotNull($result->skipReason);
+        $this->assertStringContainsString('avatar', $result->skipReason);
+        $this->assertStringContainsString('X-Part-Id', $result->skipReason);
+    }
+
+    #[Test]
+    public function validate_still_fails_a_part_that_declares_headers_when_its_content_type_mismatches(): void
+    {
+        $result = $this->validateStyled(
+            'multipart/form-data',
+            ['avatar' => ['contentType' => 'image/*', 'headers' => ['X-Part-Id' => ['schema' => ['type' => 'string']]]]],
+            ['avatar' => new UploadedPart('text/plain', 'a.txt')],
+            ['type' => 'string', 'format' => 'binary'],
+            property: 'avatar',
+        );
+
+        $this->assertCount(1, $result->errors);
+        $this->assertStringContainsString('image/*', $result->errors[0]);
+        $this->assertNull($result->skipReason);
+    }
+
+    #[Test]
+    public function validate_does_not_skip_for_headers_on_an_absent_optional_part(): void
+    {
+        $result = $this->validateStyled(
+            'multipart/form-data',
+            ['avatar' => ['headers' => ['X-Part-Id' => ['schema' => ['type' => 'string']]]]],
+            ['other' => 'x'],
+            ['type' => 'string', 'format' => 'binary'],
+            property: 'avatar',
+        );
+
+        $this->assertSame([], $result->errors);
+        $this->assertNull($result->skipReason);
+    }
+
+    #[Test]
+    #[TestWith(['application/x-www-form-urlencoded', 'X-Part-Id'])]
+    #[TestWith(['multipart/form-data', 'Content-Type'])]
+    public function validate_ignores_per_part_headers_that_cannot_apply(string $mediaType, string $header): void
+    {
+        // Headers exist only on multipart parts, and the spec says to ignore a
+        // `Content-Type` key there — neither case leaves anything unchecked.
+        $result = $this->validateStyled(
+            $mediaType,
+            ['note' => ['headers' => [$header => ['schema' => ['type' => 'string']]]]],
+            ['note' => 'hello'],
+            ['type' => 'string'],
+            property: 'note',
+        );
+
+        $this->assertSame([], $result->errors);
+        $this->assertNull($result->skipReason);
+    }
+
+    #[Test]
+    public function validate_leaves_a_malformed_style_declaration_untouched(): void
+    {
+        $result = $this->validateStyled(
+            'application/x-www-form-urlencoded',
+            ['tags' => ['style' => null, 'explode' => false]],
+            ['tags' => 'a,b'],
+            ['type' => 'array', 'items' => ['type' => 'string', 'enum' => ['a,b']]],
+        );
+
+        $this->assertSame([], $result->errors);
+    }
+
     /** @return array<string, mixed> */
     private static function formOperation(): array
     {
@@ -1999,5 +2323,32 @@ class RequestBodyValidatorTest extends TestCase
                 ],
             ],
         ];
+    }
+
+    /**
+     * @param array<string, mixed> $encoding
+     * @param array<string, mixed>|string $body
+     * @param array<string, mixed> $propertySchema
+     */
+    private function validateStyled(
+        string $mediaType,
+        array $encoding,
+        array|string $body,
+        array $propertySchema = ['type' => 'array', 'items' => ['type' => 'integer']],
+        OpenApiVersion $version = OpenApiVersion::V3_1,
+        string $property = 'tags',
+    ): RequestBodyValidationResult {
+        $operation = [
+            'requestBody' => [
+                'content' => [
+                    $mediaType => [
+                        'schema' => ['type' => 'object', 'properties' => [$property => $propertySchema]],
+                        'encoding' => $encoding,
+                    ],
+                ],
+            ],
+        ];
+
+        return $this->validator->validate('spec', 'POST', '/form', $operation, DecodedBody::present($body), $mediaType, $version);
     }
 }

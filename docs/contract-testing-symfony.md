@@ -39,7 +39,7 @@ Gesso finds spec files through the PHPUnit extension, not a Symfony bundle or a 
 </extensions>
 ```
 
-`spec_base_path` is the directory holding your documents; `specs` lists the ones to report coverage for. YAML or JSON, 3.0.x, 3.1.x, or 3.2.x — the same loader accepts all of them (YAML needs `symfony/yaml`). Which spec a given test uses is pinned by a `#[OpenApiSpec]` attribute or by overriding `openApiSpec()`; there is no Laravel-style `default_spec` lookup in the Symfony adapter.
+`spec_base_path` is the directory holding your documents; `specs` lists the ones to report coverage for. YAML or JSON, 3.0.x, 3.1.x, or 3.2.x — the same loader accepts all of them (YAML needs `symfony/yaml`). Which spec a given test uses is pinned by a `#[OpenApiSpec]` attribute or by overriding `openApiSpec()`; without either, set `spec.default` in [`gesso.php`](configuration.md) (or the `default_spec` extension parameter).
 
 ### 2. A WebTestCase
 

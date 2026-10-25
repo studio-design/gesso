@@ -2,7 +2,12 @@
 
 declare(strict_types=1);
 
-namespace Studio\Gesso\Fuzz;
+namespace Studio\Gesso\Contract;
+
+use Studio\Gesso\Fuzz\ExploredCase;
+use Studio\Gesso\Fuzz\ExploredOperation;
+
+use function class_alias;
 
 /**
  * One request a {@see ContractCheckPlan} is about to dispatch, together with
@@ -33,3 +38,8 @@ final readonly class ContractCheckProbe
         public bool $authenticate = true,
     ) {}
 }
+
+// Declared beside the class, not by an autoloader, so the legacy name exists
+// whenever this file is included — including PHPUnit's direct require_once
+// in a separate process. See Autoload.php. Removed in Gesso 3.0.
+class_alias(ContractCheckProbe::class, 'Studio\\Gesso\\Fuzz\\ContractCheckProbe');

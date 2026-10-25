@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Tests\Unit\PHPUnit;
 
+use PHPUnit\Framework\Attributes\IgnoreDeprecations;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use PHPUnit\Runner\Extension\ParameterCollection;
@@ -13,6 +14,7 @@ use Studio\Gesso\Baseline\ViolationBaselineCollector;
 use Studio\Gesso\Baseline\ViolationBaselineEnforcer;
 use Studio\Gesso\Baseline\ViolationBaselineFile;
 use Studio\Gesso\Baseline\ViolationFingerprint;
+use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\Internal\LegacyIdentity;
 use Studio\Gesso\PHPUnit\OpenApiCoverageExtension;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
@@ -28,6 +30,7 @@ use function sys_get_temp_dir;
 use function uniqid;
 use function unlink;
 
+#[IgnoreDeprecations]
 class OpenApiCoverageExtensionBaselineTest extends TestCase
 {
     /** @var null|resource */
@@ -57,6 +60,7 @@ class OpenApiCoverageExtensionBaselineTest extends TestCase
 
     protected function tearDown(): void
     {
+        Deprecations::resetForTesting();
         OpenApiCoverageExtension::overrideStderrForTesting(null);
         if ($this->stderrBuffer !== null) {
             fclose($this->stderrBuffer);

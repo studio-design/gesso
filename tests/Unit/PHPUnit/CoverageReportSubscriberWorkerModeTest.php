@@ -23,6 +23,7 @@ use Throwable;
 
 use function file_get_contents;
 use function file_put_contents;
+use function function_exists;
 use function getenv;
 use function getmypid;
 use function glob;
@@ -31,6 +32,7 @@ use function json_decode;
 use function mkdir;
 use function ob_get_clean;
 use function ob_start;
+use function posix_getppid;
 use function putenv;
 use function restore_error_handler;
 use function rmdir;
@@ -51,6 +53,7 @@ class CoverageReportSubscriberWorkerModeTest extends TestCase
     private string $tmpDir = '';
     private ?string $previousTestToken;
     private ?string $previousSidecarToken;
+    private false|string $previousRunId = false;
 
     protected function setUp(): void
     {
@@ -71,6 +74,9 @@ class CoverageReportSubscriberWorkerModeTest extends TestCase
         $currentSidecarToken = getenv('GESSO_SIDECAR_TOKEN');
         $this->previousSidecarToken = $currentSidecarToken === false ? null : $currentSidecarToken;
         putenv('GESSO_SIDECAR_TOKEN');
+
+        $this->previousRunId = getenv('GESSO_RUN_ID');
+        putenv('GESSO_RUN_ID');
     }
 
     protected function tearDown(): void
@@ -86,6 +92,7 @@ class CoverageReportSubscriberWorkerModeTest extends TestCase
         } else {
             putenv('GESSO_SIDECAR_TOKEN=' . $this->previousSidecarToken);
         }
+        putenv($this->previousRunId === false ? 'GESSO_RUN_ID' : 'GESSO_RUN_ID=' . $this->previousRunId);
 
         if (is_dir($this->tmpDir)) {
             $entries = glob($this->tmpDir . '/*') ?: [];
@@ -154,12 +161,10 @@ class CoverageReportSubscriberWorkerModeTest extends TestCase
 
         $loaded = CoverageSidecarReader::readDir($this->tmpDir);
         $this->assertCount(1, $loaded);
-        // v8 envelope: coverage, strict trackers, SDK exercise, and the
-        // deprecation counts are nested.
-        $this->assertSame(
-            CoverageSidecarEnvelope::ENVELOPE_VERSION_WITH_DEPRECATIONS,
-            $loaded[0]['envelopeVersion'],
-        );
+        // Current envelope: coverage, strict trackers, SDK exercise, and the
+        // deprecation counts are nested; no baseline outside a generation run.
+        $this->assertSame(CoverageSidecarEnvelope::ENVELOPE_VERSION, $loaded[0]['envelopeVersion']);
+        $this->assertArrayNotHasKey('baseline', $loaded[0]);
         $this->assertSame(1, $loaded[0]['coverage']['version']);
         $this->assertArrayHasKey('petstore-3.0', $loaded[0]['coverage']['specs']);
         $this->assertSame(
@@ -742,6 +747,46 @@ class CoverageReportSubscriberWorkerModeTest extends TestCase
     }
 
     #[Test]
+    public function an_explicit_run_id_scopes_the_sidecar_filename(): void
+    {
+        putenv('TEST_TOKEN=1');
+        putenv('GESSO_RUN_ID=ci-7');
+
+        $this->workerSubscriber()->notify($this->fakeExecutionFinished());
+
+        $this->assertFileExists($this->tmpDir . '/part-1-' . (string) getmypid() . '.ci-7.json');
+    }
+
+    #[Test]
+    public function a_paratest_worker_scopes_its_sidecar_to_the_master_pid(): void
+    {
+        if (!function_exists('posix_getppid')) {
+            $this->markTestSkipped('ext-posix is required to derive the paratest run id.');
+        }
+        putenv('TEST_TOKEN=1');
+
+        $this->workerSubscriber()->notify($this->fakeExecutionFinished());
+
+        $paths = CoverageSidecarReader::listPaths($this->tmpDir);
+        $this->assertCount(1, $paths);
+        $this->assertSame((string) posix_getppid(), CoverageSidecarReader::runIdOf($paths[0]));
+    }
+
+    #[Test]
+    public function a_named_shard_without_an_explicit_run_id_stays_unscoped(): void
+    {
+        // Shards run on separate machines; a per-machine id would split them.
+        putenv('TEST_TOKEN=1');
+        putenv('GESSO_SIDECAR_TOKEN=Unit');
+
+        $this->workerSubscriber()->notify($this->fakeExecutionFinished());
+
+        $paths = CoverageSidecarReader::listPaths($this->tmpDir);
+        $this->assertCount(1, $paths);
+        $this->assertNull(CoverageSidecarReader::runIdOf($paths[0]));
+    }
+
+    #[Test]
     public function worker_mode_writes_failure_marker_when_sidecar_write_fails(): void
     {
         // C2: when the sidecar write fails, the worker drops a
@@ -757,13 +802,14 @@ class CoverageReportSubscriberWorkerModeTest extends TestCase
             schemaValidated: true,
         );
         putenv('TEST_TOKEN=7');
+        putenv('GESSO_RUN_ID=r1');
 
         // sidecarDir is writable but the sidecar write itself fails by
         // pointing the writer at a target whose `*.tmp` rename target is
         // a directory rather than a file. We simulate this more simply
         // by pre-occupying the final filename with a directory.
         mkdir($this->tmpDir, 0o755, recursive: true);
-        $expectedSidecar = $this->tmpDir . '/part-7-' . (string) getmypid() . '.json';
+        $expectedSidecar = $this->tmpDir . '/part-7-' . (string) getmypid() . '.r1.json';
         mkdir($expectedSidecar, 0o755);
 
         $subscriber = new CoverageReportSubscriber(
@@ -777,7 +823,7 @@ class CoverageReportSubscriberWorkerModeTest extends TestCase
 
         $subscriber->notify($this->fakeExecutionFinished());
 
-        $markerPath = $this->tmpDir . '/failed-7-' . (string) getmypid() . '.json';
+        $markerPath = $this->tmpDir . '/failed-7-' . (string) getmypid() . '.r1.json';
         $this->assertFileExists($markerPath, 'C2: failure marker must be dropped');
         $payload = json_decode((string) file_get_contents($markerPath), true);
         $this->assertSame('7', $payload['testToken']);
@@ -785,6 +831,17 @@ class CoverageReportSubscriberWorkerModeTest extends TestCase
 
         @unlink($markerPath);
         @rmdir($expectedSidecar);
+    }
+
+    private function workerSubscriber(): CoverageReportSubscriber
+    {
+        return new CoverageReportSubscriber(
+            specs: ['petstore-3.0'],
+            outputFile: null,
+            consoleOutput: ConsoleOutput::DEFAULT,
+            githubSummaryPath: null,
+            sidecarDir: $this->tmpDir,
+        );
     }
 
     /**

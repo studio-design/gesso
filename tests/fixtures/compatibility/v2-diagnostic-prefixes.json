@@ -6,14 +6,15 @@
         "src/Baseline/CoverageBaselineEvaluator.php": 2,
         "src/Cli/CoverageGateCommand.php": 2,
         "src/Cli/StubsCommand.php": 3,
-        "src/Coverage/CoverageMergeCommand.php": 17,
+        "src/Coverage/CoverageMergeCommand.php": 19,
         "src/Fuzz/SchemaDataGenerator.php": 1,
         "src/Internal/CliIo.php": 1,
+        "src/Internal/Diagnostics.php": 1,
         "src/Internal/LegacyIdentity.php": 1,
         "src/Laravel/ValidatesOpenApiSchema.php": 1,
         "src/PHPUnit/CoverageReportSubscriber.php": 19,
         "src/PHPUnit/ExtensionParameters.php": 1,
-        "src/PHPUnit/OpenApiCoverageExtension.php": 10,
+        "src/PHPUnit/OpenApiCoverageExtension.php": 9,
         "src/Validation/Request/SecurityValidator.php": 2,
         "src/ValidationOutput.php": 1
     },
@@ -31,19 +32,35 @@
         "src/Coverage/CoverageThresholdEvaluator.php": 1,
         "src/Coverage/OpenApiCoverageTracker.php": 2,
         "src/Internal/CoverageReportWriter.php": 6,
+        "src/Internal/Diagnostics.php": 1,
         "src/PHPUnit/ConsoleOutput.php": 2,
         "src/PHPUnit/CoverageReportSubscriber.php": 3,
-        "src/PHPUnit/OpenApiCoverageExtension.php": 8
+        "src/PHPUnit/OpenApiCoverageExtension.php": 7
     },
     "[OpenAPI Doctor]": {
         "src/Cli/DoctorCommand.php": 1
     },
     "[OpenAPI Enum Drift]": {
-        "src/PHPUnit/OpenApiCoverageExtension.php": 7,
+        "src/Internal/Diagnostics.php": 1,
+        "src/PHPUnit/OpenApiCoverageExtension.php": 6,
         "src/Schema/EnumDriftAsserter.php": 1
+    },
+    "[OpenAPI SDK Exercise]": {
+        "src/Coverage/SdkExerciseCoverageTracker.php": 1
     },
     "[OpenAPI Schema]": {
         "src/Spec/OpenApiSchemaConverter.php": 4
+    },
+    "[OpenAPI Strict Additional Properties per-call]": {
+        "src/PHPUnit/OpenApiCoverageExtension.php": 1,
+        "src/Validation/Strict/StrictAdditionalPropertiesPerCallChecker.php": 1
+    },
+    "[OpenAPI Strict Additional Properties]": {
+        "src/Coverage/CoverageMergeCommand.php": 4,
+        "src/Internal/Diagnostics.php": 1,
+        "src/OpenApiResponseValidator.php": 1,
+        "src/PHPUnit/OpenApiCoverageExtension.php": 1,
+        "src/Validation/Strict/StrictAdditionalPropertiesAsserter.php": 1
     },
     "[OpenAPI Strict Required per-call]": {
         "src/PHPUnit/OpenApiCoverageExtension.php": 1,
@@ -51,11 +68,15 @@
     },
     "[OpenAPI Strict Required]": {
         "src/Coverage/CoverageMergeCommand.php": 3,
+        "src/Internal/Diagnostics.php": 1,
         "src/OpenApiResponseValidator.php": 1,
         "src/PHPUnit/CoverageReportSubscriber.php": 3,
-        "src/PHPUnit/OpenApiCoverageExtension.php": 2,
+        "src/PHPUnit/OpenApiCoverageExtension.php": 1,
         "src/Validation/Strict/StrictRequiredAsserter.php": 1,
         "src/Validation/Strict/StrictRequiredTracker.php": 1
+    },
+    "[OpenAPI]": {
+        "src/Validation/Support/SpecResponseKeyResolver.php": 1
     },
     "[openapi-contract-testing]": {},
     "[security]": {

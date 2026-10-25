@@ -18,15 +18,20 @@ use Studio\Gesso\Validation\Strict\StrictAdditionalPropertiesTracker;
 use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 
 use function array_map;
+use function basename;
 use function chmod;
+use function chown;
 use function file_get_contents;
 use function file_put_contents;
+use function fileowner;
 use function fileperms;
+use function function_exists;
 use function getmypid;
 use function glob;
 use function is_dir;
 use function is_link;
 use function mkdir;
+use function posix_geteuid;
 use function rmdir;
 use function sort;
 use function sprintf;
@@ -213,6 +218,16 @@ class CoverageSidecarTest extends TestCase
     }
 
     #[Test]
+    public function writer_rejects_a_sidecar_directory_owned_by_another_user(): void
+    {
+        $dir = $this->directoryOwnedByAnotherUserOrSkip();
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('sidecar dir must be owned by the current user');
+        CoverageSidecarWriter::write($dir, 'slot', ['version' => 1, 'specs' => []]);
+    }
+
+    #[Test]
     public function reader_round_trips_state_via_filesystem(): void
     {
         // Capture worker A's recorded state.
@@ -316,7 +331,7 @@ class CoverageSidecarTest extends TestCase
     }
 
     #[Test]
-    public function envelope_v4_round_trips_strict_additional_properties_state(): void
+    public function envelope_round_trips_strict_additional_properties_state(): void
     {
         $tracker = new StrictAdditionalPropertiesTracker();
         $tracker->recordOn('petstore-3.0', 'GET', '/v1/pets', '200', 'application/json', [
@@ -328,10 +343,7 @@ class CoverageSidecarTest extends TestCase
             strictRequiredState: StrictRequiredTracker::exportState(),
             strictAdditionalPropertiesState: $tracker->exportStateOn(),
         );
-        $this->assertSame(
-            CoverageSidecarEnvelope::ENVELOPE_VERSION_WITH_STRICT_ADDITIONAL_PROPERTIES,
-            $envelope['envelopeVersion'],
-        );
+        $this->assertSame(CoverageSidecarEnvelope::ENVELOPE_VERSION, $envelope['envelopeVersion']);
 
         $parsed = CoverageSidecarEnvelope::parse($envelope);
         $this->assertNotNull($parsed['strictAdditionalProperties']);
@@ -470,6 +482,35 @@ class CoverageSidecarTest extends TestCase
     }
 
     #[Test]
+    public function reader_rejects_a_sidecar_directory_owned_by_another_user(): void
+    {
+        $dir = $this->directoryOwnedByAnotherUserOrSkip();
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('sidecar dir must be owned by the current user');
+        CoverageSidecarReader::readDir($dir);
+    }
+
+    #[Test]
+    public function reader_rejects_a_sidecar_file_owned_by_another_user(): void
+    {
+        if (DIRECTORY_SEPARATOR === '\\' || !function_exists('posix_geteuid') || posix_geteuid() !== 0) {
+            $this->markTestSkipped('planting a file owned by another user requires root on POSIX');
+        }
+
+        $path = $this->tmpDir . '/part-1-9999.json';
+        file_put_contents($path, '{"version":1,"specs":[]}');
+        $this->assertTrue(chmod($path, 0o644));
+        if (!@chown($path, 65534)) {
+            $this->markTestSkipped('chown to another user is not available');
+        }
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('sidecar must be owned by the current user');
+        CoverageSidecarReader::readDir($this->tmpDir);
+    }
+
+    #[Test]
     public function reader_throws_on_malformed_json(): void
     {
         file_put_contents($this->tmpDir . '/part-1-9999.json', '{not valid json');
@@ -511,5 +552,48 @@ class CoverageSidecarTest extends TestCase
         // Compare via realpath both sides — macOS resolves /var → /private/var
         // so the writer's logical path and the glob's resolved path can diverge.
         $this->assertSame(array_map('realpath', $expected), array_map('realpath', $paths));
+    }
+
+    #[Test]
+    public function a_run_id_is_sanitised_into_the_filename_and_read_back(): void
+    {
+        $sidecar = CoverageSidecarWriter::write($this->tmpDir, '1', ['version' => 1, 'specs' => []], runId: 'ci/7 a');
+        $marker = CoverageSidecarWriter::writeFailureMarker($this->tmpDir, '2', 'simulated failure', runId: 'ci/7 a');
+
+        $this->assertMatchesRegularExpression('/^part-1-\d+\.ci_7_a\.json$/', basename($sidecar));
+        $this->assertNotNull($marker);
+        $this->assertMatchesRegularExpression('/^failed-2-\d+\.ci_7_a\.json$/', basename($marker));
+        $this->assertSame('ci_7_a', CoverageSidecarReader::runIdOf($sidecar));
+        $this->assertSame('ci_7_a', CoverageSidecarReader::runIdOf($marker));
+        $this->assertNull(CoverageSidecarReader::runIdOf($this->tmpDir . '/part-1-4242.json'));
+        $this->assertSame(['version' => 1, 'specs' => []], CoverageSidecarReader::read($sidecar));
+    }
+
+    /**
+     * A non-group/world-writable directory owned by someone else, so only the
+     * ownership check can reject it. As root the test dir is handed to
+     * `nobody`; otherwise the root-owned `/usr` stands in.
+     */
+    private function directoryOwnedByAnotherUserOrSkip(): string
+    {
+        if (DIRECTORY_SEPARATOR === '\\' || !function_exists('posix_geteuid')) {
+            $this->markTestSkipped('ownership checks require POSIX and ext-posix');
+        }
+
+        if (posix_geteuid() === 0) {
+            if (!@chown($this->tmpDir, 65534)) {
+                $this->markTestSkipped('chown to another user is not available');
+            }
+
+            return $this->tmpDir;
+        }
+
+        $dir = '/usr';
+        $permissions = @fileperms($dir);
+        if (is_link($dir) || @fileowner($dir) !== 0 || $permissions === false || ($permissions & 0o022) !== 0) {
+            $this->markTestSkipped('no root-owned, non-writable directory available');
+        }
+
+        return $dir;
     }
 }

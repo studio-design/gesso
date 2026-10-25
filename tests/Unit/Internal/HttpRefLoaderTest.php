@@ -19,6 +19,7 @@ use Studio\Gesso\Tests\Helpers\FakeHttpClient;
 use Studio\Gesso\Tests\Helpers\FakeHttpClientUnexpectedRequest;
 
 use function ini_set;
+use function str_repeat;
 use function substr;
 
 class HttpRefLoaderTest extends TestCase
@@ -395,6 +396,53 @@ class HttpRefLoaderTest extends TestCase
             $this->assertStringNotContainsString('alice', $e->getMessage());
             $this->assertStringContainsString('example.com', $e->getMessage());
         }
+    }
+
+    #[Test]
+    public function redacts_userinfo_up_to_the_last_at_sign_of_the_authority(): void
+    {
+        // parse_url() and PSR-7 URIs split userinfo at the LAST `@` of the
+        // authority, so a raw `@` inside a password is still sent; none of
+        // it may survive redaction.
+        $this->assertSame(
+            'HTTP $ref fetch returned status 401: https://registry.example.com/spec.yaml',
+            HttpRefLoader::redactSensitiveUrlData('HTTP $ref fetch returned status 401: https://ci:p@ssw0rd@registry.example.com/spec.yaml'),
+        );
+        $this->assertSame('//host/x', HttpRefLoader::redactSensitiveUrlData('//u:p@ss@host/x'));
+        $this->assertSame('ftp://host/x', HttpRefLoader::redactSensitiveUrlData('ftp://u:p@ss@host/x'));
+        $this->assertSame('https://host/x', HttpRefLoader::redactSensitiveUrlData('https://@a@host/x'));
+        $this->assertSame(
+            'https://host/x -> https://host2/y?k=[redacted]',
+            HttpRefLoader::redactSensitiveUrlData('https://a:b@c@host/x -> https://d:e@host2/y?k=v'),
+        );
+
+        // Single-`@` and `@`-free authorities render exactly as before: an
+        // empty userinfo has nothing to hide, a `?` inside a password is still
+        // removed, and `@` outside the authority is left alone.
+        $this->assertSame('//@host/x', HttpRefLoader::redactSensitiveUrlData('//@host/x'));
+        $this->assertSame('https://@host/x', HttpRefLoader::redactSensitiveUrlData('https://@host/x'));
+        $this->assertSame('https://host/x', HttpRefLoader::redactSensitiveUrlData('https://user:pa?ss@host/x'));
+        $this->assertSame('https://example.com/a@b@c', HttpRefLoader::redactSensitiveUrlData('https://u:p@example.com/a@b@c'));
+        $this->assertSame('https://host/x?q=[redacted]#f@g', HttpRefLoader::redactSensitiveUrlData('https://host/x?q=a@b#f@g'));
+    }
+
+    #[Test]
+    public function redacts_credentials_when_a_long_run_follows_a_network_path_separator(): void
+    {
+        // A remote `$ref` resolved against a credentialed base URL can append
+        // an arbitrarily long `/`-free run after `//`. Redaction must stay
+        // linear: a PCRE limit failure would fall back to the raw value and
+        // print the credential and query values.
+        $prefix = 'https://ci:hunter2@registry.example.com/x//';
+
+        $this->assertSame(
+            'https://registry.example.com/x//y',
+            HttpRefLoader::redactSensitiveUrlData($prefix . str_repeat('a', 2_000_000) . '?x@y'),
+        );
+        $this->assertSame(
+            'https://registry.example.com/x//b?t=[redacted]',
+            HttpRefLoader::redactSensitiveUrlData($prefix . str_repeat('a@', 1_000_000) . 'b?t=s'),
+        );
     }
 
     #[Test]

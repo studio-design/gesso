@@ -8,6 +8,7 @@ use const E_USER_WARNING;
 
 use Studio\Gesso\Exception\InvalidOpenApiSpecException;
 use Studio\Gesso\Exception\SpecFileNotFoundException;
+use Studio\Gesso\Internal\Diagnostics;
 use Studio\Gesso\OpenApiResponseValidator;
 use Studio\Gesso\PHPUnit\OpenApiCoverageExtension;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
@@ -324,6 +325,6 @@ final class StrictRequiredPerCallChecker
             return;
         }
         self::$emittedNotes[$key] = true;
-        OpenApiCoverageExtension::writeStderr($message);
+        Diagnostics::stderr($message);
     }
 }
