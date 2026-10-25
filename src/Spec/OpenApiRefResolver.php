@@ -59,6 +59,40 @@ final class OpenApiRefResolver
      */
     public const IMPLICIT_SCHEMA_NAME_EXTENSION = 'x-studio-gesso-implicit-schema-name';
 
+    /**
+     * Keys whose value is a map of USER-DEFINED names → entries — i.e. keys
+     * inside this map are arbitrary strings the spec author chose, not OAS
+     * keywords. The walker treats them just like the existing `properties`
+     * carve-out: keys at this level are names, not directives, and the
+     * opaque-key carve-out must NOT fire here (a schema named `default`
+     * inside `components.schemas` is just a schema name, and a property
+     * named `default` inside `properties` is just a property name).
+     *
+     * Includes the historical `properties` / `patternProperties` for which
+     * the carve-out was originally introduced. Expanding the set covers the
+     * other OAS-defined user-named maps so behavior is consistent across
+     * all of them.
+     *
+     * @var list<string>
+     */
+    public const USER_NAMED_MAP_KEYS = [
+        'properties',
+        'patternProperties',
+        '$defs',
+        'dependentSchemas',
+        'schemas',
+        'responses',
+        'parameters',
+        'requestBodies',
+        'headers',
+        'securitySchemes',
+        'links',
+        'callbacks',
+        'pathItems',
+        'paths',
+        'definitions',
+    ];
+
     private const LEGACY_IMPLICIT_SCHEMA_NAME_EXTENSION = 'x-studio-openapi-contract-testing-implicit-schema-name';
 
     /**
@@ -85,40 +119,6 @@ final class OpenApiRefResolver
      * @var list<string>
      */
     private const ALWAYS_OPAQUE_KEYS = ['default', 'example', 'enum', 'const'];
-
-    /**
-     * Keys whose value is a map of USER-DEFINED names → entries — i.e. keys
-     * inside this map are arbitrary strings the spec author chose, not OAS
-     * keywords. The walker treats them just like the existing `properties`
-     * carve-out: keys at this level are names, not directives, and the
-     * opaque-key carve-out must NOT fire here (a schema named `default`
-     * inside `components.schemas` is just a schema name, and a property
-     * named `default` inside `properties` is just a property name).
-     *
-     * Includes the historical `properties` / `patternProperties` for which
-     * the carve-out was originally introduced. Expanding the set covers the
-     * other OAS-defined user-named maps so behavior is consistent across
-     * all of them.
-     *
-     * @var list<string>
-     */
-    private const USER_NAMED_MAP_KEYS = [
-        'properties',
-        'patternProperties',
-        '$defs',
-        'dependentSchemas',
-        'schemas',
-        'responses',
-        'parameters',
-        'requestBodies',
-        'headers',
-        'securitySchemes',
-        'links',
-        'callbacks',
-        'pathItems',
-        'paths',
-        'definitions',
-    ];
 
     /**
      * Schema Object keywords whose value is a single subschema. `items` is

@@ -11,12 +11,14 @@ use JsonException;
 use stdClass;
 use Studio\Gesso\Exception\InvalidOpenApiSpecException;
 use Studio\Gesso\Exception\InvalidOpenApiSpecReason;
+use Studio\Gesso\Spec\OpenApiRefResolver;
 use Symfony\Component\Yaml\Exception\ParseException;
 use Symfony\Component\Yaml\Yaml;
 use Throwable;
 
 use function get_debug_type;
 use function get_object_vars;
+use function in_array;
 use function is_array;
 use function json_decode;
 use function sprintf;
@@ -35,6 +37,9 @@ use function sprintf;
  */
 final class SpecDocumentDecoder
 {
+    /** Keys whose value is sample or default data, never Schema keywords. */
+    private const DATA_KEYS = ['default', 'example', 'examples', 'const'];
+
     private function __construct() {}
 
     /**
@@ -127,8 +132,12 @@ final class SpecDocumentDecoder
         return self::normalizeValue($decoded, true);
     }
 
-    private static function normalizeValue(mixed $value, bool $isRoot): mixed
-    {
+    private static function normalizeValue(
+        mixed $value,
+        bool $isRoot,
+        bool $isNamedMap = false,
+        bool $isData = false,
+    ): mixed {
         if ($value instanceof stdClass) {
             $properties = get_object_vars($value);
             if (!$isRoot && $properties === []) {
@@ -137,7 +146,24 @@ final class SpecDocumentDecoder
 
             $normalized = [];
             foreach ($properties as $key => $child) {
-                $normalized[$key] = self::normalizeValue($child, false);
+                // An object-valued `enum` keyword is malformed, yet would
+                // collapse into a list here (`{"0": "red"}` to ["red"]). The
+                // resolver never walks `enum`, so the object survives `$ref`
+                // resolution for the loader to record. Keys of a user-named
+                // map are names, not keywords — the resolver's own rule — and
+                // nothing under sample/default data is a keyword at all.
+                $isKeyword = !$isNamedMap && !$isData;
+                if ($isKeyword && $key === 'enum' && $child instanceof stdClass) {
+                    $normalized[$key] = $child;
+
+                    continue;
+                }
+                $normalized[$key] = self::normalizeValue(
+                    $child,
+                    false,
+                    $isKeyword && in_array($key, OpenApiRefResolver::USER_NAMED_MAP_KEYS, true),
+                    $isData || ($isKeyword && in_array($key, self::DATA_KEYS, true)),
+                );
             }
 
             return $normalized;
@@ -149,7 +175,7 @@ final class SpecDocumentDecoder
 
         $normalized = [];
         foreach ($value as $key => $child) {
-            $normalized[$key] = self::normalizeValue($child, false);
+            $normalized[$key] = self::normalizeValue($child, false, isData: $isData);
         }
 
         return $normalized;

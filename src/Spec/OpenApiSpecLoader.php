@@ -10,6 +10,7 @@ use const PHP_URL_HOST;
 use InvalidArgumentException;
 use Psr\Http\Client\ClientInterface;
 use Psr\Http\Message\RequestFactoryInterface;
+use stdClass;
 use Studio\Gesso\Exception\InvalidOpenApiSpecException;
 use Studio\Gesso\Exception\InvalidOpenApiSpecReason;
 use Studio\Gesso\Exception\SpecFileNotFoundException;
@@ -27,6 +28,7 @@ use function file_get_contents;
 use function getenv;
 use function implode;
 use function in_array;
+use function is_array;
 use function is_string;
 use function parse_url;
 use function preg_match;
@@ -65,6 +67,9 @@ final class OpenApiSpecLoader
 
     /** @var array<string, array<string, mixed>> */
     private static array $cache = [];
+
+    /** @var array<string, array<string, stdClass>> */
+    private static array $objectEnums = [];
     private static ?ClientInterface $httpClient = null;
     private static ?RequestFactoryInterface $requestFactory = null;
     private static bool $allowRemoteRefs = false;
@@ -208,6 +213,7 @@ final class OpenApiSpecLoader
         // different remote-refs policy. Evict so the next load() runs
         // with the new client/flag combination.
         self::$cache = [];
+        self::$objectEnums = [];
     }
 
     /**
@@ -331,18 +337,16 @@ final class OpenApiSpecLoader
         }
 
         try {
-            $resolved = OpenApiDocumentShapeNormalizer::normalizeResolvedDocument(
-                OpenApiRefResolver::resolve(
-                    $decoded,
-                    $canonicalPath,
-                    self::$httpClient,
-                    self::$requestFactory,
-                    self::$allowRemoteRefs,
-                    self::$allowedRemoteRefHosts,
-                    self::$maxRemoteRefBytes,
-                    [self::getBasePath()],
-                ),
-            );
+            $resolved = self::normalize($specName, OpenApiRefResolver::resolve(
+                $decoded,
+                $canonicalPath,
+                self::$httpClient,
+                self::$requestFactory,
+                self::$allowRemoteRefs,
+                self::$allowedRemoteRefHosts,
+                self::$maxRemoteRefBytes,
+                [self::getBasePath()],
+            ));
         } catch (InvalidOpenApiSpecException $e) {
             // The resolver is stateless and therefore cannot know which spec
             // produced the throw. Re-wrap once so consumers (e.g. the coverage
@@ -365,6 +369,24 @@ final class OpenApiSpecLoader
     public static function clearCache(): void
     {
         self::$cache = [];
+        self::$objectEnums = [];
+    }
+
+    /**
+     * `components.schemas` entries whose `enum` is a JSON object / YAML
+     * mapping — malformed, but {@see self::load()} collapses it into a list
+     * (`{"0": "red"}` to ["red"], `{}` to []). Recorded at load time after
+     * `$ref` resolution, so it covers referenced schemas and a cached spec.
+     *
+     * @internal Lets EnumDriftAsserter reject object-shaped `enum` keywords.
+     *
+     * @return array<string, stdClass> component name => the `enum` object
+     */
+    public static function objectShapedComponentEnums(string $specName): array
+    {
+        self::load($specName);
+
+        return self::$objectEnums[$specName] ?? [];
     }
 
     /**
@@ -379,6 +401,7 @@ final class OpenApiSpecLoader
         self::$enumBasePath = null;
         self::$stripPrefixes = [];
         self::$cache = [];
+        self::$objectEnums = [];
         self::$httpClient = null;
         self::$requestFactory = null;
         self::$allowRemoteRefs = false;
@@ -386,6 +409,25 @@ final class OpenApiSpecLoader
         self::$maxRemoteRefBytes = self::DEFAULT_MAX_REMOTE_REF_BYTES;
         self::$remoteSpecs = [];
         YamlAvailability::reset();
+    }
+
+    /**
+     * @param array<string, mixed> $resolved
+     *
+     * @return array<string, mixed>
+     */
+    private static function normalize(string $specName, array $resolved): array
+    {
+        $schemas = is_array($resolved['components'] ?? null) ? $resolved['components']['schemas'] ?? null : null;
+        $objectEnums = [];
+        foreach (is_array($schemas) ? $schemas : [] as $name => $schema) {
+            if (is_array($schema) && ($schema['enum'] ?? null) instanceof stdClass) {
+                $objectEnums[(string) $name] = $schema['enum'];
+            }
+        }
+        self::$objectEnums[$specName] = $objectEnums;
+
+        return OpenApiDocumentShapeNormalizer::normalizeResolvedDocument($resolved);
     }
 
     /**
@@ -488,7 +530,8 @@ final class OpenApiSpecLoader
         self::assertSupportedDocument($document->decoded, $specName);
 
         try {
-            return OpenApiDocumentShapeNormalizer::normalizeResolvedDocument(
+            return self::normalize(
+                $specName,
                 OpenApiRefResolver::resolve(
                     $document->decoded,
                     $document->canonicalIdentifier,
