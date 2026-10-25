@@ -32,6 +32,7 @@ use Studio\Gesso\Internal\HttpRefLoader;
 use Studio\Gesso\Internal\ToolVersion;
 use Studio\Gesso\OpenApiVersion;
 use Studio\Gesso\Spec\OpenApiOperationResolver;
+use Studio\Gesso\Spec\OpenApiPathMatcher;
 use Studio\Gesso\Spec\OpenApiSchemaConverter;
 use Studio\Gesso\Spec\OpenApiSchemaDialect;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
@@ -451,6 +452,13 @@ final class DoctorCommand
         $operationCount = 0;
         $responseCount = 0;
         foreach ($paths as $path => $pathItem) {
+            // Runtime compiles every `paths` key into one matcher, so a template
+            // the matcher rejects breaks validation for the whole spec.
+            try {
+                new OpenApiPathMatcher([(string) $path]);
+            } catch (InvalidArgumentException $e) {
+                $issues[] = $this->issue('error', 'structure', $label, $e->getMessage(), 'Put a literal between adjacent placeholders (`{a}-{b}`) and give each placeholder a unique name.');
+            }
             if (MalformedSpecNode::isMalformed($pathItem)) {
                 $issues[] = $this->issue('error', 'structure', $label, sprintf('Path `%s` must be an object, got %s.', (string) $path, MalformedSpecNode::describe($pathItem)), null);
 
