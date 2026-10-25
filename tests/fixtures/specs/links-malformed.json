@@ -328,6 +328,36 @@
           }
         }
       }
+    },
+    "/list-links": {
+      "post": {
+        "operationId": "listLinks",
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            },
+            "links": [
+              {
+                "operationId": "getThing",
+                "parameters": {
+                  "path.id": "$response.body#/id"
+                }
+              }
+            ]
+          }
+        }
+      }
     }
   }
 }

@@ -54,6 +54,7 @@ final class OpenApiSpecExplorationLinksTest extends TestCase
         yield 'external operationRef' => ['external', "Link 'External': external operationRef is not supported"];
         yield 'undispatchable method' => ['options', "Link 'Options': target method OPTIONS is not dispatchable"];
         yield 'explicit null links' => ['nullLinks', "Malformed 'links' on POST /null-links response 201"];
+        yield 'json array links' => ['listLinks', "Malformed 'links' on POST /list-links response 201 in 'links-malformed' spec: expected object, got list."];
         yield 'ambiguous bare parameter' => ['ambiguous', "Link 'Ambiguous': parameter 'id' is ambiguous (path, query)"];
     }
 

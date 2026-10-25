@@ -6,6 +6,7 @@ namespace Studio\Gesso\Fuzz;
 
 use InvalidArgumentException;
 use RuntimeException;
+use stdClass;
 use Studio\Gesso\DecodedBody;
 use Studio\Gesso\HttpMethod;
 use Studio\Gesso\Internal\ObservedResponse;
@@ -116,7 +117,7 @@ final class LinkFollower
         $key = is_array($responses) ? SpecResponseKeyResolver::resolve((string) $status, $responses) : null;
         $response = $key === null ? null : $responses[$key];
         $links = is_array($response) && array_key_exists('links', $response) ? $response['links'] : [];
-        // Name-keyed map: `{"0": …}` decodes to a PHP list, so only non-arrays are malformed.
+        // `{"0": …}` decodes to a PHP list; SpecDocumentDecoder tags a JSON array as stdClass.
         if (!is_array($links)) {
             throw new RuntimeException(sprintf(
                 "Malformed 'links' on %s %s response %s in '%s' spec: expected object, got %s.",
@@ -124,7 +125,7 @@ final class LinkFollower
                 $path,
                 (string) $key,
                 $this->specName,
-                get_debug_type($links),
+                $links instanceof stdClass ? 'list' : get_debug_type($links),
             ));
         }
 
@@ -216,6 +217,7 @@ final class LinkFollower
         );
 
         $parameters = array_key_exists('parameters', $link) ? $link['parameters'] : [];
+        // `{"0": …}` is a valid name; a malformed `[expr]` fails in locate() as parameter '0'.
         if (!is_array($parameters)) {
             throw new RuntimeException(sprintf("Link '%s': 'parameters' must be an object.", $name));
         }

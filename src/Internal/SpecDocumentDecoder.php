@@ -16,6 +16,7 @@ use Symfony\Component\Yaml\Exception\ParseException;
 use Symfony\Component\Yaml\Yaml;
 use Throwable;
 
+use function array_is_list;
 use function get_debug_type;
 use function get_object_vars;
 use function in_array;
@@ -169,6 +170,14 @@ final class SpecDocumentDecoder
                 $isKeyword = !$isNamedMap && !$isData;
                 if ($isKeyword && (($key === 'enum' && $child instanceof stdClass) || in_array($key, $verbatimKeys, true))) {
                     $normalized[$key] = $child;
+
+                    continue;
+                }
+                // The reverse collapse: a Links map `{"0": …}` becomes the same
+                // list as a malformed `links: […]`. Tag the JSON array as an
+                // object so LinkFollower can still reject it.
+                if ($isKeyword && $key === 'links' && is_array($child) && $child !== [] && array_is_list($child)) {
+                    $normalized[$key] = (object) self::normalizeValue($child, false, verbatimKeys: $verbatimKeys);
 
                     continue;
                 }

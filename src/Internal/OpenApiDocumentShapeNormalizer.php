@@ -182,7 +182,8 @@ final class OpenApiDocumentShapeNormalizer
         }
         foreach ($body as $key => $value) {
             if ($key !== 'content' || !is_array($value)) {
-                $body[$key] = self::normalizeGeneric($value);
+                // SpecDocumentDecoder tags a malformed `links: […]` as an object.
+                $body[$key] = $key === 'links' && $value instanceof stdClass ? $value : self::normalizeGeneric($value);
 
                 continue;
             }
