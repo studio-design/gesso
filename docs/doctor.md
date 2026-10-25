@@ -40,7 +40,8 @@ report means what the test suite will actually enforce:
   media type also declares `schema`;
 - non-JSON media types that declare a `schema`, except form request bodies
   (`application/x-www-form-urlencoded`, `multipart/form-data`) and
-  `application/x-www-form-urlencoded` responses;
+  `application/x-www-form-urlencoded` responses (an `application/*` range is
+  reported too: it validates JSON bodies only);
 - `multipart/form-data` responses with a `schema`;
 - operation `callbacks` and root `webhooks`, which no request path reaches.
 

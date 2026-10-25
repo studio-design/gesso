@@ -1179,6 +1179,18 @@ class DoctorCommandTest extends TestCase
     }
 
     #[Test]
+    public function reports_the_non_json_bodies_an_application_range_matches(): void
+    {
+        $this->assertSkippedFeature(
+            $this->responseSpec(['application/*' => ['schema' => ['type' => 'object']]]),
+            ['application/*', 'GET /pets response 200', 'non-JSON body'],
+        );
+
+        $this->assertTrue($this->runtimeResponse('<pet/>', 'application/xml')->isSkipped());
+        $this->assertFalse($this->runtimeResponse('[]', 'application/json')->isValid());
+    }
+
+    #[Test]
     public function reports_a_non_json_request_body_schema(): void
     {
         $operation = ['requestBody' => ['content' => ['text/plain' => ['schema' => ['type' => 'string']]]]];

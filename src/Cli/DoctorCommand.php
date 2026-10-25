@@ -637,6 +637,10 @@ final class DoctorCommand
                 // A JSON key validates `schema`; `itemSchema` alone is skipped.
                 if (!$hasSchema && isset($mediaTypeSpec['itemSchema'])) {
                     $reason = 'uses `itemSchema` streaming, which is not validated';
+                } elseif ($hasSchema && str_contains($normalized, '*')) {
+                    // `application/*` validates JSON bodies only; a non-JSON
+                    // body it matches is Skipped like any non-JSON schema.
+                    $reason = 'validates JSON bodies only; a non-JSON body it matches declares a schema the JSON Schema engine does not evaluate';
                 }
             } elseif (isset($mediaTypeSpec['itemSchema'])) {
                 $reason = 'uses `itemSchema` streaming, which is not validated';
