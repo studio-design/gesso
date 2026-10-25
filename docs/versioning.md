@@ -104,9 +104,9 @@ This library follows [Semantic Versioning 2.0](https://semver.org/). v1.0.0 is t
   - v2.x: the `doctor`, `coverage:merge`, `coverage:gate`, and `stubs`
     subcommands of `bin/gesso`; the legacy standalone binaries are not shipped
 - The Laravel `gesso:routes` and `gesso:stubs` command surfaces (flags, exit codes, and versioned JSON output)
-- The four environment variables Gesso owns — `GESSO_VALIDATION_FORMAT`,
-  `GESSO_CONSOLE_OUTPUT`, `GESSO_BASELINE_GENERATE`, and `GESSO_SIDECAR_TOKEN`
-  — and the values each accepts. `TEST_TOKEN` and `GITHUB_STEP_SUMMARY` are
+- The five environment variables Gesso owns — `GESSO_VALIDATION_FORMAT`,
+  `GESSO_CONSOLE_OUTPUT`, `GESSO_BASELINE_GENERATE`, `GESSO_SIDECAR_TOKEN`, and
+  `GESSO_RUN_ID` — and the values each accepts. `TEST_TOKEN` and `GITHUB_STEP_SUMMARY` are
   read but belong to paratest and GitHub Actions; they are not Gesso's to
   version.
 - The `OpenApiCoverageExtension` PHPUnit configuration parameters (`spec_base_path`, `strip_prefixes`, `specs`, `output_file`, `console_output`, `validation_output`, `baseline_file`, `coverage_baseline_file`, `strict_required`, `strict_additional_properties`, `strict_additional_properties_per_call`, …)
