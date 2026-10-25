@@ -7,6 +7,7 @@ namespace Studio\Gesso\Validation\Strict;
 use const PHP_INT_MAX;
 
 use InvalidArgumentException;
+use Studio\Gesso\OpenApiResponseValidator;
 use Studio\Gesso\Spec\OpenApiOperationResolver;
 
 use function array_is_list;
@@ -43,6 +44,7 @@ final class StrictAdditionalPropertiesTracker
      */
     private array $observations = [];
     private int $evaluations = 0;
+    private bool $recording = true;
 
     public static function current(): self
     {
@@ -57,6 +59,22 @@ final class StrictAdditionalPropertiesTracker
     public static function resetCurrent(): void
     {
         self::$current = null;
+    }
+
+    /**
+     * Whether {@see OpenApiResponseValidator} should inspect response bodies
+     * for this tracker. Defaults to `true`; the PHPUnit extension turns it
+     * off when no strict additional-properties gate (run-level, per-call, or
+     * a parallel worker's sidecar export) can read the result.
+     */
+    public function isRecording(): bool
+    {
+        return $this->recording;
+    }
+
+    public function setRecording(bool $recording): void
+    {
+        $this->recording = $recording;
     }
 
     /**

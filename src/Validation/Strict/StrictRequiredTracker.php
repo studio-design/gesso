@@ -101,6 +101,7 @@ final class StrictRequiredTracker
      * @var array<string, array<string, array<string, StrictRequiredRow>>>
      */
     private array $observations = [];
+    private bool $recording = true;
 
     public function __construct() {}
 
@@ -272,6 +273,27 @@ final class StrictRequiredTracker
     public static function importState(array $state): void
     {
         self::current()->importStateOn($state);
+    }
+
+    /**
+     * Whether {@see OpenApiResponseValidator} should walk response bodies for
+     * this tracker. Defaults to `true` so direct callers keep recording; the
+     * PHPUnit extension turns it off when no strict-required gate (run-level,
+     * per-call, or a parallel worker's sidecar export) can read the result.
+     *
+     * @internal Performance switch owned by the PHPUnit extension.
+     */
+    public function isRecording(): bool
+    {
+        return $this->recording;
+    }
+
+    /**
+     * @internal Performance switch owned by the PHPUnit extension.
+     */
+    public function setRecording(bool $recording): void
+    {
+        $this->recording = $recording;
     }
 
     /**

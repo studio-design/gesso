@@ -390,9 +390,8 @@ final class OpenApiResponseValidator
             // Strict-required recording happens on the validated success path
             // so that conformance-failing or skipped responses do not
             // contribute to the "field appeared in every response" intersection.
-            // The tracker is a no-op when the extension parameter
-            // `strict_required` is off (record is still called but consumes
-            // negligible memory until the asserter runs).
+            // Each method returns before walking the body when its tracker is
+            // not recording (both strict modes off under the extension).
             $this->maybeRecordStrictRequired(
                 $specName,
                 $method,
@@ -473,6 +472,9 @@ final class OpenApiResponseValidator
         ?string $matchedContentType,
         mixed $responseBody,
     ): void {
+        if (!$this->strictRequiredTracker->isRecording()) {
+            return;
+        }
         $pointers = StrictRequiredBodyWalker::collectPointers($responseBody);
         if ($pointers === []) {
             return;
@@ -544,6 +546,9 @@ final class OpenApiResponseValidator
         OpenApiVersion $version,
         string $jsonSchemaDialect,
     ): void {
+        if (!$this->strictAdditionalPropertiesTracker->isRecording()) {
+            return;
+        }
         $contentTypeKey = $matchedContentType ?? StrictAdditionalPropertiesTracker::ANY_CONTENT_TYPE;
         $schema = $matchedContentType === null
             ? null

@@ -439,6 +439,22 @@ final class OpenApiCoverageExtension implements Extension
         StrictAdditionalPropertiesPerCallChecker::reset();
         StrictAdditionalPropertiesPerCallChecker::configure($strictAdditionalPropertiesPerCallMode);
 
+        // Skip the per-response body walk and inspection when nothing reads
+        // the result: both modes off and no sidecar export. A parallel worker
+        // keeps recording because the merge CLI's `--strict-*` flags gate on
+        // worker observations independently of this process's modes.
+        $exportsSidecar = CoverageReportSubscriber::resolveWorkerToken() !== null;
+        $strictRequiredTracker->setRecording(
+            $exportsSidecar ||
+            $strictRequiredMode->isEnabled() ||
+            $strictRequiredPerCallMode !== StrictRequiredPerCallMode::Off,
+        );
+        $strictAdditionalPropertiesTracker->setRecording(
+            $exportsSidecar ||
+            $strictAdditionalPropertiesMode !== StrictAdditionalPropertiesMode::Off ||
+            $strictAdditionalPropertiesPerCallMode !== StrictAdditionalPropertiesPerCallMode::Off,
+        );
+
         // Issue #262: discriminator.mapping enforcement gate. Default ON —
         // enforcement is the correct contract-testing behaviour; `value="false"`
         // (or `0` / `no`) is the escape hatch for specs that rely on the loose

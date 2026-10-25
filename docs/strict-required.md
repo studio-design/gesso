@@ -222,6 +222,8 @@ vendor/bin/gesso coverage:merge \
 
 `--strict-required` accepts `off` (default), `warn` (emit diagnostic, exit 0), and `fail` (emit diagnostic, exit 1). The `strict_required` parameter on the PHPUnit extension does **not** propagate to the merge CLI — workers always export observations, and the merge step decides whether to assert. This keeps mode flips a single-knob CI operation without per-worker reruns.
 
+In a sequential run (no `TEST_TOKEN` or `GESSO_SIDECAR_TOKEN`) with both `strict_required` and `strict_required_per_call` off, the extension skips the body walk and records nothing.
+
 The diagnostic block is rendered after the coverage report (Markdown, JUnit, JSON, HTML, GITHUB_STEP_SUMMARY) so a fatal drift does not suppress the coverage output that helps triage the failure.
 
 **Per-call mode is worker-local.** `strict_required_per_call=warn` fires `E_USER_WARNING` inside the worker process. PHPUnit's `failOnWarning="true"` converts those warnings into per-worker test failures, which paratest aggregates into its own non-zero exit code — the gate works correctly under paratest. The `strict_required_per_call` parameter is **not** consumed by the merge CLI; there is no `--strict-required-per-call` flag because the per-call decision is made entirely inside the worker. NOTEs (see [Per-call silent paths](#per-call-silent-paths-and-note-channel)) are also per-worker, so the same condition may produce multiple NOTEs across a paratest run.

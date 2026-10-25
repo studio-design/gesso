@@ -11,7 +11,10 @@ use InvalidArgumentException;
  *
  * Configured via the PHPUnit extension parameter `strict_required`:
  *
- *  - `off`  — default; observations are not recorded and no report runs
+ *  - `off`  — default; no report runs. When `strict_required_per_call`
+ *             is also off, the extension skips recording entirely, except
+ *             in parallel workers, which still export observations for
+ *             `gesso coverage:merge --strict-required`
  *  - `warn` — observations are recorded; on `ExecutionFinished` the asserter
  *             emits an `E_USER_WARNING` for every endpoint whose response
  *             body consistently contains keys not declared in the matching
