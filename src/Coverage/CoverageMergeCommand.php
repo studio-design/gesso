@@ -1030,7 +1030,7 @@ final class CoverageMergeCommand
                 $v3["min_{$member}_coverage"] = $value;
             }
         }
-        foreach (self::members('--baseline', $typed['baseline'] ?? [], ['violations', 'coverage']) as $member => $value) {
+        foreach (self::members('--baseline', $typed['baseline'] ?? [], ['violations', 'coverage'], paths: true) as $member => $value) {
             $v3[$member === 'violations' ? 'baseline_file' : 'coverage_baseline_file'] = $value;
         }
         // The violation baseline's staleness is reported by the workers; the
@@ -1088,8 +1088,9 @@ final class CoverageMergeCommand
 
     /**
      * Split each occurrence of a v3 `name=value,name=value` flag into its
-     * members. A comma only separates members when a member name follows it,
-     * so a path may contain one. Only `strict` may be written without a value,
+     * members. In a path-valued flag a comma only separates members when a
+     * member name follows it, so a path may contain one; elsewhere every comma
+     * does, so a typo'd member is rejected rather than read into a value. Only `strict` may be written without a value,
      * and no value may be blank: an unset shell variable must not quietly
      * turn a gate off.
      *
@@ -1098,9 +1099,9 @@ final class CoverageMergeCommand
      *
      * @return array<string, string>
      */
-    private static function members(string $flag, array $occurrences, array $allowed): array
+    private static function members(string $flag, array $occurrences, array $allowed, bool $paths = false): array
     {
-        $separator = '/,(?=\s*(?:' . implode('|', $allowed) . ')\s*(?:=|,|$))/';
+        $separator = $paths ? '/,(?=\s*(?:' . implode('|', $allowed) . ')\s*(?:=|,|$))/' : '/,/';
         $members = [];
         foreach ($occurrences as $occurrence) {
             foreach (preg_split($separator, $occurrence) ?: [] as $item) {

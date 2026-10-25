@@ -111,6 +111,7 @@ final class CoverageMergeV3SpellingsTest extends TestCase
         yield 'unknown member' => [['--min-coverage=endpont=80'], '--min-coverage does not take "endpont"'];
         yield 'member without value' => [['--min-coverage=endpoint'], 'needs a value for endpoint'];
         yield 'violations staleness' => [['--baseline-stale=violations=fail'], '--baseline-stale does not take "violations"'];
+        yield 'typo after a comma' => [['--min-coverage=response=80,strcit'], '--min-coverage does not take "strcit"'];
         yield 'empty grouped flag' => [['--min-coverage='], '--min-coverage has an empty member'];
         yield 'empty baseline' => [['--baseline= '], '--baseline has an empty member'];
         yield 'blank value' => [['--baseline=coverage='], 'needs a value for coverage'];
