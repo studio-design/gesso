@@ -63,7 +63,7 @@
         "json-schema-org/json-schema-test-suite": "2026.08.04",
         "oai/learn.openapis.org": "2026.05.07",
         "orchestra/testbench": "^9.0 || ^10.0 || ^11.0",
-        "phpstan/phpstan": "2.3.0",
+        "phpstan/phpstan": "2.3.1",
         "symfony/browser-kit": "^6.4 || ^7.0 || ^8.0",
         "symfony/http-client": "^6.4 || ^7.0 || ^8.0"
     },
