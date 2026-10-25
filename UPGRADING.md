@@ -105,23 +105,23 @@ nothing there.
 | 2.7.0 | `EnumBindingException::forBinding()` | `new EnumBindingException($reason, $message, $enumFqcn, $specPath, $previous)` | 3.0 |
 | 2.7.0 | `shouldSkipOpenApi()` (private, via `ValidatesOpenApiSchema`) | `$this->findSkipOpenApiAttribute() !== null` | 3.0 |
 | 2.7.0 | `OpenApiCoverageTracker::hasAnyCoverage()` (static) | `OpenApiCoverageTracker::current()->hasAnyCoverageOn()` | 3.0 |
-| 2.7.0 | `strict_required` (PHPUnit parameter) | `strict.required['run']` in `gesso.php` | 3.0 |
-| 2.7.0 | `strict_required_per_call` (PHPUnit parameter) | `strict.required['per_call']` in `gesso.php` | 3.0 |
-| 2.7.0 | `strict_additional_properties` (PHPUnit parameter) | `strict.additional_properties['run']` in `gesso.php` | 3.0 |
-| 2.7.0 | `strict_additional_properties_per_call` (PHPUnit parameter) | `strict.additional_properties['per_call']` in `gesso.php` | 3.0 |
-| 2.7.0 | `min_endpoint_coverage` (PHPUnit parameter) | `coverage.min_coverage['endpoint']` in `gesso.php` | 3.0 |
-| 2.7.0 | `min_response_coverage` (PHPUnit parameter) | `coverage.min_coverage['response']` in `gesso.php` | 3.0 |
-| 2.7.0 | `min_sdk_exercise_coverage` (PHPUnit parameter) | `coverage.min_coverage['sdk_exercise']` in `gesso.php` | 3.0 |
-| 2.7.0 | `min_coverage_strict` (PHPUnit parameter) | `coverage.min_coverage['strict']` in `gesso.php` | 3.0 |
-| 2.7.0 | `output_file` (PHPUnit parameter) | `coverage.report_output['markdown']` in `gesso.php` | 3.0 |
-| 2.7.0 | `json_output` (PHPUnit parameter) | `coverage.report_output['json']` in `gesso.php` | 3.0 |
-| 2.7.0 | `junit_output` (PHPUnit parameter) | `coverage.report_output['junit']` in `gesso.php` | 3.0 |
-| 2.7.0 | `html_output` (PHPUnit parameter) | `coverage.report_output['html']` in `gesso.php` | 3.0 |
-| 2.7.0 | `console_output` (PHPUnit parameter) | `coverage.console_report` in `gesso.php` | 3.0 |
-| 2.7.0 | `baseline_file` (PHPUnit parameter) | `baseline['violations']` in `gesso.php` | 3.0 |
-| 2.7.0 | `coverage_baseline_file` (PHPUnit parameter) | `baseline['coverage']` in `gesso.php` | 3.0 |
-| 2.7.0 | `baseline_stale` (PHPUnit parameter) | `baseline_stale['violations']` in `gesso.php` | 3.0 |
-| 2.7.0 | `coverage_baseline_stale` (PHPUnit parameter) | `baseline_stale['coverage']` in `gesso.php` | 3.0 |
+| 2.8.0 | `strict_required` (PHPUnit parameter) | `strict.required['run']` in `gesso.php` | 3.0 |
+| 2.8.0 | `strict_required_per_call` (PHPUnit parameter) | `strict.required['per_call']` in `gesso.php` | 3.0 |
+| 2.8.0 | `strict_additional_properties` (PHPUnit parameter) | `strict.additional_properties['run']` in `gesso.php` | 3.0 |
+| 2.8.0 | `strict_additional_properties_per_call` (PHPUnit parameter) | `strict.additional_properties['per_call']` in `gesso.php` | 3.0 |
+| 2.8.0 | `min_endpoint_coverage` (PHPUnit parameter) | `coverage.min_coverage['endpoint']` in `gesso.php` | 3.0 |
+| 2.8.0 | `min_response_coverage` (PHPUnit parameter) | `coverage.min_coverage['response']` in `gesso.php` | 3.0 |
+| 2.8.0 | `min_sdk_exercise_coverage` (PHPUnit parameter) | `coverage.min_coverage['sdk_exercise']` in `gesso.php` | 3.0 |
+| 2.8.0 | `min_coverage_strict` (PHPUnit parameter) | `coverage.min_coverage['strict']` in `gesso.php` | 3.0 |
+| 2.8.0 | `output_file` (PHPUnit parameter) | `coverage.report_output['markdown']` in `gesso.php` | 3.0 |
+| 2.8.0 | `json_output` (PHPUnit parameter) | `coverage.report_output['json']` in `gesso.php` | 3.0 |
+| 2.8.0 | `junit_output` (PHPUnit parameter) | `coverage.report_output['junit']` in `gesso.php` | 3.0 |
+| 2.8.0 | `html_output` (PHPUnit parameter) | `coverage.report_output['html']` in `gesso.php` | 3.0 |
+| 2.8.0 | `console_output` (PHPUnit parameter) | `coverage.console_report` in `gesso.php` | 3.0 |
+| 2.8.0 | `baseline_file` (PHPUnit parameter) | `baseline['violations']` in `gesso.php` | 3.0 |
+| 2.8.0 | `coverage_baseline_file` (PHPUnit parameter) | `baseline['coverage']` in `gesso.php` | 3.0 |
+| 2.8.0 | `baseline_stale` (PHPUnit parameter) | `baseline_stale['violations']` in `gesso.php` | 3.0 |
+| 2.8.0 | `coverage_baseline_stale` (PHPUnit parameter) | `baseline_stale['coverage']` in `gesso.php` | 3.0 |
 | 2.7.0 | `Studio\Gesso\Fuzz\ContractCheck` | `Studio\Gesso\Contract\ContractCheck` | 3.0 |
 | 2.7.0 | `Studio\Gesso\Fuzz\ContractCheckPlan` | `Studio\Gesso\Contract\ContractCheckPlan` | 3.0 |
 | 2.7.0 | `Studio\Gesso\Fuzz\ContractCheckProbe` (`@internal`) | `Studio\Gesso\Contract\ContractCheckProbe` | 3.0 |
