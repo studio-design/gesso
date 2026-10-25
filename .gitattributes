@@ -24,6 +24,7 @@
 /benchmarks                     export-ignore
 /docs/.vitepress                export-ignore
 /docs/public                    export-ignore
+/docs/research                  export-ignore
 /docs/superpowers               export-ignore
 /examples                       export-ignore
 /images                         export-ignore

@@ -12,6 +12,7 @@ just a pull request.
 | [0004 — v3 consistency policy and protected core](0004-v3-consistency-policy-and-protected-core.md) | Accepted, amended 2026-08-12 | 2026-08-06 | v3 changes shape, not capability: the invariants that may not regress, the inclusion criterion and its non-goals, and the rule a reduction PR is held to. Amendments: the #508 exception; the sequencing rule that the final v2 minors carry the adopter-visible value while v3.0 deletes; and the condition — not a date — that opens the v3.0 window. |
 | [0005 — v3 configuration and CLI naming](0005-v3-configuration-and-cli-naming.md) | Accepted | 2026-08-06 | Resolves the naming conflicts between the four v3 rename issues, and fixes the `gesso.php` key set and the `coverage:merge` flag set they all target. |
 | [0006 — Server base paths and request-path matching](0006-server-base-paths-and-request-path-matching.md) | Accepted | 2026-08-07 | `servers[].url` stays out of path matching; `strip_prefixes` remains authoritative, and a failed match names the server base path that would have matched. |
+| [0007 — v3 scope and release window](0007-v3-scope-and-release-window.md) | Proposed | 2026-10-26 | Would let v3 add capability, change verdicts toward spec agreement, and remove surfaces with a shipped deprecation plus evidence, and replace ADR 0004's v1-EOL floor and trigger with release gates. ADR 0004 stays in force until this is Accepted. |
 
 ## Writing one
 
