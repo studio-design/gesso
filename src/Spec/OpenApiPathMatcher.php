@@ -17,6 +17,7 @@ use function preg_quote;
 use function preg_split;
 use function rtrim;
 use function sprintf;
+use function str_contains;
 use function str_ends_with;
 use function str_starts_with;
 use function strlen;
@@ -76,24 +77,25 @@ final class OpenApiPathMatcher
                 // OpenAPI's path-segment grammar is `1*( path-literal / template-expression )`,
                 // so one segment may mix literals and expressions (`report.{format}`).
                 // Even indexes are literals (possibly empty); odd indexes are names.
-                $pieces = preg_split('/\{([^{}]+)\}/', $segment, -1, PREG_SPLIT_DELIM_CAPTURE);
+                $pieces = str_contains($segment, '{')
+                    ? preg_split('/\{([^{}]+)\}/', $segment, -1, PREG_SPLIT_DELIM_CAPTURE)
+                    : false;
                 if ($pieces === false || count($pieces) === 1) {
-                    $compiledSegments[] = [['literal' => $segment]];
+                    $compiledSegments[] = ['regex' => preg_quote($segment, '#'), 'parameters' => []];
                     $literalCount++;
                     $patternBytes += strlen(preg_quote($segment, '#')) + 1;
 
                     continue;
                 }
 
-                $compiledSegment = [];
-                $patternBytes++; // slash
+                $regex = '';
+                $segmentParameters = [];
                 $lastIndex = count($pieces) - 1;
                 foreach ($pieces as $index => $piece) {
                     if ($index % 2 === 0) {
                         if ($piece !== '') {
-                            $compiledSegment[] = ['literal' => $piece];
+                            $regex .= preg_quote($piece, '#');
                             $mixedLiteralBytes += strlen($piece);
-                            $patternBytes += strlen(preg_quote($piece, '#'));
                         } elseif ($index > 0 && $index < $lastIndex) {
                             // The grammar allows `{a}{b}`, but nothing decides where
                             // one value ends and the next begins. OpenAPI leaves
@@ -119,11 +121,21 @@ final class OpenApiPathMatcher
                         ));
                     }
 
-                    $compiledSegment[] = ['parameter' => $piece];
+                    // A value ends at the first occurrence of the literal that
+                    // follows it, as in Symfony/Laravel routing: `{name}.{ext}`
+                    // splits `a.tar.gz` into `a` and `tar.gz`. The possessive
+                    // quantifier keeps matching linear — unbounded backtracking
+                    // across several captures could exhaust PCRE's limit and
+                    // hide a fallback template in the same combined pattern.
+                    $next = $pieces[$index + 1];
+                    $regex .= $next === ''
+                        ? '([^/]+)'
+                        : '((?:(?!' . preg_quote($next, '#') . ')[^/])++)';
+                    $segmentParameters[] = $piece;
                     $paramNames[] = $piece;
-                    $patternBytes += 7; // `([^/]+)`
                 }
-                $compiledSegments[] = $compiledSegment;
+                $compiledSegments[] = ['regex' => $regex, 'parameters' => $segmentParameters];
+                $patternBytes += strlen($regex) + 1;
             }
 
             $parameterCount = count($paramNames);
@@ -205,20 +217,10 @@ final class OpenApiPathMatcher
                     $regexSegments = [];
                     $parameters = [];
                     foreach ($path['segments'] as $segment) {
-                        $regexSegment = '';
-                        foreach ($segment as $piece) {
-                            if (isset($piece['literal'])) {
-                                $regexSegment .= preg_quote($piece['literal'], '#');
-
-                                continue;
-                            }
-
-                            // Greedy, as in Laravel/Symfony routing: `{name}.{ext}`
-                            // splits `a.tar.gz` into `a.tar` and `gz`.
-                            $regexSegment .= '([^/]+)';
-                            $parameters[$piece['parameter']] = $captureIndex++;
+                        $regexSegments[] = $segment['regex'];
+                        foreach ($segment['parameters'] as $parameter) {
+                            $parameters[$parameter] = $captureIndex++;
                         }
-                        $regexSegments[] = $regexSegment;
                     }
 
                     $marker = (string) $pathIndex;

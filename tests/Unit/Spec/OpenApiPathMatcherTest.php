@@ -14,6 +14,7 @@ use Studio\Gesso\Spec\OpenApiPathMatcher;
 use function array_fill;
 use function implode;
 use function sprintf;
+use function str_repeat;
 
 class OpenApiPathMatcherTest extends TestCase
 {
@@ -88,7 +89,8 @@ class OpenApiPathMatcherTest extends TestCase
     {
         yield 'literal prefix' => ['/report.json', ['path' => '/report.{format}', 'variables' => ['format' => 'json']]];
         yield 'two parameters around a literal' => ['/v/2-10', ['path' => '/v/{a}-{b}', 'variables' => ['a' => '2', 'b' => '10']]];
-        yield 'greedy split on repeated delimiter' => ['/files/archive.tar.gz', ['path' => '/files/{name}.{ext}', 'variables' => ['name' => 'archive.tar', 'ext' => 'gz']]];
+        yield 'value ends at the first following literal' => ['/files/archive.tar.gz', ['path' => '/files/{name}.{ext}', 'variables' => ['name' => 'archive', 'ext' => 'tar.gz']]];
+        yield 'multi-character literal bounds the value' => ['/docs/a.v2.json', ['path' => '/docs/{id}.json', 'variables' => ['id' => 'a.v2']]];
         yield 'encoded value stays raw' => ['/files/my%20doc.txt', ['path' => '/files/{name}.{ext}', 'variables' => ['name' => 'my%20doc', 'ext' => 'txt']]];
         yield 'encoded slash stays inside the value' => ['/files/a%2Fb.txt', ['path' => '/files/{name}.{ext}', 'variables' => ['name' => 'a%2Fb', 'ext' => 'txt']]];
         yield 'parameter then literal suffix' => ['/users/7/avatar.png', ['path' => '/users/{id}/avatar.png', 'variables' => ['id' => '7']]];
@@ -433,9 +435,20 @@ class OpenApiPathMatcherTest extends TestCase
             '/v/{a}-{b}',
             '/files/{name}.{ext}',
             '/users/{id}/avatar.png',
+            '/docs/{id}.json',
         ]);
 
         $this->assertSame($expected, $matcher->matchWithVariables($requestPath));
+    }
+
+    #[Test]
+    public function many_captures_in_one_segment_do_not_exhaust_backtracking(): void
+    {
+        // Unbounded `([^/]+)-([^/]+)-…` would hit pcre.backtrack_limit here and
+        // make preg_match fail, hiding the `/{file}` fallback in the same pattern.
+        $matcher = new OpenApiPathMatcher(['/{a}-{b}-{c}-{d}-{e}-{f}-END', '/{file}']);
+
+        $this->assertSame('/{file}', $matcher->match('/' . str_repeat('a-', 30) . 'NO'));
     }
 
     #[Test]
