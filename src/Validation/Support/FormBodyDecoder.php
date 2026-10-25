@@ -18,6 +18,7 @@ use function array_key_last;
 use function array_keys;
 use function array_map;
 use function array_pad;
+use function array_values;
 use function array_walk_recursive;
 use function count;
 use function explode;
@@ -174,8 +175,7 @@ final class FormBodyDecoder
             // pair, so rebuild the array from the wire. A non-exploded array
             // has no repeated form; its last pair stays what the app saw.
             $wireValues = $rawValues[$name] ?? [];
-            $rebuilt = count($wireValues) > 1 && is_string($value) && self::explodesArray($propertySchema, $partEncoding);
-            if ($rebuilt) {
+            if (count($wireValues) > 1 && is_string($value) && self::explodesArray($propertySchema, $partEncoding)) {
                 $value = array_map(urldecode(...), $wireValues);
                 $fields[$name] = $value;
             }
@@ -275,10 +275,15 @@ final class FormBodyDecoder
             // string and must be decoded before its subschema means anything.
             // Parsing it is not sniffing — when JSON is all the contract
             // allows, a successful parse confirms the declared type and a
-            // failed one contradicts it. A rebuilt exploded array carries one
-            // JSON document per element.
-            if ((is_string($value) || $rebuilt) && $candidates !== [] && self::allJsonCandidates($candidates)) {
-                $documents = $rebuilt ? $value : [$value];
+            // failed one contradicts it. An array property carries one JSON
+            // document per element, however many arrived (OAS 3.2 Encoding
+            // By Name).
+            $isArray = $propertySchema !== null && TypeCoercer::isArraySchema($propertySchema);
+            $documents = $isArray && is_array($value) ? array_values($value) : [$value];
+            if (
+                $candidates !== [] && self::allJsonCandidates($candidates) &&
+                array_filter($documents, static fn(mixed $document): bool => !is_string($document)) === []
+            ) {
                 $decoded = [];
                 foreach ($documents as $index => $document) {
                     try {
@@ -288,7 +293,7 @@ final class FormBodyDecoder
                     } catch (JsonException $e) {
                         $errors[] = sprintf(
                             '[/%s] part is declared as %s but its content is not valid JSON: %s',
-                            $rebuilt ? $name . '/' . $index : $name,
+                            $isArray ? $name . '/' . $index : $name,
                             implode(', ', $candidates),
                             $e->getMessage(),
                         );
@@ -296,7 +301,7 @@ final class FormBodyDecoder
                 }
 
                 if (count($decoded) === count($documents)) {
-                    $fields[$name] = $rebuilt ? $decoded : $decoded[0];
+                    $fields[$name] = $isArray ? $decoded : $decoded[0];
                 }
 
                 continue;
@@ -340,12 +345,7 @@ final class FormBodyDecoder
      */
     private static function explodesArray(?array $propertySchema, array $partEncoding): bool
     {
-        $type = $propertySchema['type'] ?? null;
-        if (is_array($type)) {
-            $type = TypeCoercer::firstPrimitiveType($type);
-        }
-
-        if ($type !== 'array') {
+        if ($propertySchema === null || !TypeCoercer::isArraySchema($propertySchema)) {
             return false;
         }
 

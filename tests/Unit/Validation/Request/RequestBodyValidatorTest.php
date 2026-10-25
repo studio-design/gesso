@@ -2073,6 +2073,37 @@ class RequestBodyValidatorTest extends TestCase
     }
 
     #[Test]
+    public function validate_keeps_a_single_json_element_an_array(): void
+    {
+        // One pair is still a one-element array: each item is its own JSON
+        // document, so the array is never unwrapped to its only element.
+        $encoding = ['tags' => ['contentType' => 'application/json']];
+        $schema = ['type' => 'array', 'items' => ['type' => 'string', 'enum' => ['a', 'b']]];
+
+        $single = $this->validateStyled('application/x-www-form-urlencoded', $encoding, 'tags=%22a%22', $schema);
+        $this->assertSame([], $single->errors);
+
+        // A parsed field map (adapters hand one over) decodes per element too.
+        $parsed = $this->validateStyled('application/x-www-form-urlencoded', $encoding, ['tags' => ['"a"', 'b']], $schema);
+        $this->assertStringContainsString('[/tags/1] part is declared as application/json but its content is not valid JSON', implode("\n", $parsed->errors));
+    }
+
+    #[Test]
+    public function validate_rebuilds_an_exploded_array_declared_through_all_of(): void
+    {
+        $schema = ['allOf' => [['type' => 'array', 'items' => ['type' => 'string', 'enum' => ['a', 'b']]]]];
+
+        $result = $this->validateStyled(
+            'application/x-www-form-urlencoded',
+            ['tags' => ['style' => 'form', 'explode' => true]],
+            'tags=INVALID&tags=b',
+            $schema,
+        );
+
+        $this->assertStringContainsString('/tags/0', implode("\n", $result->errors));
+    }
+
+    #[Test]
     public function validate_applies_last_wins_after_parse_str_key_mangling(): void
     {
         // `tag.list` and `tag_list` collide only after mangling; parse_str()
