@@ -304,6 +304,60 @@
           }
         }
       ]
+    },
+    {
+      "workflowId": "endOnRequestContentType",
+      "steps": [
+        {
+          "stepId": "create",
+          "operationId": "createPet",
+          "requestBody": {
+            "payload": {
+              "name": "$inputs.name"
+            }
+          },
+          "successCriteria": [
+            {
+              "condition": "$request.header.Content-Type == 'application/json'"
+            }
+          ],
+          "onSuccess": [
+            {
+              "name": "done",
+              "type": "end",
+              "criteria": [
+                {
+                  "condition": "$request.header.Content-Type == 'application/json'"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "stepId": "list",
+          "operationId": "listPets"
+        }
+      ]
+    },
+    {
+      "workflowId": "recoveryAlsoThrows",
+      "steps": [
+        {
+          "stepId": "list",
+          "operationId": "listPets",
+          "onFailure": [
+            {
+              "name": "recover",
+              "type": "goto",
+              "stepId": "cleanup"
+            }
+          ]
+        },
+        {
+          "stepId": "cleanup",
+          "operationId": "listPets"
+        }
+      ]
     }
   ]
 }

@@ -265,6 +265,17 @@ final class ArazzoWorkflowExecution
     }
 
     /**
+     * The body's Content-Type is sent as a header (see curlSnippet()), so
+     * criteria and action conditions can read it.
+     *
+     * @return array<string, mixed>
+     */
+    private static function requestHeaders(ArazzoStepRequest $request): array
+    {
+        return HeaderNormalizer::normalize($request->headers + ($request->body->present && $request->contentType !== null ? ['Content-Type' => $request->contentType] : []));
+    }
+
+    /**
      * The first failed step stays the run's failure; a later failure that
      * ended the run after a goto recovery is kept as its trailing errors.
      */
@@ -400,8 +411,7 @@ final class ArazzoWorkflowExecution
         $context = new RuntimeExpressionContext(
             url: $request->uri(),
             method: $step->method,
-            // The body's Content-Type is sent as a header (see curlSnippet()), so expressions can read it.
-            requestHeaders: HeaderNormalizer::normalize($request->headers + ($request->body->present && $request->contentType !== null ? ['Content-Type' => $request->contentType] : [])),
+            requestHeaders: self::requestHeaders($request),
             requestQuery: $request->query,
             requestPath: $request->pathParams,
             requestBody: $request->body,
@@ -484,7 +494,7 @@ final class ArazzoWorkflowExecution
         return new RuntimeExpressionContext(
             url: $request->uri(),
             method: $request->method,
-            requestHeaders: HeaderNormalizer::normalize($request->headers),
+            requestHeaders: self::requestHeaders($request),
             requestQuery: $request->query,
             requestPath: $request->pathParams,
             requestBody: $request->body,

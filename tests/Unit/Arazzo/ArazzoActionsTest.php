@@ -8,6 +8,7 @@ use GuzzleHttp\Psr7\Response;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
+use RuntimeException;
 use Studio\Gesso\Arazzo\ArazzoDescriptionReason;
 use Studio\Gesso\Arazzo\ArazzoFailureKind;
 use Studio\Gesso\Arazzo\ArazzoStepRequest;
@@ -131,6 +132,31 @@ final class ArazzoActionsTest extends TestCase
         $this->assertSame('read', $result->failure->stepId);
         $this->assertStringContainsString("The run then stopped at step 'create' (workflow)", $result->failureMessage());
         $this->assertStringContainsString('Request: curl', $result->failureMessage());
+    }
+
+    #[Test]
+    public function action_criteria_see_the_request_content_type_like_success_criteria(): void
+    {
+        $result = $this->runWorkflow('endOnRequestContentType', 'Rex');
+
+        $this->assertTrue($result->isSuccessful(), $result->failureMessage());
+        $this->assertSame(['POST /pets'], $this->dispatched);
+    }
+
+    #[Test]
+    public function a_recovery_step_failure_keeps_its_errors_in_the_failure_message(): void
+    {
+        $calls = 0;
+        $result = ArazzoWorkflowRunner::workflow(self::DIR . '/actions.arazzo.json', 'recoveryAlsoThrows')
+            ->dispatchUsing(static function () use (&$calls): never {
+                throw new RuntimeException('boom ' . ++$calls);
+            })
+            ->run();
+
+        $this->assertSame(ArazzoFailureKind::Dispatch, $result->failure?->kind);
+        $this->assertSame('list', $result->failure->stepId);
+        $this->assertStringContainsString("Also failed: step 'cleanup' (dispatch)", $result->failureMessage());
+        $this->assertStringContainsString('RuntimeException: boom 2', $result->failureMessage());
     }
 
     #[Test]
