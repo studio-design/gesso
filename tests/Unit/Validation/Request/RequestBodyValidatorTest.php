@@ -15,6 +15,8 @@ use Studio\Gesso\Validation\Request\RequestBodyValidationResult;
 use Studio\Gesso\Validation\Request\RequestBodyValidator;
 use Studio\Gesso\Validation\Support\SchemaValidatorRunner;
 
+use function implode;
+
 class RequestBodyValidatorTest extends TestCase
 {
     private RequestBodyValidator $validator;
@@ -2032,6 +2034,21 @@ class RequestBodyValidatorTest extends TestCase
         );
 
         $this->assertSame([], $result->errors);
+    }
+
+    #[Test]
+    public function validate_rebuilds_an_exploded_array_from_repeated_raw_keys(): void
+    {
+        // Exploded (the default) repeats the name per element; parse_str()
+        // keeps only the last pair, so every element must come from the wire.
+        $schema = ['type' => 'array', 'items' => ['type' => 'string', 'enum' => ['a', 'b']]];
+        foreach ([[], ['tags' => ['style' => 'form', 'explode' => true]]] as $encoding) {
+            $invalid = $this->validateStyled('application/x-www-form-urlencoded', $encoding, 'tags=INVALID&tags=b', $schema);
+            $this->assertStringContainsString('/tags/0', implode("\n", $invalid->errors));
+
+            $valid = $this->validateStyled('application/x-www-form-urlencoded', $encoding, 'tags=a&tags=b', $schema);
+            $this->assertSame([], $valid->errors);
+        }
     }
 
     #[Test]

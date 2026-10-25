@@ -3052,6 +3052,19 @@ class OpenApiResponseValidatorTest extends TestCase
         $this->assertStringContainsString('/tags/0', $v31->errorMessage());
     }
 
+    #[Test]
+    public function form_urlencoded_response_validates_every_element_of_an_exploded_array(): void
+    {
+        // `style: form, explode: true` repeats the name per element; parse_str()
+        // alone would keep only `b` and miss the invalid first element.
+        $invalid = $this->validateForm('/form-response-exploded', 'tags=INVALID&tags=b', 'form-response-3.2');
+        $this->assertFalse($invalid->isValid());
+        $this->assertStringContainsString('/tags/0', $invalid->errorMessage());
+
+        $valid = $this->validateForm('/form-response-exploded', 'tags=a&tags=b', 'form-response-3.2');
+        $this->assertTrue($valid->isValid(), $valid->errorMessage());
+    }
+
     private function validateForm(string $path, mixed $body, string $spec = 'form-response'): OpenApiValidationResult
     {
         return $this->validator->validate($spec, 'GET', $path, 200, $body, 'application/x-www-form-urlencoded');

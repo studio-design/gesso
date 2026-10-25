@@ -14,9 +14,12 @@ use function array_fill_keys;
 use function array_filter;
 use function array_key_exists;
 use function array_key_first;
+use function array_key_last;
 use function array_keys;
+use function array_map;
 use function array_pad;
 use function array_walk_recursive;
+use function count;
 use function explode;
 use function implode;
 use function in_array;
@@ -29,6 +32,7 @@ use function sprintf;
 use function str_replace;
 use function strtolower;
 use function trim;
+use function urldecode;
 
 /**
  * Turn a form request body (`application/x-www-form-urlencoded` or
@@ -91,25 +95,24 @@ final class FormBodyDecoder
     }
 
     /**
-     * The percent-encoded wire value of each field of a raw urlencoded body,
-     * as {@see self::toFieldMap()} reads the same bytes: parse_str()'s key
-     * mangling (`a.b` becomes `a_b`) and its last-pair-wins rule included, so
-     * {@see self::prepare()} pairs every raw value with the parsed one.
+     * The percent-encoded wire values of each field of a raw urlencoded body,
+     * in wire order, keyed as {@see self::toFieldMap()} reads the same bytes:
+     * parse_str()'s key mangling (`a.b` becomes `a_b`) included, so the last
+     * entry is the pair parse_str() keeps.
      *
-     * @return array<string, string>
+     * @return array<string, list<string>>
      */
     public static function rawUrlencodedValues(string $body): array
     {
-        // Mangle each pair's name before applying last-wins: `a.b` and `a_b`
-        // collide only after mangling, so grouping by raw name first would
-        // keep the wrong pair.
+        // Mangle each pair's name before grouping: `a.b` and `a_b` collide
+        // only after mangling, so grouping by raw name would split them.
         $values = [];
         foreach (explode('&', $body) as $pair) {
             [$encodedName, $encodedValue] = array_pad(explode('=', $pair, 2), 2, '');
             parse_str($encodedName . '=', $parsed);
             $key = array_key_first($parsed);
             if ($key !== null) {
-                $values[(string) $key] = $encodedValue;
+                $values[(string) $key][] = $encodedValue;
             }
         }
 
@@ -128,9 +131,9 @@ final class FormBodyDecoder
      *                                    the encoding object talks about
      * @param OpenApiVersion $version OpenAPI 3.0 applies `style` / `explode` / `allowReserved` to
      *                                urlencoded bodies only; 3.1 and later to multipart as well
-     * @param array<string, string> $rawValues percent-encoded wire value per field, when the
-     *                                         caller has the raw urlencoded body
-     *                                         ({@see self::rawUrlencodedValues()})
+     * @param array<string, list<string>> $rawValues percent-encoded wire values per field, when the
+     *                                               caller has the raw urlencoded body
+     *                                               ({@see self::rawUrlencodedValues()})
      *
      * @return array{array<string, mixed>, list<string>, array<string, array{reason: string, candidates: list<string>}>, list<string>}
      *                                                                                                                                 the prepared data; encoding-level errors (parts that contradict
@@ -165,6 +168,16 @@ final class FormBodyDecoder
             $declaredContentType = is_string($partEncoding['contentType'] ?? null)
                 ? $partEncoding['contentType']
                 : null;
+
+            // `style: form, explode: true` (also the default) repeats the name
+            // once per array element, but parse_str() keeps only the last
+            // pair, so rebuild the array from the wire. A non-exploded array
+            // has no repeated form; its last pair stays what the app saw.
+            $wireValues = $rawValues[$name] ?? [];
+            if (count($wireValues) > 1 && is_string($value) && self::explodesArray($propertySchema, $partEncoding)) {
+                $value = array_map(urldecode(...), $wireValues);
+                $fields[$name] = $value;
+            }
 
             // Per-part headers exist only in multipart, and no adapter
             // preserves them, so a declared one goes unchecked — report it
@@ -222,7 +235,7 @@ final class FormBodyDecoder
             // split applies; allowReserved changes nothing a decoded value
             // still shows.
             if ($styled) {
-                $rawValue = $rawValues[$name] ?? null;
+                $rawValue = $wireValues === [] ? null : $wireValues[array_key_last($wireValues)];
                 // Form parsing leaves a multipart part's body as sent, so the
                 // value is still RFC 6570 percent-encoded: it is the raw wire
                 // value. RFC 6570 never emits `+` for a space, so a literal
@@ -308,6 +321,36 @@ final class FormBodyDecoder
         }
 
         return [$fields, $errors, $unverifiable, $headerSkips];
+    }
+
+    /**
+     * Whether an array property is serialized as one pair per element:
+     * `style: form` with `explode` true or omitted. An explicit
+     * `contentType` without a style keeps the part a single value.
+     *
+     * @param null|array<string, mixed> $propertySchema
+     * @param array<string, mixed> $partEncoding
+     */
+    private static function explodesArray(?array $propertySchema, array $partEncoding): bool
+    {
+        $type = $propertySchema['type'] ?? null;
+        if (is_array($type)) {
+            $type = TypeCoercer::firstPrimitiveType($type);
+        }
+
+        if ($type !== 'array') {
+            return false;
+        }
+
+        if (!array_key_exists('style', $partEncoding) && !array_key_exists('explode', $partEncoding) &&
+            !array_key_exists('allowReserved', $partEncoding)) {
+            return !array_key_exists('contentType', $partEncoding);
+        }
+
+        $style = array_key_exists('style', $partEncoding) ? $partEncoding['style'] : 'form';
+        $explode = array_key_exists('explode', $partEncoding) ? $partEncoding['explode'] : $style === 'form';
+
+        return $style === 'form' && $explode === true;
     }
 
     /**

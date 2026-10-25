@@ -36,6 +36,40 @@
                 }
             }
         },
+        "/form-response-exploded": {
+            "get": {
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "application/x-www-form-urlencoded": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "tags": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "string",
+                                                "enum": [
+                                                    "a",
+                                                    "b"
+                                                ]
+                                            }
+                                        }
+                                    }
+                                },
+                                "encoding": {
+                                    "tags": {
+                                        "style": "form",
+                                        "explode": true
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/form-response-json-part": {
             "get": {
                 "responses": {
