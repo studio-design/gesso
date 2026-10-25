@@ -1,0 +1,23 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Studio\Gesso\Internal;
+
+use RuntimeException;
+
+use function sprintf;
+
+/**
+ * @internal Runtime-expression plumbing shared by Links exploration and the Arazzo runner; not public API.
+ */
+final class RuntimeExpressionException extends RuntimeException
+{
+    public function __construct(
+        public readonly RuntimeExpressionFailure $reason,
+        public readonly string $expression,
+        string $detail,
+    ) {
+        parent::__construct(sprintf("Runtime expression '%s': %s", $expression, $detail));
+    }
+}
