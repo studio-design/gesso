@@ -42,10 +42,11 @@ use function unlink;
  * Writes a paratest worker's coverage state to a JSON sidecar that the
  * merge CLI will later combine into a single report.
  *
- * Filename format: `part-<token>-<pid>.json`. `<token>` identifies the
- * paratest slot (paratest currently uses 1..N integers, but anything is
- * accepted and sanitised); `<pid>` is appended so a leftover sidecar from
- * a crashed previous run cannot be mistaken for the current one.
+ * Filename format: `part-<token>-<pid>[.<run-id>].json`. `<token>` identifies
+ * the paratest slot (paratest currently uses 1..N integers, but anything is
+ * accepted and sanitised); `<pid>` keeps two workers with the same token from
+ * colliding. The optional `<run-id>` (issue #596) scopes the file to one run so
+ * the merge can ignore leftovers from an earlier one; it is omitted when unknown.
  *
  * Atomicity and local-user safety: payloads are written to a cryptographically
  * random sibling file opened with exclusive-create semantics, chmodded to
@@ -80,10 +81,10 @@ final class CoverageSidecarWriter
      *
      * @throws RuntimeException when the sidecar cannot be created or persisted
      */
-    public static function write(string $sidecarDir, string $testToken, array $state): string
+    public static function write(string $sidecarDir, string $testToken, array $state, ?string $runId = null): string
     {
         $dir = self::ensureDir($sidecarDir);
-        $finalPath = self::pathFor($dir, self::FILENAME_PREFIX, $testToken);
+        $finalPath = self::pathFor($dir, self::FILENAME_PREFIX, $testToken, $runId);
 
         try {
             $payload = json_encode($state, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
@@ -107,14 +108,14 @@ final class CoverageSidecarWriter
      * because the failure mode is already loud (worker can't write to its
      * sidecar dir at all).
      */
-    public static function writeFailureMarker(string $sidecarDir, string $testToken, string $reason): ?string
+    public static function writeFailureMarker(string $sidecarDir, string $testToken, string $reason, ?string $runId = null): ?string
     {
         try {
             $dir = self::ensureDir($sidecarDir);
         } catch (RuntimeException) {
             return null;
         }
-        $path = self::pathFor($dir, self::FAILURE_MARKER_PREFIX, $testToken);
+        $path = self::pathFor($dir, self::FAILURE_MARKER_PREFIX, $testToken, $runId);
         $body = json_encode(['testToken' => $testToken, 'reason' => $reason]);
         if ($body === false) {
             return null;
@@ -127,6 +128,18 @@ final class CoverageSidecarWriter
         }
 
         return $path;
+    }
+
+    /**
+     * Strip anything that's not safe in a filename so a hostile or malformed
+     * `TEST_TOKEN` cannot escape the sidecar dir or break the reader's glob.
+     * Public so the merge spells a requested run id the way the writer did.
+     */
+    public static function sanitise(string $token): string
+    {
+        $cleaned = preg_replace('/[^A-Za-z0-9_-]/', '_', $token);
+
+        return $cleaned === null || $cleaned === '' ? 'unknown' : $cleaned;
     }
 
     /**
@@ -233,7 +246,7 @@ final class CoverageSidecarWriter
     /**
      * @throws RuntimeException when the runtime cannot return a PID
      */
-    private static function pathFor(string $dir, string $prefix, string $testToken): string
+    private static function pathFor(string $dir, string $prefix, string $testToken, ?string $runId): string
     {
         $pid = getmypid();
         if ($pid === false) {
@@ -242,17 +255,14 @@ final class CoverageSidecarWriter
             throw new RuntimeException('getmypid() returned false; cannot derive a unique sidecar filename');
         }
 
-        return sprintf('%s/%s%s-%s%s', $dir, $prefix, self::sanitise($testToken), (string) $pid, self::FILENAME_SUFFIX);
-    }
-
-    /**
-     * Strip anything that's not safe in a filename so a hostile or malformed
-     * `TEST_TOKEN` cannot escape the sidecar dir or break the reader's glob.
-     */
-    private static function sanitise(string $token): string
-    {
-        $cleaned = preg_replace('/[^A-Za-z0-9_-]/', '_', $token);
-
-        return $cleaned === null || $cleaned === '' ? 'unknown' : $cleaned;
+        return sprintf(
+            '%s/%s%s-%s%s%s',
+            $dir,
+            $prefix,
+            self::sanitise($testToken),
+            (string) $pid,
+            $runId === null ? '' : '.' . self::sanitise($runId),
+            self::FILENAME_SUFFIX,
+        );
     }
 }

@@ -35,8 +35,10 @@ use Studio\Gesso\Validation\Strict\StrictRequiredMode;
 use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 
 use function count;
+use function function_exists;
 use function getenv;
 use function implode;
+use function posix_getppid;
 use function sprintf;
 use function trim;
 
@@ -160,7 +162,7 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
     {
         $workerToken = self::resolveWorkerToken();
         if ($workerToken !== null) {
-            $this->writeWorkerSidecar($workerToken);
+            $this->writeWorkerSidecar($workerToken, self::resolveRunId());
 
             // Free cached spec data; the merge CLI re-loads on its own.
             OpenApiSpecLoader::clearCache();
@@ -252,6 +254,31 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
         }
 
         return null;
+    }
+
+    /**
+     * Issue #596: the run this worker's sidecar belongs to, so the merge can
+     * ignore leftovers from an earlier run. Precedence:
+     *  - `GESSO_RUN_ID`: explicit, for CI.
+     *  - `GESSO_SIDECAR_TOKEN` set: `null`. Shards run on separate machines,
+     *    so only an explicit id can tie them together; a per-machine id would
+     *    split them.
+     *  - otherwise (a paratest worker) the parent pid: every worker is a
+     *    direct child of the one master, so its pid names the run. `null`
+     *    without ext-posix.
+     */
+    private static function resolveRunId(): ?string
+    {
+        $explicit = getenv('GESSO_RUN_ID');
+        if ($explicit !== false && trim($explicit) !== '') {
+            return CoverageSidecarWriter::sanitise(trim($explicit));
+        }
+        $shard = getenv('GESSO_SIDECAR_TOKEN');
+        if (($shard !== false && trim($shard) !== '') || !function_exists('posix_getppid')) {
+            return null;
+        }
+
+        return (string) posix_getppid();
     }
 
     /**
@@ -472,7 +499,7 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
         ));
     }
 
-    private function writeWorkerSidecar(string $token): void
+    private function writeWorkerSidecar(string $token, ?string $runId): void
     {
         $dir = $this->sidecarDir ?? CoverageSidecarWriter::defaultDir();
 
@@ -513,7 +540,7 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
         );
 
         try {
-            CoverageSidecarWriter::write($dir, $token, $envelope);
+            CoverageSidecarWriter::write($dir, $token, $envelope, $runId);
         } catch (RuntimeException $e) {
             // The contract assertion that triggered notify() has already
             // passed; we don't fail the test run on sidecar I/O. But we
@@ -522,7 +549,7 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
             // marker the merge would silently under-count coverage by one
             // worker's worth of data.
             $this->writeStderr("[OpenAPI Coverage] WARNING: failed to write sidecar (token={$token}): {$e->getMessage()}\n");
-            CoverageSidecarWriter::writeFailureMarker($dir, $token, $e->getMessage());
+            CoverageSidecarWriter::writeFailureMarker($dir, $token, $e->getMessage(), $runId);
 
             // Issue #417 / #481: a lost sidecar cannot be recovered by the
             // marker alone — the marker write is itself best-effort, and
