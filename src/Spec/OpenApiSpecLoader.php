@@ -5,11 +5,13 @@ declare(strict_types=1);
 namespace Studio\Gesso\Spec;
 
 use const E_USER_WARNING;
+use const JSON_THROW_ON_ERROR;
 use const PHP_URL_HOST;
 
 use InvalidArgumentException;
 use Psr\Http\Client\ClientInterface;
 use Psr\Http\Message\RequestFactoryInterface;
+use stdClass;
 use Studio\Gesso\Exception\InvalidOpenApiSpecException;
 use Studio\Gesso\Exception\InvalidOpenApiSpecReason;
 use Studio\Gesso\Exception\SpecFileNotFoundException;
@@ -20,6 +22,8 @@ use Studio\Gesso\Internal\SpecDocumentDecoder;
 use Studio\Gesso\Internal\SpecPath;
 use Studio\Gesso\Internal\YamlAvailability;
 use Studio\Gesso\OpenApiVersion;
+use Symfony\Component\Yaml\Yaml;
+use Throwable;
 
 use function array_key_exists;
 use function file_exists;
@@ -28,6 +32,7 @@ use function getenv;
 use function implode;
 use function in_array;
 use function is_string;
+use function json_decode;
 use function parse_url;
 use function preg_match;
 use function realpath;
@@ -365,6 +370,37 @@ final class OpenApiSpecLoader
     public static function clearCache(): void
     {
         self::$cache = [];
+    }
+
+    /**
+     * The local spec file as parsed, before `$ref` resolution and before
+     * {@see self::load()} collapses JSON objects into PHP arrays — the only
+     * view in which `enum: {"0": "red"}` or `enum: {}` is not a list. Null
+     * for a remote spec or an unreadable / unparseable file.
+     *
+     * @internal Lets EnumDriftAsserter reject object-shaped `enum` keywords.
+     */
+    public static function loadUnresolved(string $specName): ?stdClass
+    {
+        if (isset(self::$remoteSpecs[$specName])) {
+            return null;
+        }
+
+        ['path' => $path, 'extension' => $extension] = self::resolveSpecFile($specName);
+        $content = file_get_contents($path);
+        if ($content === false) {
+            return null;
+        }
+
+        try {
+            $decoded = $extension === 'json'
+                ? json_decode($content, false, 512, JSON_THROW_ON_ERROR)
+                : Yaml::parse($content, Yaml::PARSE_OBJECT_FOR_MAP);
+        } catch (Throwable) {
+            return null;
+        }
+
+        return $decoded instanceof stdClass ? $decoded : null;
     }
 
     /**

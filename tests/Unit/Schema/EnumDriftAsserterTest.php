@@ -22,6 +22,8 @@ use Studio\Gesso\Tests\Unit\Schema\Fixture\BothArgumentsEnum;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\Broken;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\Color;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\ComponentOverrideEnum;
+use Studio\Gesso\Tests\Unit\Schema\Fixture\EmptyKeyed;
+use Studio\Gesso\Tests\Unit\Schema\Fixture\EmptyObjectFileEnum;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\EmptySpecEnum;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\EnumKeyNotArrayEnum;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\EscapingSpecEnum;
@@ -36,6 +38,8 @@ use Studio\Gesso\Tests\Unit\Schema\Fixture\NoEnumKeySpecEnum;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\NoExtensionSpecEnum;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\NonScalarSpecValueEnum;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\NotAnEnum;
+use Studio\Gesso\Tests\Unit\Schema\Fixture\NumericKeyed;
+use Studio\Gesso\Tests\Unit\Schema\Fixture\NumericKeyedFileEnum;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\PaymentStatus;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\PhpExtraEnum;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\PureEnum;
@@ -106,6 +110,18 @@ class EnumDriftAsserterTest extends TestCase
     {
         yield 'scalar' => [Broken::class, 'Broken'];
         yield 'object' => [Keyed::class, 'Keyed'];
+        // The loader collapses these two objects into lists (["red"], []).
+        yield 'numeric-keyed object' => [NumericKeyed::class, 'NumericKeyed'];
+        yield 'empty object' => [EmptyKeyed::class, 'EmptyKeyed'];
+    }
+
+    /**
+     * @return iterable<string, array{class-string}>
+     */
+    public static function provideBound_file_with_an_object_enum_throws_enum_key_not_arrayCases(): iterable
+    {
+        yield 'numeric-keyed object' => [NumericKeyedFileEnum::class];
+        yield 'empty object' => [EmptyObjectFileEnum::class];
     }
 
     #[Test]
@@ -290,6 +306,18 @@ class EnumDriftAsserterTest extends TestCase
     {
         try {
             EnumDriftAsserter::assertNoDrift([EnumKeyNotArrayEnum::class]);
+            $this->fail('expected EnumBindingException');
+        } catch (EnumBindingException $e) {
+            $this->assertSame(EnumBindingReason::EnumKeyNotArray, $e->reason);
+        }
+    }
+
+    #[Test]
+    #[DataProvider('provideBound_file_with_an_object_enum_throws_enum_key_not_arrayCases')]
+    public function bound_file_with_an_object_enum_throws_enum_key_not_array(string $fqcn): void
+    {
+        try {
+            EnumDriftAsserter::assertNoDrift([$fqcn]);
             $this->fail('expected EnumBindingException');
         } catch (EnumBindingException $e) {
             $this->assertSame(EnumBindingReason::EnumKeyNotArray, $e->reason);

@@ -13,6 +13,7 @@ use InvalidArgumentException;
 use JsonException;
 use ReflectionEnum;
 use ReflectionException;
+use stdClass;
 use Studio\Gesso\Attribute\BoundToOpenApiEnum;
 use Studio\Gesso\Exception\EnumBindingException;
 use Studio\Gesso\Exception\EnumBindingReason;
@@ -44,6 +45,7 @@ use function is_int;
 use function is_string;
 use function json_decode;
 use function pathinfo;
+use function property_exists;
 use function realpath;
 use function sprintf;
 use function str_ends_with;
@@ -337,21 +339,44 @@ final class EnumDriftAsserter
             if (!is_array($schemas)) {
                 continue;
             }
+            $unresolved = OpenApiSpecLoader::loadUnresolved($specName);
             foreach ($schemas as $name => $schema) {
                 if (!is_array($schema) || !array_key_exists('enum', $schema)) {
                     continue;
                 }
                 $name = (string) $name;
+                // load() collapses `enum: {"0": "red"}` to the list ["red"];
+                // keep the object so componentValues() rejects it.
+                // ponytail: inline enums of local specs only; one behind a
+                // `$ref` or in a remote spec still passes in collapsed form.
+                $enum = self::unresolvedEnum($unresolved, $name) ?? $schema['enum'];
                 $existing = $components[$name] ?? null;
                 if ($existing === null) {
-                    $components[$name] = ['specs' => [$specName], 'enum' => $schema['enum'], 'conflict' => false];
-                } elseif (!$existing['conflict'] && !self::sameValues($existing['enum'], $schema['enum'])) {
+                    $components[$name] = ['specs' => [$specName], 'enum' => $enum, 'conflict' => false];
+                } elseif (!$existing['conflict'] && !self::sameValues($existing['enum'], $enum)) {
                     $components[$name] = ['specs' => [...$existing['specs'], $specName], 'enum' => null, 'conflict' => true];
                 }
             }
         }
 
         return ['specs' => $specNames, 'components' => $components];
+    }
+
+    /**
+     * The `enum` of `components.schemas.<name>` when the unparsed document
+     * holds it as a JSON object / YAML mapping.
+     */
+    private static function unresolvedEnum(?stdClass $document, string $name): ?stdClass
+    {
+        $node = $document;
+        foreach (['components', 'schemas', $name, 'enum'] as $key) {
+            if (!$node instanceof stdClass || !property_exists($node, $key)) {
+                return null;
+            }
+            $node = $node->{$key};
+        }
+
+        return $node instanceof stdClass ? $node : null;
     }
 
     /**
@@ -562,7 +587,7 @@ final class EnumDriftAsserter
 
         $decoded = self::decodeSpecContent($fqcn, $specPath, $absolute, $content);
 
-        if (!is_array($decoded)) {
+        if (!$decoded instanceof stdClass) {
             throw new EnumBindingException(
                 EnumBindingReason::NonMappingRoot,
                 sprintf('Bound spec file %s must decode to a mapping (JSON object / YAML mapping)', $absolute),
@@ -571,7 +596,7 @@ final class EnumDriftAsserter
             );
         }
 
-        if (!isset($decoded['enum'])) {
+        if (!isset($decoded->enum)) {
             throw new EnumBindingException(
                 EnumBindingReason::EnumKeyMissing,
                 sprintf(
@@ -583,7 +608,7 @@ final class EnumDriftAsserter
             );
         }
 
-        if (!is_array($decoded['enum'])) {
+        if (!is_array($decoded->enum)) {
             throw new EnumBindingException(
                 EnumBindingReason::EnumKeyNotArray,
                 sprintf(
@@ -595,7 +620,7 @@ final class EnumDriftAsserter
             );
         }
 
-        return self::scalarEnumValues($decoded['enum'], $fqcn, 'Bound spec file ' . $absolute, $specPath);
+        return self::scalarEnumValues($decoded->enum, $fqcn, 'Bound spec file ' . $absolute, $specPath);
     }
 
     /**
@@ -655,7 +680,7 @@ final class EnumDriftAsserter
         $extension = strtolower(pathinfo($specPath, PATHINFO_EXTENSION));
         if (!in_array($extension, ['yaml', 'yml'], true)) {
             try {
-                return json_decode($content, true, 512, JSON_THROW_ON_ERROR);
+                return json_decode($content, false, 512, JSON_THROW_ON_ERROR);
             } catch (JsonException $e) {
                 throw new EnumBindingException(
                     EnumBindingReason::MalformedJson,
@@ -685,7 +710,7 @@ final class EnumDriftAsserter
         }
 
         try {
-            return Yaml::parse($content);
+            return Yaml::parse($content, Yaml::PARSE_OBJECT_FOR_MAP);
         } catch (Throwable $e) {
             // Symfony's parser raises non-ParseException classes for some
             // inputs (e.g. \InvalidArgumentException on malformed Unicode),

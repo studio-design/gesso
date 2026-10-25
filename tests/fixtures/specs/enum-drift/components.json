@@ -11,6 +11,8 @@
             "Flags": {"type": "boolean", "enum": [true, false]},
             "Broken": {"type": "string", "enum": "red"},
             "Keyed": {"type": "string", "enum": {"r": "red"}},
+            "NumericKeyed": {"type": "string", "enum": {"0": "red"}},
+            "EmptyKeyed": {"type": "string", "enum": {}},
             "NotAnEnum": {"type": "string"}
         }
     }
