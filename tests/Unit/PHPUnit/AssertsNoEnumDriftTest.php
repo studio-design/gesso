@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace Studio\Gesso\Tests\Unit\PHPUnit;
 
 use PHPUnit\Framework\AssertionFailedError;
+use PHPUnit\Framework\Attributes\IgnoreDeprecations;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Studio\Gesso\Exception\EnumBindingException;
 use Studio\Gesso\Exception\EnumBindingReason;
+use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\PHPUnit\AssertsNoEnumDrift;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\Color;
@@ -38,10 +40,12 @@ class AssertsNoEnumDriftTest extends TestCase
     protected function tearDown(): void
     {
         OpenApiSpecLoader::reset();
+        Deprecations::resetForTesting();
         parent::tearDown();
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function clean_enum_increments_assertion_count_by_one(): void
     {
         $before = $this->numberOfAssertionsPerformed();
@@ -67,6 +71,7 @@ class AssertsNoEnumDriftTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function clean_input_with_multiple_enums_still_credits_one_assertion(): void
     {
         // The trait's contract is "one logical assertion per call",
@@ -83,6 +88,7 @@ class AssertsNoEnumDriftTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function two_consecutive_calls_each_credit_an_assertion(): void
     {
         // Fan-in counterpart to the multi-enum test: two separate calls
@@ -98,6 +104,7 @@ class AssertsNoEnumDriftTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function php_only_drift_fails_with_assertion_failed_error(): void
     {
         try {
@@ -113,6 +120,7 @@ class AssertsNoEnumDriftTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function spec_only_drift_fails_with_assertion_failed_error(): void
     {
         try {
@@ -126,6 +134,7 @@ class AssertsNoEnumDriftTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function mixed_input_reports_only_drifting_enums(): void
     {
         try {
@@ -158,6 +167,7 @@ class AssertsNoEnumDriftTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function failure_trace_strips_library_frames(): void
     {
         // The trait routes failures through StackTraceFilter so consumers

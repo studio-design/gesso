@@ -228,7 +228,6 @@ combination becomes unexpressible.
 | `--strip-prefix=<p>`, repeatable | `--strip-prefixes=<a,b>` |
 | `--config=<path>` | (new, #501) |
 | `--spec-base-path`, `--sidecar-dir`, `--no-cleanup`, `--github-step-summary`, `--help` | unchanged |
-| — removed — | `--enum-spec-base-path` (#508) |
 
 `--format` and `--output-file` are accepted by all four subcommands per #507;
 `stubs --output` becomes `--output-dir` because it names a directory. The shared
@@ -275,3 +274,14 @@ The cost is a fifth document to keep current. It is bounded: this ADR names v3
 targets only, and once #501, #502, #507 and #508 have merged, the names live in
 `docs/setup.md` and `docs/cli.md` and this record is history rather than
 specification.
+
+## Amendments
+
+### 2026-10-13 — `--enum-spec-base-path` never shipped
+
+The CLI table listed `--enum-spec-base-path` as a flag #508 removes. `gesso coverage:merge`
+never accepted it: the merge step does not evaluate enum drift, and the only trace of the
+name in `src/` is a comment recording that omission (`140e473`). A removal row for a flag
+that does not exist can never stage its deprecation, so the ratchet in `v3-renames.json`
+could never reach zero. The row is deleted; #508's CLI surface is empty. Section D and
+"What each issue changes" above read accordingly.

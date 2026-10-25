@@ -63,6 +63,11 @@ Auto-discovery also checks any enum in the scanned namespaces whose name matches
 
 ## Legacy: file-path bindings
 
+> **Deprecated — removed in 3.0.** A file-path binding emits a
+> `[Gesso deprecation]` notice. Use [component-name binding](#binding-by-component-name)
+> instead: delete the attribute when the component is named after the class,
+> or write `#[BoundToOpenApiEnum(component: 'Name')]`.
+
 ```php
 use Studio\Gesso\Attribute\BoundToOpenApiEnum;
 
@@ -92,6 +97,11 @@ enum GrantType: string { /* ... */ }
 ```
 
 ### Bundled-external enum sources (`enum_spec_base_path`)
+
+> **Deprecated — removed in 3.0.** Setting `enum_spec_base_path` (or calling
+> `OpenApiSpecLoader::configure(enumBasePath:)`) emits a `[Gesso deprecation]`
+> notice. Component-name bindings read the configured specs and need no enum
+> root.
 
 Some projects bundle their OpenAPI documents (`front.json` / `admin.json` / …) into one directory while keeping individual `enum:` schemas elsewhere — so orval / Stoplight can `$ref` them without baking the values into the bundle. Concretely:
 
@@ -256,7 +266,7 @@ Add the opt-in parameters to your `phpunit.xml`:
 | `enum_drift_enabled` | `false` | Master opt-in. Empty value (`<parameter name="enum_drift_enabled"/>`) is also treated as `true`, mirroring `min_coverage_strict`. |
 | `enum_drift_scan_namespaces` | _none_ | Comma-separated PSR-4 namespace prefixes (whitespace tolerated). Each prefix must match — directly or as a sub-namespace of — an entry in your `composer.json` `autoload.psr-4` map. |
 | `enum_drift_fail_on_drift` | `true` | `true` aborts the run with a `[OpenAPI Enum Drift] FATAL` block on stderr (and `GITHUB_STEP_SUMMARY` when set). `false` emits a `WARNING` block but lets PHPUnit continue. |
-| `enum_spec_base_path` | _none_ | Only for legacy file-path bindings: an optional secondary root used for `#[BoundToOpenApiEnum('path')]` resolution. Set this when per-enum JSONs live outside `spec_base_path` (e.g. `openapi/_shared/...` while bundles live in `openapi/bundled/`). Relative values resolve against `getcwd()`. See [Bundled-external enum sources](#bundled-external-enum-sources-enum_spec_base_path) for the full layout. |
+| `enum_spec_base_path` | _none_ | **Deprecated, removed in 3.0.** Only for legacy file-path bindings: an optional secondary root used for `#[BoundToOpenApiEnum('path')]` resolution. Set this when per-enum JSONs live outside `spec_base_path` (e.g. `openapi/_shared/...` while bundles live in `openapi/bundled/`). Relative values resolve against `getcwd()`. See [Bundled-external enum sources](#bundled-external-enum-sources-enum_spec_base_path) for the full layout. |
 | _misconfiguration_ | _n/a_ | No namespaces configured, an unresolvable namespace prefix, a missing Composer `ClassLoader`, an `enum_spec_base_path` that does not point at a directory, or any `EnumBindingException` raised by a discovered enum **always** produces a FATAL exit regardless of `enum_drift_fail_on_drift`. These are setup errors and would otherwise hide a real drift signal. |
 
 Discovery merges results from Composer's classmap (`getClassMap()`) and a recursive scan of each PSR-4-registered directory, deduplicating across both sources. Production deployments using `--optimize-autoloader` or `--classmap-authoritative` are covered by the classmap pass; default dev installs are covered by the PSR-4 directory walk. Every backed enum found is passed to `EnumDriftAsserter` together with the configured `specs`. Enums bound by attribute or by component name are checked, and backed enums that match neither are skipped. Pure enums, traits, abstract classes, and plain classes in the same directory are skipped too.

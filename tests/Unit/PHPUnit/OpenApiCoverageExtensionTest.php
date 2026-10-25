@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Tests\Unit\PHPUnit;
 
+use const E_USER_DEPRECATED;
 use const E_USER_WARNING;
 
 use PHPUnit\Framework\Attributes\IgnoreDeprecations;
@@ -69,6 +70,7 @@ class OpenApiCoverageExtensionTest extends TestCase
         putenv('TEST_TOKEN');
         OpenApiSpecLoader::reset();
         EnumScanner::reset();
+        Deprecations::resetForTesting();
         StrictAdditionalPropertiesPerCallChecker::reset();
         StrictAdditionalPropertiesTracker::resetCurrent();
         SdkExerciseCoverageTracker::resetCurrent();
@@ -95,6 +97,7 @@ class OpenApiCoverageExtensionTest extends TestCase
         }
         OpenApiSpecLoader::reset();
         EnumScanner::reset();
+        Deprecations::resetForTesting();
         StrictAdditionalPropertiesPerCallChecker::reset();
         StrictAdditionalPropertiesTracker::resetCurrent();
         SdkExerciseCoverageTracker::resetCurrent();
@@ -176,6 +179,7 @@ class OpenApiCoverageExtensionTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function bootstrap_passes_absolute_enum_spec_base_path_to_loader(): void
     {
         $extension = new OpenApiCoverageExtension();
@@ -191,6 +195,39 @@ class OpenApiCoverageExtensionTest extends TestCase
     }
 
     #[Test]
+    public function enum_spec_base_path_emits_one_deprecation_notice(): void
+    {
+        $extension = new OpenApiCoverageExtension();
+        $parameters = ParameterCollection::fromArray([
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => 'refs-valid',
+            'enum_spec_base_path' => '/absolute/path/to/openapi',
+        ]);
+
+        $captured = [];
+        set_error_handler(static function (int $errno, string $message) use (&$captured): bool {
+            $captured[] = [$errno, $message];
+
+            return true;
+        });
+
+        try {
+            $extension->setupExtension(null, $parameters, null);
+        } finally {
+            restore_error_handler();
+        }
+
+        $this->assertCount(1, $captured);
+        $this->assertSame(E_USER_DEPRECATED, $captured[0][0]);
+        $this->assertStringStartsWith(Deprecations::PREFIX, $captured[0][1]);
+        $this->assertStringContainsString("'enum_spec_base_path'", $captured[0][1]);
+        // The loader's own configure(enumBasePath:) notice must not fire too.
+        $this->assertSame(['phpunit.enum_spec_base_path' => 1], Deprecations::counts());
+        $this->assertSame('/absolute/path/to/openapi', OpenApiSpecLoader::getEnumBasePath());
+    }
+
+    #[Test]
+    #[IgnoreDeprecations]
     public function bootstrap_resolves_relative_enum_spec_base_path_against_cwd(): void
     {
         // Pin that the extension absolutises a relative `enum_spec_base_path`
@@ -210,6 +247,7 @@ class OpenApiCoverageExtensionTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function bootstrap_trims_whitespace_around_enum_spec_base_path(): void
     {
         // XML editors sometimes wrap parameter values in stray newlines or
@@ -229,6 +267,7 @@ class OpenApiCoverageExtensionTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function bootstrap_fatal_when_enum_spec_base_path_is_empty(): void
     {
         // <parameter name="enum_spec_base_path" value=""/> would otherwise
@@ -255,6 +294,7 @@ class OpenApiCoverageExtensionTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function bootstrap_fatal_when_enum_spec_base_path_set_without_spec_base_path(): void
     {
         // C1 from review: a typo in spec_base_path that leaves
@@ -277,6 +317,7 @@ class OpenApiCoverageExtensionTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function bootstrap_fatal_writes_block_to_github_step_summary_for_orphaned_enum_spec_base_path(): void
     {
         // FATAL diagnostics for spec misconfiguration already land in
@@ -664,6 +705,7 @@ class OpenApiCoverageExtensionTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function bootstrap_fatals_on_drift_when_strict(): void
     {
         $extension = new OpenApiCoverageExtension();
@@ -720,6 +762,7 @@ class OpenApiCoverageExtensionTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function bootstrap_succeeds_when_no_drift(): void
     {
         $extension = new OpenApiCoverageExtension();
@@ -736,6 +779,7 @@ class OpenApiCoverageExtensionTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function bootstrap_fatals_on_misconfigured_binding_even_when_lenient(): void
     {
         $extension = new OpenApiCoverageExtension();
@@ -777,6 +821,7 @@ class OpenApiCoverageExtensionTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function bootstrap_parses_namespaces_csv_with_whitespace(): void
     {
         $extension = new OpenApiCoverageExtension();
@@ -874,6 +919,7 @@ class OpenApiCoverageExtensionTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function bootstrap_appends_fatal_block_to_step_summary_for_enum_drift(): void
     {
         $tmp = tempnam(sys_get_temp_dir(), 'openapi-enum-summary-');
@@ -931,6 +977,7 @@ class OpenApiCoverageExtensionTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function bootstrap_appends_warning_block_to_step_summary_for_lenient_drift(): void
     {
         $tmp = tempnam(sys_get_temp_dir(), 'openapi-enum-summary-');
@@ -1009,6 +1056,7 @@ class OpenApiCoverageExtensionTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function bootstrap_fatals_on_drift_when_fail_on_drift_omitted(): void
     {
         // Default for `enum_drift_fail_on_drift` is `true`. Pin the default

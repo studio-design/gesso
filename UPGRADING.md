@@ -129,6 +129,16 @@ nothing there.
 | 2.7.0 | `Studio\Gesso\Fuzz\ContractCheckSkip` | `Studio\Gesso\Contract\ContractCheckSkip` | 3.0 |
 | 2.7.0 | `Studio\Gesso\Fuzz\ContractCheckSummary` | `Studio\Gesso\Contract\ContractCheckSummary` | 3.0 |
 | 2.7.0 | `Studio\Gesso\Fuzz\OpenApiContractChecks` | `Studio\Gesso\Contract\OpenApiContractChecks` | 3.0 |
+| 2.8.0 | `enum_spec_base_path` (PHPUnit parameter) | none — delete it; enum bindings resolve by `components.schemas` name | 3.0 |
+| 2.8.0 | `OpenApiSpecLoader::configure(enumBasePath:)` / `getEnumBasePath()` | `configure()` without the argument | 3.0 |
+| 2.8.0 | `#[BoundToOpenApiEnum('path/to/file.json')]` (file-path binding) | `#[BoundToOpenApiEnum(component: 'Name')]`, or no attribute when the component is named after the class | 3.0 |
+
+Enum drift bindings: a backed enum now matches the `components.schemas` entry
+named after its class (an `Enum` suffix on either side is ignored) in the
+configured specs, so most file-path bindings can simply delete the attribute.
+Keep `#[BoundToOpenApiEnum(component: 'Name')]` for enums whose component has
+another name, then drop `enum_spec_base_path`. See
+[enum drift detection](docs/enum-drift.md#binding-by-component-name).
 
 The behaviour-equivalent replacement is
 `laravel.auto_inject_dummy_credentials = 'bearer'`, which

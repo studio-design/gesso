@@ -14,6 +14,7 @@ use stdClass;
 use Studio\Gesso\Exception\InvalidOpenApiSpecException;
 use Studio\Gesso\Exception\InvalidOpenApiSpecReason;
 use Studio\Gesso\Exception\SpecFileNotFoundException;
+use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\Internal\HttpRefLoader;
 use Studio\Gesso\Internal\OpenApiDocumentShapeNormalizer;
 use Studio\Gesso\Internal\RemoteAuthorization;
@@ -97,7 +98,8 @@ final class OpenApiSpecLoader
      * @param bool $allowRemoteRefs Opt-in for HTTP(S) `$ref` resolution. Defaults to false:
      *                              every external HTTP(S) ref throws `RemoteRefDisallowed` so a
      *                              spec can never silently reach the network during tests.
-     * @param null|string $enumBasePath Optional secondary base path used only when resolving
+     * @param null|string $enumBasePath Deprecated, removed in Gesso 3.0 (#508). Optional secondary
+     *                                  base path used only when resolving legacy file-path
      *                                  `#[BoundToOpenApiEnum]` attribute paths (issue #170).
      *                                  Lets projects keep `spec_base_path` pointed at a
      *                                  bundled aggregate root (e.g. `openapi/bundled/`) while
@@ -186,22 +188,18 @@ final class OpenApiSpecLoader
         $allowedRemoteRefHosts = self::normalizeAllowedRemoteRefHosts($allowedRemoteRefHosts);
         $remoteSpecs = self::normalizeRemoteSpecs($remoteSpecs, $allowedRemoteRefHosts);
 
-        if ($enumBasePath !== null && trim($enumBasePath) === '') {
-            // Empty / whitespace-only `enumBasePath` would otherwise survive
-            // rtrim() as the empty string and surface later as
-            // `EnumBasePathNotFound: Configured enum_spec_base_path is not a
-            // directory: ` — an unhelpful diagnostic that hides the real
-            // misconfiguration. Reject at the API surface instead, matching
-            // the allowRemoteRefs pairing checks above. Pass `null` to
-            // intentionally disable the parameter.
-            throw new InvalidArgumentException(
-                'OpenApiSpecLoader::configure(): $enumBasePath is empty or whitespace-only. '
-                . 'Pass a valid directory path, or null to fall back to spec_base_path.',
+        if ($enumBasePath !== null) {
+            Deprecations::notice(
+                id: 'spec.loader.configure.enum_base_path',
+                subject: 'OpenApiSpecLoader::configure(enumBasePath:)',
+                replacement: 'OpenApiSpecLoader::configure() without enumBasePath (component-name enum bindings need no enum root)',
+                removedIn: '3.0',
             );
         }
+        // Last validation before any state write: it may throw.
+        self::setEnumBasePath($enumBasePath);
 
         self::$basePath = self::normalizeConfiguredBasePath($basePath);
-        self::$enumBasePath = $enumBasePath !== null ? self::normalizeConfiguredBasePath($enumBasePath) : null;
         self::$stripPrefixes = $stripPrefixes;
         self::$httpClient = $httpClient;
         self::$requestFactory = $requestFactory;
@@ -252,12 +250,38 @@ final class OpenApiSpecLoader
     }
 
     /**
-     * Secondary base path for `#[BoundToOpenApiEnum]` resolution (issue #170).
+     * @internal Used by the PHPUnit extension so the deprecated `configure(enumBasePath:)` path is the only one that notices.
+     */
+    public static function setEnumBasePath(?string $enumBasePath): void
+    {
+        if ($enumBasePath !== null && trim($enumBasePath) === '') {
+            // Empty / whitespace-only `enumBasePath` would otherwise survive
+            // rtrim() as the empty string and surface later as
+            // `EnumBasePathNotFound: Configured enum_spec_base_path is not a
+            // directory: ` — an unhelpful diagnostic that hides the real
+            // misconfiguration. Reject at the API surface instead. Pass
+            // `null` to intentionally disable the parameter.
+            throw new InvalidArgumentException(
+                'OpenApiSpecLoader::configure(): $enumBasePath is empty or whitespace-only. '
+                . 'Pass a valid directory path, or null to fall back to spec_base_path.',
+            );
+        }
+
+        self::$enumBasePath = $enumBasePath !== null ? self::normalizeConfiguredBasePath($enumBasePath) : null;
+    }
+
+    /**
+     * Secondary base path for legacy file-path `#[BoundToOpenApiEnum]`
+     * resolution (issue #170).
      *
      * Returns `null` when not configured — `EnumDriftAsserter` is expected
-     * to fall back to {@see getBasePath()} in that case. The deliberate
-     * non-throwing shape mirrors how `enum_spec_base_path` is opt-in at the
-     * extension layer: absence is the documented default, not an error.
+     * to fall back to {@see getBasePath()} in that case.
+     *
+     * Emits no notice of its own: the only ways to make it non-null —
+     * `configure(enumBasePath:)` or the `enum_spec_base_path` parameter —
+     * already notice, and the asserter reads it on the legacy path.
+     *
+     * @deprecated Removed in Gesso 3.0 (#508): component-name enum bindings need no enum root.
      */
     public static function getEnumBasePath(): ?string
     {
