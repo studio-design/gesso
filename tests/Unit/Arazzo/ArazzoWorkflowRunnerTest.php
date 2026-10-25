@@ -254,6 +254,18 @@ final class ArazzoWorkflowRunnerTest extends TestCase
     }
 
     #[Test]
+    public function a_list_item_containing_its_delimiter_is_not_dispatched(): void
+    {
+        $result = ArazzoWorkflowRunner::workflow(self::DIR . '/wire-encoding.arazzo.json', 'delimiterInsideItem')
+            ->dispatchUsing($this->recordingServer(...))
+            ->run();
+
+        $this->assertSame(ArazzoFailureKind::Workflow, $result->failure?->kind);
+        $this->assertStringContainsString('delimiter', (string) $result->failureMessage());
+        $this->assertSame([], $this->requests);
+    }
+
+    #[Test]
     public function deep_object_query_parameters_are_a_preflight_problem(): void
     {
         try {

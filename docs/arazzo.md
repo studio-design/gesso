@@ -115,7 +115,9 @@ when omitted, from the operation); send it as the `Content-Type` header.
 query string; pass a prefix (`uri('/api')`) when your routes live under one.
 List query values follow the operation's `style` / `explode`: the default
 `form` + `explode: true` repeats the name (`tags=red&tags=blue`), and
-non-exploded styles join with their delimiter (`tags=red,blue`). PHP's own
+non-exploded styles join with their delimiter (`tags=red,blue`). An item
+that contains its `pipeDelimited` / `spaceDelimited` delimiter cannot be
+serialized unambiguously, so the step fails before dispatch. PHP's own
 query parser keeps only the last of repeated names, so a Laravel or Symfony
 dispatcher that needs the whole list should read `$request->query`.
 Query, header and cookie values arrive as the strings that were validated

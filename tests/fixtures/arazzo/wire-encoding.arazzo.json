@@ -26,6 +26,20 @@
       ]
     },
     {
+      "workflowId": "delimiterInsideItem",
+      "steps": [
+        {
+          "stepId": "send",
+          "operationId": "sendThing",
+          "parameters": [
+            { "name": "X-Enabled", "in": "header", "value": true },
+            { "name": "pipes", "in": "query", "value": ["a|b"] }
+          ],
+          "requestBody": { "payload": { "0": "zero", "1": "one" } }
+        }
+      ]
+    },
+    {
       "workflowId": "deepObjectQuery",
       "steps": [
         {

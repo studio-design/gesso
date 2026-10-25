@@ -40,7 +40,9 @@ use function is_scalar;
 use function json_decode;
 use function json_encode;
 use function preg_match_all;
+use function rawurldecode;
 use function sprintf;
+use function str_contains;
 
 /**
  * One configured run of an Arazzo workflow. For every step, in order: the
@@ -406,6 +408,26 @@ final class ArazzoWorkflowExecution
 
                 if ($value !== null && $value !== []) {
                     $values[$parameter['in']][$parameter['name']] = $value;
+                }
+            }
+
+            // A comma inside an item is sent as `%2C` and stays data, but the pipe and
+            // space delimiters cannot be told apart from item content (OAS Appendix E).
+            foreach (self::wire($values['query']) as $name => $value) {
+                $delimiter = rawurldecode($step->queryDelimiters[$name] ?? ',');
+                if ($delimiter === ',' || !is_array($value)) {
+                    continue;
+                }
+
+                foreach ($value as $item) {
+                    if (str_contains($item, $delimiter)) {
+                        return new ArazzoFailure(ArazzoFailureKind::Workflow, $step->stepId, sprintf(
+                            "Query parameter '%s' has the item '%s', which contains its '%s' delimiter and cannot be serialized unambiguously; it was not dispatched.",
+                            $name,
+                            $item,
+                            $delimiter === ' ' ? 'space' : $delimiter,
+                        ));
+                    }
                 }
             }
 
