@@ -2054,6 +2054,25 @@ class RequestBodyValidatorTest extends TestCase
     }
 
     #[Test]
+    public function validate_decodes_each_json_element_of_a_rebuilt_exploded_array(): void
+    {
+        // `contentType` encodes each element, so each repeated pair is its own
+        // JSON document; invalid JSON must not slip past a string item schema.
+        $encoding = ['tags' => ['contentType' => 'application/json']];
+        $schema = ['type' => 'array', 'items' => ['type' => 'string', 'enum' => ['a', 'b']]];
+
+        $valid = $this->validateStyled('application/x-www-form-urlencoded', $encoding, 'tags=%22a%22&tags=%22b%22', $schema);
+        $this->assertSame([], $valid->errors);
+
+        $invalid = $this->validateStyled('application/x-www-form-urlencoded', $encoding, 'tags=a&tags=%22b%22', $schema);
+        $this->assertStringContainsString('[/tags/0] part is declared as application/json but its content is not valid JSON', implode("\n", $invalid->errors));
+
+        $objects = ['type' => 'array', 'items' => ['type' => 'object', 'required' => ['city']]];
+        $missingCity = $this->validateStyled('application/x-www-form-urlencoded', [], 'addr=%7B%22city%22%3A%22X%22%7D&addr=%7B%7D', $objects, property: 'addr');
+        $this->assertStringContainsString('/addr/1', implode("\n", $missingCity->errors));
+    }
+
+    #[Test]
     public function validate_applies_last_wins_after_parse_str_key_mangling(): void
     {
         // `tag.list` and `tag_list` collide only after mangling; parse_str()

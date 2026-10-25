@@ -174,7 +174,8 @@ final class FormBodyDecoder
             // pair, so rebuild the array from the wire. A non-exploded array
             // has no repeated form; its last pair stays what the app saw.
             $wireValues = $rawValues[$name] ?? [];
-            if (count($wireValues) > 1 && is_string($value) && self::explodesArray($propertySchema, $partEncoding)) {
+            $rebuilt = count($wireValues) > 1 && is_string($value) && self::explodesArray($propertySchema, $partEncoding);
+            if ($rebuilt) {
                 $value = array_map(urldecode(...), $wireValues);
                 $fields[$name] = $value;
             }
@@ -274,26 +275,31 @@ final class FormBodyDecoder
             // string and must be decoded before its subschema means anything.
             // Parsing it is not sniffing — when JSON is all the contract
             // allows, a successful parse confirms the declared type and a
-            // failed one contradicts it.
-            if (is_string($value) && $candidates !== [] && self::allJsonCandidates($candidates)) {
-                try {
-                    // Objects stay objects: `json_decode(..., true)` would turn
-                    // `{}` into `[]`, which then fails its own `type: object`.
-                    /** @var mixed $decoded */
-                    $decoded = json_decode($value, false, flags: JSON_THROW_ON_ERROR);
-                    $fields[$name] = $decoded;
-
-                    continue;
-                } catch (JsonException $e) {
-                    $errors[] = sprintf(
-                        '[/%s] part is declared as %s but its content is not valid JSON: %s',
-                        $name,
-                        implode(', ', $candidates),
-                        $e->getMessage(),
-                    );
-
-                    continue;
+            // failed one contradicts it. A rebuilt exploded array carries one
+            // JSON document per element.
+            if ((is_string($value) || $rebuilt) && $candidates !== [] && self::allJsonCandidates($candidates)) {
+                $documents = $rebuilt ? $value : [$value];
+                $decoded = [];
+                foreach ($documents as $index => $document) {
+                    try {
+                        // Objects stay objects: `json_decode(..., true)` would turn
+                        // `{}` into `[]`, which then fails its own `type: object`.
+                        $decoded[] = json_decode($document, false, flags: JSON_THROW_ON_ERROR);
+                    } catch (JsonException $e) {
+                        $errors[] = sprintf(
+                            '[/%s] part is declared as %s but its content is not valid JSON: %s',
+                            $rebuilt ? $name . '/' . $index : $name,
+                            implode(', ', $candidates),
+                            $e->getMessage(),
+                        );
+                    }
                 }
+
+                if (count($decoded) === count($documents)) {
+                    $fields[$name] = $rebuilt ? $decoded : $decoded[0];
+                }
+
+                continue;
             }
 
             // Anything else needs the part's own Content-Type to resolve: to
