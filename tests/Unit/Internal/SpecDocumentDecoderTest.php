@@ -49,4 +49,16 @@ final class SpecDocumentDecoderTest extends TestCase
         // A property named `enum` is a Schema Object the resolver must walk.
         $this->assertSame(['type' => 'string'], $decoded['schema']['properties']['enum']);
     }
+
+    #[Test]
+    public function enum_inside_example_data_is_not_kept_as_an_object(): void
+    {
+        $decoded = SpecDocumentDecoder::decodeJson(
+            '{"example":{"settings":{"enum":{"a":1}}},"default":[{"enum":{"a":1}}]}',
+            'inline JSON',
+        );
+
+        $this->assertSame(['a' => 1], $decoded['example']['settings']['enum']);
+        $this->assertSame(['a' => 1], $decoded['default'][0]['enum']);
+    }
 }

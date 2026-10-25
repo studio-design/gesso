@@ -37,6 +37,9 @@ use function sprintf;
  */
 final class SpecDocumentDecoder
 {
+    /** Keys whose value is sample or default data, never Schema keywords. */
+    private const DATA_KEYS = ['default', 'example', 'examples', 'const'];
+
     private function __construct() {}
 
     /**
@@ -129,8 +132,12 @@ final class SpecDocumentDecoder
         return self::normalizeValue($decoded, true);
     }
 
-    private static function normalizeValue(mixed $value, bool $isRoot, bool $isNamedMap = false): mixed
-    {
+    private static function normalizeValue(
+        mixed $value,
+        bool $isRoot,
+        bool $isNamedMap = false,
+        bool $isData = false,
+    ): mixed {
         if ($value instanceof stdClass) {
             $properties = get_object_vars($value);
             if (!$isRoot && $properties === []) {
@@ -143,8 +150,10 @@ final class SpecDocumentDecoder
                 // collapse into a list here (`{"0": "red"}` to ["red"]). The
                 // resolver never walks `enum`, so the object survives `$ref`
                 // resolution for the loader to record. Keys of a user-named
-                // map are names, not keywords — the resolver's own rule.
-                if (!$isNamedMap && $key === 'enum' && $child instanceof stdClass) {
+                // map are names, not keywords — the resolver's own rule — and
+                // nothing under sample/default data is a keyword at all.
+                $isKeyword = !$isNamedMap && !$isData;
+                if ($isKeyword && $key === 'enum' && $child instanceof stdClass) {
                     $normalized[$key] = $child;
 
                     continue;
@@ -152,7 +161,8 @@ final class SpecDocumentDecoder
                 $normalized[$key] = self::normalizeValue(
                     $child,
                     false,
-                    !$isNamedMap && in_array($key, OpenApiRefResolver::USER_NAMED_MAP_KEYS, true),
+                    $isKeyword && in_array($key, OpenApiRefResolver::USER_NAMED_MAP_KEYS, true),
+                    $isData || ($isKeyword && in_array($key, self::DATA_KEYS, true)),
                 );
             }
 
@@ -165,7 +175,7 @@ final class SpecDocumentDecoder
 
         $normalized = [];
         foreach ($value as $key => $child) {
-            $normalized[$key] = self::normalizeValue($child, false);
+            $normalized[$key] = self::normalizeValue($child, false, isData: $isData);
         }
 
         return $normalized;
