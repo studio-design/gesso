@@ -42,7 +42,7 @@ php artisan gesso:stubs --coverage=build/coverage.json
 | `--coverage=<path>` | — | Coverage JSON (`schema_version` 3). Omit to scaffold the whole spec. |
 | `--spec-name=<name>` | `--spec` filename | Key under `specs` in the coverage document, and the spec name written into the generated tests. |
 | `--adapter=<name>` | `phpunit` | `phpunit`, `laravel`, `symfony`, or `pest`. |
-| `--output=<dir>` | per adapter | Where to write. `tests/Contract`, or `tests/Feature/Contract` for `laravel` and `pest`. |
+| `--output-dir=<dir>` | per adapter | Where to write. `tests/Contract`, or `tests/Feature/Contract` for `laravel` and `pest`. |
 | `--namespace=<ns>` | per adapter | Namespace for the generated classes. Ignored by `pest`. |
 | `--base-class=<fqcn>` | per adapter | Test class to extend — `PHPUnit\Framework\TestCase`, or `Tests\TestCase` for `laravel`. Ignored by `pest`. |
 | `--dry-run` | off | Report what would be written without writing it. |
@@ -53,7 +53,7 @@ php artisan gesso:stubs --coverage=build/coverage.json
 `--format=json` prints `schemaVersion` (currently `1`), `tool`, `dry_run`,
 `output_dir`, `written`, `skipped`, and `not_stubbed` (each entry has a
 `reason` of `unreachable`, `malformed`, or `unsupported`, plus a `detail`). The
-stubs themselves are always separate files under `--output`. See the
+stubs themselves are always separate files under `--output-dir`. See the
 [CLI reference](cli.md#stubs-json) for an example.
 
 Exit code `0` means stubs were written or there was nothing left to stub; `2`
@@ -245,7 +245,7 @@ Pest stubs default into `tests/Feature/Contract` because they generate Laravel
 HTTP calls: they need the
 `uses(TestCase::class, ValidatesOpenApiSchema::class)->in('Feature')` binding
 from [the Pest guide](pest-plugin.md) to have a harness once `->todo()` comes
-off. Point `--output` elsewhere only if your `uses(...)` reaches there.
+off. Point `--output-dir` elsewhere only if your `uses(...)` reaches there.
 
 ## Re-running it
 

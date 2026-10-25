@@ -173,11 +173,8 @@ For paratest / `pest --parallel`, the merge CLI accepts the same options as flag
 ```bash
 vendor/bin/gesso coverage:merge \
     --spec-base-path=openapi/bundled \
-    --specs=front,admin \
-    --min-endpoint-coverage=80 \
-    --min-response-coverage=60 \
-    --min-sdk-exercise-coverage=100 \
-    --min-coverage-strict
+    --spec-name=front,admin \
+    --min-coverage="endpoint=80,response=60,sdk_exercise=100,strict"
 ```
 
 The parallel strict SDK gate also requires every worker sidecar to contain SDK

@@ -129,7 +129,7 @@ final class V3RenameRegistryTest extends TestCase
      * unenforceable. Lowering either is progress and costs one line; raising
      * one is a decision, and now it shows up in the diff of a test.
      */
-    private const SPELLINGS = 54;
+    private const SPELLINGS = 55;
 
     /**
      * What a Replaces cell reads as when the row renames nothing, once its
@@ -145,7 +145,7 @@ final class V3RenameRegistryTest extends TestCase
      */
     private const NO_SUCCESSOR = 'none';
 
-    private const UNSTAGED_CEILING = 34;
+    private const UNSTAGED_CEILING = 19;
 
     #[Test]
     public function every_old_spelling_the_adr_names_is_listed(): void

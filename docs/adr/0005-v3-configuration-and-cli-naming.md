@@ -234,6 +234,15 @@ combination becomes unexpressible.
 exit-code contract (`0` success, `1` the answer is "no", `2` usage or I/O)
 belongs to #507 and is unchanged by this ADR.
 
+Amendment, 2026-10-26: the `stubs` rename gets a row of its own, so the
+rename registry can hold it to a deprecation like the merge flags above. It
+covers `gesso stubs` and the `gesso:stubs` Artisan command alike; the merge
+flag count above is unchanged.
+
+| v3 flag | Replaces |
+| --- | --- |
+| `--output-dir=<dir>` | `--output` |
+
 ## What each issue changes
 
 - **#501** — key set above replaces the sketch: no `spec.enum_base_path`,

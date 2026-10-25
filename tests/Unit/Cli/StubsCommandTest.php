@@ -12,6 +12,7 @@ use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use stdClass;
 use Studio\Gesso\Cli\StubsCommand;
+use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\OpenApiRequestValidator;
 use Studio\Gesso\OpenApiResponseValidator;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
@@ -125,7 +126,7 @@ class StubsCommandTest extends TestCase
                 'coverage' => 'build/coverage.json',
                 'spec_name' => 'front',
                 'adapter' => 'laravel',
-                'output' => 'tests/Contract',
+                'output_dir' => 'tests/Contract',
                 'namespace' => 'Tests\Contract',
                 'base_class' => 'Tests\TestCase',
                 'request_prefix' => '/api',
@@ -138,7 +139,7 @@ class StubsCommandTest extends TestCase
                 '--coverage=build/coverage.json',
                 '--spec-name=front',
                 '--adapter=laravel',
-                '--output=tests/Contract',
+                '--output-dir=tests/Contract',
                 '--namespace=Tests\Contract',
                 '--base-class=Tests\TestCase',
                 '--request-prefix=/api',
@@ -203,6 +204,40 @@ class StubsCommandTest extends TestCase
     }
 
     #[Test]
+    public function the_v2_output_spelling_still_works_and_is_deprecated_once(): void
+    {
+        Deprecations::resetForTesting();
+        $spec = $this->writeSpec();
+
+        try {
+            $first = $this->command()->run(StubsCommand::parseArgv(['--spec=' . $spec, '--output=' . $this->workDir . '/out']));
+            $second = $this->command()->run(StubsCommand::parseArgv(['--spec=' . $spec, '--output=' . $this->workDir . '/out', '--dry-run']));
+
+            $this->assertSame([StubsCommand::EXIT_OK, StubsCommand::EXIT_OK], [$first, $second]);
+            $this->assertNotSame([], $this->generatedFiles());
+            $this->assertSame(1, substr_count($this->stderr, "[Gesso deprecation] The CLI flag '--output' is deprecated. Use --output-dir"));
+            $this->assertSame(['cli.stubs.output' => 2], Deprecations::counts());
+        } finally {
+            Deprecations::resetForTesting();
+        }
+    }
+
+    #[Test]
+    public function output_and_output_dir_together_are_a_usage_error(): void
+    {
+        $exit = $this->command()->run(StubsCommand::parseArgv([
+            '--spec=' . $this->writeSpec(),
+            '--output=' . $this->workDir . '/a',
+            '--output-dir=' . $this->workDir . '/b',
+        ]));
+
+        $this->assertSame(StubsCommand::EXIT_USAGE, $exit);
+        $this->assertStringContainsString('--output and --output-dir set the same option', $this->stderr);
+        $this->assertDirectoryDoesNotExist($this->workDir . '/a');
+        $this->assertDirectoryDoesNotExist($this->workDir . '/b');
+    }
+
+    #[Test]
     public function stubs_only_the_responses_the_coverage_document_does_not_report_as_validated(): void
     {
         $spec = $this->writeSpec();
@@ -214,7 +249,7 @@ class StubsCommandTest extends TestCase
         $exit = $this->command()->run(StubsCommand::parseArgv([
             '--spec=' . $spec,
             '--coverage=' . $coverage,
-            '--output=' . $this->workDir . '/out',
+            '--output-dir=' . $this->workDir . '/out',
         ]));
 
         $this->assertSame(StubsCommand::EXIT_OK, $exit);
@@ -235,7 +270,7 @@ class StubsCommandTest extends TestCase
         $this->command()->run(StubsCommand::parseArgv([
             '--spec=' . $spec,
             '--coverage=' . $coverage,
-            '--output=' . $this->workDir . '/out',
+            '--output-dir=' . $this->workDir . '/out',
         ]));
 
         $this->assertSame(['GetPetsTest.php'], $this->generatedFiles());
@@ -246,7 +281,7 @@ class StubsCommandTest extends TestCase
     {
         $this->command()->run(StubsCommand::parseArgv([
             '--spec=' . $this->writeSpec(),
-            '--output=' . $this->workDir . '/out',
+            '--output-dir=' . $this->workDir . '/out',
         ]));
 
         $this->assertSame(['GetPetsTest.php', 'PostPetsTest.php'], $this->generatedFiles());
@@ -264,7 +299,7 @@ class StubsCommandTest extends TestCase
         $exit = $this->command()->run(StubsCommand::parseArgv([
             '--spec=' . $spec,
             '--coverage=' . $coverage,
-            '--output=' . $this->workDir . '/out',
+            '--output-dir=' . $this->workDir . '/out',
         ]));
 
         $this->assertSame(StubsCommand::EXIT_OK, $exit);
@@ -281,7 +316,7 @@ class StubsCommandTest extends TestCase
 
         $this->command()->run(StubsCommand::parseArgv([
             '--spec=' . $spec,
-            '--output=' . $this->workDir . '/out',
+            '--output-dir=' . $this->workDir . '/out',
         ]));
 
         $this->assertSame(
@@ -297,7 +332,7 @@ class StubsCommandTest extends TestCase
     {
         $exit = $this->command()->run(StubsCommand::parseArgv([
             '--spec=' . $this->writeSpec(),
-            '--output=' . $this->workDir . '/out',
+            '--output-dir=' . $this->workDir . '/out',
             '--dry-run',
         ]));
 
@@ -311,8 +346,8 @@ class StubsCommandTest extends TestCase
     {
         $spec = $this->writeSpec();
 
-        $this->command()->run(StubsCommand::parseArgv(['--spec=' . $spec, '--output=' . $this->workDir . '/a']));
-        $this->command()->run(StubsCommand::parseArgv(['--spec=' . $spec, '--output=' . $this->workDir . '/b']));
+        $this->command()->run(StubsCommand::parseArgv(['--spec=' . $spec, '--output-dir=' . $this->workDir . '/a']));
+        $this->command()->run(StubsCommand::parseArgv(['--spec=' . $spec, '--output-dir=' . $this->workDir . '/b']));
 
         foreach (['GetPetsTest.php', 'PostPetsTest.php'] as $file) {
             $this->assertSame(
@@ -329,7 +364,7 @@ class StubsCommandTest extends TestCase
         $exit = $this->command()->run(StubsCommand::parseArgv([
             '--spec=' . $this->writeSpec(),
             '--adapter=' . $adapter,
-            '--output=' . $this->workDir . '/out',
+            '--output-dir=' . $this->workDir . '/out',
         ]));
 
         $this->assertSame(StubsCommand::EXIT_OK, $exit);
@@ -361,7 +396,7 @@ class StubsCommandTest extends TestCase
 
         $this->command()->run(StubsCommand::parseArgv([
             '--spec=' . $spec,
-            '--output=' . $this->workDir . '/out',
+            '--output-dir=' . $this->workDir . '/out',
         ]));
 
         $files = $this->generatedFiles();
@@ -384,7 +419,7 @@ class StubsCommandTest extends TestCase
         // First run: neither is covered, so both are written.
         $this->command()->run(StubsCommand::parseArgv([
             '--spec=' . $spec,
-            '--output=' . $this->workDir . '/out',
+            '--output-dir=' . $this->workDir . '/out',
         ]));
         $both = $this->generatedFiles();
         $this->assertCount(2, $both);
@@ -398,7 +433,7 @@ class StubsCommandTest extends TestCase
         $this->command()->run(StubsCommand::parseArgv([
             '--spec=' . $spec,
             '--coverage=' . $coverage,
-            '--output=' . $this->workDir . '/second',
+            '--output-dir=' . $this->workDir . '/second',
         ]));
 
         $second = $this->generatedFiles('second');
@@ -421,7 +456,7 @@ class StubsCommandTest extends TestCase
         $this->command()->run(StubsCommand::parseArgv([
             '--spec=' . $spec,
             '--adapter=laravel',
-            '--output=' . $this->workDir . '/out',
+            '--output-dir=' . $this->workDir . '/out',
         ]));
 
         // FormBodyDecoder::toFieldMap() reads a decoded field map, so the
@@ -454,7 +489,7 @@ class StubsCommandTest extends TestCase
             $this->command()->run(StubsCommand::parseArgv([
                 '--spec=' . $spec,
                 '--adapter=' . $adapter,
-                '--output=' . $this->workDir . '/' . $directory,
+                '--output-dir=' . $this->workDir . '/' . $directory,
             ]));
             $code = (string) file_get_contents($this->workDir . '/' . $directory . '/PatchAvatarsTest.php');
             $this->assertStringContainsString('multipart/form-data', $code, $adapter);
@@ -484,7 +519,7 @@ class StubsCommandTest extends TestCase
         $this->command()->run(StubsCommand::parseArgv([
             '--spec=' . $spec,
             '--adapter=symfony',
-            '--output=' . $this->workDir . '/out',
+            '--output-dir=' . $this->workDir . '/out',
         ]));
         $code = (string) file_get_contents($this->workDir . '/out/PatchAvatarsTest.php');
 
@@ -541,7 +576,7 @@ class StubsCommandTest extends TestCase
         $this->command()->run(StubsCommand::parseArgv([
             '--spec=' . $spec,
             '--adapter=laravel',
-            '--output=' . $this->workDir . '/out',
+            '--output-dir=' . $this->workDir . '/out',
         ]));
 
         $code = (string) file_get_contents($this->workDir . '/out/PostThingsTest.php');
@@ -563,7 +598,7 @@ class StubsCommandTest extends TestCase
         $this->command()->run(StubsCommand::parseArgv([
             '--spec=' . $spec,
             '--adapter=laravel',
-            '--output=' . $this->workDir . '/out',
+            '--output-dir=' . $this->workDir . '/out',
         ]));
 
         // postJson() defaults to application/json. RequestBodyValidator treats
@@ -602,7 +637,7 @@ class StubsCommandTest extends TestCase
         $this->command()->run(StubsCommand::parseArgv([
             '--spec=' . $spec,
             '--adapter=laravel',
-            '--output=' . $this->workDir . '/out',
+            '--output-dir=' . $this->workDir . '/out',
         ]));
 
         // `application/*` is a spec range key, not something a client can put
@@ -627,7 +662,7 @@ class StubsCommandTest extends TestCase
             $this->command()->run(StubsCommand::parseArgv([
                 '--spec=' . $spec,
                 '--adapter=' . $adapter,
-                '--output=' . $this->workDir . '/' . $directory,
+                '--output-dir=' . $this->workDir . '/' . $directory,
             ]));
             $code = (string) file_get_contents($this->workDir . '/' . $directory . '/GetThingsTest.php');
             $this->assertStringNotContainsString("'application/*'", $code, $adapter);
@@ -662,7 +697,7 @@ class StubsCommandTest extends TestCase
 
         $exit = $this->command()->run(StubsCommand::parseArgv([
             '--spec=' . $spec,
-            '--output=' . $this->workDir . '/out',
+            '--output-dir=' . $this->workDir . '/out',
         ]));
         $code = (string) file_get_contents($this->workDir . '/out/GetThingsTest.php');
 
@@ -709,7 +744,7 @@ class StubsCommandTest extends TestCase
 
         $exit = $this->command()->run(StubsCommand::parseArgv([
             '--spec=' . $spec,
-            '--output=' . $this->workDir . '/out',
+            '--output-dir=' . $this->workDir . '/out',
             '--format=json',
             '--dry-run',
         ]));
@@ -761,7 +796,7 @@ class StubsCommandTest extends TestCase
     public function output_file_receives_the_same_bytes_as_stdout(): void
     {
         $spec = $this->writeSpec();
-        $argv = ['--spec=' . $spec, '--output=' . $this->workDir . '/out', '--dry-run'];
+        $argv = ['--spec=' . $spec, '--output-dir=' . $this->workDir . '/out', '--dry-run'];
 
         $this->assertSame(StubsCommand::EXIT_OK, $this->command()->run(StubsCommand::parseArgv($argv)));
         $expected = $this->stdout;
@@ -785,7 +820,7 @@ class StubsCommandTest extends TestCase
 
         $this->command()->run(StubsCommand::parseArgv([
             '--spec=' . $spec,
-            '--output=' . $this->workDir . '/out',
+            '--output-dir=' . $this->workDir . '/out',
         ]));
         $code = (string) file_get_contents($this->workDir . '/out/GetThingsTest.php');
 
@@ -823,7 +858,7 @@ class StubsCommandTest extends TestCase
         $this->command()->run(StubsCommand::parseArgv([
             '--spec=' . $spec,
             '--adapter=laravel',
-            '--output=' . $this->workDir . '/out',
+            '--output-dir=' . $this->workDir . '/out',
         ]));
 
         // Forms are the one non-JSON family the request validator checks
@@ -858,7 +893,7 @@ class StubsCommandTest extends TestCase
         $this->command()->run(StubsCommand::parseArgv([
             '--spec=' . $spec,
             '--adapter=laravel',
-            '--output=' . $this->workDir . '/out',
+            '--output-dir=' . $this->workDir . '/out',
         ]));
 
         // `application/xml` is declared first, but a non-JSON media type
@@ -894,7 +929,7 @@ class StubsCommandTest extends TestCase
             $this->command()->run(StubsCommand::parseArgv([
                 '--spec=' . $spec,
                 '--adapter=' . $adapter,
-                '--output=' . $this->workDir . '/' . $directory,
+                '--output-dir=' . $this->workDir . '/' . $directory,
             ]));
         }
 
@@ -924,7 +959,7 @@ class StubsCommandTest extends TestCase
 
         $this->command()->run(StubsCommand::parseArgv([
             '--spec=' . $spec,
-            '--output=' . $this->workDir . '/out',
+            '--output-dir=' . $this->workDir . '/out',
         ]));
 
         // Every substitute the generator reaches for is declared here, so a
@@ -952,7 +987,7 @@ class StubsCommandTest extends TestCase
 
         $this->command()->run(StubsCommand::parseArgv([
             '--spec=' . $spec,
-            '--output=' . $this->workDir . '/out',
+            '--output-dir=' . $this->workDir . '/out',
         ]));
 
         // `*/*` is only reached by findContentTypeKey()'s third pass, so the
@@ -980,7 +1015,7 @@ class StubsCommandTest extends TestCase
 
         $this->command()->run(StubsCommand::parseArgv([
             '--spec=' . $spec,
-            '--output=' . $this->workDir . '/out',
+            '--output-dir=' . $this->workDir . '/out',
         ]));
 
         // The generated assertion is isValid(), which a Skipped result
@@ -1015,7 +1050,7 @@ class StubsCommandTest extends TestCase
             $this->command()->run(StubsCommand::parseArgv([
                 '--spec=' . $spec,
                 '--adapter=' . $adapter,
-                '--output=' . $this->workDir . '/' . $directory,
+                '--output-dir=' . $this->workDir . '/' . $directory,
             ]));
         }
 
@@ -1043,7 +1078,7 @@ class StubsCommandTest extends TestCase
         $this->command()->run(StubsCommand::parseArgv([
             '--spec=' . $spec,
             '--adapter=laravel',
-            '--output=' . $this->workDir . '/out',
+            '--output-dir=' . $this->workDir . '/out',
         ]));
 
         // The body is optional, so omitting it is a valid request — rejecting
@@ -1067,7 +1102,7 @@ class StubsCommandTest extends TestCase
         $this->command()->run(StubsCommand::parseArgv([
             '--spec=' . $spec,
             '--adapter=laravel',
-            '--output=' . $this->workDir . '/out',
+            '--output-dir=' . $this->workDir . '/out',
         ]));
 
         // multipart is unbuildable for COPY, but urlencoded is declared too.
@@ -1093,7 +1128,7 @@ class StubsCommandTest extends TestCase
             $exit = $this->command()->run(StubsCommand::parseArgv([
                 '--spec=' . $spec,
                 '--adapter=' . $adapter,
-                '--output=' . $this->workDir . '/' . $adapter,
+                '--output-dir=' . $this->workDir . '/' . $adapter,
             ]));
 
             // Neither bag can be populated for a custom-method multipart body,
@@ -1110,7 +1145,7 @@ class StubsCommandTest extends TestCase
         $this->command()->run(StubsCommand::parseArgv([
             '--spec=' . $spec,
             '--adapter=phpunit',
-            '--output=' . $this->workDir . '/core',
+            '--output-dir=' . $this->workDir . '/core',
         ]));
         $this->assertSame(['CopyThingsTest.php'], $this->generatedFiles('core'));
         $this->assertStringNotContainsString('not stubbed for this adapter', $this->stdout);
@@ -1131,7 +1166,7 @@ class StubsCommandTest extends TestCase
             $this->command()->run(StubsCommand::parseArgv([
                 '--spec=' . $spec,
                 '--adapter=' . $adapter,
-                '--output=' . $this->workDir . '/' . $directory,
+                '--output-dir=' . $this->workDir . '/' . $directory,
             ]));
             $code = (string) file_get_contents($this->workDir . '/' . $directory . '/CopyThingsTest.php');
             // Request::create() routes the parameters argument to the query bag
@@ -1170,7 +1205,7 @@ class StubsCommandTest extends TestCase
         $this->command()->run(StubsCommand::parseArgv([
             '--spec=' . $spec,
             '--adapter=symfony',
-            '--output=' . $this->workDir . '/out',
+            '--output-dir=' . $this->workDir . '/out',
         ]));
 
         // HttpFoundationFormBody reads $request->request->all(), which
@@ -1190,7 +1225,7 @@ class StubsCommandTest extends TestCase
 
         $exit = $this->command()->run(StubsCommand::parseArgv([
             '--spec=' . $spec,
-            '--output=' . $this->workDir . '/out',
+            '--output-dir=' . $this->workDir . '/out',
         ]));
 
         $this->assertSame(StubsCommand::EXIT_OK, $exit);
@@ -1208,7 +1243,7 @@ class StubsCommandTest extends TestCase
 
         $exit = $this->command()->run(StubsCommand::parseArgv([
             '--spec=' . $spec,
-            '--output=' . $this->workDir . '/out',
+            '--output-dir=' . $this->workDir . '/out',
         ]));
 
         $this->assertSame(StubsCommand::EXIT_OK, $exit);
@@ -1232,7 +1267,7 @@ class StubsCommandTest extends TestCase
         $this->command()->run(StubsCommand::parseArgv([
             '--spec=' . $spec,
             '--adapter=laravel',
-            '--output=' . $this->workDir . '/out',
+            '--output-dir=' . $this->workDir . '/out',
         ]));
 
         // getJson() pins Accept: application/json, so without an explicit
@@ -1253,7 +1288,7 @@ class StubsCommandTest extends TestCase
 
         $this->command()->run(StubsCommand::parseArgv([
             '--spec=' . $spec,
-            '--output=' . $this->workDir . '/out',
+            '--output-dir=' . $this->workDir . '/out',
         ]));
 
         $code = (string) file_get_contents($this->workDir . '/out/GetPetsTest.php');
@@ -1275,7 +1310,7 @@ class StubsCommandTest extends TestCase
 
         $exit = $this->command()->run(StubsCommand::parseArgv([
             '--spec=' . $spec,
-            '--output=' . $this->workDir . '/out',
+            '--output-dir=' . $this->workDir . '/out',
         ]));
 
         $this->assertSame(StubsCommand::EXIT_OK, $exit);
@@ -1298,7 +1333,7 @@ class StubsCommandTest extends TestCase
         $this->command()->run(StubsCommand::parseArgv([
             '--spec=' . $spec,
             '--adapter=laravel',
-            '--output=' . $this->workDir . '/out',
+            '--output-dir=' . $this->workDir . '/out',
         ]));
 
         $code = (string) file_get_contents($this->workDir . '/out/PostPetsTest.php');
@@ -1322,7 +1357,7 @@ class StubsCommandTest extends TestCase
 
         $exit = $this->command()->run(StubsCommand::parseArgv([
             '--spec=' . $spec,
-            '--output=' . $this->workDir . '/out',
+            '--output-dir=' . $this->workDir . '/out',
         ]));
 
         $this->assertSame(StubsCommand::EXIT_OK, $exit);
@@ -1348,7 +1383,7 @@ class StubsCommandTest extends TestCase
 
         $exit = $this->command()->run(StubsCommand::parseArgv([
             '--spec=' . $spec,
-            '--output=' . $this->workDir . '/out',
+            '--output-dir=' . $this->workDir . '/out',
         ]));
 
         $this->assertSame(StubsCommand::EXIT_OK, $exit);
@@ -1377,7 +1412,7 @@ class StubsCommandTest extends TestCase
         $this->command()->run(StubsCommand::parseArgv([
             '--spec=' . $spec,
             '--adapter=laravel',
-            '--output=' . $this->workDir . '/out',
+            '--output-dir=' . $this->workDir . '/out',
         ]));
 
         $files = $this->generatedFiles();
@@ -1400,7 +1435,7 @@ class StubsCommandTest extends TestCase
         $exit = $this->command()->run(StubsCommand::parseArgv([
             '--spec=' . $spec,
             '--adapter=' . $adapter,
-            '--output=' . $this->workDir . '/out',
+            '--output-dir=' . $this->workDir . '/out',
         ]));
 
         $this->assertSame(StubsCommand::EXIT_OK, $exit);
@@ -1427,7 +1462,7 @@ class StubsCommandTest extends TestCase
         $exit = $this->command()->run(StubsCommand::parseArgv([
             '--spec=' . $spec,
             '--adapter=laravel',
-            '--output=' . $this->workDir . '/out',
+            '--output-dir=' . $this->workDir . '/out',
         ]));
 
         $this->assertSame(StubsCommand::EXIT_OK, $exit);
@@ -1449,7 +1484,7 @@ class StubsCommandTest extends TestCase
 
         $exit = $this->command()->run(StubsCommand::parseArgv([
             '--spec=' . $this->workDir . '/petstore.yaml',
-            '--output=' . $this->workDir . '/out',
+            '--output-dir=' . $this->workDir . '/out',
         ]));
 
         $this->assertSame(StubsCommand::EXIT_USAGE, $exit);
@@ -1467,7 +1502,7 @@ class StubsCommandTest extends TestCase
         $this->command()->run(StubsCommand::parseArgv([
             '--spec=' . $this->writeSpec(),
             '--adapter=pest',
-            '--output=' . $this->workDir . '/out',
+            '--output-dir=' . $this->workDir . '/out',
         ]));
 
         $this->assertStringContainsString(
@@ -1503,7 +1538,7 @@ class StubsCommandTest extends TestCase
         $this->command()->run(StubsCommand::parseArgv([
             '--spec=' . $spec,
             '--adapter=laravel',
-            '--output=' . $this->workDir . '/out',
+            '--output-dir=' . $this->workDir . '/out',
         ]));
 
         $code = (string) file_get_contents($this->workDir . '/out/GetPetsPetIdTest.php');
@@ -1525,7 +1560,7 @@ class StubsCommandTest extends TestCase
 
         $this->command()->run(StubsCommand::parseArgv([
             '--spec=' . $spec,
-            '--output=' . $this->workDir . '/out',
+            '--output-dir=' . $this->workDir . '/out',
         ]));
 
         $code = (string) file_get_contents($this->workDir . '/out/DeletePetsPetIdTest.php');
@@ -1548,7 +1583,7 @@ class StubsCommandTest extends TestCase
 
         $this->command()->run(StubsCommand::parseArgv([
             '--spec=' . $spec,
-            '--output=' . $this->workDir . '/out',
+            '--output-dir=' . $this->workDir . '/out',
         ]));
 
         $code = (string) file_get_contents($this->workDir . '/out/GetPetsTest.php');
@@ -1628,7 +1663,7 @@ class StubsCommandTest extends TestCase
 
         $this->command()->run(StubsCommand::parseArgv([
             '--spec=' . $spec,
-            '--output=' . $this->workDir . '/out',
+            '--output-dir=' . $this->workDir . '/out',
         ]));
 
         $code = (string) file_get_contents($this->workDir . '/out/GetPetsTest.php');
@@ -1692,10 +1727,10 @@ class StubsCommandTest extends TestCase
         ]);
         $arguments = ['--spec=' . $spec, '--coverage=' . $coverage, '--adapter=' . $adapter];
         $this->assertSame(0, $this->command()->run(StubsCommand::parseArgv([
-            ...$arguments, '--output=' . $this->workDir . '/before',
+            ...$arguments, '--output-dir=' . $this->workDir . '/before',
         ])));
         $this->assertSame(0, $this->command()->run(StubsCommand::parseArgv([
-            ...$arguments, '--output=' . $this->workDir . '/out', '--request-prefix=' . $prefix,
+            ...$arguments, '--output-dir=' . $this->workDir . '/out', '--request-prefix=' . $prefix,
         ])));
         $this->assertSame($this->generatedFiles('before'), $this->generatedFiles());
         foreach (['GetPetsIdTest.php' => '/pets/7?q=red%20fox', 'GetTest.php' => '/?q=red%20fox'] as $file => $target) {
@@ -1715,7 +1750,7 @@ class StubsCommandTest extends TestCase
     {
         $this->assertSame(StubsCommand::EXIT_USAGE, $this->command()->run(StubsCommand::parseArgv([
             '--spec=' . $this->writeSpec(), '--adapter=laravel', '--request-prefix=' . $prefix,
-            '--output=' . $this->workDir . '/out',
+            '--output-dir=' . $this->workDir . '/out',
         ])));
         $this->assertStringContainsString('--request-prefix', $this->stderr);
         $this->assertDirectoryDoesNotExist($this->workDir . '/out');
@@ -1725,7 +1760,7 @@ class StubsCommandTest extends TestCase
     public function phpunit_response_only_stubs_reject_a_request_prefix(): void
     {
         $this->assertSame(StubsCommand::EXIT_USAGE, $this->command()->run(StubsCommand::parseArgv([
-            '--spec=' . $this->writeSpec(), '--request-prefix=/api', '--output=' . $this->workDir . '/out',
+            '--spec=' . $this->writeSpec(), '--request-prefix=/api', '--output-dir=' . $this->workDir . '/out',
         ])));
         $this->assertStringContainsString('phpunit', $this->stderr);
         $this->assertDirectoryDoesNotExist($this->workDir . '/out');
@@ -1740,7 +1775,7 @@ class StubsCommandTest extends TestCase
             'VERSION-CONTROL' => $operation,
             $method => $operation,
         ]]]);
-        $argv = ['--spec=' . $spec, '--adapter=pest', '--output=' . $this->workDir . '/out'];
+        $argv = ['--spec=' . $spec, '--adapter=pest', '--output-dir=' . $this->workDir . '/out'];
 
         $this->assertSame(StubsCommand::EXIT_USAGE, $this->command()->run(StubsCommand::parseArgv([...$argv, '--dry-run'])));
         $this->assertStringNotContainsString('Would write', $this->stdout);
@@ -1772,7 +1807,7 @@ class StubsCommandTest extends TestCase
         $this->command()->run(StubsCommand::parseArgv([
             '--spec=' . $spec,
             '--adapter=laravel',
-            '--output=' . $this->workDir . '/out',
+            '--output-dir=' . $this->workDir . '/out',
         ]));
 
         $this->assertStringNotContainsString(
@@ -1822,7 +1857,7 @@ class StubsCommandTest extends TestCase
     {
         $this->command()->run(StubsCommand::parseArgv([
             '--spec=' . $spec,
-            '--output=' . $this->workDir . '/rerun',
+            '--output-dir=' . $this->workDir . '/rerun',
         ]));
 
         $files = [];

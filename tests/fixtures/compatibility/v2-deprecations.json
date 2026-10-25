@@ -280,6 +280,150 @@
                 "replacement": "#[BoundToOpenApiEnum(component: 'Name')] (or no attribute when a components.schemas enum is named after the class)",
                 "removed_in": "3.0"
             }
+        },
+        "cli.coverage_merge.specs": {
+            "spelling": "--specs",
+            "v3_target": "--spec-name",
+            "notice": {
+                "subject": "The CLI flag '--specs'",
+                "replacement": "--spec-name (repeatable, comma-accepting)",
+                "removed_in": "3.0"
+            }
+        },
+        "cli.coverage_merge.strip_prefixes": {
+            "spelling": "--strip-prefixes",
+            "v3_target": "--strip-prefix",
+            "notice": {
+                "subject": "The CLI flag '--strip-prefixes'",
+                "replacement": "--strip-prefix (repeatable, comma-accepting)",
+                "removed_in": "3.0"
+            }
+        },
+        "cli.coverage_merge.json_output": {
+            "spelling": "--json-output",
+            "v3_target": "--report=json:<path>",
+            "notice": {
+                "subject": "The CLI flag '--json-output'",
+                "replacement": "--report=json:<path>",
+                "removed_in": "3.0"
+            }
+        },
+        "cli.coverage_merge.junit_output": {
+            "spelling": "--junit-output",
+            "v3_target": "--report=junit:<path>",
+            "notice": {
+                "subject": "The CLI flag '--junit-output'",
+                "replacement": "--report=junit:<path>",
+                "removed_in": "3.0"
+            }
+        },
+        "cli.coverage_merge.html_output": {
+            "spelling": "--html-output",
+            "v3_target": "--report=html:<path>",
+            "notice": {
+                "subject": "The CLI flag '--html-output'",
+                "replacement": "--report=html:<path>",
+                "removed_in": "3.0"
+            }
+        },
+        "cli.coverage_merge.console_output": {
+            "spelling": "--console-output",
+            "v3_target": "--console-report",
+            "notice": {
+                "subject": "The CLI flag '--console-output'",
+                "replacement": "--console-report",
+                "removed_in": "3.0"
+            }
+        },
+        "cli.coverage_merge.min_endpoint_coverage": {
+            "spelling": "--min-endpoint-coverage",
+            "v3_target": "--min-coverage=\"endpoint=…\"",
+            "notice": {
+                "subject": "The CLI flag '--min-endpoint-coverage'",
+                "replacement": "--min-coverage=\"endpoint=…\"",
+                "removed_in": "3.0"
+            }
+        },
+        "cli.coverage_merge.min_response_coverage": {
+            "spelling": "--min-response-coverage",
+            "v3_target": "--min-coverage=\"response=…\"",
+            "notice": {
+                "subject": "The CLI flag '--min-response-coverage'",
+                "replacement": "--min-coverage=\"response=…\"",
+                "removed_in": "3.0"
+            }
+        },
+        "cli.coverage_merge.min_sdk_exercise_coverage": {
+            "spelling": "--min-sdk-exercise-coverage",
+            "v3_target": "--min-coverage=\"sdk_exercise=…\"",
+            "notice": {
+                "subject": "The CLI flag '--min-sdk-exercise-coverage'",
+                "replacement": "--min-coverage=\"sdk_exercise=…\"",
+                "removed_in": "3.0"
+            }
+        },
+        "cli.coverage_merge.min_coverage_strict": {
+            "spelling": "--min-coverage-strict",
+            "v3_target": "--min-coverage=\"strict\"",
+            "notice": {
+                "subject": "The CLI flag '--min-coverage-strict'",
+                "replacement": "--min-coverage=\"strict\"",
+                "removed_in": "3.0"
+            }
+        },
+        "cli.coverage_merge.baseline_file": {
+            "spelling": "--baseline-file",
+            "v3_target": "--baseline=\"violations=…\"",
+            "notice": {
+                "subject": "The CLI flag '--baseline-file'",
+                "replacement": "--baseline=\"violations=…\"",
+                "removed_in": "3.0"
+            }
+        },
+        "cli.coverage_merge.coverage_baseline_file": {
+            "spelling": "--coverage-baseline-file",
+            "v3_target": "--baseline=\"coverage=…\"",
+            "notice": {
+                "subject": "The CLI flag '--coverage-baseline-file'",
+                "replacement": "--baseline=\"coverage=…\"",
+                "removed_in": "3.0"
+            }
+        },
+        "cli.coverage_merge.coverage_baseline_stale": {
+            "spelling": "--coverage-baseline-stale",
+            "v3_target": "--baseline-stale=\"coverage=…\"",
+            "notice": {
+                "subject": "The CLI flag '--coverage-baseline-stale'",
+                "replacement": "--baseline-stale=\"coverage=…\"",
+                "removed_in": "3.0"
+            }
+        },
+        "cli.coverage_merge.strict_required": {
+            "spelling": "--strict-required",
+            "v3_target": "--strict-required=\"run=…,per_call=…\"",
+            "notice": {
+                "subject": "The CLI flag '--strict-required'",
+                "replacement": "--strict-required=\"run=…,per_call=…\" (the bare-mode value is what is deprecated)",
+                "removed_in": "3.0"
+            }
+        },
+        "cli.coverage_merge.strict_additional_properties": {
+            "spelling": "--strict-additional-properties",
+            "v3_target": "--strict-additional-properties=\"run=…,per_call=…\"",
+            "notice": {
+                "subject": "The CLI flag '--strict-additional-properties'",
+                "replacement": "--strict-additional-properties=\"run=…,per_call=…\" (the bare-mode value is what is deprecated)",
+                "removed_in": "3.0"
+            }
+        },
+        "cli.stubs.output": {
+            "spelling": "--output",
+            "v3_target": "--output-dir",
+            "notice": {
+                "subject": "The CLI flag '--output'",
+                "replacement": "--output-dir (on gesso stubs and gesso:stubs)",
+                "removed_in": "3.0"
+            }
         }
     }
 }

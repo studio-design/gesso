@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Artisan;
 use Orchestra\Testbench\TestCase;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
+use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\Internal\LegacyIdentity;
 use Studio\Gesso\Laravel\GessoServiceProvider;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
@@ -62,11 +63,11 @@ final class OpenApiStubsCommandIntegrationTest extends TestCase
     #[Test]
     public function the_legacy_command_name_is_an_alias_with_identical_output(): void
     {
-        $currentExit = Artisan::call('gesso:stubs', ['--output' => $this->outputDir, '--dry-run' => true]);
+        $currentExit = Artisan::call('gesso:stubs', ['--output-dir' => $this->outputDir, '--dry-run' => true]);
         $currentOutput = Artisan::output();
         $this->assertSame([], LegacyIdentity::warnings());
 
-        $legacyExit = Artisan::call('openapi:stubs', ['--output' => $this->outputDir, '--dry-run' => true]);
+        $legacyExit = Artisan::call('openapi:stubs', ['--output-dir' => $this->outputDir, '--dry-run' => true]);
 
         $this->assertSame($currentExit, $legacyExit);
         $this->assertSame($currentOutput, Artisan::output());
@@ -78,9 +79,25 @@ final class OpenApiStubsCommandIntegrationTest extends TestCase
     }
 
     #[Test]
+    public function the_v2_output_option_still_works_and_prints_its_deprecation(): void
+    {
+        Deprecations::resetForTesting();
+
+        try {
+            $this->assertSame(0, Artisan::call('gesso:stubs', ['--output' => $this->outputDir]));
+            $this->assertStringContainsString("The CLI flag '--output' is deprecated. Use --output-dir", Artisan::output());
+            $this->assertFileExists($this->outputDir . '/GetV1PetsTest.php');
+
+            $this->assertSame(2, Artisan::call('gesso:stubs', ['--output' => $this->outputDir, '--output-dir' => $this->outputDir]));
+        } finally {
+            Deprecations::resetForTesting();
+        }
+    }
+
+    #[Test]
     public function command_is_registered_and_resolves_the_spec_from_config(): void
     {
-        $exitCode = Artisan::call('gesso:stubs', ['--output' => $this->outputDir]);
+        $exitCode = Artisan::call('gesso:stubs', ['--output-dir' => $this->outputDir]);
 
         $this->assertSame(0, $exitCode);
         $this->assertStringContainsString('GetV1PetsTest.php', Artisan::output());
@@ -99,7 +116,7 @@ final class OpenApiStubsCommandIntegrationTest extends TestCase
     {
         config()->set('gesso.strip_prefixes', ['/gateway', '/api']);
         $this->assertSame(0, Artisan::call('gesso:stubs', [
-            '--output' => $this->outputDir, '--request-prefix' => '/api/',
+            '--output-dir' => $this->outputDir, '--request-prefix' => '/api/',
         ]));
         $code = (string) file_get_contents($this->outputDir . '/GetV1PetsTest.php');
         $this->assertStringContainsString("'/api/v1/pets'", $code);
@@ -108,7 +125,7 @@ final class OpenApiStubsCommandIntegrationTest extends TestCase
 
         // Prefix changes do not overwrite the user's existing test.
         $this->assertSame(0, Artisan::call('gesso:stubs', [
-            '--output' => $this->outputDir, '--request-prefix' => '/other',
+            '--output-dir' => $this->outputDir, '--request-prefix' => '/other',
         ]));
         $this->assertSame($code, file_get_contents($this->outputDir . '/GetV1PetsTest.php'));
     }
@@ -117,7 +134,7 @@ final class OpenApiStubsCommandIntegrationTest extends TestCase
     public function request_prefix_is_not_inferred_from_strip_prefixes(): void
     {
         config()->set('gesso.strip_prefixes', ['/api']);
-        $this->assertSame(0, Artisan::call('gesso:stubs', ['--output' => $this->outputDir]));
+        $this->assertSame(0, Artisan::call('gesso:stubs', ['--output-dir' => $this->outputDir]));
         $code = (string) file_get_contents($this->outputDir . '/GetV1PetsTest.php');
         $this->assertStringContainsString("'/v1/pets'", $code);
         $this->assertStringNotContainsString("'/api/v1/pets'", $code);
@@ -127,7 +144,7 @@ final class OpenApiStubsCommandIntegrationTest extends TestCase
     public function malformed_request_prefix_is_reported_without_silent_trimming(): void
     {
         $this->assertSame(2, Artisan::call('gesso:stubs', [
-            '--output' => $this->outputDir, '--request-prefix' => '/api ',
+            '--output-dir' => $this->outputDir, '--request-prefix' => '/api ',
         ]));
         $this->assertStringContainsString('--request-prefix', Artisan::output());
         $this->assertDirectoryDoesNotExist($this->outputDir);
@@ -136,7 +153,7 @@ final class OpenApiStubsCommandIntegrationTest extends TestCase
     #[Test]
     public function a_dry_run_writes_nothing(): void
     {
-        $exitCode = Artisan::call('gesso:stubs', ['--output' => $this->outputDir, '--dry-run' => true]);
+        $exitCode = Artisan::call('gesso:stubs', ['--output-dir' => $this->outputDir, '--dry-run' => true]);
 
         $this->assertSame(0, $exitCode);
         $this->assertStringContainsString('Would write', Artisan::output());
@@ -157,7 +174,7 @@ final class OpenApiStubsCommandIntegrationTest extends TestCase
     {
         config()->set('gesso.default_spec', 'does-not-exist');
 
-        $exitCode = Artisan::call('gesso:stubs', ['--output' => $this->outputDir]);
+        $exitCode = Artisan::call('gesso:stubs', ['--output-dir' => $this->outputDir]);
 
         $this->assertSame(2, $exitCode);
         $this->assertStringContainsString('does-not-exist.json', Artisan::output());
@@ -176,7 +193,7 @@ final class OpenApiStubsCommandIntegrationTest extends TestCase
         config()->set('gesso.spec_base_path', $basePath);
         $this->app->offsetUnset('path.base');
 
-        $this->assertSame(2, Artisan::call('gesso:stubs', ['--output' => $this->outputDir]));
+        $this->assertSame(2, Artisan::call('gesso:stubs', ['--output-dir' => $this->outputDir]));
         $output = (string) preg_replace('/\s+/', ' ', Artisan::output());
         $this->assertStringContainsString($basePath, $output);
         $this->assertStringNotContainsString($this->app->basePath(), $output);
@@ -188,7 +205,7 @@ final class OpenApiStubsCommandIntegrationTest extends TestCase
         config()->set('gesso.spec_base_path', 'openapi');
         $this->app->offsetUnset('path.base');
 
-        $this->assertSame(2, Artisan::call('gesso:stubs', ['--output' => $this->outputDir]));
+        $this->assertSame(2, Artisan::call('gesso:stubs', ['--output-dir' => $this->outputDir]));
         $this->assertStringContainsString(
             $this->app->basePath('openapi'),
             (string) preg_replace('/\s+/', ' ', Artisan::output()),

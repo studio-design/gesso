@@ -146,20 +146,20 @@ already renders reports from:
 GESSO_BASELINE_GENERATE=1 vendor/bin/paratest --processes=4
 GESSO_BASELINE_GENERATE=1 vendor/bin/gesso coverage:merge \
     --spec-base-path=openapi/bundled \
-    --coverage-baseline-file=gesso-coverage-baseline.json
+    --baseline="coverage=gesso-coverage-baseline.json"
 
 # Enforce
 vendor/bin/paratest --processes=4
 vendor/bin/gesso coverage:merge \
     --spec-base-path=openapi/bundled \
-    --coverage-baseline-file=gesso-coverage-baseline.json \
-    --coverage-baseline-stale=fail
+    --baseline="coverage=gesso-coverage-baseline.json" \
+    --baseline-stale="coverage=fail"
 ```
 
 The merge exits 1 when a response is newly uncovered, when no sidecars were
 found, when no coverage was recorded, or when the baseline file cannot be
-read; it exits 2 for usage errors (an unknown `--coverage-baseline-stale`
-value, or that flag without `--coverage-baseline-file`).
+read; it exits 2 for usage errors (an unknown `--baseline-stale="coverage=…"`
+value, or that flag without `--baseline="coverage=…"`).
 
 On any of those failures the sidecars are **kept** instead of cleaned up, as
 the violation baseline does. Every recovery re-runs the merge, not the suite:

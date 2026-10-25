@@ -21,6 +21,7 @@ use Studio\Gesso\Internal\CliIo;
 use Studio\Gesso\Internal\CoverageReportWriter;
 use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\Internal\Diagnostics;
+use Studio\Gesso\Internal\LegacyCliFlags;
 use Studio\Gesso\PHPUnit\ConsoleOutput;
 use Studio\Gesso\PHPUnit\CoverageReportSubscriber;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
@@ -34,6 +35,7 @@ use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 use function array_diff;
 use function array_filter;
 use function array_intersect;
+use function array_key_exists;
 use function array_keys;
 use function array_map;
 use function array_unique;
@@ -41,6 +43,7 @@ use function array_values;
 use function arsort;
 use function count;
 use function ctype_digit;
+use function explode;
 use function filemtime;
 use function getenv;
 use function implode;
@@ -55,6 +58,10 @@ use function max;
 use function ord;
 use function preg_replace_callback;
 use function sprintf;
+use function str_contains;
+use function str_replace;
+use function str_starts_with;
+use function substr;
 use function trim;
 use function unlink;
 
@@ -98,6 +105,8 @@ use function unlink;
  *     run_id?: string,
  *     help?: bool,
  *     invalid_options?: list<string>,
+ *     deprecated_flags?: list<string>,
+ *     usage_error?: string,
  * }
  *
  * @internal Not part of the package's public API. Do not use from user code.
@@ -126,6 +135,27 @@ final class CoverageMergeCommand
     ];
 
     private const SHARED_LISTS = ['specs', 'strip_prefixes'];
+
+    /**
+     * Issue #507: the v2 flags v3 renames, by option name, and the v3
+     * spelling each one is folded from. Typing one emits its deprecation.
+     */
+    private const RENAMED_FLAGS = [
+        'specs' => '--spec-name',
+        'strip_prefixes' => '--strip-prefix',
+        'json_output' => '--report=json:<path>',
+        'junit_output' => '--report=junit:<path>',
+        'html_output' => '--report=html:<path>',
+        'console_output' => '--console-report',
+        'min_endpoint_coverage' => '--min-coverage="endpoint=…"',
+        'min_response_coverage' => '--min-coverage="response=…"',
+        'min_sdk_exercise_coverage' => '--min-coverage="sdk_exercise=…"',
+        'min_coverage_strict' => '--min-coverage="strict"',
+        'baseline_file' => '--baseline="violations=…"',
+        'coverage_baseline_file' => '--baseline="coverage=…"',
+        'coverage_baseline_stale' => '--baseline-stale="coverage=…"',
+    ];
+
     private const SHARED_PERCENTS = ['min_endpoint_coverage', 'min_response_coverage', 'min_sdk_exercise_coverage'];
 
     /**
@@ -153,13 +183,31 @@ final class CoverageMergeCommand
             flags: ['cleanup', 'no_cleanup', 'min_coverage_strict'],
             values: [
                 'sidecar_dir', 'spec_base_path', 'output_file', 'format', 'junit_output', 'json_output', 'html_output',
-                'github_step_summary', 'console_output', 'strict_required', 'strict_additional_properties',
+                'github_step_summary', 'console_output', 'console_report', 'strict_required', 'strict_additional_properties',
                 'baseline_file', 'coverage_baseline_file', 'coverage_baseline_stale',
                 'min_endpoint_coverage', 'min_response_coverage', 'min_sdk_exercise_coverage', 'expect_sidecars',
                 'config', 'run_id',
             ],
-            lists: ['specs', 'strip_prefixes'],
+            lists: ['specs', 'strip_prefixes', 'spec_name', 'strip_prefix', 'report', 'min_coverage', 'baseline', 'baseline_stale'],
         );
+
+        // Issue #507: the v3 spellings fold into the v2 option names, so
+        // run() and the gesso.php defaults see one set of keys. Which
+        // spelling was typed is read off argv, because a list option is
+        // always present in $opts.
+        $typed = [];
+        foreach ($argv as $arg) {
+            if (str_starts_with($arg, '--')) {
+                $typed[str_replace('-', '_', explode('=', substr($arg, 2), 2)[0])] = true;
+            }
+        }
+
+        try {
+            $opts = self::foldV3Spellings($opts, $typed);
+        } catch (InvalidArgumentException $e) {
+            $opts['usage_error'] = $e->getMessage();
+        }
+        unset($opts['spec_name'], $opts['strip_prefix'], $opts['report'], $opts['console_report'], $opts['min_coverage'], $opts['baseline'], $opts['baseline_stale']);
 
         if (isset($opts['no_cleanup'])) {
             $opts['cleanup'] = false;
@@ -195,22 +243,71 @@ final class CoverageMergeCommand
 
             Options:
               --spec-base-path=<path>       Path to bundled spec directory (required).
-              --specs=<a,b>                 Comma-separated spec names. Defaults to "front".
-              --strip-prefixes=<a,b>        Comma-separated request-path prefixes to strip.
+              --spec-name=<name>            Spec name; repeatable or comma-separated. Defaults
+                                            to "front".
+              --strip-prefix=<prefix>       Request-path prefix to strip; repeatable or
+                                            comma-separated.
               --sidecar-dir=<path>          Worker sidecar directory. Defaults to
                                             sys_get_temp_dir()/openapi-coverage-sidecars.
               --format=<name>               text | markdown | json | junit | html. Rendering of the
                                             primary report: --output-file when given (default
                                             markdown), else stdout (default text).
               --output-file=<path>          Markdown report output path.
+              --report=<format>:<path>      Also write a json | junit | html report to <path>;
+                                            repeatable. JSON follows docs/coverage-json-schema.md;
+                                            JUnit feeds CI test dashboards; HTML is
+                                            self-contained.
+              --github-step-summary=<path>  Append Markdown report to this file (also
+                                            consults GITHUB_STEP_SUMMARY env var).
+              --console-report=<mode>       default | all | uncovered_only.
+              --min-coverage="endpoint=<pct>,response=<pct>,sdk_exercise=<pct>,strict"
+                                            Coverage thresholds (0-100): fully-covered
+                                            endpoints, (method, path, status, content-type)
+                                            responses, and response schemas exercised by an SDK
+                                            decoder callback. A miss warns; with `strict` it
+                                            exits non-zero. Name only the members you need.
+              --strict-required="run=<mode>"
+                                            off | warn | fail. Aggregate worker observations
+                                            and assert no schema under-description drift
+                                            (Issue #224 / #226). Defaults to off. A per_call=
+                                            member is accepted and left to the workers.
+              --strict-additional-properties="run=<mode>"
+                                            off | warn | fail. Report response properties
+                                            absent from schema declarations. Defaults to off.
+              --baseline="violations=<path>,coverage=<path>"
+                                            violations: union the violation-baseline halves
+                                            staged by a parallel `GESSO_BASELINE_GENERATE=1` run
+                                            and write the merged baseline here (Issue #417).
+                                            coverage: gate the merged coverage against a
+                                            committed set of known-uncovered responses; with
+                                            GESSO_BASELINE_GENERATE=1 set, the file is
+                                            (re)written instead (Issue #481).
+              --baseline-stale="coverage=<mode>"
+                                            off | note | fail. How coverage-baseline entries
+                                            that are covered now are reported. Defaults to note.
+              --expect-sidecars=<n>         Fail unless exactly <n> sidecars are present. Use it
+                                            when the shard count is known up front (a CI matrix):
+                                            a cancelled or failed job writes no sidecar at all,
+                                            and the merge would otherwise under-count silently
+                                            (Issue #434).
+              --run-id=<id>                 Merge only the sidecars of this run (also consults
+                                            GESSO_RUN_ID). Defaults to the run that wrote the
+                                            newest sidecar; other runs' files are listed and left.
+              --no-cleanup                  Keep sidecar files after merge (default: cleanup).
+              --config=<path>               gesso.php to default the options above from
+                                            (default: ./gesso.php when present). Explicit
+                                            flags win; see docs/configuration.md.
+              --help                        Show this message.
+
+            Deprecated spellings (still accepted, removed in Gesso 3.0; see docs/cli.md):
+              --specs=<a,b>                 Comma-separated spec names. Defaults to "front".
+              --strip-prefixes=<a,b>        Comma-separated request-path prefixes to strip.
               --junit-output=<path>         JUnit XML report output path (for CI dashboards
                                             like GitLab CI test reports, Jenkins, SonarQube).
               --json-output=<path>          JSON report output path (machine-readable; see
                                             docs/coverage-json-schema.md for the schema).
               --html-output=<path>          Self-contained HTML report output path (for PR
                                             comments, CI artifact preview, offline review).
-              --github-step-summary=<path>  Append Markdown report to this file (also
-                                            consults GITHUB_STEP_SUMMARY env var).
               --console-output=<mode>       default | all | uncovered_only.
               --min-endpoint-coverage=<pct> Fail-fast (with --min-coverage-strict) when fully-
                                             covered-endpoint percent is below this value (0-100).
@@ -238,19 +335,8 @@ final class CoverageMergeCommand
               --coverage-baseline-stale=<mode>
                                             off | note | fail. How baseline entries that are
                                             covered now are reported. Defaults to note.
-              --expect-sidecars=<n>         Fail unless exactly <n> sidecars are present. Use it
-                                            when the shard count is known up front (a CI matrix):
-                                            a cancelled or failed job writes no sidecar at all,
-                                            and the merge would otherwise under-count silently
-                                            (Issue #434).
-              --run-id=<id>                 Merge only the sidecars of this run (also consults
-                                            GESSO_RUN_ID). Defaults to the run that wrote the
-                                            newest sidecar; other runs' files are listed and left.
-              --no-cleanup                  Keep sidecar files after merge (default: cleanup).
-              --config=<path>               gesso.php to default the options above from
-                                            (default: ./gesso.php when present). Explicit
-                                            flags win; see docs/configuration.md.
-              --help                        Show this message.
+
+            An unknown argument is ignored with a warning; Gesso 3.0 rejects it (exit 2).
 
             Exit codes:
               0  Merge completed; warnings may have been written to stderr.
@@ -272,6 +358,16 @@ final class CoverageMergeCommand
             $this->writeStdout(self::usage($this->invocation));
 
             return self::EXIT_OK;
+        }
+
+        LegacyCliFlags::deprecate($options['deprecated_flags'] ?? [], $this->writeStderr(...));
+        // Issue #507: rejected with exit 2 from Gesso 3.0. Until then a typo
+        // such as `--min-endpont-coverage` must at least not pass in silence.
+        foreach ($options['invalid_options'] ?? [] as $argument) {
+            $this->writeStderr("[Gesso] WARNING: ignoring unknown argument {$argument}; Gesso 3.0 rejects it with exit code 2.\n");
+        }
+        if (isset($options['usage_error'])) {
+            return $this->usageError($options['usage_error']);
         }
 
         try {
@@ -887,6 +983,133 @@ final class CoverageMergeCommand
         ) ?? $json;
     }
 
+    /**
+     * Every merge diagnostic can carry sidecar-derived text (payload errors,
+     * strict-gate reports, deprecation and baseline notes), so stderr gets the
+     * same neutralisation as the stdout report. Overrides the {@see CliIo}
+     * writer for this command only.
+     */
+    /**
+     * Map the v3 spellings onto the v2 option names, and list the v2
+     * spellings that were typed so run() can deprecate them.
+     *
+     * @param array<string, mixed> $opts
+     * @param array<string, true> $typed option names that appeared on argv
+     *
+     * @return array<string, mixed>
+     *
+     * @throws InvalidArgumentException on a malformed v3 value, or a v2 and a v3 spelling of the same option
+     */
+    private static function foldV3Spellings(array $opts, array $typed): array
+    {
+        /** @var array{spec_name: list<string>, strip_prefix: list<string>, report: list<string>, min_coverage: list<string>, baseline: list<string>, baseline_stale: list<string>, console_report?: string, strict_required?: string, strict_additional_properties?: string} $opts */
+        $v3 = [];
+        if (isset($typed['spec_name'])) {
+            $v3['specs'] = $opts['spec_name'];
+        }
+        if (isset($typed['strip_prefix'])) {
+            $v3['strip_prefixes'] = $opts['strip_prefix'];
+        }
+        if (isset($opts['console_report'])) {
+            $v3['console_output'] = $opts['console_report'];
+        }
+        foreach ($opts['report'] as $sink) {
+            [$format, $path] = explode(':', $sink, 2) + [1 => ''];
+            if (!in_array($format, ['json', 'junit', 'html'], true) || $path === '') {
+                throw new InvalidArgumentException("--report={$sink} must be json:<path>, junit:<path> or html:<path>.");
+            }
+            if (isset($v3[$format . '_output'])) {
+                throw new InvalidArgumentException("--report names the {$format} report twice.");
+            }
+            $v3[$format . '_output'] = $path;
+        }
+        foreach (self::members('--min-coverage', $opts['min_coverage'], ['endpoint', 'response', 'sdk_exercise', 'strict']) as $member => $value) {
+            if ($member === 'strict') {
+                $v3['min_coverage_strict'] = ArgvParser::bool($value);
+            } else {
+                $v3["min_{$member}_coverage"] = $value;
+            }
+        }
+        foreach (self::members('--baseline', $opts['baseline'], ['violations', 'coverage']) as $member => $value) {
+            $v3[$member === 'violations' ? 'baseline_file' : 'coverage_baseline_file'] = $value;
+        }
+        // The violation baseline's staleness is reported by the workers; the
+        // merge only ever evaluates the coverage baseline.
+        foreach (self::members('--baseline-stale', $opts['baseline_stale'], ['coverage']) as $value) {
+            $v3['coverage_baseline_stale'] = $value;
+        }
+
+        $deprecated = [];
+        foreach (self::RENAMED_FLAGS as $key => $replacement) {
+            if (!isset($typed[$key])) {
+                continue;
+            }
+            $flag = '--' . str_replace('_', '-', $key);
+            if (array_key_exists($key, $v3)) {
+                throw new InvalidArgumentException("{$flag} and {$replacement} set the same option; pass only {$replacement}.");
+            }
+            $deprecated[] = $flag;
+        }
+
+        // These two keep their name; the bare-mode value is the v2 spelling.
+        foreach (['strict_required', 'strict_additional_properties'] as $key) {
+            $value = $opts[$key] ?? null;
+            if ($value === null) {
+                continue;
+            }
+            $flag = '--' . str_replace('_', '-', $key);
+            if (!str_contains($value, '=')) {
+                $deprecated[] = $flag;
+
+                continue;
+            }
+            // `per_call` is checked by the PHPUnit extension inside each
+            // worker; it is accepted here so one string serves both.
+            $members = self::members($flag, explode(',', $value), ['run', 'per_call']);
+            if (isset($members['per_call']) && !in_array($members['per_call'], ['off', 'warn'], true)) {
+                throw new InvalidArgumentException("{$flag} per_call={$members['per_call']} is not one of off, warn.");
+            }
+            unset($opts[$key]);
+            if (isset($members['run'])) {
+                $opts[$key] = $members['run'];
+            }
+        }
+
+        $opts['deprecated_flags'] = $deprecated;
+
+        return [...$opts, ...$v3];
+    }
+
+    /**
+     * Split a v3 `name=value,name=value` flag into its members. Only `strict`
+     * may be written without a value.
+     *
+     * @param list<string> $items
+     * @param list<string> $allowed
+     *
+     * @return array<string, string>
+     */
+    private static function members(string $flag, array $items, array $allowed): array
+    {
+        $members = [];
+        foreach ($items as $item) {
+            [$name, $value] = explode('=', $item, 2) + [1 => null];
+            $name = trim($name);
+            if (!in_array($name, $allowed, true)) {
+                throw new InvalidArgumentException(sprintf('%s does not take "%s"; expected %s.', $flag, $name, implode(', ', $allowed)));
+            }
+            if (isset($members[$name])) {
+                throw new InvalidArgumentException("{$flag} names {$name} twice.");
+            }
+            if ($value === null && $name !== 'strict') {
+                throw new InvalidArgumentException("{$flag} needs a value for {$name}, e.g. {$name}=….");
+            }
+            $members[$name] = trim($value ?? 'true');
+        }
+
+        return $members;
+    }
+
     private function pathOption(?string $value): ?string
     {
         return $value !== null && $value !== '' ? $this->absolutise($value) : null;
@@ -909,7 +1132,8 @@ final class CoverageMergeCommand
     private function reportDeprecations(array $states, int $sidecarsWithoutDeprecations, int $sidecarCount): void
     {
         try {
-            $merged = Deprecations::mergeStates($states);
+            // This process's own CLI flag notices count too (#507).
+            $merged = Deprecations::mergeStates([...$states, Deprecations::exportState()]);
         } catch (InvalidArgumentException $e) {
             // Never fatal: a malformed deprecation half must not fail a merge
             // whose coverage and gate data parsed cleanly. Report it instead,
@@ -1336,12 +1560,6 @@ final class CoverageMergeCommand
         $this->writeStderr(sprintf("[OpenAPI Coverage] %s: %s\n", $severity, $detail));
     }
 
-    /**
-     * Every merge diagnostic can carry sidecar-derived text (payload errors,
-     * strict-gate reports, deprecation and baseline notes), so stderr gets the
-     * same neutralisation as the stdout report. Overrides the {@see CliIo}
-     * writer for this command only.
-     */
     private function writeStderr(string $message): void
     {
         $this->writeUnfilteredStderr(self::terminalSafe($message));

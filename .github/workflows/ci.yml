@@ -140,7 +140,7 @@ jobs:
           rm -rf "$sidecars"
           vendor/bin/pest --colors=always --parallel --processes=2
           ls "$sidecars"/*.json
-          vendor/bin/gesso coverage:merge --spec-base-path=openapi --specs=petstore
+          vendor/bin/gesso coverage:merge --spec-base-path=openapi --spec-name=petstore
 
   psr7-example:
     name: PSR-7 example

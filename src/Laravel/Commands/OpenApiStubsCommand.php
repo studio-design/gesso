@@ -43,7 +43,8 @@ final class OpenApiStubsCommand extends Command
         {--spec= : Spec name resolved under gesso.spec_base_path, or a path to a spec file}
         {--coverage= : Coverage JSON (schema_version 3); only uncovered responses are stubbed}
         {--adapter=laravel : Generated test idiom: phpunit, laravel, symfony or pest}
-        {--output= : Directory to write into; defaults to the conventional location for the adapter}
+        {--output-dir= : Directory to write into; defaults to the conventional location for the adapter}
+        {--output= : Deprecated spelling of --output-dir; removed in Gesso 3.0}
         {--namespace= : Namespace for the generated classes}
         {--base-class= : Test class the generated classes extend}
         {--request-prefix= : Application mount path prepended to generated requests, e.g. /api}
@@ -80,7 +81,7 @@ final class OpenApiStubsCommand extends Command
             'adapter' => $adapter,
             'dry_run' => (bool) $this->option('dry-run'),
         ];
-        foreach (['coverage', 'output', 'namespace', 'base-class'] as $option) {
+        foreach (['coverage', 'output', 'output-dir', 'namespace', 'base-class'] as $option) {
             $value = $this->option($option);
             if (is_string($value) && trim($value) !== '') {
                 $options[str_replace('-', '_', $option)] = trim($value);
