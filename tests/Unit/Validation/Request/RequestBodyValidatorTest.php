@@ -15,6 +15,8 @@ use Studio\Gesso\Validation\Request\RequestBodyValidationResult;
 use Studio\Gesso\Validation\Request\RequestBodyValidator;
 use Studio\Gesso\Validation\Support\SchemaValidatorRunner;
 
+use function implode;
+
 class RequestBodyValidatorTest extends TestCase
 {
     private RequestBodyValidator $validator;
@@ -2032,6 +2034,73 @@ class RequestBodyValidatorTest extends TestCase
         );
 
         $this->assertSame([], $result->errors);
+    }
+
+    #[Test]
+    public function validate_rebuilds_an_exploded_array_from_repeated_raw_keys(): void
+    {
+        // Exploded (the default) repeats the name per element; parse_str()
+        // keeps only the last pair, so every element must come from the wire.
+        $schema = ['type' => 'array', 'items' => ['type' => 'string', 'enum' => ['a', 'b']]];
+        // A `contentType` encodes each element, so it repeats the name too.
+        $encodings = [[], ['tags' => ['style' => 'form', 'explode' => true]], ['tags' => ['contentType' => 'text/plain']]];
+        foreach ($encodings as $encoding) {
+            $invalid = $this->validateStyled('application/x-www-form-urlencoded', $encoding, 'tags=INVALID&tags=b', $schema);
+            $this->assertStringContainsString('/tags/0', implode("\n", $invalid->errors));
+
+            $valid = $this->validateStyled('application/x-www-form-urlencoded', $encoding, 'tags=a&tags=b', $schema);
+            $this->assertSame([], $valid->errors);
+        }
+    }
+
+    #[Test]
+    public function validate_decodes_each_json_element_of_a_rebuilt_exploded_array(): void
+    {
+        // `contentType` encodes each element, so each repeated pair is its own
+        // JSON document; invalid JSON must not slip past a string item schema.
+        $encoding = ['tags' => ['contentType' => 'application/json']];
+        $schema = ['type' => 'array', 'items' => ['type' => 'string', 'enum' => ['a', 'b']]];
+
+        $valid = $this->validateStyled('application/x-www-form-urlencoded', $encoding, 'tags=%22a%22&tags=%22b%22', $schema);
+        $this->assertSame([], $valid->errors);
+
+        $invalid = $this->validateStyled('application/x-www-form-urlencoded', $encoding, 'tags=a&tags=%22b%22', $schema);
+        $this->assertStringContainsString('[/tags/0] part is declared as application/json but its content is not valid JSON', implode("\n", $invalid->errors));
+
+        $objects = ['type' => 'array', 'items' => ['type' => 'object', 'required' => ['city']]];
+        $missingCity = $this->validateStyled('application/x-www-form-urlencoded', [], 'addr=%7B%22city%22%3A%22X%22%7D&addr=%7B%7D', $objects, property: 'addr');
+        $this->assertStringContainsString('/addr/1', implode("\n", $missingCity->errors));
+    }
+
+    #[Test]
+    public function validate_keeps_a_single_json_element_an_array(): void
+    {
+        // One pair is still a one-element array: each item is its own JSON
+        // document, so the array is never unwrapped to its only element.
+        $encoding = ['tags' => ['contentType' => 'application/json']];
+        $schema = ['type' => 'array', 'items' => ['type' => 'string', 'enum' => ['a', 'b']]];
+
+        $single = $this->validateStyled('application/x-www-form-urlencoded', $encoding, 'tags=%22a%22', $schema);
+        $this->assertSame([], $single->errors);
+
+        // A parsed field map (adapters hand one over) decodes per element too.
+        $parsed = $this->validateStyled('application/x-www-form-urlencoded', $encoding, ['tags' => ['"a"', 'b']], $schema);
+        $this->assertStringContainsString('[/tags/1] part is declared as application/json but its content is not valid JSON', implode("\n", $parsed->errors));
+    }
+
+    #[Test]
+    public function validate_rebuilds_an_exploded_array_declared_through_all_of(): void
+    {
+        $schema = ['allOf' => [['type' => 'array', 'items' => ['type' => 'string', 'enum' => ['a', 'b']]]]];
+
+        $result = $this->validateStyled(
+            'application/x-www-form-urlencoded',
+            ['tags' => ['style' => 'form', 'explode' => true]],
+            'tags=INVALID&tags=b',
+            $schema,
+        );
+
+        $this->assertStringContainsString('/tags/0', implode("\n", $result->errors));
     }
 
     #[Test]

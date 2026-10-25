@@ -20,6 +20,8 @@ use Studio\Gesso\Validation\Request\RequestBodyValidator;
 use Studio\Gesso\Validation\Support\SchemaValidatorRunner;
 
 use function array_column;
+use function array_filter;
+use function array_values;
 use function chdir;
 use function explode;
 use function fclose;
@@ -1090,6 +1092,22 @@ class DoctorCommandTest extends TestCase
         $this->assertSame(DoctorCommand::EXIT_USAGE, $exit);
         $this->assertSame('', $stdout);
         $this->assertStringContainsString('--local-ref-root', $stderr);
+    }
+
+    public function response_encoding_structure_is_checked_only_on_openapi_3_2(): void
+    {
+        // Mirrors ResponseSchemaResolver: 3.2 applies `encoding` to response
+        // form media types, 3.0 / 3.1 scope it to request bodies.
+        $fixtures = __DIR__ . '/../../fixtures/specs/';
+
+        $v32 = $this->runJsonDoctor($fixtures . 'form-response-3.2.json', $exit);
+        $this->assertSame(DoctorCommand::EXIT_DIAGNOSTIC_FAILURE, $exit);
+        $structure = array_values(array_filter($v32['issues'], static fn(array $issue): bool => $issue['category'] === 'structure'));
+        $this->assertCount(1, $structure);
+        $this->assertStringContainsString('.encoding', $structure[0]['message']);
+
+        $v31 = $this->runJsonDoctor($fixtures . 'form-response.json', $exit);
+        $this->assertNotContains('structure', array_column($v31['issues'], 'category'));
     }
 
     /**

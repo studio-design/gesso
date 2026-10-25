@@ -629,4 +629,20 @@ final class OpenApiAssertionsTest extends TestCase
 
         $this->assertResponseMatchesOpenApiSchema($request, $response);
     }
+
+    #[Test]
+    #[OpenApiSpec('form-response')]
+    public function form_response_body_is_validated_against_its_schema(): void
+    {
+        // Issue #488: an urlencoded response body is parsed and validated.
+        $request = Request::create('/form-response', 'GET');
+        $headers = ['Content-Type' => 'application/x-www-form-urlencoded'];
+
+        $this->assertResponseMatchesOpenApiSchema($request, new Response('token=abc', 200, $headers));
+
+        $this->expectException(AssertionFailedError::class);
+        $this->expectExceptionMessage('/expires_in');
+
+        $this->assertResponseMatchesOpenApiSchema($request, new Response('token=abc&expires_in=soon', 200, $headers));
+    }
 }

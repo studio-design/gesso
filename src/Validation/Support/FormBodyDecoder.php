@@ -14,9 +14,13 @@ use function array_fill_keys;
 use function array_filter;
 use function array_key_exists;
 use function array_key_first;
+use function array_key_last;
 use function array_keys;
+use function array_map;
 use function array_pad;
+use function array_values;
 use function array_walk_recursive;
+use function count;
 use function explode;
 use function implode;
 use function in_array;
@@ -29,6 +33,7 @@ use function sprintf;
 use function str_replace;
 use function strtolower;
 use function trim;
+use function urldecode;
 
 /**
  * Turn a form request body (`application/x-www-form-urlencoded` or
@@ -91,25 +96,24 @@ final class FormBodyDecoder
     }
 
     /**
-     * The percent-encoded wire value of each field of a raw urlencoded body,
-     * as {@see self::toFieldMap()} reads the same bytes: parse_str()'s key
-     * mangling (`a.b` becomes `a_b`) and its last-pair-wins rule included, so
-     * {@see self::prepare()} pairs every raw value with the parsed one.
+     * The percent-encoded wire values of each field of a raw urlencoded body,
+     * in wire order, keyed as {@see self::toFieldMap()} reads the same bytes:
+     * parse_str()'s key mangling (`a.b` becomes `a_b`) included, so the last
+     * entry is the pair parse_str() keeps.
      *
-     * @return array<string, string>
+     * @return array<string, list<string>>
      */
     public static function rawUrlencodedValues(string $body): array
     {
-        // Mangle each pair's name before applying last-wins: `a.b` and `a_b`
-        // collide only after mangling, so grouping by raw name first would
-        // keep the wrong pair.
+        // Mangle each pair's name before grouping: `a.b` and `a_b` collide
+        // only after mangling, so grouping by raw name would split them.
         $values = [];
         foreach (explode('&', $body) as $pair) {
             [$encodedName, $encodedValue] = array_pad(explode('=', $pair, 2), 2, '');
             parse_str($encodedName . '=', $parsed);
             $key = array_key_first($parsed);
             if ($key !== null) {
-                $values[(string) $key] = $encodedValue;
+                $values[(string) $key][] = $encodedValue;
             }
         }
 
@@ -128,9 +132,9 @@ final class FormBodyDecoder
      *                                    the encoding object talks about
      * @param OpenApiVersion $version OpenAPI 3.0 applies `style` / `explode` / `allowReserved` to
      *                                urlencoded bodies only; 3.1 and later to multipart as well
-     * @param array<string, string> $rawValues percent-encoded wire value per field, when the
-     *                                         caller has the raw urlencoded body
-     *                                         ({@see self::rawUrlencodedValues()})
+     * @param array<string, list<string>> $rawValues percent-encoded wire values per field, when the
+     *                                               caller has the raw urlencoded body
+     *                                               ({@see self::rawUrlencodedValues()})
      *
      * @return array{array<string, mixed>, list<string>, array<string, array{reason: string, candidates: list<string>}>, list<string>}
      *                                                                                                                                 the prepared data; encoding-level errors (parts that contradict
@@ -165,6 +169,16 @@ final class FormBodyDecoder
             $declaredContentType = is_string($partEncoding['contentType'] ?? null)
                 ? $partEncoding['contentType']
                 : null;
+
+            // `style: form, explode: true` (also the default) repeats the name
+            // once per array element, but parse_str() keeps only the last
+            // pair, so rebuild the array from the wire. A non-exploded array
+            // has no repeated form; its last pair stays what the app saw.
+            $wireValues = $rawValues[$name] ?? [];
+            if (count($wireValues) > 1 && is_string($value) && self::explodesArray($propertySchema, $partEncoding)) {
+                $value = array_map(urldecode(...), $wireValues);
+                $fields[$name] = $value;
+            }
 
             // Per-part headers exist only in multipart, and no adapter
             // preserves them, so a declared one goes unchecked — report it
@@ -222,7 +236,7 @@ final class FormBodyDecoder
             // split applies; allowReserved changes nothing a decoded value
             // still shows.
             if ($styled) {
-                $rawValue = $rawValues[$name] ?? null;
+                $rawValue = $wireValues === [] ? null : $wireValues[array_key_last($wireValues)];
                 // Form parsing leaves a multipart part's body as sent, so the
                 // value is still RFC 6570 percent-encoded: it is the raw wire
                 // value. RFC 6570 never emits `+` for a space, so a literal
@@ -261,26 +275,36 @@ final class FormBodyDecoder
             // string and must be decoded before its subschema means anything.
             // Parsing it is not sniffing — when JSON is all the contract
             // allows, a successful parse confirms the declared type and a
-            // failed one contradicts it.
-            if (is_string($value) && $candidates !== [] && self::allJsonCandidates($candidates)) {
-                try {
-                    // Objects stay objects: `json_decode(..., true)` would turn
-                    // `{}` into `[]`, which then fails its own `type: object`.
-                    /** @var mixed $decoded */
-                    $decoded = json_decode($value, false, flags: JSON_THROW_ON_ERROR);
-                    $fields[$name] = $decoded;
-
-                    continue;
-                } catch (JsonException $e) {
-                    $errors[] = sprintf(
-                        '[/%s] part is declared as %s but its content is not valid JSON: %s',
-                        $name,
-                        implode(', ', $candidates),
-                        $e->getMessage(),
-                    );
-
-                    continue;
+            // failed one contradicts it. An array property carries one JSON
+            // document per element, however many arrived (OAS 3.2 Encoding
+            // By Name).
+            $isArray = $propertySchema !== null && TypeCoercer::isArraySchema($propertySchema);
+            $documents = $isArray && is_array($value) ? array_values($value) : [$value];
+            if (
+                $candidates !== [] && self::allJsonCandidates($candidates) &&
+                array_filter($documents, static fn(mixed $document): bool => !is_string($document)) === []
+            ) {
+                $decoded = [];
+                foreach ($documents as $index => $document) {
+                    try {
+                        // Objects stay objects: `json_decode(..., true)` would turn
+                        // `{}` into `[]`, which then fails its own `type: object`.
+                        $decoded[] = json_decode($document, false, flags: JSON_THROW_ON_ERROR);
+                    } catch (JsonException $e) {
+                        $errors[] = sprintf(
+                            '[/%s] part is declared as %s but its content is not valid JSON: %s',
+                            $isArray ? $name . '/' . $index : $name,
+                            implode(', ', $candidates),
+                            $e->getMessage(),
+                        );
+                    }
                 }
+
+                if (count($decoded) === count($documents)) {
+                    $fields[$name] = $isArray ? $decoded : $decoded[0];
+                }
+
+                continue;
             }
 
             // Anything else needs the part's own Content-Type to resolve: to
@@ -308,6 +332,27 @@ final class FormBodyDecoder
         }
 
         return [$fields, $errors, $unverifiable, $headerSkips];
+    }
+
+    /**
+     * Whether an array property is serialized as one pair per element:
+     * `style: form` with `explode` true or omitted, or no style at all — a
+     * `contentType` then encodes each element, not the array (OAS 3.2
+     * Encoding By Name).
+     *
+     * @param null|array<string, mixed> $propertySchema
+     * @param array<string, mixed> $partEncoding
+     */
+    private static function explodesArray(?array $propertySchema, array $partEncoding): bool
+    {
+        if ($propertySchema === null || !TypeCoercer::isArraySchema($propertySchema)) {
+            return false;
+        }
+
+        $style = array_key_exists('style', $partEncoding) ? $partEncoding['style'] : 'form';
+        $explode = array_key_exists('explode', $partEncoding) ? $partEncoding['explode'] : $style === 'form';
+
+        return $style === 'form' && $explode === true;
     }
 
     /**

@@ -44,6 +44,17 @@ final class TypeCoercer
     }
 
     /**
+     * Whether the value must be an array, once every `allOf` branch has had
+     * its say — the same reading {@see self::coerceQuery()} coerces by.
+     *
+     * @param array<string, mixed> $schema
+     */
+    public static function isArraySchema(array $schema): bool
+    {
+        return self::effectiveType($schema) === 'array';
+    }
+
+    /**
      * Whether the schema's top-level type explicitly accepts a JSON object.
      * Handles OAS 3.0 (`type: object`) and OAS 3.1/3.2 (`type: ["object", "null"]`).
      * Composition keywords (`oneOf` / `anyOf` / `allOf`) are intentionally
