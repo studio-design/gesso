@@ -30,8 +30,6 @@ use function in_array;
 use function is_array;
 use function is_string;
 use function json_encode;
-use function preg_match;
-use function str_starts_with;
 use function trim;
 
 /**
@@ -40,6 +38,8 @@ use function trim;
  */
 final class OpenApiRoutesCommand extends Command
 {
+    use ReadsSpecConfiguration;
+
     /** Issue #504: the pre-v3 spelling, accepted through v3 and removed in v4. */
     protected $aliases = ['openapi:routes'];
     protected $signature = 'gesso:routes
@@ -87,12 +87,15 @@ final class OpenApiRoutesCommand extends Command
                     'prefix' => $this->nullableStringOption('prefix'),
                     'middleware' => $this->stringListOption('middleware'),
                     'domains' => $this->stringListOption('domain'),
-                    'excluded_route_names' => $this->stringListOption('exclude-route'),
-                    'excluded_operation_ids' => $this->documentedSideExclusions(
+                    'excluded_route_names' => $this->mergedExclusions(
+                        'exclude-route',
+                        'gesso.route_parity.excluded_route_names',
+                    ),
+                    'excluded_operation_ids' => $this->mergedExclusions(
                         'exclude-operation',
                         'gesso.route_parity.external_operation_ids',
                     ),
-                    'excluded_openapi_paths' => $this->documentedSideExclusions(
+                    'excluded_openapi_paths' => $this->mergedExclusions(
                         'exclude-openapi-path',
                         'gesso.route_parity.external_openapi_paths',
                     ),
@@ -135,29 +138,17 @@ final class OpenApiRoutesCommand extends Command
     private function specNames(): array
     {
         $specs = $this->stringListOption('spec');
-        if ($specs !== []) {
-            return $specs;
+        if ($specs === []) {
+            $specs = array_values(array_unique($this->configStringList('gesso.specs')));
         }
 
-        $defaultSpec = config('gesso.default_spec');
-        if (!is_string($defaultSpec) || trim($defaultSpec) === '') {
-            throw new InvalidArgumentException(
-                'No OpenAPI spec selected. Pass --spec or configure gesso.default_spec.',
-            );
-        }
-
-        return [trim($defaultSpec)];
+        return $specs !== [] ? $specs : [$this->configuredDefaultSpec()];
     }
 
     /** @return array{string, list<string>} */
     private function loaderConfiguration(Application $application): array
     {
-        $basePath = config('gesso.spec_base_path');
-        if (!is_string($basePath) || trim($basePath) === '') {
-            throw new InvalidArgumentException(
-                'gesso.spec_base_path must be a non-empty directory path.',
-            );
-        }
+        $basePath = $this->configuredSpecBasePath($application);
 
         $stripPrefixes = config('gesso.strip_prefixes', []);
         if (!is_array($stripPrefixes)) {
@@ -174,19 +165,7 @@ final class OpenApiRoutesCommand extends Command
             $normalizedPrefixes[] = $prefix;
         }
 
-        $basePath = trim($basePath);
-        if (!$this->isAbsolutePath($basePath)) {
-            $basePath = $application->basePath($basePath);
-        }
-
         return [$basePath, $normalizedPrefixes];
-    }
-
-    private function isAbsolutePath(string $path): bool
-    {
-        return str_starts_with($path, '/') ||
-            str_starts_with($path, '\\\\') ||
-            preg_match('/^[A-Za-z]:[\\\\\/]/', $path) === 1;
     }
 
     private function nullableStringOption(string $name): ?string
@@ -214,7 +193,16 @@ final class OpenApiRoutesCommand extends Command
     }
 
     /** @return list<string> */
-    private function documentedSideExclusions(string $option, string $configKey): array
+    private function mergedExclusions(string $option, string $configKey): array
+    {
+        return array_values(array_unique(array_merge(
+            $this->configStringList($configKey),
+            $this->stringListOption($option),
+        )));
+    }
+
+    /** @return list<string> */
+    private function configStringList(string $configKey): array
     {
         $configured = config($configKey, []);
         if (!is_array($configured)) {
@@ -229,10 +217,7 @@ final class OpenApiRoutesCommand extends Command
             $normalized[] = trim($entry);
         }
 
-        return array_values(array_unique(array_merge(
-            $normalized,
-            $this->stringListOption($option),
-        )));
+        return $normalized;
     }
 
     private function renderText(RouteParityResult $result): void

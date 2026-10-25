@@ -1,0 +1,20 @@
+{
+    "openapi": "3.1.0",
+    "info": {"title": "Enum drift component bindings", "version": "1.0.0"},
+    "paths": {},
+    "components": {
+        "schemas": {
+            "Color": {"type": "string", "enum": ["red", "green", "blue"]},
+            "PaymentStatusEnum": {"type": "string", "enum": ["pending", "paid"]},
+            "ShippingMethod": {"type": "string", "enum": ["post", "pickup"]},
+            "SharedCode": {"type": "string", "enum": ["a", "b"]},
+            "Flags": {"type": "boolean", "enum": [true, false]},
+            "Broken": {"type": "string", "enum": "red"},
+            "Keyed": {"type": "string", "enum": {"r": "red"}},
+            "NumericKeyed": {"type": "string", "enum": {"0": "red"}},
+            "EmptyKeyed": {"type": "string", "enum": {}},
+            "RefKeyed": {"$ref": "./_shared/schemas/object-enum.json"},
+            "NotAnEnum": {"type": "string"}
+        }
+    }
+}

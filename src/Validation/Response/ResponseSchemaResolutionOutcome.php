@@ -67,6 +67,14 @@ enum ResponseSchemaResolutionOutcome
     case NonJsonSchema;
 
     /**
+     * The matched media type is `application/x-www-form-urlencoded` with a
+     * `schema`: validated field by field from the parsed body (issue #488).
+     * Not `Resolved`, so JSON-generating consumers (response explorer, SDK
+     * coverage, stubs) keep skipping it.
+     */
+    case FormSchema;
+
+    /**
      * The matched media type uses OpenAPI 3.2 `itemSchema` streaming
      * semantics; stream items cannot be resolved to one buffered schema.
      */

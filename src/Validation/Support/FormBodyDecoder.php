@@ -7,9 +7,20 @@ namespace Studio\Gesso\Validation\Support;
 use const JSON_THROW_ON_ERROR;
 
 use JsonException;
+use Studio\Gesso\OpenApiVersion;
 use Studio\Gesso\UploadedPart;
 
 use function array_fill_keys;
+use function array_filter;
+use function array_key_exists;
+use function array_key_first;
+use function array_key_last;
+use function array_keys;
+use function array_map;
+use function array_pad;
+use function array_values;
+use function array_walk_recursive;
+use function count;
 use function explode;
 use function implode;
 use function in_array;
@@ -17,8 +28,12 @@ use function is_array;
 use function is_string;
 use function json_decode;
 use function parse_str;
+use function rawurldecode;
 use function sprintf;
+use function str_replace;
+use function strtolower;
 use function trim;
+use function urldecode;
 
 /**
  * Turn a form request body (`application/x-www-form-urlencoded` or
@@ -31,7 +46,11 @@ use function trim;
  * decoded before its subschema is applied, and a binary part's declared
  * `Content-Type` is checked against `encoding.<part>.contentType`.
  *
- * `encoding.headers` / `style` / `explode` are not honoured yet.
+ * A part declaring `style` / `explode` / `allowReserved` is read as RFC 6570
+ * form serialization instead (its `contentType` is ignored, per the spec), so
+ * a non-exploded array is split by {@see QueryStyleDeserializer}. Declared
+ * per-part `headers` cannot be observed — no adapter preserves them — and are
+ * reported back so the caller can skip rather than pass.
  *
  * @internal Not part of the package's public API. Do not use from user code.
  */
@@ -77,34 +96,72 @@ final class FormBodyDecoder
     }
 
     /**
+     * The percent-encoded wire values of each field of a raw urlencoded body,
+     * in wire order, keyed as {@see self::toFieldMap()} reads the same bytes:
+     * parse_str()'s key mangling (`a.b` becomes `a_b`) included, so the last
+     * entry is the pair parse_str() keeps.
+     *
+     * @return array<string, list<string>>
+     */
+    public static function rawUrlencodedValues(string $body): array
+    {
+        // Mangle each pair's name before grouping: `a.b` and `a_b` collide
+        // only after mangling, so grouping by raw name would split them.
+        $values = [];
+        foreach (explode('&', $body) as $pair) {
+            [$encodedName, $encodedValue] = array_pad(explode('=', $pair, 2), 2, '');
+            parse_str($encodedName . '=', $parsed);
+            $key = array_key_first($parsed);
+            if ($key !== null) {
+                $values[(string) $key][] = $encodedValue;
+            }
+        }
+
+        return $values;
+    }
+
+    /**
      * Coerce each field to the type its property subschema declares and apply
      * the `encoding` rules.
      *
      * @param array<string, mixed> $fields
      * @param array<string, mixed> $schema the media type's OpenAPI schema
      * @param array<string, mixed> $encoding the media type's `encoding` object
-     * @param string $normalizedMediaType the request's form media type; only
-     *                                    a multipart body carries parts whose own Content-Type the
-     *                                    encoding object talks about
+     * @param string $normalizedMediaType the body's form media type; only a
+     *                                    multipart body carries parts whose own Content-Type and headers
+     *                                    the encoding object talks about
+     * @param OpenApiVersion $version OpenAPI 3.0 applies `style` / `explode` / `allowReserved` to
+     *                                urlencoded bodies only; 3.1 and later to multipart as well
+     * @param array<string, list<string>> $rawValues percent-encoded wire values per field, when the
+     *                                               caller has the raw urlencoded body
+     *                                               ({@see self::rawUrlencodedValues()})
      *
-     * @return array{array<string, mixed>, list<string>, array<string, array{reason: string, candidates: list<string>}>}
-     *                                                                                                                   the prepared data, encoding-level errors (parts that contradict
-     *                                                                                                                   the contract), and, keyed by field name, why a part could not be
-     *                                                                                                                   checked plus the media types it may have carried. The caller
-     *                                                                                                                   re-reads those parts every way the contract allows, so an
-     *                                                                                                                   unverifiable part is neither counted as a clean pass nor allowed
-     *                                                                                                                   to mask — or fabricate — a violation elsewhere in the body
+     * @return array{array<string, mixed>, list<string>, array<string, array{reason: string, candidates: list<string>}>, list<string>}
+     *                                                                                                                                 the prepared data; encoding-level errors (parts that contradict
+     *                                                                                                                                 the contract); keyed by field name, why a part could not be
+     *                                                                                                                                 checked plus the media types it may have carried (the caller
+     *                                                                                                                                 re-reads those parts every way the contract allows, so an
+     *                                                                                                                                 unverifiable part is neither counted as a clean pass nor allowed
+     *                                                                                                                                 to mask — or fabricate — a violation elsewhere in the body);
+     *                                                                                                                                 and why declared per-part headers went unchecked
      */
     public static function prepare(
         array $fields,
         array $schema,
         array $encoding,
         string $normalizedMediaType = self::MULTIPART,
+        OpenApiVersion $version = OpenApiVersion::V3_1,
+        array $rawValues = [],
     ): array {
         $properties = is_array($schema['properties'] ?? null) ? $schema['properties'] : [];
         $errors = [];
         $unverifiable = [];
+        $headerSkips = [];
         $isMultipart = $normalizedMediaType === self::MULTIPART;
+        // OAS 3.0 scopes style / explode / allowReserved to urlencoded bodies
+        // ("SHALL be ignored" otherwise); 3.1 and 3.2 extend them to multipart.
+        $stylesApply = $normalizedMediaType === self::URLENCODED ||
+            ($isMultipart && $version !== OpenApiVersion::V3_0);
 
         foreach ($fields as $name => $value) {
             $propertySchema = is_array($properties[$name] ?? null) ? $properties[$name] : null;
@@ -112,6 +169,34 @@ final class FormBodyDecoder
             $declaredContentType = is_string($partEncoding['contentType'] ?? null)
                 ? $partEncoding['contentType']
                 : null;
+
+            // `style: form, explode: true` (also the default) repeats the name
+            // once per array element, but parse_str() keeps only the last
+            // pair, so rebuild the array from the wire. A non-exploded array
+            // has no repeated form; its last pair stays what the app saw.
+            $wireValues = $rawValues[$name] ?? [];
+            if (count($wireValues) > 1 && is_string($value) && self::explodesArray($propertySchema, $partEncoding)) {
+                $value = array_map(urldecode(...), $wireValues);
+                $fields[$name] = $value;
+            }
+
+            // Per-part headers exist only in multipart, and no adapter
+            // preserves them, so a declared one goes unchecked — report it
+            // instead of passing. `Content-Type` is excluded: the spec says to
+            // ignore it here (it is `encoding.<part>.contentType`'s job).
+            if ($isMultipart && is_array($partEncoding['headers'] ?? null)) {
+                $declared = array_filter(
+                    array_keys($partEncoding['headers']),
+                    static fn(int|string $header): bool => is_string($header) && strtolower($header) !== 'content-type',
+                );
+                if ($declared !== []) {
+                    $headerSkips[] = sprintf(
+                        "part '%s' declares per-part headers (%s) that form parsing does not preserve, so they were not checked",
+                        $name,
+                        implode(', ', $declared),
+                    );
+                }
+            }
 
             // A property declaring raw bytes must arrive as a file part —
             // including every element of an array property, which is how
@@ -131,9 +216,49 @@ final class FormBodyDecoder
                 continue;
             }
 
+            // Any of style / explode / allowReserved selects RFC 6570 form
+            // serialization, and then "the value of contentType (implicit or
+            // explicit) SHALL be ignored".
+            $styled = $stylesApply && (array_key_exists('style', $partEncoding) ||
+                array_key_exists('explode', $partEncoding) ||
+                array_key_exists('allowReserved', $partEncoding));
+
             if ($value instanceof UploadedPart || self::containsPart($value)) {
-                $errors = [...$errors, ...self::checkPartContentTypes((string) $name, $value, $declaredContentType)];
+                if (!$styled) {
+                    $errors = [...$errors, ...self::checkPartContentTypes((string) $name, $value, $declaredContentType)];
+                }
                 $fields[$name] = self::substituteParts($value);
+
+                continue;
+            }
+
+            // A styled part skips the JSON decoding below. Only the array
+            // split applies; allowReserved changes nothing a decoded value
+            // still shows.
+            if ($styled) {
+                $rawValue = $wireValues === [] ? null : $wireValues[array_key_last($wireValues)];
+                // Form parsing leaves a multipart part's body as sent, so the
+                // value is still RFC 6570 percent-encoded: it is the raw wire
+                // value. RFC 6570 never emits `+` for a space, so a literal
+                // plus is data and is protected from urldecode().
+                // An exploded array arrives as repeated parts, each encoded.
+                if ($isMultipart && is_string($value)) {
+                    $rawValue = str_replace('+', '%2B', $value);
+                    $value = rawurldecode($value);
+                    $fields[$name] = $value;
+                } elseif ($isMultipart && is_array($value)) {
+                    array_walk_recursive($value, static function (mixed &$item): void {
+                        if (is_string($item)) {
+                            $item = rawurldecode($item);
+                        }
+                    });
+                    $fields[$name] = $value;
+                }
+
+                if ($propertySchema !== null) {
+                    $value = QueryStyleDeserializer::deserialize($value, $partEncoding, $propertySchema, $rawValue);
+                    $fields[$name] = TypeCoercer::coerceQuery($value, $propertySchema);
+                }
 
                 continue;
             }
@@ -150,26 +275,36 @@ final class FormBodyDecoder
             // string and must be decoded before its subschema means anything.
             // Parsing it is not sniffing — when JSON is all the contract
             // allows, a successful parse confirms the declared type and a
-            // failed one contradicts it.
-            if (is_string($value) && $candidates !== [] && self::allJsonCandidates($candidates)) {
-                try {
-                    // Objects stay objects: `json_decode(..., true)` would turn
-                    // `{}` into `[]`, which then fails its own `type: object`.
-                    /** @var mixed $decoded */
-                    $decoded = json_decode($value, false, flags: JSON_THROW_ON_ERROR);
-                    $fields[$name] = $decoded;
-
-                    continue;
-                } catch (JsonException $e) {
-                    $errors[] = sprintf(
-                        '[/%s] part is declared as %s but its content is not valid JSON: %s',
-                        $name,
-                        implode(', ', $candidates),
-                        $e->getMessage(),
-                    );
-
-                    continue;
+            // failed one contradicts it. An array property carries one JSON
+            // document per element, however many arrived (OAS 3.2 Encoding
+            // By Name).
+            $isArray = $propertySchema !== null && TypeCoercer::isArraySchema($propertySchema);
+            $documents = $isArray && is_array($value) ? array_values($value) : [$value];
+            if (
+                $candidates !== [] && self::allJsonCandidates($candidates) &&
+                array_filter($documents, static fn(mixed $document): bool => !is_string($document)) === []
+            ) {
+                $decoded = [];
+                foreach ($documents as $index => $document) {
+                    try {
+                        // Objects stay objects: `json_decode(..., true)` would turn
+                        // `{}` into `[]`, which then fails its own `type: object`.
+                        $decoded[] = json_decode($document, false, flags: JSON_THROW_ON_ERROR);
+                    } catch (JsonException $e) {
+                        $errors[] = sprintf(
+                            '[/%s] part is declared as %s but its content is not valid JSON: %s',
+                            $isArray ? $name . '/' . $index : $name,
+                            implode(', ', $candidates),
+                            $e->getMessage(),
+                        );
+                    }
                 }
+
+                if (count($decoded) === count($documents)) {
+                    $fields[$name] = $isArray ? $decoded : $decoded[0];
+                }
+
+                continue;
             }
 
             // Anything else needs the part's own Content-Type to resolve: to
@@ -196,7 +331,28 @@ final class FormBodyDecoder
             }
         }
 
-        return [$fields, $errors, $unverifiable];
+        return [$fields, $errors, $unverifiable, $headerSkips];
+    }
+
+    /**
+     * Whether an array property is serialized as one pair per element:
+     * `style: form` with `explode` true or omitted, or no style at all — a
+     * `contentType` then encodes each element, not the array (OAS 3.2
+     * Encoding By Name).
+     *
+     * @param null|array<string, mixed> $propertySchema
+     * @param array<string, mixed> $partEncoding
+     */
+    private static function explodesArray(?array $propertySchema, array $partEncoding): bool
+    {
+        if ($propertySchema === null || !TypeCoercer::isArraySchema($propertySchema)) {
+            return false;
+        }
+
+        $style = array_key_exists('style', $partEncoding) ? $partEncoding['style'] : 'form';
+        $explode = array_key_exists('explode', $partEncoding) ? $partEncoding['explode'] : $style === 'form';
+
+        return $style === 'form' && $explode === true;
     }
 
     /**

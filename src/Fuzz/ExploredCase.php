@@ -12,24 +12,31 @@ use JsonException;
 use LogicException;
 use Studio\Gesso\HttpMethod;
 use Studio\Gesso\Internal\CurlCommandFormatter;
+use Studio\Gesso\Internal\RequestUriBuilder;
+use Studio\Gesso\Validation\Support\ContentTypeMatcher;
+use Studio\Gesso\Validation\Support\FormBodyDecoder;
 
+use function array_is_list;
 use function array_map;
 use function base64_encode;
+use function get_object_vars;
 use function http_build_query;
 use function implode;
 use function is_array;
-use function is_bool;
+use function is_object;
 use function json_decode;
 use function json_encode;
-use function rawurlencode;
 use function sprintf;
-use function str_replace;
 
 /**
  * One generated request case produced by {@see OpenApiEndpointExplorer}.
  *
- * `body` is null when the operation declares no `requestBody` (or no
- * `application/json` content; see explorer for the loud-failure cases).
+ * `body` is null when the operation declares no `requestBody` (or no media
+ * type the explorer can synthesize; see explorer for the loud-failure cases).
+ * `contentType` names the media type the body was generated for:
+ * `application/json` unless the operation's only schema-carrying media type
+ * is a `+json` one or `application/x-www-form-urlencoded`. Dispatchers send
+ * {@see self::bodyAsString()} with `Content-Type: $case->contentType`.
  * `query`, `headers`, `cookies`, and `pathParams` are name → value maps, where
  * the `pathParams` keys are the placeholder *names* extracted from
  * `matchedPath` (e.g. `petId`), not positional. `matchedPath` is the spec
@@ -70,6 +77,7 @@ final readonly class ExploredCase
         public ?int $caseIndex = null,
         /** @var array<string, mixed> name → value; dispatchers must forward these to the client's cookie bag */
         public array $cookies = [],
+        public string $contentType = 'application/json',
     ) {
         if ($matchedPath === '') {
             throw new InvalidArgumentException(
@@ -151,21 +159,63 @@ final readonly class ExploredCase
         return json_encode($this->body, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION);
     }
 
+    /**
+     * Serialize the body for the wire in the media type `contentType` names:
+     * JSON ({@see self::bodyAsJson()}) or, for
+     * `application/x-www-form-urlencoded`, {@see self::bodyAsFormFields()}
+     * through `http_build_query()`.
+     *
+     * @throws JsonException when a JSON body cannot be encoded
+     * @throws LogicException for a media type this class cannot serialize, or a non-object form body
+     */
+    public function bodyAsString(): string
+    {
+        $mediaType = ContentTypeMatcher::normalizeMediaType($this->contentType);
+        if ($mediaType === FormBodyDecoder::URLENCODED) {
+            return http_build_query($this->bodyAsFormFields());
+        }
+        if (!ContentTypeMatcher::isJsonContentType($mediaType)) {
+            throw new LogicException(sprintf('ExploredCase cannot serialize a body as %s.', $this->contentType));
+        }
+
+        return $this->bodyAsJson();
+    }
+
+    /**
+     * The generated object as form fields, the way a client sends them:
+     * scalars as strings (`true` / `false`, numbers verbatim), object-valued
+     * properties JSON-encoded (the Encoding Object default for an object),
+     * lists as lists of the same, and `null` dropped (an absent field).
+     *
+     * @return array<string, mixed>
+     *
+     * @throws JsonException when a field cannot be encoded
+     * @throws LogicException when the body is not a JSON object
+     */
+    public function bodyAsFormFields(): array
+    {
+        // Read the original value tree: bodyAsArray() would turn `{}` into
+        // `[]`, which a form then drops or encodes as a JSON array.
+        $body = is_object($this->body) ? get_object_vars($this->body) : $this->body ?? [];
+        if (!is_array($body) || ($body !== [] && array_is_list($body))) {
+            throw new LogicException('ExploredCase::bodyAsFormFields() requires a JSON object body.');
+        }
+
+        $fields = [];
+        foreach ($body as $name => $value) {
+            if ($value !== null) {
+                $fields[(string) $name] = is_array($value) && array_is_list($value)
+                    ? array_map(self::formValue(...), $value)
+                    : self::formValue($value);
+            }
+        }
+
+        return $fields;
+    }
+
     public function uri(string $prefix = ''): string
     {
-        $path = $this->matchedPath;
-        foreach ($this->pathParams as $name => $value) {
-            $path = str_replace(
-                '{' . $name . '}',
-                rawurlencode((string) self::serialiseParameterValue($value)),
-                $path,
-            );
-        }
-        $query = $this->query !== []
-            ? '?' . http_build_query(array_map(self::serialiseParameterValue(...), $this->query))
-            : '';
-
-        return $prefix . $path . $query;
+        return RequestUriBuilder::build($this->matchedPath, $this->pathParams, $this->query, $prefix);
     }
 
     public function replayToken(): string
@@ -210,15 +260,15 @@ final readonly class ExploredCase
         $headers = $this->headers;
         $body = null;
         if ($this->body !== null) {
-            $headers['Content-Type'] = 'application/json';
-            $body = (string) json_encode($this->body);
+            $headers['Content-Type'] = $this->contentType;
+            $body = $this->bodyAsString();
         }
         if ($this->cookies !== []) {
             // Rendered as the wire form so the pasted command reproduces the
             // request; the formatter redacts `Cookie` values by default.
             $pairs = [];
             foreach ($this->cookies as $name => $value) {
-                $pairs[] = $name . '=' . (string) self::serialiseParameterValue($value);
+                $pairs[] = $name . '=' . (string) RequestUriBuilder::serialise($value);
             }
             $headers['Cookie'] = implode('; ', $pairs);
         }
@@ -228,20 +278,17 @@ final readonly class ExploredCase
             $this->uri($baseUrl),
             $headers,
             $body,
-            $body !== null ? 'application/json' : null,
+            $body !== null ? $this->contentType : null,
             $redactSensitiveHeaders,
         );
     }
 
-    private static function serialiseParameterValue(mixed $value): mixed
+    /** One form field value: objects (and nested lists) as JSON, scalars as text. */
+    private static function formValue(mixed $value): string
     {
-        if (is_bool($value)) {
-            return $value ? 'true' : 'false';
-        }
-
-        return is_array($value)
-            ? array_map(self::serialiseParameterValue(...), $value)
-            : $value;
+        return is_array($value) || is_object($value)
+            ? json_encode($value, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION)
+            : (string) RequestUriBuilder::serialise($value);
     }
 
     /**
@@ -271,6 +318,7 @@ final readonly class ExploredCase
             $this->seed,
             $this->caseIndex,
             $cookies ?? $this->cookies,
+            $this->contentType,
         );
     }
 }

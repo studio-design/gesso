@@ -251,6 +251,7 @@ final class OpenApiResponseExplorer
             ResponseSchemaResolutionOutcome::MissingSchema => 'the selected response media type declares no schema',
             ResponseSchemaResolutionOutcome::NonJsonSchema => 'the selected response schema is not JSON-compatible',
             ResponseSchemaResolutionOutcome::ItemSchemaStreaming => 'the response uses itemSchema streaming semantics',
+            ResponseSchemaResolutionOutcome::FormSchema => 'form response bodies are validated but not synthesized',
             default => 'the response schema could not be resolved',
         };
 

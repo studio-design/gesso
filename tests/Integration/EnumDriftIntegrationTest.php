@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Tests\Integration;
 
+use PHPUnit\Framework\Attributes\IgnoreDeprecations;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Studio\Gesso\Exception\EnumDriftException;
+use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\Schema\EnumDriftAsserter;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Tests\Integration\Schema\Fixture\IntegrationBundledExternalEnum;
@@ -38,10 +40,12 @@ class EnumDriftIntegrationTest extends TestCase
     protected function tearDown(): void
     {
         OpenApiSpecLoader::reset();
+        Deprecations::resetForTesting();
         parent::tearDown();
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function clean_enum_passes_with_realistic_bundle_layout(): void
     {
         EnumDriftAsserter::assertNoDrift([IntegrationPetStatusEnum::class]);
@@ -52,6 +56,7 @@ class EnumDriftIntegrationTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function bidirectional_drift_is_reported_in_both_directions(): void
     {
         try {
@@ -75,6 +80,7 @@ class EnumDriftIntegrationTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function detect_all_returns_one_report_per_enum_in_input_order(): void
     {
         $reports = EnumDriftAsserter::detectAll([
@@ -90,6 +96,7 @@ class EnumDriftIntegrationTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function bundled_external_layout_resolves_via_enum_spec_base_path(): void
     {
         // Issue #170 dogfood: spec_base_path points at `issue-170/bundled/`

@@ -81,40 +81,12 @@ final class SchemaValidatorRunner
 
     /**
      * Validate `$data` against `$jsonSchema` (typically both converted via
-     * {@see ObjectConverter::convert()}, although opis also accepts `true` /
-     * `false` top-level schemas and raw scalars) and return a map of JSON
-     * Pointer path → list of human-readable error messages.
-     *
-     * An empty array means the data validated successfully. The pointer key
-     * matches opis's ErrorFormatter output, with `/` indicating the document
-     * root. Success is determined by `ValidationResult::isValid()` rather
-     * than by the formatter output shape, so a future opis change that
-     * returned `[]` for a suppressed/filtered error would still be reported
-     * as a failure (no silent pass).
-     *
-     * @return array<string, string[]>
-     */
-    public function validate(mixed $jsonSchema, mixed $data): array
-    {
-        $grouped = [];
-        foreach ($this->validateStructured($jsonSchema, $data) as $violation) {
-            $grouped[$violation->displayPath()][] = $violation->message;
-        }
-
-        return $grouped;
-    }
-
-    /**
-     * Structured variant of {@see self::validate()}: same violations, same
-     * order (the pointer-keyed map above is derived from this list, so the
-     * two views can never drift), but each entry keeps the instance pointer
-     * and failing keyword as fields instead of baking the pointer into a
-     * `[{pointer}] {message}` prefix. Runs through the same cascade-dedup
-     * pipeline (issue #159).
-     *
-     * Pointers here are RFC 6901 (`''` = document root, `'/'` = the
-     * empty-string key) — unlike the map view, which keeps opis's legacy
-     * rendering of both as `'/'` ({@see SchemaViolation::displayPath()}).
+     * {@see ObjectConverter::convert()}; opis also accepts `true` / `false`
+     * top-level schemas and raw scalars). Returns one {@see SchemaViolation}
+     * per reported error after the cascade-dedup pipeline (issue #159); `[]`
+     * means valid. Pointers are RFC 6901 (`''` root), while
+     * {@see SchemaViolation::displayPath()} keeps the legacy `'/'` rendering
+     * used in flat error prose.
      *
      * @return list<SchemaViolation>
      */

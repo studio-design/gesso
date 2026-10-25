@@ -49,7 +49,6 @@ class ValidatesOpenApiSchemaWithoutValidationTest extends TestCase
 
     protected function tearDown(): void
     {
-        self::resetValidatorCache();
         unset($GLOBALS['__openapi_testing_config']);
         OpenApiSpecLoader::reset();
         OpenApiCoverageTracker::reset();

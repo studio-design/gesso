@@ -129,7 +129,7 @@ final class V3RenameRegistryTest extends TestCase
      * unenforceable. Lowering either is progress and costs one line; raising
      * one is a decision, and now it shows up in the diff of a test.
      */
-    private const SPELLINGS = 55;
+    private const SPELLINGS = 54;
 
     /**
      * What a Replaces cell reads as when the row renames nothing, once its
@@ -145,7 +145,7 @@ final class V3RenameRegistryTest extends TestCase
      */
     private const NO_SUCCESSOR = 'none';
 
-    private const UNSTAGED_CEILING = 53;
+    private const UNSTAGED_CEILING = 34;
 
     #[Test]
     public function every_old_spelling_the_adr_names_is_listed(): void
@@ -549,6 +549,7 @@ final class V3RenameRegistryTest extends TestCase
         $this->assertContains('spec_base_path', $spellings, 'the configuration table');
         $this->assertContains('--console-output', $spellings, 'the CLI table');
         $this->assertContains('enum_spec_base_path', $spellings, 'the "— removed —" row');
+        $this->assertNotContains('--enum-spec-base-path', $spellings, 'the flag never shipped; see ADR 0005 amendments');
         $this->assertContains('--specs', $spellings, 'a flag written with a value placeholder');
 
         // `bearer` is backticked inside "(the legacy key's behaviour becomes

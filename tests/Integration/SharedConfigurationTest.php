@@ -17,6 +17,7 @@ use function file_get_contents;
 use function file_put_contents;
 use function mkdir;
 use function str_replace;
+use function substr_count;
 use function sys_get_temp_dir;
 use function uniqid;
 use function var_export;
@@ -64,6 +65,7 @@ final class SharedConfigurationTest extends TestCase
                     self::assertSame('/api,v2', $config->get('gesso.strip_prefixes')[0]);
                     self::assertSame(__DIR__ . '/specs', $config->get('gesso.spec_base_path'));
                     self::assertSame('api', $config->get('gesso.default_spec'));
+                    self::assertSame(['api'], $config->get('gesso.specs'));
                     self::assertSame('api', ValidationPolicyDefaults::defaultSpec());
                     self::assertSame(7, ValidationPolicyDefaults::maxErrors());
                     self::assertSame(7, $config->get('gesso.max_errors'));
@@ -197,6 +199,39 @@ final class SharedConfigurationTest extends TestCase
     }
 
     #[Test]
+    public function symfony_hooks_default_from_the_shared_file_without_overrides(): void
+    {
+        file_put_contents($this->directory . '/specs/api.json', '{"openapi":"3.1.0","info":{"title":"test","version":"1"},"paths":{"/pets":{"get":{"responses":{"200":{"description":"OK","content":{"application/json":{"schema":{"type":"array","items":{"type":"object","properties":{"id":{"type":"integer"}}}}}}}}}}}}');
+        file_put_contents($this->directory . '/ContractTest.php', <<<'PHP'
+            <?php
+            declare(strict_types=1);
+            namespace Studio\Gesso\Tests\SharedFixture;
+            use PHPUnit\Framework\TestCase;
+            use Studio\Gesso\Symfony\OpenApiAssertions;
+            use Symfony\Component\HttpFoundation\JsonResponse;
+            use Symfony\Component\HttpFoundation\Request;
+            final class ContractTest extends TestCase {
+                use OpenApiAssertions;
+                public function test_symfony_defaults(): void {
+                    $body = [];
+                    for ($i = 0; $i < 30; $i++) {
+                        $body[] = ['id' => 'not-an-int'];
+                    }
+                    $this->assertResponseMatchesOpenApiSchema(Request::create('/api,v2/pets', 'GET'), new JsonResponse($body));
+                }
+            }
+            PHP);
+        $this->replace('gesso.php', "'format' => 'json'", "'format' => 'text'");
+
+        $process = $this->runPhpunit($this->directory);
+
+        $output = $process->getOutput();
+        $this->assertSame(1, $process->getExitCode(), $output . $process->getErrorOutput());
+        $this->assertStringContainsString('(spec: api)', $output);
+        $this->assertSame(7, substr_count($output, 'must match the type: integer'), $output);
+    }
+
+    #[Test]
     public function empty_string_boolean_is_false_in_both_adapters(): void
     {
         $this->replace('gesso.php', "'off'", "''");
@@ -216,12 +251,13 @@ final class SharedConfigurationTest extends TestCase
             PHP);
         $this->replace('ContractTest.php', "assertSame(7, \$config->get('gesso.max_errors'))", "assertSame(3, \$config->get('gesso.max_errors'))");
         $this->replace('ContractTest.php', "assertSame(['5[0-9]{2,2}'], \$config->get('gesso.skip_response_codes'))", "assertSame([], \$config->get('gesso.skip_response_codes'))");
-        $this->replace('gesso.php', "'spec' =>", "'laravel' => ['auto_inject_dummy_credentials' => 'bearer', 'route_parity' => ['external_operation_ids' => ['root1', 'root2'], 'external_openapi_paths' => ['/external']]], 'spec' =>");
+        $this->replace('gesso.php', "'spec' =>", "'laravel' => ['auto_inject_dummy_credentials' => 'bearer', 'route_parity' => ['external_operation_ids' => ['root1', 'root2'], 'external_openapi_paths' => ['/external'], 'excluded_route_names' => ['root.*']]], 'spec' =>");
         $this->replace('ContractTest.php', '(new GessoServiceProvider($app))->register();', <<<'PHP'
             (new GessoServiceProvider($app))->register();
             self::assertSame('bearer', $config->get('gesso.auto_inject_dummy_credentials'));
             self::assertSame(['local'], $config->get('gesso.route_parity.external_operation_ids'));
             self::assertSame(['/external'], $config->get('gesso.route_parity.external_openapi_paths'));
+            self::assertSame(['root.*'], $config->get('gesso.route_parity.excluded_route_names'));
             PHP);
         $process = $this->runPhpunit($this->directory);
         $this->assertSame(0, $process->getExitCode(), $process->getOutput() . $process->getErrorOutput());

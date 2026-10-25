@@ -68,8 +68,7 @@ foreach ($schemas as $name => [$version, $schema]) {
         $runner = new SchemaValidatorRunner(20);
         $start = hrtime(true);
         for ($i = 0; $i < $iterations; $i++) {
-            $errors = $runner->validate($converted, $data);
-            if ($errors !== []) {
+            if ($runner->validateStructured($converted, $data) !== []) {
                 throw new RuntimeException("Benchmark schema '{$name}' rejected the valid fixture.");
             }
         }

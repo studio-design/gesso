@@ -25,6 +25,8 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 use Symfony\Component\HttpKernel\HttpKernelBrowser;
 use Symfony\Component\HttpKernel\HttpKernelInterface;
 
+use function base64_encode;
+
 #[OpenApiSpec('petstore-3.0')]
 final class OpenApiAssertionsTest extends TestCase
 {
@@ -329,6 +331,29 @@ final class OpenApiAssertionsTest extends TestCase
     }
 
     #[Test]
+    public function request_failure_reproduction_omits_decoded_basic_auth_credentials(): void
+    {
+        $request = Request::create(
+            '/v1/pets',
+            'POST',
+            [],
+            [],
+            [],
+            ['CONTENT_TYPE' => 'application/json', 'HTTP_AUTHORIZATION' => 'Basic ' . base64_encode('svc:hunter2')],
+            '{}',
+        );
+
+        try {
+            $this->assertRequestMatchesOpenApiSchema($request);
+            $this->fail('Expected the request assertion to fail.');
+        } catch (AssertionFailedError $e) {
+            $this->assertStringContainsString("-H 'authorization: <redacted>'", $e->getMessage());
+            $this->assertStringNotContainsString('hunter2', $e->getMessage());
+            $this->assertStringNotContainsString('php-auth', $e->getMessage());
+        }
+    }
+
+    #[Test]
     public function response_failure_includes_a_curl_reproduction(): void
     {
         $request = Request::create('/v1/pets', 'GET', server: ['HTTP_AUTHORIZATION' => 'Bearer real-token']);
@@ -603,5 +628,21 @@ final class OpenApiAssertionsTest extends TestCase
         $response = new Response('{"reasoning":{}}', 200, ['Content-Type' => 'application/json']);
 
         $this->assertResponseMatchesOpenApiSchema($request, $response);
+    }
+
+    #[Test]
+    #[OpenApiSpec('form-response')]
+    public function form_response_body_is_validated_against_its_schema(): void
+    {
+        // Issue #488: an urlencoded response body is parsed and validated.
+        $request = Request::create('/form-response', 'GET');
+        $headers = ['Content-Type' => 'application/x-www-form-urlencoded'];
+
+        $this->assertResponseMatchesOpenApiSchema($request, new Response('token=abc', 200, $headers));
+
+        $this->expectException(AssertionFailedError::class);
+        $this->expectExceptionMessage('/expires_in');
+
+        $this->assertResponseMatchesOpenApiSchema($request, new Response('token=abc&expires_in=soon', 200, $headers));
     }
 }

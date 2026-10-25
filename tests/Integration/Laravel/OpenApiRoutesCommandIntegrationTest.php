@@ -9,6 +9,7 @@ use const JSON_THROW_ON_ERROR;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Route;
 use Orchestra\Testbench\TestCase;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use Studio\Gesso\Internal\LegacyIdentity;
 use Studio\Gesso\Laravel\GessoServiceProvider;
@@ -21,6 +22,7 @@ use function explode;
 use function file_get_contents;
 use function json_decode;
 use function max;
+use function preg_replace;
 use function strlen;
 use function trim;
 
@@ -36,6 +38,8 @@ final class OpenApiRoutesCommandIntegrationTest extends TestCase
         config()->set('gesso.strip_prefixes', ['/api']);
         config()->set('gesso.route_parity.external_operation_ids', []);
         config()->set('gesso.route_parity.external_openapi_paths', []);
+        config()->set('gesso.route_parity.excluded_route_names', []);
+        config()->set('gesso.specs', []);
     }
 
     protected function tearDown(): void
@@ -43,6 +47,15 @@ final class OpenApiRoutesCommandIntegrationTest extends TestCase
         OpenApiSpecLoader::reset();
         LegacyIdentity::resetForTesting();
         parent::tearDown();
+    }
+
+    /** @return iterable<string, array{string}> */
+    public static function provideAn_absolute_spec_base_path_is_used_verbatimCases(): iterable
+    {
+        yield 'posix' => ['/abs/specs'];
+        yield 'drive letter, backslash' => ['C:\\specs'];
+        yield 'drive letter, slash' => ['D:/specs'];
+        yield 'unc share' => ['\\\\server\\share\\specs'];
     }
 
     /**
@@ -231,6 +244,97 @@ final class OpenApiRoutesCommandIntegrationTest extends TestCase
         );
     }
 
+    /**
+     * The buggy output was `<root>/C:\\specs`, which still contains the base
+     * path, so only the negative check against the root discriminates. Laravel's
+     * console components strip `base_path()` from error lines while
+     * `path.base` is bound, which would hide that root, so it is unbound here.
+     */
+    #[Test]
+    #[DataProvider('provideAn_absolute_spec_base_path_is_used_verbatimCases')]
+    public function an_absolute_spec_base_path_is_used_verbatim(string $basePath): void
+    {
+        config()->set('gesso.spec_base_path', $basePath);
+        $this->app->offsetUnset('path.base');
+
+        $this->assertSame(1, Artisan::call('gesso:routes'));
+        $output = (string) preg_replace('/\s+/', ' ', Artisan::output());
+        $this->assertStringContainsString($basePath, $output);
+        $this->assertStringNotContainsString($this->app->basePath(), $output);
+    }
+
+    #[Test]
+    public function a_relative_spec_base_path_is_resolved_under_the_application(): void
+    {
+        config()->set('gesso.spec_base_path', 'openapi');
+        $this->app->offsetUnset('path.base');
+
+        $this->assertSame(1, Artisan::call('gesso:routes'));
+        $this->assertStringContainsString(
+            $this->app->basePath('openapi'),
+            (string) preg_replace('/\s+/', ' ', Artisan::output()),
+        );
+    }
+
+    #[Test]
+    public function route_side_exclusions_are_loaded_from_config_and_merged_with_options(): void
+    {
+        config()->set('gesso.route_parity.excluded_route_names', ['internal.*']);
+
+        $decoded = $this->routeParityJson(['--exclude-route' => ['undocumented']]);
+
+        $this->assertSame(0, $decoded['summary']['registered_but_undocumented']);
+    }
+
+    #[Test]
+    public function configured_route_side_exclusions_apply_without_the_option(): void
+    {
+        config()->set('gesso.route_parity.excluded_route_names', ['internal.*']);
+
+        $decoded = $this->routeParityJson([]);
+
+        $this->assertSame(1, $decoded['summary']['registered_but_undocumented']);
+        $this->assertSame('undocumented', $decoded['registered_but_undocumented'][0]['route_name']);
+    }
+
+    #[Test]
+    public function the_spec_list_is_read_from_config_when_no_spec_option_is_passed(): void
+    {
+        config()->set('gesso.specs', ['route-parity', 'route-parity-admin']);
+        config()->set('gesso.default_spec', 'does-not-exist');
+
+        $this->assertSame(['route-parity', 'route-parity-admin'], $this->routeParityJson([])['specs']);
+    }
+
+    #[Test]
+    public function the_spec_option_replaces_the_configured_spec_list(): void
+    {
+        config()->set('gesso.specs', ['route-parity', 'route-parity-admin']);
+
+        $this->assertSame(['route-parity'], $this->routeParityJson(['--spec' => ['route-parity']])['specs']);
+    }
+
+    #[Test]
+    public function invalid_route_side_exclusion_config_fails_loudly(): void
+    {
+        config()->set('gesso.route_parity.excluded_route_names', 'internal.*');
+
+        $this->assertSame(1, Artisan::call('gesso:routes'));
+        $this->assertStringContainsString(
+            'gesso.route_parity.excluded_route_names must be an array of strings',
+            Artisan::output(),
+        );
+    }
+
+    #[Test]
+    public function invalid_specs_config_fails_loudly(): void
+    {
+        config()->set('gesso.specs', 'front');
+
+        $this->assertSame(1, Artisan::call('gesso:routes'));
+        $this->assertStringContainsString('gesso.specs must be an array of strings', Artisan::output());
+    }
+
     #[Test]
     public function invalid_format_returns_invalid_exit_code(): void
     {
@@ -260,5 +364,24 @@ final class OpenApiRoutesCommandIntegrationTest extends TestCase
         )->name('other-domain');
 
         Route::fallback(static fn() => null)->name('fallback');
+    }
+
+    /**
+     * @param array<string, mixed> $options
+     *
+     * @return array<string, mixed>
+     */
+    private function routeParityJson(array $options): array
+    {
+        $exitCode = Artisan::call('gesso:routes', $options + [
+            '--prefix' => 'api',
+            '--middleware' => ['api'],
+            '--domain' => ['api.example.test'],
+            '--format' => 'json',
+        ]);
+        $output = Artisan::output();
+        $this->assertSame(0, $exitCode, $output);
+
+        return json_decode(trim($output), true, flags: JSON_THROW_ON_ERROR);
     }
 }

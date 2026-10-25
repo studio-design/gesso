@@ -1,0 +1,31 @@
+{
+  "arazzo": "1.1.0",
+  "info": {
+    "title": "Actions",
+    "version": "1.0.0"
+  },
+  "sourceDescriptions": [
+    {
+      "name": "petstore",
+      "url": "../specs/arazzo-petstore.json"
+    }
+  ],
+  "workflows": [
+    {
+      "workflowId": "forever",
+      "steps": [
+        {
+          "stepId": "list",
+          "operationId": "listPets",
+          "onSuccess": [
+            {
+              "name": "again",
+              "type": "goto",
+              "stepId": "list"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

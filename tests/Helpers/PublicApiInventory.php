@@ -10,6 +10,7 @@ use const T_DOC_COMMENT;
 use const T_FUNCTION;
 use const T_STRING;
 use const T_WHITESPACE;
+use const TOKEN_PARSE;
 
 use BackedEnum;
 use RecursiveDirectoryIterator;
@@ -349,7 +350,9 @@ final class PublicApiInventory
             return null;
         }
 
-        $tokens = token_get_all($source);
+        // TOKEN_PARSE lexes a reserved word used as a method name
+        // (`OpenApiFakeResponse::for()`) as T_STRING instead of T_FOR.
+        $tokens = token_get_all($source, TOKEN_PARSE);
         $tokenCount = count($tokens);
         for ($index = 0; $index < $tokenCount; $index++) {
             $token = $tokens[$index];

@@ -26,8 +26,9 @@ final class RuntimeExpressionEvaluatorTest extends TestCase
         yield 'list index with leading zero' => [RuntimeExpressionFailure::NotFound, '$response.body#/tags/01'];
         yield 'missing header' => [RuntimeExpressionFailure::NotFound, '$response.header.x-missing'];
         yield 'response query' => [RuntimeExpressionFailure::ContextUnavailable, '$response.query.limit'];
-        yield 'inputs' => [RuntimeExpressionFailure::UnsupportedFamily, '$inputs.name'];
-        yield 'steps' => [RuntimeExpressionFailure::UnsupportedFamily, '$steps.a.outputs.b'];
+        yield 'inputs outside a workflow' => [RuntimeExpressionFailure::ContextUnavailable, '$inputs.name'];
+        yield 'step that has not run' => [RuntimeExpressionFailure::NotFound, '$steps.a.outputs.b'];
+        yield 'outputs' => [RuntimeExpressionFailure::UnsupportedFamily, '$outputs.b'];
         yield 'workflows' => [RuntimeExpressionFailure::UnsupportedFamily, '$workflows.a.outputs.b'];
         yield 'message' => [RuntimeExpressionFailure::UnsupportedFamily, '$message.payload'];
         yield 'self' => [RuntimeExpressionFailure::UnsupportedFamily, '$self'];
@@ -88,6 +89,24 @@ final class RuntimeExpressionEvaluatorTest extends TestCase
     }
 
     #[Test]
+    public function inputs_and_step_outputs_preserve_types_and_walk_pointers(): void
+    {
+        $context = new RuntimeExpressionContext(
+            inputs: ['name' => 'Rex', 'user.profile' => ['age' => 3]],
+            stepOutputs: ['create' => ['petId' => 7, 'pet' => (object) ['tags' => ['a']]]],
+        );
+
+        $this->assertSame('Rex', RuntimeExpressionEvaluator::evaluate('$inputs.name', $context));
+        $this->assertSame(3, RuntimeExpressionEvaluator::evaluate('$inputs.user.profile#/age', $context));
+        $this->assertSame(7, RuntimeExpressionEvaluator::evaluate('$steps.create.outputs.petId', $context));
+        $this->assertSame('a', RuntimeExpressionEvaluator::evaluate('$steps.create.outputs.pet#/tags/0', $context));
+        $this->assertSame('pet-7', RuntimeExpressionEvaluator::evaluateEmbedded('pet-{$steps.create.outputs.petId}', $context));
+        $this->assertFailure(RuntimeExpressionFailure::NotFound, '$inputs.missing', $context);
+        $this->assertFailure(RuntimeExpressionFailure::NotFound, '$steps.create.outputs.missing', $context);
+        $this->assertFailure(RuntimeExpressionFailure::NotFound, '$steps.create.outputs.pet#/nope', $context);
+    }
+
+    #[Test]
     public function missing_context_is_context_unavailable(): void
     {
         $empty = new RuntimeExpressionContext();
@@ -139,6 +158,8 @@ final class RuntimeExpressionEvaluatorTest extends TestCase
         $this->assertSame(201, RuntimeExpressionEvaluator::evaluateValue('$statusCode', $context));
         $this->assertSame('id-3', RuntimeExpressionEvaluator::evaluateValue('id-{$response.body#/count}', $context));
         $this->assertSame('$3', RuntimeExpressionEvaluator::evaluateValue('${$response.body#/count}', $context));
+        $this->assertSame(42, RuntimeExpressionEvaluator::evaluateValue('$response.body#/a{b}', $context));
+        $this->assertSame('x-42', RuntimeExpressionEvaluator::evaluateValue('x-{$response.body#/a{b}}', $context));
     }
 
     private function context(): RuntimeExpressionContext
@@ -153,7 +174,7 @@ final class RuntimeExpressionEvaluatorTest extends TestCase
             response: ObservedResponse::from([
                 'status' => 201,
                 'headers' => ['Content-Type' => 'application/json', 'X-Multi' => ['a=1', 'b=2']],
-                'body' => '{"count":3,"ok":true,"tags":["a","b"],"obj":{"a":1},"n":null,"f":1.0}',
+                'body' => '{"count":3,"ok":true,"tags":["a","b"],"obj":{"a":1},"n":null,"f":1.0,"a{b}":42}',
             ]),
         );
     }

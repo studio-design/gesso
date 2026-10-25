@@ -40,7 +40,6 @@ class AutoValidateRequestIntegrationTest extends TestCase
 
     protected function tearDown(): void
     {
-        self::resetValidatorCache();
         OpenApiSpecLoader::reset();
         OpenApiCoverageTracker::reset();
         // The auto_inject_dummy_bearer tests below exercise a deprecated key,

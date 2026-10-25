@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Cli;
 
+use const JSON_PRETTY_PRINT;
+use const JSON_THROW_ON_ERROR;
+use const JSON_UNESCAPED_SLASHES;
 use const PATHINFO_DIRNAME;
 use const PATHINFO_FILENAME;
 
@@ -12,20 +15,24 @@ use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\Internal\ArgvParser;
 use Studio\Gesso\Internal\CliDocuments;
 use Studio\Gesso\Internal\CliIo;
+use Studio\Gesso\Internal\ToolVersion;
 use Studio\Gesso\Stubs\StubGenerator;
 use Studio\Gesso\Stubs\StubRenderer;
 use Throwable;
 
+use function array_map;
 use function count;
 use function file_exists;
 use function file_put_contents;
 use function implode;
 use function in_array;
 use function is_dir;
+use function json_encode;
 use function mkdir;
 use function pathinfo;
 use function rtrim;
 use function sprintf;
+use function strpbrk;
 
 /**
  * Scaffolding for the responses no test exercises (issue #406).
@@ -40,7 +47,7 @@ use function sprintf;
  *
  * @phpstan-import-type StubOperation from StubGenerator
  *
- * @phpstan-type StubsOptions array{spec?: string, coverage?: string, spec_name?: string, adapter?: string, output?: string, namespace?: string, base_class?: string, request_prefix?: string, dry_run?: bool, help?: bool, invalid_options?: list<string>}
+ * @phpstan-type StubsOptions array{spec?: string, coverage?: string, spec_name?: string, adapter?: string, output?: string, namespace?: string, base_class?: string, request_prefix?: string, format?: string, output_file?: string, dry_run?: bool, help?: bool, invalid_options?: list<string>}
  *
  * @internal The `gesso stubs` CLI surface is the supported API.
  */
@@ -48,9 +55,8 @@ final class StubsCommand
 {
     use CliIo;
 
-    public const EXIT_OK = 0;
-    public const EXIT_USAGE = 2;
-    private const VALUE_OPTIONS = ['spec', 'coverage', 'spec_name', 'adapter', 'output', 'namespace', 'base_class', 'request_prefix'];
+    public const JSON_SCHEMA_VERSION = 1;
+    private const VALUE_OPTIONS = ['spec', 'coverage', 'spec_name', 'adapter', 'output', 'namespace', 'base_class', 'request_prefix', 'format', 'output_file'];
 
     /** @param null|callable(string): void $stdoutWriter */
     public function __construct(
@@ -67,7 +73,7 @@ final class StubsCommand
     public static function parseArgv(array $argv): array
     {
         /** @var StubsOptions */
-        return ArgvParser::parse($argv, 'stubs', flags: ['dry_run'], values: self::VALUE_OPTIONS);
+        return ArgvParser::parse($argv, flags: ['dry_run'], values: self::VALUE_OPTIONS);
     }
 
     public static function usage(string $invocation = 'gesso stubs'): string
@@ -102,6 +108,8 @@ final class StubsCommand
                                    generated requests (laravel, symfony, pest).
                                    Default: no prefix. Does not configure validation.
               --dry-run            Report what would be written without writing it.
+              --format=text|json   Output format of the summary (default: text).
+              --output-file=<path> Write the summary there instead of stdout.
               --help               Show this message.
 
             Existing files are never overwritten; they are reported as skipped.
@@ -139,6 +147,10 @@ final class StubsCommand
                 implode(', ', StubRenderer::ADAPTERS),
             ));
         }
+        $format = $options['format'] ?? 'text';
+        if (!in_array($format, ['text', 'json'], true)) {
+            return $this->usageError("Unsupported --format={$format}.");
+        }
 
         /** @var string $specPath */
         $specPath = $options['spec'];
@@ -173,26 +185,41 @@ final class StubsCommand
         $allPlans = (new StubGenerator())->plan($spec, $states);
         [$plans, $classNames, $unreachable] = $this->partitionStubbable(
             $allPlans,
-            StubRenderer::classNames($allPlans),
+            $renderer->classNames($allPlans),
             $renderer,
         );
         $outputDir = rtrim($options['output'] ?? StubRenderer::DEFAULT_OUTPUT_DIRS[$adapter], '/');
         $dryRun = ($options['dry_run'] ?? false) === true;
 
-        if ($plans === []) {
-            $this->writeStdout(($states === null
-                ? "[Gesso] The spec declares no operation to stub.\n"
-                : "[Gesso] Every declared response is already covered; nothing to stub.\n")
-                . $this->renderUnreachable($unreachable));
+        $written = [];
+        $skipped = [];
+        $tuples = 0;
+        if ($plans !== []) {
+            try {
+                [$written, $skipped, $tuples] = $this->write($plans, $classNames, $renderer, $outputDir, $dryRun);
+            } catch (Throwable $e) {
+                return $this->usageError($e->getMessage());
+            }
+        }
 
-            return self::EXIT_OK;
+        if ($format === 'json') {
+            $report = $this->renderJson($written, $skipped, $unreachable, $outputDir, $dryRun);
+        } else {
+            $report = ($plans === []
+                ? ($states === null
+                    ? "[Gesso] The spec declares no operation to stub.\n"
+                    : "[Gesso] Every declared response is already covered; nothing to stub.\n")
+                : $this->renderWritten($written, $skipped, $tuples, $outputDir, $dryRun))
+                . $this->renderUnreachable($unreachable);
         }
 
         try {
-            return $this->write($plans, $classNames, $renderer, $outputDir, $dryRun, $unreachable);
-        } catch (Throwable $e) {
+            $this->writeReport($report, $options['output_file'] ?? null);
+        } catch (RuntimeException $e) {
             return $this->usageError($e->getMessage());
         }
+
+        return self::EXIT_OK;
     }
 
     /**
@@ -314,9 +341,12 @@ final class StubsCommand
     }
 
     /**
+     * Write each plan's stub, never overwriting an existing file.
+     *
      * @param list<StubOperation> $plans
      * @param list<string> $classNames parallel to $plans
-     * @param list<array{string, string}> $unreachable
+     *
+     * @return array{list<string>, list<string>, int} written files, skipped files, stubbed tuples
      */
     private function write(
         array $plans,
@@ -324,8 +354,7 @@ final class StubsCommand
         StubRenderer $renderer,
         string $outputDir,
         bool $dryRun,
-        array $unreachable,
-    ): int {
+    ): array {
         $written = [];
         $skipped = [];
         $tuples = 0;
@@ -333,6 +362,20 @@ final class StubsCommand
         foreach ($plans as $index => $plan) {
             $className = $classNames[$index];
             $file = $outputDir . '/' . $className . '.php';
+
+            // The class name carries the spec's method key verbatim, and an
+            // `additionalOperations` key can hold any string. A separator would
+            // turn the name into a path that leaves --output; no HTTP method
+            // token can contain one.
+            if (strpbrk($className, "/\\\0") !== false) {
+                throw new RuntimeException(sprintf(
+                    'Refusing to write a stub outside %s for %s %s: %s',
+                    $outputDir,
+                    $plan['method'],
+                    $plan['path'],
+                    $file,
+                ));
+            }
 
             if (file_exists($this->absolutise($file))) {
                 $skipped[] = $file;
@@ -349,6 +392,15 @@ final class StubsCommand
             $written[] = $file;
         }
 
+        return [$written, $skipped, $tuples];
+    }
+
+    /**
+     * @param list<string> $written
+     * @param list<string> $skipped
+     */
+    private function renderWritten(array $written, array $skipped, int $tuples, string $outputDir, bool $dryRun): string
+    {
         $lines = [];
         if ($written !== []) {
             $lines[] = sprintf(
@@ -380,9 +432,28 @@ final class StubsCommand
             }
         }
 
-        $this->writeStdout(implode("\n", $lines) . "\n" . $this->renderUnreachable($unreachable));
+        return implode("\n", $lines) . "\n";
+    }
 
-        return self::EXIT_OK;
+    /**
+     * @param list<string> $written
+     * @param list<string> $skipped
+     * @param list<array{string, string}> $rejected
+     */
+    private function renderJson(array $written, array $skipped, array $rejected, string $outputDir, bool $dryRun): string
+    {
+        return json_encode([
+            'schemaVersion' => self::JSON_SCHEMA_VERSION,
+            'tool' => ['name' => ToolVersion::PACKAGE, 'version' => ToolVersion::resolve()],
+            'dry_run' => $dryRun,
+            'output_dir' => $outputDir,
+            'written' => $written,
+            'skipped' => $skipped,
+            'not_stubbed' => array_map(
+                static fn(array $entry): array => ['reason' => $entry[0], 'detail' => $entry[1]],
+                $rejected,
+            ),
+        ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n";
     }
 
     private function writeFile(string $file, string $code): void

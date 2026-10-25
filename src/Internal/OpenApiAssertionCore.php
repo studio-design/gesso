@@ -5,13 +5,13 @@ declare(strict_types=1);
 namespace Studio\Gesso\Internal;
 
 use Closure;
-use PHPUnit\Framework\Assert;
 use PHPUnit\Framework\AssertionFailedError;
 use Studio\Gesso\Baseline\ViolationBaselineCollector;
 use Studio\Gesso\Baseline\ViolationBaselineEnforcer;
 use Studio\Gesso\Baseline\ViolationFingerprint;
 use Studio\Gesso\DecodedBody;
 use Studio\Gesso\OpenApiValidationResult;
+use Studio\Gesso\PHPUnit\CleanTraceAssert;
 use Studio\Gesso\ValidationOutput;
 use Studio\Gesso\ValidationOutputFormat;
 use Symfony\Component\HttpFoundation\Request;
@@ -31,36 +31,16 @@ use function is_scalar;
  */
 trait OpenApiAssertionCore
 {
-    /**
-     * Like Assert::fail() but with vendor frames stripped from the trace.
-     *
-     * Deliberately carries no internal marker: the public adapter traits
-     * compose it, so the name is part of their frozen private surface
-     * (docs/versioning.md).
-     */
+    /** Frozen private surface of the public adapter traits (docs/versioning.md). */
     private function failOpenApi(string $message): never
     {
-        try {
-            Assert::fail($message);
-        } catch (AssertionFailedError $e) {
-            StackTraceFilter::rethrowWithCleanTrace($e);
-        }
+        CleanTraceAssert::fail($message);
     }
 
-    /**
-     * Like Assert::assertTrue() but with vendor frames stripped from the trace on failure.
-     *
-     * Deliberately carries no internal marker: the public adapter traits
-     * compose it, so the name is part of their frozen private surface
-     * (docs/versioning.md).
-     */
+    /** Frozen private surface of the public adapter traits (docs/versioning.md). */
     private function assertOpenApi(bool $condition, string $message): void
     {
-        try {
-            Assert::assertTrue($condition, $message);
-        } catch (AssertionFailedError $e) {
-            StackTraceFilter::rethrowWithCleanTrace($e);
-        }
+        CleanTraceAssert::assertTrue($condition, $message);
     }
 
     /** @internal Shared body; the adapters' frozen private names forward here. */
@@ -73,6 +53,11 @@ trait OpenApiAssertionCore
         // parameters would silently vanish from the curl command. The
         // formatter redacts the value.
         $headers = $request->headers->all();
+        // ServerBag decodes Basic/Digest auth into php-auth-* entries. They
+        // are PHP server-var artifacts, not wire headers, and would print the
+        // plaintext password; the Authorization header already carries the
+        // credential (redacted by the formatter).
+        unset($headers['php-auth-user'], $headers['php-auth-pw'], $headers['php-auth-digest']);
         $cookiePairs = [];
         foreach ($request->cookies->all() as $name => $value) {
             $cookiePairs[] = $name . '=' . (is_scalar($value) ? (string) $value : '');

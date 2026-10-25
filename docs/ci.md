@@ -77,7 +77,8 @@ Example: write every format from one PHPUnit run:
 </extensions>
 ```
 
-Same idea from the paratest merge CLI:
+Same idea from the paratest merge CLI (with a `gesso.php` that declares these
+paths, plain `vendor/bin/gesso coverage:merge` is enough):
 
 ```bash
 vendor/bin/gesso coverage:merge \

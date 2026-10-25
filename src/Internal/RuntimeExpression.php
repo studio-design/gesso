@@ -94,7 +94,10 @@ final readonly class RuntimeExpression
 
     /**
      * Split an Arazzo/OpenAPI `expression-string` into literal chunks and
-     * embedded `{expression}` parts. A stray `{` or `}` is malformed.
+     * embedded `{expression}` parts. A JSON Pointer may itself contain
+     * braces (`{$request.body#/a{b}}`), so each `{` tries its closing `}`
+     * candidates nearest first and keeps the first split the rest of the
+     * template accepts. A stray `{` or `}` is malformed.
      *
      * @return list<self|string>
      *
@@ -102,36 +105,10 @@ final readonly class RuntimeExpression
      */
     public static function parseEmbedded(string $template): array
     {
-        $chunks = [];
-        $offset = 0;
-        $length = strlen($template);
-        while ($offset < $length) {
-            $open = strpos($template, '{', $offset);
-            $close = strpos($template, '}', $offset);
-            if ($close !== false && ($open === false || $close < $open)) {
-                throw new RuntimeExpressionException(RuntimeExpressionFailure::Malformed, $template, "unmatched '}' in an embedded expression string.");
-            }
+        $failed = [];
 
-            if ($open === false) {
-                $chunks[] = substr($template, $offset);
-
-                break;
-            }
-
-            if ($open > $offset) {
-                $chunks[] = substr($template, $offset, $open - $offset);
-            }
-
-            $nextOpen = strpos($template, '{', $open + 1);
-            if ($close === false || ($nextOpen !== false && $nextOpen < $close)) {
-                throw new RuntimeExpressionException(RuntimeExpressionFailure::Malformed, $template, "unterminated '{' in an embedded expression string.");
-            }
-
-            $chunks[] = self::parse(substr($template, $open + 1, $close - $open - 1));
-            $offset = $close + 1;
-        }
-
-        return $chunks;
+        return self::splitEmbedded($template, 0, $failed)
+            ?? throw new RuntimeExpressionException(RuntimeExpressionFailure::Malformed, $template, "unbalanced '{'/'}' or an unrecognised expression in an embedded expression string.");
     }
 
     /**
@@ -142,6 +119,46 @@ final readonly class RuntimeExpression
     public function pointerSegments(): array
     {
         return $this->pointer === null ? [] : JsonPointer::segments($this->pointer);
+    }
+
+    /**
+     * @param array<int, true> $failed offsets already known not to split, so backtracking stays polynomial
+     *
+     * @return null|list<self|string>
+     */
+    private static function splitEmbedded(string $template, int $offset, array &$failed): ?array
+    {
+        if (isset($failed[$offset])) {
+            return null;
+        }
+
+        $open = strpos($template, '{', $offset);
+        $close = strpos($template, '}', $offset);
+        if ($close !== false && ($open === false || $close < $open)) {
+            return null;
+        }
+
+        if ($open === false) {
+            return $offset < strlen($template) ? [substr($template, $offset)] : [];
+        }
+
+        $literal = $open > $offset ? [substr($template, $offset, $open - $offset)] : [];
+        for (; $close !== false; $close = strpos($template, '}', $close + 1)) {
+            try {
+                $expression = self::parse(substr($template, $open + 1, $close - $open - 1));
+            } catch (RuntimeExpressionException) {
+                continue;
+            }
+
+            $rest = self::splitEmbedded($template, $close + 1, $failed);
+            if ($rest !== null) {
+                return [...$literal, $expression, ...$rest];
+            }
+        }
+
+        $failed[$offset] = true;
+
+        return null;
     }
 
     private static function parseSource(RuntimeExpressionFamily $family, string $source, string $rest, string $raw): self

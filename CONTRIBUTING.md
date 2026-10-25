@@ -43,6 +43,13 @@ checks every link, just not the site's ids: it takes the probe as the glob
 matches. Naming the file directly would abort the whole run instead, so keep it
 a glob.
 
+`docs:build` also mirrors `docs/` into `docs/.vitepress/dist/` so every page is
+served as raw Markdown at `<page>.md`, and writes `llms-full.txt` from the
+pages listed in `docs/public/llms.txt`. That index is hand-written; the build
+fails when its links no longer match the sidebar and nav in
+`docs/.vitepress/config.mts`, naming each missing or unexpected URL. Add a
+sidebar page and its `llms.txt` line together.
+
 `docs:links` needs [lychee](https://github.com/lycheeverse/lychee) on your
 `PATH` — it is a standalone binary rather than an npm package, so it is not
 installed by `npm ci`:
