@@ -1105,7 +1105,7 @@ final class CoverageMergeCommand
         foreach ($occurrences as $occurrence) {
             foreach (preg_split($separator, $occurrence) ?: [] as $item) {
                 if (trim($item) === '') {
-                    continue;
+                    throw new InvalidArgumentException("{$flag} has an empty member; name at least one of " . implode(', ', $allowed) . '.');
                 }
                 [$name, $value] = explode('=', $item, 2) + [1 => null];
                 $name = trim($name);
