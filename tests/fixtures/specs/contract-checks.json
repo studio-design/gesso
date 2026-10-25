@@ -415,6 +415,32 @@
                 }
             }
         },
+        "/oauth/form-required-nullable": {
+            "post": {
+                "operationId": "formRequiredNullable",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "type": ["object", "null"],
+                                "properties": {
+                                    "grant_type": {
+                                        "type": "string"
+                                    }
+                                },
+                                "required": ["grant_type"]
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "ok"
+                    }
+                }
+            }
+        },
         "/uploads/{uploadId}": {
             "put": {
                 "operationId": "replaceUpload",

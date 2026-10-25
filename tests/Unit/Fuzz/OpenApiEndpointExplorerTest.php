@@ -472,4 +472,15 @@ class OpenApiEndpointExplorerTest extends TestCase
 
         OpenApiEndpointExplorer::explore('contract-checks', 'POST', '/oauth/form-required-empty-object', 1, seed: 7);
     }
+
+    #[Test]
+    public function throws_for_a_required_null_form_body(): void
+    {
+        // A null form body goes out empty, which the validator reads as a
+        // missing required body — even though the schema accepts null.
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('once form-encoded');
+
+        OpenApiEndpointExplorer::explore('contract-checks', 'POST', '/oauth/form-required-nullable', 5, seed: 7);
+    }
 }

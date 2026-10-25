@@ -24,15 +24,20 @@ class CreatePetTest extends TestCase
     public function test_create_pet_contract(): void
     {
         $this->exploreEndpoint('POST', '/v1/pets', cases: 50, seed: 1)
-            ->each(fn (ExploredCase $case) => $this->call(
-                'POST',
-                $case->uri('/api'),
-                cookies: $case->cookies,
-                server: $this->transformHeadersToServerVars([
-                    'Accept' => 'application/json', 'Content-Type' => $case->contentType, ...$case->headers,
-                ]),
-                content: $case->bodyAsString(),
-            )->assertSuccessful());
+            ->each(function (ExploredCase $case): void {
+                // Laravel parses form fields only from `parameters`, never from raw content.
+                $form = $case->contentType === 'application/x-www-form-urlencoded';
+                $this->call(
+                    'POST',
+                    $case->uri('/api'),
+                    parameters: $form ? $case->bodyAsFormFields() : [],
+                    cookies: $case->cookies,
+                    server: $this->transformHeadersToServerVars([
+                        'Accept' => 'application/json', 'Content-Type' => $case->contentType, ...$case->headers,
+                    ]),
+                    content: $form ? null : $case->bodyAsString(),
+                )->assertSuccessful();
+            });
     }
 }
 ```
@@ -54,8 +59,12 @@ What you get per case (`Studio\Gesso\Fuzz\ExploredCase`):
 
 The collection is `Countable` and `IteratorAggregate`, so `foreach ($cases as $case)` works too if you prefer it over the fluent `each()` helper.
 
-Use `$case->bodyAsString()` to serialize the body in `$case->contentType`, as above; for
-JSON it is `$case->bodyAsJson()`, which encodes the original value without loss.
+Use `$case->bodyAsString()` to serialize the body in `$case->contentType` for a
+client that sends raw bytes; for JSON it is `$case->bodyAsJson()`, which encodes
+the original value without loss. Laravel's `call()` and Symfony's
+`KernelBrowser::request()` do not parse raw form content into the request's
+input, so pass `$case->bodyAsFormFields()` as their `parameters` for a form case
+instead, as above.
 `bodyAsArray()` is a lossy compatibility helper for array-only consumers:
 it recursively turns `{}` into `[]`, including nested objects. Feeding it to
 Laravel's `postJson()` or Symfony's `jsonRequest()` can turn a generated valid
@@ -164,18 +173,23 @@ class ApiContractTest extends TestCase
             ->includeTags(['public'])
             ->excludeOperations(['admin.users.destroy'])
             ->authenticateUsing(fn (ExploredOperation $operation) => $this->actingAs($this->userFor($operation)))
-            ->dispatchUsing(fn (ExploredCase $case) => match ($case->method) {
-                HttpMethod::GET => $this->get($case->uri('/api'), $case->headers),
-                HttpMethod::POST => $this->call(
-                    'POST',
-                    $case->uri('/api'),
-                    cookies: $case->cookies,
-                    server: $this->transformHeadersToServerVars([
-                        'Accept' => 'application/json', 'Content-Type' => $case->contentType, ...$case->headers,
-                    ]),
-                    content: $case->bodyAsString(),
-                ),
-                default => throw new LogicException('Add the method to the test dispatcher.'),
+            ->dispatchUsing(function (ExploredCase $case) {
+                $form = $case->contentType === 'application/x-www-form-urlencoded';
+
+                return match ($case->method) {
+                    HttpMethod::GET => $this->get($case->uri('/api'), $case->headers),
+                    HttpMethod::POST => $this->call(
+                        'POST',
+                        $case->uri('/api'),
+                        parameters: $form ? $case->bodyAsFormFields() : [],
+                        cookies: $case->cookies,
+                        server: $this->transformHeadersToServerVars([
+                            'Accept' => 'application/json', 'Content-Type' => $case->contentType, ...$case->headers,
+                        ]),
+                        content: $form ? null : $case->bodyAsString(),
+                    ),
+                    default => throw new LogicException('Add the method to the test dispatcher.'),
+                };
             })
             ->assertResponses(); // ValidatesOpenApiSchema auto_assert validates each response
 
@@ -318,14 +332,16 @@ $this->exploreInvalidEndpoint(
     cases: 20,
     seed: 7,
 )->each(function (ExploredCase $case): void {
+    $form = $case->contentType === 'application/x-www-form-urlencoded';
     $response = $this->call(
         'POST',
         $case->uri('/api'),
+        parameters: $form ? $case->bodyAsFormFields() : [],
         cookies: $case->cookies,
         server: $this->transformHeadersToServerVars([
             'Accept' => 'application/json', 'Content-Type' => $case->contentType, ...$case->headers,
         ]),
-        content: $case->bodyAsString(),
+        content: $form ? null : $case->bodyAsString(),
     );
     self::assertContains(intdiv($response->getStatusCode(), 100), $case->expectedStatusClasses);
 });

@@ -364,8 +364,9 @@ final class OpenApiEndpointExplorer
             );
             // A value the schema accepts can still be inexpressible as a form
             // (a required empty list, a part `encoding` the generator does
-            // not apply) — fail loudly rather than dispatch a broken case.
-            $wireErrors = $formWireErrors === null || $body === null ? [] : $formWireErrors($case);
+            // not apply, a null body that goes out empty) — fail loudly rather
+            // than dispatch a broken case.
+            $wireErrors = $formWireErrors === null ? [] : $formWireErrors($case);
             if ($wireErrors !== []) {
                 throw new InvalidArgumentException(sprintf(
                     "Operation %s '%s' in spec '%s': generated case %d does not satisfy the request body schema "
