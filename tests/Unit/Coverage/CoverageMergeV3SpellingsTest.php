@@ -65,7 +65,7 @@ final class CoverageMergeV3SpellingsTest extends TestCase
         yield 'strip prefixes' => [['--strip-prefixes=/api,/v2'], ['--strip-prefix=/api,/v2'], ['--strip-prefixes']];
         yield 'report sinks' => [
             ['--json-output=j.json', '--junit-output=u.xml', '--html-output=h.html'],
-            ['--report=json:j.json', '--report=junit:u.xml,html:h.html'],
+            ['--report=json:j.json', '--report=junit:u.xml', '--report=html:h.html'],
             ['--json-output', '--junit-output', '--html-output'],
         ];
         yield 'console report' => [['--console-output=all'], ['--console-report=all'], ['--console-output']];
@@ -81,6 +81,16 @@ final class CoverageMergeV3SpellingsTest extends TestCase
             ['--baseline-file', '--coverage-baseline-file'],
         ];
         yield 'baseline staleness' => [['--coverage-baseline-stale=fail'], ['--baseline-stale=coverage=fail'], ['--coverage-baseline-stale']];
+        yield 'paths with commas' => [
+            ['--json-output=build/a,b.json', '--coverage-baseline-file=c,d.json'],
+            ['--report=json:build/a,b.json', '--baseline=coverage=c,d.json'],
+            ['--json-output', '--coverage-baseline-file'],
+        ];
+        yield 'grouped members across occurrences' => [
+            ['--baseline-file=v,1.json', '--coverage-baseline-file=c.json'],
+            ['--baseline=violations=v,1.json', '--baseline=coverage=c.json'],
+            ['--baseline-file', '--coverage-baseline-file'],
+        ];
         yield 'strict modes' => [
             ['--strict-required=warn', '--strict-additional-properties=fail'],
             ['--strict-required=run=warn,per_call=off', '--strict-additional-properties=run=fail'],
@@ -97,10 +107,13 @@ final class CoverageMergeV3SpellingsTest extends TestCase
         yield 'staleness both ways' => [['--coverage-baseline-stale=note', '--baseline-stale=coverage=fail'], 'set the same option'];
         yield 'unknown report format' => [['--report=xml:a.xml'], '--report=xml:a.xml must be'];
         yield 'report without a path' => [['--report=json'], '--report=json must be'];
-        yield 'report twice' => [['--report=json:a.json,json:b.json'], 'names the json report twice'];
+        yield 'report twice' => [['--report=json:a.json', '--report=json:b.json'], 'names the json report twice'];
         yield 'unknown member' => [['--min-coverage=endpont=80'], '--min-coverage does not take "endpont"'];
         yield 'member without value' => [['--min-coverage=endpoint'], 'needs a value for endpoint'];
         yield 'violations staleness' => [['--baseline-stale=violations=fail'], '--baseline-stale does not take "violations"'];
+        yield 'blank value' => [['--baseline=coverage='], 'needs a value for coverage'];
+        yield 'blank strict mode' => [['--strict-additional-properties=run= '], 'needs a value for run'];
+        yield 'mixed strict spellings' => [['--strict-additional-properties=fail', '--strict-additional-properties=run=off'], 'set the same option'];
         yield 'bad per_call' => [['--strict-required=run=warn,per_call=fail'], 'per_call=fail is not one of off, warn'];
     }
 

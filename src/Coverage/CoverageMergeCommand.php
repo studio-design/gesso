@@ -57,6 +57,7 @@ use function is_string;
 use function max;
 use function ord;
 use function preg_replace_callback;
+use function preg_split;
 use function sprintf;
 use function str_contains;
 use function str_replace;
@@ -194,11 +195,14 @@ final class CoverageMergeCommand
         // Issue #507: the v3 spellings fold into the v2 option names, so
         // run() and the gesso.php defaults see one set of keys. Which
         // spelling was typed is read off argv, because a list option is
-        // always present in $opts.
+        // always present in $opts. The grouped flags are read off argv too:
+        // ArgvParser keeps only the last scalar and splits lists on every
+        // comma, which would lose a path containing one.
         $typed = [];
         foreach ($argv as $arg) {
             if (str_starts_with($arg, '--')) {
-                $typed[str_replace('-', '_', explode('=', substr($arg, 2), 2)[0])] = true;
+                [$name, $value] = explode('=', substr($arg, 2), 2) + [1 => 'true'];
+                $typed[str_replace('-', '_', $name)][] = $value;
             }
         }
 
@@ -984,17 +988,11 @@ final class CoverageMergeCommand
     }
 
     /**
-     * Every merge diagnostic can carry sidecar-derived text (payload errors,
-     * strict-gate reports, deprecation and baseline notes), so stderr gets the
-     * same neutralisation as the stdout report. Overrides the {@see CliIo}
-     * writer for this command only.
-     */
-    /**
      * Map the v3 spellings onto the v2 option names, and list the v2
      * spellings that were typed so run() can deprecate them.
      *
      * @param array<string, mixed> $opts
-     * @param array<string, true> $typed option names that appeared on argv
+     * @param array<string, list<string>> $typed every value each option was given on argv
      *
      * @return array<string, mixed>
      *
@@ -1002,7 +1000,7 @@ final class CoverageMergeCommand
      */
     private static function foldV3Spellings(array $opts, array $typed): array
     {
-        /** @var array{spec_name: list<string>, strip_prefix: list<string>, report: list<string>, min_coverage: list<string>, baseline: list<string>, baseline_stale: list<string>, console_report?: string, strict_required?: string, strict_additional_properties?: string} $opts */
+        /** @var array{spec_name: list<string>, strip_prefix: list<string>, console_report?: string, strict_required?: string, strict_additional_properties?: string} $opts */
         $v3 = [];
         if (isset($typed['spec_name'])) {
             $v3['specs'] = $opts['spec_name'];
@@ -1013,9 +1011,11 @@ final class CoverageMergeCommand
         if (isset($opts['console_report'])) {
             $v3['console_output'] = $opts['console_report'];
         }
-        foreach ($opts['report'] as $sink) {
+        // Repeatable, never comma-split: the path is everything after the
+        // first colon.
+        foreach ($typed['report'] ?? [] as $sink) {
             [$format, $path] = explode(':', $sink, 2) + [1 => ''];
-            if (!in_array($format, ['json', 'junit', 'html'], true) || $path === '') {
+            if (!in_array($format, ['json', 'junit', 'html'], true) || trim($path) === '') {
                 throw new InvalidArgumentException("--report={$sink} must be json:<path>, junit:<path> or html:<path>.");
             }
             if (isset($v3[$format . '_output'])) {
@@ -1023,19 +1023,19 @@ final class CoverageMergeCommand
             }
             $v3[$format . '_output'] = $path;
         }
-        foreach (self::members('--min-coverage', $opts['min_coverage'], ['endpoint', 'response', 'sdk_exercise', 'strict']) as $member => $value) {
+        foreach (self::members('--min-coverage', $typed['min_coverage'] ?? [], ['endpoint', 'response', 'sdk_exercise', 'strict']) as $member => $value) {
             if ($member === 'strict') {
                 $v3['min_coverage_strict'] = ArgvParser::bool($value);
             } else {
                 $v3["min_{$member}_coverage"] = $value;
             }
         }
-        foreach (self::members('--baseline', $opts['baseline'], ['violations', 'coverage']) as $member => $value) {
+        foreach (self::members('--baseline', $typed['baseline'] ?? [], ['violations', 'coverage']) as $member => $value) {
             $v3[$member === 'violations' ? 'baseline_file' : 'coverage_baseline_file'] = $value;
         }
         // The violation baseline's staleness is reported by the workers; the
         // merge only ever evaluates the coverage baseline.
-        foreach (self::members('--baseline-stale', $opts['baseline_stale'], ['coverage']) as $value) {
+        foreach (self::members('--baseline-stale', $typed['baseline_stale'] ?? [], ['coverage']) as $value) {
             $v3['coverage_baseline_stale'] = $value;
         }
 
@@ -1052,20 +1052,26 @@ final class CoverageMergeCommand
         }
 
         // These two keep their name; the bare-mode value is the v2 spelling.
+        // Every occurrence is checked, so a v2 value and a v3 value cannot
+        // meet with the last one silently winning.
         foreach (['strict_required', 'strict_additional_properties'] as $key) {
-            $value = $opts[$key] ?? null;
-            if ($value === null) {
+            $values = $typed[$key] ?? [];
+            if ($values === []) {
                 continue;
             }
             $flag = '--' . str_replace('_', '-', $key);
-            if (!str_contains($value, '=')) {
+            $grammar = array_values(array_filter($values, static fn(string $value): bool => str_contains($value, '=')));
+            if ($grammar === []) {
                 $deprecated[] = $flag;
 
                 continue;
             }
+            if (count($grammar) !== count($values)) {
+                throw new InvalidArgumentException("{$flag}=<mode> and {$flag}=\"run=…\" set the same option; pass only {$flag}=\"run=…\".");
+            }
             // `per_call` is checked by the PHPUnit extension inside each
             // worker; it is accepted here so one string serves both.
-            $members = self::members($flag, explode(',', $value), ['run', 'per_call']);
+            $members = self::members($flag, $grammar, ['run', 'per_call']);
             if (isset($members['per_call']) && !in_array($members['per_call'], ['off', 'warn'], true)) {
                 throw new InvalidArgumentException("{$flag} per_call={$members['per_call']} is not one of off, warn.");
             }
@@ -1081,30 +1087,42 @@ final class CoverageMergeCommand
     }
 
     /**
-     * Split a v3 `name=value,name=value` flag into its members. Only `strict`
-     * may be written without a value.
+     * Split each occurrence of a v3 `name=value,name=value` flag into its
+     * members. A comma only separates members when a member name follows it,
+     * so a path may contain one. Only `strict` may be written without a value,
+     * and no value may be blank: an unset shell variable must not quietly
+     * turn a gate off.
      *
-     * @param list<string> $items
+     * @param list<string> $occurrences
      * @param list<string> $allowed
      *
      * @return array<string, string>
      */
-    private static function members(string $flag, array $items, array $allowed): array
+    private static function members(string $flag, array $occurrences, array $allowed): array
     {
+        $separator = '/,(?=\s*(?:' . implode('|', $allowed) . ')\s*(?:=|,|$))/';
         $members = [];
-        foreach ($items as $item) {
-            [$name, $value] = explode('=', $item, 2) + [1 => null];
-            $name = trim($name);
-            if (!in_array($name, $allowed, true)) {
-                throw new InvalidArgumentException(sprintf('%s does not take "%s"; expected %s.', $flag, $name, implode(', ', $allowed)));
+        foreach ($occurrences as $occurrence) {
+            foreach (preg_split($separator, $occurrence) ?: [] as $item) {
+                if (trim($item) === '') {
+                    continue;
+                }
+                [$name, $value] = explode('=', $item, 2) + [1 => null];
+                $name = trim($name);
+                if (!in_array($name, $allowed, true)) {
+                    throw new InvalidArgumentException(sprintf('%s does not take "%s"; expected %s.', $flag, $name, implode(', ', $allowed)));
+                }
+                if (isset($members[$name])) {
+                    throw new InvalidArgumentException("{$flag} names {$name} twice.");
+                }
+                if ($value === null && $name === 'strict') {
+                    $value = 'true';
+                }
+                if ($value === null || trim($value) === '') {
+                    throw new InvalidArgumentException("{$flag} needs a value for {$name}, e.g. {$name}=….");
+                }
+                $members[$name] = trim($value);
             }
-            if (isset($members[$name])) {
-                throw new InvalidArgumentException("{$flag} names {$name} twice.");
-            }
-            if ($value === null && $name !== 'strict') {
-                throw new InvalidArgumentException("{$flag} needs a value for {$name}, e.g. {$name}=….");
-            }
-            $members[$name] = trim($value ?? 'true');
         }
 
         return $members;
@@ -1560,6 +1578,12 @@ final class CoverageMergeCommand
         $this->writeStderr(sprintf("[OpenAPI Coverage] %s: %s\n", $severity, $detail));
     }
 
+    /**
+     * Every merge diagnostic can carry sidecar-derived text (payload errors,
+     * strict-gate reports, deprecation and baseline notes), so stderr gets the
+     * same neutralisation as the stdout report. Overrides the {@see CliIo}
+     * writer for this command only.
+     */
     private function writeStderr(string $message): void
     {
         $this->writeUnfilteredStderr(self::terminalSafe($message));

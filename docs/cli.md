@@ -118,7 +118,7 @@ giving both for the same setting is a usage error (exit `2`).
 |---|---|---|
 | `coverage:merge` | `--specs=<a,b>` | `--spec-name=<name>`, repeatable or comma-separated |
 | `coverage:merge` | `--strip-prefixes=<a,b>` | `--strip-prefix=<prefix>`, repeatable or comma-separated |
-| `coverage:merge` | `--json-output=<path>`, `--junit-output=<path>`, `--html-output=<path>` | `--report=json:<path>`, `--report=junit:<path>`, `--report=html:<path>`; repeatable or comma-separated |
+| `coverage:merge` | `--json-output=<path>`, `--junit-output=<path>`, `--html-output=<path>` | `--report=json:<path>`, `--report=junit:<path>`, `--report=html:<path>`; repeatable |
 | `coverage:merge` | `--console-output=<mode>` | `--console-report=<mode>` |
 | `coverage:merge` | `--min-endpoint-coverage`, `--min-response-coverage`, `--min-sdk-exercise-coverage`, `--min-coverage-strict` | `--min-coverage="endpoint=…,response=…,sdk_exercise=…,strict"` |
 | `coverage:merge` | `--baseline-file=<path>`, `--coverage-baseline-file=<path>` | `--baseline="violations=…,coverage=…"` |
@@ -126,7 +126,7 @@ giving both for the same setting is a usage error (exit `2`).
 | `coverage:merge` | `--strict-required=<mode>`, `--strict-additional-properties=<mode>` | `--strict-required="run=…"`, `--strict-additional-properties="run=…"` |
 | `stubs`, `gesso:stubs` | `--output=<dir>` | `--output-dir=<dir>` |
 
-In the `name=value` flags, members are separated by commas. Name only the
+In the `name=value` flags, members are separated by commas; a comma that is not followed by a member name stays part of the value, so paths may contain one. A blank value is a usage error. Name only the
 members you need. `strict` alone means `strict=true`. An unknown member, or a
 member without a value, is a usage error. `--strict-*` also accepts
 `per_call=off|warn`, so the same string works for the PHPUnit extension. The
