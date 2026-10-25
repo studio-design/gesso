@@ -929,12 +929,10 @@ class EnumDriftAsserterTest extends TestCase
 
     /**
      * @param class-string $fqcn
+     * @param list<string> $specNames
      */
     #[Test]
     #[DataProvider('provideMatched_component_with_a_non_list_enum_throws_enum_key_not_arrayCases')]
-    /**
-     * @param list<string> $specNames
-     */
     public function matched_component_with_a_non_list_enum_throws_enum_key_not_array(string $fqcn, string $component, array $specNames): void
     {
         try {
