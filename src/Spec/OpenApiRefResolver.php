@@ -401,6 +401,11 @@ final class OpenApiRefResolver
         }
 
         $scheme = $baseParts['scheme'];
+        // RFC 3986 §5.2.2: a network-path reference (`//host/x`) keeps only the base scheme.
+        if (str_starts_with($relativeRef, '//')) {
+            return $scheme . ':' . $relativeRef;
+        }
+
         $host = $baseParts['host'];
         $port = isset($baseParts['port']) ? ':' . $baseParts['port'] : '';
         $userInfo = isset($baseParts['user'])

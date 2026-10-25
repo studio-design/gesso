@@ -92,6 +92,16 @@ final class ArazzoDescriptionTest extends TestCase
     }
 
     #[Test]
+    public function source_urls_resolve_as_uri_references(): void
+    {
+        $network = ArazzoDescription::fromFile(self::DIR . '/self-network-path.arazzo.json');
+        $encoded = ArazzoDescription::fromFile(self::DIR . '/percent-encoded-source.arazzo.json');
+
+        $this->assertSame('https://api.example.test/pets.json', $network->sources['api']->resolvedUrl);
+        $this->assertSame(realpath(self::DIR . '/../specs/arazzo-petstore.json'), $encoded->sources['petstore']->resolvedUrl);
+    }
+
+    #[Test]
     #[DataProvider('provideMalformed_documents_fail_with_their_reasonCases')]
     public function malformed_documents_fail_with_their_reason(string $file, ArazzoDescriptionReason $reason): void
     {

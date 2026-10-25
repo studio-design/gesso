@@ -68,6 +68,22 @@
           }
         }
       ]
+    },
+    {
+      "workflowId": "expressionUnderEnum",
+      "steps": [
+        {
+          "stepId": "create",
+          "operationId": "$sourceDescriptions.petstore.createPet",
+          "requestBody": {
+            "payload": {
+              "enum": {
+                "value": "$steps.missing.outputs.id"
+              }
+            }
+          }
+        }
+      ]
     }
   ]
 }

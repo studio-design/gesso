@@ -122,6 +122,12 @@ final class ArazzoWorkflowPreflightTest extends TestCase
     }
 
     #[Test]
+    public function expressions_under_a_retained_enum_object_are_checked(): void
+    {
+        $this->assertSame(ArazzoDescriptionReason::UnknownStep, $this->failure('preflight-regressions.arazzo.json', 'expressionUnderEnum')->reason);
+    }
+
+    #[Test]
     public function target_problems_are_reported(): void
     {
         $this->assertSame(ArazzoDescriptionReason::AmbiguousTarget, $this->failure('malformed/two-targets.arazzo.json', 'w')->reason);
