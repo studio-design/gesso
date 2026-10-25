@@ -11,7 +11,6 @@ use RecursiveIteratorIterator;
 use ReflectionEnum;
 use ReflectionException;
 use SplFileInfo;
-use Studio\Gesso\Attribute\BoundToOpenApiEnum;
 use Studio\Gesso\Exception\EnumBindingException;
 use Studio\Gesso\Exception\EnumBindingReason;
 
@@ -35,9 +34,9 @@ use function strlen;
 use function substr;
 
 /**
- * Discover backed PHP enums carrying `#[BoundToOpenApiEnum]` under one or
- * more PSR-4 namespace prefixes. Used by `OpenApiCoverageExtension` so users
- * no longer have to enumerate every bound enum manually.
+ * Discover backed PHP enums under one or more PSR-4 namespace prefixes. Used
+ * by `OpenApiCoverageExtension` so users no longer have to enumerate every
+ * bound enum manually.
  *
  * Discovery merges results from Composer's classmap (`getClassMap()`) and a
  * recursive scan of each PSR-4-registered directory, deduplicating across
@@ -59,8 +58,8 @@ final class EnumScanner
 
     /**
      * Return the FQCNs of every backed enum under one of `$namespacePrefixes`
-     * that carries the `#[BoundToOpenApiEnum]` attribute. Result is sorted
-     * and deduplicated.
+     * — which of them are bound is the asserter's decision (attribute or
+     * component name). Result is sorted and deduplicated.
      *
      * @param list<string> $namespacePrefixes
      *
@@ -98,7 +97,7 @@ final class EnumScanner
             $candidates = [...$candidates, ...self::discoverCandidates($loader, $prefix)];
         }
 
-        $matches = array_values(array_filter(array_unique($candidates), self::isBoundEnum(...)));
+        $matches = array_values(array_filter(array_unique($candidates), self::isBackedEnum(...)));
         sort($matches);
 
         return self::$cache[$cacheKey] = $matches;
@@ -366,7 +365,7 @@ final class EnumScanner
         return $registeredPrefix . $classPart;
     }
 
-    private static function isBoundEnum(string $fqcn): bool
+    private static function isBackedEnum(string $fqcn): bool
     {
         // `enum_exists()` and `ReflectionEnum` are intentionally NOT wrapped
         // in a `catch (Throwable)`: a `ParseError` from a broken enum source
@@ -385,10 +384,7 @@ final class EnumScanner
         } catch (ReflectionException) {
             return false;
         }
-        if (!$reflection->isBacked()) {
-            return false;
-        }
 
-        return $reflection->getAttributes(BoundToOpenApiEnum::class) !== [];
+        return $reflection->isBacked();
     }
 }

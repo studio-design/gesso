@@ -8,22 +8,31 @@ use Studio\Gesso\OpenApiResponseValidator;
 return [
     'default_spec' => '',
 
+    // Spec names `gesso:routes` compares when `--spec` is not passed. `--spec`
+    // replaces this list; when both are empty, `default_spec` is used.
+    'specs' => [],
+
     // Directory containing named OpenAPI spec files used by Laravel Artisan
     // commands. `--spec=front` resolves front.json/front.yaml/front.yml here.
     'spec_base_path' => 'openapi',
 
     // Prefixes removed from registered Laravel route URIs before comparing
     // them with OpenAPI paths. Keep this aligned with the PHPUnit extension's
-    // `strip_prefixes` parameter so static parity and runtime validation agree.
+    // `strip_prefixes` parameter so static parity and runtime validation agree
+    // — or move both to the root gesso.php so nothing needs aligning.
     'strip_prefixes' => [],
 
     // Documented operations implemented by another service in a gateway
     // topology. Patterns use Laravel's `Str::is` wildcard matching. These
     // operations remain visible in route-parity output under
     // `external_operations`, but do not fail `--fail-on-unimplemented`.
+    // `excluded_route_names` is the registered-route counterpart: route-name
+    // patterns (`Str::is` wildcards) left out of the comparison, merged with
+    // any `--exclude-route` values.
     'route_parity' => [
         'external_operation_ids' => [],
         'external_openapi_paths' => [],
+        'excluded_route_names' => [],
     ],
 
     // Maximum number of validation errors to report per response.

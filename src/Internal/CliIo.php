@@ -6,12 +6,16 @@ namespace Studio\Gesso\Internal;
 
 use const STDERR;
 
+use RuntimeException;
+
+use function file_put_contents;
 use function fwrite;
 use function getcwd;
 use function is_callable;
 use function realpath;
 use function rtrim;
 use function str_starts_with;
+use function strlen;
 
 /**
  * Writer seams and path resolution shared by the `gesso` subcommands.
@@ -24,6 +28,11 @@ use function str_starts_with;
  */
 trait CliIo
 {
+    // Shared by every subcommand: 0 success, 1 "the answer is no", 2 usage error.
+    public const EXIT_OK = 0;
+    public const EXIT_FAILURE = 1;
+    public const EXIT_USAGE = 2;
+
     private function absolutise(string $path): string
     {
         if (str_starts_with($path, '/')) {
@@ -35,12 +44,33 @@ trait CliIo
         return realpath($absolute) ?: $absolute;
     }
 
-    /** Usage errors exit 2 on every subcommand (their `EXIT_USAGE`). */
-    private function usageError(string $message): int
+    /**
+     * Report a usage error on stderr, followed by the usage text, and return `EXIT_USAGE`.
+     * `$prefix` exists for doctor's pinned diagnostic prefix; everything else uses the default.
+     */
+    private function usageError(string $message, string $prefix = '[Gesso]'): int
     {
-        $this->writeStderr("[Gesso] {$message}\n\n" . self::usage($this->invocation));
+        $this->writeStderr("{$prefix} {$message}\n\n" . self::usage($this->invocation));
 
-        return 2;
+        return self::EXIT_USAGE;
+    }
+
+    /**
+     * The primary report goes to `--output-file`, or to stdout when it is absent.
+     * The parent directory must exist, like every other report sink.
+     *
+     * @throws RuntimeException when the file cannot be written in full
+     */
+    private function writeReport(string $report, ?string $outputFile): void
+    {
+        if ($outputFile === null || $outputFile === '') {
+            $this->writeStdout($report);
+
+            return;
+        }
+        if (@file_put_contents($this->absolutise($outputFile), $report) !== strlen($report)) {
+            throw new RuntimeException("Cannot write --output-file: {$outputFile}");
+        }
     }
 
     private function writeStdout(string $message): void

@@ -8,6 +8,7 @@ use const JSON_THROW_ON_ERROR;
 
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+use Studio\Gesso\Attribute\BoundToOpenApiEnum;
 use Studio\Gesso\Contract\ContractCheck;
 use Studio\Gesso\Contract\ContractCheckFailure;
 use Studio\Gesso\Contract\ContractCheckPlan;
@@ -39,17 +40,22 @@ use Studio\Gesso\Fuzz\ResponseSpecExplorationSummary;
 use Studio\Gesso\JsonValidationResultRenderer;
 use Studio\Gesso\Laravel\Commands\OpenApiRoutesCommand;
 use Studio\Gesso\Laravel\ExploresOpenApiEndpoint;
+use Studio\Gesso\Laravel\OpenApiHttpFake as LaravelOpenApiHttpFake;
 use Studio\Gesso\Laravel\ValidatesOpenApiSchema;
+use Studio\Gesso\OpenApiFakeResponse;
 use Studio\Gesso\OpenApiRequestValidator;
 use Studio\Gesso\OpenApiResponseValidator;
 use Studio\Gesso\OpenApiValidationResult;
 use Studio\Gesso\Pest\Expectations;
+use Studio\Gesso\PHPUnit\AssertsNoEnumDrift;
 use Studio\Gesso\PHPUnit\ConsoleOutput;
 use Studio\Gesso\PHPUnit\InvalidStrictRequiredConfigurationException;
+use Studio\Gesso\Schema\EnumDriftAsserter;
 use Studio\Gesso\SchemaContext;
 use Studio\Gesso\SkipOpenApiResolver;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Spec\RemoteSpecSource;
+use Studio\Gesso\Symfony\OpenApiHttpFake as SymfonyOpenApiHttpFake;
 use Studio\Gesso\Tests\Helpers\PublicApiInventory;
 use Studio\Gesso\Tests\Unit\Compatibility\Fixture\PublicApiImplicitConstructorFixture;
 use Studio\Gesso\Tests\Unit\Compatibility\Fixture\PublicApiInternalTraitConsumerFixture;
@@ -1895,6 +1901,38 @@ final class PublicApiBaselineTest extends TestCase
         // its exact signature stays pinned by
         // public_php_api_matches_the_v2_baseline().
         $expected[UploadedPart::class] = $actual[UploadedPart::class];
+        // #508: enums bind to components.schemas by name. Additive except the
+        // attribute's specPath, which widens to ?string (default null) so
+        // component: can be passed alone.
+        $optional = static fn(string $name, string $type, mixed $default): array => [
+            'name' => $name,
+            'type' => $type,
+            'optional' => true,
+            'variadic' => false,
+            'by_reference' => false,
+            'default' => $default,
+            'attributes' => [],
+        ];
+        $expected[EnumBindingReason::class]['cases']['ComponentNotFound'] = null;
+        $expected[EnumBindingReason::class]['cases']['ComponentConflict'] = null;
+        $expected[EnumBindingReason::class]['cases']['AttributeInvalid'] = null;
+        $expected[BoundToOpenApiEnum::class]['properties']['specPath']['type'] = '?string';
+        $expected[BoundToOpenApiEnum::class]['properties']['component'] = $expected[BoundToOpenApiEnum::class]['properties']['specPath'];
+        ksort($expected[BoundToOpenApiEnum::class]['properties']);
+        $expected[BoundToOpenApiEnum::class]['methods']['__construct']['parameters'] = [
+            $optional('specPath', '?string', null),
+            $optional('component', '?string', null),
+        ];
+        $expected[AssertsNoEnumDrift::class]['methods']['assertNoEnumDrift']['parameters'][] = $optional('specNames', 'array', []);
+        $expected[EnumDriftAsserter::class]['methods']['assertNoDrift']['parameters'][] = $optional('specNames', 'array', []);
+        $expected[EnumDriftAsserter::class]['methods']['detectAll']['parameters'][] = $optional('specNames', 'array', []);
+        $expected[EnumDriftAsserter::class]['methods']['detectAll']['parameters'][] = $optional('skipUnbound', 'bool', false);
+
+        // #403: consumer-side HTTP client fakes (additive). Their exact
+        // signatures stay pinned by public_php_api_matches_the_v2_baseline().
+        foreach ([OpenApiFakeResponse::class, LaravelOpenApiHttpFake::class, SymfonyOpenApiHttpFake::class] as $fakeType) {
+            $expected[$fakeType] = $actual[$fakeType];
+        }
 
         ksort($expected);
 

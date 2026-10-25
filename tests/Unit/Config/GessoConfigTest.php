@@ -106,6 +106,7 @@ final class GessoConfigTest extends TestCase
             'laravel.auto_inject_dummy_credentials',
             'laravel.route_parity.external_operation_ids',
             'laravel.route_parity.external_openapi_paths',
+            'laravel.route_parity.excluded_route_names',
         ];
     }
 
@@ -325,6 +326,27 @@ final class GessoConfigTest extends TestCase
         $this->expectExceptionMessage('"strict.required.run" expected one of off, warn, fail');
 
         GessoConfig::fromArray(['strict' => ['required' => ['run' => 'loud']]], '/tmp');
+    }
+
+    #[Test]
+    public function an_enum_accepts_case_and_whitespace_variants(): void
+    {
+        $config = GessoConfig::fromArray([
+            'strict' => ['required' => ['run' => ' FAIL ']],
+            'coverage' => ['console_report' => 'Uncovered_Only'],
+        ], '/tmp');
+
+        $this->assertSame('fail', $config->string('strict.required.run'));
+        $this->assertSame('uncovered_only', $config->string('coverage.console_report'));
+    }
+
+    #[Test]
+    public function a_bool_enum_accepts_a_case_variant_of_its_string_value(): void
+    {
+        $this->assertSame('bearer', GessoConfig::fromArray(
+            ['laravel' => ['auto_inject_dummy_credentials' => 'Bearer']],
+            '/tmp',
+        )->boolOrString('laravel.auto_inject_dummy_credentials'));
     }
 
     #[Test]
@@ -572,6 +594,7 @@ final class GessoConfigTest extends TestCase
                 'route_parity' => [
                     'external_operation_ids' => ['legacy.show'],
                     'external_openapi_paths' => ['/legacy/*'],
+                    'excluded_route_names' => ['internal.*'],
                 ],
             ],
         ], true) . ";\n"));
@@ -584,6 +607,7 @@ final class GessoConfigTest extends TestCase
         $this->assertFalse($config->bool('validation.enforce_discriminator'));
         $this->assertSame('bearer', $config->boolOrString('laravel.auto_inject_dummy_credentials'));
         $this->assertSame(['legacy.show'], $config->strings('laravel.route_parity.external_operation_ids'));
+        $this->assertSame(['internal.*'], $config->strings('laravel.route_parity.excluded_route_names'));
         $this->assertTrue($config->bool('coverage.min_coverage.strict'));
     }
 

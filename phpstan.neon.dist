@@ -46,6 +46,9 @@ parameters:
         # analysing the fixture itself would require stubs that invalidate the
         # behavior being tested.
         - tests/fixtures/namespace-compatibility
+        # Declares a legacy Studio\Gesso\Fuzz\ type on purpose; reflecting it
+        # autoloads the alias and raises its runtime deprecation notice.
+        - tests/Integration/ContractNamespaceSeparateProcessTest.php
         # EnumScanner fixture dir holds intentionally-unused trait/abstract
         # files so the scanner can walk past them; PHPStan would otherwise
         # flag them as `trait.unused`.

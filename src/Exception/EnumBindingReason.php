@@ -30,4 +30,7 @@ enum EnumBindingReason
     case ScanNamespaceUnresolvable;
     case ScanComposerLoaderUnavailable;
     case NoNamespacesConfigured;
+    case ComponentNotFound;
+    case ComponentConflict;
+    case AttributeInvalid;
 }

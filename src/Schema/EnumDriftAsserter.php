@@ -9,15 +9,18 @@ use const JSON_THROW_ON_ERROR;
 use const PATHINFO_EXTENSION;
 
 use BackedEnum;
+use InvalidArgumentException;
 use JsonException;
 use ReflectionEnum;
 use ReflectionException;
+use stdClass;
 use Studio\Gesso\Attribute\BoundToOpenApiEnum;
 use Studio\Gesso\Exception\EnumBindingException;
 use Studio\Gesso\Exception\EnumBindingReason;
 use Studio\Gesso\Exception\EnumDriftException;
 use Studio\Gesso\Exception\InvalidOpenApiSpecException;
 use Studio\Gesso\Exception\InvalidOpenApiSpecReason;
+use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\Internal\SpecPath;
 use Studio\Gesso\Internal\YamlAvailability;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
@@ -25,6 +28,8 @@ use Symfony\Component\Yaml\Yaml;
 use Throwable;
 
 use function array_filter;
+use function array_is_list;
+use function array_key_exists;
 use function array_map;
 use function array_values;
 use function count;
@@ -43,12 +48,24 @@ use function json_decode;
 use function pathinfo;
 use function realpath;
 use function sprintf;
+use function str_ends_with;
+use function strrchr;
 use function strtolower;
+use function substr;
 use function trigger_error;
 
 /**
- * Verify that backed PHP enums marked with `#[BoundToOpenApiEnum]` agree
- * with their bound OpenAPI `enum` arrays.
+ * Verify that backed PHP enums agree with the OpenAPI `enum` arrays they
+ * are bound to.
+ *
+ * A backed enum binds to the `components.schemas` entry (carrying `enum`)
+ * named after its short class name in any of the given spec names — an
+ * `Enum` suffix on either side is ignored, the exact name wins. An explicit
+ * `#[BoundToOpenApiEnum(component: 'Name')]` overrides the name match. The
+ * legacy `#[BoundToOpenApiEnum('path/to/file.json')]` binding still reads a
+ * standalone file, resolved relative to the configured enum root
+ * (`OpenApiSpecLoader::getEnumBasePath()`, falling back to
+ * `OpenApiSpecLoader::getBasePath()`).
  *
  * Two failure modes that runtime contract validation cannot catch:
  *
@@ -67,16 +84,18 @@ use function trigger_error;
  * EnumDriftAsserter::assertNoDrift([
  *     \App\Enums\NotificationCodeEnum::class,
  *     \App\Enums\ValidationErrorCodeEnum::class,
- * ]);
+ * ], specNames: ['front']);
  * ```
  *
- * The bound spec path on each `#[BoundToOpenApiEnum]` is resolved relative
- * to the configured enum root (`OpenApiSpecLoader::getEnumBasePath()`). When
- * no enum-specific root is configured, it falls back to the spec root
- * (`OpenApiSpecLoader::getBasePath()`).
+ * @phpstan-type ComponentIndex array{
+ *     specs: list<string>,
+ *     components: array<string, array{specs: list<string>, enum: mixed, conflict: bool}>,
+ * }
  */
 final class EnumDriftAsserter
 {
+    private const COMPONENT_POINTER = '#/components/schemas/';
+
     /**
      * Compare each enum against its bound spec file and either throw
      * `EnumDriftException` (when `$failOnDrift` is true, the default) or
@@ -92,13 +111,14 @@ final class EnumDriftAsserter
      * paths without static-analysis friction.
      *
      * @param list<string> $enumFqcns
+     * @param list<string> $specNames spec names `OpenApiSpecLoader::load()` resolves; searched for component bindings
      *
      * @throws EnumBindingException when any binding cannot be resolved
      * @throws EnumDriftException when drift is detected and `$failOnDrift` is true
      */
-    public static function assertNoDrift(array $enumFqcns, bool $failOnDrift = true): void
+    public static function assertNoDrift(array $enumFqcns, bool $failOnDrift = true, array $specNames = []): void
     {
-        $reports = self::detectAll($enumFqcns);
+        $reports = self::detectAll($enumFqcns, $specNames);
         $drifting = array_values(array_filter(
             $reports,
             static fn(EnumDriftReport $r): bool => $r->hasDrift(),
@@ -124,17 +144,23 @@ final class EnumDriftAsserter
      * than only failures.
      *
      * @param list<string> $enumFqcns
+     * @param list<string> $specNames spec names `OpenApiSpecLoader::load()` resolves; searched for component bindings
+     * @param bool $skipUnbound drop enums with neither an attribute nor a component name match instead of throwing `AttributeMissing`
      *
      * @return list<EnumDriftReport>
      *
      * @throws EnumBindingException when any binding cannot be resolved
      */
-    public static function detectAll(array $enumFqcns): array
+    public static function detectAll(array $enumFqcns, array $specNames = [], bool $skipUnbound = false): array
     {
+        $index = self::componentIndex($specNames);
         $reports = [];
 
         foreach ($enumFqcns as $fqcn) {
-            $reports[] = self::detectOne($fqcn);
+            $report = self::detectOne($fqcn, $index, $skipUnbound);
+            if ($report !== null) {
+                $reports[] = $report;
+            }
         }
 
         return $reports;
@@ -189,7 +215,10 @@ final class EnumDriftAsserter
         return $header . "\n" . implode("\n\n", $bodies) . "\n" . $footer;
     }
 
-    private static function detectOne(string $fqcn): EnumDriftReport
+    /**
+     * @param ComponentIndex $index
+     */
+    private static function detectOne(string $fqcn, array $index, bool $skipUnbound): ?EnumDriftReport
     {
         if (!enum_exists($fqcn)) {
             throw new EnumBindingException(
@@ -233,30 +262,183 @@ final class EnumDriftAsserter
         }
 
         $attrs = $reflection->getAttributes(BoundToOpenApiEnum::class);
-        if ($attrs === []) {
-            throw new EnumBindingException(
-                EnumBindingReason::AttributeMissing,
-                sprintf(
-                    '%s is missing the #[BoundToOpenApiEnum] attribute. Add it with the spec-relative path of the JSON or YAML file containing the bound enum array.',
-                    $fqcn,
-                ),
-                enumFqcn: $fqcn,
-            );
+        if ($attrs !== []) {
+            try {
+                $binding = $attrs[0]->newInstance();
+            } catch (InvalidArgumentException $e) {
+                throw new EnumBindingException(
+                    EnumBindingReason::AttributeInvalid,
+                    sprintf('%s: %s', $fqcn, $e->getMessage()),
+                    enumFqcn: $fqcn,
+                    previous: $e,
+                );
+            }
+            if ($binding->component !== null) {
+                [$label, $specValues] = self::componentValues($index, $binding->component, $fqcn)
+                    ?? throw new EnumBindingException(
+                        EnumBindingReason::ComponentNotFound,
+                        sprintf(
+                            '%s binds to components.schemas.%s, which no configured spec (%s) defines with an "enum" array.',
+                            $fqcn,
+                            $binding->component,
+                            $index['specs'] === [] ? 'none configured' : implode(', ', $index['specs']),
+                        ),
+                        enumFqcn: $fqcn,
+                        specPath: self::COMPONENT_POINTER . $binding->component,
+                    );
+            } else {
+                Deprecations::notice(
+                    id: 'attribute.bound_to_open_api_enum.spec_path',
+                    subject: 'BoundToOpenApiEnum::$specPath (binding an enum to a spec file path)',
+                    replacement: "#[BoundToOpenApiEnum(component: 'Name')] (or no attribute when a components.schemas enum is named after the class)",
+                    removedIn: '3.0',
+                );
+                $label = (string) $binding->specPath;
+                $specValues = self::loadSpecEnumValues($fqcn, $label);
+            }
+        } else {
+            [$short, $alternate] = self::nameCandidates($fqcn);
+            $match = self::componentValues($index, $short, $fqcn) ?? self::componentValues($index, $alternate, $fqcn);
+            if ($match === null) {
+                if ($skipUnbound) {
+                    return null;
+                }
+
+                throw new EnumBindingException(
+                    EnumBindingReason::AttributeMissing,
+                    sprintf(
+                        '%s is not bound to a spec enum: no components.schemas entry named %s (or %s) carries an "enum" array in the configured specs, and the class has no #[BoundToOpenApiEnum(component: ...)] attribute.',
+                        $fqcn,
+                        $short,
+                        $alternate,
+                    ),
+                    enumFqcn: $fqcn,
+                );
+            }
+            [$label, $specValues] = $match;
         }
-
-        /** @var BoundToOpenApiEnum $binding */
-        $binding = $attrs[0]->newInstance();
-        $specPath = $binding->specPath;
-
-        $specValues = self::loadSpecEnumValues($fqcn, $specPath);
-        $phpValues = self::extractCaseValues($fqcn);
 
         return EnumDriftDetector::detect(
             enumFqcn: $fqcn,
-            specPath: $specPath,
-            phpValues: $phpValues,
+            specPath: $label,
+            phpValues: self::extractCaseValues($fqcn),
             specValues: $specValues,
         );
+    }
+
+    /**
+     * Index every `components.schemas` entry carrying an `enum` key across
+     * `$specNames`. A name defined with different value sets in two specs is
+     * recorded as a conflict, and a non-array `enum` is kept as is: both are
+     * thrown only once an enum binds to the name (unrelated APIs may both
+     * define `Status`).
+     *
+     * @param list<string> $specNames
+     *
+     * @return ComponentIndex
+     */
+    private static function componentIndex(array $specNames): array
+    {
+        $components = [];
+        foreach ($specNames as $specName) {
+            $schemas = OpenApiSpecLoader::load($specName)['components']['schemas'] ?? [];
+            if (!is_array($schemas)) {
+                continue;
+            }
+            $objectEnums = OpenApiSpecLoader::objectShapedComponentEnums($specName);
+            foreach ($schemas as $name => $schema) {
+                if (!is_array($schema) || !array_key_exists('enum', $schema)) {
+                    continue;
+                }
+                $name = (string) $name;
+                // load() collapses `enum: {"0": "red"}` to the list ["red"];
+                // keep the object so componentValues() rejects it.
+                $enum = $objectEnums[$name] ?? $schema['enum'];
+                $existing = $components[$name] ?? null;
+                if ($existing === null) {
+                    $components[$name] = ['specs' => [$specName], 'enum' => $enum, 'conflict' => false];
+                } elseif (!$existing['conflict'] && !self::sameValues($existing['enum'], $enum)) {
+                    $components[$name] = ['specs' => [...$existing['specs'], $specName], 'enum' => null, 'conflict' => true];
+                }
+            }
+        }
+
+        return ['specs' => $specNames, 'components' => $components];
+    }
+
+    /**
+     * @param ComponentIndex $index
+     *
+     * @return null|array{0: string, 1: list<int|string>}
+     */
+    private static function componentValues(array $index, string $name, string $fqcn): ?array
+    {
+        $entry = $index['components'][$name] ?? null;
+        if ($entry === null) {
+            return null;
+        }
+
+        $label = self::COMPONENT_POINTER . $name;
+        if ($entry['conflict']) {
+            throw new EnumBindingException(
+                EnumBindingReason::ComponentConflict,
+                sprintf(
+                    'components.schemas.%s is defined with different "enum" values in specs %s; align them before binding %s to it.',
+                    $name,
+                    implode(', ', $entry['specs']),
+                    $fqcn,
+                ),
+                enumFqcn: $fqcn,
+                specPath: $label,
+            );
+        }
+
+        if (!is_array($entry['enum']) || !array_is_list($entry['enum'])) {
+            throw new EnumBindingException(
+                EnumBindingReason::EnumKeyNotArray,
+                sprintf(
+                    'components.schemas.%s has a non-array "enum" key — OpenAPI requires "enum" to be an array of values.',
+                    $name,
+                ),
+                enumFqcn: $fqcn,
+                specPath: $label,
+            );
+        }
+
+        return [$label, self::scalarEnumValues($entry['enum'], $fqcn, 'components.schemas.' . $name, $label)];
+    }
+
+    /**
+     * Short class name plus its `Enum`-suffix counterpart (added when absent,
+     * stripped when present).
+     *
+     * @return array{0: string, 1: string}
+     */
+    private static function nameCandidates(string $fqcn): array
+    {
+        $short = substr((string) strrchr('\\' . $fqcn, '\\'), 1);
+
+        return [$short, str_ends_with($short, 'Enum') ? substr($short, 0, -4) : $short . 'Enum'];
+    }
+
+    /**
+     * Order-insensitive strict set equality; non-lists compare strictly.
+     */
+    private static function sameValues(mixed $a, mixed $b): bool
+    {
+        if (!is_array($a) || !is_array($b) || !array_is_list($a) || !array_is_list($b)) {
+            return $a === $b;
+        }
+
+        foreach ([[$a, $b], [$b, $a]] as [$left, $right]) {
+            foreach ($left as $value) {
+                if (!in_array($value, $right, true)) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
     }
 
     /**
@@ -392,7 +574,7 @@ final class EnumDriftAsserter
 
         $decoded = self::decodeSpecContent($fqcn, $specPath, $absolute, $content);
 
-        if (!is_array($decoded)) {
+        if (!$decoded instanceof stdClass) {
             throw new EnumBindingException(
                 EnumBindingReason::NonMappingRoot,
                 sprintf('Bound spec file %s must decode to a mapping (JSON object / YAML mapping)', $absolute),
@@ -401,7 +583,7 @@ final class EnumDriftAsserter
             );
         }
 
-        if (!isset($decoded['enum'])) {
+        if (!isset($decoded->enum)) {
             throw new EnumBindingException(
                 EnumBindingReason::EnumKeyMissing,
                 sprintf(
@@ -413,7 +595,7 @@ final class EnumDriftAsserter
             );
         }
 
-        if (!is_array($decoded['enum'])) {
+        if (!is_array($decoded->enum)) {
             throw new EnumBindingException(
                 EnumBindingReason::EnumKeyNotArray,
                 sprintf(
@@ -425,8 +607,18 @@ final class EnumDriftAsserter
             );
         }
 
+        return self::scalarEnumValues($decoded->enum, $fqcn, 'Bound spec file ' . $absolute, $specPath);
+    }
+
+    /**
+     * @param array<mixed> $raw
+     *
+     * @return list<int|string>
+     */
+    private static function scalarEnumValues(array $raw, string $fqcn, string $subject, string $specPath): array
+    {
         $values = [];
-        foreach ($decoded['enum'] as $index => $value) {
+        foreach ($raw as $index => $value) {
             // OpenAPI permits any JSON value in `enum`, but a backed PHP
             // enum can only carry int or string. Bail loudly on the first
             // unsupported entry — silently dropping non-scalars would let
@@ -437,8 +629,8 @@ final class EnumDriftAsserter
                 throw new EnumBindingException(
                     EnumBindingReason::EnumValueUnsupported,
                     sprintf(
-                        'Bound spec file %s has an unsupported "enum" value at index %d (got %s). Backed PHP enums can only carry string or int.',
-                        $absolute,
+                        '%s has an unsupported "enum" value at index %d (got %s). Backed PHP enums can only carry string or int.',
+                        $subject,
                         $index,
                         get_debug_type($value),
                     ),
@@ -475,7 +667,7 @@ final class EnumDriftAsserter
         $extension = strtolower(pathinfo($specPath, PATHINFO_EXTENSION));
         if (!in_array($extension, ['yaml', 'yml'], true)) {
             try {
-                return json_decode($content, true, 512, JSON_THROW_ON_ERROR);
+                return json_decode($content, false, 512, JSON_THROW_ON_ERROR);
             } catch (JsonException $e) {
                 throw new EnumBindingException(
                     EnumBindingReason::MalformedJson,
@@ -505,7 +697,7 @@ final class EnumDriftAsserter
         }
 
         try {
-            return Yaml::parse($content);
+            return Yaml::parse($content, Yaml::PARSE_OBJECT_FOR_MAP);
         } catch (Throwable $e) {
             // Symfony's parser raises non-ParseException classes for some
             // inputs (e.g. \InvalidArgumentException on malformed Unicode),

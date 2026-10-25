@@ -24,8 +24,16 @@
         "cases": [],
         "constants": [],
         "properties": {
+            "component": {
+                "type": "?string",
+                "static": false,
+                "readonly": true,
+                "default": {
+                    "unavailable": true
+                }
+            },
             "specPath": {
-                "type": "string",
+                "type": "?string",
                 "static": false,
                 "readonly": true,
                 "default": {
@@ -44,13 +52,20 @@
                 "parameters": [
                     {
                         "name": "specPath",
-                        "type": "string",
-                        "optional": false,
+                        "type": "?string",
+                        "optional": true,
                         "variadic": false,
                         "by_reference": false,
-                        "default": {
-                            "unavailable": true
-                        },
+                        "default": null,
+                        "attributes": []
+                    },
+                    {
+                        "name": "component",
+                        "type": "?string",
+                        "optional": true,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": null,
                         "attributes": []
                     }
                 ]
@@ -2248,7 +2263,10 @@
             "EnumValueUnsupported": null,
             "ScanNamespaceUnresolvable": null,
             "ScanComposerLoaderUnavailable": null,
-            "NoNamespacesConfigured": null
+            "NoNamespacesConfigured": null,
+            "ComponentNotFound": null,
+            "ComponentConflict": null,
+            "AttributeInvalid": null
         },
         "constants": [],
         "properties": {
@@ -6684,6 +6702,57 @@
             }
         }
     },
+    "Studio\\Gesso\\Laravel\\OpenApiHttpFake": {
+        "kind": "class",
+        "final": true,
+        "abstract": false,
+        "readonly": false,
+        "instantiable": false,
+        "constructor": {
+            "kind": "declared",
+            "visibility": "private"
+        },
+        "parent": null,
+        "interfaces": [],
+        "traits": [],
+        "attributes": [],
+        "backing_type": null,
+        "cases": [],
+        "constants": [],
+        "properties": [],
+        "methods": {
+            "respond": {
+                "static": true,
+                "final": false,
+                "abstract": false,
+                "returns_reference": false,
+                "return_type": "Closure",
+                "attributes": [],
+                "parameters": [
+                    {
+                        "name": "specName",
+                        "type": "string",
+                        "optional": false,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": {
+                            "unavailable": true
+                        },
+                        "attributes": []
+                    },
+                    {
+                        "name": "statuses",
+                        "type": "array",
+                        "optional": true,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": [],
+                        "attributes": []
+                    }
+                ]
+            }
+        }
+    },
     "Studio\\Gesso\\Laravel\\ValidatesOpenApiSchema": {
         "kind": "trait",
         "final": false,
@@ -8051,6 +8120,133 @@
             }
         }
     },
+    "Studio\\Gesso\\OpenApiFakeResponse": {
+        "kind": "class",
+        "final": true,
+        "abstract": false,
+        "readonly": true,
+        "instantiable": false,
+        "constructor": {
+            "kind": "declared",
+            "visibility": "private"
+        },
+        "parent": null,
+        "interfaces": [],
+        "traits": [],
+        "attributes": [],
+        "backing_type": null,
+        "cases": [],
+        "constants": [],
+        "properties": [],
+        "methods": {
+            "body": {
+                "static": false,
+                "final": false,
+                "abstract": false,
+                "returns_reference": false,
+                "return_type": "mixed",
+                "attributes": [],
+                "parameters": []
+            },
+            "content": {
+                "static": false,
+                "final": false,
+                "abstract": false,
+                "returns_reference": false,
+                "return_type": "string",
+                "attributes": [],
+                "parameters": []
+            },
+            "contentType": {
+                "static": false,
+                "final": false,
+                "abstract": false,
+                "returns_reference": false,
+                "return_type": "?string",
+                "attributes": [],
+                "parameters": []
+            },
+            "for": {
+                "static": true,
+                "final": false,
+                "abstract": false,
+                "returns_reference": false,
+                "return_type": "self",
+                "attributes": [],
+                "parameters": [
+                    {
+                        "name": "specName",
+                        "type": "string",
+                        "optional": false,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": {
+                            "unavailable": true
+                        },
+                        "attributes": []
+                    },
+                    {
+                        "name": "method",
+                        "type": "string",
+                        "optional": false,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": {
+                            "unavailable": true
+                        },
+                        "attributes": []
+                    },
+                    {
+                        "name": "path",
+                        "type": "string",
+                        "optional": false,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": {
+                            "unavailable": true
+                        },
+                        "attributes": []
+                    },
+                    {
+                        "name": "status",
+                        "type": "?int",
+                        "optional": true,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": null,
+                        "attributes": []
+                    },
+                    {
+                        "name": "contentType",
+                        "type": "?string",
+                        "optional": true,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": null,
+                        "attributes": []
+                    }
+                ]
+            },
+            "headers": {
+                "static": false,
+                "final": false,
+                "abstract": false,
+                "returns_reference": false,
+                "return_type": "array",
+                "attributes": [],
+                "parameters": []
+            },
+            "status": {
+                "static": false,
+                "final": false,
+                "abstract": false,
+                "returns_reference": false,
+                "return_type": "int",
+                "attributes": [],
+                "parameters": []
+            }
+        }
+    },
     "Studio\\Gesso\\OpenApiRequestValidator": {
         "kind": "class",
         "final": true,
@@ -8856,6 +9052,15 @@
                             "unavailable": true
                         },
                         "attributes": []
+                    },
+                    {
+                        "name": "specNames",
+                        "type": "array",
+                        "optional": true,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": [],
+                        "attributes": []
                     }
                 ]
             }
@@ -8882,6 +9087,15 @@
                             "default": {
                                 "unavailable": true
                             },
+                            "attributes": []
+                        },
+                        {
+                            "name": "specNames",
+                            "type": "array",
+                            "optional": true,
+                            "variadic": false,
+                            "by_reference": false,
+                            "default": [],
                             "attributes": []
                         }
                     ]
@@ -10001,6 +10215,15 @@
                         "by_reference": false,
                         "default": true,
                         "attributes": []
+                    },
+                    {
+                        "name": "specNames",
+                        "type": "array",
+                        "optional": true,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": [],
+                        "attributes": []
                     }
                 ]
             },
@@ -10021,6 +10244,24 @@
                         "default": {
                             "unavailable": true
                         },
+                        "attributes": []
+                    },
+                    {
+                        "name": "specNames",
+                        "type": "array",
+                        "optional": true,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": [],
+                        "attributes": []
+                    },
+                    {
+                        "name": "skipUnbound",
+                        "type": "bool",
+                        "optional": true,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": false,
                         "attributes": []
                     }
                 ]
@@ -11006,6 +11247,26 @@
                     "attributes": [],
                     "parameters": []
                 },
+                "openApiSkipRequestValidationResponseCodes": {
+                    "visibility": "protected",
+                    "static": false,
+                    "final": false,
+                    "abstract": false,
+                    "returns_reference": false,
+                    "return_type": "array",
+                    "attributes": [],
+                    "parameters": []
+                },
+                "openApiSkipResponseCodes": {
+                    "visibility": "protected",
+                    "static": false,
+                    "final": false,
+                    "abstract": false,
+                    "returns_reference": false,
+                    "return_type": "array",
+                    "attributes": [],
+                    "parameters": []
+                },
                 "openApiSpec": {
                     "visibility": "protected",
                     "static": false,
@@ -11110,6 +11371,57 @@
                     "attributes": [],
                     "parameters": []
                 }
+            }
+        }
+    },
+    "Studio\\Gesso\\Symfony\\OpenApiHttpFake": {
+        "kind": "class",
+        "final": true,
+        "abstract": false,
+        "readonly": false,
+        "instantiable": false,
+        "constructor": {
+            "kind": "declared",
+            "visibility": "private"
+        },
+        "parent": null,
+        "interfaces": [],
+        "traits": [],
+        "attributes": [],
+        "backing_type": null,
+        "cases": [],
+        "constants": [],
+        "properties": [],
+        "methods": {
+            "respond": {
+                "static": true,
+                "final": false,
+                "abstract": false,
+                "returns_reference": false,
+                "return_type": "Closure",
+                "attributes": [],
+                "parameters": [
+                    {
+                        "name": "specName",
+                        "type": "string",
+                        "optional": false,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": {
+                            "unavailable": true
+                        },
+                        "attributes": []
+                    },
+                    {
+                        "name": "statuses",
+                        "type": "array",
+                        "optional": true,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": [],
+                        "attributes": []
+                    }
+                ]
             }
         }
     },

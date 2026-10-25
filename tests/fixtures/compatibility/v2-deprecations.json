@@ -38,6 +38,159 @@
                 "removed_in": "3.0"
             }
         },
+        "phpunit.strict_required": {
+            "spelling": "strict_required",
+            "v3_target": "strict.required['run']",
+            "notice": {
+                "subject": "The PHPUnit config key 'strict_required'",
+                "replacement": "strict.required['run'] (in gesso.php)",
+                "removed_in": "3.0"
+            }
+        },
+        "phpunit.strict_required_per_call": {
+            "spelling": "strict_required_per_call",
+            "v3_target": "strict.required['per_call']",
+            "notice": {
+                "subject": "The PHPUnit config key 'strict_required_per_call'",
+                "replacement": "strict.required['per_call'] (in gesso.php)",
+                "removed_in": "3.0"
+            }
+        },
+        "phpunit.strict_additional_properties": {
+            "spelling": "strict_additional_properties",
+            "v3_target": "strict.additional_properties['run']",
+            "notice": {
+                "subject": "The PHPUnit config key 'strict_additional_properties'",
+                "replacement": "strict.additional_properties['run'] (in gesso.php)",
+                "removed_in": "3.0"
+            }
+        },
+        "phpunit.strict_additional_properties_per_call": {
+            "spelling": "strict_additional_properties_per_call",
+            "v3_target": "strict.additional_properties['per_call']",
+            "notice": {
+                "subject": "The PHPUnit config key 'strict_additional_properties_per_call'",
+                "replacement": "strict.additional_properties['per_call'] (in gesso.php)",
+                "removed_in": "3.0"
+            }
+        },
+        "phpunit.min_endpoint_coverage": {
+            "spelling": "min_endpoint_coverage",
+            "v3_target": "coverage.min_coverage['endpoint']",
+            "notice": {
+                "subject": "The PHPUnit config key 'min_endpoint_coverage'",
+                "replacement": "coverage.min_coverage['endpoint'] (in gesso.php)",
+                "removed_in": "3.0"
+            }
+        },
+        "phpunit.min_response_coverage": {
+            "spelling": "min_response_coverage",
+            "v3_target": "coverage.min_coverage['response']",
+            "notice": {
+                "subject": "The PHPUnit config key 'min_response_coverage'",
+                "replacement": "coverage.min_coverage['response'] (in gesso.php)",
+                "removed_in": "3.0"
+            }
+        },
+        "phpunit.min_sdk_exercise_coverage": {
+            "spelling": "min_sdk_exercise_coverage",
+            "v3_target": "coverage.min_coverage['sdk_exercise']",
+            "notice": {
+                "subject": "The PHPUnit config key 'min_sdk_exercise_coverage'",
+                "replacement": "coverage.min_coverage['sdk_exercise'] (in gesso.php)",
+                "removed_in": "3.0"
+            }
+        },
+        "phpunit.min_coverage_strict": {
+            "spelling": "min_coverage_strict",
+            "v3_target": "coverage.min_coverage['strict']",
+            "notice": {
+                "subject": "The PHPUnit config key 'min_coverage_strict'",
+                "replacement": "coverage.min_coverage['strict'] (in gesso.php)",
+                "removed_in": "3.0"
+            }
+        },
+        "phpunit.output_file": {
+            "spelling": "output_file",
+            "v3_target": "coverage.report_output['markdown']",
+            "notice": {
+                "subject": "The PHPUnit config key 'output_file'",
+                "replacement": "coverage.report_output['markdown'] (in gesso.php)",
+                "removed_in": "3.0"
+            }
+        },
+        "phpunit.json_output": {
+            "spelling": "json_output",
+            "v3_target": "coverage.report_output['json']",
+            "notice": {
+                "subject": "The PHPUnit config key 'json_output'",
+                "replacement": "coverage.report_output['json'] (in gesso.php)",
+                "removed_in": "3.0"
+            }
+        },
+        "phpunit.junit_output": {
+            "spelling": "junit_output",
+            "v3_target": "coverage.report_output['junit']",
+            "notice": {
+                "subject": "The PHPUnit config key 'junit_output'",
+                "replacement": "coverage.report_output['junit'] (in gesso.php)",
+                "removed_in": "3.0"
+            }
+        },
+        "phpunit.html_output": {
+            "spelling": "html_output",
+            "v3_target": "coverage.report_output['html']",
+            "notice": {
+                "subject": "The PHPUnit config key 'html_output'",
+                "replacement": "coverage.report_output['html'] (in gesso.php)",
+                "removed_in": "3.0"
+            }
+        },
+        "phpunit.console_output": {
+            "spelling": "console_output",
+            "v3_target": "coverage.console_report",
+            "notice": {
+                "subject": "The PHPUnit config key 'console_output'",
+                "replacement": "coverage.console_report (in gesso.php)",
+                "removed_in": "3.0"
+            }
+        },
+        "phpunit.baseline_file": {
+            "spelling": "baseline_file",
+            "v3_target": "baseline['violations']",
+            "notice": {
+                "subject": "The PHPUnit config key 'baseline_file'",
+                "replacement": "baseline['violations'] (in gesso.php)",
+                "removed_in": "3.0"
+            }
+        },
+        "phpunit.coverage_baseline_file": {
+            "spelling": "coverage_baseline_file",
+            "v3_target": "baseline['coverage']",
+            "notice": {
+                "subject": "The PHPUnit config key 'coverage_baseline_file'",
+                "replacement": "baseline['coverage'] (in gesso.php)",
+                "removed_in": "3.0"
+            }
+        },
+        "phpunit.baseline_stale": {
+            "spelling": "baseline_stale",
+            "v3_target": "baseline_stale['violations']",
+            "notice": {
+                "subject": "The PHPUnit config key 'baseline_stale'",
+                "replacement": "baseline_stale['violations'] (in gesso.php)",
+                "removed_in": "3.0"
+            }
+        },
+        "phpunit.coverage_baseline_stale": {
+            "spelling": "coverage_baseline_stale",
+            "v3_target": "baseline_stale['coverage']",
+            "notice": {
+                "subject": "The PHPUnit config key 'coverage_baseline_stale'",
+                "replacement": "baseline_stale['coverage'] (in gesso.php)",
+                "removed_in": "3.0"
+            }
+        },
         "fuzz.namespace.contract_check": {
             "spelling": "Studio\\Gesso\\Fuzz\\ContractCheck",
             "v3_target": "Studio\\Gesso\\Contract\\ContractCheck",
@@ -98,6 +251,33 @@
             "notice": {
                 "subject": "Studio\\Gesso\\Fuzz\\OpenApiContractChecks",
                 "replacement": "Studio\\Gesso\\Contract\\OpenApiContractChecks",
+                "removed_in": "3.0"
+            }
+        },
+        "phpunit.enum_spec_base_path": {
+            "spelling": "enum_spec_base_path",
+            "v3_target": "none",
+            "notice": {
+                "subject": "The PHPUnit config key 'enum_spec_base_path'",
+                "replacement": "none (delete the parameter: enum bindings resolve against components.schemas of the configured specs)",
+                "removed_in": "3.0"
+            }
+        },
+        "spec.loader.configure.enum_base_path": {
+            "spelling": "OpenApiSpecLoader::configure(enumBasePath:)",
+            "v3_target": "OpenApiSpecLoader::configure() without enumBasePath",
+            "notice": {
+                "subject": "OpenApiSpecLoader::configure(enumBasePath:)",
+                "replacement": "OpenApiSpecLoader::configure() without enumBasePath (component-name enum bindings need no enum root)",
+                "removed_in": "3.0"
+            }
+        },
+        "attribute.bound_to_open_api_enum.spec_path": {
+            "spelling": "BoundToOpenApiEnum::$specPath",
+            "v3_target": "#[BoundToOpenApiEnum(component: 'Name')]",
+            "notice": {
+                "subject": "BoundToOpenApiEnum::$specPath (binding an enum to a spec file path)",
+                "replacement": "#[BoundToOpenApiEnum(component: 'Name')] (or no attribute when a components.schemas enum is named after the class)",
                 "removed_in": "3.0"
             }
         }

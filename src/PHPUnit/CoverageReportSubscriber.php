@@ -4,8 +4,7 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\PHPUnit;
 
-use const STDERR;
-
+use Closure;
 use PHPUnit\Event\TestRunner\ExecutionFinished;
 use PHPUnit\Event\TestRunner\ExecutionFinishedSubscriber;
 use RuntimeException;
@@ -23,10 +22,9 @@ use Studio\Gesso\Coverage\CoverageThresholdEvaluator;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\Coverage\SdkExerciseCoverageReportBuilder;
 use Studio\Gesso\Coverage\SdkExerciseCoverageTracker;
-use Studio\Gesso\Exception\InvalidOpenApiSpecException;
-use Studio\Gesso\Exception\InvalidOpenApiSpecReason;
 use Studio\Gesso\Internal\CoverageReportWriter;
 use Studio\Gesso\Internal\Deprecations;
+use Studio\Gesso\Internal\Diagnostics;
 use Studio\Gesso\Internal\PartialRunDecision;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Validation\Strict\StrictAdditionalPropertiesAsserter;
@@ -37,10 +35,10 @@ use Studio\Gesso\Validation\Strict\StrictRequiredMode;
 use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 
 use function count;
-use function fflush;
+use function function_exists;
 use function getenv;
 use function implode;
-use function is_callable;
+use function posix_getppid;
 use function sprintf;
 use function trim;
 
@@ -56,11 +54,9 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
     private StrictAdditionalPropertiesTracker $strictAdditionalPropertiesTracker;
     private StrictRequiredTracker $strictRequiredTracker;
     private SdkExerciseCoverageTracker $sdkExerciseCoverageTracker;
-    private ?string $specBasePath;
 
-    /** @var string[] */
-    private array $specStripPrefixes;
-    private ?string $enumBasePath;
+    /** @var null|array<string, mixed> */
+    private ?array $loaderConfiguration;
 
     /**
      * @param string[] $specs
@@ -70,9 +66,9 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
      *                                                     so the field remains non-null after the ctor and the
      *                                                     `readonly` invariant holds end-to-end.
      * @param null|StrictRequiredTracker $strictRequiredTracker Same shape as $coverageTracker.
-     * @param null|callable(string): void $stderrWriter Optional sink for warnings (stale/invalid specs,
-     *                                                  failed file_put_contents). Falls back to {@see OpenApiCoverageExtension::writeStderr()} when
-     *                                                  null. Injected for testability — the extension stays the default backstop in production.
+     * @param null|Closure(string): void $stderrWriter Optional sink for warnings (stale/invalid specs,
+     *                                                 failed file_put_contents). Falls back to {@see Diagnostics::stderr()} when
+     *                                                 null. Injected for testability.
      * @param null|string $sidecarDir Directory the worker-mode branch will drop its JSON sidecar into. When
      *                                {@see self::resolveWorkerToken()} finds a token — `TEST_TOKEN` from paratest,
      *                                or `GESSO_SIDECAR_TOKEN` naming a CI shard — the subscriber short-circuits
@@ -84,8 +80,8 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
      * @param null|float $minResponseCoverage Same idea, but at `(method, path, status, content-type)` granularity.
      * @param null|float $minSdkExerciseCoverage Gate SDK decoder exercise at eligible response-schema granularity.
      * @param bool $minCoverageStrict Treat threshold misses as exit non-zero (default warn-only).
-     * @param null|callable(int): void $exitHandler Test seam for the strict-miss exit. Defaults to native `exit()`
-     *                                              so production behavior matches PHPUnit's own coverage gate.
+     * @param null|Closure(int): void $exitHandler Test seam for the strict-miss exit. Defaults to native `exit()`
+     *                                             so production behavior matches PHPUnit's own coverage gate.
      * @param null|string $baselineGeneratePath Issue #402: destination of a violation-baseline generation run
      *                                          (`GESSO_BASELINE_GENERATE`). When non-null the subscriber writes the
      *                                          collected fingerprints here at run end; partial runs refuse the write
@@ -124,13 +120,13 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
         private ?string $githubSummaryPath,
         ?OpenApiCoverageTracker $coverageTracker = null,
         ?StrictRequiredTracker $strictRequiredTracker = null,
-        private mixed $stderrWriter = null,
+        private ?Closure $stderrWriter = null,
         private ?string $sidecarDir = null,
         private ?float $minEndpointCoverage = null,
         private ?float $minResponseCoverage = null,
         private ?float $minSdkExerciseCoverage = null,
         private bool $minCoverageStrict = false,
-        private mixed $exitHandler = null,
+        private ?Closure $exitHandler = null,
         private ?string $junitOutput = null,
         private ?string $jsonOutput = null,
         private ?string $htmlOutput = null,
@@ -158,23 +154,7 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
         $this->strictAdditionalPropertiesTracker = $strictAdditionalPropertiesTracker ?? StrictAdditionalPropertiesTracker::current();
         $this->sdkExerciseCoverageTracker = $sdkExerciseCoverageTracker ?? SdkExerciseCoverageTracker::current();
 
-        $specBasePath = null;
-        $specStripPrefixes = [];
-        $enumBasePath = null;
-
-        try {
-            $specBasePath = OpenApiSpecLoader::getBasePath();
-            $specStripPrefixes = OpenApiSpecLoader::getStripPrefixes();
-            $enumBasePath = OpenApiSpecLoader::getEnumBasePath();
-        } catch (InvalidOpenApiSpecException $e) {
-            if ($e->reason !== InvalidOpenApiSpecReason::BasePathNotConfigured) {
-                throw $e;
-            }
-        }
-
-        $this->specBasePath = $specBasePath;
-        $this->specStripPrefixes = $specStripPrefixes;
-        $this->enumBasePath = $enumBasePath;
+        $this->loaderConfiguration = OpenApiSpecLoader::exportConfiguration();
     }
 
     /** @phpcsSuppress SlevomatCodingStandard.Functions.UnusedParameter.UnusedParameter */
@@ -182,7 +162,7 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
     {
         $workerToken = self::resolveWorkerToken();
         if ($workerToken !== null) {
-            $this->writeWorkerSidecar($workerToken);
+            $this->writeWorkerSidecar($workerToken, self::resolveRunId());
 
             // Free cached spec data; the merge CLI re-loads on its own.
             OpenApiSpecLoader::clearCache();
@@ -277,6 +257,31 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
     }
 
     /**
+     * Issue #596: the run this worker's sidecar belongs to, so the merge can
+     * ignore leftovers from an earlier run. Precedence:
+     *  - `GESSO_RUN_ID`: explicit, for CI.
+     *  - `GESSO_SIDECAR_TOKEN` set: `null`. Shards run on separate machines,
+     *    so only an explicit id can tie them together; a per-machine id would
+     *    split them.
+     *  - otherwise (a paratest worker) the parent pid: every worker is a
+     *    direct child of the one master, so its pid names the run. `null`
+     *    without ext-posix.
+     */
+    private static function resolveRunId(): ?string
+    {
+        $explicit = getenv('GESSO_RUN_ID');
+        if ($explicit !== false && trim($explicit) !== '') {
+            return CoverageSidecarWriter::sanitise(trim($explicit));
+        }
+        $shard = getenv('GESSO_SIDECAR_TOKEN');
+        if (($shard !== false && trim($shard) !== '') || !function_exists('posix_getppid')) {
+            return null;
+        }
+
+        return (string) posix_getppid();
+    }
+
+    /**
      * Run the strict_required asserter against the tracker state and route
      * the message to stderr + GitHub Step Summary. `Fail` mode terminates
      * the process so paratest CI surfaces the non-zero exit; `Warn` mode
@@ -306,9 +311,7 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
             return;
         }
 
-        $reports = StrictRequiredAsserter::detectAll($this->strictRequiredMode);
-        $unresolved = StrictRequiredAsserter::detectUnresolvedGroups($this->strictRequiredMode);
-        $unwalkable = StrictRequiredAsserter::detectUnwalkableNodes($this->strictRequiredMode);
+        ['reports' => $reports, 'unresolved' => $unresolved, 'unwalkable' => $unwalkable] = StrictRequiredAsserter::analyse($this->strictRequiredMode);
 
         if ($unresolved !== []) {
             // Validator only records on Success, so reaching this branch
@@ -341,7 +344,7 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
         $isFatal = $this->strictRequiredMode === StrictRequiredMode::Fail;
         $message = StrictRequiredAsserter::renderMessage($reports, $isFatal);
         $this->writeStderr($message . "\n");
-        OpenApiCoverageExtension::appendGithubStepSummaryStrictRequiredBlock(
+        Diagnostics::appendGithubStepSummaryStrictRequiredBlock(
             $this->githubSummaryPath,
             $message,
             $isFatal,
@@ -368,7 +371,7 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
         $isFatal = $this->strictAdditionalPropertiesMode === StrictAdditionalPropertiesMode::Fail;
         $message = StrictAdditionalPropertiesAsserter::renderMessage($reports, $isFatal);
         $this->writeStderr($message . "\n");
-        OpenApiCoverageExtension::appendGithubStepSummaryStrictAdditionalPropertiesBlock(
+        Diagnostics::appendGithubStepSummaryStrictAdditionalPropertiesBlock(
             $this->partialRun === null ? $this->githubSummaryPath : null,
             $message,
             $isFatal,
@@ -496,9 +499,9 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
         ));
     }
 
-    private function writeWorkerSidecar(string $token): void
+    private function writeWorkerSidecar(string $token, ?string $runId): void
     {
-        $dir = $this->sidecarDir ?? OpenApiCoverageExtension::defaultSidecarDir();
+        $dir = $this->sidecarDir ?? CoverageSidecarWriter::defaultDir();
 
         // Issue #417: a generation-mode worker hands its collected
         // fingerprints to the merge CLI through the envelope's baseline
@@ -537,7 +540,7 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
         );
 
         try {
-            CoverageSidecarWriter::write($dir, $token, $envelope);
+            CoverageSidecarWriter::write($dir, $token, $envelope, $runId);
         } catch (RuntimeException $e) {
             // The contract assertion that triggered notify() has already
             // passed; we don't fail the test run on sidecar I/O. But we
@@ -546,7 +549,7 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
             // marker the merge would silently under-count coverage by one
             // worker's worth of data.
             $this->writeStderr("[OpenAPI Coverage] WARNING: failed to write sidecar (token={$token}): {$e->getMessage()}\n");
-            CoverageSidecarWriter::writeFailureMarker($dir, $token, $e->getMessage());
+            CoverageSidecarWriter::writeFailureMarker($dir, $token, $e->getMessage(), $runId);
 
             // Issue #417 / #481: a lost sidecar cannot be recovered by the
             // marker alone — the marker write is itself best-effort, and
@@ -721,7 +724,7 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
             count($stale),
             $body,
         ));
-        OpenApiCoverageExtension::appendGithubStepSummaryBaselineStaleBlock(
+        Diagnostics::appendGithubStepSummaryBaselineStaleBlock(
             $this->githubSummaryPath,
             $body,
             $isFatal,
@@ -879,11 +882,10 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
     private function exitNonZero(): void
     {
         if ($this->stderrWriter === null) {
-            fflush(STDERR);
+            Diagnostics::flushStderr();
         }
-        $exit = $this->exitHandler;
-        if (is_callable($exit)) {
-            $exit(1);
+        if ($this->exitHandler !== null) {
+            ($this->exitHandler)(1);
 
             return;
         }
@@ -893,14 +895,7 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
 
     private function writeStderr(string $message): void
     {
-        $writer = $this->stderrWriter;
-        if (is_callable($writer)) {
-            $writer($message);
-
-            return;
-        }
-
-        OpenApiCoverageExtension::writeStderr($message);
+        ($this->stderrWriter ?? Diagnostics::stderr(...))($message);
     }
 
     /**
@@ -927,25 +922,14 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
 
     private function restoreSpecLoaderConfigurationIfReset(): void
     {
-        if ($this->specBasePath === null) {
-            return;
+        if ($this->loaderConfiguration !== null && OpenApiSpecLoader::exportConfiguration() === null) {
+            // Restore the enum root through the notice-free setter: the user's
+            // configure()/enum_spec_base_path call already noticed at boot.
+            ['enumBasePath' => $enumBasePath] = $configuration = $this->loaderConfiguration;
+            unset($configuration['enumBasePath']);
+            OpenApiSpecLoader::configure(...$configuration);
+            OpenApiSpecLoader::setEnumBasePath($enumBasePath);
         }
-
-        try {
-            OpenApiSpecLoader::getBasePath();
-
-            return;
-        } catch (InvalidOpenApiSpecException $e) {
-            if ($e->reason !== InvalidOpenApiSpecReason::BasePathNotConfigured) {
-                throw $e;
-            }
-        }
-
-        OpenApiSpecLoader::configure(
-            $this->specBasePath,
-            $this->specStripPrefixes,
-            enumBasePath: $this->enumBasePath,
-        );
     }
 
     /**

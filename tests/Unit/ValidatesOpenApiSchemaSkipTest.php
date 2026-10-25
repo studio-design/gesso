@@ -47,7 +47,6 @@ class ValidatesOpenApiSchemaSkipTest extends TestCase
 
     protected function tearDown(): void
     {
-        self::resetValidatorCache();
         self::$skipWarningHandler = null;
         unset($GLOBALS['__openapi_testing_config']);
         OpenApiSpecLoader::reset();

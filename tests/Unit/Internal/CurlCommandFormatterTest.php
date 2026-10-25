@@ -52,6 +52,9 @@ final class CurlCommandFormatterTest extends TestCase
                 'X-Api-Key' => 'k-123',
                 'X-Auth-Token' => 't-456',
                 'Client-Secret' => 's-789',
+                'php-auth-user' => 'svc',
+                'php-auth-pw' => 'hunter2',
+                'php-auth-digest' => 'Digest response="d-1"',
                 'Accept' => 'application/json',
             ],
             null,
@@ -64,9 +67,13 @@ final class CurlCommandFormatterTest extends TestCase
         $this->assertStringContainsString("-H 'X-Api-Key: <redacted>'", $command);
         $this->assertStringContainsString("-H 'X-Auth-Token: <redacted>'", $command);
         $this->assertStringContainsString("-H 'Client-Secret: <redacted>'", $command);
+        $this->assertStringContainsString("-H 'php-auth-user: <redacted>'", $command);
+        $this->assertStringContainsString("-H 'php-auth-pw: <redacted>'", $command);
+        $this->assertStringContainsString("-H 'php-auth-digest: <redacted>'", $command);
         $this->assertStringContainsString("-H 'Accept: application/json'", $command);
         $this->assertFalse(str_contains($command, 'real-token'));
         $this->assertFalse(str_contains($command, 'session=abc'));
+        $this->assertFalse(str_contains($command, 'hunter2'));
     }
 
     #[Test]
@@ -113,6 +120,28 @@ final class CurlCommandFormatterTest extends TestCase
         $this->assertStringContainsString('flag', $command);
         $this->assertStringContainsString('x=1', $command);
         $this->assertFalse(str_contains($command, 's-1'));
+    }
+
+    #[Test]
+    public function test_redacts_url_userinfo_including_raw_at_signs_in_the_password(): void
+    {
+        $plain = CurlCommandFormatter::format('GET', 'https://user:pass@host/path?x=1', [], null, null);
+        $rawAt = CurlCommandFormatter::format('GET', 'https://svc:p@ss@api.example.test/v1?api_key=k-1', [], null, null);
+        $networkPath = CurlCommandFormatter::format('GET', '//token@host/path', [], null, null);
+        $disabled = CurlCommandFormatter::format('GET', 'https://user:pass@host/path', [], null, null, redact: false);
+
+        $this->assertSame("curl -X GET 'https://<redacted>@host/path?x=1'", $plain);
+        $this->assertSame("curl -X GET 'https://<redacted>@api.example.test/v1?api_key=<redacted>'", $rawAt);
+        $this->assertSame("curl -X GET '//<redacted>@host/path'", $networkPath);
+        $this->assertSame("curl -X GET 'https://user:pass@host/path'", $disabled);
+    }
+
+    #[Test]
+    public function test_userinfo_redaction_leaves_at_signs_outside_the_authority_alone(): void
+    {
+        $command = CurlCommandFormatter::format('GET', 'https://host/users/a@b?email=c@d', [], null, null);
+
+        $this->assertSame("curl -X GET 'https://host/users/a@b?email=c@d'", $command);
     }
 
     #[Test]

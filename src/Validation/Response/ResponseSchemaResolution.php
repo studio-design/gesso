@@ -28,7 +28,7 @@ use function sprintf;
  *    the media type matched but its schema is deliberately not evaluated.
  *  - `responseSpec` is the raw `responses[<statusKey>]` node, available once
  *    the entry resolved as an object (content-level outcomes and later).
- *  - `schema` is the raw media-type `schema` node on `Resolved` only;
+ *  - `schema` is the raw media-type `schema` node on `Resolved` / `FormSchema` only;
  *    {@see convertedSchema()} lowers it on demand.
  *  - `contentTypeNote` is set on `Resolved` only, and only when the response's
  *    JSON-flavoured Content-Type is not declared for the matched status so the
@@ -233,6 +233,41 @@ final readonly class ResponseSchemaResolution
     }
 
     /**
+     * @param array<string, mixed> $responseSpec
+     * @param array<string, mixed> $schema
+     */
+    public static function formSchema(
+        string $matchedPath,
+        string $statusKey,
+        string $contentType,
+        array $responseSpec,
+        array $schema,
+        OpenApiVersion $version,
+        string $jsonSchemaDialect,
+        DiscriminatorContext $discriminatorContext,
+    ): self {
+        return new self(
+            ResponseSchemaResolutionOutcome::FormSchema,
+            $matchedPath,
+            $statusKey,
+            $contentType,
+            message: null,
+            skipReason: null,
+            responseSpec: $responseSpec,
+            schema: $schema,
+            version: $version,
+            jsonSchemaDialect: $jsonSchemaDialect,
+            discriminatorContext: $discriminatorContext,
+        );
+    }
+
+    /** The OpenAPI version selected at resolution time; set on `Resolved` / `FormSchema`. */
+    public function version(): ?OpenApiVersion
+    {
+        return $this->version;
+    }
+
+    /**
      * Convert the resolved raw schema for validation, preserving the schema
      * dialect and discriminator enforcement selected at resolution time.
      *
@@ -244,12 +279,13 @@ final readonly class ResponseSchemaResolution
      */
     public function convertedSchema(): array
     {
-        if ($this->outcome !== ResponseSchemaResolutionOutcome::Resolved ||
+        if (($this->outcome !== ResponseSchemaResolutionOutcome::Resolved &&
+                $this->outcome !== ResponseSchemaResolutionOutcome::FormSchema) ||
             $this->schema === null ||
             $this->version === null
         ) {
             throw new LogicException(sprintf(
-                'convertedSchema() is only available on a Resolved response schema resolution; got %s.',
+                'convertedSchema() is only available on a Resolved or FormSchema response schema resolution; got %s.',
                 $this->outcome->name,
             ));
         }

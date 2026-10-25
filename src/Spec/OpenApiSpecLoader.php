@@ -10,9 +10,11 @@ use const PHP_URL_HOST;
 use InvalidArgumentException;
 use Psr\Http\Client\ClientInterface;
 use Psr\Http\Message\RequestFactoryInterface;
+use stdClass;
 use Studio\Gesso\Exception\InvalidOpenApiSpecException;
 use Studio\Gesso\Exception\InvalidOpenApiSpecReason;
 use Studio\Gesso\Exception\SpecFileNotFoundException;
+use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\Internal\HttpRefLoader;
 use Studio\Gesso\Internal\OpenApiDocumentShapeNormalizer;
 use Studio\Gesso\Internal\RemoteAuthorization;
@@ -27,6 +29,7 @@ use function file_get_contents;
 use function getenv;
 use function implode;
 use function in_array;
+use function is_array;
 use function is_string;
 use function parse_url;
 use function preg_match;
@@ -65,6 +68,9 @@ final class OpenApiSpecLoader
 
     /** @var array<string, array<string, mixed>> */
     private static array $cache = [];
+
+    /** @var array<string, array<string, stdClass>> */
+    private static array $objectEnums = [];
     private static ?ClientInterface $httpClient = null;
     private static ?RequestFactoryInterface $requestFactory = null;
     private static bool $allowRemoteRefs = false;
@@ -92,7 +98,8 @@ final class OpenApiSpecLoader
      * @param bool $allowRemoteRefs Opt-in for HTTP(S) `$ref` resolution. Defaults to false:
      *                              every external HTTP(S) ref throws `RemoteRefDisallowed` so a
      *                              spec can never silently reach the network during tests.
-     * @param null|string $enumBasePath Optional secondary base path used only when resolving
+     * @param null|string $enumBasePath Deprecated, removed in Gesso 3.0 (#508). Optional secondary
+     *                                  base path used only when resolving legacy file-path
      *                                  `#[BoundToOpenApiEnum]` attribute paths (issue #170).
      *                                  Lets projects keep `spec_base_path` pointed at a
      *                                  bundled aggregate root (e.g. `openapi/bundled/`) while
@@ -181,22 +188,18 @@ final class OpenApiSpecLoader
         $allowedRemoteRefHosts = self::normalizeAllowedRemoteRefHosts($allowedRemoteRefHosts);
         $remoteSpecs = self::normalizeRemoteSpecs($remoteSpecs, $allowedRemoteRefHosts);
 
-        if ($enumBasePath !== null && trim($enumBasePath) === '') {
-            // Empty / whitespace-only `enumBasePath` would otherwise survive
-            // rtrim() as the empty string and surface later as
-            // `EnumBasePathNotFound: Configured enum_spec_base_path is not a
-            // directory: ` — an unhelpful diagnostic that hides the real
-            // misconfiguration. Reject at the API surface instead, matching
-            // the allowRemoteRefs pairing checks above. Pass `null` to
-            // intentionally disable the parameter.
-            throw new InvalidArgumentException(
-                'OpenApiSpecLoader::configure(): $enumBasePath is empty or whitespace-only. '
-                . 'Pass a valid directory path, or null to fall back to spec_base_path.',
+        if ($enumBasePath !== null) {
+            Deprecations::notice(
+                id: 'spec.loader.configure.enum_base_path',
+                subject: 'OpenApiSpecLoader::configure(enumBasePath:)',
+                replacement: 'OpenApiSpecLoader::configure() without enumBasePath (component-name enum bindings need no enum root)',
+                removedIn: '3.0',
             );
         }
+        // Last validation before any state write: it may throw.
+        self::setEnumBasePath($enumBasePath);
 
         self::$basePath = self::normalizeConfiguredBasePath($basePath);
-        self::$enumBasePath = $enumBasePath !== null ? self::normalizeConfiguredBasePath($enumBasePath) : null;
         self::$stripPrefixes = $stripPrefixes;
         self::$httpClient = $httpClient;
         self::$requestFactory = $requestFactory;
@@ -208,6 +211,29 @@ final class OpenApiSpecLoader
         // different remote-refs policy. Evict so the next load() runs
         // with the new client/flag combination.
         self::$cache = [];
+        self::$objectEnums = [];
+    }
+
+    /**
+     * The last configure() call's arguments, or null before any.
+     *
+     * @internal Restore seam for CoverageReportSubscriber after a test called reset().
+     *
+     * @return null|array<string, mixed> keyed by configure()'s parameter names
+     */
+    public static function exportConfiguration(): ?array
+    {
+        return self::$basePath === null ? null : [
+            'basePath' => self::$basePath,
+            'stripPrefixes' => self::$stripPrefixes,
+            'httpClient' => self::$httpClient,
+            'requestFactory' => self::$requestFactory,
+            'allowRemoteRefs' => self::$allowRemoteRefs,
+            'enumBasePath' => self::$enumBasePath,
+            'allowedRemoteRefHosts' => self::$allowedRemoteRefHosts,
+            'maxRemoteRefBytes' => self::$maxRemoteRefBytes,
+            'remoteSpecs' => self::$remoteSpecs,
+        ];
     }
 
     public static function getBasePath(): string
@@ -224,12 +250,38 @@ final class OpenApiSpecLoader
     }
 
     /**
-     * Secondary base path for `#[BoundToOpenApiEnum]` resolution (issue #170).
+     * @internal Used by the PHPUnit extension so the deprecated `configure(enumBasePath:)` path is the only one that notices.
+     */
+    public static function setEnumBasePath(?string $enumBasePath): void
+    {
+        if ($enumBasePath !== null && trim($enumBasePath) === '') {
+            // Empty / whitespace-only `enumBasePath` would otherwise survive
+            // rtrim() as the empty string and surface later as
+            // `EnumBasePathNotFound: Configured enum_spec_base_path is not a
+            // directory: ` — an unhelpful diagnostic that hides the real
+            // misconfiguration. Reject at the API surface instead. Pass
+            // `null` to intentionally disable the parameter.
+            throw new InvalidArgumentException(
+                'OpenApiSpecLoader::configure(): $enumBasePath is empty or whitespace-only. '
+                . 'Pass a valid directory path, or null to fall back to spec_base_path.',
+            );
+        }
+
+        self::$enumBasePath = $enumBasePath !== null ? self::normalizeConfiguredBasePath($enumBasePath) : null;
+    }
+
+    /**
+     * Secondary base path for legacy file-path `#[BoundToOpenApiEnum]`
+     * resolution (issue #170).
      *
      * Returns `null` when not configured — `EnumDriftAsserter` is expected
-     * to fall back to {@see getBasePath()} in that case. The deliberate
-     * non-throwing shape mirrors how `enum_spec_base_path` is opt-in at the
-     * extension layer: absence is the documented default, not an error.
+     * to fall back to {@see getBasePath()} in that case.
+     *
+     * Emits no notice of its own: the only ways to make it non-null —
+     * `configure(enumBasePath:)` or the `enum_spec_base_path` parameter —
+     * already notice, and the asserter reads it on the legacy path.
+     *
+     * @deprecated Removed in Gesso 3.0 (#508): component-name enum bindings need no enum root.
      */
     public static function getEnumBasePath(): ?string
     {
@@ -309,18 +361,16 @@ final class OpenApiSpecLoader
         }
 
         try {
-            $resolved = OpenApiDocumentShapeNormalizer::normalizeResolvedDocument(
-                OpenApiRefResolver::resolve(
-                    $decoded,
-                    $canonicalPath,
-                    self::$httpClient,
-                    self::$requestFactory,
-                    self::$allowRemoteRefs,
-                    self::$allowedRemoteRefHosts,
-                    self::$maxRemoteRefBytes,
-                    [self::getBasePath()],
-                ),
-            );
+            $resolved = self::normalize($specName, OpenApiRefResolver::resolve(
+                $decoded,
+                $canonicalPath,
+                self::$httpClient,
+                self::$requestFactory,
+                self::$allowRemoteRefs,
+                self::$allowedRemoteRefHosts,
+                self::$maxRemoteRefBytes,
+                [self::getBasePath()],
+            ));
         } catch (InvalidOpenApiSpecException $e) {
             // The resolver is stateless and therefore cannot know which spec
             // produced the throw. Re-wrap once so consumers (e.g. the coverage
@@ -343,6 +393,24 @@ final class OpenApiSpecLoader
     public static function clearCache(): void
     {
         self::$cache = [];
+        self::$objectEnums = [];
+    }
+
+    /**
+     * `components.schemas` entries whose `enum` is a JSON object / YAML
+     * mapping — malformed, but {@see self::load()} collapses it into a list
+     * (`{"0": "red"}` to ["red"], `{}` to []). Recorded at load time after
+     * `$ref` resolution, so it covers referenced schemas and a cached spec.
+     *
+     * @internal Lets EnumDriftAsserter reject object-shaped `enum` keywords.
+     *
+     * @return array<string, stdClass> component name => the `enum` object
+     */
+    public static function objectShapedComponentEnums(string $specName): array
+    {
+        self::load($specName);
+
+        return self::$objectEnums[$specName] ?? [];
     }
 
     /**
@@ -357,6 +425,7 @@ final class OpenApiSpecLoader
         self::$enumBasePath = null;
         self::$stripPrefixes = [];
         self::$cache = [];
+        self::$objectEnums = [];
         self::$httpClient = null;
         self::$requestFactory = null;
         self::$allowRemoteRefs = false;
@@ -364,6 +433,58 @@ final class OpenApiSpecLoader
         self::$maxRemoteRefBytes = self::DEFAULT_MAX_REMOTE_REF_BYTES;
         self::$remoteSpecs = [];
         YamlAvailability::reset();
+    }
+
+    /**
+     * @internal Arazzo source mapping. Canonical path load() would read for
+     * `$specName`, or the loader's own SpecFileNotFoundException.
+     */
+    public static function resolvedSpecFile(string $specName): string
+    {
+        return self::resolveSpecFile($specName)['path'];
+    }
+
+    /**
+     * @internal Arazzo source mapping. Spec name whose configured remote
+     * entry URL equals `$url` exactly, or null when none is configured.
+     */
+    public static function remoteSpecNameForUrl(string $url): ?string
+    {
+        foreach (self::$remoteSpecs as $specName => $source) {
+            if ($source->url === $url) {
+                return (string) $specName;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @internal Arazzo source mapping. True when `$specName` is a configured
+     * remoteSpecs entry, which load() prefers over any local file.
+     */
+    public static function isRemoteSpecName(string $specName): bool
+    {
+        return isset(self::$remoteSpecs[$specName]);
+    }
+
+    /**
+     * @param array<string, mixed> $resolved
+     *
+     * @return array<string, mixed>
+     */
+    private static function normalize(string $specName, array $resolved): array
+    {
+        $schemas = is_array($resolved['components'] ?? null) ? $resolved['components']['schemas'] ?? null : null;
+        $objectEnums = [];
+        foreach (is_array($schemas) ? $schemas : [] as $name => $schema) {
+            if (is_array($schema) && ($schema['enum'] ?? null) instanceof stdClass) {
+                $objectEnums[(string) $name] = $schema['enum'];
+            }
+        }
+        self::$objectEnums[$specName] = $objectEnums;
+
+        return OpenApiDocumentShapeNormalizer::normalizeResolvedDocument($resolved);
     }
 
     /**
@@ -466,7 +587,8 @@ final class OpenApiSpecLoader
         self::assertSupportedDocument($document->decoded, $specName);
 
         try {
-            return OpenApiDocumentShapeNormalizer::normalizeResolvedDocument(
+            return self::normalize(
+                $specName,
                 OpenApiRefResolver::resolve(
                     $document->decoded,
                     $document->canonicalIdentifier,

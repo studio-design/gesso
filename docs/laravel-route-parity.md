@@ -23,27 +23,32 @@ PHPUnit extension:
 ```php
 return [
     'default_spec' => 'front',
+    'specs' => ['front', 'admin'],
     'spec_base_path' => base_path('openapi/bundled'),
     'strip_prefixes' => ['/api'],
     'route_parity' => [
         'external_operation_ids' => ['forms.*'],
         'external_openapi_paths' => ['/v2/proxy/*'],
+        'excluded_route_names' => ['internal.*'],
     ],
 ];
 ```
 
 `spec_base_path` is the directory searched for `front.json`, `front.yaml`, or
-`front.yml`. Keep `strip_prefixes` aligned with the PHPUnit extension. The
+`front.yml`. Keep `strip_prefixes` aligned with the PHPUnit extension — or move both to
+the root [`gesso.php`](configuration.md) so nothing needs aligning. The
 command applies the runtime matcher's first-match prefix and trailing-slash
 rules, so the static result matches request/response validation.
 
 ## Usage
 
-Use the configured `default_spec`:
+Use the configured `specs`, or `default_spec` when `specs` is empty:
 
 ```bash
 php artisan gesso:routes
 ```
+
+`--spec` replaces the configured `specs` list rather than adding to it.
 
 Select multiple specs and narrow the Laravel route collection:
 
@@ -65,7 +70,8 @@ Filters are combined with AND semantics:
 - Repeat `--middleware` to require every listed middleware name.
 - Repeat `--domain` to allow any listed exact route domain.
 - Repeat `--exclude-route` to exclude named routes; `*` wildcards are
-  supported. Unnamed routes are not excluded by this option.
+  supported. Values are merged with `route_parity.excluded_route_names` from
+  the Laravel config. Unnamed routes are not excluded.
 
 Documented-side exclusions classify operations implemented by another service
 in a gateway topology. Repeat `--exclude-operation` to match `operationId`, or
@@ -91,6 +97,12 @@ the selected OpenAPI 3.2 spec declares the same, case-sensitive key under
 ## CI exit codes
 
 By default, discovered differences are reported but the command exits `0`.
+With the specs and exclusions in config, a CI step needs no wrapper script:
+
+```bash
+php artisan gesso:routes --format=json --fail-on-undocumented
+```
+
 Enable either gate independently:
 
 ```bash

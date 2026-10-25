@@ -14,16 +14,22 @@ use function strtolower;
 use function trim;
 
 /**
- * Shared parser behind the strict-mode enums' `fromConfigValue()`:
- * trim, lower-case, match a backed case, or throw the
- * "Unknown X value" error listing the accepted values.
+ * Shared parser behind the config enums' `fromConfigValue()` and
+ * `GessoConfig`'s enum leaves: trim, lower-case, match a backed case, or
+ * throw the "Unknown X value" error listing the accepted values.
  *
- * @internal Implementation detail of the strict-mode enums.
+ * @internal Implementation detail of the config enums and GessoConfig.
  */
 final class ConfigEnumParser
 {
     /** Static-only utility — no instances. */
     private function __construct() {}
+
+    /** Trim and lower-case a raw config value; '' for null/blank. */
+    public static function normalize(?string $value): string
+    {
+        return strtolower(trim((string) $value));
+    }
 
     /**
      * @template T of BackedEnum
@@ -39,7 +45,7 @@ final class ConfigEnumParser
      */
     public static function parse(string $enum, string $parameter, ?string $value, array $rejected = []): ?BackedEnum
     {
-        $normalized = strtolower(trim((string) $value));
+        $normalized = self::normalize($value);
         if ($normalized === '') {
             return null;
         }

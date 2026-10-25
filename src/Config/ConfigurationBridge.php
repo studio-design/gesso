@@ -5,8 +5,9 @@ declare(strict_types=1);
 namespace Studio\Gesso\Config;
 
 /**
- * Maps declared shared settings to the existing v2 adapter inputs. Defaults
- * stay with each consumer until the major-version migration is complete.
+ * Maps declared shared settings to the existing v2 adapter inputs (the PHPUnit
+ * extension parameters, which also default the `coverage:merge` CLI options).
+ * Defaults stay with each consumer until the major-version migration is complete.
  *
  * @internal Compatibility plumbing, not a configuration API.
  */
@@ -63,6 +64,8 @@ final class ConfigurationBridge
             'auto_inject_dummy_credentials' => ['laravel.auto_inject_dummy_credentials', 'boolOrString'],
             'route_parity.external_operation_ids' => ['laravel.route_parity.external_operation_ids', 'strings'],
             'route_parity.external_openapi_paths' => ['laravel.route_parity.external_openapi_paths', 'strings'],
+            'route_parity.excluded_route_names' => ['laravel.route_parity.excluded_route_names', 'strings'],
+            'specs' => ['spec.names', 'strings'],
         ]);
     }
 
