@@ -7,6 +7,7 @@ namespace Studio\Gesso\Tests\Unit;
 use const E_USER_WARNING;
 
 use InvalidArgumentException;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use stdClass;
@@ -52,6 +53,25 @@ class OpenApiRequestValidatorTest extends TestCase
         OpenApiSpecLoader::reset();
         SecurityValidator::resetWarningStateForTesting();
         parent::tearDown();
+    }
+
+    /**
+     * OAS 3.0/3.1/3.2 Parameter Object `name`: an `in: header` parameter named
+     * `Accept`, `Content-Type`, or `Authorization` "SHALL be ignored". Ignored
+     * means the request neither fails on the declaration itself nor on the
+     * declared `required` / schema — with the header absent or violating it.
+     *
+     * @return iterable<string, array{string, array<string, string>}>
+     */
+    public static function provideReserved_header_declaration_is_ignoredCases(): iterable
+    {
+        yield 'Accept required, header absent' => ['/header-reserved-accept-required', []];
+        yield 'Accept required, value outside enum' => ['/header-reserved-accept-required', ['Accept' => 'text/html']];
+        yield 'Content-Type optional' => ['/header-reserved-content-type-optional', ['Content-Type' => 'text/plain']];
+        yield 'Authorization required, pattern violated' => ['/header-reserved-authorization-required', ['Authorization' => 'Basic abc']];
+        yield 'upper-case ACCEPT declaration' => ['/header-reserved-accept-upper', []];
+        yield 'two reserved declarations' => ['/header-reserved-multiple', []];
+        yield 'path-level Authorization declaration' => ['/header-reserved-path-level', []];
     }
 
     // ========================================
@@ -2447,140 +2467,16 @@ class OpenApiRequestValidatorTest extends TestCase
         $this->assertStringContainsString('missing', $message);
     }
 
+    /**
+     * @param array<string, string> $headers
+     */
     #[Test]
-    public function reserved_header_declaration_accept_required_surfaces_spec_error(): void
+    #[DataProvider('provideReserved_header_declaration_is_ignoredCases')]
+    public function reserved_header_declaration_is_ignored(string $path, array $headers): void
     {
-        // Per OAS 3.x §4.7.12.1, `Accept`/`Content-Type`/`Authorization` parameter
-        // definitions SHALL be ignored. Silently skipping would let a spec author's
-        // `required: true` declaration pass every request, masking the footgun —
-        // so we surface the declaration as a hard spec error instead.
-        $result = $this->validator->validate(
-            'malformed',
-            'GET',
-            '/header-reserved-accept-required',
-            [],
-            ['Accept' => 'application/json'],
-            null,
-            null,
-        );
+        $result = $this->validator->validate('malformed', 'GET', $path, [], $headers, null, null);
 
-        $this->assertFalse($result->isValid());
-        $message = $result->errorMessage();
-        $this->assertStringContainsString('[header.Accept]', $message);
-        $this->assertStringContainsString('GET /header-reserved-accept-required', $message);
-        $this->assertStringContainsString('SHALL be ignored', $message);
-        $this->assertStringContainsString('§4.7.12.1', $message);
-    }
-
-    #[Test]
-    public function reserved_header_declaration_content_type_optional_surfaces_spec_error(): void
-    {
-        // Detection is name-based, not required-based — `required` is absent
-        // (implicit false) yet the declaration is still a spec defect.
-        $result = $this->validator->validate(
-            'malformed',
-            'GET',
-            '/header-reserved-content-type-optional',
-            [],
-            [],
-            null,
-            null,
-        );
-
-        $this->assertFalse($result->isValid());
-        $message = $result->errorMessage();
-        $this->assertStringContainsString('[header.Content-Type]', $message);
-        $this->assertStringContainsString('SHALL be ignored', $message);
-        $this->assertStringContainsString('§4.7.12.1', $message);
-    }
-
-    #[Test]
-    public function reserved_header_declaration_authorization_required_surfaces_spec_error(): void
-    {
-        $result = $this->validator->validate(
-            'malformed',
-            'GET',
-            '/header-reserved-authorization-required',
-            [],
-            ['Authorization' => 'Bearer token'],
-            null,
-            null,
-        );
-
-        $this->assertFalse($result->isValid());
-        $message = $result->errorMessage();
-        $this->assertStringContainsString('[header.Authorization]', $message);
-        $this->assertStringContainsString('SHALL be ignored', $message);
-        $this->assertStringContainsString('§4.7.12.1', $message);
-    }
-
-    #[Test]
-    public function reserved_header_declaration_case_insensitive_in_spec(): void
-    {
-        // The error message preserves the author's original casing so the
-        // offending entry is easy to grep in their spec file.
-        $result = $this->validator->validate(
-            'malformed',
-            'GET',
-            '/header-reserved-accept-upper',
-            [],
-            [],
-            null,
-            null,
-        );
-
-        $this->assertFalse($result->isValid());
-        $message = $result->errorMessage();
-        $this->assertStringContainsString('[header.ACCEPT]', $message);
-        $this->assertStringContainsString('SHALL be ignored', $message);
-        $this->assertStringContainsString('§4.7.12.1', $message);
-    }
-
-    #[Test]
-    public function reserved_header_declaration_multiple_entries_surface_multiple_errors(): void
-    {
-        $result = $this->validator->validate(
-            'malformed',
-            'GET',
-            '/header-reserved-multiple',
-            [],
-            [],
-            null,
-            null,
-        );
-
-        $this->assertFalse($result->isValid());
-        $errors = $result->errors();
-        // Pin the total so a future bug producing a duplicate or extra error is caught.
-        $this->assertCount(2, $errors, 'expected exactly 2 errors, got: ' . implode(' | ', $errors));
-        $accept = array_filter($errors, static fn(string $e): bool => str_contains($e, '[header.Accept]'));
-        $contentType = array_filter($errors, static fn(string $e): bool => str_contains($e, '[header.Content-Type]'));
-        $this->assertCount(1, $accept, 'expected one [header.Accept] error, got: ' . implode(' | ', $errors));
-        $this->assertCount(1, $contentType, 'expected one [header.Content-Type] error, got: ' . implode(' | ', $errors));
-    }
-
-    #[Test]
-    public function reserved_header_declaration_path_level_surfaces_spec_error(): void
-    {
-        // Path-level `parameters` are a separate source from operation-level
-        // `parameters` in collectParameters. Pin that reserved-header detection
-        // applies to both — a future refactor that dedupes sources before
-        // detection must not silently drop the path-level case.
-        $result = $this->validator->validate(
-            'malformed',
-            'GET',
-            '/header-reserved-path-level',
-            [],
-            [],
-            null,
-            null,
-        );
-
-        $this->assertFalse($result->isValid());
-        $message = $result->errorMessage();
-        $this->assertStringContainsString('[header.Authorization]', $message);
-        $this->assertStringContainsString('SHALL be ignored', $message);
-        $this->assertStringContainsString('§4.7.12.1', $message);
+        $this->assertTrue($result->isValid(), $result->errorMessage());
     }
 
     #[Test]
