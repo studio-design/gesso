@@ -45,6 +45,7 @@ use function sprintf;
 use function str_contains;
 use function str_replace;
 use function str_starts_with;
+use function strcspn;
 use function strlen;
 use function strrpos;
 use function substr;
@@ -419,12 +420,20 @@ final class OpenApiRefResolver
         }
 
         $basePath = $baseParts['path'] ?? '/';
+        // An empty-path reference (`?q`, `#f`, ``) keeps the base path, and the base query unless it brings its own.
+        if ($relativeRef === '' || $relativeRef[0] === '?' || $relativeRef[0] === '#') {
+            $baseQuery = isset($baseParts['query']) && !str_starts_with($relativeRef, '?') ? '?' . $baseParts['query'] : '';
+
+            return sprintf('%s://%s%s%s%s', $scheme, $authority, $basePath, $baseQuery, $relativeRef);
+        }
+
         $baseDir = self::dirnameUrl($basePath);
 
-        $combined = $baseDir . '/' . $relativeRef;
-        $normalised = self::normaliseDotSegments($combined);
+        // Dot-segment removal applies to the path only, never to a query or fragment.
+        $pathLength = strcspn($relativeRef, '?#');
+        $normalised = self::normaliseDotSegments($baseDir . '/' . substr($relativeRef, 0, $pathLength));
 
-        return sprintf('%s://%s%s', $scheme, $authority, $normalised);
+        return sprintf('%s://%s%s%s', $scheme, $authority, $normalised, substr($relativeRef, $pathLength));
     }
 
     /**

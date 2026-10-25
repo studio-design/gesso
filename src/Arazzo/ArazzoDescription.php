@@ -185,7 +185,8 @@ final readonly class ArazzoDescription
             } elseif (preg_match('#^[A-Za-z][A-Za-z0-9+.-]*:#', $self) === 1) {
                 $baseUri = $self;
             } else {
-                $baseUri = OpenApiRefResolver::normaliseDotSegments(str_starts_with($self, '/') ? $self : dirname($path) . '/' . $self);
+                $decoded = rawurldecode($self);
+                $baseUri = OpenApiRefResolver::normaliseDotSegments(str_starts_with($decoded, '/') ? $decoded : dirname($path) . '/' . $decoded);
                 // A directory-valued reference (`./`, `..`) keeps its trailing slash so it is not dirname()'d again.
                 if (preg_match('#(^|/)\.{0,2}$#', $self) === 1) {
                     $baseUri = rtrim($baseUri, '/') . '/';
@@ -360,7 +361,9 @@ final readonly class ArazzoDescription
 
         $directory = str_ends_with($baseUri, '/') ? $baseUri : dirname($baseUri) . '/';
 
-        // A URI reference is percent-encoded; the file it names is not.
-        return rawurldecode(OpenApiRefResolver::normaliseDotSegments(str_starts_with($url, '/') ? $url : $directory . $url));
+        // The reference is percent-encoded; the base is already a real file path.
+        $path = rawurldecode($url);
+
+        return OpenApiRefResolver::normaliseDotSegments(str_starts_with($path, '/') ? $path : $directory . $path);
     }
 }
