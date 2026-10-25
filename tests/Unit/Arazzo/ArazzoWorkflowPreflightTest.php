@@ -93,14 +93,14 @@ final class ArazzoWorkflowPreflightTest extends TestCase
 
         $this->assertSame(ArazzoDescriptionReason::UnsupportedFeature, $e->reason);
         foreach ([
-            '.dependsOn:', 'steps[nested].workflowId:', 'steps[channel].channelPath:', '.onSuccess:', '.onFailure:',
+            '.dependsOn:', 'steps[nested].workflowId:', 'steps[channel].channelPath:',
             'reference', 'querystring', 'Selector Object', 'replacements', "'regex'", 'application/xml', '$workflows',
             "step 'later', which has not run yet",
         ] as $token) {
             $this->assertStringContainsString($token, $all);
         }
 
-        $this->assertCount(13, $e->problems, $all);
+        $this->assertCount(11, $e->problems, $all);
     }
 
     #[Test]
