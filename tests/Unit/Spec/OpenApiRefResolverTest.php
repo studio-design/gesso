@@ -8,7 +8,13 @@ use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Studio\Gesso\Exception\InvalidOpenApiSpecException;
 use Studio\Gesso\Exception\InvalidOpenApiSpecReason;
+use Studio\Gesso\Internal\OpenApiDocumentShapeNormalizer;
 use Studio\Gesso\Spec\OpenApiRefResolver;
+
+use function memory_get_usage;
+use function serialize;
+use function str_repeat;
+use function unserialize;
 
 class OpenApiRefResolverTest extends TestCase
 {
@@ -1698,5 +1704,52 @@ class OpenApiRefResolverTest extends TestCase
 
         $this->assertSame('a~1b~0c~01d', OpenApiRefResolver::escapePointerSegment($raw));
         $this->assertSame($raw, OpenApiRefResolver::unescapePointerSegment(OpenApiRefResolver::escapePointerSegment($raw)));
+    }
+
+    #[Test]
+    public function shares_a_target_referenced_many_times_instead_of_copying_it(): void
+    {
+        $properties = [];
+        for ($i = 0; $i < 300; $i++) {
+            $properties['field' . $i] = ['type' => 'string', 'description' => str_repeat('d', 40) . $i];
+        }
+        $big = ['type' => 'object', 'properties' => $properties];
+        $paths = [];
+        for ($i = 0; $i < 200; $i++) {
+            $paths['/r' . $i]['get']['responses']['200']['content']['application/json']['schema'] = [
+                '$ref' => '#/components/schemas/Big',
+            ];
+        }
+        $spec = ['openapi' => '3.1.0', 'paths' => $paths, 'components' => ['schemas' => ['Big' => $big]]];
+
+        $before = memory_get_usage();
+        $copy = unserialize(serialize($big));
+        $oneCopy = memory_get_usage() - $before;
+        unset($copy);
+
+        $before = memory_get_usage();
+        $resolved = OpenApiDocumentShapeNormalizer::normalizeResolvedDocument(OpenApiRefResolver::resolve($spec));
+        $retained = memory_get_usage() - $before;
+
+        $this->assertSame($big, $resolved['paths']['/r199']['get']['responses']['200']['content']['application/json']['schema']);
+        // Copying per reference site retains about 200 copies. Sharing keeps
+        // the in-place component plus one walked copy; the bound is generous.
+        $this->assertLessThan(20 * $oneCopy, $retained);
+    }
+
+    #[Test]
+    public function does_not_reuse_walked_targets_across_resolutions(): void
+    {
+        $spec = static fn(string $type): array => [
+            'openapi' => '3.1.0',
+            'paths' => ['/a' => ['get' => ['responses' => ['200' => ['content' => ['application/json' => [
+                'schema' => ['$ref' => '#/components/schemas/Pet'],
+            ]]]]]]],
+            'components' => ['schemas' => ['Pet' => ['type' => $type]]],
+        ];
+        $schemaOf = static fn(array $resolved): mixed => $resolved['paths']['/a']['get']['responses']['200']['content']['application/json']['schema'];
+
+        $this->assertSame(['type' => 'string'], $schemaOf(OpenApiRefResolver::resolve($spec('string'))));
+        $this->assertSame(['type' => 'integer'], $schemaOf(OpenApiRefResolver::resolve($spec('integer'))));
     }
 }

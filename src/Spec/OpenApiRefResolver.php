@@ -41,6 +41,7 @@ use function max;
 use function min;
 use function parse_url;
 use function rawurldecode;
+use function serialize;
 use function sprintf;
 use function str_contains;
 use function str_replace;
@@ -225,6 +226,21 @@ final class OpenApiRefResolver
     ];
 
     /**
+     * Walked `$ref` targets of the resolution in progress, keyed by
+     * chain key, schema position and the context parts that steer the walk
+     * (dialect declaration, source file). A target referenced N times is walked once
+     * and every reference site shares the same array (copy-on-write) instead
+     * of holding its own copy. Scoped to one {@see self::resolve()} call.
+     *
+     * Sound for cycle detection: a walk only completes when the target's ref
+     * closure is acyclic, and any cycle through it throws on that first walk,
+     * so a later site never needs the re-walk to detect one.
+     *
+     * @var array<string, array<array-key, mixed>>
+     */
+    private static array $walkMemo = [];
+
+    /**
      * Resolve every `$ref` entry in the spec in place and return the same
      * array. Any structural problem with a `$ref` throws
      * `InvalidOpenApiSpecException` so users get one actionable error at
@@ -329,7 +345,16 @@ final class OpenApiRefResolver
         // remote entry document and its SHA-256 pin) so a ref back to a
         // seeded identifier never triggers an unverified refetch.
         $documentCache = $preloadedDocuments;
-        self::walk($spec, $root, [], false, $context, $documentCache);
+        // Saved and restored so a re-entrant resolve() cannot see or clobber
+        // the outer resolution's memo.
+        $outerMemo = self::$walkMemo;
+        self::$walkMemo = [];
+
+        try {
+            self::walk($spec, $root, [], false, $context, $documentCache);
+        } finally {
+            self::$walkMemo = $outerMemo;
+        }
 
         return $spec;
     }
@@ -1607,7 +1632,17 @@ final class OpenApiRefResolver
         // ("any sibling elements of a $ref are ignored"); for 3.1/3.2 Schema
         // Objects the caller re-applies them around this result.
         [$targetContext, $declaration] = self::enclosingResource($root, $internalRef, $lookupContext);
-        self::walk($target, $root, [...$chain, $chainKey], false, $targetContext, $documentCache, isSchema: $targetIsSchema);
+        // Every other context field is fixed for the whole resolution.
+        $memoKey = $chainKey
+            . "\0" . ($targetIsSchema ? '1' : '0')
+            . "\0" . serialize($targetContext->schemaDeclaration)
+            . "\0" . ($targetContext->sourceFile ?? '');
+        if (isset(self::$walkMemo[$memoKey])) {
+            $target = self::$walkMemo[$memoKey];
+        } else {
+            self::walk($target, $root, [...$chain, $chainKey], false, $targetContext, $documentCache, isSchema: $targetIsSchema);
+            self::$walkMemo[$memoKey] = $target;
+        }
         $node = self::preserveResourceDialect($target, $declaration, $context, $targetIsSchema);
     }
 
