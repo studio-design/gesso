@@ -29,7 +29,7 @@ final readonly class ArazzoStepRequest
      * @param string $method as declared in the source (fixed methods upper-cased)
      * @param string $pathTemplate the source's path template, e.g. `/pets/{petId}`
      * @param array<string, mixed> $pathParams
-     * @param array<string, mixed> $query
+     * @param array<string, list<string>|string> $query wire strings; lists stay lists
      * @param array<string, list<string>|string> $headers wire strings (booleans as `true`/`false`), name case preserved
      * @param array<string, list<string>|string> $cookies wire strings
      * @param array<string, string> $queryDelimiters query parameter name → wire delimiter of its non-exploded style

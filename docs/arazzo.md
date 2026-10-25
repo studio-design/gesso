@@ -118,8 +118,8 @@ List query values follow the operation's `style` / `explode`: the default
 non-exploded styles join with their delimiter (`tags=red,blue`). PHP's own
 query parser keeps only the last of repeated names, so a Laravel or Symfony
 dispatcher that needs the whole list should read `$request->query`.
-Header and cookie values arrive as the strings that were validated (booleans
-as `true` / `false`).
+Query, header and cookie values arrive as the strings that were validated
+(booleans as `true` / `false`).
 Gesso has no server-URL semantics, so `$url` in an expression is this same
 request target.
 
@@ -175,7 +175,7 @@ lists every problem found, each prefixed with its location.
 |---|---|
 | `$url`, `$method`, `$statusCode` | The step's request target, method and response status. |
 | `$request.header.<name>`, `$response.header.<name>` | Header value, case-insensitive; repeated headers join with `, `. |
-| `$request.query.<name>`, `$request.path.<name>` | Parameter value; names are case-sensitive. |
+| `$request.query.<name>`, `$request.path.<name>` | Parameter value (query values as their validated wire strings); names are case-sensitive. |
 | `$request.body#<pointer>`, `$response.body#<pointer>` | A JSON Pointer into the body, keeping its JSON type. |
 | `$inputs.<name>#<pointer>` | A workflow input. |
 | `$steps.<stepId>.outputs.<name>#<pointer>` | An output of an earlier step. |

@@ -427,8 +427,8 @@ final class ArazzoWorkflowExecution
             $step->method,
             $step->pathTemplate,
             $values['path'],
-            $values['query'],
-            // Headers and cookies go to the dispatcher exactly as they were validated.
+            // Parameters go to the dispatcher exactly as they were validated.
+            self::wire($values['query']),
             self::wire($values['header']),
             self::wire($values['cookie']),
             $body,

@@ -167,7 +167,7 @@ final class SpecDocumentDecoder
                 // map are names, not keywords — the resolver's own rule — and
                 // nothing under sample/default data is a keyword at all.
                 $isKeyword = !$isNamedMap && !$isData;
-                if (($isKeyword && $key === 'enum' && $child instanceof stdClass) || in_array($key, $verbatimKeys, true)) {
+                if ($isKeyword && (($key === 'enum' && $child instanceof stdClass) || in_array($key, $verbatimKeys, true))) {
                     $normalized[$key] = $child;
 
                     continue;
