@@ -206,10 +206,10 @@ final class OpenApiSpecExplorationLinksTest extends TestCase
     }
 
     #[Test]
-    public function numeric_and_list_shaped_link_names_and_json_null_request_bodies_are_followed(): void
+    public function numeric_list_shaped_and_empty_links_and_json_null_request_bodies_are_followed(): void
     {
         $summary = OpenApiSpecExplorer::explore('links-malformed', 1, 7)
-            ->includeOperations(['numericName', 'listShapedNames', 'nullBody'])
+            ->includeOperations(['numericName', 'listShapedNames', 'nullBody', 'emptyLinks'])
             ->dispatchUsing(fn(ExploredCase $case): ResponseInterface => $this->record($case, $case->method->value === 'POST'
                 ? new Response(201, ['Content-Type' => 'application/json'], '{"id": 1}')
                 : new Response(200)))
