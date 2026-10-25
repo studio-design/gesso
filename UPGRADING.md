@@ -257,6 +257,17 @@ to partial runs (#453) and v2.3.0 began rejecting `null` response content
 the `### Bug Fixes` entries for each intermediate release in `CHANGELOG.md`;
 this file cannot be relied on to list them.
 
+### Form-encoded explored cases (#498)
+
+`ExploredCase` gains an additive `$contentType` (default `application/json`, also a
+new optional trailing constructor parameter), `bodyAsString()`, and
+`bodyAsFormFields()`. The explorer now synthesizes an
+`application/x-www-form-urlencoded` body when that is an operation's only
+schema-carrying media type, instead of skipping the operation. Existing
+dispatchers keep working for JSON operations, but one that hardcodes
+`Content-Type: application/json` and `bodyAsJson()` will mislabel the new form
+cases — send `$case->contentType` and `$case->bodyAsString()` instead.
+
 ### Unreleased: Laravel validator cache per test case
 
 The Laravel `ValidatesOpenApiSchema` trait now caches its validators on the

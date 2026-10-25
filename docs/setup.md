@@ -463,13 +463,15 @@ is rendered:
 
 - `Authorization`, `Proxy-Authorization`, and `Cookie` header values, plus
   any header whose name contains `api-key` / `api_key` / `apikey`, `token`,
-  or `secret` (case-insensitive), become `<redacted>`.
+  `secret`, or `password` / `passwd` (case-insensitive), become `<redacted>`.
 - Query-string values whose parameter name matches the same pattern are
   redacted too (OpenAPI supports `apiKey` security in query parameters).
 - URL userinfo (`https://user:pass@host`) becomes `https://<redacted>@host`.
-- The request body is rendered only for JSON content types and is **not**
-  redacted. A body can itself carry credentials (a login password, a token
-  refresh payload), so treat the failure output as sensitive as a whole —
+- The request body is rendered only for JSON and
+  `application/x-www-form-urlencoded` content types. Form field values whose
+  name matches the same pattern are redacted; a JSON body is **not**. A body
+  can itself carry credentials (a login password, a token refresh payload),
+  so treat the failure output as sensitive as a whole —
   the redaction keeps header and query secrets out of CI logs, it does not
   make the output safe to share.
 

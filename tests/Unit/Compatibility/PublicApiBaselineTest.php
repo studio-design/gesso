@@ -376,6 +376,28 @@ final class PublicApiBaselineTest extends TestCase
                 'attributes' => [],
             ]],
         ];
+        // #498: a form-encoded body needs its media type and a wire
+        // serializer, so dispatchers stop hardcoding application/json.
+        $expected[ExploredCase::class]['properties']['contentType'] = [
+            'type' => 'string',
+            'static' => false,
+            'readonly' => true,
+            'default' => [
+                'unavailable' => true,
+            ],
+        ];
+        $expected[ExploredCase::class]['methods']['__construct']['parameters'][] = [
+            'name' => 'contentType',
+            'type' => 'string',
+            'optional' => true,
+            'variadic' => false,
+            'by_reference' => false,
+            'default' => 'application/json',
+            'attributes' => [],
+        ];
+        $expected[ExploredCase::class]['methods']['bodyAsString'] = $expected[ExploredCase::class]['methods']['bodyAsJson'];
+        $expected[ExploredCase::class]['methods']['bodyAsFormFields'] = $expected[ExploredCase::class]['methods']['bodyAsJson'];
+        $expected[ExploredCase::class]['methods']['bodyAsFormFields']['return_type'] = 'array';
         ksort($expected[ExploredCase::class]['properties']);
         ksort($expected[ExploredCase::class]['methods']);
 

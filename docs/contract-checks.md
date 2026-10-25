@@ -90,15 +90,20 @@ the invalid-credential probe identical to the no-credential one, and an API
 that accepts any cookie value would pass. Forward them:
 
 ```php
-->dispatchUsing(fn (ExploredCase $case): int => $this->call(
-    $case->method->value,
-    $case->uri(),
-    [],
-    $case->cookies,      // <- not optional for cookie-secured operations
-    [],
-    $this->transformHeadersToServerVars($case->headers),
-    $case->body !== null ? $case->bodyAsJson() : null,
-)->getStatusCode())
+->dispatchUsing(function (ExploredCase $case): int {
+    // Laravel parses form fields only from `parameters`, never from raw content.
+    $form = $case->contentType === 'application/x-www-form-urlencoded';
+
+    return $this->call(
+        $case->method->value,
+        $case->uri(),
+        $form && $case->body !== null ? $case->bodyAsFormFields() : [],
+        $case->cookies,      // <- not optional for cookie-secured operations
+        [],
+        $this->transformHeadersToServerVars(['Content-Type' => $case->contentType, ...$case->headers]),
+        !$form && $case->body !== null ? $case->bodyAsString() : null,
+    )->getStatusCode();
+})
 ```
 
 ### `missing_required_header`
@@ -167,7 +172,10 @@ parameters are generated from a documented operation of the same path; the
 probe sends no body, query, or headers, so only path-parameter
 generatability gates it — a documented operation whose required request
 body is not JSON (for example a form-encoded OAuth token endpoint) does
-not prevent the probe. When the concrete probe URI is also an instance
+not prevent the probe. The per-operation checks such as `ignored_auth` do
+send a body; a form-encoded one is synthesized, so send it with
+`$case->contentType` and `$case->bodyAsFormFields()` (as Laravel / Symfony
+request parameters) or `$case->bodyAsString()` (as raw content). When the concrete probe URI is also an instance
 of a different documented template (`/members/me` alongside
 `/members/{member_id}`), methods documented by that colliding template are
 excluded too — the application would route the probe to the documented

@@ -24,15 +24,20 @@ class CreatePetTest extends TestCase
     public function test_create_pet_contract(): void
     {
         $this->exploreEndpoint('POST', '/v1/pets', cases: 50, seed: 1)
-            ->each(fn (ExploredCase $case) => $this->call(
-                'POST',
-                $case->uri('/api'),
-                cookies: $case->cookies,
-                server: $this->transformHeadersToServerVars([
-                    'Accept' => 'application/json', 'Content-Type' => 'application/json', ...$case->headers,
-                ]),
-                content: $case->bodyAsJson(),
-            )->assertSuccessful());
+            ->each(function (ExploredCase $case): void {
+                // Laravel parses form fields only from `parameters`, never from raw content.
+                $form = $case->contentType === 'application/x-www-form-urlencoded';
+                $this->call(
+                    'POST',
+                    $case->uri('/api'),
+                    parameters: $form ? $case->bodyAsFormFields() : [],
+                    cookies: $case->cookies,
+                    server: $this->transformHeadersToServerVars([
+                        'Accept' => 'application/json', 'Content-Type' => $case->contentType, ...$case->headers,
+                    ]),
+                    content: $form ? null : $case->bodyAsString(),
+                )->assertSuccessful();
+            });
     }
 }
 ```
@@ -41,7 +46,8 @@ What you get per case (`Studio\Gesso\Fuzz\ExploredCase`):
 
 | Property | Description |
 |--------|-------------|
-| `body` | Generated JSON body (or `null` when the operation has no `application/json` requestBody) |
+| `body` | Generated body value (or `null` when the operation has no requestBody, or none the explorer can synthesize) |
+| `contentType` | The media type `body` was generated for: `application/json` or a `+json` type, or `application/x-www-form-urlencoded` when that is the only schema-carrying media type. `multipart/form-data` is never synthesized; a required multipart-only body fails loudly |
 | `query` | name → value for every `in: query` parameter |
 | `headers` | name → value for every `in: header` parameter (excludes the OpenAPI-reserved `Accept`/`Content-Type`/`Authorization`) |
 | `pathParams` | name → value for every `{placeholder}` segment |
@@ -53,7 +59,12 @@ What you get per case (`Studio\Gesso\Fuzz\ExploredCase`):
 
 The collection is `Countable` and `IteratorAggregate`, so `foreach ($cases as $case)` works too if you prefer it over the fluent `each()` helper.
 
-Use `$case->bodyAsJson()` to encode the original value and send raw JSON, as above.
+Use `$case->bodyAsString()` to serialize the body in `$case->contentType` for a
+client that sends raw bytes; for JSON it is `$case->bodyAsJson()`, which encodes
+the original value without loss. Laravel's `call()` and Symfony's
+`KernelBrowser::request()` do not parse raw form content into the request's
+input, so pass `$case->bodyAsFormFields()` as their `parameters` for a form case
+instead, as above.
 `bodyAsArray()` is a lossy compatibility helper for array-only consumers:
 it recursively turns `{}` into `[]`, including nested objects. Feeding it to
 Laravel's `postJson()` or Symfony's `jsonRequest()` can turn a generated valid
@@ -61,6 +72,19 @@ object case into an invalid array. Do not use `JSON_FORCE_OBJECT`, which would
 also change genuine JSON arrays. `bodyAsJson()` encodes null as literal JSON
 `null`; when an operation declares no body or a check omits a required body,
 omit the raw content instead. Encoding failures throw `JsonException`.
+
+Form-encoded bodies (`application/x-www-form-urlencoded`) go through
+`bodyAsFormFields()`: values are sent as strings (`true` / `false`, numbers
+verbatim), object-valued properties are JSON-encoded (the Encoding Object
+default for an object), `null` properties are dropped, and lists use PHP bracket
+notation (`tags[0]=a&tags[1]=b`), which is what `parse_str()` and HttpFoundation
+read back. `encoding.<part>.style` / `explode` are not applied by the generator.
+Every form case is checked the way the request validator will read it: a valid
+case that no longer satisfies the schema once form-encoded (a required list that
+must stay empty, a part `encoding` the generator does not apply) makes the
+operation fail loudly, and a negative-case mutation that becomes valid on the
+wire (a `type` mismatch such as `"42"` for a string, an empty list that drops
+out) is not used.
 
 `uri($prefix)` substitutes and URL-encodes path
 parameters, prepends an optional application prefix, and appends the generated
@@ -149,18 +173,23 @@ class ApiContractTest extends TestCase
             ->includeTags(['public'])
             ->excludeOperations(['admin.users.destroy'])
             ->authenticateUsing(fn (ExploredOperation $operation) => $this->actingAs($this->userFor($operation)))
-            ->dispatchUsing(fn (ExploredCase $case) => match ($case->method) {
-                HttpMethod::GET => $this->get($case->uri('/api'), $case->headers),
-                HttpMethod::POST => $this->call(
-                    'POST',
-                    $case->uri('/api'),
-                    cookies: $case->cookies,
-                    server: $this->transformHeadersToServerVars([
-                        'Accept' => 'application/json', 'Content-Type' => 'application/json', ...$case->headers,
-                    ]),
-                    content: $case->bodyAsJson(),
-                ),
-                default => throw new LogicException('Add the method to the test dispatcher.'),
+            ->dispatchUsing(function (ExploredCase $case) {
+                $form = $case->contentType === 'application/x-www-form-urlencoded';
+
+                return match ($case->method) {
+                    HttpMethod::GET => $this->get($case->uri('/api'), $case->headers),
+                    HttpMethod::POST => $this->call(
+                        'POST',
+                        $case->uri('/api'),
+                        parameters: $form ? $case->bodyAsFormFields() : [],
+                        cookies: $case->cookies,
+                        server: $this->transformHeadersToServerVars([
+                            'Accept' => 'application/json', 'Content-Type' => $case->contentType, ...$case->headers,
+                        ]),
+                        content: $form ? null : $case->bodyAsString(),
+                    ),
+                    default => throw new LogicException('Add the method to the test dispatcher.'),
+                };
             })
             ->assertResponses(); // ValidatesOpenApiSchema auto_assert validates each response
 
@@ -225,8 +254,9 @@ index, and a minimal `OpenApiEndpointExplorer::explore(...)` replay expression.
 Each case also exposes `replayToken()`, `replaySnippet($specName)`, and
 `curlSnippet($baseUrl)`. The token identifies generation inputs; the PHP and
 curl output include the concrete generated request. `curlSnippet()` redacts
-sensitive header values (`Authorization`, `Cookie`, API-key/token/secret-style
-names) as `<redacted>` so the command is safe to paste into CI logs; pass
+sensitive header, query, and form-field values (`Authorization`, `Cookie`,
+API-key/token/secret/password-style names) as `<redacted>` so the command is
+safe to paste into CI logs; pass
 `redactSensitiveHeaders: false` to keep the raw values.
 
 Summaries are local immutable values; the explorer adds no process-global
@@ -302,14 +332,16 @@ $this->exploreInvalidEndpoint(
     cases: 20,
     seed: 7,
 )->each(function (ExploredCase $case): void {
+    $form = $case->contentType === 'application/x-www-form-urlencoded';
     $response = $this->call(
         'POST',
         $case->uri('/api'),
+        parameters: $form ? $case->bodyAsFormFields() : [],
         cookies: $case->cookies,
         server: $this->transformHeadersToServerVars([
-            'Accept' => 'application/json', 'Content-Type' => 'application/json', ...$case->headers,
+            'Accept' => 'application/json', 'Content-Type' => $case->contentType, ...$case->headers,
         ]),
-        content: $case->bodyAsJson(),
+        content: $form ? null : $case->bodyAsString(),
     );
     self::assertContains(intdiv($response->getStatusCode(), 100), $case->expectedStatusClasses);
 });
