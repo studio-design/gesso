@@ -30,8 +30,9 @@ final readonly class ArazzoStepRequest
      * @param string $pathTemplate the source's path template, e.g. `/pets/{petId}`
      * @param array<string, mixed> $pathParams
      * @param array<string, mixed> $query
-     * @param array<string, mixed> $headers as authored, name case preserved
-     * @param array<string, mixed> $cookies
+     * @param array<string, list<string>|string> $headers wire strings (booleans as `true`/`false`), name case preserved
+     * @param array<string, list<string>|string> $cookies wire strings
+     * @param array<string, string> $queryDelimiters query parameter name → wire delimiter of its non-exploded style
      */
     public function __construct(
         public string $stepId,
@@ -45,15 +46,21 @@ final readonly class ArazzoStepRequest
         public array $cookies,
         public DecodedBody $body,
         public ?string $contentType,
+        private array $queryDelimiters = [],
     ) {}
 
     /**
      * The request target: the path template with percent-encoded path
-     * parameters plus the query string, prefixed with `$prefix`.
+     * parameters plus the query string, prefixed with `$prefix`. Lists are
+     * serialized by the operation's `style` / `explode`: repeated names by
+     * default (`tags=red&tags=blue`), delimited when not exploded
+     * (`tags=red,blue`).
      */
     public function uri(string $prefix = ''): string
     {
-        return RequestUriBuilder::build($this->pathTemplate, $this->pathParams, $this->query, $prefix);
+        $query = RequestUriBuilder::openApiQuery($this->query, $this->queryDelimiters);
+
+        return $prefix . RequestUriBuilder::path($this->pathTemplate, $this->pathParams) . ($query === null ? '' : '?' . $query);
     }
 
     /**

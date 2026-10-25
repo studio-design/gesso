@@ -235,7 +235,7 @@ final readonly class ArazzoSimpleCondition
             $word === 'true' => ['literal', true],
             $word === 'false' => ['literal', false],
             $word === 'null' => ['literal', null],
-            preg_match('/^-?\d+$/D', $word) === 1 => ['literal', (int) $word],
+            preg_match('/^-?\d+$/D', $word) === 1 => ['literal', self::integer($word, $condition)],
             preg_match('/^-?\d+(\.\d+)?([eE][+-]?\d+)?$/D', $word) === 1 => ['literal', (float) $word],
             default => throw new InvalidArgumentException(sprintf(
                 "Condition '%s' contains the bare word '%s'; quote string literals with single quotes.",
@@ -243,6 +243,18 @@ final readonly class ArazzoSimpleCondition
                 $word,
             )),
         };
+    }
+
+    private static function integer(string $word, string $condition): int
+    {
+        // `(int)` would saturate out-of-range digits, making distinct literals compare equal.
+        $number = is_numeric($word) ? 0 + $word : null;
+
+        return is_int($number) ? $number : throw new InvalidArgumentException(sprintf(
+            "Condition '%s' contains the integer literal '%s', which is outside the 64-bit range and cannot be compared exactly.",
+            $condition,
+            $word,
+        ));
     }
 
     /**
@@ -330,6 +342,13 @@ final readonly class ArazzoSimpleCondition
             return null;
         }
 
-        return preg_match('/^-?\d+$/D', $value) === 1 && (string) (int) $value === $value ? (int) $value : (float) $value;
+        if (preg_match('/^-?\d+$/D', $value) !== 1) {
+            return (float) $value;
+        }
+
+        // An integer string beyond the int range would only compare as a rounded float; refuse it.
+        $number = 0 + $value;
+
+        return is_int($number) ? $number : throw new RuntimeException(sprintf("The integer '%s' is outside the exactly comparable range.", $value));
     }
 }

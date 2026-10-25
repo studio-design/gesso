@@ -20,7 +20,18 @@ final class ArazzoStepRequestTest extends TestCase
             query: ['active' => true, 'tags' => ['x', 'y'], 'limit' => 2],
         );
 
-        $this->assertSame('https://api.test/pets/a%20b%2Fc?active=true&tags%5B0%5D=x&tags%5B1%5D=y&limit=2', $request->uri('https://api.test'));
+        $this->assertSame('https://api.test/pets/a%20b%2Fc?active=true&tags=x&tags=y&limit=2', $request->uri('https://api.test'));
+    }
+
+    #[Test]
+    public function uri_joins_non_exploded_lists_with_their_style_delimiter(): void
+    {
+        $request = $this->request(
+            query: ['csv' => ['a,b', 'c'], 'pipes' => ['x', 'y'], 'spaces' => ['1', '2']],
+            queryDelimiters: ['csv' => ',', 'pipes' => '%7C', 'spaces' => '%20'],
+        );
+
+        $this->assertSame('/pets/1?csv=a%2Cb,c&pipes=x%7Cy&spaces=1%202', $request->uri());
     }
 
     #[Test]
@@ -46,6 +57,7 @@ final class ArazzoStepRequestTest extends TestCase
      * @param array<string, mixed> $pathParams
      * @param array<string, mixed> $query
      * @param array<string, mixed> $headers
+     * @param array<string, string> $queryDelimiters
      */
     private function request(
         array $pathParams = ['petId' => 1],
@@ -53,7 +65,8 @@ final class ArazzoStepRequestTest extends TestCase
         array $headers = [],
         ?DecodedBody $body = null,
         ?string $contentType = null,
+        array $queryDelimiters = [],
     ): ArazzoStepRequest {
-        return new ArazzoStepRequest('step', 'spec', 'getPet', 'GET', '/pets/{petId}', $pathParams, $query, $headers, [], $body ?? DecodedBody::absent(), $contentType);
+        return new ArazzoStepRequest('step', 'spec', 'getPet', 'GET', '/pets/{petId}', $pathParams, $query, $headers, [], $body ?? DecodedBody::absent(), $contentType, $queryDelimiters);
     }
 }

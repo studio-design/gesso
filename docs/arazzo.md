@@ -113,6 +113,13 @@ In Laravel, dispatch through the test client and return the array shape:
 when omitted, from the operation); send it as the `Content-Type` header.
 `$request->uri()` is the path template with encoded path parameters plus the
 query string; pass a prefix (`uri('/api')`) when your routes live under one.
+List query values follow the operation's `style` / `explode`: the default
+`form` + `explode: true` repeats the name (`tags=red&tags=blue`), and
+non-exploded styles join with their delimiter (`tags=red,blue`). PHP's own
+query parser keeps only the last of repeated names, so a Laravel or Symfony
+dispatcher that needs the whole list should read `$request->query`.
+Header and cookie values arrive as the strings that were validated (booleans
+as `true` / `false`).
 Gesso has no server-URL semantics, so `$url` in an expression is this same
 request target.
 
@@ -190,7 +197,7 @@ The subset may widen in a minor release; it will not narrow within a major.
 | Step target | `operationId` (bare only with exactly one source; `$sourceDescriptions.<name>.<operationId>` always), `operationPath` written `{$sourceDescriptions.<name>.url}#<json-pointer>` | `workflowId`, `channelPath` |
 | Step fields | `description`, `parameters`, `requestBody`, `successCriteria`, `outputs` | `dependsOn`, `onSuccess`, `onFailure`, `timeout` |
 | Workflow fields | `summary`, `description`, `inputs`, `steps`, `outputs`, `parameters` | `dependsOn`, `successActions`, `failureActions`, `$ref` inside `inputs` |
-| Parameters | `in: path`, `query`, `header`, `cookie`; constant, expression or embedded-expression values; workflow parameters merged with step parameters (the step wins) | `in: querystring`, Reusable Objects, Selector Objects |
+| Parameters | `in: path`, `query`, `header`, `cookie`; constant, expression or embedded-expression values; workflow parameters merged with step parameters (the step wins) | `in: querystring`, `deepObject` query parameters, Reusable Objects, Selector Objects |
 | Request body | JSON (`application/json` or `+json`; an omitted `contentType` is taken from the operation), expressions anywhere in the payload | other content types, `replacements`, Selector Objects |
 | Criteria | `simple` | `regex`, `jsonpath`, `xpath`, Expression Type Objects |
 | Outputs | one runtime expression per output | Selector Objects, embedded strings, `$outputs`, `$workflows`, `$sourceDescriptions`, `$components`, `$message`, `$self` |

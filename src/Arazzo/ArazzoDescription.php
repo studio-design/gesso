@@ -87,8 +87,8 @@ final readonly class ArazzoDescription
 
         try {
             $document = $extension === 'json'
-                ? SpecDocumentDecoder::decodeJson($content, $real)
-                : SpecDocumentDecoder::decodeYaml($content, $real);
+                ? SpecDocumentDecoder::decodeJson($content, $real, ['payload'])
+                : SpecDocumentDecoder::decodeYaml($content, $real, ['payload']);
         } catch (InvalidOpenApiSpecException $e) {
             throw InvalidArazzoDescriptionException::single(
                 ArazzoDescriptionReason::MalformedDocument,

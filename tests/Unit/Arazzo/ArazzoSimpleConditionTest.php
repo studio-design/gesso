@@ -56,6 +56,7 @@ final class ArazzoSimpleConditionTest extends TestCase
         yield 'non-numeric ordering' => ['$response.body#/name < 3'];
         yield 'bare non-boolean' => ['$response.body#/name'];
         yield 'missing member' => ['$response.body#/nope == 1'];
+        yield 'integer string beyond int range' => ['$response.body#/hugeId == 1'];
     }
 
     /**
@@ -74,6 +75,7 @@ final class ArazzoSimpleConditionTest extends TestCase
         yield 'single equals' => ['$statusCode = 200', "Unexpected '='"];
         yield 'missing operand' => ['$statusCode ==', 'missing an operand'];
         yield 'empty' => ['  ', 'empty'];
+        yield 'integer literal beyond int range' => ['9223372036854775808 == 9223372036854775809', 'outside the 64-bit range'];
     }
 
     #[Test]
@@ -115,7 +117,7 @@ final class ArazzoSimpleConditionTest extends TestCase
         return new RuntimeExpressionContext(response: ObservedResponse::from([
             'status' => 201,
             'headers' => ['Content-Type' => 'application/json'],
-            'body' => '{"name":"Rex","quote":"it\'s","count":"3","price":1.5,"missingValue":null,"zero":0,"bigId":"9007199254740992","ok":true,"tags":["a"]}',
+            'body' => '{"name":"Rex","quote":"it\'s","count":"3","price":1.5,"missingValue":null,"zero":0,"bigId":"9007199254740992","hugeId":"9223372036854775808","ok":true,"tags":["a"]}',
         ]));
     }
 }

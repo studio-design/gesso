@@ -239,6 +239,37 @@ final class ArazzoWorkflowRunnerTest extends TestCase
     }
 
     #[Test]
+    public function the_dispatched_request_is_serialized_as_it_was_validated(): void
+    {
+        $result = ArazzoWorkflowRunner::workflow(self::DIR . '/wire-encoding.arazzo.json', 'send')
+            ->inputs(['one' => 'one'])
+            ->dispatchUsing($this->recordingServer(...))
+            ->run();
+
+        $this->assertTrue($result->isSuccessful(), $result->failureMessage());
+        $request = $this->requests[0];
+        $this->assertSame('false', $request->headers['X-Enabled']);
+        $this->assertSame('/things?tags=red&tags=blue&csv=a,b&pipes=x%7Cy', $request->uri());
+        $this->assertSame('{"0":"zero","1":"one"}', $request->bodyAsJson());
+    }
+
+    #[Test]
+    public function deep_object_query_parameters_are_a_preflight_problem(): void
+    {
+        try {
+            ArazzoWorkflowRunner::workflow(self::DIR . '/wire-encoding.arazzo.json', 'deepObjectQuery')
+                ->dispatchUsing($this->recordingServer(...))
+                ->run();
+            $this->fail('Expected InvalidArazzoDescriptionException.');
+        } catch (InvalidArazzoDescriptionException $e) {
+            $this->assertSame(ArazzoDescriptionReason::UnsupportedFeature, $e->reason);
+            $this->assertStringContainsString('deepObject', $e->getMessage());
+        }
+
+        $this->assertSame([], $this->requests);
+    }
+
+    #[Test]
     public function run_requires_a_dispatcher(): void
     {
         $this->expectException(InvalidArgumentException::class);
@@ -267,6 +298,13 @@ final class ArazzoWorkflowRunnerTest extends TestCase
             ->inputs(['name' => 'Rex'])
             ->dispatchUsing($dispatch)
             ->run();
+    }
+
+    private function recordingServer(ArazzoStepRequest $request): ResponseInterface
+    {
+        $this->requests[] = $request;
+
+        return new Response(204);
     }
 
     private function server(ArazzoStepRequest $request): ResponseInterface

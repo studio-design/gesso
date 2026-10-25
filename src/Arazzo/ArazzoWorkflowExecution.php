@@ -150,15 +150,13 @@ final class ArazzoWorkflowExecution
 
     /**
      * Payload strings are evaluated as runtime expressions; objects and
-     * lists are walked so nested expressions are evaluated too.
+     * lists are walked so nested expressions are evaluated too. The payload
+     * is decoded verbatim, so objects (even `{"0": ...}`) stay objects.
      */
     private static function evaluatePayload(mixed $payload, RuntimeExpressionContext $context): mixed
     {
         if ($payload instanceof stdClass) {
-            $payload = get_object_vars($payload);
-            if ($payload === []) {
-                return new stdClass();
-            }
+            return (object) array_map(static fn(mixed $member): mixed => self::evaluatePayload($member, $context), get_object_vars($payload));
         }
 
         if (!is_array($payload)) {
@@ -267,7 +265,7 @@ final class ArazzoWorkflowExecution
             $request->contentType,
             self::wire($request->cookies),
             null,
-            RequestUriBuilder::query($request->query),
+            RequestUriBuilder::openApiQuery($request->query, $step->queryDelimiters),
         );
         $matchedPath = $requestValidation->matchedPath();
         if ($matchedPath !== null && $matchedPath !== $step->pathTemplate) {
@@ -331,7 +329,8 @@ final class ArazzoWorkflowExecution
         $context = new RuntimeExpressionContext(
             url: $request->uri(),
             method: $step->method,
-            requestHeaders: HeaderNormalizer::normalize($request->headers),
+            // The body's Content-Type is sent as a header (see curlSnippet()), so expressions can read it.
+            requestHeaders: HeaderNormalizer::normalize($request->headers + ($request->body->present && $request->contentType !== null ? ['Content-Type' => $request->contentType] : [])),
             requestQuery: $request->query,
             requestPath: $request->pathParams,
             requestBody: $request->body,
@@ -429,10 +428,12 @@ final class ArazzoWorkflowExecution
             $step->pathTemplate,
             $values['path'],
             $values['query'],
-            $values['header'],
-            $values['cookie'],
+            // Headers and cookies go to the dispatcher exactly as they were validated.
+            self::wire($values['header']),
+            self::wire($values['cookie']),
             $body,
             $step->hasBody ? $step->contentType : null,
+            $step->queryDelimiters,
         );
     }
 

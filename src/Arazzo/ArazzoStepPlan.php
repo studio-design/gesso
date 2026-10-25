@@ -19,6 +19,7 @@ final readonly class ArazzoStepPlan
      * @param list<array{name: string, in: string, value: mixed}> $parameters workflow parameters merged with step parameters
      * @param list<ArazzoSimpleCondition> $conditions parsed `successCriteria`
      * @param array<string, RuntimeExpression> $outputs
+     * @param array<string, string> $queryDelimiters query parameter name → wire delimiter of its non-exploded style
      */
     public function __construct(
         public string $stepId,
@@ -33,5 +34,6 @@ final readonly class ArazzoStepPlan
         public mixed $payload,
         public array $conditions,
         public array $outputs,
+        public array $queryDelimiters = [],
     ) {}
 }
