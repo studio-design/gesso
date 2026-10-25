@@ -1,0 +1,51 @@
+{
+  "openapi": "3.1.0",
+  "info": {"title": "Annotation-only subschemas", "version": "1.0.0"},
+  "paths": {
+    "/things": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Subschemas that are empty once OpenAPI annotations are stripped",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/Thing"}
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {"$ref": "#/components/schemas/Thing"}
+            }
+          }
+        },
+        "responses": {
+          "204": {"description": "Created"}
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Owner": {
+        "type": "object",
+        "required": ["id"],
+        "properties": {"id": {"type": "integer"}}
+      },
+      "Thing": {
+        "type": "object",
+        "required": ["owner", "count", "tags"],
+        "properties": {
+          "owner": {"allOf": [{"$ref": "#/components/schemas/Owner"}, {"deprecated": true}]},
+          "count": {"example": 1},
+          "tags": {"type": "array", "items": {"deprecated": true}}
+        }
+      }
+    }
+  }
+}

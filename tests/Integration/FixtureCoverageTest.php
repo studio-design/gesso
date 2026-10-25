@@ -6,6 +6,7 @@ namespace Studio\Gesso\Tests\Integration;
 
 use const E_USER_WARNING;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
@@ -65,6 +66,20 @@ class FixtureCoverageTest extends TestCase
         OpenApiSchemaConverter::resetWarningStateForTesting();
         DiscriminatorEnforcement::reset();
         parent::tearDown();
+    }
+
+    // ============================================================
+    // annotation-only-subschemas-3.{0,1}.json — subschemas emptied by
+    // annotation stripping (`{nullable: true}`, `{example: 1}`, ...)
+    // ============================================================
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function annotationOnlySubschemaSpecs(): iterable
+    {
+        yield 'OAS 3.0' => ['annotation-only-subschemas-3.0'];
+        yield 'OAS 3.1' => ['annotation-only-subschemas-3.1'];
     }
 
     // ============================================================
@@ -981,6 +996,62 @@ class FixtureCoverageTest extends TestCase
             'application/json',
         );
         $this->assertFalse($rejected->isValid(), 'additionalProperties must still be enforced');
+    }
+
+    #[Test]
+    #[DataProvider('annotationOnlySubschemaSpecs')]
+    public function annotation_only_subschemas_validate_response_bodies(string $spec): void
+    {
+        // The converter used to normalise an empty subschema to `true` before
+        // stripping its OpenAPI annotations, so these slots reached opis as
+        // JSON arrays and threw InvalidKeywordException.
+        $accepted = $this->responseValidator->validate(
+            $spec,
+            'GET',
+            '/things',
+            200,
+            ['owner' => ['id' => 1], 'count' => 'anything', 'tags' => ['a', 2]],
+            'application/json',
+        );
+        $this->assertTrue($accepted->isValid(), implode(' | ', $accepted->errors()));
+
+        // The `$ref` branch of the allOf must still be enforced.
+        $rejected = $this->responseValidator->validate(
+            $spec,
+            'GET',
+            '/things',
+            200,
+            ['owner' => ['id' => 'one'], 'count' => 1, 'tags' => []],
+            'application/json',
+        );
+        $this->assertFalse($rejected->isValid(), 'Owner.id must still be an integer');
+    }
+
+    #[Test]
+    #[DataProvider('annotationOnlySubschemaSpecs')]
+    public function annotation_only_subschemas_validate_request_bodies(string $spec): void
+    {
+        $accepted = $this->requestValidator->validate(
+            $spec,
+            'POST',
+            '/things',
+            [],
+            [],
+            ['owner' => ['id' => 1], 'count' => null, 'tags' => [true]],
+            'application/json',
+        );
+        $this->assertTrue($accepted->isValid(), implode(' | ', $accepted->errors()));
+
+        $rejected = $this->requestValidator->validate(
+            $spec,
+            'POST',
+            '/things',
+            [],
+            [],
+            ['owner' => [], 'count' => 1, 'tags' => []],
+            'application/json',
+        );
+        $this->assertFalse($rejected->isValid(), 'Owner.id must still be required');
     }
 
     /**
