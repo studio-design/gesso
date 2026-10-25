@@ -83,6 +83,24 @@ class OpenApiPathMatcherTest extends TestCase
         ];
     }
 
+    /** @return iterable<string, array{string, ?array{path: string, variables: array<string, string>}}> */
+    public static function provideMixed_literal_and_parameter_segmentsCases(): iterable
+    {
+        yield 'literal prefix' => ['/report.json', ['path' => '/report.{format}', 'variables' => ['format' => 'json']]];
+        yield 'two parameters around a literal' => ['/v/2-10', ['path' => '/v/{a}-{b}', 'variables' => ['a' => '2', 'b' => '10']]];
+        yield 'greedy split on repeated delimiter' => ['/files/archive.tar.gz', ['path' => '/files/{name}.{ext}', 'variables' => ['name' => 'archive.tar', 'ext' => 'gz']]];
+        yield 'encoded value stays raw' => ['/files/my%20doc.txt', ['path' => '/files/{name}.{ext}', 'variables' => ['name' => 'my%20doc', 'ext' => 'txt']]];
+        yield 'encoded slash stays inside the value' => ['/files/a%2Fb.txt', ['path' => '/files/{name}.{ext}', 'variables' => ['name' => 'a%2Fb', 'ext' => 'txt']]];
+        yield 'parameter then literal suffix' => ['/users/7/avatar.png', ['path' => '/users/{id}/avatar.png', 'variables' => ['id' => '7']]];
+        yield 'concrete path beats a mixed template' => ['/report.pdf', ['path' => '/report.pdf', 'variables' => []]];
+        yield 'mixed template beats a whole-segment template' => ['/report.csv', ['path' => '/report.{format}', 'variables' => ['format' => 'csv']]];
+        yield 'whole-segment template still catches the rest' => ['/other', ['path' => '/{file}', 'variables' => ['file' => 'other']]];
+        yield 'empty value does not match the expression' => ['/report.', ['path' => '/{file}', 'variables' => ['file' => 'report.']]];
+        yield 'slash in value does not match' => ['/files/a/b.txt', null];
+        yield 'missing literal does not match' => ['/files/readme', null];
+        yield 'two-param segment needs its literal' => ['/v/210', null];
+    }
+
     #[Test]
     #[DataProvider('provideMatches_paths_without_strip_prefixCases')]
     public function matches_paths_without_strip_prefix(string $requestPath, ?string $expected): void
@@ -399,6 +417,43 @@ class OpenApiPathMatcherTest extends TestCase
         $this->expectExceptionMessage("Duplicate path placeholder name 'id' in spec path '/a/{id}/b/{id}'");
 
         new OpenApiPathMatcher(['/a/{id}/b/{id}']);
+    }
+
+    /** @param ?array{path: string, variables: array<string, string>} $expected */
+    #[DataProvider('provideMixed_literal_and_parameter_segmentsCases')]
+    #[Test]
+    public function mixed_literal_and_parameter_segments(string $requestPath, ?array $expected): void
+    {
+        // OpenAPI 3.2 §4.8.2: path-segment = 1*( path-literal / template-expression ).
+        // Declared whole-segment first to prove the specificity sort, not order, wins.
+        $matcher = new OpenApiPathMatcher([
+            '/{file}',
+            '/report.{format}',
+            '/report.pdf',
+            '/v/{a}-{b}',
+            '/files/{name}.{ext}',
+            '/users/{id}/avatar.png',
+        ]);
+
+        $this->assertSame($expected, $matcher->matchWithVariables($requestPath));
+    }
+
+    #[Test]
+    public function constructor_rejects_adjacent_placeholders(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage("Adjacent path placeholders with no literal between them in spec path '/v/{a}{b}'");
+
+        new OpenApiPathMatcher(['/v/{a}{b}']);
+    }
+
+    #[Test]
+    public function constructor_rejects_duplicate_placeholder_names_within_one_segment(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage("Duplicate path placeholder name 'id' in spec path '/v/{id}-{id}'");
+
+        new OpenApiPathMatcher(['/v/{id}-{id}']);
     }
 
     private static function createMatcher(): OpenApiPathMatcher

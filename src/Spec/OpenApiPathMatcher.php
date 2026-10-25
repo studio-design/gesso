@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Spec;
 
+use const PREG_SPLIT_DELIM_CAPTURE;
+
 use InvalidArgumentException;
 
 use function count;
@@ -12,6 +14,7 @@ use function implode;
 use function in_array;
 use function preg_match;
 use function preg_quote;
+use function preg_split;
 use function rtrim;
 use function sprintf;
 use function str_ends_with;
@@ -67,28 +70,60 @@ final class OpenApiPathMatcher
             $paramNames = [];
             $patternBytes = 16; // anchors, non-capturing wrapper, and MARK
 
+            $mixedLiteralBytes = 0;
+
             foreach ($segments as $segment) {
-                if (preg_match('/^\{(.+)\}$/', $segment, $m)) {
+                // OpenAPI's path-segment grammar is `1*( path-literal / template-expression )`,
+                // so one segment may mix literals and expressions (`report.{format}`).
+                // Even indexes are literals (possibly empty); odd indexes are names.
+                $pieces = preg_split('/\{([^{}]+)\}/', $segment, -1, PREG_SPLIT_DELIM_CAPTURE);
+                if ($pieces === false || count($pieces) === 1) {
+                    $compiledSegments[] = [['literal' => $segment]];
+                    $literalCount++;
+                    $patternBytes += strlen(preg_quote($segment, '#')) + 1;
+
+                    continue;
+                }
+
+                $compiledSegment = [];
+                $patternBytes++; // slash
+                $lastIndex = count($pieces) - 1;
+                foreach ($pieces as $index => $piece) {
+                    if ($index % 2 === 0) {
+                        if ($piece !== '') {
+                            $compiledSegment[] = ['literal' => $piece];
+                            $mixedLiteralBytes += strlen($piece);
+                            $patternBytes += strlen(preg_quote($piece, '#'));
+                        } elseif ($index > 0 && $index < $lastIndex) {
+                            // The grammar allows `{a}{b}`, but nothing decides where
+                            // one value ends and the next begins. OpenAPI leaves
+                            // ambiguous matching to tooling; refuse to guess a split.
+                            throw new InvalidArgumentException(sprintf(
+                                "Adjacent path placeholders with no literal between them in spec path '%s'. The boundary between their values is ambiguous.",
+                                $specPath,
+                            ));
+                        }
+
+                        continue;
+                    }
+
                     // OpenAPI forbids duplicate placeholder names in a single template.
                     // If we silently overwrote the earlier capture, one of the segments
                     // would skip validation depending on position — a direction-dependent
                     // silent pass. Refuse to compile instead.
-                    if (in_array($m[1], $paramNames, true)) {
+                    if (in_array($piece, $paramNames, true)) {
                         throw new InvalidArgumentException(sprintf(
                             "Duplicate path placeholder name '%s' in spec path '%s'. OpenAPI requires unique placeholder names within a single template.",
-                            $m[1],
+                            $piece,
                             $specPath,
                         ));
                     }
 
-                    $compiledSegments[] = ['parameter' => $m[1]];
-                    $paramNames[] = $m[1];
-                    $patternBytes += 8; // slash plus `([^/]+)`
-                } else {
-                    $compiledSegments[] = ['literal' => $segment];
-                    $literalCount++;
-                    $patternBytes += strlen(preg_quote($segment, '#')) + 1;
+                    $compiledSegment[] = ['parameter' => $piece];
+                    $paramNames[] = $piece;
+                    $patternBytes += 7; // `([^/]+)`
                 }
+                $compiledSegments[] = $compiledSegment;
             }
 
             $parameterCount = count($paramNames);
@@ -118,13 +153,16 @@ final class OpenApiPathMatcher
                 'segments' => $compiledSegments,
                 'path' => $specPath,
                 'literalSegments' => $literalCount,
+                'mixedLiteralBytes' => $mixedLiteralBytes,
                 'parameterCount' => $parameterCount,
                 'patternBytes' => $patternBytes,
             ];
         }
 
-        // Sort by literal segment count descending so more specific paths match first
-        usort($compiled, static fn(array $a, array $b): int => $b['literalSegments'] <=> $a['literalSegments']);
+        // More specific paths match first: whole literal segments, then literal
+        // bytes inside mixed segments (`/report.{format}` before `/{file}`).
+        // usort is stable, so otherwise-equal templates keep declaration order.
+        usort($compiled, static fn(array $a, array $b): int => [$b['literalSegments'], $b['mixedLiteralBytes']] <=> [$a['literalSegments'], $a['mixedLiteralBytes']]);
 
         $pathsBySegmentCount = [];
         foreach ($compiled as $path) {
@@ -167,14 +205,20 @@ final class OpenApiPathMatcher
                     $regexSegments = [];
                     $parameters = [];
                     foreach ($path['segments'] as $segment) {
-                        if (isset($segment['literal'])) {
-                            $regexSegments[] = preg_quote($segment['literal'], '#');
+                        $regexSegment = '';
+                        foreach ($segment as $piece) {
+                            if (isset($piece['literal'])) {
+                                $regexSegment .= preg_quote($piece['literal'], '#');
 
-                            continue;
+                                continue;
+                            }
+
+                            // Greedy, as in Laravel/Symfony routing: `{name}.{ext}`
+                            // splits `a.tar.gz` into `a.tar` and `gz`.
+                            $regexSegment .= '([^/]+)';
+                            $parameters[$piece['parameter']] = $captureIndex++;
                         }
-
-                        $regexSegments[] = '([^/]+)';
-                        $parameters[$segment['parameter']] = $captureIndex++;
+                        $regexSegments[] = $regexSegment;
                     }
 
                     $marker = (string) $pathIndex;

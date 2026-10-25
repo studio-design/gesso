@@ -103,6 +103,23 @@ class OpenApiRequestValidatorTest extends TestCase
     }
 
     #[Test]
+    public function path_parameters_inside_mixed_literal_segments_are_validated(): void
+    {
+        $json = $this->validator->validate('mixed-path-segments', 'GET', '/reports/report.json', [], [], null);
+        $xml = $this->validator->validate('mixed-path-segments', 'GET', '/reports/report.xml', [], [], null);
+        $version = $this->validator->validate('mixed-path-segments', 'GET', '/versions/2-10', [], [], null);
+        $badVersion = $this->validator->validate('mixed-path-segments', 'GET', '/versions/2-x', [], [], null);
+
+        $this->assertTrue($json->isValid(), $json->errorMessage());
+        $this->assertSame('/reports/report.{format}', $json->matchedPath());
+        $this->assertFalse($xml->isValid());
+        $this->assertStringContainsString('format', $xml->errorMessage());
+        $this->assertTrue($version->isValid(), $version->errorMessage());
+        $this->assertFalse($badVersion->isValid());
+        $this->assertStringContainsString('minor', $badVersion->errorMessage());
+    }
+
+    #[Test]
     public function openapi_32_querystring_validates_the_whole_form_query(): void
     {
         $valid = $this->validator->validate('openapi-3.2', 'GET', '/v1/filter', ['limit' => '2'], [], null);
