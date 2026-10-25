@@ -43,11 +43,13 @@ final class SpecDocumentDecoder
     private function __construct() {}
 
     /**
+     * @param list<string> $verbatimKeys keys whose values keep the decoded `stdClass` / list shape untouched
+     *
      * @return array<string, mixed>
      *
      * @throws InvalidOpenApiSpecException on malformed JSON or non-mapping root
      */
-    public static function decodeJson(string $content, string $context): array
+    public static function decodeJson(string $content, string $context, array $verbatimKeys = []): array
     {
         try {
             $decoded = json_decode($content, false, 512, JSON_THROW_ON_ERROR);
@@ -72,15 +74,17 @@ final class SpecDocumentDecoder
             );
         }
 
-        return self::ensureMappingRoot(self::normalizeObjectMaps($decoded), $context);
+        return self::ensureMappingRoot(self::normalizeObjectMaps($decoded, $verbatimKeys), $context);
     }
 
     /**
+     * @param list<string> $verbatimKeys keys whose values keep the decoded `stdClass` / list shape untouched
+     *
      * @return array<string, mixed>
      *
      * @throws InvalidOpenApiSpecException on missing YAML library, parse failure, or non-mapping root
      */
-    public static function decodeYaml(string $content, string $context): array
+    public static function decodeYaml(string $content, string $context, array $verbatimKeys = []): array
     {
         if (!YamlAvailability::isAvailable()) {
             throw new InvalidOpenApiSpecException(
@@ -115,7 +119,7 @@ final class SpecDocumentDecoder
             );
         }
 
-        return self::ensureMappingRoot(self::normalizeObjectMaps($decoded), $context);
+        return self::ensureMappingRoot(self::normalizeObjectMaps($decoded, $verbatimKeys), $context);
     }
 
     /**
@@ -124,19 +128,29 @@ final class SpecDocumentDecoder
      * object. PHP associative decoding otherwise collapses both `{}` and `[]`
      * to `[]` before the document structure is known.
      *
+     * Values under `$verbatimKeys` (an Arazzo `payload`) are literal data
+     * whose `{"0": ...}` objects must not become lists, so they are kept as
+     * decoded.
+     *
      * @internal Shared with the root spec loader so root and external `$ref`
      *           documents retain identical collection-shape semantics.
+     *
+     * @param list<string> $verbatimKeys
      */
-    public static function normalizeObjectMaps(mixed $decoded): mixed
+    public static function normalizeObjectMaps(mixed $decoded, array $verbatimKeys = []): mixed
     {
-        return self::normalizeValue($decoded, true);
+        return self::normalizeValue($decoded, true, verbatimKeys: $verbatimKeys);
     }
 
+    /**
+     * @param list<string> $verbatimKeys
+     */
     private static function normalizeValue(
         mixed $value,
         bool $isRoot,
         bool $isNamedMap = false,
         bool $isData = false,
+        array $verbatimKeys = [],
     ): mixed {
         if ($value instanceof stdClass) {
             $properties = get_object_vars($value);
@@ -153,7 +167,7 @@ final class SpecDocumentDecoder
                 // map are names, not keywords — the resolver's own rule — and
                 // nothing under sample/default data is a keyword at all.
                 $isKeyword = !$isNamedMap && !$isData;
-                if ($isKeyword && $key === 'enum' && $child instanceof stdClass) {
+                if ($isKeyword && (($key === 'enum' && $child instanceof stdClass) || in_array($key, $verbatimKeys, true))) {
                     $normalized[$key] = $child;
 
                     continue;
@@ -163,6 +177,7 @@ final class SpecDocumentDecoder
                     false,
                     $isKeyword && in_array($key, OpenApiRefResolver::USER_NAMED_MAP_KEYS, true),
                     $isData || ($isKeyword && in_array($key, self::DATA_KEYS, true)),
+                    $verbatimKeys,
                 );
             }
 
@@ -175,7 +190,7 @@ final class SpecDocumentDecoder
 
         $normalized = [];
         foreach ($value as $key => $child) {
-            $normalized[$key] = self::normalizeValue($child, false, isData: $isData);
+            $normalized[$key] = self::normalizeValue($child, false, isData: $isData, verbatimKeys: $verbatimKeys);
         }
 
         return $normalized;

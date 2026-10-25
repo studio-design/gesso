@@ -282,6 +282,7 @@ export default defineConfig({
           { text: 'Laravel route parity', link: '/laravel-route-parity' },
           { text: 'Schema-driven fuzzing', link: '/fuzzing' },
           { text: 'Named contract checks', link: '/contract-checks' },
+          { text: 'Arazzo workflows', link: '/arazzo' },
           { text: 'SDK response round trips', link: '/sdk-roundtrip' },
           { text: 'Symfony contract testing', link: '/contract-testing-symfony' },
           { text: 'Spec-driven vs consumer-driven', link: '/spec-driven-vs-consumer-driven' },

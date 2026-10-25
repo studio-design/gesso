@@ -47,7 +47,7 @@ use function strtolower;
  * absolute `$self` URL. Local locations are filesystem paths, not `file:`
  * URIs.
  *
- * @internal Becomes public with the Arazzo workflow runner (#428).
+ * @internal Arazzo runner implementation detail; not public API.
  */
 final readonly class ArazzoDescription
 {
@@ -87,8 +87,8 @@ final readonly class ArazzoDescription
 
         try {
             $document = $extension === 'json'
-                ? SpecDocumentDecoder::decodeJson($content, $real)
-                : SpecDocumentDecoder::decodeYaml($content, $real);
+                ? SpecDocumentDecoder::decodeJson($content, $real, ['payload'])
+                : SpecDocumentDecoder::decodeYaml($content, $real, ['payload']);
         } catch (InvalidOpenApiSpecException $e) {
             throw InvalidArazzoDescriptionException::single(
                 ArazzoDescriptionReason::MalformedDocument,

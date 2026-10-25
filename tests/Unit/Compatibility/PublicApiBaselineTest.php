@@ -8,6 +8,15 @@ use const JSON_THROW_ON_ERROR;
 
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+use Studio\Gesso\Arazzo\ArazzoDescriptionReason;
+use Studio\Gesso\Arazzo\ArazzoFailure;
+use Studio\Gesso\Arazzo\ArazzoFailureKind;
+use Studio\Gesso\Arazzo\ArazzoStepRequest;
+use Studio\Gesso\Arazzo\ArazzoStepResult;
+use Studio\Gesso\Arazzo\ArazzoWorkflowExecution;
+use Studio\Gesso\Arazzo\ArazzoWorkflowResult;
+use Studio\Gesso\Arazzo\ArazzoWorkflowRunner;
+use Studio\Gesso\Arazzo\InvalidArazzoDescriptionException;
 use Studio\Gesso\Attribute\BoundToOpenApiEnum;
 use Studio\Gesso\Contract\ContractCheck;
 use Studio\Gesso\Contract\ContractCheckFailure;
@@ -1901,6 +1910,19 @@ final class PublicApiBaselineTest extends TestCase
         // its exact signature stays pinned by
         // public_php_api_matches_the_v2_baseline().
         $expected[UploadedPart::class] = $actual[UploadedPart::class];
+        // #428: the synchronous Arazzo workflow runner. Its public surface is
+        // these nine symbols; the loader, preflight, plans and condition
+        // parser stay @internal.
+        $expected[ArazzoDescriptionReason::class] = $actual[ArazzoDescriptionReason::class];
+        $expected[ArazzoFailure::class] = $actual[ArazzoFailure::class];
+        $expected[ArazzoFailureKind::class] = $actual[ArazzoFailureKind::class];
+        $expected[ArazzoStepRequest::class] = $actual[ArazzoStepRequest::class];
+        $expected[ArazzoStepResult::class] = $actual[ArazzoStepResult::class];
+        $expected[ArazzoWorkflowExecution::class] = $actual[ArazzoWorkflowExecution::class];
+        $expected[ArazzoWorkflowResult::class] = $actual[ArazzoWorkflowResult::class];
+        $expected[ArazzoWorkflowRunner::class] = $actual[ArazzoWorkflowRunner::class];
+        $expected[InvalidArazzoDescriptionException::class] = $actual[InvalidArazzoDescriptionException::class];
+
         // #508: enums bind to components.schemas by name. Additive except the
         // attribute's specPath, which widens to ?string (default null) so
         // component: can be passed alone.

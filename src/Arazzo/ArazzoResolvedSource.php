@@ -9,7 +9,7 @@ use Studio\Gesso\Internal\OperationIndex;
 /**
  * A source description mapped to the named OpenAPI spec the validators use.
  *
- * @internal Becomes public with the Arazzo workflow runner (#428).
+ * @internal Arazzo runner implementation detail; not public API.
  */
 final readonly class ArazzoResolvedSource
 {

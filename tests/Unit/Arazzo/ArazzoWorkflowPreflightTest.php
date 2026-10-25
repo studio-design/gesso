@@ -50,7 +50,7 @@ final class ArazzoWorkflowPreflightTest extends TestCase
         $this->assertSame($spec['paths']['/pets']['post'], $create->operation);
         $this->assertTrue($create->hasBody);
         $this->assertSame('application/json', $create->contentType);
-        $this->assertSame(['$statusCode == 201'], $create->conditions);
+        $this->assertSame(['$statusCode == 201'], array_map(static fn($c): string => $c->condition, $create->conditions));
         $this->assertSame(RuntimeExpressionFamily::Response, $create->outputs['petId']->family);
 
         $this->assertSame('GET', $read->method);

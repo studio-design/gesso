@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Arazzo;
 
+use InvalidArgumentException;
 use stdClass;
 use Studio\Gesso\Internal\RuntimeExpression;
 use Studio\Gesso\Internal\RuntimeExpressionException;
 use Studio\Gesso\Internal\RuntimeExpressionFamily;
 use Studio\Gesso\Spec\OpenApiRefResolver;
+use Studio\Gesso\Validation\Request\ParameterCollector;
 use Studio\Gesso\Validation\Support\ContentTypeMatcher;
 
 use function array_filter;
@@ -38,7 +40,7 @@ use function substr;
  * anything outside the supported subset is an `UnsupportedFeature`, never a
  * silent no-op.
  *
- * @internal Becomes public with the Arazzo workflow runner (#428).
+ * @internal Arazzo runner implementation detail; not public API.
  */
 final class ArazzoWorkflowPreflight
 {
@@ -51,6 +53,10 @@ final class ArazzoWorkflowPreflight
         RuntimeExpressionFamily::Inputs,
         RuntimeExpressionFamily::Steps,
     ];
+
+    /** Wire delimiters of the non-exploded query styles (OAS Style Examples). */
+    private const QUERY_DELIMITERS = ['form' => ',', 'spaceDelimited' => '%20', 'pipeDelimited' => '%7C'];
+
     private const WORKFLOW_OUTPUT_FAMILIES = [RuntimeExpressionFamily::Inputs, RuntimeExpressionFamily::Steps];
     private const WORKFLOW_FIELDS = ['workflowId', 'summary', 'description', 'inputs', 'steps', 'outputs', 'parameters'];
     private const UNSUPPORTED_WORKFLOW_FIELDS = ['dependsOn', 'successActions', 'failureActions'];
@@ -209,7 +215,57 @@ final class ArazzoWorkflowPreflight
             $payload,
             $conditions,
             $outputs,
+            $this->queryDelimiters($at, $specName, $entry, $merged),
         );
+    }
+
+    /**
+     * How each authored query parameter is serialized, from the operation's
+     * declared `style` / `explode`.
+     *
+     * @param array{method: string, path: string, operation: array<string, mixed>} $entry
+     * @param array<string, array{name: string, in: string, value: mixed}> $parameters
+     *
+     * @return array<string, string>
+     */
+    private function queryDelimiters(string $at, string $specName, array $entry, array $parameters): array
+    {
+        $pathItem = [];
+        foreach ($this->sources as $source) {
+            if ($source->specName === $specName) {
+                $pathItem = $source->spec['paths'][$entry['path']] ?? [];
+
+                break;
+            }
+        }
+
+        $declared = [];
+        foreach (ParameterCollector::collect($entry['method'], $entry['path'], is_array($pathItem) ? $pathItem : [], $entry['operation'])->parameters as $parameter) {
+            if ($parameter['in'] === 'query') {
+                $declared[(string) $parameter['name']] = $parameter;
+            }
+        }
+
+        $delimiters = [];
+        foreach ($parameters as $parameter) {
+            $declaration = $parameter['in'] === 'query' ? $declared[$parameter['name']] ?? null : null;
+            if ($declaration === null) {
+                continue;
+            }
+
+            $style = $declaration['style'] ?? 'form';
+            if ($style === 'deepObject') {
+                $this->problem(ArazzoDescriptionReason::UnsupportedFeature, "%s.parameters[%s]: 'deepObject' query parameters are not supported yet.", $at, $parameter['name']);
+
+                continue;
+            }
+
+            if (is_string($style) && isset(self::QUERY_DELIMITERS[$style]) && ($declaration['explode'] ?? $style === 'form') === false) {
+                $delimiters[$parameter['name']] = self::QUERY_DELIMITERS[$style];
+            }
+        }
+
+        return $delimiters;
     }
 
     /**
@@ -494,7 +550,7 @@ final class ArazzoWorkflowPreflight
     /**
      * @param array<array-key, mixed> $step
      *
-     * @return list<string>
+     * @return list<ArazzoSimpleCondition>
      */
     private function criteria(string $at, array $step, int $position): array
     {
@@ -543,7 +599,30 @@ final class ArazzoWorkflowPreflight
                 continue;
             }
 
-            $conditions[] = $condition;
+            if ($type !== 'simple') {
+                continue; // already reported above
+            }
+
+            try {
+                $parsed = ArazzoSimpleCondition::parse($condition);
+            } catch (InvalidArgumentException $e) {
+                $this->problem(ArazzoDescriptionReason::UnsupportedFeature, '%s.condition: %s', $criterionAt, $e->getMessage());
+
+                continue;
+            } catch (RuntimeExpressionException $e) {
+                $this->problem(ArazzoDescriptionReason::InvalidExpression, '%s.condition: %s', $criterionAt, $e->getMessage());
+
+                continue;
+            }
+
+            $valid = true;
+            foreach ($parsed->expressions() as $expression) {
+                $valid = $this->expression($criterionAt . '.condition', $expression, $position, workflowLevel: false) && $valid;
+            }
+
+            if ($valid) {
+                $conditions[] = $parsed;
+            }
         }
 
         return $conditions;

@@ -10,7 +10,7 @@ use Studio\Gesso\Internal\RuntimeExpression;
  * A workflow that passed preflight: every step resolved to one OpenAPI
  * operation and every expression parsed within the supported subset.
  *
- * @internal Becomes public with the Arazzo workflow runner (#428).
+ * @internal Arazzo runner implementation detail; not public API.
  */
 final readonly class ArazzoWorkflowPlan
 {

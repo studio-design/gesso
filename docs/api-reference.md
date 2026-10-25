@@ -6,6 +6,7 @@
 - [`OpenApiResponseExplorer`](#openapiresponseexplorer)
 - [`OpenApiSpecExplorer`](#openapispecexplorer)
 - [`OpenApiContractChecks`](#openapicontractchecks)
+- [`ArazzoWorkflowRunner`](#arazzoworkflowrunner)
 - [`OpenApiSpecLoader`](#openapispecloader)
 - [`OpenApiCoverageTracker`](#openapicoveragetracker)
 
@@ -357,6 +358,31 @@ returned `ContractCheckSummary` collects every `ContractCheckFailure` (naming
 the check, operation, dispatched mutation, and a replayable curl command) and
 every explained `ContractCheckSkip`, plus `probedPaths` / `dispatchedProbes`
 counts. See [named contract checks](contract-checks.md).
+
+## `ArazzoWorkflowRunner`
+
+Runs one Arazzo 1.1 workflow as synchronous OpenAPI steps. Every step's
+request and response is validated against its source spec, and coverage is
+recorded under that spec's name.
+
+```php
+use Studio\Gesso\Arazzo\ArazzoStepRequest;
+use Studio\Gesso\Arazzo\ArazzoWorkflowRunner;
+
+$result = ArazzoWorkflowRunner::workflow(__DIR__ . '/pet-purchase.arazzo.yaml', 'buyPet')
+    ->inputs(['name' => 'Rex'])
+    ->dispatchUsing(fn (ArazzoStepRequest $request) => dispatch_request($request))
+    ->run();
+
+self::assertTrue($result->isSuccessful(), $result->failureMessage());
+```
+
+The callback returns a PSR-7 response or `['status' => int, 'headers' => array, 'body' => string]`.
+`run()` returns an `ArazzoWorkflowResult` (`steps`, `outputs`, `failure`,
+`isSuccessful()`, `failureMessage()`), and an `ArazzoFailure` names the step
+and its `ArazzoFailureKind`. Description and preflight problems throw
+`InvalidArazzoDescriptionException` before anything is dispatched. See
+[Arazzo workflows](arazzo.md) for the supported subset.
 
 ## `OpenApiSpecLoader`
 

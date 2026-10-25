@@ -9,7 +9,7 @@ use Studio\Gesso\Internal\RuntimeExpression;
 /**
  * One preflighted step bound to its source operation.
  *
- * @internal Becomes public with the Arazzo workflow runner (#428).
+ * @internal Arazzo runner implementation detail; not public API.
  */
 final readonly class ArazzoStepPlan
 {
@@ -17,8 +17,9 @@ final readonly class ArazzoStepPlan
      * @param string $method as declared in the source (fixed methods upper-cased, additionalOperations keys verbatim)
      * @param array<string, mixed> $operation the source's own Operation Object
      * @param list<array{name: string, in: string, value: mixed}> $parameters workflow parameters merged with step parameters
-     * @param list<string> $conditions raw `successCriteria[].condition` strings
+     * @param list<ArazzoSimpleCondition> $conditions parsed `successCriteria`
      * @param array<string, RuntimeExpression> $outputs
+     * @param array<string, string> $queryDelimiters query parameter name → wire delimiter of its non-exploded style
      */
     public function __construct(
         public string $stepId,
@@ -33,5 +34,6 @@ final readonly class ArazzoStepPlan
         public mixed $payload,
         public array $conditions,
         public array $outputs,
+        public array $queryDelimiters = [],
     ) {}
 }

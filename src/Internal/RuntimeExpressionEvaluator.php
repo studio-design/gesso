@@ -52,6 +52,11 @@ final class RuntimeExpressionEvaluator
             RuntimeExpressionFamily::StatusCode => $context->response->statusCode ?? throw self::unavailable($expression, 'no response in this context.'),
             RuntimeExpressionFamily::Request => self::request($expression, $context),
             RuntimeExpressionFamily::Response => self::response($expression, $context),
+            RuntimeExpressionFamily::Inputs => self::pointer($expression, self::member(
+                $expression,
+                $context->inputs ?? throw self::unavailable($expression, 'no workflow inputs in this context.'),
+            )),
+            RuntimeExpressionFamily::Steps => self::pointer($expression, self::stepOutput($expression, $context)),
             default => throw new RuntimeExpressionException(
                 RuntimeExpressionFailure::UnsupportedFamily,
                 $expression->raw,
@@ -163,10 +168,34 @@ final class RuntimeExpressionEvaluator
     private static function member(RuntimeExpression $expression, array $values): mixed
     {
         if (!array_key_exists((string) $expression->name, $values)) {
-            throw self::notFound($expression, sprintf("parameter '%s' is not present.", (string) $expression->name));
+            throw self::notFound($expression, sprintf("'%s' is not present.", (string) $expression->name));
         }
 
         return $values[(string) $expression->name];
+    }
+
+    private static function stepOutput(RuntimeExpression $expression, RuntimeExpressionContext $context): mixed
+    {
+        $outputs = $context->stepOutputs[(string) $expression->name] ?? null;
+        if ($outputs === null || !array_key_exists((string) $expression->member, $outputs)) {
+            throw self::notFound($expression, sprintf("step '%s' has no evaluated output '%s'.", (string) $expression->name, (string) $expression->member));
+        }
+
+        return $outputs[(string) $expression->member];
+    }
+
+    private static function pointer(RuntimeExpression $expression, mixed $value): mixed
+    {
+        if ($expression->pointer === null) {
+            return $value;
+        }
+
+        [$found, $value] = JsonPointer::walk($expression->pointerSegments(), $value);
+        if (!$found) {
+            throw self::notFound($expression, sprintf("JSON Pointer '%s' does not resolve.", $expression->pointer));
+        }
+
+        return $value;
     }
 
     private static function body(RuntimeExpression $expression, DecodedBody $body): mixed

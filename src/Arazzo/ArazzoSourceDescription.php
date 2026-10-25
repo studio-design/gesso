@@ -9,7 +9,7 @@ namespace Studio\Gesso\Arazzo;
  * resolved against the description's base URI: an absolute http(s) URL or a
  * dot-segment-normalised filesystem path.
  *
- * @internal Becomes public with the Arazzo workflow runner (#428).
+ * @internal Arazzo runner implementation detail; not public API.
  */
 final readonly class ArazzoSourceDescription
 {

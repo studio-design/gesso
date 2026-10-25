@@ -12,6 +12,7 @@ use JsonException;
 use LogicException;
 use Studio\Gesso\HttpMethod;
 use Studio\Gesso\Internal\CurlCommandFormatter;
+use Studio\Gesso\Internal\RequestUriBuilder;
 use Studio\Gesso\Validation\Support\ContentTypeMatcher;
 use Studio\Gesso\Validation\Support\FormBodyDecoder;
 
@@ -22,13 +23,10 @@ use function get_object_vars;
 use function http_build_query;
 use function implode;
 use function is_array;
-use function is_bool;
 use function is_object;
 use function json_decode;
 use function json_encode;
-use function rawurlencode;
 use function sprintf;
-use function str_replace;
 
 /**
  * One generated request case produced by {@see OpenApiEndpointExplorer}.
@@ -217,19 +215,7 @@ final readonly class ExploredCase
 
     public function uri(string $prefix = ''): string
     {
-        $path = $this->matchedPath;
-        foreach ($this->pathParams as $name => $value) {
-            $path = str_replace(
-                '{' . $name . '}',
-                rawurlencode((string) self::serialiseParameterValue($value)),
-                $path,
-            );
-        }
-        $query = $this->query !== []
-            ? '?' . http_build_query(array_map(self::serialiseParameterValue(...), $this->query))
-            : '';
-
-        return $prefix . $path . $query;
+        return RequestUriBuilder::build($this->matchedPath, $this->pathParams, $this->query, $prefix);
     }
 
     public function replayToken(): string
@@ -282,7 +268,7 @@ final readonly class ExploredCase
             // request; the formatter redacts `Cookie` values by default.
             $pairs = [];
             foreach ($this->cookies as $name => $value) {
-                $pairs[] = $name . '=' . (string) self::serialiseParameterValue($value);
+                $pairs[] = $name . '=' . (string) RequestUriBuilder::serialise($value);
             }
             $headers['Cookie'] = implode('; ', $pairs);
         }
@@ -302,18 +288,7 @@ final readonly class ExploredCase
     {
         return is_array($value) || is_object($value)
             ? json_encode($value, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION)
-            : (string) self::serialiseParameterValue($value);
-    }
-
-    private static function serialiseParameterValue(mixed $value): mixed
-    {
-        if (is_bool($value)) {
-            return $value ? 'true' : 'false';
-        }
-
-        return is_array($value)
-            ? array_map(self::serialiseParameterValue(...), $value)
-            : $value;
+            : (string) RequestUriBuilder::serialise($value);
     }
 
     /**
