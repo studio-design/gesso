@@ -113,9 +113,15 @@ the coverage document entirely counts as `UNCOVERED`.
 |---|---|
 | `--base-spec=<path>` | Spec as it looks on the base branch. Required. |
 | `--spec=<path>` | Spec as it looks on this branch. Required. |
-| `--coverage=<path>` | Coverage JSON, `schema_version` 3. Required. |
+| `--coverage=<path>` | Coverage JSON, `schema_version` 3. Required unless `gesso.php` sets `coverage.report_output.json`, which it then defaults to. |
 | `--spec-name=<name>` | Key under `specs` in the coverage document. Defaults to the `--spec` filename without its extension. |
-| `--format=text\|markdown` | `markdown` renders a table for `$GITHUB_STEP_SUMMARY`. Default `text`. |
+| `--format=text\|markdown\|json` | `markdown` renders a table for `$GITHUB_STEP_SUMMARY`; `json` is for tooling (below). Default `text`. |
+| `--output-file=<path>` | Write the report there instead of stdout. The parent directory must exist. |
+| `--config=<path>` | [`gesso.php`](configuration.md) to default `--coverage` from. Defaults to `./gesso.php` when present. `--spec-name` still follows `--spec`. |
+
+## Machine-readable output
+
+`--format=json` prints one document with the keys `schemaVersion` (currently `1`), `tool`, `summary` (`operations`, `uncovered`), and `operations`. Each operation has `endpoint`, `change`, and `responses[]`, and each response has `status`, `content_type`, `change`, `state`, and `covered`. Additive changes keep `schemaVersion` at `1`; removals, renames, and type changes bump it. See the [CLI reference](cli.md#gate-json) for an example.
 
 ## Exit codes
 
@@ -123,7 +129,9 @@ the coverage document entirely counts as `UNCOVERED`.
 |---|---|
 | `0` | Every changed operation is covered, including "nothing changed". |
 | `1` | A changed operation has a response no test validated. |
-| `2` | Command-line usage is invalid, or a spec / coverage file cannot be read. |
+| `2` | Command-line usage is invalid, a spec / coverage file cannot be read, or `--output-file` cannot be written. |
+
+Shared conventions: [CLI reference](cli.md#exit-codes).
 
 ## In CI
 

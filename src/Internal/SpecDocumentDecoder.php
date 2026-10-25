@@ -52,12 +52,12 @@ final class SpecDocumentDecoder
             // fix is "increase nesting tolerance" rather than "fix your JSON".
             $message = $e->getCode() === JSON_ERROR_DEPTH
                 ? sprintf(
-                    'JSON $ref target %s exceeds the 512-level nesting limit (likely a deeply '
+                    'JSON document %s exceeds the 512-level nesting limit (likely a deeply '
                     . 'recursive schema). %s',
                     $context,
                     $e->getMessage(),
                 )
-                : sprintf('Failed to parse JSON $ref target %s: %s', $context, $e->getMessage());
+                : sprintf('Failed to parse JSON document %s: %s', $context, $e->getMessage());
 
             throw new InvalidOpenApiSpecException(
                 InvalidOpenApiSpecReason::MalformedJson,
@@ -80,7 +80,7 @@ final class SpecDocumentDecoder
         if (!YamlAvailability::isAvailable()) {
             throw new InvalidOpenApiSpecException(
                 InvalidOpenApiSpecReason::YamlLibraryMissing,
-                'Loading YAML $ref targets requires symfony/yaml. '
+                'Loading YAML documents requires symfony/yaml. '
                 . 'Install it via: composer require --dev symfony/yaml',
                 ref: $context,
             );
@@ -91,7 +91,7 @@ final class SpecDocumentDecoder
         } catch (ParseException $e) {
             throw new InvalidOpenApiSpecException(
                 InvalidOpenApiSpecReason::MalformedYaml,
-                sprintf('Failed to parse YAML $ref target %s: %s', $context, $e->getMessage()),
+                sprintf('Failed to parse YAML document %s: %s', $context, $e->getMessage()),
                 ref: $context,
                 previous: $e,
             );
@@ -104,7 +104,7 @@ final class SpecDocumentDecoder
             // branch on `$reason` consistently.
             throw new InvalidOpenApiSpecException(
                 InvalidOpenApiSpecReason::MalformedYaml,
-                sprintf('YAML $ref target %s failed to decode: %s', $context, $e->getMessage()),
+                sprintf('YAML document %s failed to decode: %s', $context, $e->getMessage()),
                 ref: $context,
                 previous: $e,
             );
@@ -161,11 +161,7 @@ final class SpecDocumentDecoder
         if (!is_array($decoded)) {
             throw new InvalidOpenApiSpecException(
                 InvalidOpenApiSpecReason::NonMappingRoot,
-                sprintf(
-                    '$ref target must decode to a mapping (got %s): %s',
-                    get_debug_type($decoded),
-                    $context,
-                ),
+                sprintf('Document %s must decode to a mapping (got %s)', $context, get_debug_type($decoded)),
                 ref: $context,
             );
         }

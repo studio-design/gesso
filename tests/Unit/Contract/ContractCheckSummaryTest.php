@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace Studio\Gesso\Tests\Unit\Fuzz;
+namespace Studio\Gesso\Tests\Unit\Contract;
 
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
-use Studio\Gesso\Fuzz\ContractCheck;
-use Studio\Gesso\Fuzz\ContractCheckFailure;
-use Studio\Gesso\Fuzz\ContractCheckSkip;
-use Studio\Gesso\Fuzz\ContractCheckSummary;
+use Studio\Gesso\Contract\ContractCheck;
+use Studio\Gesso\Contract\ContractCheckFailure;
+use Studio\Gesso\Contract\ContractCheckSkip;
+use Studio\Gesso\Contract\ContractCheckSummary;
 use Studio\Gesso\Fuzz\ExploredCase;
 use Studio\Gesso\HttpMethod;
 

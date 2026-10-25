@@ -6,6 +6,7 @@ namespace Studio\Gesso\Tests\Unit\PHPUnit;
 
 use const JSON_THROW_ON_ERROR;
 
+use GuzzleHttp\Psr7\HttpFactory;
 use PHPUnit\Event\TestRunner\ExecutionFinished;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
@@ -17,6 +18,7 @@ use Studio\Gesso\Internal\PartialRunDecision;
 use Studio\Gesso\PHPUnit\ConsoleOutput;
 use Studio\Gesso\PHPUnit\CoverageReportSubscriber;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
+use Studio\Gesso\Tests\Helpers\FakeHttpClient;
 
 use function file_get_contents;
 use function getenv;
@@ -24,6 +26,7 @@ use function glob;
 use function is_dir;
 use function json_decode;
 use function mkdir;
+use function ob_end_clean;
 use function ob_get_clean;
 use function ob_start;
 use function putenv;
@@ -469,6 +472,40 @@ class CoverageReportSubscriberThresholdTest extends TestCase
             '[sdk-exercise-coverage] SDK responses: 0/5 exercised (0%), 5 unexercised',
             $output,
         );
+    }
+
+    #[Test]
+    public function loader_reset_restores_the_remote_reference_policy_too(): void
+    {
+        $client = new FakeHttpClient();
+        OpenApiSpecLoader::configure(
+            __DIR__ . '/../../fixtures/specs',
+            httpClient: $client,
+            requestFactory: new HttpFactory(),
+            allowRemoteRefs: true,
+            allowedRemoteRefHosts: ['example.com'],
+        );
+        $subscriber = new CoverageReportSubscriber(
+            specs: [],
+            outputFile: null,
+            consoleOutput: ConsoleOutput::DEFAULT,
+            githubSummaryPath: null,
+        );
+        OpenApiSpecLoader::reset();
+
+        ob_start();
+
+        try {
+            $subscriber->notify($this->fakeExecutionFinished());
+        } finally {
+            ob_end_clean();
+        }
+
+        $restored = OpenApiSpecLoader::exportConfiguration();
+        $this->assertNotNull($restored);
+        $this->assertTrue($restored['allowRemoteRefs']);
+        $this->assertSame($client, $restored['httpClient']);
+        $this->assertSame(['example.com'], $restored['allowedRemoteRefHosts']);
     }
 
     #[Test]

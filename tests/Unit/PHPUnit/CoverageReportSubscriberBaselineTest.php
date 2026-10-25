@@ -165,10 +165,8 @@ class CoverageReportSubscriberBaselineTest extends TestCase
         $sidecars = glob($this->tmpDir . '/part-3-*.json') ?: [];
         $this->assertCount(1, $sidecars, 'the sidecar must still be written in worker mode');
         $envelope = json_decode((string) file_get_contents($sidecars[0]), true);
-        $this->assertSame(
-            CoverageSidecarEnvelope::ENVELOPE_VERSION_WITH_DEPRECATIONS_AND_BASELINE,
-            $envelope['envelopeVersion'],
-        );
+        $this->assertSame(CoverageSidecarEnvelope::ENVELOPE_VERSION, $envelope['envelopeVersion']);
+        $this->assertArrayHasKey('baseline', $envelope);
         $this->assertSame(1, $envelope['sdkExercise']['version']);
         $this->assertSame(1, $envelope['deprecations']['version']);
         $this->assertSame(ViolationBaselineFile::BASELINE_VERSION, $envelope['baseline']['baseline_version']);

@@ -8,7 +8,7 @@ use InvalidArgumentException;
 use LogicException;
 use RuntimeException;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
-use Studio\Gesso\PHPUnit\OpenApiCoverageExtension;
+use Studio\Gesso\Internal\Diagnostics;
 use Studio\Gesso\Spec\OpenApiOperationResolver;
 use Studio\Gesso\Validation\Response\ResponseBodyValidationResult;
 use Studio\Gesso\Validation\Response\ResponseBodyValidator;
@@ -29,7 +29,6 @@ use Studio\Gesso\Validation\Support\ValidationPolicyDefaults;
 use Studio\Gesso\Validation\Support\ValidatorErrorBoundary;
 
 use function array_map;
-use function array_merge;
 use function array_values;
 use function count;
 use function get_debug_type;
@@ -379,11 +378,7 @@ final class OpenApiResponseValidator
                 contentType: $bodyResult->matchedContentType,
             );
         }
-        $errors = array_merge(
-            $bodyResult->errors,
-            array_map(static fn(NamedError $headerError): string => $headerError->message, $headerErrors),
-            $contentTypeNote !== null ? [$contentTypeNote] : [],
-        );
+        $errors = array_map(static fn(ValidationIssue $issue): string => $issue->message, $issues);
 
         if ($errors === []) {
             // Strict-required recording happens on the validated success path
@@ -507,14 +502,10 @@ final class OpenApiResponseValidator
                 $statusKey,
                 $e->getMessage(),
             );
-            // Routed through the extension's writer rather than `fwrite`
+            // Routed through the shared diagnostics sink rather than `fwrite`
             // so test seams that override stderr capture the LIBRARY BUG
-            // line, and so paratest workers' diagnostics travel through
-            // the same channel as every other extension stderr line.
-            // `OpenApiCoverageExtension::writeStderr()` falls back to bare
-            // STDERR when no override is set, so the validator stays usable
-            // outside the PHPUnit extension context.
-            OpenApiCoverageExtension::writeStderr($message);
+            // line; it falls back to bare STDERR unless a test overrode it.
+            Diagnostics::stderr($message);
 
             return;
         }
@@ -572,7 +563,7 @@ final class OpenApiResponseValidator
                 $findings,
             );
         } catch (InvalidArgumentException $e) {
-            OpenApiCoverageExtension::writeStderr(sprintf(
+            Diagnostics::stderr(sprintf(
                 '[OpenAPI Strict Additional Properties] LIBRARY BUG: malformed findings for %s %s %s; '
                 . "recording skipped. Cause: %s\n",
                 strtoupper($method),
@@ -665,14 +656,9 @@ final class OpenApiResponseValidator
         ResponseSchemaResolution $resolution,
         DecodedBody $responseBody,
     ): ResponseBodyValidationResult {
-        // Inlined try/catch mirrors ValidatorErrorBoundary::safelyNamed() for the
-        // body validator: same narrow `RuntimeException` catch, same error
-        // formatting. The boundary returns string[]; the body validator
-        // returns a richer DTO carrying matchedContentType, so we can't reuse
-        // the helper as-is. Schema conversion happens lazily inside this
-        // boundary ({@see ResponseSchemaResolution::convertedSchema()}), so
-        // converter rejections keep their historical error shape.
-        // \LogicException and \Error still bubble.
+        // Same narrow RuntimeException boundary as safelyNamed(); the DTO result is
+        // why this is inline. Schema conversion happens lazily inside it
+        // ({@see ResponseSchemaResolution::convertedSchema()}).
         try {
             return $this->bodyValidator->validate(
                 $specName,
@@ -683,22 +669,8 @@ final class OpenApiResponseValidator
                 $responseBody,
             );
         } catch (RuntimeException $e) {
-            $previous = $e->getPrevious();
-            $previousSuffix = $previous !== null
-                ? sprintf(' (caused by %s: %s)', $previous::class, $previous->getMessage())
-                : '';
-
             return new ResponseBodyValidationResult(
-                [sprintf(
-                    "[%s] %s %s in '%s' spec: %s threw: %s%s",
-                    'response-body',
-                    $method,
-                    $matchedPath,
-                    $specName,
-                    $e::class,
-                    $e->getMessage(),
-                    $previousSuffix,
-                )],
+                [ValidatorErrorBoundary::captureMessage('response-body', $specName, $method, $matchedPath, $e)],
                 null,
             );
         }

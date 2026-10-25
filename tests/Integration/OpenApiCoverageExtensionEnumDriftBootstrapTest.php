@@ -13,15 +13,19 @@ use PHPUnit\Framework\TestCase;
 use function escapeshellarg;
 use function fclose;
 use function file_put_contents;
+use function getenv;
+use function glob;
 use function htmlspecialchars;
 use function is_resource;
 use function proc_close;
 use function proc_open;
 use function realpath;
+use function rmdir;
 use function sprintf;
 use function stream_get_contents;
 use function sys_get_temp_dir;
 use function tempnam;
+use function uniqid;
 use function unlink;
 
 /**
@@ -34,6 +38,7 @@ class OpenApiCoverageExtensionEnumDriftBootstrapTest extends TestCase
 {
     private string $repoRoot;
     private ?string $configPath = null;
+    private ?string $sidecarDir = null;
 
     protected function setUp(): void
     {
@@ -46,6 +51,13 @@ class OpenApiCoverageExtensionEnumDriftBootstrapTest extends TestCase
         if ($this->configPath !== null) {
             @unlink($this->configPath);
             $this->configPath = null;
+        }
+        if ($this->sidecarDir !== null) {
+            foreach (glob($this->sidecarDir . '/*') ?: [] as $file) {
+                @unlink($file);
+            }
+            @rmdir($this->sidecarDir);
+            $this->sidecarDir = null;
         }
         parent::tearDown();
     }
@@ -79,6 +91,27 @@ class OpenApiCoverageExtensionEnumDriftBootstrapTest extends TestCase
         $this->assertNotSame(0, $exit, "Expected non-zero exit; output was:\n" . $output);
         $this->assertStringContainsString('[OpenAPI Enum Drift] FATAL', $output);
         $this->assertStringContainsString('AutoDiscovery\\ByName\\Color  ->  #/components/schemas/Color', $output);
+    }
+
+    #[Test]
+    public function phpunit_exits_zero_in_a_paratest_worker_even_when_drift_is_strict(): void
+    {
+        // Issue #597: the paratest master evaluates enum drift once; a worker
+        // (TEST_TOKEN set) skips the scan. The worker branch writes a sidecar,
+        // so point it at a temp dir.
+        $this->sidecarDir = sys_get_temp_dir() . '/gesso-enum-drift-worker-' . uniqid();
+        [$exit, $output] = $this->runPhpunit(
+            [
+                'enum_drift_enabled' => 'true',
+                'enum_drift_scan_namespaces' =>
+                    'Studio\\Gesso\\Tests\\Integration\\Schema\\Fixture\\AutoDiscovery\\Drifting\\',
+                'sidecar_dir' => $this->sidecarDir,
+            ],
+            env: ['TEST_TOKEN' => '2'],
+        );
+
+        $this->assertSame(0, $exit, "Expected zero exit; output was:\n" . $output);
+        $this->assertStringNotContainsString('[OpenAPI Enum Drift]', $output);
     }
 
     #[Test]
@@ -264,10 +297,13 @@ class OpenApiCoverageExtensionEnumDriftBootstrapTest extends TestCase
 
     /**
      * @param array<string, string> $extensionParameters
+     * @param array<string, string> $env Extra child environment; an inherited TEST_TOKEN is always dropped
+     *                                   so the parent suite running under paratest does not turn the child
+     *                                   into a worker.
      *
      * @return array{0: int, 1: string} [exit code, combined stderr+stdout]
      */
-    private function runPhpunit(array $extensionParameters, ?string $specBasePath = null, string $specs = 'refs-valid'): array
+    private function runPhpunit(array $extensionParameters, ?string $specBasePath = null, string $specs = 'refs-valid', array $env = []): array
     {
         // Default: tests/fixtures/specs with refs-valid. Tests exercising
         // alternate fixture trees (issue #170 bundled-external) override
@@ -318,7 +354,9 @@ class OpenApiCoverageExtensionEnumDriftBootstrapTest extends TestCase
             1 => ['pipe', 'w'],
             2 => ['pipe', 'w'],
         ];
-        $process = proc_open($cmd, $descriptors, $pipes, $this->repoRoot);
+        $childEnv = getenv();
+        unset($childEnv['TEST_TOKEN']);
+        $process = proc_open($cmd, $descriptors, $pipes, $this->repoRoot, [...$childEnv, ...$env]);
         if (!is_resource($process)) {
             $this->fail('Could not spawn phpunit subprocess');
         }

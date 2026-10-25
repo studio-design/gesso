@@ -2,7 +2,7 @@
     "$comment": "Every spelling v3 renames or removes, transcribed from the two tables in docs/adr/0005-v3-configuration-and-cli-naming.md, plus the spellings that ADR names in prose rather than in a table cell. Checked by tests/Unit/Compatibility/V3RenameRegistryTest.php. This is the other direction of the deprecation registry: v2-deprecations.json is scanned code-first (issue #499), so a rename that simply never calls Deprecations::notice() is invisible to it. This file is scanned ADR-first, so it is not. A v3 rename PR stages its entries here and in the registry in the same change; see docs/versioning.md#deprecation-policy.",
     "format_version": 1,
     "$unstaged_count": "Old spellings that still have no deprecation staged. This is a ratchet: it may go down, never up. When it reaches 0 every v3 rename has shipped its notice, and the final v2 minor can be cut. Entries with channel `unchanged-spelling` are not counted — nothing about them is removed.",
-    "unstaged_count": 53,
+    "unstaged_count": 36,
     "$channels": {
         "deprecation": "The old spelling stops working in `removed_in`. Routed through Studio\\Gesso\\Internal\\Deprecations (E_USER_DEPRECATED); `deprecation_id` links to the matching v2-deprecations.json entry, and is null until the owning issue stages it.",
         "accepted-spelling": "The old spelling keeps working through `removed_in`. Routed through Studio\\Gesso\\Internal\\LegacyIdentity's `[Gesso]` E_USER_WARNING channel instead, because a suite running failOnDeprecation must not fail for spelling a name that still works (docs/versioning.md#renamed-spellings-still-accepted).",
@@ -95,7 +95,7 @@
             "channel": "deprecation",
             "removed_in": "3.0",
             "owner": "#502",
-            "deprecation_id": null
+            "deprecation_id": "phpunit.strict_required"
         },
         "strict_required_per_call": {
             "surface": "config-key",
@@ -103,7 +103,7 @@
             "channel": "deprecation",
             "removed_in": "3.0",
             "owner": "#502",
-            "deprecation_id": null
+            "deprecation_id": "phpunit.strict_required_per_call"
         },
         "strict_additional_properties": {
             "surface": "config-key",
@@ -111,7 +111,7 @@
             "channel": "deprecation",
             "removed_in": "3.0",
             "owner": "#502",
-            "deprecation_id": null
+            "deprecation_id": "phpunit.strict_additional_properties"
         },
         "strict_additional_properties_per_call": {
             "surface": "config-key",
@@ -119,7 +119,7 @@
             "channel": "deprecation",
             "removed_in": "3.0",
             "owner": "#502",
-            "deprecation_id": null
+            "deprecation_id": "phpunit.strict_additional_properties_per_call"
         },
         "min_endpoint_coverage": {
             "surface": "config-key",
@@ -127,7 +127,7 @@
             "channel": "deprecation",
             "removed_in": "3.0",
             "owner": "#502",
-            "deprecation_id": null
+            "deprecation_id": "phpunit.min_endpoint_coverage"
         },
         "min_response_coverage": {
             "surface": "config-key",
@@ -135,7 +135,7 @@
             "channel": "deprecation",
             "removed_in": "3.0",
             "owner": "#502",
-            "deprecation_id": null
+            "deprecation_id": "phpunit.min_response_coverage"
         },
         "min_sdk_exercise_coverage": {
             "surface": "config-key",
@@ -143,7 +143,7 @@
             "channel": "deprecation",
             "removed_in": "3.0",
             "owner": "#502",
-            "deprecation_id": null
+            "deprecation_id": "phpunit.min_sdk_exercise_coverage"
         },
         "min_coverage_strict": {
             "surface": "config-key",
@@ -151,7 +151,7 @@
             "channel": "deprecation",
             "removed_in": "3.0",
             "owner": "#502",
-            "deprecation_id": null
+            "deprecation_id": "phpunit.min_coverage_strict"
         },
         "output_file": {
             "surface": "config-key",
@@ -159,7 +159,7 @@
             "channel": "deprecation",
             "removed_in": "3.0",
             "owner": "#502",
-            "deprecation_id": null
+            "deprecation_id": "phpunit.output_file"
         },
         "json_output": {
             "surface": "config-key",
@@ -167,7 +167,7 @@
             "channel": "deprecation",
             "removed_in": "3.0",
             "owner": "#502",
-            "deprecation_id": null
+            "deprecation_id": "phpunit.json_output"
         },
         "junit_output": {
             "surface": "config-key",
@@ -175,7 +175,7 @@
             "channel": "deprecation",
             "removed_in": "3.0",
             "owner": "#502",
-            "deprecation_id": null
+            "deprecation_id": "phpunit.junit_output"
         },
         "html_output": {
             "surface": "config-key",
@@ -183,7 +183,7 @@
             "channel": "deprecation",
             "removed_in": "3.0",
             "owner": "#502",
-            "deprecation_id": null
+            "deprecation_id": "phpunit.html_output"
         },
         "console_output": {
             "surface": "config-key",
@@ -191,7 +191,7 @@
             "channel": "deprecation",
             "removed_in": "3.0",
             "owner": "#502",
-            "deprecation_id": null
+            "deprecation_id": "phpunit.console_output"
         },
         "sidecar_dir": {
             "surface": "config-key",
@@ -207,7 +207,7 @@
             "channel": "deprecation",
             "removed_in": "3.0",
             "owner": "#502",
-            "deprecation_id": null
+            "deprecation_id": "phpunit.baseline_file"
         },
         "coverage_baseline_file": {
             "surface": "config-key",
@@ -215,7 +215,7 @@
             "channel": "deprecation",
             "removed_in": "3.0",
             "owner": "#502",
-            "deprecation_id": null
+            "deprecation_id": "phpunit.coverage_baseline_file"
         },
         "baseline_stale": {
             "surface": "config-key",
@@ -223,7 +223,7 @@
             "channel": "deprecation",
             "removed_in": "3.0",
             "owner": "#502",
-            "deprecation_id": null,
+            "deprecation_id": "phpunit.baseline_stale",
             "$comment": "The spelling survives but the accepted value does not: the scalar becomes ['violations' => …, 'coverage' => …]. A consumer whose scalar stops being accepted needs the same notice as one whose key was renamed."
         },
         "coverage_baseline_stale": {
@@ -232,7 +232,7 @@
             "channel": "deprecation",
             "removed_in": "3.0",
             "owner": "#502",
-            "deprecation_id": null
+            "deprecation_id": "phpunit.coverage_baseline_stale"
         },
         "enum_drift_enabled": {
             "surface": "config-key",
@@ -322,7 +322,7 @@
             "removed_in": null,
             "owner": "#507",
             "deprecation_id": null,
-            "$comment": "Markdown-only today, any format under --format in v3. The spelling and every invocation that uses it keep working, so nothing is deprecated."
+            "$comment": "Markdown by default since the v2 `--format` flag, any format under --format in v3. The spelling and every invocation that uses it keep working, so nothing is deprecated."
         },
         "--json-output": {
             "surface": "cli-flag",

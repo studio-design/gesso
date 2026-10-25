@@ -4,20 +4,25 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Coverage;
 
+use Closure;
 use InvalidArgumentException;
 use RuntimeException;
+use Studio\Gesso\Baseline\BaselineFileFormat;
 use Studio\Gesso\Baseline\BaselineStaleMode;
 use Studio\Gesso\Baseline\CoverageBaselineEvaluator;
 use Studio\Gesso\Baseline\CoverageBaselineFile;
 use Studio\Gesso\Baseline\ViolationBaseline;
 use Studio\Gesso\Baseline\ViolationBaselineFile;
+use Studio\Gesso\Config\ConfigurationBridge;
+use Studio\Gesso\Config\GessoConfig;
+use Studio\Gesso\Config\InvalidGessoConfigurationException;
 use Studio\Gesso\Internal\ArgvParser;
 use Studio\Gesso\Internal\CliIo;
 use Studio\Gesso\Internal\CoverageReportWriter;
 use Studio\Gesso\Internal\Deprecations;
+use Studio\Gesso\Internal\Diagnostics;
 use Studio\Gesso\PHPUnit\ConsoleOutput;
 use Studio\Gesso\PHPUnit\CoverageReportSubscriber;
-use Studio\Gesso\PHPUnit\OpenApiCoverageExtension;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Validation\Strict\StrictAdditionalPropertiesAsserter;
 use Studio\Gesso\Validation\Strict\StrictAdditionalPropertiesMode;
@@ -30,9 +35,15 @@ use function count;
 use function ctype_digit;
 use function getenv;
 use function implode;
+use function in_array;
+use function is_array;
+use function is_bool;
+use function is_float;
 use function is_int;
 use function is_numeric;
 use function is_string;
+use function ord;
+use function preg_replace_callback;
 use function sprintf;
 use function unlink;
 
@@ -55,6 +66,7 @@ use function unlink;
  *     specs?: list<string>,
  *     strip_prefixes?: list<string>,
  *     output_file?: string,
+ *     format?: string,
  *     junit_output?: string,
  *     json_output?: string,
  *     html_output?: string,
@@ -71,6 +83,7 @@ use function unlink;
  *     coverage_baseline_file?: string,
  *     coverage_baseline_stale?: string,
  *     expect_sidecars?: int|string,
+ *     config?: string,
  *     help?: bool,
  *     invalid_options?: list<string>,
  * }
@@ -83,14 +96,32 @@ use function unlink;
  */
 final class CoverageMergeCommand
 {
-    use CliIo;
+    use CliIo {
+        writeStderr as private writeUnfilteredStderr;
+    }
+
+    private const FORMATS = ['text', 'markdown', 'json', 'junit', 'html'];
+
+    /**
+     * The `gesso.php` settings, by their {@see ConfigurationBridge::phpunit()} name,
+     * that default a merge option of the same name. Grouped by value type so the
+     * option shape stays provable.
+     */
+    private const SHARED_STRINGS = [
+        'sidecar_dir', 'spec_base_path', 'output_file', 'junit_output', 'json_output', 'html_output',
+        'console_output', 'strict_required', 'strict_additional_properties',
+        'coverage_baseline_file', 'coverage_baseline_stale',
+    ];
+
+    private const SHARED_LISTS = ['specs', 'strip_prefixes'];
+    private const SHARED_PERCENTS = ['min_endpoint_coverage', 'min_response_coverage', 'min_sdk_exercise_coverage'];
 
     /**
      * @param null|callable(string): void $stderrWriter Optional sink for warnings; defaults to STDERR.
      */
     public function __construct(
-        private mixed $stderrWriter = null,
         private mixed $stdoutWriter = null,
+        private mixed $stderrWriter = null,
         private readonly string $invocation = 'gesso coverage:merge',
     ) {}
 
@@ -107,13 +138,13 @@ final class CoverageMergeCommand
     {
         $opts = ArgvParser::parse(
             $argv,
-            'coverage:merge',
             flags: ['cleanup', 'no_cleanup', 'min_coverage_strict'],
             values: [
-                'sidecar_dir', 'spec_base_path', 'output_file', 'junit_output', 'json_output', 'html_output',
+                'sidecar_dir', 'spec_base_path', 'output_file', 'format', 'junit_output', 'json_output', 'html_output',
                 'github_step_summary', 'console_output', 'strict_required', 'strict_additional_properties',
                 'baseline_file', 'coverage_baseline_file', 'coverage_baseline_stale',
                 'min_endpoint_coverage', 'min_response_coverage', 'min_sdk_exercise_coverage', 'expect_sidecars',
+                'config',
             ],
             lists: ['specs', 'strip_prefixes'],
         );
@@ -156,6 +187,9 @@ final class CoverageMergeCommand
               --strip-prefixes=<a,b>        Comma-separated request-path prefixes to strip.
               --sidecar-dir=<path>          Worker sidecar directory. Defaults to
                                             sys_get_temp_dir()/openapi-coverage-sidecars.
+              --format=<name>               text | markdown | json | junit | html. Rendering of the
+                                            primary report: --output-file when given (default
+                                            markdown), else stdout (default text).
               --output-file=<path>          Markdown report output path.
               --junit-output=<path>         JUnit XML report output path (for CI dashboards
                                             like GitLab CI test reports, Jenkins, SonarQube).
@@ -198,7 +232,16 @@ final class CoverageMergeCommand
                                             and the merge would otherwise under-count silently
                                             (Issue #434).
               --no-cleanup                  Keep sidecar files after merge (default: cleanup).
+              --config=<path>               gesso.php to default the options above from
+                                            (default: ./gesso.php when present). Explicit
+                                            flags win; see docs/configuration.md.
               --help                        Show this message.
+
+            Exit codes:
+              0  Merge completed; warnings may have been written to stderr.
+              1  A gate failed (threshold, strict, baseline, expected shard count), a
+                 sidecar could not be read, or a report could not be written.
+              2  Command-line usage is invalid.
 
             USAGE;
     }
@@ -206,17 +249,29 @@ final class CoverageMergeCommand
     /**
      * @param MergeOptions $options
      *
-     * @return int 0 on success, non-zero on misconfiguration / I/O failure
+     * @return int `EXIT_OK`; `EXIT_USAGE` on misconfiguration; `EXIT_FAILURE` on a failed gate or I/O failure
      */
     public function run(array $options): int
     {
         if (($options['help'] ?? false) === true) {
             $this->writeStdout(self::usage($this->invocation));
 
-            return 0;
+            return self::EXIT_OK;
         }
 
-        $sidecarDir = $this->pathOption($options['sidecar_dir'] ?? null) ?? OpenApiCoverageExtension::defaultSidecarDir();
+        try {
+            if (($options['config'] ?? null) === '') {
+                throw new InvalidGessoConfigurationException('--config must name a gesso.php file.');
+            }
+            $shared = ConfigurationBridge::phpunit(GessoConfig::load($options['config'] ?? null));
+        } catch (InvalidGessoConfigurationException $e) {
+            $this->writeStderr("[Gesso] FATAL: {$e->getMessage()}\n");
+
+            return self::EXIT_USAGE;
+        }
+        $options = self::withSharedDefaults($options, $shared);
+
+        $sidecarDir = $this->pathOption($options['sidecar_dir'] ?? null) ?? CoverageSidecarWriter::defaultDir();
 
         // Empty `--specs=` is treated as "use default" rather than "use no
         // specs". Otherwise a misconfigured CLI invocation would silently
@@ -226,6 +281,10 @@ final class CoverageMergeCommand
         $specBasePath = $this->pathOption($options['spec_base_path'] ?? null);
         $stripPrefixes = $options['strip_prefixes'] ?? [];
         $outputFile = $this->pathOption($options['output_file'] ?? null);
+        $format = $options['format'] ?? ($outputFile === null ? 'text' : 'markdown');
+        if (!in_array($format, self::FORMATS, true)) {
+            return $this->usageError("Unsupported --format={$format}.");
+        }
         $junitOutput = $this->pathOption($options['junit_output'] ?? null);
         $jsonOutput = $this->pathOption($options['json_output'] ?? null);
         $htmlOutput = $this->pathOption($options['html_output'] ?? null);
@@ -242,7 +301,7 @@ final class CoverageMergeCommand
             // Strict-mode misconfiguration: a typo'd / out-of-range threshold
             // would otherwise silently disable the gate the user opted into.
             // Exit 2 mirrors the `--spec-base-path is required` config error.
-            return 2;
+            return self::EXIT_USAGE;
         }
         $minEndpointPct = $endpointResolution['value'];
         $minResponsePct = $responseResolution['value'];
@@ -255,7 +314,7 @@ final class CoverageMergeCommand
             // silently disables the gate the user opted into via CI flag.
             $this->writeStderr(sprintf("[OpenAPI Strict Required] FATAL: %s\n", $e->getMessage()));
 
-            return 2;
+            return self::EXIT_USAGE;
         }
 
         try {
@@ -265,7 +324,7 @@ final class CoverageMergeCommand
         } catch (InvalidArgumentException $e) {
             $this->writeStderr(sprintf("[OpenAPI Strict Additional Properties] FATAL: %s\n", $e->getMessage()));
 
-            return 2;
+            return self::EXIT_USAGE;
         }
 
         $baselineFile = $this->pathOption($options['baseline_file'] ?? null);
@@ -275,7 +334,7 @@ final class CoverageMergeCommand
         // merged coverage state already is the whole-suite view, so this
         // command both generates and enforces from it.
         $coverageBaselineFile = $this->pathOption($options['coverage_baseline_file'] ?? null);
-        $coverageBaselineGenerate = $coverageBaselineFile !== null && OpenApiCoverageExtension::baselineGenerationRequested();
+        $coverageBaselineGenerate = $coverageBaselineFile !== null && BaselineFileFormat::generationRequested();
 
         try {
             $coverageBaselineStaleMode = BaselineStaleMode::fromConfigValue($options['coverage_baseline_stale'] ?? null);
@@ -284,7 +343,7 @@ final class CoverageMergeCommand
             // silently changes the gate the user opted into.
             $this->writeStderr(sprintf("[Gesso] FATAL: %s\n", $e->getMessage()));
 
-            return 2;
+            return self::EXIT_USAGE;
         }
 
         if ($coverageBaselineFile === null && isset($options['coverage_baseline_stale'])) {
@@ -292,13 +351,13 @@ final class CoverageMergeCommand
                 "[Gesso] FATAL: --coverage-baseline-stale is set but --coverage-baseline-file was not given; there is no baseline to evaluate staleness against.\n",
             );
 
-            return 2;
+            return self::EXIT_USAGE;
         }
 
         if ($specBasePath === null) {
             $this->writeStderr("[OpenAPI Coverage] FATAL: --spec-base-path is required\n");
 
-            return 2;
+            return self::EXIT_USAGE;
         }
 
         // Issue #434: the expected shard count, validated alongside the other
@@ -314,7 +373,7 @@ final class CoverageMergeCommand
                     (string) $rawExpectSidecars,
                 ));
 
-                return 2;
+                return self::EXIT_USAGE;
             }
             $expectSidecars = $rawExpectSidecars;
         }
@@ -332,14 +391,14 @@ final class CoverageMergeCommand
                     $sidecarDir,
                 ));
 
-                return 1;
+                return self::EXIT_FAILURE;
             }
 
             $payloads = CoverageSidecarReader::readDir($sidecarDir);
         } catch (RuntimeException $e) {
             $this->writeStderr(sprintf("[OpenAPI Coverage] FATAL: %s\n", $e->getMessage()));
 
-            return 1;
+            return self::EXIT_FAILURE;
         }
 
         // Issue #434: a shard that was cancelled, or that died before
@@ -360,7 +419,7 @@ final class CoverageMergeCommand
                     : 'include sidecars from another run',
             ));
 
-            return 1;
+            return self::EXIT_FAILURE;
         }
 
         if ($payloads === []) {
@@ -373,7 +432,7 @@ final class CoverageMergeCommand
                     $sidecarDir,
                 ));
 
-                return 1;
+                return self::EXIT_FAILURE;
             }
 
             if ($coverageBaselineFile !== null) {
@@ -383,7 +442,7 @@ final class CoverageMergeCommand
                     $coverageBaselineGenerate ? 'generated' : 'evaluated',
                 ));
 
-                return 1;
+                return self::EXIT_FAILURE;
             }
 
             if ($strictAdditionalPropertiesMode === StrictAdditionalPropertiesMode::Fail) {
@@ -392,7 +451,7 @@ final class CoverageMergeCommand
                     $sidecarDir,
                 ));
 
-                return 1;
+                return self::EXIT_FAILURE;
             }
 
             // Strict-mode gate must fail-fast even before sidecars exist —
@@ -404,11 +463,11 @@ final class CoverageMergeCommand
                     $sidecarDir,
                 ));
 
-                return 1;
+                return self::EXIT_FAILURE;
             }
             $this->writeStderr(sprintf("[OpenAPI Coverage] WARNING: no sidecars found in %s\n", $sidecarDir));
 
-            return 0;
+            return self::EXIT_OK;
         }
 
         OpenApiSpecLoader::reset();
@@ -484,7 +543,7 @@ final class CoverageMergeCommand
             } catch (InvalidArgumentException $e) {
                 $this->writeStderr(sprintf("[OpenAPI Coverage] FATAL: invalid sidecar payload: %s\n", $e->getMessage()));
 
-                return 1;
+                return self::EXIT_FAILURE;
             }
         }
 
@@ -495,7 +554,7 @@ final class CoverageMergeCommand
         $this->reportDeprecations($deprecationStates, $sidecarsWithoutDeprecations, count($payloads));
 
         if (!$this->handleBaseline($baselineFile, $mergedBaseline, $sidecarsWithoutBaseline, count($payloads))) {
-            return 1;
+            return self::EXIT_FAILURE;
         }
 
         if ($minSdkExercisePct !== null && $sidecarsWithoutSdkExercise > 0) {
@@ -503,12 +562,12 @@ final class CoverageMergeCommand
                 $minStrict ? 'FATAL' : 'WARNING',
                 sprintf(
                     '%d worker sidecar(s) have no SDK exercise state; '
-                    . 'the merged SDK exercise gate may be incomplete. Upgrade every worker to the v6/v7 sidecar envelope.',
+                    . 'the merged SDK exercise gate may be incomplete. Run every worker on the same Gesso version as the merge step.',
                     $sidecarsWithoutSdkExercise,
                 ),
             );
             if ($minStrict) {
-                return 1;
+                return self::EXIT_FAILURE;
             }
         }
 
@@ -549,15 +608,20 @@ final class CoverageMergeCommand
             }
 
             if ($cleanup && !$this->cleanup($sidecarDir)) {
-                return 1;
+                return self::EXIT_FAILURE;
             }
 
-            return $strictGated || $strictAdditionalPropertiesFailure || $coverageBaselineFile !== null ? 1 : 0;
+            return $strictGated || $strictAdditionalPropertiesFailure || $coverageBaselineFile !== null ? self::EXIT_FAILURE : self::EXIT_OK;
         }
 
-        $this->writeStdout(ConsoleCoverageRenderer::render($results, $consoleOutput, $sdkResults));
+        [$label, $render] = self::primaryRenderer($format, $consoleOutput);
+        $this->writeStdout($outputFile === null
+            ? ($format === 'json'
+                ? self::escapeJsonControls($render($results, $sdkResults))
+                : self::terminalSafe($render($results, $sdkResults)))
+            : self::terminalSafe(ConsoleCoverageRenderer::render($results, $consoleOutput, $sdkResults)));
 
-        $writeFailures = $writer->writeReports($results, $sdkResults, $outputFile, $junitOutput, $jsonOutput, $htmlOutput);
+        $writeFailures = $writer->writeReports($results, $sdkResults, $outputFile, $junitOutput, $jsonOutput, $htmlOutput, [$label, $render]);
         $writer->appendGithubStepSummary($results, $sdkResults, $githubSummaryPath);
 
         $httpThresholdUnavailable = $results === [] && ($minEndpointPct !== null || $minResponsePct !== null);
@@ -616,11 +680,114 @@ final class CoverageMergeCommand
             $strictAdditionalPropertiesFailure ||
             $coverageBaselineFailure ||
             $cleanupFailure
-            ? 1
-            : 0;
+            ? self::EXIT_FAILURE
+            : self::EXIT_OK;
+    }
+
+    /**
+     * Label and renderer for the primary report: `text` is the console rendering.
+     *
+     * @param 'html'|'json'|'junit'|'markdown'|'text' $format
+     *
+     * @return array{string, Closure(array<string, CoverageResult>, array<string, SdkExerciseCoverageResult>): string}
+     */
+    private static function primaryRenderer(string $format, ConsoleOutput $console): array
+    {
+        return $format === 'text'
+            ? ['console', static fn(array $r, array $s): string => ConsoleCoverageRenderer::render($r, $console, $s)]
+            : CoverageReportWriter::renderer($format);
     }
 
     /** An option's absolutised path, or `null` when absent or empty. */
+    /**
+     * Fill the options the command line left unset from `gesso.php`. Paths are
+     * already absolute (resolved against the file's directory). Everything the
+     * bridge emits that the merge has no option for is ignored.
+     *
+     * @param MergeOptions $options
+     * @param array<string, bool|float|int|list<string>|string> $shared
+     *
+     * @return MergeOptions
+     */
+    private static function withSharedDefaults(array $options, array $shared): array
+    {
+        foreach (self::SHARED_STRINGS as $key) {
+            // `--format` picks the primary report and where it goes (stdout
+            // without `--output-file`); the file's Markdown path must not
+            // capture a primary report of another format.
+            if ($key === 'output_file' && isset($options['format'])) {
+                continue;
+            }
+            if (!isset($options[$key]) && is_string($shared[$key] ?? null)) {
+                $options[$key] = $shared[$key];
+            }
+        }
+        // ArgvParser materialises every list as `[]`, and `run()` already
+        // reads an empty list as "use the default".
+        foreach (self::SHARED_LISTS as $key) {
+            if (($options[$key] ?? []) === [] && is_array($shared[$key] ?? null)) {
+                $options[$key] = $shared[$key];
+            }
+        }
+        foreach (self::SHARED_PERCENTS as $key) {
+            $value = $shared[$key] ?? null;
+            if (!isset($options[$key]) && (is_int($value) || is_float($value))) {
+                $options[$key] = (float) $value;
+            }
+        }
+        // `--baseline-file` only ever writes the merged violation baseline, so the
+        // file's `baseline.violations` (an enforcement input for the workers)
+        // defaults it only on a generation run.
+        if (
+            !isset($options['baseline_file']) &&
+            is_string($shared['baseline_file'] ?? null) &&
+            BaselineFileFormat::generationRequested()
+        ) {
+            $options['baseline_file'] = $shared['baseline_file'];
+        }
+        if (!isset($options['min_coverage_strict']) && is_bool($shared['min_coverage_strict'] ?? null)) {
+            $options['min_coverage_strict'] = $shared['min_coverage_strict'];
+        }
+
+        return $options;
+    }
+
+    /**
+     * Sidecars are untrusted input, so their strings must not drive the
+     * reader's terminal: C0 controls other than TAB and LF, DEL, and C1
+     * controls become `?` — both UTF-8 encoded (U+0080-U+009F) and as the lone
+     * 0x80-0x9F bytes an 8-bit terminal reads as CSI/OSC. Byte-level (no `/u`),
+     * so invalid UTF-8 cannot void the filter; well-formed multibyte sequences
+     * are matched whole and kept, so their continuation bytes are not C1.
+     */
+    private static function terminalSafe(string $text): string
+    {
+        return preg_replace_callback(
+            '/\xC2[\x80-\x9F]'
+            . '|([\xC2-\xDF][\x80-\xBF]|\xE0[\xA0-\xBF][\x80-\xBF]|[\xE1-\xEC\xEE\xEF][\x80-\xBF]{2}'
+            . '|\xED[\x80-\x9F][\x80-\xBF]|\xF0[\x90-\xBF][\x80-\xBF]{2}|[\xF1-\xF3][\x80-\xBF]{3}'
+            . '|\xF4[\x80-\x8F][\x80-\xBF]{2})'
+            . '|[\x00-\x08\x0B-\x1F\x7F-\x9F]/',
+            static fn(array $m): string => ($m[1] ?? '') !== '' ? $m[1] : '?',
+            $text,
+        ) ?? $text;
+    }
+
+    /**
+     * `json_encode` already escapes C0 controls but leaves DEL and (under
+     * `JSON_UNESCAPED_UNICODE`) C1 controls raw. Those bytes can only occur
+     * inside string literals, so re-escaping them keeps the report
+     * decode-identical while keeping them off the terminal.
+     */
+    private static function escapeJsonControls(string $json): string
+    {
+        return preg_replace_callback(
+            '/\x7F|\xC2[\x80-\x9F]/',
+            static fn(array $m): string => sprintf('\\u%04x', $m[0] === "\x7F" ? 0x7F : ord($m[0][1])),
+            $json,
+        ) ?? $json;
+    }
+
     private function pathOption(?string $value): ?string
     {
         return $value !== null && $value !== '' ? $this->absolutise($value) : null;
@@ -901,14 +1068,13 @@ final class CoverageMergeCommand
             $this->writeStderr(
                 '[OpenAPI Strict Required] FATAL: --strict-required=fail requested but '
                 . 'no worker recorded any strict_required observations; the gate cannot '
-                . "be evaluated. Verify all workers are running the v2 sidecar envelope.\n",
+                . "be evaluated. Run every worker on the same Gesso version as the merge step.\n",
             );
 
             return true;
         }
 
-        $reports = StrictRequiredAsserter::detectAll($mode);
-        $unresolved = StrictRequiredAsserter::detectUnresolvedGroups($mode);
+        ['reports' => $reports, 'unresolved' => $unresolved] = StrictRequiredAsserter::analyse($mode);
 
         if ($unresolved !== []) {
             // Observed an endpoint with no matching response schema. The user
@@ -929,7 +1095,7 @@ final class CoverageMergeCommand
         $isFatal = $mode === StrictRequiredMode::Fail;
         $message = StrictRequiredAsserter::renderMessage($reports, $isFatal);
         $this->writeStderr($message . "\n");
-        OpenApiCoverageExtension::appendGithubStepSummaryStrictRequiredBlock(
+        Diagnostics::appendGithubStepSummaryStrictRequiredBlock(
             $githubSummaryPath,
             $message,
             $isFatal,
@@ -950,7 +1116,7 @@ final class CoverageMergeCommand
         if ($mode === StrictAdditionalPropertiesMode::Fail && $sidecarsWithoutTracker > 0) {
             $this->writeStderr(sprintf(
                 '[OpenAPI Strict Additional Properties] FATAL: %d worker sidecar(s) have no strict additional-properties state; '
-                . "the merged gate would be incomplete. Upgrade every worker to the v4/v5 sidecar envelope.\n",
+                . "the merged gate would be incomplete. Run every worker on the same Gesso version as the merge step.\n",
                 $sidecarsWithoutTracker,
             ));
 
@@ -959,7 +1125,7 @@ final class CoverageMergeCommand
         if ($mode === StrictAdditionalPropertiesMode::Fail && $tracker->evaluationsOn() === 0) {
             $this->writeStderr(
                 '[OpenAPI Strict Additional Properties] FATAL: --strict-additional-properties=fail requested but '
-                . "no worker exported strict additional-properties evaluations. Verify all workers use the v4/v5 sidecar envelope.\n",
+                . "no worker exported strict additional-properties evaluations. Run every worker on the same Gesso version as the merge step.\n",
             );
 
             return true;
@@ -973,7 +1139,7 @@ final class CoverageMergeCommand
         $isFatal = $mode === StrictAdditionalPropertiesMode::Fail;
         $message = StrictAdditionalPropertiesAsserter::renderMessage($reports, $isFatal);
         $this->writeStderr($message . "\n");
-        OpenApiCoverageExtension::appendGithubStepSummaryStrictAdditionalPropertiesBlock(
+        Diagnostics::appendGithubStepSummaryStrictAdditionalPropertiesBlock(
             $githubSummaryPath,
             $message,
             $isFatal,
@@ -1049,5 +1215,16 @@ final class CoverageMergeCommand
     private function writeCoverageDiagnostic(string $severity, string $detail): void
     {
         $this->writeStderr(sprintf("[OpenAPI Coverage] %s: %s\n", $severity, $detail));
+    }
+
+    /**
+     * Every merge diagnostic can carry sidecar-derived text (payload errors,
+     * strict-gate reports, deprecation and baseline notes), so stderr gets the
+     * same neutralisation as the stdout report. Overrides the {@see CliIo}
+     * writer for this command only.
+     */
+    private function writeStderr(string $message): void
+    {
+        $this->writeUnfilteredStderr(self::terminalSafe($message));
     }
 }

@@ -12,6 +12,7 @@ use function in_array;
 use function is_array;
 use function is_scalar;
 use function preg_match;
+use function preg_replace;
 use function rawurldecode;
 use function sprintf;
 use function str_ends_with;
@@ -29,7 +30,14 @@ use function trim;
 final class CurlCommandFormatter
 {
     private const REDACTED_PLACEHOLDER = '<redacted>';
-    private const SENSITIVE_HEADER_NAMES = ['authorization', 'proxy-authorization', 'cookie'];
+    private const SENSITIVE_HEADER_NAMES = [
+        'authorization',
+        'proxy-authorization',
+        'cookie',
+        'php-auth-user',
+        'php-auth-pw',
+        'php-auth-digest',
+    ];
     private const SENSITIVE_NAME_PATTERN = '/api[-_]?key|token|secret/i';
 
     /**
@@ -45,7 +53,7 @@ final class CurlCommandFormatter
         bool $redact = true,
     ): string {
         if ($redact) {
-            $uri = self::redactQueryValues($uri);
+            $uri = self::redactQueryValues(self::redactUserInfo($uri));
         }
         // OpenAPI 3.2 additionalOperations allow arbitrary custom method
         // strings, so anything beyond plain token characters must be quoted
@@ -67,6 +75,18 @@ final class CurlCommandFormatter
         }
 
         return str_replace(["\r", "\n"], ' ', $command);
+    }
+
+    /**
+     * URL userinfo (`user:pass@host`) commonly carries credentials. The match
+     * runs to the last `@` of the authority, as parse_url() does, so a raw `@`
+     * inside a password cannot leave its tail behind.
+     */
+    private static function redactUserInfo(string $uri): string
+    {
+        // Fail closed: on a PCRE error, print no URI rather than a raw one.
+        return preg_replace('~^((?:[a-z][a-z0-9+.-]*:)?//)[^/?#]*@~i', '$1' . self::REDACTED_PLACEHOLDER . '@', $uri)
+            ?? self::REDACTED_PLACEHOLDER;
     }
 
     /**

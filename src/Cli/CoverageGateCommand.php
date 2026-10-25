@@ -4,16 +4,21 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Cli;
 
+use const JSON_PRETTY_PRINT;
 use const JSON_THROW_ON_ERROR;
 use const JSON_UNESCAPED_SLASHES;
 use const JSON_UNESCAPED_UNICODE;
 use const PATHINFO_FILENAME;
 
 use JsonException;
+use RuntimeException;
+use Studio\Gesso\Config\GessoConfig;
+use Studio\Gesso\Config\InvalidGessoConfigurationException;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\Internal\ArgvParser;
 use Studio\Gesso\Internal\CliDocuments;
 use Studio\Gesso\Internal\CliIo;
+use Studio\Gesso\Internal\ToolVersion;
 use Studio\Gesso\Spec\OpenApiOperationResolver;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Stubs\StubGenerator;
@@ -24,6 +29,7 @@ use function array_is_list;
 use function array_key_exists;
 use function array_keys;
 use function array_map;
+use function count;
 use function hash;
 use function implode;
 use function in_array;
@@ -57,7 +63,7 @@ use function usort;
  * through {@see OpenApiSpecLoader}, a pure `$ref` reshuffle that resolves to
  * the same tree reads as unchanged.
  *
- * @phpstan-type GateOptions array{base_spec?: string, spec?: string, coverage?: string, spec_name?: string, format?: string, help?: bool, invalid_options?: list<string>}
+ * @phpstan-type GateOptions array{base_spec?: string, spec?: string, coverage?: string, spec_name?: string, format?: string, output_file?: string, config?: string, help?: bool, invalid_options?: list<string>}
  * @phpstan-type GateResponse array{status: string, content_type: string, change: 'added'|'changed'|'removed', state: string, covered: bool}
  * @phpstan-type GateOperation array{endpoint: string, change: 'added'|'changed'|'removed', responses: list<GateResponse>}
  * @phpstan-type IndexedResponse array{status: string, content_type: string, hash: string}
@@ -69,9 +75,8 @@ final class CoverageGateCommand
 {
     use CliIo;
 
-    public const EXIT_OK = 0;
-    public const EXIT_UNCOVERED_CHANGE = 1;
-    public const EXIT_USAGE = 2;
+    public const JSON_SCHEMA_VERSION = 1;
+    public const EXIT_UNCOVERED_CHANGE = self::EXIT_FAILURE;
 
     /** @param null|callable(string): void $stdoutWriter */
     public function __construct(
@@ -88,7 +93,7 @@ final class CoverageGateCommand
     public static function parseArgv(array $argv): array
     {
         /** @var GateOptions */
-        return ArgvParser::parse($argv, 'coverage:gate', values: ['base_spec', 'spec', 'coverage', 'spec_name', 'format']);
+        return ArgvParser::parse($argv, values: ['base_spec', 'spec', 'coverage', 'spec_name', 'format', 'output_file', 'config']);
     }
 
     public static function usage(string $invocation = 'gesso coverage:gate'): string
@@ -107,12 +112,16 @@ final class CoverageGateCommand
               --spec=<path>        Spec as it looks on this branch.
               --coverage=<path>    Coverage JSON (schema_version 3) written by the
                                    `json_output` extension parameter or
-                                   `gesso coverage:merge --json-output`.
+                                   `gesso coverage:merge --json-output`. Defaults to
+                                   `coverage.report_output.json` from gesso.php.
               --spec-name=<name>   Key under `specs` in the coverage document.
                                    Defaults to the --spec filename without extension.
-              --format=text|markdown
+              --format=text|markdown|json
                                    Output format (default: text). `markdown` is meant for
-                                   \$GITHUB_STEP_SUMMARY.
+                                   \$GITHUB_STEP_SUMMARY, `json` for tooling.
+              --output-file=<path> Write the report there instead of stdout.
+              --config=<path>      gesso.php to default --coverage from (default:
+                                   ./gesso.php when present). See docs/configuration.md.
               --help               Show this message.
 
             Exit codes:
@@ -132,12 +141,28 @@ final class CoverageGateCommand
             return self::EXIT_OK;
         }
 
+        if (($options['config'] ?? null) === '') {
+            return $this->usageError('--config must name a gesso.php file.');
+        }
+
+        try {
+            $config = GessoConfig::load($options['config'] ?? null);
+        } catch (InvalidGessoConfigurationException $e) {
+            return $this->usageError($e->getMessage());
+        }
+        // Only the coverage document defaults from the file: --spec-name keeps
+        // following --spec, so a multi-spec project gating one spec per run
+        // never reads another spec's key.
+        if (($options['coverage'] ?? '') === '' && $config->has('coverage.report_output.json')) {
+            $options['coverage'] = (string) $config->string('coverage.report_output.json');
+        }
+
         $format = $options['format'] ?? 'text';
         $invalid = $options['invalid_options'] ?? [];
         if ($invalid !== []) {
             return $this->usageError('Unknown argument(s): ' . implode(', ', $invalid));
         }
-        if (!in_array($format, ['text', 'markdown'], true)) {
+        if (!in_array($format, ['text', 'markdown', 'json'], true)) {
             return $this->usageError("Unsupported --format={$format}.");
         }
         foreach (['base_spec', 'spec', 'coverage'] as $required) {
@@ -179,9 +204,17 @@ final class CoverageGateCommand
             }
         }
 
-        $this->writeStdout($format === 'markdown'
-            ? $this->renderMarkdown($operations, $uncovered)
-            : $this->renderText($operations, $uncovered));
+        $rendered = match ($format) {
+            'markdown' => $this->renderMarkdown($operations, $uncovered),
+            'json' => $this->renderJson($operations, $uncovered),
+            default => $this->renderText($operations, $uncovered),
+        };
+
+        try {
+            $this->writeReport($rendered, $options['output_file'] ?? null);
+        } catch (RuntimeException $e) {
+            return $this->usageError($e->getMessage());
+        }
 
         return $uncovered === 0 ? self::EXIT_OK : self::EXIT_UNCOVERED_CHANGE;
     }
@@ -528,6 +561,17 @@ final class CoverageGateCommand
         }
 
         return $canonical;
+    }
+
+    /** @param list<GateOperation> $operations */
+    private function renderJson(array $operations, int $uncovered): string
+    {
+        return json_encode([
+            'schemaVersion' => self::JSON_SCHEMA_VERSION,
+            'tool' => ['name' => ToolVersion::PACKAGE, 'version' => ToolVersion::resolve()],
+            'summary' => ['operations' => count($operations), 'uncovered' => $uncovered],
+            'operations' => $operations,
+        ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n";
     }
 
     /** @param list<GateOperation> $operations */

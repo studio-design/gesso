@@ -42,7 +42,6 @@ final class SharedBearerInjectionIntegrationTest extends TestCase
 
     protected function tearDown(): void
     {
-        self::resetValidatorCache();
         OpenApiSpecLoader::reset();
         OpenApiCoverageTracker::reset();
         Deprecations::resetForTesting();

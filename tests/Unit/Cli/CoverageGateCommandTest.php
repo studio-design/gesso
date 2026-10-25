@@ -11,9 +11,12 @@ use PHPUnit\Framework\TestCase;
 use Studio\Gesso\Cli\CoverageGateCommand;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 
+use function array_keys;
 use function array_map;
+use function file_get_contents;
 use function file_put_contents;
 use function glob;
+use function json_decode;
 use function json_encode;
 use function mkdir;
 use function rmdir;
@@ -56,14 +59,17 @@ class CoverageGateCommandTest extends TestCase
                 'coverage' => 'build/coverage.json',
                 'spec_name' => 'front',
                 'format' => 'markdown',
+                'output_file' => 'build/gate.json',
+                'config' => 'gesso.php',
             ],
             CoverageGateCommand::parseArgv([
-                'coverage:gate',
                 '--base-spec=base.json',
                 '--spec=openapi.json',
                 '--coverage=build/coverage.json',
                 '--spec-name=front',
                 '--format=markdown',
+                '--output-file=build/gate.json',
+                '--config=gesso.php',
             ]),
         );
     }
@@ -359,6 +365,16 @@ class CoverageGateCommandTest extends TestCase
     }
 
     #[Test]
+    public function a_stray_positional_token_is_a_usage_error(): void
+    {
+        $options = CoverageGateCommand::parseArgv(['coverage:gate', '--base-spec=base.json', '--spec=openapi.json', '--coverage=c.json']);
+        $this->assertSame(['coverage:gate'], $options['invalid_options']);
+
+        $this->assertSame(CoverageGateCommand::EXIT_USAGE, $this->command()->run($options));
+        $this->assertStringStartsWith('[Gesso] Unknown argument(s): coverage:gate', $this->stderr);
+    }
+
+    #[Test]
     public function a_missing_required_flag_is_a_usage_error(): void
     {
         $this->assertSame(
@@ -439,11 +455,137 @@ class CoverageGateCommandTest extends TestCase
         );
     }
 
+    #[Test]
+    public function json_format_reports_the_touched_operations(): void
+    {
+        $this->writeSpec('base.json', $this->baseSpec());
+        $this->writeSpec('openapi.json', $this->headSpec());
+        $this->writeCoverage([
+            $this->endpoint('PUT', '/pets/{id}', [['200', 'application/json', 'validated']]),
+            $this->endpoint('DELETE', '/pets/{id}', [['204', '*', 'uncovered']]),
+        ]);
+
+        $this->assertSame(CoverageGateCommand::EXIT_UNCOVERED_CHANGE, $this->gate(format: 'json'));
+
+        $report = json_decode($this->stdout, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertIsArray($report);
+        $this->assertSame(['schemaVersion', 'tool', 'summary', 'operations'], array_keys($report));
+        $this->assertSame(CoverageGateCommand::JSON_SCHEMA_VERSION, $report['schemaVersion']);
+        $this->assertSame(1, $report['summary']['uncovered']);
+        $this->assertSame(['endpoint', 'change', 'responses'], array_keys($report['operations'][0]));
+        $this->assertSame(
+            ['status', 'content_type', 'change', 'state', 'covered'],
+            array_keys($report['operations'][0]['responses'][0]),
+        );
+    }
+
+    #[Test]
+    public function json_format_with_no_change_is_an_empty_operations_list(): void
+    {
+        $this->writeSpec('base.json', $this->baseSpec());
+        $this->writeSpec('openapi.json', $this->baseSpec());
+        $this->writeCoverage([]);
+
+        $this->assertSame(CoverageGateCommand::EXIT_OK, $this->gate(format: 'json'));
+
+        $report = json_decode($this->stdout, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertIsArray($report);
+        $this->assertSame(0, $report['summary']['operations']);
+        $this->assertSame([], $report['operations']);
+    }
+
+    #[Test]
+    public function unsupported_format_is_a_usage_error(): void
+    {
+        $this->assertSame(CoverageGateCommand::EXIT_USAGE, $this->gate(format: 'yaml'));
+        $this->assertStringContainsString('[Gesso] Unsupported --format=yaml.', $this->stderr);
+    }
+
+    #[Test]
+    public function output_file_receives_the_same_bytes_as_stdout(): void
+    {
+        $this->writeSpec('base.json', $this->baseSpec());
+        $this->writeSpec('openapi.json', $this->headSpec());
+        $this->writeCoverage([]);
+
+        $this->assertSame(CoverageGateCommand::EXIT_UNCOVERED_CHANGE, $this->gate(format: 'markdown'));
+        $expected = $this->stdout;
+
+        $file = $this->workDir . '/gate.md';
+        $this->assertSame(CoverageGateCommand::EXIT_UNCOVERED_CHANGE, $this->gate(format: 'markdown', outputFile: $file));
+        $this->assertSame('', $this->stdout);
+        $this->assertSame($expected, file_get_contents($file));
+    }
+
+    #[Test]
+    public function unwritable_output_file_is_a_usage_error(): void
+    {
+        $this->writeSpec('base.json', $this->baseSpec());
+        $this->writeSpec('openapi.json', $this->baseSpec());
+        $this->writeCoverage([]);
+
+        $this->assertSame(
+            CoverageGateCommand::EXIT_USAGE,
+            $this->gate(outputFile: $this->workDir . '/missing-dir/gate.txt'),
+        );
+        $this->assertStringContainsString('[Gesso] Cannot write --output-file: ', $this->stderr);
+    }
+
+    #[Test]
+    public function the_coverage_path_defaults_from_gesso_php(): void
+    {
+        $this->writeSpec('base.json', $this->baseSpec());
+        $this->writeSpec('openapi.json', $this->baseSpec());
+        $this->writeCoverage([]);
+        // Relative to the gesso.php directory, not the cwd.
+        file_put_contents($this->workDir . '/gesso.php', "<?php return ['coverage' => ['report_output' => ['json' => 'coverage.json']]];\n");
+
+        $this->assertSame(CoverageGateCommand::EXIT_OK, $this->command()->run([
+            'base_spec' => $this->workDir . '/base.json',
+            'spec' => $this->workDir . '/openapi.json',
+            'config' => $this->workDir . '/gesso.php',
+        ]), $this->stderr);
+        $this->assertStringContainsString('No operation changed', $this->stdout);
+    }
+
+    #[Test]
+    public function an_explicit_coverage_path_wins_over_gesso_php(): void
+    {
+        $this->writeSpec('base.json', $this->baseSpec());
+        $this->writeSpec('openapi.json', $this->baseSpec());
+        $this->writeCoverage([]);
+        file_put_contents($this->workDir . '/gesso.php', "<?php return ['coverage' => ['report_output' => ['json' => 'missing.json']]];\n");
+
+        $this->assertSame(CoverageGateCommand::EXIT_OK, $this->command()->run([
+            'base_spec' => $this->workDir . '/base.json',
+            'spec' => $this->workDir . '/openapi.json',
+            'coverage' => $this->workDir . '/coverage.json',
+            'config' => $this->workDir . '/gesso.php',
+        ]), $this->stderr);
+    }
+
+    #[Test]
+    public function an_invalid_gesso_php_is_a_usage_error(): void
+    {
+        $this->assertSame(CoverageGateCommand::EXIT_USAGE, $this->command()->run(['config' => $this->workDir . '/gesso.php']));
+        $this->assertStringContainsString('Gesso configuration file not found', $this->stderr);
+
+        $this->stderr = '';
+        file_put_contents($this->workDir . '/gesso.php', "<?php return ['coverage' => ['report_outputs' => []]];\n");
+        $this->assertSame(CoverageGateCommand::EXIT_USAGE, $this->command()->run(['config' => $this->workDir . '/gesso.php']));
+        $this->assertStringContainsString('coverage.report_outputs', $this->stderr);
+
+        $this->stderr = '';
+        $this->assertSame(CoverageGateCommand::EXIT_USAGE, $this->command()->run(['config' => '']));
+        $this->assertStringContainsString('--config must name a gesso.php file', $this->stderr);
+    }
+
     private function gate(
         string $format = 'text',
         ?string $specName = null,
         ?string $spec = null,
         ?string $baseSpec = null,
+        ?string $outputFile = null,
     ): int {
         $this->stdout = '';
         $this->stderr = '';
@@ -457,6 +599,9 @@ class CoverageGateCommandTest extends TestCase
         ];
         if ($specName !== null) {
             $options['spec_name'] = $specName;
+        }
+        if ($outputFile !== null) {
+            $options['output_file'] = $outputFile;
         }
 
         return $this->command()->run($options);

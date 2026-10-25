@@ -154,12 +154,10 @@ class CoverageReportSubscriberWorkerModeTest extends TestCase
 
         $loaded = CoverageSidecarReader::readDir($this->tmpDir);
         $this->assertCount(1, $loaded);
-        // v8 envelope: coverage, strict trackers, SDK exercise, and the
-        // deprecation counts are nested.
-        $this->assertSame(
-            CoverageSidecarEnvelope::ENVELOPE_VERSION_WITH_DEPRECATIONS,
-            $loaded[0]['envelopeVersion'],
-        );
+        // Current envelope: coverage, strict trackers, SDK exercise, and the
+        // deprecation counts are nested; no baseline outside a generation run.
+        $this->assertSame(CoverageSidecarEnvelope::ENVELOPE_VERSION, $loaded[0]['envelopeVersion']);
+        $this->assertArrayNotHasKey('baseline', $loaded[0]);
         $this->assertSame(1, $loaded[0]['coverage']['version']);
         $this->assertArrayHasKey('petstore-3.0', $loaded[0]['coverage']['specs']);
         $this->assertSame(

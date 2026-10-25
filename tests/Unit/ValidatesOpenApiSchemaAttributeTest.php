@@ -33,7 +33,6 @@ class ValidatesOpenApiSchemaAttributeTest extends TestCase
 
     protected function tearDown(): void
     {
-        self::resetValidatorCache();
         OpenApiSpecLoader::reset();
         OpenApiCoverageTracker::reset();
         parent::tearDown();
