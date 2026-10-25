@@ -36,4 +36,17 @@ final class SpecDocumentDecoderTest extends TestCase
         $this->assertSame([], $decoded['security'][1]);
         $this->assertInstanceOf(stdClass::class, $decoded['schema']);
     }
+
+    #[Test]
+    public function object_valued_enum_keyword_keeps_its_object_shape(): void
+    {
+        $decoded = SpecDocumentDecoder::decodeJson(
+            '{"schema":{"enum":{"0":"red"},"properties":{"enum":{"type":"string"}}}}',
+            'inline JSON',
+        );
+
+        $this->assertInstanceOf(stdClass::class, $decoded['schema']['enum']);
+        // A property named `enum` is a Schema Object the resolver must walk.
+        $this->assertSame(['type' => 'string'], $decoded['schema']['properties']['enum']);
+    }
 }

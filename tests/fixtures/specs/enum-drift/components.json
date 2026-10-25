@@ -13,6 +13,7 @@
             "Keyed": {"type": "string", "enum": {"r": "red"}},
             "NumericKeyed": {"type": "string", "enum": {"0": "red"}},
             "EmptyKeyed": {"type": "string", "enum": {}},
+            "RefKeyed": {"$ref": "./_shared/schemas/object-enum.json"},
             "NotAnEnum": {"type": "string"}
         }
     }

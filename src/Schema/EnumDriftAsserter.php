@@ -45,7 +45,6 @@ use function is_int;
 use function is_string;
 use function json_decode;
 use function pathinfo;
-use function property_exists;
 use function realpath;
 use function sprintf;
 use function str_ends_with;
@@ -339,7 +338,7 @@ final class EnumDriftAsserter
             if (!is_array($schemas)) {
                 continue;
             }
-            $unresolved = OpenApiSpecLoader::loadUnresolved($specName);
+            $objectEnums = OpenApiSpecLoader::objectShapedComponentEnums($specName);
             foreach ($schemas as $name => $schema) {
                 if (!is_array($schema) || !array_key_exists('enum', $schema)) {
                     continue;
@@ -347,9 +346,7 @@ final class EnumDriftAsserter
                 $name = (string) $name;
                 // load() collapses `enum: {"0": "red"}` to the list ["red"];
                 // keep the object so componentValues() rejects it.
-                // ponytail: inline enums of local specs only; one behind a
-                // `$ref` or in a remote spec still passes in collapsed form.
-                $enum = self::unresolvedEnum($unresolved, $name) ?? $schema['enum'];
+                $enum = $objectEnums[$name] ?? $schema['enum'];
                 $existing = $components[$name] ?? null;
                 if ($existing === null) {
                     $components[$name] = ['specs' => [$specName], 'enum' => $enum, 'conflict' => false];
@@ -360,23 +357,6 @@ final class EnumDriftAsserter
         }
 
         return ['specs' => $specNames, 'components' => $components];
-    }
-
-    /**
-     * The `enum` of `components.schemas.<name>` when the unparsed document
-     * holds it as a JSON object / YAML mapping.
-     */
-    private static function unresolvedEnum(?stdClass $document, string $name): ?stdClass
-    {
-        $node = $document;
-        foreach (['components', 'schemas', $name, 'enum'] as $key) {
-            if (!$node instanceof stdClass || !property_exists($node, $key)) {
-                return null;
-            }
-            $node = $node->{$key};
-        }
-
-        return $node instanceof stdClass ? $node : null;
     }
 
     /**

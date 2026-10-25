@@ -43,6 +43,7 @@ use Studio\Gesso\Tests\Unit\Schema\Fixture\NumericKeyedFileEnum;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\PaymentStatus;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\PhpExtraEnum;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\PureEnum;
+use Studio\Gesso\Tests\Unit\Schema\Fixture\RefKeyed;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\SharedCode;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\ShippingMethodEnum;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\SpecExtraEnum;
@@ -113,6 +114,7 @@ class EnumDriftAsserterTest extends TestCase
         // The loader collapses these objects into lists (["red"], []).
         yield 'numeric-keyed object' => [NumericKeyed::class, 'NumericKeyed', self::COMPONENT_SPECS];
         yield 'empty object' => [EmptyKeyed::class, 'EmptyKeyed', self::COMPONENT_SPECS];
+        yield 'object behind a $ref' => [RefKeyed::class, 'RefKeyed', self::COMPONENT_SPECS];
         yield 'yaml numeric-keyed mapping' => [NumericKeyed::class, 'NumericKeyed', ['enum-drift/components-yaml']];
         yield 'yaml empty mapping' => [EmptyKeyed::class, 'EmptyKeyed', ['enum-drift/components-yaml']];
     }
@@ -941,6 +943,29 @@ class EnumDriftAsserterTest extends TestCase
         } catch (EnumBindingException $e) {
             $this->assertSame(EnumBindingReason::EnumKeyNotArray, $e->reason);
             $this->assertSame('#/components/schemas/' . $component, $e->specPath);
+        }
+    }
+
+    #[Test]
+    public function object_enum_of_a_cached_spec_is_rejected_without_rereading_the_file(): void
+    {
+        $dir = sys_get_temp_dir() . '/gesso-enum-cached-' . uniqid('', true);
+        mkdir($dir);
+        file_put_contents(
+            $dir . '/api.json',
+            '{"openapi": "3.1.0", "info": {"title": "t", "version": "1"}, "paths": {},'
+            . ' "components": {"schemas": {"NumericKeyed": {"type": "string", "enum": {"0": "red"}}}}}',
+        );
+        OpenApiSpecLoader::configure($dir);
+        OpenApiSpecLoader::load('api');
+        unlink($dir . '/api.json');
+        rmdir($dir);
+
+        try {
+            EnumDriftAsserter::detectAll([NumericKeyed::class], ['api'], skipUnbound: true);
+            $this->fail('expected EnumBindingException');
+        } catch (EnumBindingException $e) {
+            $this->assertSame(EnumBindingReason::EnumKeyNotArray, $e->reason);
         }
     }
 

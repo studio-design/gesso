@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Studio\Gesso\Spec;
 
 use const E_USER_WARNING;
-use const JSON_THROW_ON_ERROR;
 use const PHP_URL_HOST;
 
 use InvalidArgumentException;
@@ -22,8 +21,6 @@ use Studio\Gesso\Internal\SpecDocumentDecoder;
 use Studio\Gesso\Internal\SpecPath;
 use Studio\Gesso\Internal\YamlAvailability;
 use Studio\Gesso\OpenApiVersion;
-use Symfony\Component\Yaml\Yaml;
-use Throwable;
 
 use function array_key_exists;
 use function file_exists;
@@ -31,8 +28,8 @@ use function file_get_contents;
 use function getenv;
 use function implode;
 use function in_array;
+use function is_array;
 use function is_string;
-use function json_decode;
 use function parse_url;
 use function preg_match;
 use function realpath;
@@ -70,6 +67,9 @@ final class OpenApiSpecLoader
 
     /** @var array<string, array<string, mixed>> */
     private static array $cache = [];
+
+    /** @var array<string, array<string, stdClass>> */
+    private static array $objectEnums = [];
     private static ?ClientInterface $httpClient = null;
     private static ?RequestFactoryInterface $requestFactory = null;
     private static bool $allowRemoteRefs = false;
@@ -213,6 +213,7 @@ final class OpenApiSpecLoader
         // different remote-refs policy. Evict so the next load() runs
         // with the new client/flag combination.
         self::$cache = [];
+        self::$objectEnums = [];
     }
 
     /**
@@ -336,18 +337,16 @@ final class OpenApiSpecLoader
         }
 
         try {
-            $resolved = OpenApiDocumentShapeNormalizer::normalizeResolvedDocument(
-                OpenApiRefResolver::resolve(
-                    $decoded,
-                    $canonicalPath,
-                    self::$httpClient,
-                    self::$requestFactory,
-                    self::$allowRemoteRefs,
-                    self::$allowedRemoteRefHosts,
-                    self::$maxRemoteRefBytes,
-                    [self::getBasePath()],
-                ),
-            );
+            $resolved = self::normalize($specName, OpenApiRefResolver::resolve(
+                $decoded,
+                $canonicalPath,
+                self::$httpClient,
+                self::$requestFactory,
+                self::$allowRemoteRefs,
+                self::$allowedRemoteRefHosts,
+                self::$maxRemoteRefBytes,
+                [self::getBasePath()],
+            ));
         } catch (InvalidOpenApiSpecException $e) {
             // The resolver is stateless and therefore cannot know which spec
             // produced the throw. Re-wrap once so consumers (e.g. the coverage
@@ -370,37 +369,24 @@ final class OpenApiSpecLoader
     public static function clearCache(): void
     {
         self::$cache = [];
+        self::$objectEnums = [];
     }
 
     /**
-     * The local spec file as parsed, before `$ref` resolution and before
-     * {@see self::load()} collapses JSON objects into PHP arrays — the only
-     * view in which `enum: {"0": "red"}` or `enum: {}` is not a list. Null
-     * for a remote spec or an unreadable / unparseable file.
+     * `components.schemas` entries whose `enum` is a JSON object / YAML
+     * mapping — malformed, but {@see self::load()} collapses it into a list
+     * (`{"0": "red"}` to ["red"], `{}` to []). Recorded at load time after
+     * `$ref` resolution, so it covers referenced schemas and a cached spec.
      *
      * @internal Lets EnumDriftAsserter reject object-shaped `enum` keywords.
+     *
+     * @return array<string, stdClass> component name => the `enum` object
      */
-    public static function loadUnresolved(string $specName): ?stdClass
+    public static function objectShapedComponentEnums(string $specName): array
     {
-        if (isset(self::$remoteSpecs[$specName])) {
-            return null;
-        }
+        self::load($specName);
 
-        ['path' => $path, 'extension' => $extension] = self::resolveSpecFile($specName);
-        $content = file_get_contents($path);
-        if ($content === false) {
-            return null;
-        }
-
-        try {
-            $decoded = $extension === 'json'
-                ? json_decode($content, false, 512, JSON_THROW_ON_ERROR)
-                : Yaml::parse($content, Yaml::PARSE_OBJECT_FOR_MAP);
-        } catch (Throwable) {
-            return null;
-        }
-
-        return $decoded instanceof stdClass ? $decoded : null;
+        return self::$objectEnums[$specName] ?? [];
     }
 
     /**
@@ -415,6 +401,7 @@ final class OpenApiSpecLoader
         self::$enumBasePath = null;
         self::$stripPrefixes = [];
         self::$cache = [];
+        self::$objectEnums = [];
         self::$httpClient = null;
         self::$requestFactory = null;
         self::$allowRemoteRefs = false;
@@ -422,6 +409,25 @@ final class OpenApiSpecLoader
         self::$maxRemoteRefBytes = self::DEFAULT_MAX_REMOTE_REF_BYTES;
         self::$remoteSpecs = [];
         YamlAvailability::reset();
+    }
+
+    /**
+     * @param array<string, mixed> $resolved
+     *
+     * @return array<string, mixed>
+     */
+    private static function normalize(string $specName, array $resolved): array
+    {
+        $schemas = is_array($resolved['components'] ?? null) ? $resolved['components']['schemas'] ?? null : null;
+        $objectEnums = [];
+        foreach (is_array($schemas) ? $schemas : [] as $name => $schema) {
+            if (is_array($schema) && ($schema['enum'] ?? null) instanceof stdClass) {
+                $objectEnums[(string) $name] = $schema['enum'];
+            }
+        }
+        self::$objectEnums[$specName] = $objectEnums;
+
+        return OpenApiDocumentShapeNormalizer::normalizeResolvedDocument($resolved);
     }
 
     /**
@@ -524,7 +530,8 @@ final class OpenApiSpecLoader
         self::assertSupportedDocument($document->decoded, $specName);
 
         try {
-            return OpenApiDocumentShapeNormalizer::normalizeResolvedDocument(
+            return self::normalize(
+                $specName,
                 OpenApiRefResolver::resolve(
                     $document->decoded,
                     $document->canonicalIdentifier,
