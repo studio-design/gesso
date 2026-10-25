@@ -435,6 +435,10 @@ final class CoverageMergeCommand
 
             return self::EXIT_FAILURE;
         }
+        // Every selected path shares one run id. Unscoped files would merge
+        // into the next unscoped run, so only a scoped run is kept after a
+        // failed gate.
+        $scoped = CoverageSidecarReader::runIdOf($sidecarPaths[0] ?? '') !== null;
 
         // Issue #434: a shard that was cancelled, or that died before
         // ExecutionFinished, leaves neither a sidecar nor a failure marker —
@@ -642,11 +646,12 @@ final class CoverageMergeCommand
                 );
             }
 
-            if ($cleanup && !$this->cleanup($sidecarDir, $sidecarPaths)) {
+            $failed = $strictGated || $strictAdditionalPropertiesFailure || $coverageBaselineFile !== null;
+            if ($cleanup && !$this->cleanupOrKeep($sidecarDir, $sidecarPaths, $failed && $scoped)) {
                 return self::EXIT_FAILURE;
             }
 
-            return $strictGated || $strictAdditionalPropertiesFailure || $coverageBaselineFile !== null ? self::EXIT_FAILURE : self::EXIT_OK;
+            return $failed ? self::EXIT_FAILURE : self::EXIT_OK;
         }
 
         [$label, $render] = self::primaryRenderer($format, $consoleOutput);
@@ -699,22 +704,21 @@ final class CoverageMergeCommand
         // typo'd path, freeing disk for the write, or accepting the reported
         // regressions with `GESSO_BASELINE_GENERATE=1`. Deleting the
         // sidecars would make each of those cost a full parallel run.
-        $cleanupFailure = $cleanup &&
-            !$coverageBaselineFailure &&
-            !$this->cleanup($sidecarDir, $sidecarPaths);
-        if ($coverageBaselineFailure && $cleanup) {
-            $this->writeStderr(sprintf(
-                "[Gesso] Sidecars kept in %s so the merge can be retried without re-running the suite.\n",
-                $sidecarDir,
-            ));
-        }
-
-        return $writeFailures > 0 ||
+        //
+        // Issue #596: any failed gate keeps a scoped run too. Deleting it would
+        // leave an earlier run as the newest, and re-running this command
+        // would gate that stale run instead.
+        $gateFailure = $writeFailures > 0 ||
             $thresholdFailure ||
             $strictFailure ||
-            $strictAdditionalPropertiesFailure ||
-            $coverageBaselineFailure ||
-            $cleanupFailure
+            $strictAdditionalPropertiesFailure;
+        $cleanupFailure = $cleanup && !$this->cleanupOrKeep(
+            $sidecarDir,
+            $sidecarPaths,
+            $coverageBaselineFailure || ($gateFailure && $scoped),
+        );
+
+        return $gateFailure || $coverageBaselineFailure || $cleanupFailure
             ? self::EXIT_FAILURE
             : self::EXIT_OK;
     }
@@ -1271,6 +1275,24 @@ final class CoverageMergeCommand
         }
 
         return ['value' => $parsed, 'fatal' => false];
+    }
+
+    /**
+     * Keep the merged sidecars for a retry when `$keep`, else clean them up.
+     *
+     * @param list<string> $merged
+     */
+    private function cleanupOrKeep(string $sidecarDir, array $merged, bool $keep): bool
+    {
+        if (!$keep) {
+            return $this->cleanup($sidecarDir, $merged);
+        }
+        $this->writeStderr(sprintf(
+            "[Gesso] Sidecars kept in %s so the merge can be retried without re-running the suite.\n",
+            $sidecarDir,
+        ));
+
+        return true;
     }
 
     /**

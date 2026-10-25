@@ -230,6 +230,37 @@ class CoverageMergeCommandTest extends TestCase
     }
 
     #[Test]
+    public function a_failed_gate_keeps_the_run_so_a_rerun_does_not_fall_back_to_an_older_run(): void
+    {
+        // Run a covers 2/25 endpoints, the newer run b only 1/25.
+        touch($this->writeSidecar('1', 'GET', '/v1/pets', '200', 'a'), time() - 120);
+        touch($this->writeSidecar('2', 'POST', '/v1/pets', '201', 'a'), time() - 120);
+        $this->writeSidecar('1', 'GET', '/v1/pets', '200', 'b');
+
+        foreach (['first merge', 'rerun'] as $attempt) {
+            $stderr = '';
+            $exit = $this->runMerge(['min_endpoint_coverage' => 6.0, 'min_coverage_strict' => true, 'cleanup' => true], $stderr);
+
+            $this->assertSame(1, $exit, $attempt);
+            $this->assertStringContainsString('(run ids: a)', $stderr, $attempt);
+            $this->assertStringContainsString('Sidecars kept in', $stderr, $attempt);
+            $this->assertCount(1, glob($this->sidecarDir . '/*.b.json') ?: [], $attempt);
+        }
+    }
+
+    #[Test]
+    public function a_failed_gate_still_cleans_up_unscoped_sidecars(): void
+    {
+        $this->writeSidecar('1', 'GET', '/v1/pets', '200');
+
+        $stderr = '';
+        $exit = $this->runMerge(['min_endpoint_coverage' => 6.0, 'min_coverage_strict' => true, 'cleanup' => true], $stderr);
+
+        $this->assertSame(1, $exit);
+        $this->assertSame([], $this->sidecars(), 'unscoped leftovers would merge into the next run');
+    }
+
+    #[Test]
     public function parse_argv_reads_run_id(): void
     {
         $this->assertSame('ci-7', CoverageMergeCommand::parseArgv(['--run-id=ci-7'])['run_id'] ?? null);

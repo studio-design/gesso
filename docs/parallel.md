@@ -165,7 +165,9 @@ Pest `--parallel` worker is a direct child of it). `coverage:merge` selects one
 run — `--run-id`, then `GESSO_RUN_ID`, then the run that wrote the newest file —
 and applies the failure-marker check and `--expect-sidecars` to that run only.
 Files from other runs are named in one `[Gesso] NOTE` and are neither merged
-nor deleted; cleanup removes only what was merged. A failure marker without a
+nor deleted; cleanup removes only what was merged, and a failed gate keeps the
+selected run's files so re-running the merge gates the same run rather than
+falling back to an older one. A failure marker without a
 run id (written by a worker on an older release) cannot be attributed to a run,
 so it still fails every merge. A crashed or merge-less
 earlier run therefore no longer poisons the next merge, and the sidecar
