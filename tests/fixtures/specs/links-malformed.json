@@ -292,6 +292,42 @@
           }
         }
       }
+    },
+    "/list-shaped-names": {
+      "post": {
+        "operationId": "listShapedNames",
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            },
+            "links": {
+              "0": {
+                "operationId": "getThing",
+                "parameters": {
+                  "path.id": "$response.body#/id"
+                }
+              },
+              "1": {
+                "operationId": "getThing",
+                "parameters": {
+                  "path.id": "$response.body#/id"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   }
 }

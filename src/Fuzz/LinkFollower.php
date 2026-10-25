@@ -27,6 +27,7 @@ use function array_unique;
 use function array_values;
 use function count;
 use function explode;
+use function get_debug_type;
 use function implode;
 use function in_array;
 use function is_array;
@@ -115,14 +116,15 @@ final class LinkFollower
         $key = is_array($responses) ? SpecResponseKeyResolver::resolve((string) $status, $responses) : null;
         $response = $key === null ? null : $responses[$key];
         $links = is_array($response) && array_key_exists('links', $response) ? $response['links'] : [];
-        if (MalformedSpecNode::isMalformed($links)) {
+        // Name-keyed map: `{"0": …}` decodes to a PHP list, so only non-arrays are malformed.
+        if (!is_array($links)) {
             throw new RuntimeException(sprintf(
                 "Malformed 'links' on %s %s response %s in '%s' spec: expected object, got %s.",
                 $method,
                 $path,
                 (string) $key,
                 $this->specName,
-                MalformedSpecNode::describe($links),
+                get_debug_type($links),
             ));
         }
 
@@ -214,7 +216,7 @@ final class LinkFollower
         );
 
         $parameters = array_key_exists('parameters', $link) ? $link['parameters'] : [];
-        if (MalformedSpecNode::isMalformed($parameters)) {
+        if (!is_array($parameters)) {
             throw new RuntimeException(sprintf("Link '%s': 'parameters' must be an object.", $name));
         }
 
