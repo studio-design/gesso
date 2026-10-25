@@ -2042,7 +2042,9 @@ class RequestBodyValidatorTest extends TestCase
         // Exploded (the default) repeats the name per element; parse_str()
         // keeps only the last pair, so every element must come from the wire.
         $schema = ['type' => 'array', 'items' => ['type' => 'string', 'enum' => ['a', 'b']]];
-        foreach ([[], ['tags' => ['style' => 'form', 'explode' => true]]] as $encoding) {
+        // A `contentType` encodes each element, so it repeats the name too.
+        $encodings = [[], ['tags' => ['style' => 'form', 'explode' => true]], ['tags' => ['contentType' => 'text/plain']]];
+        foreach ($encodings as $encoding) {
             $invalid = $this->validateStyled('application/x-www-form-urlencoded', $encoding, 'tags=INVALID&tags=b', $schema);
             $this->assertStringContainsString('/tags/0', implode("\n", $invalid->errors));
 

@@ -325,8 +325,9 @@ final class FormBodyDecoder
 
     /**
      * Whether an array property is serialized as one pair per element:
-     * `style: form` with `explode` true or omitted. An explicit
-     * `contentType` without a style keeps the part a single value.
+     * `style: form` with `explode` true or omitted, or no style at all — a
+     * `contentType` then encodes each element, not the array (OAS 3.2
+     * Encoding By Name).
      *
      * @param null|array<string, mixed> $propertySchema
      * @param array<string, mixed> $partEncoding
@@ -340,11 +341,6 @@ final class FormBodyDecoder
 
         if ($type !== 'array') {
             return false;
-        }
-
-        if (!array_key_exists('style', $partEncoding) && !array_key_exists('explode', $partEncoding) &&
-            !array_key_exists('allowReserved', $partEncoding)) {
-            return !array_key_exists('contentType', $partEncoding);
         }
 
         $style = array_key_exists('style', $partEncoding) ? $partEncoding['style'] : 'form';
