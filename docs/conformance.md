@@ -25,23 +25,25 @@ package does not accept by design, and is not measured.
 | Document | OAS | Operations | Responses | Diagnosis |
 | --- | --- | ---: | ---: | --- |
 | `v3.0/api-with-examples` | 3.0.0 | 2 | 4 | clean |
-| `v3.0/callback-example` | 3.0.0 | 1 | 1 | clean |
+| `v3.0/callback-example` | 3.0.0 | 1 | 1 | `warning` — its callback reported as not validated |
 | `v3.0/link-example` | 3.0.0 | 6 | 6 | clean |
 | `v3.0/petstore` | 3.0.0 | 3 | 6 | clean |
 | `v3.0/petstore-expanded` | 3.0.0 | 4 | 8 | clean |
 | `v3.0/uspto` | 3.0.1 | 3 | 5 | clean |
 | `v3.1/non-oauth-scopes` | 3.1.0 | 1 | 0 | clean |
-| `v3.1/tictactoe` | 3.1.0 | 3 | 5 JSON / 6 YAML | `warning` — 3 security schemes reported as not enforced |
-| `v3.1/webhook-example` | 3.1.0 | 0 | 0 | clean; `webhooks`-only, nothing to enforce |
+| `v3.1/tictactoe` | 3.1.0 | 3 | 5 JSON / 6 YAML | `warning` — 3 security schemes and 2 `text/html` responses reported as not enforced; the YAML form adds a callback and a webhook |
+| `v3.1/webhook-example` | 3.1.0 | 0 | 0 | `warning` — its webhook reported as not validated |
 | `v3.2/3.2-query-example` | 3.2.0 | 1 | 1 | clean |
 | `v3.2/3.2-tags-example` | 3.2.0 | 4 | 0 | clean |
 
 Nothing here produces an error: `gesso doctor` exits `0` on all 22 files and
-reports `status: ok` for ten of the eleven documents. `tictactoe` is the
-exception at `status: warning`, from three `skipped` diagnostics — its HTTP
-Basic and OAuth2 schemes are recognized and resolved, then reported as not
-enforced rather than silently passed. "Clean" in the table above means no
-issue of any severity.
+reports `status: ok` for eight of the eleven documents. The other three are at
+`status: warning`, from `skipped` diagnostics only: `tictactoe`'s HTTP Basic and
+OAuth2 schemes and `text/html` error bodies, and the callbacks and webhooks in
+`callback-example`, `webhook-example`, and `tictactoe`'s YAML form, are
+recognized, then reported as not enforced rather than silently passed — the
+same parts runtime validation skips or never reaches. "Clean" in the table
+above means no issue of any severity.
 
 Recorded in `tests/fixtures/compatibility/v1-oas-example-documents.json` and
 asserted by `tests/Integration/Conformance/OasExampleDocumentTest.php`. Issues
@@ -54,10 +56,12 @@ Four things the table is deliberately not hiding:
 - **`webhook-example` yields zero operations.** The document describes only
   `webhooks`, which Gesso deliberately does not consult (see
   [supported features](supported-features.md#spec-features-not-consulted)). It
-  loads without complaint, and the zero is the honest signal — not a pass.
+  loads without error and reports the webhook as a skipped feature; the zero is
+  the honest signal — not a pass.
 - **`tictactoe` counts 5 responses as JSON and 6 as YAML.** That difference is
   upstream, not in the pipeline: the YAML form declares a `202` on
-  `POST /board/{row}/{column}` that the JSON form omits. Every other document
+  `POST /board/{row}/{column}` that the JSON form omits, plus a callback and a
+  webhook the JSON form does not have. Every other document
   is diagnosed identically in both serializations, and the test asserts that.
 - **The YAML forms are copied out of the corpus before they are read.** The
   corpus ships `petstore.json` and `petstore.yaml` side by side, and the loader

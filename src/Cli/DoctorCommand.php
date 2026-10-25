@@ -35,10 +35,13 @@ use Studio\Gesso\Spec\OpenApiOperationResolver;
 use Studio\Gesso\Spec\OpenApiSchemaConverter;
 use Studio\Gesso\Spec\OpenApiSchemaDialect;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
+use Studio\Gesso\Validation\Request\ParameterCollector;
 use Studio\Gesso\Validation\Request\SchemeKind;
 use Studio\Gesso\Validation\Request\SecurityValidator;
 use Studio\Gesso\Validation\Support\BodyStructureInspector;
+use Studio\Gesso\Validation\Support\ContentTypeMatcher;
 use Studio\Gesso\Validation\Support\DiscriminatorContext;
+use Studio\Gesso\Validation\Support\FormBodyDecoder;
 use Studio\Gesso\Validation\Support\MalformedSpecNode;
 use Symfony\Component\HttpClient\HttpClient;
 use Symfony\Component\HttpClient\Psr18Client;
@@ -393,6 +396,7 @@ final class DoctorCommand
             [$operations, $responses] = $this->inspectStructure($spec, $version, $label, $issues);
             $this->walkForSchemas($spec, $version, $dialect, new DiscriminatorContext($spec, true), null);
             $this->inspectSkippedFeatures($spec, $label, $acknowledgedSchemes, $issues);
+            $this->inspectWebhooks($spec, $label, $issues);
 
             $specResults[] = [
                 'path' => $path,
@@ -464,9 +468,12 @@ final class DoctorCommand
                     continue;
                 }
                 $operationCount++;
+                $requestStructureValid = true;
                 foreach (BodyStructureInspector::request($operation) as $defect) {
                     $issues[] = $this->malformedStructureIssue($label, $declared['method'], (string) $path, $defect['location'], $defect['node']);
+                    $requestStructureValid = false;
                 }
+                $this->inspectUnenforcedRequest($declared['method'], (string) $path, $pathItem, $operation, $requestStructureValid, $label, $issues);
                 if ($optional && !array_key_exists('responses', $operation)) {
                     continue;
                 }
@@ -493,6 +500,8 @@ final class DoctorCommand
                     }
                     if ($this->inspectResponseDefinition($response, $declared['method'], (string) $path, (string) $status, $label, $issues, $version === OpenApiVersion::V3_2)) {
                         $responseCount++;
+                        /** @var array<string, mixed> $response */
+                        $this->inspectUnenforcedContent($response['content'] ?? null, true, sprintf('%s %s response %s', $declared['method'], (string) $path, (string) $status), $label, $issues);
                     }
                 }
             }
@@ -541,6 +550,130 @@ final class DoctorCommand
         }
 
         return $valid;
+    }
+
+    /**
+     * Report the request-side parts runtime validation accepts without
+     * checking: cookie parameters, `content`-based parameters, and request
+     * media types it skips. Parameters are merged by the runtime collector so
+     * path-level overrides resolve exactly as they do during validation.
+     *
+     * @param array<string, mixed> $pathItem
+     * @param array<string, mixed> $operation
+     * @param list<DoctorIssue> $issues
+     */
+    private function inspectUnenforcedRequest(
+        string $method,
+        string $path,
+        array $pathItem,
+        array $operation,
+        bool $requestStructureValid,
+        string $label,
+        array &$issues,
+    ): void {
+        foreach (ParameterCollector::collect($method, $path, $pathItem, $operation)->parameters as $parameter) {
+            $location = sprintf('%s.%s', (string) $parameter['in'], (string) $parameter['name']);
+            if ($parameter['in'] === 'cookie') {
+                $issues[] = $this->issue(
+                    'skipped',
+                    'feature',
+                    $label,
+                    sprintf('Cookie parameter `%s` for %s %s is not validated.', $location, $method, $path),
+                    'Keep a separate test for the cookie until cookie parameters are supported.',
+                );
+            } elseif ($parameter['in'] !== 'querystring' && !isset($parameter['schema']) && isset($parameter['content'])) {
+                // Parameter validators read only `schema`; outside the 3.2
+                // querystring, a `content` map is never consulted.
+                $issues[] = $this->issue(
+                    'skipped',
+                    'feature',
+                    $label,
+                    sprintf('Parameter `%s` for %s %s is declared with `content`, which is not validated.', $location, $method, $path),
+                    'Declare the parameter with `schema`, or keep a separate test for it.',
+                );
+            }
+        }
+
+        $callbacks = $operation['callbacks'] ?? null;
+        foreach (is_array($callbacks) ? $callbacks : [] as $name => $_callback) {
+            $issues[] = $this->issue(
+                'skipped',
+                'feature',
+                $label,
+                sprintf('Callback `%s` on %s %s is not validated.', (string) $name, $method, $path),
+                null,
+            );
+        }
+
+        if ($requestStructureValid && is_array($operation['requestBody'] ?? null)) {
+            $this->inspectUnenforcedContent($operation['requestBody']['content'] ?? null, false, sprintf('%s %s request body', $method, $path), $label, $issues);
+        }
+    }
+
+    /**
+     * Mirror the media-type branches of `RequestBodyValidator::validate()` and
+     * `ResponseSchemaResolver::resolveResponseSchema()`: report each declared
+     * media type whose matching body the runtime returns as Skipped. Only
+     * called on content the structure checks accepted.
+     *
+     * @param list<DoctorIssue> $issues
+     */
+    private function inspectUnenforcedContent(mixed $content, bool $response, string $where, string $label, array &$issues): void
+    {
+        if (!is_array($content)) {
+            return;
+        }
+        /** @var array<string, mixed> $content */
+        $jsonKeys = ContentTypeMatcher::findJsonContentTypes($content);
+        foreach ($content as $mediaType => $mediaTypeSpec) {
+            if (!is_array($mediaTypeSpec)) {
+                continue;
+            }
+            $mediaType = (string) $mediaType;
+            $normalized = ContentTypeMatcher::normalizeMediaType($mediaType);
+            $hasSchema = isset($mediaTypeSpec['schema']);
+            $reason = null;
+            if (in_array($mediaType, $jsonKeys, true)) {
+                // A JSON key validates `schema`; `itemSchema` alone is skipped.
+                if (!$hasSchema && isset($mediaTypeSpec['itemSchema'])) {
+                    $reason = 'uses `itemSchema` streaming, which is not validated';
+                }
+            } elseif (isset($mediaTypeSpec['itemSchema'])) {
+                $reason = 'uses `itemSchema` streaming, which is not validated';
+            } elseif ($hasSchema) {
+                if ($response && $normalized === FormBodyDecoder::MULTIPART) {
+                    $reason = 'is a multipart response, which is not reassembled into parts and is not validated';
+                } elseif ($response ? $normalized !== FormBodyDecoder::URLENCODED : !FormBodyDecoder::isFormMediaType($normalized)) {
+                    $reason = 'declares a non-JSON schema, which the JSON Schema engine does not evaluate';
+                }
+            }
+            if ($reason !== null) {
+                $issues[] = $this->issue(
+                    'skipped',
+                    'feature',
+                    $label,
+                    sprintf('Media type `%s` for %s %s; matching bodies are reported as Skipped.', $mediaType, $where, $reason),
+                    'Keep a separate test for this body.',
+                );
+            }
+        }
+    }
+
+    /**
+     * Root `webhooks` are not addressable by request path, so runtime
+     * validation never reaches them.
+     *
+     * @param array<string, mixed> $spec
+     * @param list<DoctorIssue> $issues
+     */
+    private function inspectWebhooks(array $spec, string $label, array &$issues): void
+    {
+        if (!is_array($spec['webhooks'] ?? null)) {
+            return;
+        }
+        foreach ($spec['webhooks'] as $name => $_pathItem) {
+            $issues[] = $this->issue('skipped', 'feature', $label, sprintf('Webhook `%s` is not validated.', (string) $name), null);
+        }
     }
 
     /** @return DoctorIssue */
