@@ -109,8 +109,16 @@ Detection looks at each property schema's own top-level `readOnly` / `writeOnly`
 ## HTTP methods
 The PHPUnit coverage report counts `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, OpenAPI 3.2 `QUERY`, and every custom method declared under `additionalOperations`. Laravel, Symfony, Pest, and the fuzz explorer accept the six named enum methods including `QUERY`; arbitrary custom tokens are supported by the direct validators, PSR-7 adapter, and coverage tracker. Whole-spec exploration enumerates `HEAD`, `OPTIONS`, `TRACE`, and case-sensitive custom methods but records them as explicit skips because it cannot dispatch them through the enum-based generated-case API. Direct validator and PSR-7 adapter calls can still resolve them.
 
+## Response links
+
+Response `links` are consulted only by whole-spec exploration, and only when a
+plan opts in with `followLinksUsing()`: explicit links drive seeded
+multi-step chains checked for `use_after_free` and
+`ensure_resource_availability`. Request and response validation ignore them.
+See [Follow response links](fuzzing.md#follow-response-links).
+
 ## Spec features not consulted
-Webhooks (3.1+), Callbacks, Response `Links`, Server URL templating (`servers` with `variables` — never used to match a request path, read only to explain a failed match; see [Server base paths are not stripped automatically](setup.md#server-base-paths-are-not-stripped-automatically)), Examples (`example` / `examples`, including 3.2 `dataValue` / `serializedValue` — not used for fuzzing or validation), 3.2 tag hierarchy (`summary` / `parent` / `kind`), `externalDocs`, and vendor extensions (`x-*` keys, ignored harmlessly). OAuth2 device authorization and other OAuth/OpenID schemes remain on the existing `[security]` warning path.
+Webhooks (3.1+), Callbacks, Server URL templating (`servers` with `variables` — never used to match a request path, read only to explain a failed match; see [Server base paths are not stripped automatically](setup.md#server-base-paths-are-not-stripped-automatically)), Examples (`example` / `examples`, including 3.2 `dataValue` / `serializedValue` — not used for fuzzing or validation), 3.2 tag hierarchy (`summary` / `parent` / `kind`), `externalDocs`, and vendor extensions (`x-*` keys, ignored harmlessly). OAuth2 device authorization and other OAuth/OpenID schemes remain on the existing `[security]` warning path.
 
 ## Diagnostic channels (`E_USER_WARNING` and `E_USER_DEPRECATED`)
 

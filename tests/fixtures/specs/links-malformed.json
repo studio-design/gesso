@@ -1,0 +1,386 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Malformed links",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/both": {
+      "post": {
+        "operationId": "both",
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            },
+            "links": {
+              "Both": {
+                "operationId": "getThing",
+                "operationRef": "#/paths/~1things~1{id}/get"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/missing-value": {
+      "post": {
+        "operationId": "missingValue",
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            },
+            "links": {
+              "Missing": {
+                "operationId": "getThing",
+                "parameters": {
+                  "path.id": "$response.body#/missing"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/unknown": {
+      "post": {
+        "operationId": "unknown",
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            },
+            "links": {
+              "Unknown": {
+                "operationId": "nope"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/external": {
+      "post": {
+        "operationId": "external",
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            },
+            "links": {
+              "External": {
+                "operationRef": "https://example.test/spec.json#/paths/~1things/get"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/options": {
+      "post": {
+        "operationId": "options",
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            },
+            "links": {
+              "Options": {
+                "operationId": "optionsThings"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ambiguous": {
+      "post": {
+        "operationId": "ambiguous",
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            },
+            "links": {
+              "Ambiguous": {
+                "operationId": "getThing",
+                "parameters": {
+                  "id": "$response.body#/id"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/things/{id}": {
+      "get": {
+        "operationId": "getThing",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "id",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Thing"
+          }
+        }
+      }
+    },
+    "/things": {
+      "options": {
+        "operationId": "optionsThings",
+        "responses": {
+          "204": {
+            "description": "Options"
+          }
+        }
+      }
+    },
+    "/null-links": {
+      "post": {
+        "operationId": "nullLinks",
+        "responses": {
+          "201": {
+            "description": "Created",
+            "links": null
+          }
+        }
+      }
+    },
+    "/numeric": {
+      "post": {
+        "operationId": "numericName",
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            },
+            "links": {
+              "123": {
+                "operationId": "getThing",
+                "parameters": {
+                  "path.id": "$response.body#/id"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/null-body": {
+      "post": {
+        "operationId": "nullBody",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            },
+            "links": {
+              "Echo": {
+                "operationId": "getThing",
+                "parameters": {
+                  "path.id": "$response.body#/id"
+                },
+                "requestBody": "$request.body"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/list-shaped-names": {
+      "post": {
+        "operationId": "listShapedNames",
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            },
+            "links": {
+              "0": {
+                "operationId": "getThing",
+                "parameters": {
+                  "path.id": "$response.body#/id"
+                }
+              },
+              "1": {
+                "operationId": "getThing",
+                "parameters": {
+                  "path.id": "$response.body#/id"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/list-links": {
+      "post": {
+        "operationId": "listLinks",
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            },
+            "links": [
+              {
+                "operationId": "getThing",
+                "parameters": {
+                  "path.id": "$response.body#/id"
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    "/empty-links": {
+      "post": {
+        "operationId": "emptyLinks",
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            },
+            "links": {}
+          }
+        }
+      }
+    }
+  }
+}

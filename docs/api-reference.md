@@ -312,6 +312,12 @@ unless the operation only offers a `+json` or `application/x-www-form-urlencoded
 schema); `bodyAsString()` serializes the body in that media type, and
 `bodyAsFormFields()` returns the form field map behind it.
 
+Call `followLinksUsing(fn ($dispatched) => $psr7Response, maxDepth: 2)` to
+follow explicit response `links` from each valid case into seeded follow-up
+requests, checked for the `LinkChainCheck` cases `use_after_free` and
+`ensure_resource_availability`; `SpecExplorationSummary::$followedLinks`
+counts them. See [Follow response links](fuzzing.md#follow-response-links).
+
 Call `negativeCases([4])` to switch a whole-spec plan to targeted invalid
 inputs and carry explicit expected response classes on each `ExploredCase`.
 For one operation, use

@@ -38,6 +38,20 @@ final class SpecDocumentDecoderTest extends TestCase
     }
 
     #[Test]
+    public function array_valued_links_keyword_is_tagged_as_an_object(): void
+    {
+        $decoded = SpecDocumentDecoder::decodeJson(
+            '{"list":{"links":[{"operationId":"a"}]},"map":{"links":{"0":{"operationId":"a"}}},"schema":{"properties":{"links":[1]}}}',
+            'inline JSON',
+        );
+
+        $this->assertInstanceOf(stdClass::class, $decoded['list']['links']);
+        $this->assertSame([['operationId' => 'a']], $decoded['map']['links']);
+        // A property named `links` is a Schema Object position, not the Links map.
+        $this->assertSame([1], $decoded['schema']['properties']['links']);
+    }
+
+    #[Test]
     public function object_valued_enum_keyword_keeps_its_object_shape(): void
     {
         $decoded = SpecDocumentDecoder::decodeJson(
