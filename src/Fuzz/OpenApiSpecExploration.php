@@ -274,6 +274,7 @@ final class OpenApiSpecExploration
     ): void {
         $followUps = [];
         foreach ($follower->links($parent->method->value, $parent->matchedPath, $parentResponse->statusCode) as $name => $link) {
+            $name = (string) $name;
             $target = $follower->target($name, $link);
             $operation = $this->operationFromDeclaration($target['path'], $target['method'], $target['operation']);
             if (!$this->allowsLinkTarget($operation)) {

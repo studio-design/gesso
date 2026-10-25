@@ -14,6 +14,7 @@ use Studio\Gesso\Internal\RuntimeExpressionContext;
 use Studio\Gesso\Internal\RuntimeExpressionEvaluator;
 use Studio\Gesso\Internal\RuntimeExpressionException;
 use Studio\Gesso\Spec\OpenApiRefResolver;
+use Studio\Gesso\Validation\Support\ContentTypeMatcher;
 use Studio\Gesso\Validation\Support\HeaderNormalizer;
 use Studio\Gesso\Validation\Support\MalformedSpecNode;
 use Studio\Gesso\Validation\Support\SpecResponseKeyResolver;
@@ -69,7 +70,8 @@ final class LinkFollower
      */
     public static function check(HttpMethod $parentMethod, int $parentStatus, string $parentPath, HttpMethod $childMethod, int $childStatus, string $childPath): ?LinkChainCheck
     {
-        $parentSucceeded = $parentStatus >= 200 && $parentStatus < 300;
+        // 202 Accepted only queues the work (RFC 9110 §15.3.3), so an immediate read-back proves nothing.
+        $parentSucceeded = $parentStatus >= 200 && $parentStatus < 300 && $parentStatus !== 202;
         if (!$parentSucceeded || $childMethod !== HttpMethod::GET) {
             return null;
         }
@@ -105,7 +107,7 @@ final class LinkFollower
     /**
      * The `links` declared on the response `$status` of an operation.
      *
-     * @return array<string, array<string, mixed>> link name → Link Object
+     * @return array<array-key, array<string, mixed>> link name → Link Object; a numeric name is an int key
      */
     public function links(string $method, string $path, int $status): array
     {
@@ -131,7 +133,7 @@ final class LinkFollower
             }
 
             /** @var array<string, mixed> $link */
-            $resolved[(string) $name] = $link;
+            $resolved[$name] = $link;
         }
 
         return $resolved;
@@ -207,7 +209,7 @@ final class LinkFollower
             requestHeaders: HeaderNormalizer::normalize($parent->headers),
             requestQuery: $parent->query,
             requestPath: $parent->pathParams,
-            requestBody: $parent->body === null ? DecodedBody::absent() : DecodedBody::present($parent->body),
+            requestBody: $this->sendsBody($parent) ? DecodedBody::present($parent->body) : DecodedBody::absent(),
             response: $response,
         );
 
@@ -255,6 +257,30 @@ final class LinkFollower
         }
 
         return $headers;
+    }
+
+    /**
+     * A null body is the JSON `null` when the operation declares a media type
+     * the explorer synthesized it for; otherwise the request carried no body.
+     */
+    private function sendsBody(ExploredCase $case): bool
+    {
+        if ($case->body !== null) {
+            return true;
+        }
+
+        $content = $this->operation($case->method->value, $case->matchedPath)['operation']['requestBody']['content'] ?? null;
+        if (!is_array($content)) {
+            return false;
+        }
+
+        foreach ($content as $mediaType => $entry) {
+            if (is_array($entry) && is_array($entry['schema'] ?? null) && ContentTypeMatcher::normalizeMediaType((string) $mediaType) === ContentTypeMatcher::normalizeMediaType($case->contentType)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

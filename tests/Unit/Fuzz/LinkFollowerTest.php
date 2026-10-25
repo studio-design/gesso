@@ -93,6 +93,8 @@ final class LinkFollowerTest extends TestCase
         $this->assertSame(LinkChainCheck::EnsureResourceAvailability, LinkFollower::check(HttpMethod::PUT, 200, '/pets/1', HttpMethod::GET, 410, '/pets/1'));
         $this->assertNull(LinkFollower::check(HttpMethod::POST, 201, '/pets', HttpMethod::DELETE, 404, '/pets/1'));
         $this->assertNull(LinkFollower::check(HttpMethod::POST, 400, '/pets', HttpMethod::GET, 404, '/pets/1'));
+        $this->assertNull(LinkFollower::check(HttpMethod::POST, 202, '/pets', HttpMethod::GET, 404, '/pets/1'), '202 Accepted has not finished creating');
+        $this->assertNull(LinkFollower::check(HttpMethod::DELETE, 202, '/pets/1', HttpMethod::GET, 200, '/pets/1'), '202 Accepted has not finished deleting');
     }
 
     /**

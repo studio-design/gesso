@@ -306,6 +306,9 @@ Each (parent, follow-up) pair is checked:
 | `use_after_free` | a 2xx `DELETE` is followed through a link by a 2xx `GET` of the same request path |
 | `ensure_resource_availability` | a 2xx `POST`/`PUT`/`PATCH` is followed through a link by a `404`/`410` `GET` |
 
+A `202 Accepted` parent is never checked: it only queues the work, so an
+immediate read-back proves nothing.
+
 A violation throws immediately with the ordered chain (`1. POST /pets → 201
 (case 0, operation seed …)`, `2. [GetPet] GET /pets/1 → 404`), the replay call
 for the root case, and a curl command for the last request. Chains are reported,

@@ -221,6 +221,77 @@
           }
         }
       }
+    },
+    "/numeric": {
+      "post": {
+        "operationId": "numericName",
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            },
+            "links": {
+              "123": {
+                "operationId": "getThing",
+                "parameters": {
+                  "path.id": "$response.body#/id"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/null-body": {
+      "post": {
+        "operationId": "nullBody",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            },
+            "links": {
+              "Echo": {
+                "operationId": "getThing",
+                "parameters": {
+                  "path.id": "$response.body#/id"
+                },
+                "requestBody": "$request.body"
+              }
+            }
+          }
+        }
+      }
     }
   }
 }

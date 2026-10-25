@@ -205,6 +205,20 @@ final class OpenApiSpecExplorationLinksTest extends TestCase
     }
 
     #[Test]
+    public function numeric_link_names_and_json_null_request_bodies_are_followed(): void
+    {
+        $summary = OpenApiSpecExplorer::explore('links-malformed', 1, 7)
+            ->includeOperations(['numericName', 'nullBody'])
+            ->dispatchUsing(fn(ExploredCase $case): ResponseInterface => $this->record($case, $case->method->value === 'POST'
+                ? new Response(201, ['Content-Type' => 'application/json'], '{"id": 1}')
+                : new Response(200)))
+            ->followLinksUsing(static fn(ResponseInterface $response): ResponseInterface => $response)
+            ->assertResponses();
+
+        $this->assertSame(2, $summary->followedLinks);
+    }
+
+    #[Test]
     public function max_depth_must_be_positive(): void
     {
         $this->expectException(InvalidArgumentException::class);
