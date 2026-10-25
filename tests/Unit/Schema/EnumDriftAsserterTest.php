@@ -104,15 +104,17 @@ class EnumDriftAsserterTest extends TestCase
     }
 
     /**
-     * @return iterable<string, array{class-string, string}>
+     * @return iterable<string, array{class-string, string, list<string>}>
      */
     public static function provideMatched_component_with_a_non_list_enum_throws_enum_key_not_arrayCases(): iterable
     {
-        yield 'scalar' => [Broken::class, 'Broken'];
-        yield 'object' => [Keyed::class, 'Keyed'];
-        // The loader collapses these two objects into lists (["red"], []).
-        yield 'numeric-keyed object' => [NumericKeyed::class, 'NumericKeyed'];
-        yield 'empty object' => [EmptyKeyed::class, 'EmptyKeyed'];
+        yield 'scalar' => [Broken::class, 'Broken', self::COMPONENT_SPECS];
+        yield 'object' => [Keyed::class, 'Keyed', self::COMPONENT_SPECS];
+        // The loader collapses these objects into lists (["red"], []).
+        yield 'numeric-keyed object' => [NumericKeyed::class, 'NumericKeyed', self::COMPONENT_SPECS];
+        yield 'empty object' => [EmptyKeyed::class, 'EmptyKeyed', self::COMPONENT_SPECS];
+        yield 'yaml numeric-keyed mapping' => [NumericKeyed::class, 'NumericKeyed', ['enum-drift/components-yaml']];
+        yield 'yaml empty mapping' => [EmptyKeyed::class, 'EmptyKeyed', ['enum-drift/components-yaml']];
     }
 
     /**
@@ -930,10 +932,13 @@ class EnumDriftAsserterTest extends TestCase
      */
     #[Test]
     #[DataProvider('provideMatched_component_with_a_non_list_enum_throws_enum_key_not_arrayCases')]
-    public function matched_component_with_a_non_list_enum_throws_enum_key_not_array(string $fqcn, string $component): void
+    /**
+     * @param list<string> $specNames
+     */
+    public function matched_component_with_a_non_list_enum_throws_enum_key_not_array(string $fqcn, string $component, array $specNames): void
     {
         try {
-            EnumDriftAsserter::detectAll([$fqcn], self::COMPONENT_SPECS, skipUnbound: true);
+            EnumDriftAsserter::detectAll([$fqcn], $specNames, skipUnbound: true);
             $this->fail('expected EnumBindingException');
         } catch (EnumBindingException $e) {
             $this->assertSame(EnumBindingReason::EnumKeyNotArray, $e->reason);
