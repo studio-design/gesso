@@ -121,6 +121,20 @@ final class RuntimeExpressionTest extends TestCase
     }
 
     #[Test]
+    public function parse_embedded_keeps_braces_inside_json_pointers(): void
+    {
+        $chunks = RuntimeExpression::parseEmbedded('x-{$response.body#/a{b}}-{$url}');
+
+        $this->assertCount(4, $chunks);
+        $this->assertSame('x-', $chunks[0]);
+        $this->assertInstanceOf(RuntimeExpression::class, $chunks[1]);
+        $this->assertSame('/a{b}', $chunks[1]->pointer);
+        $this->assertSame('-', $chunks[2]);
+        $this->assertInstanceOf(RuntimeExpression::class, $chunks[3]);
+        $this->assertSame(RuntimeExpressionFamily::Url, $chunks[3]->family);
+    }
+
+    #[Test]
     #[DataProvider('provideParse_embedded_rejects_stray_bracesCases')]
     public function parse_embedded_rejects_stray_braces(string $template): void
     {

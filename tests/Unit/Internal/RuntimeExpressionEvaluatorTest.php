@@ -140,6 +140,7 @@ final class RuntimeExpressionEvaluatorTest extends TestCase
         $this->assertSame('id-3', RuntimeExpressionEvaluator::evaluateValue('id-{$response.body#/count}', $context));
         $this->assertSame('$3', RuntimeExpressionEvaluator::evaluateValue('${$response.body#/count}', $context));
         $this->assertSame(42, RuntimeExpressionEvaluator::evaluateValue('$response.body#/a{b}', $context));
+        $this->assertSame('x-42', RuntimeExpressionEvaluator::evaluateValue('x-{$response.body#/a{b}}', $context));
     }
 
     private function context(): RuntimeExpressionContext
