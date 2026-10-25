@@ -122,7 +122,7 @@ final class OpenApiPathMatcher
                     }
 
                     // A value ends at the first occurrence of the literal that
-                    // follows it, as in Symfony/Laravel routing: `{name}.{ext}`
+                    // follows it (Symfony/Laravel give the same split for separators): `{name}.{ext}`
                     // splits `a.tar.gz` into `a` and `tar.gz`. The possessive
                     // quantifier keeps matching linear — unbounded backtracking
                     // across several captures could exhaust PCRE's limit and
