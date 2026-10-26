@@ -11,6 +11,7 @@ use PHPUnit\Framework\Attributes\IgnoreDeprecations;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use PHPUnit\Runner\Extension\ParameterCollection;
+use Studio\Gesso\Config\GessoConfig;
 use Studio\Gesso\Coverage\InvalidCoverageOutputPathException;
 use Studio\Gesso\Coverage\InvalidThresholdConfigurationException;
 use Studio\Gesso\Coverage\SdkExerciseCoverageTracker;
@@ -36,11 +37,13 @@ use Studio\Gesso\Validation\Support\DiscriminatorEnforcement;
 use function chmod;
 use function fclose;
 use function file_get_contents;
+use function file_put_contents;
 use function fopen;
 use function getcwd;
 use function getenv;
 use function is_writable;
 use function mkdir;
+use function preg_match;
 use function putenv;
 use function restore_error_handler;
 use function rewind;
@@ -817,6 +820,17 @@ class OpenApiCoverageExtensionTest extends TestCase
             $this->fail('Expected EnumBindingException');
         } catch (EnumBindingException $e) {
             $this->assertSame(EnumBindingReason::NoNamespacesConfigured, $e->reason);
+        }
+
+        // The suggested gesso.php snippet must load as written.
+        $this->assertSame(1, preg_match('/`(\'enum_drift\' => [^`]+)`/', $this->readStderr(), $example));
+        $config = tempnam(sys_get_temp_dir(), 'gesso-enum-hint-') . '.php';
+        file_put_contents($config, "<?php\nreturn [{$example[1]}];\n");
+
+        try {
+            $this->assertSame(['App\\Enums\\'], GessoConfig::load($config)->strings('enum_drift.scan_namespaces'));
+        } finally {
+            unlink($config);
         }
     }
 

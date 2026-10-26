@@ -69,7 +69,7 @@ enum StrictRequiredPerCallMode: string
                 . 'warn-only by design (see docs/strict-required.md "Per-call mode" → '
                 . '"Why no `fail` mode?"). For hard failures on per-call drift use '
                 . "phpunit.xml's failOnWarning=\"true\". For an aggregate fail-gate "
-                . 'use the run-level `strict_required=fail`.',
+                . 'use the run-level `strict.required.run = fail` in gesso.php.',
         ]) ?? self::Off;
     }
 
