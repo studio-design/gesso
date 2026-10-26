@@ -10,7 +10,7 @@ namespace Studio\Gesso\Internal;
  * parser tell a malformed expression (`$foo`) apart from a recognised one
  * that the current caller cannot evaluate (`$workflows.*`).
  *
- * @internal Runtime-expression plumbing shared by Links exploration and the Arazzo runner; not public API.
+ * @internal Runtime-expression plumbing for Links exploration; not public API.
  */
 enum RuntimeExpressionFamily: string
 {

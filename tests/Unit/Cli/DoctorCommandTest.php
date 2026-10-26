@@ -6,6 +6,7 @@ namespace Studio\Gesso\Tests\Unit\Cli;
 
 use const JSON_THROW_ON_ERROR;
 use const PHP_BINARY;
+use const SORT_REGULAR;
 
 use GuzzleHttp\Psr7\HttpFactory;
 use InvalidArgumentException;
@@ -15,14 +16,21 @@ use ReflectionMethod;
 use Studio\Gesso\Cli\DoctorCommand;
 use Studio\Gesso\Config\GessoConfig;
 use Studio\Gesso\DecodedBody;
+use Studio\Gesso\OpenApiRequestValidator;
+use Studio\Gesso\OpenApiResponseValidator;
+use Studio\Gesso\OpenApiValidationResult;
 use Studio\Gesso\OpenApiVersion;
 use Studio\Gesso\Spec\OpenApiPathMatcher;
+use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Tests\Helpers\FakeHttpClient;
 use Studio\Gesso\Validation\Request\RequestBodyValidator;
+use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 use Studio\Gesso\Validation\Support\SchemaValidatorRunner;
 
 use function array_column;
 use function array_filter;
+use function array_map;
+use function array_unique;
 use function array_values;
 use function chdir;
 use function explode;
@@ -62,6 +70,7 @@ class DoctorCommandTest extends TestCase
 
     protected function tearDown(): void
     {
+        OpenApiSpecLoader::reset();
         foreach (glob($this->workDir . '/*') ?: [] as $path) {
             @unlink($path);
         }
@@ -549,6 +558,38 @@ class DoctorCommandTest extends TestCase
     }
 
     #[Test]
+    public function reserved_header_parameters_are_ignored_by_doctor_and_runtime_alike(): void
+    {
+        // OAS 3.0/3.1/3.2: an in:header `Accept` / `Content-Type` /
+        // `Authorization` parameter definition "SHALL be ignored" — even one
+        // with a malformed schema. The doctor must not call such a spec
+        // compatible while the runtime fails every request to the operation.
+        $spec = $this->writeSpec('reserved-headers.json', (string) json_encode([
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'Test', 'version' => '1'],
+            'paths' => ['/pets' => ['get' => [
+                'parameters' => [
+                    ['name' => 'authorization', 'in' => 'header', 'required' => true, 'schema' => 'not-a-schema'],
+                    ['name' => 'ACCEPT', 'in' => 'header', 'required' => true, 'schema' => ['type' => 'integer']],
+                ],
+                'responses' => ['200' => ['description' => 'ok']],
+            ]]],
+        ], JSON_THROW_ON_ERROR));
+
+        try {
+            $report = $this->runJsonDoctor($spec, $exit);
+            OpenApiSpecLoader::configure($this->workDir);
+            $result = (new OpenApiRequestValidator())->validate('reserved-headers', 'GET', '/pets', [], [], null, null);
+        } finally {
+            OpenApiSpecLoader::reset();
+        }
+
+        $this->assertSame(DoctorCommand::EXIT_OK, $exit);
+        $this->assertSame([], $report['issues']);
+        $this->assertTrue($result->isValid(), $result->errorMessage());
+    }
+
+    #[Test]
     public function acknowledging_an_uppercase_bearer_scheme_warns_without_contradicting_skipped_output(): void
     {
         // The acknowledged rot check already classifies via the runtime rules,
@@ -878,7 +919,9 @@ class DoctorCommandTest extends TestCase
             $report = $this->runJsonDoctor($spec, $exit);
 
             $this->assertSame(DoctorCommand::EXIT_OK, $exit, "case {$index}");
-            $this->assertSame([], $report['issues'], "case {$index}");
+            // The webhook itself is reported as a skipped feature, never as a
+            // structure error.
+            $this->assertNotContains('error', array_column($report['issues'], 'severity'), "case {$index}");
             $this->assertSame($expectedOperations, $report['summary']['operations'], "case {$index}");
             $this->assertSame(0, $report['summary']['responses'], "case {$index}");
         }
@@ -1160,6 +1203,219 @@ class DoctorCommandTest extends TestCase
 
         $v31 = $this->runJsonDoctor($fixtures . 'form-response.json', $exit);
         $this->assertNotContains('structure', array_column($v31['issues'], 'category'));
+    }
+
+    #[Test]
+    public function reports_a_cookie_parameter_runtime_validation_does_not_check(): void
+    {
+        $parameter = ['name' => 'session', 'in' => 'cookie', 'required' => true, 'schema' => ['type' => 'integer']];
+        $this->assertSkippedFeature($this->operationSpec(['parameters' => [$parameter]]), ['cookie.session', 'GET /pets']);
+
+        // Runtime accepts the request without the required cookie.
+        $result = (new OpenApiRequestValidator())->validateWithoutRecording('parity', 'GET', '/pets', [], [], null);
+        $this->assertTrue($result->isValid() && !$result->isSkipped());
+    }
+
+    #[Test]
+    public function reports_a_parameter_declared_with_content_outside_the_querystring(): void
+    {
+        // A path-level parameter is merged into the operation as at runtime.
+        $parameter = ['name' => 'filter', 'in' => 'query', 'content' => ['application/json' => ['schema' => ['type' => 'object']]]];
+        $this->assertSkippedFeature(
+            $this->operationSpec([], pathParameters: [$parameter]),
+            ['query.filter', 'GET /pets', '`content`'],
+        );
+
+        $result = (new OpenApiRequestValidator())->validateWithoutRecording('parity', 'GET', '/pets', ['filter' => 'not-json'], [], null);
+        $this->assertTrue($result->isValid() && !$result->isSkipped());
+    }
+
+    #[Test]
+    public function reports_an_item_schema_streaming_response(): void
+    {
+        $this->assertSkippedFeature(
+            $this->responseSpec(['text/event-stream' => ['itemSchema' => ['type' => 'object']]], '3.2.0'),
+            ['text/event-stream', 'GET /pets response 200', 'itemSchema'],
+        );
+
+        $this->assertTrue($this->runtimeResponse('data: x', 'text/event-stream')->isSkipped());
+    }
+
+    #[Test]
+    public function reports_an_item_schema_streaming_request_body(): void
+    {
+        $operation = ['requestBody' => ['content' => ['application/jsonl' => ['itemSchema' => ['type' => 'object']]]]];
+        $this->assertSkippedFeature($this->operationSpec($operation, '3.2.0', 'post'), ['application/jsonl', 'POST /pets request body', 'itemSchema']);
+
+        $result = (new OpenApiRequestValidator())->validateWithoutRecording('parity', 'POST', '/pets', [], [], '1', 'application/jsonl');
+        $this->assertTrue($result->isSkipped());
+    }
+
+    #[Test]
+    public function reports_a_json_media_type_key_with_parameters(): void
+    {
+        $schema = ['type' => 'object', 'required' => ['id']];
+        $this->assertSkippedFeature(
+            $this->responseSpec(['application/json; charset=utf-8' => ['schema' => $schema]]),
+            ['application/json; charset=utf-8', 'GET /pets response 200', 'media-type parameters'],
+        );
+        $this->assertTrue($this->runtimeResponse('{}', 'application/json')->isSkipped());
+
+        $operation = ['requestBody' => ['content' => ['application/json; charset=utf-8' => ['schema' => $schema]]]];
+        $this->assertSkippedFeature(
+            $this->operationSpec($operation, method: 'post'),
+            ['application/json; charset=utf-8', 'POST /pets request body', 'media-type parameters'],
+        );
+        $result = (new OpenApiRequestValidator())->validateWithoutRecording('parity', 'POST', '/pets', [], [], '{}', 'application/json');
+        $this->assertTrue($result->isValid());
+    }
+
+    #[Test]
+    public function reports_a_non_json_response_schema(): void
+    {
+        $this->assertSkippedFeature(
+            $this->responseSpec(['application/xml' => ['schema' => ['type' => 'object']]]),
+            ['application/xml', 'GET /pets response 200', 'non-JSON schema'],
+        );
+
+        $this->assertTrue($this->runtimeResponse('<pet/>', 'application/xml')->isSkipped());
+    }
+
+    #[Test]
+    public function reports_the_non_json_bodies_an_application_range_matches(): void
+    {
+        $this->assertSkippedFeature(
+            $this->responseSpec(['application/*' => ['schema' => ['type' => 'object']]]),
+            ['application/*', 'GET /pets response 200', 'non-JSON body'],
+        );
+
+        $this->assertTrue($this->runtimeResponse('<pet/>', 'application/xml')->isSkipped());
+        $this->assertFalse($this->runtimeResponse('[]', 'application/json')->isValid());
+    }
+
+    #[Test]
+    public function reports_a_non_json_request_body_schema(): void
+    {
+        $operation = ['requestBody' => ['content' => ['text/plain' => ['schema' => ['type' => 'string']]]]];
+        $this->assertSkippedFeature($this->operationSpec($operation, method: 'post'), ['text/plain', 'POST /pets request body', 'non-JSON schema']);
+
+        $result = (new OpenApiRequestValidator())->validateWithoutRecording('parity', 'POST', '/pets', [], [], 'hello', 'text/plain');
+        $this->assertTrue($result->isSkipped());
+    }
+
+    #[Test]
+    public function reports_a_multipart_response(): void
+    {
+        $this->assertSkippedFeature(
+            $this->responseSpec(['multipart/form-data' => ['schema' => ['type' => 'object']]]),
+            ['multipart/form-data', 'GET /pets response 200', 'multipart response'],
+        );
+
+        $this->assertTrue($this->runtimeResponse('--b--', 'multipart/form-data; boundary=b')->isSkipped());
+    }
+
+    #[Test]
+    public function reports_webhooks_and_callbacks_runtime_validation_never_reaches(): void
+    {
+        $spec = $this->operationSpec(['callbacks' => ['onEvent' => ['{$request.body#/url}' => [
+            'post' => ['responses' => ['200' => ['description' => 'ok']]],
+        ]]]]);
+        $spec['webhooks'] = ['newPet' => ['post' => ['responses' => ['200' => ['description' => 'ok']]]]];
+
+        $messages = $this->assertSkippedFeature($spec, ['onEvent', 'GET /pets'], count: 2);
+        $this->assertStringContainsString('newPet', $messages[1]);
+    }
+
+    #[Test]
+    public function enforced_parameters_and_media_types_add_no_diagnostics(): void
+    {
+        $object = ['type' => 'object'];
+        $spec = $this->operationSpec([
+            'parameters' => [['name' => 'limit', 'in' => 'query', 'schema' => ['type' => 'integer']]],
+            'requestBody' => ['content' => [
+                'application/json' => ['schema' => $object],
+                'multipart/form-data' => ['schema' => $object],
+                'application/x-www-form-urlencoded' => ['schema' => $object],
+                'application/octet-stream' => [],
+            ]],
+            'responses' => ['200' => ['description' => 'ok', 'content' => [
+                'application/json' => ['schema' => $object, 'itemSchema' => $object],
+                'application/problem+json' => ['schema' => $object],
+                'application/x-www-form-urlencoded' => ['schema' => $object],
+                'image/png' => [],
+            ]], '204' => ['description' => 'none']],
+        ], '3.2.0', 'post');
+        $report = $this->runJsonDoctor($this->writeSpec('parity.json', (string) json_encode($spec, JSON_THROW_ON_ERROR)), $exit);
+
+        $this->assertSame(DoctorCommand::EXIT_OK, $exit);
+        $this->assertSame('ok', $report['status']);
+        $this->assertSame([], $report['issues']);
+    }
+
+    /**
+     * Write `$spec` as the `parity` spec, run the doctor, and assert it adds
+     * only exit-0 `skipped/feature` issues whose first message names every
+     * fragment. The runtime loader is left pointing at the same spec.
+     *
+     * @param array<string, mixed> $spec
+     * @param list<string> $fragments
+     *
+     * @return list<string> the skipped messages
+     */
+    private function assertSkippedFeature(array $spec, array $fragments, int $count = 1): array
+    {
+        $report = $this->runJsonDoctor($this->writeSpec('parity.json', (string) json_encode($spec, JSON_THROW_ON_ERROR)), $exit);
+
+        $this->assertSame(DoctorCommand::EXIT_OK, $exit);
+        $this->assertSame('warning', $report['status']);
+        $this->assertSame($count, $report['summary']['skipped']);
+        $this->assertSame([['skipped', 'feature']], array_values(array_unique(array_map(
+            static fn(array $issue): array => [$issue['severity'], $issue['category']],
+            $report['issues'],
+        ), SORT_REGULAR)));
+        $messages = array_column($report['issues'], 'message');
+        foreach ($fragments as $fragment) {
+            $this->assertStringContainsString($fragment, $messages[0]);
+        }
+        OpenApiSpecLoader::configure($this->workDir);
+
+        return $messages;
+    }
+
+    /**
+     * @param array<string, mixed> $operation
+     * @param list<array<string, mixed>> $pathParameters
+     *
+     * @return array<string, mixed>
+     */
+    private function operationSpec(array $operation, string $openapi = '3.1.0', string $method = 'get', array $pathParameters = []): array
+    {
+        $operation += ['responses' => ['200' => ['description' => 'ok']]];
+        $pathItem = [$method => $operation];
+        if ($pathParameters !== []) {
+            $pathItem['parameters'] = $pathParameters;
+        }
+
+        return [
+            'openapi' => $openapi,
+            'info' => ['title' => 'Test', 'version' => '1'],
+            'paths' => ['/pets' => $pathItem],
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $content
+     *
+     * @return array<string, mixed>
+     */
+    private function responseSpec(array $content, string $openapi = '3.1.0'): array
+    {
+        return $this->operationSpec(['responses' => ['200' => ['description' => 'ok', 'content' => $content]]], $openapi);
+    }
+
+    private function runtimeResponse(string $body, string $contentType): OpenApiValidationResult
+    {
+        return (new OpenApiResponseValidator(new StrictRequiredTracker()))->validateWithoutRecording('parity', 'GET', '/pets', 200, $body, $contentType);
     }
 
     /**

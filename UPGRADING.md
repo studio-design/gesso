@@ -101,27 +101,27 @@ nothing there.
 
 | Deprecated in | Surface | Replacement | Removed in |
 | --- | --- | --- | --- |
-| 2.6.0 | `auto_inject_dummy_bearer` (Laravel config) | `laravel.auto_inject_dummy_credentials` = `'bearer'` (available on `main`, unreleased) | 3.0 |
+| 2.6.0 | `auto_inject_dummy_bearer` (Laravel config) | `laravel.auto_inject_dummy_credentials` = `'bearer'` (2.7.0+) | 3.0 |
 | 2.7.0 | `EnumBindingException::forBinding()` | `new EnumBindingException($reason, $message, $enumFqcn, $specPath, $previous)` | 3.0 |
 | 2.7.0 | `shouldSkipOpenApi()` (private, via `ValidatesOpenApiSchema`) | `$this->findSkipOpenApiAttribute() !== null` | 3.0 |
 | 2.7.0 | `OpenApiCoverageTracker::hasAnyCoverage()` (static) | `OpenApiCoverageTracker::current()->hasAnyCoverageOn()` | 3.0 |
-| 2.7.0 | `strict_required` (PHPUnit parameter) | `strict.required['run']` in `gesso.php` | 3.0 |
-| 2.7.0 | `strict_required_per_call` (PHPUnit parameter) | `strict.required['per_call']` in `gesso.php` | 3.0 |
-| 2.7.0 | `strict_additional_properties` (PHPUnit parameter) | `strict.additional_properties['run']` in `gesso.php` | 3.0 |
-| 2.7.0 | `strict_additional_properties_per_call` (PHPUnit parameter) | `strict.additional_properties['per_call']` in `gesso.php` | 3.0 |
-| 2.7.0 | `min_endpoint_coverage` (PHPUnit parameter) | `coverage.min_coverage['endpoint']` in `gesso.php` | 3.0 |
-| 2.7.0 | `min_response_coverage` (PHPUnit parameter) | `coverage.min_coverage['response']` in `gesso.php` | 3.0 |
-| 2.7.0 | `min_sdk_exercise_coverage` (PHPUnit parameter) | `coverage.min_coverage['sdk_exercise']` in `gesso.php` | 3.0 |
-| 2.7.0 | `min_coverage_strict` (PHPUnit parameter) | `coverage.min_coverage['strict']` in `gesso.php` | 3.0 |
-| 2.7.0 | `output_file` (PHPUnit parameter) | `coverage.report_output['markdown']` in `gesso.php` | 3.0 |
-| 2.7.0 | `json_output` (PHPUnit parameter) | `coverage.report_output['json']` in `gesso.php` | 3.0 |
-| 2.7.0 | `junit_output` (PHPUnit parameter) | `coverage.report_output['junit']` in `gesso.php` | 3.0 |
-| 2.7.0 | `html_output` (PHPUnit parameter) | `coverage.report_output['html']` in `gesso.php` | 3.0 |
-| 2.7.0 | `console_output` (PHPUnit parameter) | `coverage.console_report` in `gesso.php` | 3.0 |
-| 2.7.0 | `baseline_file` (PHPUnit parameter) | `baseline['violations']` in `gesso.php` | 3.0 |
-| 2.7.0 | `coverage_baseline_file` (PHPUnit parameter) | `baseline['coverage']` in `gesso.php` | 3.0 |
-| 2.7.0 | `baseline_stale` (PHPUnit parameter) | `baseline_stale['violations']` in `gesso.php` | 3.0 |
-| 2.7.0 | `coverage_baseline_stale` (PHPUnit parameter) | `baseline_stale['coverage']` in `gesso.php` | 3.0 |
+| 2.8.0 | `strict_required` (PHPUnit parameter) | `strict.required['run']` in `gesso.php` | 3.0 |
+| 2.8.0 | `strict_required_per_call` (PHPUnit parameter) | `strict.required['per_call']` in `gesso.php` | 3.0 |
+| 2.8.0 | `strict_additional_properties` (PHPUnit parameter) | `strict.additional_properties['run']` in `gesso.php` | 3.0 |
+| 2.8.0 | `strict_additional_properties_per_call` (PHPUnit parameter) | `strict.additional_properties['per_call']` in `gesso.php` | 3.0 |
+| 2.8.0 | `min_endpoint_coverage` (PHPUnit parameter) | `coverage.min_coverage['endpoint']` in `gesso.php` | 3.0 |
+| 2.8.0 | `min_response_coverage` (PHPUnit parameter) | `coverage.min_coverage['response']` in `gesso.php` | 3.0 |
+| 2.8.0 | `min_sdk_exercise_coverage` (PHPUnit parameter) | `coverage.min_coverage['sdk_exercise']` in `gesso.php` | 3.0 |
+| 2.8.0 | `min_coverage_strict` (PHPUnit parameter) | `coverage.min_coverage['strict']` in `gesso.php` | 3.0 |
+| 2.8.0 | `output_file` (PHPUnit parameter) | `coverage.report_output['markdown']` in `gesso.php` | 3.0 |
+| 2.8.0 | `json_output` (PHPUnit parameter) | `coverage.report_output['json']` in `gesso.php` | 3.0 |
+| 2.8.0 | `junit_output` (PHPUnit parameter) | `coverage.report_output['junit']` in `gesso.php` | 3.0 |
+| 2.8.0 | `html_output` (PHPUnit parameter) | `coverage.report_output['html']` in `gesso.php` | 3.0 |
+| 2.8.0 | `console_output` (PHPUnit parameter) | `coverage.console_report` in `gesso.php` | 3.0 |
+| 2.8.0 | `baseline_file` (PHPUnit parameter) | `baseline['violations']` in `gesso.php` | 3.0 |
+| 2.8.0 | `coverage_baseline_file` (PHPUnit parameter) | `baseline['coverage']` in `gesso.php` | 3.0 |
+| 2.8.0 | `baseline_stale` (PHPUnit parameter) | `baseline_stale['violations']` in `gesso.php` | 3.0 |
+| 2.8.0 | `coverage_baseline_stale` (PHPUnit parameter) | `baseline_stale['coverage']` in `gesso.php` | 3.0 |
 | 2.7.0 | `Studio\Gesso\Fuzz\ContractCheck` | `Studio\Gesso\Contract\ContractCheck` | 3.0 |
 | 2.7.0 | `Studio\Gesso\Fuzz\ContractCheckPlan` | `Studio\Gesso\Contract\ContractCheckPlan` | 3.0 |
 | 2.7.0 | `Studio\Gesso\Fuzz\ContractCheckProbe` (`@internal`) | `Studio\Gesso\Contract\ContractCheckProbe` | 3.0 |
@@ -142,13 +142,12 @@ another name, then drop `enum_spec_base_path`. See
 
 The behaviour-equivalent replacement is
 `laravel.auto_inject_dummy_credentials = 'bearer'`, which
-[ADR 0005](docs/adr/0005-v3-configuration-and-cli-naming.md) defines. The shared
-configuration integration on `main` now connects this mode to Laravel request
-validation (unreleased; not included in 2.6.0). Laravel-only keys live under the
-`laravel` section of the root `gesso.php`:
+[ADR 0005](docs/adr/0005-v3-configuration-and-cli-naming.md) defines. Since 2.7.0 the shared
+configuration integration connects this mode to Laravel request validation.
+Laravel-only keys live under the `laravel` section of the root `gesso.php`:
 
 ```php
-// gesso.php (main / upcoming release)
+// gesso.php (2.7.0+)
 return [
     'laravel' => [
         'auto_inject_dummy_credentials' => 'bearer',
@@ -156,9 +155,8 @@ return [
 ];
 ```
 
-**Published 2.6.0 does not accept this value** — keep the legacy flag until
-upgrading to a release that includes the shared configuration integration.
-Then `'bearer'` preserves the same injection scope without using the deprecated
+**2.6.0 does not accept this value** — keep the legacy flag until upgrading to
+2.7.0 or later. Then `'bearer'` preserves the same injection scope without using the deprecated
 key. Remove the old key after copying its setting into `gesso.php`.
 
 Migrating early to `'auto_inject_dummy_credentials' => true` changes
@@ -293,7 +291,7 @@ dispatchers keep working for JSON operations, but one that hardcodes
 `Content-Type: application/json` and `bodyAsJson()` will mislabel the new form
 cases — send `$case->contentType` and `$case->bodyAsString()` instead.
 
-### Unreleased: Laravel validator cache per test case
+### Laravel validator cache per test case (2.7.0)
 
 The Laravel `ValidatesOpenApiSchema` trait now caches its validators on the
 test-case instance instead of in process-wide statics, as the Symfony adapter

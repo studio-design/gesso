@@ -27,6 +27,30 @@ into a complete OpenAPI linter: for compatibility, missing or null request-body
 and request-content nodes retain the runtime behavior, and response-side
 `encoding` is not inspected.
 
+## Features runtime validation does not enforce
+
+Doctor reports each part of the contract that runtime validation accepts
+without checking as a `skipped` issue in the `feature` category, so a clean
+report means what the test suite will actually enforce:
+
+- `in: cookie` parameters;
+- parameters declared with `content` instead of `schema`, except the OpenAPI 3.2
+  `in: querystring` parameter;
+- request or response media types using `itemSchema` streaming, unless a JSON
+  media type also declares `schema`;
+- non-JSON media types that declare a `schema`, except form request bodies
+  (`application/x-www-form-urlencoded`, `multipart/form-data`) and
+  `application/x-www-form-urlencoded` responses (an `application/*` range is
+  reported too: it validates JSON bodies only);
+- `multipart/form-data` responses with a `schema`;
+- JSON media-type keys that carry parameters (`application/json; charset=utf-8`):
+  runtime validation matches JSON keys literally and never selects them;
+- operation `callbacks` and root `webhooks`, which no request path reaches.
+
+Media types are reported only when the surrounding body structure is valid;
+a malformed node is a `structure` error instead. These issues never change the
+exit code.
+
 JSON and YAML are supported. YAML requires the optional `symfony/yaml` package, just like runtime validation.
 
 ## Multiple specs

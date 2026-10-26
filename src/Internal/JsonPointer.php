@@ -21,11 +21,11 @@ use function str_starts_with;
 
 /**
  * The one RFC 6901 JSON Pointer walk shared by `$ref` resolution, OpenAPI
- * Links and Arazzo runtime expressions. Callers decode segments themselves:
+ * Links runtime expressions. Callers decode segments themselves:
  * `$ref` fragments are URI fragments (percent-decoded first), runtime
  * expressions use the plain string form (no percent-decoding).
  *
- * @internal Runtime-expression plumbing shared by Links exploration and the Arazzo runner; not public API.
+ * @internal Runtime-expression plumbing for Links exploration; not public API.
  */
 final class JsonPointer
 {

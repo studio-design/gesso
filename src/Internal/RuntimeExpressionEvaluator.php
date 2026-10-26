@@ -29,7 +29,7 @@ use function strtolower;
  * Anything unsupported, unavailable or missing throws — nothing silently
  * becomes `null` or the expression's own text.
  *
- * @internal Runtime-expression plumbing shared by Links exploration and the Arazzo runner; not public API.
+ * @internal Runtime-expression plumbing for Links exploration; not public API.
  */
 final class RuntimeExpressionEvaluator
 {

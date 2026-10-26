@@ -18,9 +18,9 @@ use function sprintf;
  * Operation lookup by `operationId` and by `#/paths/...` pointer segments for
  * one loaded OpenAPI document. Malformed `paths` fail through the shared
  * {@see SpecPathsPreflight}; a duplicated `operationId` fails loudly because
- * Links and Arazzo targets would otherwise be ambiguous.
+ * Links targets would otherwise be ambiguous.
  *
- * @internal Runtime-expression plumbing shared by Links exploration and the Arazzo runner; not public API.
+ * @internal Runtime-expression plumbing for Links exploration; not public API.
  */
 final readonly class OperationIndex
 {

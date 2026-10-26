@@ -29,14 +29,18 @@
             "exit": 0,
             "operations": 1,
             "responses": 1,
-            "issues": []
+            "issues": [
+                "skipped/feature"
+            ]
         },
         "v3.0/callback-example.yaml": {
             "openapi": "3.0.0",
             "exit": 0,
             "operations": 1,
             "responses": 1,
-            "issues": []
+            "issues": [
+                "skipped/feature"
+            ]
         },
         "v3.0/link-example.json": {
             "openapi": "3.0.0",
@@ -116,6 +120,8 @@
             "issues": [
                 "skipped/feature",
                 "skipped/feature",
+                "skipped/feature",
+                "skipped/feature",
                 "skipped/feature"
             ]
         },
@@ -127,6 +133,10 @@
             "issues": [
                 "skipped/feature",
                 "skipped/feature",
+                "skipped/feature",
+                "skipped/feature",
+                "skipped/feature",
+                "skipped/feature",
                 "skipped/feature"
             ]
         },
@@ -135,14 +145,18 @@
             "exit": 0,
             "operations": 0,
             "responses": 0,
-            "issues": []
+            "issues": [
+                "skipped/feature"
+            ]
         },
         "v3.1/webhook-example.yaml": {
             "openapi": "3.1.0",
             "exit": 0,
             "operations": 0,
             "responses": 0,
-            "issues": []
+            "issues": [
+                "skipped/feature"
+            ]
         },
         "v3.2/3.2-query-example.json": {
             "openapi": "3.2.0",
@@ -178,7 +192,8 @@
     },
     "notes": {
         "issue-codes": "Issues are recorded as `severity/category` only. Message wording is not a compatibility surface (docs/versioning.md) and is pinned by the doctor's own unit tests.",
-        "skipped-feature-on-tictactoe": "The three `skipped/feature` issues are its HTTP-basic and OAuth2 security schemes: recognized, resolved, and reported as not enforced rather than silently passed.",
-        "webhook-example": "`v3.1/webhook-example` describes only `webhooks`, which this package deliberately does not consult (docs/supported-features.md), so it loads clean with zero operations. The zero is the honest signal, not a pass."
+        "skipped-feature-on-tictactoe": "Its HTTP-basic and OAuth2 security schemes and its `text/html` 400 responses (a non-JSON schema the engine does not evaluate) are recognized and reported as not enforced rather than silently passed. The YAML form also declares a callback and a webhook, which runtime validation does not reach, so it records two more.",
+        "webhook-example": "`v3.1/webhook-example` describes only `webhooks`, which runtime validation does not reach (docs/supported-features.md), so it loads with zero operations and one `skipped/feature` issue naming the webhook. The zero is the honest signal, not a pass.",
+        "callback-example": "`v3.0/callback-example` declares a callback, which runtime validation does not reach, so it records one `skipped/feature` issue."
     }
 }

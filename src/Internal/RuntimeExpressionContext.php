@@ -11,7 +11,7 @@ use Studio\Gesso\DecodedBody;
  * of the exchange does not exist yet (ContextUnavailable); an empty map
  * means it exists but has no members (NotFound).
  *
- * @internal Runtime-expression plumbing shared by Links exploration and the Arazzo runner; not public API.
+ * @internal Runtime-expression plumbing for Links exploration; not public API.
  */
 final readonly class RuntimeExpressionContext
 {

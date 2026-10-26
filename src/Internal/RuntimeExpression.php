@@ -30,7 +30,7 @@ use function substr;
  * `pointer` is the RFC 6901 string form after `#` (`''` = whole value), or
  * null when the expression carries no `#`.
  *
- * @internal Runtime-expression plumbing shared by Links exploration and the Arazzo runner; not public API.
+ * @internal Runtime-expression plumbing for Links exploration; not public API.
  */
 final readonly class RuntimeExpression
 {
