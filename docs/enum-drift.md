@@ -67,6 +67,12 @@ Auto-discovery also checks any enum in the scanned namespaces whose name matches
 > `[Gesso deprecation]` notice. Use [component-name binding](#binding-by-component-name)
 > instead: delete the attribute when the component is named after the class,
 > or write `#[BoundToOpenApiEnum(component: 'Name')]`.
+>
+> The `EnumBindingReason` cases only this path raises — `BasePathNotConfigured`,
+> `EnumBasePathNotFound`, `EnumSpecBasePathOrphaned`, `SpecFileNotFound`,
+> `MalformedJson`, `MalformedYaml`, `YamlLibraryMissing`, `NonMappingRoot`, and
+> `EnumKeyMissing` — are deprecated too and removed in 3.0. Referencing a case
+> raises no notice, so search your code for these names.
 
 ```php
 use Studio\Gesso\Attribute\BoundToOpenApiEnum;

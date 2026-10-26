@@ -87,8 +87,19 @@ and the PHPUnit extension prints a single end-of-run STDERR line:
 ```
 
 **If your suite prints no such line on the final v2 minor, upgrading to v3.0
-needs no changes to your code, configuration, or CLI invocations.** Work through
-the table below until it does.
+needs no changes for any surface that announces its deprecation at runtime**
+(configuration keys, CLI flags, environment variables, Artisan commands, PHP
+symbols that raise a notice, and wire formats). Work through the table below
+until it does.
+
+Rows whose Surface starts with *static only* are outside that guarantee: enum
+cases and Composer constraints cannot raise a notice, because referencing an
+enum case runs no Gesso code. Code that still names a removed case (for
+example an arm of a `match` over `EnumBindingReason`) breaks in v3 even on a
+silent run. Search your code for the names those rows list, or run a static
+analyser that reports `@deprecated` symbols, and compare your platform with
+the listed Composer floors. See the
+[deprecation policy](docs/versioning.md#deprecation-policy).
 
 The summary line is the signal to trust: it is rendered from recorded
 per-process counts by the PHPUnit extension (and by `gesso coverage:merge` for
@@ -148,6 +159,15 @@ nothing there.
 | 2.9.0 | `--strict-required=<mode>` (`coverage:merge` flag) | `--strict-required="run=…,per_call=…"` | 3.0 |
 | 2.9.0 | `--strict-additional-properties=<mode>` (`coverage:merge` flag) | `--strict-additional-properties="run=…,per_call=…"` | 3.0 |
 | 2.9.0 | `--output` (`gesso stubs` / `gesso:stubs` flag) | `--output-dir` | 3.0 |
+| 2.9.0 | *static only* `EnumBindingReason::BasePathNotConfigured` (enum case) | none — only file-path bindings raise it; component-name bindings report a missing component as `ComponentNotFound` | 3.0 |
+| 2.9.0 | *static only* `EnumBindingReason::EnumBasePathNotFound` (enum case) | none — only file-path bindings raise it; component-name bindings report a missing component as `ComponentNotFound` | 3.0 |
+| 2.9.0 | *static only* `EnumBindingReason::EnumSpecBasePathOrphaned` (enum case) | none — only file-path bindings raise it; component-name bindings report a missing component as `ComponentNotFound` | 3.0 |
+| 2.9.0 | *static only* `EnumBindingReason::SpecFileNotFound` (enum case) | none — only file-path bindings raise it; component-name bindings report a missing component as `ComponentNotFound` | 3.0 |
+| 2.9.0 | *static only* `EnumBindingReason::MalformedJson` (enum case) | none — only file-path bindings raise it; component-name bindings report a missing component as `ComponentNotFound` | 3.0 |
+| 2.9.0 | *static only* `EnumBindingReason::MalformedYaml` (enum case) | none — only file-path bindings raise it; component-name bindings report a missing component as `ComponentNotFound` | 3.0 |
+| 2.9.0 | *static only* `EnumBindingReason::YamlLibraryMissing` (enum case) | none — only file-path bindings raise it; component-name bindings report a missing component as `ComponentNotFound` | 3.0 |
+| 2.9.0 | *static only* `EnumBindingReason::NonMappingRoot` (enum case) | none — only file-path bindings raise it; component-name bindings report a missing component as `ComponentNotFound` | 3.0 |
+| 2.9.0 | *static only* `EnumBindingReason::EnumKeyMissing` (enum case) | none — only file-path bindings raise it; component-name bindings report a missing component as `ComponentNotFound` | 3.0 |
 
 Enum drift bindings: a backed enum now matches the `components.schemas` entry
 named after its class (an `Enum` suffix on either side is ignored) in the
