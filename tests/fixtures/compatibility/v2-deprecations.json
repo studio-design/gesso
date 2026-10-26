@@ -424,6 +424,33 @@
                 "replacement": "--output-dir (on gesso stubs and gesso:stubs)",
                 "removed_in": "3.0"
             }
+        },
+        "coverage.sidecar.legacy_envelope": {
+            "spelling": "envelopeVersion 2-9",
+            "v3_target": "envelopeVersion 10",
+            "notice": {
+                "subject": "Reading a coverage sidecar with envelopeVersion 2-9 (written by Gesso 1.9-2.6)",
+                "replacement": "envelopeVersion 10 (re-run the suite on this Gesso so its workers write fresh sidecars; Gesso 3.0 rejects the old ones)",
+                "removed_in": "3.0"
+            }
+        },
+        "coverage.sidecar.bare_state": {
+            "spelling": "bare v1 coverage state",
+            "v3_target": "envelopeVersion 10",
+            "notice": {
+                "subject": "Reading a coverage sidecar that holds a bare v1 coverage state (no envelopeVersion)",
+                "replacement": "envelopeVersion 10 (re-run the suite on this Gesso so its workers write fresh sidecars; Gesso 3.0 rejects the old ones)",
+                "removed_in": "3.0"
+            }
+        },
+        "cli.coverage_merge.io_failure_exit_code": {
+            "spelling": "exit code 1",
+            "v3_target": "exit code 2",
+            "notice": {
+                "subject": "coverage:merge exiting with exit code 1 on an I/O failure",
+                "replacement": "exit code 2 (what Gesso 3.0 returns when a sidecar, report, or baseline file cannot be read or written; a check for any non-zero exit needs no change)",
+                "removed_in": "3.0"
+            }
         }
     }
 }

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Coverage;
 
+use const E_USER_DEPRECATED;
+
 use Closure;
 use InvalidArgumentException;
 use RuntimeException;
@@ -58,6 +60,8 @@ use function max;
 use function ord;
 use function preg_replace_callback;
 use function preg_split;
+use function restore_error_handler;
+use function set_error_handler;
 use function sprintf;
 use function str_contains;
 use function str_replace;
@@ -532,6 +536,7 @@ final class CoverageMergeCommand
             $payloads = array_map(CoverageSidecarReader::read(...), $sidecarPaths);
         } catch (RuntimeException $e) {
             $this->writeStderr(sprintf("[OpenAPI Coverage] FATAL: %s\n", $e->getMessage()));
+            $this->deprecateIoFailureExitCode();
 
             return self::EXIT_FAILURE;
         }
@@ -649,7 +654,8 @@ final class CoverageMergeCommand
         $deprecationStates = [];
         foreach ($payloads as $payload) {
             try {
-                $parsed = CoverageSidecarEnvelope::parse($payload);
+                // Issue #505: a legacy payload raises its deprecation here.
+                $parsed = $this->deprecationsToStderr(static fn(): array => CoverageSidecarEnvelope::parse($payload));
                 $coverageTracker->importStateOn($parsed['coverage']);
                 if ($parsed['strictRequired'] !== null) {
                     $strictRequiredTracker->importStateOn($parsed['strictRequired']);
@@ -762,6 +768,9 @@ final class CoverageMergeCommand
             : self::terminalSafe(ConsoleCoverageRenderer::render($results, $consoleOutput, $sdkResults)));
 
         $writeFailures = $writer->writeReports($results, $sdkResults, $outputFile, $junitOutput, $jsonOutput, $htmlOutput, [$label, $render]);
+        if ($writeFailures > 0) {
+            $this->deprecateIoFailureExitCode();
+        }
         $writer->appendGithubStepSummary($results, $sdkResults, $githubSummaryPath);
 
         $httpThresholdUnavailable = $results === [] && ($minEndpointPct !== null || $minResponsePct !== null);
@@ -1237,6 +1246,7 @@ final class CoverageMergeCommand
             ViolationBaselineFile::write($baselineFile, $merged);
         } catch (RuntimeException $e) {
             $this->writeStderr("[Gesso] FATAL: {$e->getMessage()}\n");
+            $this->deprecateIoFailureExitCode();
 
             return false;
         }
@@ -1284,6 +1294,7 @@ final class CoverageMergeCommand
                 CoverageBaselineFile::write($baselineFile, $collected);
             } catch (RuntimeException $e) {
                 $this->writeStderr("[Gesso] FATAL: {$e->getMessage()}\n");
+                $this->deprecateIoFailureExitCode();
 
                 return false;
             }
@@ -1303,6 +1314,7 @@ final class CoverageMergeCommand
             $this->writeStderr(
                 "[Gesso] FATAL: --coverage-baseline-file could not be loaded: {$e->getMessage()}\n",
             );
+            $this->deprecateIoFailureExitCode();
 
             return false;
         }
@@ -1556,6 +1568,7 @@ final class CoverageMergeCommand
                 'FATAL',
                 sprintf('failed to inspect sidecars for cleanup: %s', $e->getMessage()),
             );
+            $this->deprecateIoFailureExitCode();
 
             return false;
         }
@@ -1572,6 +1585,47 @@ final class CoverageMergeCommand
         }
 
         return true;
+    }
+
+    /**
+     * Issue #507: an I/O failure (a sidecar, report, or baseline file that
+     * cannot be read or written) exits 1 in 2.x and 2 from Gesso 3.0, so the
+     * exit-code contract matches the other commands.
+     */
+    private function deprecateIoFailureExitCode(): void
+    {
+        $this->deprecationsToStderr(static fn() => Deprecations::notice(
+            id: 'cli.coverage_merge.io_failure_exit_code',
+            subject: 'coverage:merge exiting with exit code 1 on an I/O failure',
+            replacement: 'exit code 2 (what Gesso 3.0 returns when a sidecar, report, or baseline file cannot be read or written; a check for any non-zero exit needs no change)',
+            removedIn: '3.0',
+        ));
+    }
+
+    /**
+     * Run `$emit` with `E_USER_DEPRECATED` written to stderr: a CLI process
+     * has no PHPUnit to collect it, and PHP's default handler prints it on
+     * stdout, into a `--format=json` report (as in {@see LegacyCliFlags}).
+     *
+     * @template T
+     *
+     * @param Closure(): T $emit
+     *
+     * @return T
+     */
+    private function deprecationsToStderr(Closure $emit): mixed
+    {
+        set_error_handler(function (int $severity, string $message): bool {
+            $this->writeStderr($message . "\n");
+
+            return true;
+        }, E_USER_DEPRECATED);
+
+        try {
+            return $emit();
+        } finally {
+            restore_error_handler();
+        }
     }
 
     private function writeCoverageDiagnostic(string $severity, string $detail): void

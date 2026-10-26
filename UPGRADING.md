@@ -148,6 +148,9 @@ nothing there.
 | 2.9.0 | `--strict-required=<mode>` (`coverage:merge` flag) | `--strict-required="run=…,per_call=…"` | 3.0 |
 | 2.9.0 | `--strict-additional-properties=<mode>` (`coverage:merge` flag) | `--strict-additional-properties="run=…,per_call=…"` | 3.0 |
 | 2.9.0 | `--output` (`gesso stubs` / `gesso:stubs` flag) | `--output-dir` | 3.0 |
+| 2.9.0 | Coverage sidecars with `envelopeVersion` 2–9 (read by `coverage:merge`) | `envelopeVersion: 10`, written by the current workers; re-run the suite | 3.0 |
+| 2.9.0 | Coverage sidecars holding a bare v1 coverage state (read by `coverage:merge`) | `envelopeVersion: 10`, written by the current workers; re-run the suite | 3.0 |
+| 2.9.0 | `coverage:merge` exit code `1` on an I/O failure (unreadable sidecar, unwritable report or baseline) | exit code `2`; a check for any non-zero exit needs no change | 3.0 |
 
 Enum drift bindings: a backed enum now matches the `components.schemas` entry
 named after its class (an `Enum` suffix on either side is ignored) in the
@@ -334,7 +337,8 @@ each tracker half is an optional key instead of a new version number. A
 `gesso coverage:merge` from an older 2.x release rejects it as an unknown
 version — as every previous envelope bump did — so upgrade the merge step
 together with the workers. The 2.x merge keeps reading envelopes 2–9 and the
-bare v1 coverage state; dropping them is a v3.0 change (see
+bare v1 coverage state, with a `[Gesso deprecation]` notice since 2.9.0;
+dropping them is a v3.0 change (see [Deprecations](#deprecations) and
 [versioned sidecar compatibility](docs/versioning.md#versioned-sidecar-compatibility)).
 
 ### From v2.3.0 → v2.4.0

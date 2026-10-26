@@ -46,9 +46,11 @@ use function sprintf;
  *
  * The 2.x reader still accepts the legacy envelopes 2-9 (whose version
  * enumerated the halves they carried) and the bare v1 coverage state with
- * no `envelopeVersion` key; see docs/versioning.md. The wrapper key is
- * `envelopeVersion` (not `version`) precisely so bare v1 payloads remain
- * distinguishable; see {@see self::parse()}'s discriminator order.
+ * no `envelopeVersion` key, each with a one-shot `[Gesso deprecation]`
+ * notice since 2.9.0; 3.0 rejects both (#505). See docs/versioning.md.
+ * The wrapper key is `envelopeVersion` (not `version`) precisely so bare
+ * v1 payloads remain distinguishable; see {@see self::parse()}'s
+ * discriminator order.
  *
  * @internal Used by the PHPUnit extension and merge CLI. The accepted wire
  *           formats remain versioned compatibility inputs.
@@ -84,6 +86,9 @@ final class CoverageSidecarEnvelope
      * Inputs the 2.x reader still accepts, written by Gesso 1.9-2.6 workers. The
      * version enumerated which optional halves the writer carried; v10 stops that
      * and signals presence by the key itself. Deleted by the v3.0 cutoff (#505).
+     *
+     * @deprecated since 2.9.0, together with the bare v1 coverage state; reading
+     *             either emits a `[Gesso deprecation]` notice. Removed in 3.0.
      */
     private const LEGACY_VERSIONS = [2, 3, 4, 5, 6, 7, 8, 9];
 
@@ -190,6 +195,13 @@ final class CoverageSidecarEnvelope
             // Legacy v1 bare coverage payload. Hand it back as the coverage
             // half so OpenApiCoverageTracker::importState() validates the
             // inner shape on its own terms.
+            Deprecations::notice(
+                id: 'coverage.sidecar.bare_state',
+                subject: 'Reading a coverage sidecar that holds a bare v1 coverage state (no envelopeVersion)',
+                replacement: 'envelopeVersion 10 (re-run the suite on this Gesso so its workers write fresh sidecars; Gesso 3.0 rejects the old ones)',
+                removedIn: '3.0',
+            );
+
             return [
                 'coverage' => $payload,
                 'strictRequired' => null,
@@ -232,7 +244,17 @@ final class CoverageSidecarEnvelope
             ));
         }
 
-        return self::parseLegacyEnvelope($payload, $version);
+        // Announced only once the payload is accepted: a malformed legacy
+        // sidecar fails the merge on its own.
+        $parsed = self::parseLegacyEnvelope($payload, $version);
+        Deprecations::notice(
+            id: 'coverage.sidecar.legacy_envelope',
+            subject: 'Reading a coverage sidecar with envelopeVersion 2-9 (written by Gesso 1.9-2.6)',
+            replacement: 'envelopeVersion 10 (re-run the suite on this Gesso so its workers write fresh sidecars; Gesso 3.0 rejects the old ones)',
+            removedIn: '3.0',
+        );
+
+        return $parsed;
     }
 
     /**

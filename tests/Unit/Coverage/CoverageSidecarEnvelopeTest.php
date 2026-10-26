@@ -6,9 +6,11 @@ namespace Studio\Gesso\Tests\Unit\Coverage;
 
 use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\IgnoreDeprecations;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Studio\Gesso\Coverage\CoverageSidecarEnvelope;
+use Studio\Gesso\Internal\Deprecations;
 
 use function array_key_exists;
 use function array_keys;
@@ -21,9 +23,25 @@ use function sprintf;
  * discriminator to keep working when a worker still on an older library
  * version contributes a legacy payload — and to fail loudly on shapes it
  * cannot represent.
+ *
+ * Every legacy input raises the #505 deprecation; the tests that are not about
+ * the notice ignore it, and the dedup state is reset around each test.
  */
+#[IgnoreDeprecations]
 class CoverageSidecarEnvelopeTest extends TestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+        Deprecations::resetForTesting();
+    }
+
+    protected function tearDown(): void
+    {
+        Deprecations::resetForTesting();
+        parent::tearDown();
+    }
+
     /**
      * @return iterable<string, array{int}>
      */
@@ -44,6 +62,36 @@ class CoverageSidecarEnvelopeTest extends TestCase
             // v10 is presence-keyed: an explicit null is malformed, not "absent".
             yield $key . ' null' => [$key, null];
         }
+    }
+
+    #[Test]
+    public function only_legacy_inputs_record_their_deprecation(): void
+    {
+        $coverage = ['version' => 1, 'specs' => []];
+
+        CoverageSidecarEnvelope::parse(['envelopeVersion' => 10, 'coverage' => $coverage]);
+        $this->assertSame([], Deprecations::counts());
+
+        CoverageSidecarEnvelope::parse(['envelopeVersion' => 2, 'coverage' => $coverage, 'strictRequired' => null]);
+        CoverageSidecarEnvelope::parse(['envelopeVersion' => 2, 'coverage' => $coverage, 'strictRequired' => null]);
+        CoverageSidecarEnvelope::parse($coverage);
+
+        $this->assertSame(
+            ['coverage.sidecar.bare_state' => 1, 'coverage.sidecar.legacy_envelope' => 2],
+            Deprecations::counts(),
+        );
+    }
+
+    #[Test]
+    public function a_rejected_legacy_envelope_records_no_deprecation(): void
+    {
+        try {
+            CoverageSidecarEnvelope::parse(['envelopeVersion' => 2, 'coverage' => 'not-an-array']);
+            $this->fail('expected the malformed envelope to be rejected');
+        } catch (InvalidArgumentException) {
+        }
+
+        $this->assertSame([], Deprecations::counts());
     }
 
     #[Test]
