@@ -1255,8 +1255,9 @@ class DoctorCommandTest extends TestCase
         $snippet = (string) json_decode($stdout, true, flags: JSON_THROW_ON_ERROR)['phpunit'];
 
         $this->assertSame(DoctorCommand::EXIT_OK, $exit);
-        $this->assertStringContainsString('name="specs" value="bundled/front"', $snippet);
-        $this->assertStringNotContainsString('specs/bundled"', $snippet);
+        $this->assertStringContainsString("'names' => ['bundled/front']", $snippet);
+        $this->assertStringContainsString("/specs',", $snippet);
+        $this->assertStringNotContainsString("specs/bundled'", $snippet);
     }
 
     #[Test]
