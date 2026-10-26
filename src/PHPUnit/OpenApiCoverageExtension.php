@@ -12,6 +12,8 @@ use PHPUnit\Runner\Extension\Extension;
 use PHPUnit\Runner\Extension\Facade;
 use PHPUnit\Runner\Extension\ParameterCollection;
 use PHPUnit\TextUI\Configuration\Configuration;
+use ReflectionEnum;
+use Studio\Gesso\Attribute\BoundToOpenApiEnum;
 use Studio\Gesso\Baseline\BaselineFileFormat;
 use Studio\Gesso\Baseline\BaselineStaleMode;
 use Studio\Gesso\Baseline\CoverageBaseline;
@@ -57,7 +59,9 @@ use Studio\Gesso\ValidationOutputFormat;
 
 use function array_filter;
 use function array_slice;
+use function array_unshift;
 use function array_values;
+use function count;
 use function ctype_digit;
 use function debug_backtrace;
 use function dirname;
@@ -1257,21 +1261,57 @@ final class OpenApiCoverageExtension implements Extension
             return;
         }
 
+        // Issue #661: list what bound, so a renamed component that silently
+        // drops a name binding shows up as a changed count.
+        $bindings = self::renderEnumBindings($reports, count($fqcns));
+        Diagnostics::stderr($bindings . "\n");
+
         $drifting = array_values(array_filter(
             $reports,
             static fn(EnumDriftReport $r): bool => $r->hasDrift(),
         ));
 
         if ($drifting === []) {
+            Diagnostics::appendGithubStepSummaryEnumBindingsBlock($githubSummaryPath, $bindings);
+
             return;
         }
 
         $message = EnumDriftAsserter::renderMessage($drifting, $failOnDrift);
         Diagnostics::stderr($message . "\n");
-        Diagnostics::appendGithubStepSummaryEnumDriftBlock($githubSummaryPath, $message, isFatal: $failOnDrift);
+        Diagnostics::appendGithubStepSummaryEnumDriftBlock($githubSummaryPath, $bindings . "\n\n" . $message, isFatal: $failOnDrift);
 
         if ($failOnDrift) {
             throw new EnumDriftException($drifting, $message);
         }
+    }
+
+    /**
+     * `N bound (X by name, Y by attribute), M unbound.` plus one
+     * `Fqcn  ->  target` line per binding, in scan order.
+     *
+     * @param list<EnumDriftReport> $reports
+     */
+    private static function renderEnumBindings(array $reports, int $scanned): string
+    {
+        $lines = [];
+        $byAttribute = 0;
+        foreach ($reports as $report) {
+            if ((new ReflectionEnum($report->enumFqcn))->getAttributes(BoundToOpenApiEnum::class) !== []) {
+                $byAttribute++;
+            }
+            $lines[] = sprintf('  %s  ->  %s', $report->enumFqcn, $report->specPath);
+        }
+
+        $bound = count($reports);
+        array_unshift($lines, sprintf(
+            '[OpenAPI Enum Drift] %d bound (%d by name, %d by attribute), %d unbound.',
+            $bound,
+            $bound - $byAttribute,
+            $byAttribute,
+            $scanned - $bound,
+        ));
+
+        return implode("\n", $lines);
     }
 }

@@ -41,8 +41,8 @@
         "src/Cli/DoctorCommand.php": 1
     },
     "[OpenAPI Enum Drift]": {
-        "src/Internal/Diagnostics.php": 1,
-        "src/PHPUnit/OpenApiCoverageExtension.php": 6,
+        "src/Internal/Diagnostics.php": 2,
+        "src/PHPUnit/OpenApiCoverageExtension.php": 7,
         "src/Schema/EnumDriftAsserter.php": 1
     },
     "[OpenAPI SDK Exercise]": {
