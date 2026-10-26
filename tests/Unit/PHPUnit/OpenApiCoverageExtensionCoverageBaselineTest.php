@@ -142,7 +142,7 @@ class OpenApiCoverageExtensionCoverageBaselineTest extends TestCase
             $this->setupExtension([]);
             $this->fail('Expected an InvalidBaselineConfigurationException.');
         } catch (InvalidBaselineConfigurationException) {
-            $this->assertStringContainsString('coverage_baseline_file', $this->capturedStderr());
+            $this->assertStringContainsString('baseline.coverage', $this->capturedStderr());
         }
     }
 

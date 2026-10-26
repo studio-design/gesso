@@ -79,8 +79,9 @@ and an implementation that always returns all three fields, `strict_required = w
       - signed_url
       - url
 
-Action: add these fields to the response schema's `required` array, or set `strict_required = off` if intentional.
-Configuration: phpunit.xml <parameter name="strict_required">warn|fail|off</parameter>
+Action: add these fields to the response schema's `required` array, or set `strict.required.run` to `off` if intentional.
+Configuration: gesso.php `'strict' => ['required' => ['run' => 'off'|'warn'|'fail']]`
+               (the phpunit.xml `strict_required` parameter is deprecated, removed in 3.0)
 ```
 
 The `application/json:/` suffix is the JSON-Pointer-like `schemaPointer` — `/` here is the response root. Nested drifts are reported the same way with the corresponding pointer; given the schema:
@@ -157,7 +158,7 @@ Sample output (one warning per drifting observation):
 ```
 [OpenAPI Strict Required per-call] WARN: PUT /signed-url  200  application/json: response carries 3 optional field(s) not declared in `required` at the matching schema pointer(s):
   / : expires, signed_url, url
-Action: add these fields to the schema's `required` array, or set strict_required_per_call=off if intentional.
+Action: add these fields to the schema's `required` array, or set `strict.required.per_call` to `off` in gesso.php if intentional.
 Note: per-call mode warns on every legitimately-optional field present in this single observation. See docs/strict-required.md "Per-call mode" for the trade-off.
 ```
 
@@ -196,7 +197,7 @@ Under paratest, each worker maintains its own NOTE dedupe set, so the same condi
 There is currently no per-test or per-field suppression mechanism for per-call mode — if a field is genuinely optional and you do not want the warning, the recommended workflows are:
 
 1. **Add the field to the schema's `required` array** if the implementation actually always returns it.
-2. **Disable per-call** (`strict_required_per_call=off`) for the suite and rely on the run-level intersection gate, which already handles the "sometimes-present" case correctly.
+2. **Disable per-call** (`strict.required.per_call` = `off` in `gesso.php`) for the suite and rely on the run-level intersection gate, which already handles the "sometimes-present" case correctly.
 3. **Avoid `failOnWarning="true"`** at the global level if you only want per-call warnings as advisory output.
 
 A future release may add an opt-out attribute (e.g. `#[StrictRequiredPerCallIgnore]`) for endpoints with known noisy optional fields — see Issue #228 follow-up tracking. The MVP ships without it so the noise floor of the gate is observed in real CI before deciding the suppression API.
