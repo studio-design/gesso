@@ -129,9 +129,13 @@ giving both for the same setting is a usage error (exit `2`).
 In the `name=value` flags, members are separated by commas; a comma that is not followed by a member name stays part of the value, so paths may contain one. A blank value is a usage error. Name only the
 members you need. `strict` alone means `strict=true`. An unknown member, or a
 member without a value, is a usage error. `--strict-*` also accepts
-`per_call=off|warn`, so the same string works for the PHPUnit extension. The
-merge validates `per_call` but does not use it, because the workers check
-per-call findings. `--baseline-stale` takes only `coverage`, because the
+`per_call=off|warn`, which the merge validates but does not use, because the
+workers check per-call findings. The PHPUnit extension does not accept this
+`name=value` string: configure the workers with `strict.required` /
+`strict.additional_properties` (`run`, `per_call`) in
+[`gesso.php`](configuration.md), or with the deprecated individual parameters
+(`strict_required`, `strict_required_per_call`, and the
+`strict_additional_properties*` pair). `--baseline-stale` takes only `coverage`, because the
 merge does not evaluate the staleness of the violation baseline.
 
 `coverage:merge` ignores an argument it does not recognise, and writes
