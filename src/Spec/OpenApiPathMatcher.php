@@ -49,7 +49,7 @@ final class OpenApiPathMatcher
     /**
      * @var array<int, list<array{
      *     pattern: string,
-     *     matches: array<int, array{path: string, parameters: array<string, int>}>,
+     *     matches: array<int, array{path: string, offset: int, names: list<string>, pattern: string}>,
      * }>>
      */
     private array $compiledPathsBySegmentCount;
@@ -127,10 +127,12 @@ final class OpenApiPathMatcher
                     // quantifier keeps matching linear — unbounded backtracking
                     // across several captures could exhaust PCRE's limit and
                     // hide a fallback template in the same combined pattern.
+                    // A `%HH` triplet is one unit, so a literal is never found
+                    // inside an encoded character (`a%2Fb` stays whole).
                     $next = $pieces[$index + 1];
                     $regex .= $next === ''
                         ? '([^/]+)'
-                        : '((?:(?!' . preg_quote($next, '#') . ')[^/])++)';
+                        : '((?:(?!' . preg_quote($next, '#') . ')(?:%[0-9A-Fa-f]{2}|[^/]))++)';
                     $segmentParameters[] = $piece;
                     $paramNames[] = $piece;
                 }
@@ -215,17 +217,25 @@ final class OpenApiPathMatcher
                 $captureIndex = 1;
                 foreach ($chunk as $pathIndex => $path) {
                     $regexSegments = [];
-                    $parameters = [];
+                    $names = [];
                     foreach ($path['segments'] as $segment) {
                         $regexSegments[] = $segment['regex'];
                         foreach ($segment['parameters'] as $parameter) {
-                            $parameters[$parameter] = $captureIndex++;
+                            $names[] = $parameter;
                         }
                     }
 
                     $marker = (string) $pathIndex;
-                    $alternatives[] = '/' . implode('/', $regexSegments) . sprintf('(*MARK:%s)', $marker);
-                    $matches[$marker] = ['path' => $path['path'], 'parameters' => $parameters];
+                    $alternative = '/' . implode('/', $regexSegments);
+                    $alternatives[] = $alternative . sprintf('(*MARK:%s)', $marker);
+                    $matches[$marker] = [
+                        'path' => $path['path'],
+                        'offset' => $captureIndex,
+                        'names' => $names,
+                        // Fallback when the combined pattern hits a PCRE limit.
+                        'pattern' => '#' . ($path['parameterCount'] > self::MAX_CAPTURES_PER_JIT_PATTERN ? '(*NO_JIT)' : '') . '^' . $alternative . '$#',
+                    ];
+                    $captureIndex += count($names);
                 }
 
                 $jitControl = $captureIndex - 1 > self::MAX_CAPTURES_PER_JIT_PATTERN
@@ -339,6 +349,22 @@ final class OpenApiPathMatcher
     }
 
     /**
+     * @param list<string> $names
+     * @param array<int, string> $captures
+     *
+     * @return array{path: string, variables: array<string, string>}
+     */
+    private static function matchResult(string $path, array $names, array $captures, int $offset): array
+    {
+        $variables = [];
+        foreach ($names as $i => $name) {
+            $variables[$name] = $captures[$offset + $i];
+        }
+
+        return ['path' => $path, 'variables' => $variables];
+    }
+
+    /**
      * The spec-path lookup itself, on an already-normalized request path.
      *
      * @return null|array{path: string, variables: array<string, string>}
@@ -352,19 +378,26 @@ final class OpenApiPathMatcher
         $compiledPatterns = $this->compiledPathsBySegmentCount[self::segmentCount($normalizedPath)] ?? [];
         foreach ($compiledPatterns as $compiled) {
             $captures = [];
-            if (preg_match($compiled['pattern'], $normalizedPath, $captures) !== 1) {
+            $result = preg_match($compiled['pattern'], $normalizedPath, $captures);
+            if ($result === 1) {
+                // Numeric-string array keys are stored as integers by PHP; PCRE's
+                // MARK capture is the corresponding numeric string.
+                $matched = $compiled['matches'][(int) $captures['MARK']];
+
+                return self::matchResult($matched['path'], $matched['names'], $captures, $matched['offset']);
+            }
+            if ($result !== false) {
                 continue;
             }
 
-            // Numeric-string array keys are stored as integers by PHP; PCRE's
-            // MARK capture is the corresponding numeric string.
-            $matched = $compiled['matches'][(int) $captures['MARK']];
-            $variables = [];
-            foreach ($matched['parameters'] as $name => $captureIndex) {
-                $variables[$name] = $captures[$captureIndex];
+            // A PCRE limit (backtracking on a long path) fails the whole
+            // combined pattern; retry its templates one at a time, in order,
+            // so a later fallback template still matches.
+            foreach ($compiled['matches'] as $matched) {
+                if (preg_match($matched['pattern'], $normalizedPath, $captures) === 1) {
+                    return self::matchResult($matched['path'], $matched['names'], $captures, 1);
+                }
             }
-
-            return ['path' => $matched['path'], 'variables' => $variables];
         }
 
         return null;

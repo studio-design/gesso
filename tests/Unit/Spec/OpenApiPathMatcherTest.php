@@ -13,6 +13,7 @@ use Studio\Gesso\Spec\OpenApiPathMatcher;
 
 use function array_fill;
 use function implode;
+use function ini_set;
 use function sprintf;
 use function str_repeat;
 
@@ -93,6 +94,7 @@ class OpenApiPathMatcherTest extends TestCase
         yield 'multi-character literal bounds the value' => ['/docs/a.v2.json', ['path' => '/docs/{id}.json', 'variables' => ['id' => 'a.v2']]];
         yield 'encoded value stays raw' => ['/files/my%20doc.txt', ['path' => '/files/{name}.{ext}', 'variables' => ['name' => 'my%20doc', 'ext' => 'txt']]];
         yield 'encoded slash stays inside the value' => ['/files/a%2Fb.txt', ['path' => '/files/{name}.{ext}', 'variables' => ['name' => 'a%2Fb', 'ext' => 'txt']]];
+        yield 'literal is not found inside an encoded character' => ['/x/a%2Fb2x', ['path' => '/x/{id}2{version}', 'variables' => ['id' => 'a%2Fb', 'version' => 'x']]];
         yield 'parameter then literal suffix' => ['/users/7/avatar.png', ['path' => '/users/{id}/avatar.png', 'variables' => ['id' => '7']]];
         yield 'concrete path beats a mixed template' => ['/report.pdf', ['path' => '/report.pdf', 'variables' => []]];
         yield 'mixed template beats a whole-segment template' => ['/report.csv', ['path' => '/report.{format}', 'variables' => ['format' => 'csv']]];
@@ -436,6 +438,7 @@ class OpenApiPathMatcherTest extends TestCase
             '/files/{name}.{ext}',
             '/users/{id}/avatar.png',
             '/docs/{id}.json',
+            '/x/{id}2{version}',
         ]);
 
         $this->assertSame($expected, $matcher->matchWithVariables($requestPath));
@@ -449,6 +452,28 @@ class OpenApiPathMatcherTest extends TestCase
         $matcher = new OpenApiPathMatcher(['/{a}-{b}-{c}-{d}-{e}-{f}-END', '/{file}']);
 
         $this->assertSame('/{file}', $matcher->match('/' . str_repeat('a-', 30) . 'NO'));
+    }
+
+    #[Test]
+    public function a_combined_pattern_hitting_the_backtrack_limit_still_reaches_a_later_fallback(): void
+    {
+        $templates = [];
+        for ($i = 0; $i <= 30; $i++) {
+            $templates[] = '/{id}-kind' . $i;
+        }
+        $templates[] = '/{fallback}';
+        $matcher = new OpenApiPathMatcher($templates);
+
+        $previous = ini_set('pcre.backtrack_limit', '1000000');
+
+        try {
+            $this->assertSame(
+                ['path' => '/{fallback}', 'variables' => ['fallback' => str_repeat('a', 17_000)]],
+                $matcher->matchWithVariables('/' . str_repeat('a', 17_000)),
+            );
+        } finally {
+            ini_set('pcre.backtrack_limit', (string) $previous);
+        }
     }
 
     #[Test]
