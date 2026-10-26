@@ -1,7 +1,7 @@
 # Core / PHPUnit quickstart
 
 ```bash
-composer require --dev "studio-design/gesso:^2.0"
+composer require --dev "studio-design/gesso:^2.0" phpunit/phpunit
 ```
 
 Put the shared settings in a root `gesso.php` and register the extension in

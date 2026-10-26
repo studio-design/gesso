@@ -1,7 +1,7 @@
 # Core quickstart
 
 ```bash
-composer require --dev "studio-design/gesso:^2.0"
+composer require --dev "studio-design/gesso:^2.0" phpunit/phpunit
 composer install
 composer test
 ```

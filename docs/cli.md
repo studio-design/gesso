@@ -106,6 +106,20 @@ In both documents, `tool` follows the same `unknown` rule as the
 [coverage](coverage-json-schema.md) JSON. Additive changes keep
 `schemaVersion` at `1`. Removals, renames and type changes increase it.
 
+## Defaults from gesso.php: --config
+
+`doctor`, `coverage:merge` and `coverage:gate` take `--config=<path>`: a
+[`gesso.php`](configuration.md) to default their options from. Without the
+flag they read `./gesso.php` when it exists. An explicit flag wins over the
+file. A `--config` that names a missing or invalid file, or `--config=` with no
+path, is a usage error (exit `2`); an absent `./gesso.php` changes nothing.
+
+| Command | Options defaulted from the file | Guide |
+|---|---|---|
+| `doctor` | `--spec` (from `spec.base_path` + `spec.names`), `--strip-prefix`, `--acknowledge-unvalidatable-scheme` | [Doctor](doctor.md#read-settings-from-gessophp) |
+| `coverage:merge` | the `spec.*`, `coverage.*`, `strict.*.run`, `baseline.*` and `baseline_stale.coverage` options | [Parallel runners](parallel.md) |
+| `coverage:gate` | `--coverage` (from `coverage.report_output.json`) | [Coverage gate](coverage-gate.md) |
+
 ## Renamed flags
 
 Gesso 3.0 renames some flags ([ADR 0005](adr/0005-v3-configuration-and-cli-naming.md)).
@@ -155,6 +169,12 @@ usage error. What counts as `1` differs by command:
 | `coverage:gate` | Every changed operation is covered. | A changed operation has a response that no test validated. | Invalid usage, an unreadable spec or coverage file, or an unwritable `--output-file`. |
 | `stubs` | Stubs were written, or there was nothing left to stub. | — | Invalid usage, an unreadable input, or an output file that cannot be written. |
 
-The v3 milestone moves the I/O failures of `coverage:merge` from `1` to `2`, so
-all four commands handle them the same way. See
-[ADR 0005](adr/0005-v3-configuration-and-cli-naming.md).
+Gesso 3.0 moves the I/O failures of `coverage:merge` from `1` to `2`, so all
+four commands handle them the same way. See
+[ADR 0005](adr/0005-v3-configuration-and-cli-naming.md). An I/O failure is a
+sidecar that cannot be read or decoded, a report or baseline file that cannot
+be written, a coverage baseline that cannot be loaded, or a sidecar directory
+that cannot be inspected for cleanup. In 2.x these still exit `1`, and the
+first one in a run writes a `[Gesso deprecation]` line to stderr naming the
+change. A failed gate, a worker failure marker, and a shard-count mismatch
+stay `1` in 3.0.

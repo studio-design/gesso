@@ -12,6 +12,8 @@ use PHPUnit\Runner\Extension\Extension;
 use PHPUnit\Runner\Extension\Facade;
 use PHPUnit\Runner\Extension\ParameterCollection;
 use PHPUnit\TextUI\Configuration\Configuration;
+use ReflectionEnum;
+use Studio\Gesso\Attribute\BoundToOpenApiEnum;
 use Studio\Gesso\Baseline\BaselineFileFormat;
 use Studio\Gesso\Baseline\BaselineStaleMode;
 use Studio\Gesso\Baseline\CoverageBaseline;
@@ -57,7 +59,9 @@ use Studio\Gesso\ValidationOutputFormat;
 
 use function array_filter;
 use function array_slice;
+use function array_unshift;
 use function array_values;
+use function count;
 use function ctype_digit;
 use function debug_backtrace;
 use function dirname;
@@ -198,8 +202,8 @@ final class OpenApiCoverageExtension implements Extension
                 OpenApiSpecLoader::load($spec);
             } catch (SpecFileNotFoundException $e) {
                 Diagnostics::stderr(
-                    "[OpenAPI Coverage] FATAL: spec '{$spec}' configured in spec.names is not loadable: {$e->getMessage()}\n"
-                    . "  Action: regenerate the bundle (e.g. `cd openapi && npm run bundle`) or remove '{$spec}' from spec.names.\n",
+                    "[OpenAPI Coverage] FATAL: spec '{$spec}' configured in `spec.names` is not loadable: {$e->getMessage()}\n"
+                    . "  Action: regenerate the bundle (e.g. `cd openapi && npm run bundle`) or remove '{$spec}' from `spec.names` in gesso.php.\n",
                 );
                 Diagnostics::appendGithubStepSummaryFatalSpecBlock($githubSummaryPath, $spec, $e->getMessage());
 
@@ -292,13 +296,13 @@ final class OpenApiCoverageExtension implements Extension
             // (all failures demoted) and then drop every recorded violation
             // on the floor — abort bootstrap instead.
             Diagnostics::stderr(
-                "[Gesso] FATAL: GESSO_BASELINE_GENERATE is set but neither `baseline_file` nor `coverage_baseline_file` is configured.\n"
-                . "  Action: set 'baseline' => ['violations' => 'gesso-baseline.json'] and/or\n"
-                . "          ['coverage' => 'gesso-coverage-baseline.json'] in gesso.php.\n",
+                "[Gesso] FATAL: GESSO_BASELINE_GENERATE is set but neither `baseline.violations` nor `baseline.coverage` is configured.\n"
+                . "  Action: set `'baseline' => ['violations' => 'gesso-baseline.json']` (violations) and/or\n"
+                . "          `'baseline' => ['coverage' => 'gesso-coverage-baseline.json']` (coverage) in gesso.php.\n",
             );
 
             throw new InvalidBaselineConfigurationException(
-                'GESSO_BASELINE_GENERATE requires the baseline_file or coverage_baseline_file extension parameter.',
+                'GESSO_BASELINE_GENERATE requires baseline.violations or baseline.coverage in gesso.php.',
             );
         }
 
@@ -336,7 +340,7 @@ final class OpenApiCoverageExtension implements Extension
             } catch (InvalidArgumentException $e) {
                 Diagnostics::stderr(
                     "[Gesso] FATAL: baseline_file could not be loaded: {$e->getMessage()}\n"
-                    . "  Action: generate it with `GESSO_BASELINE_GENERATE=1 vendor/bin/phpunit`, fix the path, or remove the `baseline_file` parameter.\n",
+                    . "  Action: generate it with `GESSO_BASELINE_GENERATE=1 vendor/bin/phpunit`, fix the path, or remove `baseline.violations` from gesso.php.\n",
                 );
 
                 throw new InvalidBaselineConfigurationException(
@@ -637,7 +641,7 @@ final class OpenApiCoverageExtension implements Extension
         } catch (InvalidArgumentException $e) {
             Diagnostics::stderr(
                 "[Gesso] FATAL: coverage_baseline_file could not be loaded: {$e->getMessage()}\n"
-                . "  Action: generate it with `GESSO_BASELINE_GENERATE=1 vendor/bin/phpunit`, fix the path, or remove the `coverage_baseline_file` parameter.\n",
+                . "  Action: generate it with `GESSO_BASELINE_GENERATE=1 vendor/bin/phpunit`, fix the path, or remove `baseline.coverage` from gesso.php.\n",
             );
 
             throw new InvalidBaselineConfigurationException(
@@ -665,13 +669,14 @@ final class OpenApiCoverageExtension implements Extension
         }
 
         if (!$hasBaselineFile) {
+            $kind = $fileName === 'baseline_file' ? 'violations' : 'coverage';
             $reason = sprintf(
-                '%s is set but no `%s` extension parameter is configured. '
-                . 'Stale evaluation needs a baseline to compare against; set `%s` or remove `%s`.',
+                '%s is set but no `%s` baseline is configured. '
+                . 'Stale evaluation needs a baseline to compare against; set `baseline.%s` or remove `baseline_stale.%s` in gesso.php.',
                 $name,
                 $fileName,
-                $fileName,
-                $name,
+                $kind,
+                $kind,
             );
             Diagnostics::stderr("[Gesso] FATAL: {$reason}\n");
 
@@ -1208,7 +1213,8 @@ final class OpenApiCoverageExtension implements Extension
             Diagnostics::stderr(
                 "[OpenAPI Enum Drift] FATAL: {$reason}\n"
                 . '  Action: provide one or more PSR-4 namespace prefixes '
-                . "(e.g. enum_drift_scan_namespaces=\"App\\Enums\").\n",
+                // Doubled backslashes: the example is pasted into a single-quoted PHP string.
+                . "(e.g. `'enum_drift' => ['scan_namespaces' => ['App\\\\Enums\\\\']]` in gesso.php).\n",
             );
             Diagnostics::appendGithubStepSummaryEnumDriftBlock($githubSummaryPath, $reason, isFatal: true);
 
@@ -1255,21 +1261,57 @@ final class OpenApiCoverageExtension implements Extension
             return;
         }
 
+        // Issue #661: list what bound, so a renamed component that silently
+        // drops a name binding shows up as a changed count.
+        $bindings = self::renderEnumBindings($reports, count($fqcns));
+        Diagnostics::stderr($bindings . "\n");
+
         $drifting = array_values(array_filter(
             $reports,
             static fn(EnumDriftReport $r): bool => $r->hasDrift(),
         ));
 
         if ($drifting === []) {
+            Diagnostics::appendGithubStepSummaryEnumBindingsBlock($githubSummaryPath, $bindings);
+
             return;
         }
 
         $message = EnumDriftAsserter::renderMessage($drifting, $failOnDrift);
         Diagnostics::stderr($message . "\n");
-        Diagnostics::appendGithubStepSummaryEnumDriftBlock($githubSummaryPath, $message, isFatal: $failOnDrift);
+        Diagnostics::appendGithubStepSummaryEnumDriftBlock($githubSummaryPath, $bindings . "\n\n" . $message, isFatal: $failOnDrift);
 
         if ($failOnDrift) {
             throw new EnumDriftException($drifting, $message);
         }
+    }
+
+    /**
+     * `N bound (X by name, Y by attribute), M unbound.` plus one
+     * `Fqcn  ->  target` line per binding, in scan order.
+     *
+     * @param list<EnumDriftReport> $reports
+     */
+    private static function renderEnumBindings(array $reports, int $scanned): string
+    {
+        $lines = [];
+        $byAttribute = 0;
+        foreach ($reports as $report) {
+            if ((new ReflectionEnum($report->enumFqcn))->getAttributes(BoundToOpenApiEnum::class) !== []) {
+                $byAttribute++;
+            }
+            $lines[] = sprintf('  %s  ->  %s', $report->enumFqcn, $report->specPath);
+        }
+
+        $bound = count($reports);
+        array_unshift($lines, sprintf(
+            '[OpenAPI Enum Drift] %d bound (%d by name, %d by attribute), %d unbound.',
+            $bound,
+            $bound - $byAttribute,
+            $byAttribute,
+            $scanned - $bound,
+        ));
+
+        return implode("\n", $lines);
     }
 }

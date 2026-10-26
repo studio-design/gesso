@@ -20,11 +20,11 @@ factory lets direct callers opt into unambiguous JSON types.
 The same correction applies to **requests**. Laravel's `postJson($uri, [])`
 and Symfony's `jsonRequest('POST', $uri, [])` send `[]`, not `{}`, and now fail
 an object request schema. Their array-only payload arguments cannot express
-an empty object. Send raw JSON instead:
+an empty object. Send raw JSON instead; `{}` is the canonical empty-object body:
 
 ```php
-// Laravel: use your application's Tests\TestCase.
-$this->call('POST', '/object', server: ['CONTENT_TYPE' => 'application/json'], content: '{}');
+// Laravel (ValidatesOpenApiSchema): sent verbatim, auto-assert / auto-validate still apply.
+$this->jsonRaw('POST', '/object', '{}');
 
 // Symfony KernelBrowser / HttpKernelBrowser:
 $client->request('POST', '/object', server: ['CONTENT_TYPE' => 'application/json'], content: '{}');
@@ -87,8 +87,19 @@ and the PHPUnit extension prints a single end-of-run STDERR line:
 ```
 
 **If your suite prints no such line on the final v2 minor, upgrading to v3.0
-needs no changes to your code, configuration, or CLI invocations.** Work through
-the table below until it does.
+needs no changes for any surface that announces its deprecation at runtime**
+(configuration keys, CLI flags, environment variables, Artisan commands, PHP
+symbols that raise a notice, and wire formats). Work through the table below
+until it does.
+
+Rows whose Surface starts with *static only* are outside that guarantee: enum
+cases and Composer constraints cannot raise a notice, because referencing an
+enum case runs no Gesso code. Code that still names a removed case (for
+example an arm of a `match` over `EnumBindingReason`) breaks in v3 even on a
+silent run. Search your code for the names those rows list, or run a static
+analyser that reports `@deprecated` symbols, and compare your platform with
+the listed Composer floors. See the
+[deprecation policy](docs/versioning.md#deprecation-policy).
 
 The summary line is the signal to trust: it is rendered from recorded
 per-process counts by the PHPUnit extension (and by `gesso coverage:merge` for
@@ -148,6 +159,24 @@ nothing there.
 | 2.9.0 | `--strict-required=<mode>` (`coverage:merge` flag) | `--strict-required="run=…,per_call=…"` | 3.0 |
 | 2.9.0 | `--strict-additional-properties=<mode>` (`coverage:merge` flag) | `--strict-additional-properties="run=…,per_call=…"` | 3.0 |
 | 2.9.0 | `--output` (`gesso stubs` / `gesso:stubs` flag) | `--output-dir` | 3.0 |
+| 2.9.0 | *static only* `EnumBindingReason::BasePathNotConfigured` (enum case) | none — only file-path bindings raise it; component-name bindings report a missing component as `ComponentNotFound` | 3.0 |
+| 2.9.0 | *static only* `EnumBindingReason::EnumBasePathNotFound` (enum case) | none — only file-path bindings raise it; component-name bindings report a missing component as `ComponentNotFound` | 3.0 |
+| 2.9.0 | *static only* `EnumBindingReason::EnumSpecBasePathOrphaned` (enum case) | none — only file-path bindings raise it; component-name bindings report a missing component as `ComponentNotFound` | 3.0 |
+| 2.9.0 | *static only* `EnumBindingReason::SpecFileNotFound` (enum case) | none — only file-path bindings raise it; component-name bindings report a missing component as `ComponentNotFound` | 3.0 |
+| 2.9.0 | *static only* `EnumBindingReason::MalformedJson` (enum case) | none — only file-path bindings raise it; component-name bindings report a missing component as `ComponentNotFound` | 3.0 |
+| 2.9.0 | *static only* `EnumBindingReason::MalformedYaml` (enum case) | none — only file-path bindings raise it; component-name bindings report a missing component as `ComponentNotFound` | 3.0 |
+| 2.9.0 | *static only* `EnumBindingReason::YamlLibraryMissing` (enum case) | none — only file-path bindings raise it; component-name bindings report a missing component as `ComponentNotFound` | 3.0 |
+| 2.9.0 | *static only* `EnumBindingReason::NonMappingRoot` (enum case) | none — only file-path bindings raise it; component-name bindings report a missing component as `ComponentNotFound` | 3.0 |
+| 2.9.0 | *static only* `EnumBindingReason::EnumKeyMissing` (enum case) | none — only file-path bindings raise it; component-name bindings report a missing component as `ComponentNotFound` | 3.0 |
+| 2.9.0 | `failOpenApi()` (private, via `ValidatesOpenApiSchema`, Symfony and PSR-7 `OpenApiAssertions`) | PHPUnit's `$this->fail()` | 3.0 |
+| 2.9.0 | `assertOpenApi()` (private, via `ValidatesOpenApiSchema`, Symfony and PSR-7 `OpenApiAssertions`) | PHPUnit's `$this->assertTrue()` | 3.0 |
+| 2.9.0 | `failPsr7()` (private, via PSR-7 `OpenApiAssertions`) | PHPUnit's `$this->fail()` | 3.0 |
+| 2.9.0 | `assertPsr7()` (private, via PSR-7 `OpenApiAssertions`) | PHPUnit's `$this->assertTrue()` | 3.0 |
+| 2.9.0 | `failExplore()` (private, via `ExploresOpenApiEndpoint`) | PHPUnit's `$this->fail()` | 3.0 |
+| 2.9.0 | *static only* `phpunit/phpunit` in Gesso's `require` (Composer constraint) | declare it yourself: `composer require --dev "phpunit/phpunit:^12.0 \|\| ^13.0"`; v3 moves it to `require-dev` and no longer installs a runner for you | 3.0 |
+| 2.9.0 | Coverage sidecars with `envelopeVersion` 2–9 (read by `coverage:merge`) | `envelopeVersion: 10`, written by the current workers; re-run the suite | 3.0 |
+| 2.9.0 | Coverage sidecars holding a bare v1 coverage state (read by `coverage:merge`) | `envelopeVersion: 10`, written by the current workers; re-run the suite | 3.0 |
+| 2.9.0 | `coverage:merge` exit code `1` on an I/O failure (unreadable sidecar, unwritable report or baseline) | exit code `2`; a check for any non-zero exit needs no change | 3.0 |
 | 2.9.0 | `spec_base_path` (PHPUnit parameter / Laravel config key) | `spec.base_path` in `gesso.php` | 3.0 |
 | 2.9.0 | `default_spec` (PHPUnit parameter / Laravel config key) | `spec.default` in `gesso.php` | 3.0 |
 | 2.9.0 | `specs` (PHPUnit parameter / Laravel config key) | `spec.names` in `gesso.php` | 3.0 |
@@ -363,7 +392,8 @@ each tracker half is an optional key instead of a new version number. A
 `gesso coverage:merge` from an older 2.x release rejects it as an unknown
 version — as every previous envelope bump did — so upgrade the merge step
 together with the workers. The 2.x merge keeps reading envelopes 2–9 and the
-bare v1 coverage state; dropping them is a v3.0 change (see
+bare v1 coverage state, with a `[Gesso deprecation]` notice since 2.9.0;
+dropping them is a v3.0 change (see [Deprecations](#deprecations) and
 [versioned sidecar compatibility](docs/versioning.md#versioned-sidecar-compatibility)).
 
 ### From v2.3.0 → v2.4.0

@@ -411,3 +411,16 @@ $coverage = OpenApiCoverageTracker::computeCoverage('front');
 ```
 
 `OpenApiCoverageTracker::current()->hasAnyCoverageOn(spec): bool` is a fast presence check; the static `hasAnyCoverage(spec)` wrapper is deprecated since 2.7 and removed in 3.0. `getCovered()` is retained as a diagnostic shim returning `array<spec, array<"METHOD path", true>>`. See [CHANGELOG.md](https://github.com/studio-design/gesso/blob/main/CHANGELOG.md) for the migration from the pre-#111 endpoint-level shape.
+
+## `ValidatesOpenApiSchema::jsonRaw()`
+
+```php
+public function jsonRaw(string $method, string $uri, string $json, array $headers = []): TestResponse
+```
+
+Laravel trait helper: Laravel's `json()` with a pre-encoded body. `$json` is
+sent verbatim (use `'{}'` for an empty object, which a PHP array payload cannot
+express). `Content-Type` / `Accept: application/json` and `CONTENT_LENGTH` are
+defaulted; `$headers` overrides them. The response passes through the same
+auto-assert / auto-validate-request path as `postJson()`. See
+[setup](setup.md#raw-json-request-bodies-with-jsonraw).

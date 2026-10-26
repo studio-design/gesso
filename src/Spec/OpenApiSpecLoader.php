@@ -242,7 +242,7 @@ final class OpenApiSpecLoader
             throw new InvalidOpenApiSpecException(
                 InvalidOpenApiSpecReason::BasePathNotConfigured,
                 'OpenApiSpecLoader base path not configured. '
-                . 'Call OpenApiSpecLoader::configure() or set spec.base_path in gesso.php.',
+                . 'Call OpenApiSpecLoader::configure() or set `spec.base_path` in gesso.php.',
             );
         }
 

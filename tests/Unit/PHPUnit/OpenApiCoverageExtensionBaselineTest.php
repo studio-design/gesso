@@ -150,7 +150,7 @@ class OpenApiCoverageExtensionBaselineTest extends TestCase
             $this->fail('Expected an InvalidBaselineConfigurationException.');
         } catch (InvalidBaselineConfigurationException) {
             $this->assertStringContainsString('[Gesso] FATAL', $this->capturedStderr());
-            $this->assertStringContainsString('baseline_file', $this->capturedStderr());
+            $this->assertStringContainsString('baseline.violations', $this->capturedStderr());
             $this->assertNull(ViolationBaselineCollector::current());
         }
     }
@@ -204,7 +204,7 @@ class OpenApiCoverageExtensionBaselineTest extends TestCase
             $this->fail('Expected an InvalidBaselineConfigurationException.');
         } catch (InvalidBaselineConfigurationException) {
             $this->assertStringContainsString('[Gesso] FATAL', $this->capturedStderr());
-            $this->assertStringContainsString('baseline_file', $this->capturedStderr());
+            $this->assertStringContainsString('baseline.violations', $this->capturedStderr());
             $this->assertStringContainsString('GESSO_BASELINE_GENERATE', $this->capturedStderr());
             $this->assertNull(ViolationBaselineEnforcer::current());
         }
@@ -272,7 +272,7 @@ class OpenApiCoverageExtensionBaselineTest extends TestCase
         } catch (InvalidBaselineConfigurationException) {
             $this->assertStringContainsString('[Gesso] FATAL', $this->capturedStderr());
             $this->assertStringContainsString('baseline_stale', $this->capturedStderr());
-            $this->assertStringContainsString('baseline_file', $this->capturedStderr());
+            $this->assertStringContainsString('baseline.violations', $this->capturedStderr());
         }
     }
 

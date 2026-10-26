@@ -92,7 +92,7 @@ final class StrictAdditionalPropertiesAsserter
             $reports,
         );
         $footer = 'Action: declare each property in `properties` / `patternProperties`, explicitly document the object as open with '
-            . '`additionalProperties` / `unevaluatedProperties`, or set `strict_additional_properties = off`.';
+            . '`additionalProperties` / `unevaluatedProperties`, or set `strict.additional_properties.run` to `off` in gesso.php.';
 
         return $header . "\n\n" . implode("\n", $rows) . "\n\n" . $footer;
     }

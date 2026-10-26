@@ -46,9 +46,12 @@ use function sprintf;
  *
  * The 2.x reader still accepts the legacy envelopes 2-9 (whose version
  * enumerated the halves they carried) and the bare v1 coverage state with
- * no `envelopeVersion` key; see docs/versioning.md. The wrapper key is
- * `envelopeVersion` (not `version`) precisely so bare v1 payloads remain
- * distinguishable; see {@see self::parse()}'s discriminator order.
+ * no `envelopeVersion` key, each with a one-shot `[Gesso deprecation]`
+ * notice since 2.9.0 once accepted (the bare state's from the merge, after
+ * the coverage tracker validates it); 3.0 rejects both (#505). See docs/versioning.md.
+ * The wrapper key is `envelopeVersion` (not `version`) precisely so bare
+ * v1 payloads remain distinguishable; see {@see self::parse()}'s
+ * discriminator order.
  *
  * @internal Used by the PHPUnit extension and merge CLI. The accepted wire
  *           formats remain versioned compatibility inputs.
@@ -84,6 +87,9 @@ final class CoverageSidecarEnvelope
      * Inputs the 2.x reader still accepts, written by Gesso 1.9-2.6 workers. The
      * version enumerated which optional halves the writer carried; v10 stops that
      * and signals presence by the key itself. Deleted by the v3.0 cutoff (#505).
+     *
+     * @deprecated since 2.9.0, together with the bare v1 coverage state; reading
+     *             either emits a `[Gesso deprecation]` notice. Removed in 3.0.
      */
     private const LEGACY_VERSIONS = [2, 3, 4, 5, 6, 7, 8, 9];
 
@@ -189,7 +195,8 @@ final class CoverageSidecarEnvelope
 
             // Legacy v1 bare coverage payload. Hand it back as the coverage
             // half so OpenApiCoverageTracker::importState() validates the
-            // inner shape on its own terms.
+            // inner shape on its own terms; the merge announces the #505
+            // deprecation once that validation has passed.
             return [
                 'coverage' => $payload,
                 'strictRequired' => null,
@@ -232,6 +239,8 @@ final class CoverageSidecarEnvelope
             ));
         }
 
+        // The #505 deprecation is raised by the merge once the trackers
+        // accepted every half, so a malformed sidecar records no count.
         return self::parseLegacyEnvelope($payload, $version);
     }
 

@@ -1,7 +1,7 @@
 # Laravel quickstart
 
 ```bash
-composer require --dev "studio-design/gesso:^2.0"
+composer require --dev "studio-design/gesso:^2.0" phpunit/phpunit
 ```
 
 Put the shared settings in the application-root `gesso.php` — the PHPUnit
@@ -47,6 +47,10 @@ composer test
 ```
 
 Its second test switches on `auto_assert` and `auto_validate_request` for one test, demonstrating validation without an explicit assertion; set `laravel.auto_assert` / `laravel.auto_validate_request` in `gesso.php` to enable them suite-wide. The PHPUnit extension prints coverage for both tests.
+
+To send a body a PHP array cannot express (the empty object `{}`), use
+`$this->jsonRaw('PATCH', '/pets/1', '{}')`; see
+[raw JSON request bodies](../setup.md#raw-json-request-bodies-with-jsonraw).
 
 Already generating your spec with Scramble? Follow the
 [Scramble integration recipe](../recipes/scramble.md) to validate generated

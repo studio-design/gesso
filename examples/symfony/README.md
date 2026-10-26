@@ -1,7 +1,7 @@
 # Symfony quickstart
 
 ```bash
-composer require --dev "studio-design/gesso:^2.0" symfony/http-foundation symfony/http-kernel
+composer require --dev "studio-design/gesso:^2.0" phpunit/phpunit symfony/http-foundation symfony/http-kernel
 composer install
 composer test
 ```

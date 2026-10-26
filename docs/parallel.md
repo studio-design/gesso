@@ -92,6 +92,11 @@ default already does this.
 | `1` | A gate failed (threshold, strict, baseline, expected shard count), a sidecar could not be read, or a report could not be written. |
 | `2` | Command-line usage is invalid. |
 
+Gesso 3.0 exits `2` instead of `1` when a sidecar, report, or baseline file
+cannot be read or written. Until then those failures print a
+`[Gesso deprecation]` line saying so; a CI step that only checks for a
+non-zero exit needs no change.
+
 Shared conventions: [CLI reference](cli.md#exit-codes).
 
 ## Sharded CI jobs
@@ -190,7 +195,8 @@ baseline-generation run (`GESSO_BASELINE_GENERATE=1`) writes `baseline`.
 
 The merge reader also accepts the legacy envelopes 2–9 and the older bare
 coverage state `version: 1`, so HTTP coverage can still be combined while a
-worker fleet is being upgraded. A missing half is reported, not treated as
+worker fleet is being upgraded. Since 2.9.0 it writes a `[Gesso deprecation]`
+line when it does, because Gesso 3.0 reads only `envelopeVersion: 10`. A missing half is reported, not treated as
 empty: a strict SDK exercise threshold requires every worker to carry SDK
 exercise state (warn-only mode reports the missing workers and evaluates the
 available observations), and `--baseline="violations=…"` requires every worker to carry

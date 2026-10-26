@@ -24,6 +24,7 @@ use Studio\Gesso\Internal\OpenApiAssertionCore;
 use Studio\Gesso\OpenApiRequestValidator;
 use Studio\Gesso\OpenApiResponseValidator;
 use Studio\Gesso\OpenApiValidationResult;
+use Studio\Gesso\PHPUnit\CleanTraceAssert;
 use Studio\Gesso\SkipOpenApiResolver;
 use Studio\Gesso\Spec\OpenApiOperationResolver;
 use Studio\Gesso\Spec\OpenApiPathMatcher;
@@ -49,6 +50,7 @@ use function is_int;
 use function is_numeric;
 use function is_string;
 use function sprintf;
+use function strlen;
 use function strtolower;
 use function strtoupper;
 use function trigger_error;
@@ -213,7 +215,7 @@ trait ValidatesOpenApiSchema
         // the resolver's single-shot consumption is meant to prevent.
         $resolvedMethod = $method ?? HttpMethod::tryFrom(strtoupper($request->getMethod()));
         if ($resolvedMethod === null) {
-            $this->failOpenApi(sprintf(
+            CleanTraceAssert::fail(sprintf(
                 'toMatchOpenApiRequestSchema received a Request with unrecognised HTTP method %s. '
                 . 'Supported methods: %s.',
                 var_export($request->getMethod(), true),
@@ -238,6 +240,35 @@ trait ValidatesOpenApiSchema
         } finally {
             $this->withExplicitOpenApiSpec(null);
         }
+    }
+
+    /**
+     * Laravel's `json()` with a pre-encoded body: `$json` is sent verbatim, so
+     * bodies a PHP array cannot express (`{}` — an empty array encodes as
+     * `[]`) reach the app and the validator as written. Defaults match
+     * `json()` (`Content-Type` / `Accept: application/json`, `CONTENT_LENGTH`);
+     * `$headers` overrides them. Goes through the same auto-assert /
+     * auto-validate-request hook as every other Laravel HTTP helper.
+     *
+     * @param array<string, mixed> $headers
+     */
+    public function jsonRaw(string $method, string $uri, string $json, array $headers = []): TestResponse
+    {
+        $headers = array_merge([
+            'CONTENT_LENGTH' => strlen($json),
+            'CONTENT_TYPE' => 'application/json',
+            'Accept' => 'application/json',
+        ], $headers);
+
+        return $this->call(
+            $method,
+            $uri,
+            [],
+            $this->prepareCookiesForJsonRequest(),
+            [],
+            $this->transformHeadersToServerVars($headers),
+            $json,
+        );
     }
 
     /**
@@ -512,7 +543,7 @@ trait ValidatesOpenApiSchema
 
         $specName = $this->resolveOpenApiSpec();
         if ($specName === '') {
-            $this->failOpenApi(self::EMPTY_SPEC_MESSAGE);
+            CleanTraceAssert::fail(self::EMPTY_SPEC_MESSAGE);
         }
 
         // Idempotency key includes the spec so that validating the same
@@ -528,7 +559,7 @@ trait ValidatesOpenApiSchema
 
         $content = $response->getContent();
         if ($content === false) {
-            $this->failOpenApi('OpenAPI contract testing requires buffered responses, but getContent() returned false (streamed response?).');
+            CleanTraceAssert::fail('OpenAPI contract testing requires buffered responses, but getContent() returned false (streamed response?).');
         }
 
         $contentType = $response->headers->get('Content-Type', '');
@@ -647,7 +678,7 @@ trait ValidatesOpenApiSchema
     ): void {
         $specName = $this->resolveOpenApiSpec();
         if ($specName === '') {
-            $this->failOpenApi(self::EMPTY_SPEC_MESSAGE);
+            CleanTraceAssert::fail(self::EMPTY_SPEC_MESSAGE);
         }
 
         $resolvedMethod = $method->value;
@@ -1018,7 +1049,7 @@ trait ValidatesOpenApiSchema
         $raw = config('gesso.' . $key, $default);
 
         if (!is_array($raw)) {
-            $this->failOpenApi(sprintf(
+            CleanTraceAssert::fail(sprintf(
                 'gesso.%s must be an array of %ss, got %s: %s.',
                 $key,
                 $what,
@@ -1030,7 +1061,7 @@ trait ValidatesOpenApiSchema
         $values = [];
         foreach ($raw as $index => $value) {
             if (!is_string($value)) {
-                $this->failOpenApi(sprintf(
+                CleanTraceAssert::fail(sprintf(
                     'gesso.%s[%s] must be a string %s, got %s.',
                     $key,
                     (string) $index,
@@ -1039,7 +1070,7 @@ trait ValidatesOpenApiSchema
                 ));
             }
             if ($value === '') {
-                $this->failOpenApi(sprintf('gesso.%s[%s] must not be an empty string.', $key, (string) $index));
+                CleanTraceAssert::fail(sprintf('gesso.%s[%s] must not be an empty string.', $key, (string) $index));
             }
             $values[] = $value;
         }
@@ -1186,7 +1217,7 @@ trait ValidatesOpenApiSchema
 
         $parsed = filter_var($raw, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
         if ($parsed === null) {
-            $this->failOpenApi(sprintf(
+            CleanTraceAssert::fail(sprintf(
                 'gesso.%s must be a boolean (or a boolean-compatible value '
                 . 'like "true"/"false"/"1"/"0"), got %s: %s.',
                 $key,
@@ -1209,7 +1240,7 @@ trait ValidatesOpenApiSchema
         try {
             return HttpFoundationBody::request($request, $contentType);
         } catch (JsonException $e) {
-            $this->failOpenApi(HttpFoundationBody::parseFailure($e, $contentType, 'Request'));
+            CleanTraceAssert::fail(HttpFoundationBody::parseFailure($e, $contentType, 'Request'));
         }
     }
 
@@ -1223,7 +1254,7 @@ trait ValidatesOpenApiSchema
         try {
             return HttpFoundationBody::json($content, $contentType);
         } catch (JsonException $e) {
-            $this->failOpenApi(HttpFoundationBody::parseFailure($e, $contentType, 'Response'));
+            CleanTraceAssert::fail(HttpFoundationBody::parseFailure($e, $contentType, 'Response'));
         }
     }
 }

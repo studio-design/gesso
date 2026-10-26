@@ -1120,6 +1120,204 @@ class DoctorCommandTest extends TestCase
     }
 
     #[Test]
+    public function a_run_without_flags_reads_the_emitted_gesso_php_and_reports_the_same(): void
+    {
+        // Issue #660: `doctor --emit-config > gesso.php`, then `doctor` alone.
+        $this->writeSpec('front.json', $this->basicAuthSpec('/pets'));
+        $this->writeSpec('admin.json', $this->basicAuthSpec('/users'));
+        $flags = [
+            'specs' => ['front.json', 'admin.json'],
+            'strip_prefixes' => ['/api'],
+            'acknowledged_unvalidatable_schemes' => ['ClientBasicAuth'],
+            'format' => 'json',
+        ];
+        $cwd = (string) getcwd();
+        chdir($this->workDir);
+
+        try {
+            [$exit, $flagged] = $this->runDoctor($flags);
+            [, $config] = $this->runDoctor($flags + ['emit_config' => true]);
+            file_put_contents('gesso.php', $config);
+
+            [$configuredExit, $configured] = $this->runDoctor(['format' => 'json']);
+            [, $reEmitted] = $this->runDoctor(['format' => 'json', 'emit_config' => true]);
+        } finally {
+            chdir($cwd);
+        }
+
+        $this->assertSame(DoctorCommand::EXIT_OK, $exit);
+        $this->assertSame($exit, $configuredExit);
+        $this->assertSame($flagged, $configured);
+        $this->assertStringContainsString('acknowledged', $configured);
+        $this->assertSame($config, $reEmitted);
+    }
+
+    #[Test]
+    public function emit_config_redirected_into_the_default_gesso_php_succeeds(): void
+    {
+        // The shell creates and truncates `gesso.php` before doctor runs.
+        $this->writeSpec('front.json', $this->validSpec('/pets'));
+        $cwd = (string) getcwd();
+        chdir($this->workDir);
+
+        try {
+            file_put_contents('gesso.php', '');
+            [$exit, $stdout, $stderr] = $this->runDoctor(['specs' => ['front.json'], 'emit_config' => true]);
+        } finally {
+            chdir($cwd);
+        }
+
+        $this->assertSame(DoctorCommand::EXIT_OK, $exit, $stderr);
+        $this->assertStringStartsWith('<?php', $stdout);
+    }
+
+    #[Test]
+    public function an_explicit_spec_under_the_base_path_keeps_it_as_the_local_ref_root(): void
+    {
+        mkdir($this->workDir . '/specs/bundled', 0o777, true);
+        file_put_contents($this->workDir . '/specs/schema.json', (string) json_encode(['type' => 'object'], JSON_THROW_ON_ERROR));
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 't', 'version' => '1'],
+            'paths' => ['/pets' => ['get' => ['responses' => ['200' => [
+                'description' => 'ok',
+                'content' => ['application/json' => ['schema' => ['$ref' => '../schema.json']]],
+            ]]]]],
+        ];
+        $front = $this->workDir . '/specs/bundled/front.json';
+        file_put_contents($front, (string) json_encode($spec, JSON_THROW_ON_ERROR));
+        $config = $this->writeSpec('gesso.php', <<<'PHP'
+            <?php
+            return ['spec' => ['base_path' => __DIR__ . '/specs', 'names' => ['bundled/front']]];
+            PHP);
+
+        [$fromConfig, , $configStderr] = $this->runDoctor(['config' => $config]);
+        [$explicit, , $explicitStderr] = $this->runDoctor(['config' => $config, 'specs' => [$front]]);
+
+        $this->assertSame(DoctorCommand::EXIT_OK, $fromConfig, $configStderr);
+        $this->assertSame(DoctorCommand::EXIT_OK, $explicit, $explicitStderr);
+    }
+
+    #[Test]
+    public function a_config_spec_name_that_leaves_the_base_path_is_an_error(): void
+    {
+        // The runtime loader rejects `..` names; doctor must not pass them.
+        mkdir($this->workDir . '/specs');
+        $this->writeSpec('front.json', $this->validSpec('/pets'));
+        $config = $this->writeSpec('gesso.php', <<<'PHP'
+            <?php
+            return ['spec' => ['base_path' => __DIR__ . '/specs', 'names' => ['../front']]];
+            PHP);
+
+        [$exit, $stdout] = $this->runDoctor(['config' => $config, 'format' => 'json']);
+
+        $this->assertSame(DoctorCommand::EXIT_DIAGNOSTIC_FAILURE, $exit);
+        $this->assertStringContainsString('leaves spec.base_path', $stdout);
+    }
+
+    #[Test]
+    public function a_spec_outside_the_base_path_does_not_unroot_the_specs_inside_it(): void
+    {
+        mkdir($this->workDir . '/specs/bundled', 0o777, true);
+        file_put_contents($this->workDir . '/specs/schema.json', (string) json_encode(['type' => 'object'], JSON_THROW_ON_ERROR));
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 't', 'version' => '1'],
+            'paths' => ['/pets' => ['get' => ['responses' => ['200' => [
+                'description' => 'ok',
+                'content' => ['application/json' => ['schema' => ['$ref' => '../schema.json']]],
+            ]]]]],
+        ];
+        $inside = $this->workDir . '/specs/bundled/front.json';
+        file_put_contents($inside, (string) json_encode($spec, JSON_THROW_ON_ERROR));
+        $outside = $this->writeSpec('other.json', $this->validSpec('/users'));
+        $config = $this->writeSpec('gesso.php', <<<'PHP'
+            <?php
+            return ['spec' => ['base_path' => __DIR__ . '/specs', 'names' => ['bundled/front']]];
+            PHP);
+
+        [$exit, , $stderr] = $this->runDoctor(['config' => $config, 'specs' => [$inside, $outside]]);
+
+        $this->assertSame(DoctorCommand::EXIT_OK, $exit, $stderr);
+    }
+
+    #[Test]
+    public function the_phpunit_snippet_uses_the_inherited_base_path_for_nested_names(): void
+    {
+        mkdir($this->workDir . '/specs/bundled', 0o777, true);
+        file_put_contents($this->workDir . '/specs/bundled/front.json', $this->validSpec('/pets'));
+        $config = $this->writeSpec('gesso.php', <<<'PHP'
+            <?php
+            return ['spec' => ['base_path' => __DIR__ . '/specs', 'names' => ['bundled/front']]];
+            PHP);
+
+        [$exit, $stdout] = $this->runDoctor(['config' => $config, 'phpunit_snippet' => true, 'format' => 'json']);
+        $snippet = (string) json_decode($stdout, true, flags: JSON_THROW_ON_ERROR)['phpunit'];
+
+        $this->assertSame(DoctorCommand::EXIT_OK, $exit);
+        $this->assertStringContainsString('name="specs" value="bundled/front"', $snippet);
+        $this->assertStringNotContainsString('specs/bundled"', $snippet);
+    }
+
+    #[Test]
+    public function explicit_flags_win_over_the_config_file(): void
+    {
+        $this->writeSpec('front.json', $this->basicAuthSpec('/pets'));
+        $admin = $this->writeSpec('admin.json', $this->basicAuthSpec('/users'));
+        $config = $this->writeSpec('gesso.php', <<<'PHP'
+            <?php
+            return [
+                'spec' => ['base_path' => __DIR__, 'names' => ['front'], 'strip_prefixes' => ['/api']],
+                'validation' => ['acknowledged_unvalidatable_schemes' => ['ClientBasicAuth']],
+            ];
+            PHP);
+
+        [$exit, $stdout] = $this->runDoctor([
+            'config' => $config,
+            'specs' => [$admin],
+            'acknowledged_unvalidatable_schemes' => ['Ghost'],
+            'format' => 'json',
+        ]);
+        $report = json_decode($stdout, true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(DoctorCommand::EXIT_OK, $exit);
+        $this->assertSame(['admin'], array_column($report['specs'], 'name'));
+        $this->assertStringContainsString('Ghost', $stdout);
+        $this->assertStringNotContainsString('acknowledged as unvalidatable', $stdout);
+
+        // Without the flags, the file supplies both lists.
+        [, $stdout] = $this->runDoctor(['config' => $config, 'format' => 'json']);
+        $report = json_decode($stdout, true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame(['front'], array_column($report['specs'], 'name'));
+        $this->assertStringNotContainsString('Ghost', $stdout);
+        $this->assertStringContainsString('acknowledged as unvalidatable', $stdout);
+    }
+
+    #[Test]
+    public function a_missing_or_empty_explicit_config_is_a_usage_error(): void
+    {
+        [$exit, , $stderr] = $this->runDoctor(['config' => $this->workDir . '/gesso.php']);
+        $this->assertSame(DoctorCommand::EXIT_USAGE, $exit);
+        $this->assertStringContainsString('Gesso configuration file not found', $stderr);
+
+        [$exit, , $stderr] = $this->runDoctor(['config' => '']);
+        $this->assertSame(DoctorCommand::EXIT_USAGE, $exit);
+        $this->assertStringContainsString('--config must name a gesso.php file', $stderr);
+
+        // The conventional ./gesso.php being absent changes nothing.
+        $cwd = (string) getcwd();
+        chdir($this->workDir);
+
+        try {
+            [$exit, , $stderr] = $this->runDoctor([]);
+        } finally {
+            chdir($cwd);
+        }
+        $this->assertSame(DoctorCommand::EXIT_USAGE, $exit);
+        $this->assertStringContainsString('At least one --spec is required.', $stderr);
+    }
+
+    #[Test]
     public function emit_config_writes_a_portable_base_path_for_specs_in_the_working_directory(): void
     {
         $this->writeSpec('front.json', $this->validSpec('/pets'));
@@ -1456,6 +1654,16 @@ class DoctorCommandTest extends TestCase
             'openapi' => '3.1.0',
             'info' => ['title' => 'Test', 'version' => '1'],
             'paths' => [$path => ['get' => ['responses' => ['200' => ['description' => 'ok']]]]],
+        ], JSON_THROW_ON_ERROR);
+    }
+
+    private function basicAuthSpec(string $path): string
+    {
+        return (string) json_encode([
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'Test', 'version' => '1'],
+            'paths' => [$path => ['get' => ['responses' => ['200' => ['description' => 'ok']]]]],
+            'components' => ['securitySchemes' => ['ClientBasicAuth' => ['type' => 'http', 'scheme' => 'basic']]],
         ], JSON_THROW_ON_ERROR);
     }
 

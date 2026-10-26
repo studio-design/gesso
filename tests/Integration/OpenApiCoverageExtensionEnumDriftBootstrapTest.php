@@ -139,7 +139,9 @@ class OpenApiCoverageExtensionEnumDriftBootstrapTest extends TestCase
         ]);
 
         $this->assertSame(0, $exit, "Expected zero exit; output was:\n" . $output);
-        $this->assertStringNotContainsString('[OpenAPI Enum Drift]', $output);
+        $this->assertStringContainsString('[OpenAPI Enum Drift] 1 bound (0 by name, 1 by attribute), 0 unbound.', $output);
+        $this->assertStringNotContainsString('[OpenAPI Enum Drift] WARNING', $output);
+        $this->assertStringNotContainsString('[OpenAPI Enum Drift] FATAL', $output);
     }
 
     #[Test]
@@ -187,7 +189,8 @@ class OpenApiCoverageExtensionEnumDriftBootstrapTest extends TestCase
         );
 
         $this->assertSame(0, $exit, "Expected zero exit; output was:\n" . $output);
-        $this->assertStringNotContainsString('[OpenAPI Enum Drift]', $output);
+        $this->assertStringNotContainsString('[OpenAPI Enum Drift] WARNING', $output);
+        $this->assertStringNotContainsString('[OpenAPI Enum Drift] FATAL', $output);
     }
 
     #[Test]
