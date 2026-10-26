@@ -58,9 +58,9 @@ merge CLI emits `FATAL` and exits non-zero).
 | Format | Parameter / Flag | When to use | Reference |
 |---|---|---|---|
 | Markdown | `output_file` / `--output-file` | PR comments, GitHub Step Summary | (above) |
-| JUnit XML | `junit_output` / `--junit-output` | CI test-report tabs (GitLab CI, Jenkins, SonarQube, Bitrise, CircleCI) | — |
-| JSON | `json_output` / `--json-output` | Custom dashboards, scripted gating, analytics pipelines | [`coverage-json-schema.md`](coverage-json-schema.md) |
-| HTML | `html_output` / `--html-output` | Self-contained artifact for human review (PR comments, CI artifact preview, offline inspection) | [`coverage-html-output.md`](coverage-html-output.md) |
+| JUnit XML | `junit_output` / `--report=junit:<path>` | CI test-report tabs (GitLab CI, Jenkins, SonarQube, Bitrise, CircleCI) | — |
+| JSON | `json_output` / `--report=json:<path>` | Custom dashboards, scripted gating, analytics pipelines | [`coverage-json-schema.md`](coverage-json-schema.md) |
+| HTML | `html_output` / `--report=html:<path>` | Self-contained artifact for human review (PR comments, CI artifact preview, offline inspection) | [`coverage-html-output.md`](coverage-html-output.md) |
 
 Example: write every format from one PHPUnit run:
 
@@ -83,11 +83,11 @@ paths, plain `vendor/bin/gesso coverage:merge` is enough):
 ```bash
 vendor/bin/gesso coverage:merge \
   --spec-base-path=openapi/bundled \
-  --specs=front,admin \
+  --spec-name=front,admin \
   --output-file=build/coverage.md \
-  --junit-output=build/coverage.junit.xml \
-  --json-output=build/coverage.json \
-  --html-output=build/coverage.html
+  --report=junit:build/coverage.junit.xml \
+  --report=json:build/coverage.json \
+  --report=html:build/coverage.html
 ```
 
 > **Note:** `GITHUB_STEP_SUMMARY` is Markdown-only by design — GitHub renders
@@ -145,7 +145,7 @@ jobs:
 ```
 
 The PHPUnit run must emit `build/coverage.json`; add the `json_output`
-parameter (or `coverage:merge --json-output` for parallel runs) as shown in
+parameter (or `coverage:merge --report=json:<path>` for parallel runs) as shown in
 [Coverage output formats](#coverage-output-formats).
 
 > **Note:** `set -o pipefail` is required. GitHub Actions runs `run:` blocks

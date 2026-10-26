@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Tests\Integration;
 
+use const JSON_THROW_ON_ERROR;
+
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Studio\Gesso\Coverage\CoverageMergeCommand;
@@ -22,6 +24,7 @@ use function file_get_contents;
 use function file_put_contents;
 use function glob;
 use function is_resource;
+use function json_decode;
 use function mkdir;
 use function proc_close;
 use function proc_open;
@@ -30,6 +33,7 @@ use function rmdir;
 use function sprintf;
 use function str_replace;
 use function stream_get_contents;
+use function substr_count;
 use function sys_get_temp_dir;
 use function trim;
 use function uniqid;
@@ -137,6 +141,31 @@ class CoverageMergeCliIntegrationTest extends TestCase
     }
 
     #[Test]
+    public function bin_writes_deprecations_and_unknown_flags_to_stderr_not_into_the_report(): void
+    {
+        OpenApiSpecLoader::configure($this->repoRoot . '/tests/fixtures/specs');
+        OpenApiCoverageTracker::recordResponse('petstore-3.0', 'GET', '/v1/pets', '200', 'application/json', schemaValidated: true);
+        CoverageSidecarWriter::write($this->sidecarDir, '1', OpenApiCoverageTracker::exportState());
+        OpenApiCoverageTracker::reset();
+        OpenApiSpecLoader::reset();
+
+        [$exit, $stdout, $stderr] = $this->runCli([
+            '--spec-base-path=' . $this->repoRoot . '/tests/fixtures/specs',
+            '--specs=petstore-3.0',
+            '--sidecar-dir=' . $this->sidecarDir,
+            '--format=json',
+            '--min-endpont-coverage=90',
+        ]);
+
+        $this->assertSame(0, $exit, $stderr);
+        $this->assertIsArray(json_decode($stdout, true, flags: JSON_THROW_ON_ERROR));
+        $this->assertSame(1, substr_count($stderr, "[Gesso deprecation] The CLI flag '--specs' is deprecated."));
+        $this->assertStringContainsString('[Gesso] WARNING: ignoring unknown argument --min-endpont-coverage', $stderr);
+        // The merge's own residual line counts the flag, so "no line" still means "ready for 3.0".
+        $this->assertStringContainsString('cli.coverage_merge.specs (1)', $stderr);
+    }
+
+    #[Test]
     public function bin_help_flag_prints_usage_and_exits_zero(): void
     {
         [$exit, $stdout, $stderr] = $this->runCli(['--help']);
@@ -164,7 +193,7 @@ class CoverageMergeCliIntegrationTest extends TestCase
     #[Test]
     public function bin_exits_two_when_spec_base_path_is_missing(): void
     {
-        [$exit, $stdout, $stderr] = $this->runCli(['--specs=petstore-3.0']);
+        [$exit, $stdout, $stderr] = $this->runCli(['--spec-name=petstore-3.0']);
 
         $this->assertSame(2, $exit);
         $this->assertSame('', $stdout);

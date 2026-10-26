@@ -141,13 +141,13 @@ runs:
 ```bash
 vendor/bin/gesso coverage:merge \
   --spec-base-path=openapi/bundled \
-  --specs=front,admin \
+  --spec-name=front,admin \
   --strict-additional-properties=fail
 ```
 
 Fail mode exits non-zero when no worker sidecars exist because the gate cannot
 be evaluated. When sidecars do exist, the strict gate is evaluated independently
-of whether the requested `--specs` produce any coverage-report rows.
+of whether the requested `--spec-name` values produce any coverage-report rows.
 
 The extension parameter controls sequential PHPUnit. The merge CLI flag
 controls the merged parallel gate, so changing warn/fail does not require

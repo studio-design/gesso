@@ -215,7 +215,7 @@ Paratest / Pest `--parallel` is supported. Each worker exports its observations 
 ```bash
 vendor/bin/gesso coverage:merge \
   --spec-base-path=tests/fixtures/specs \
-  --specs=front \
+  --spec-name=front \
   --sidecar-dir=$RUNNER_TEMP/openapi-sidecars \
   --strict-required=fail
 ```

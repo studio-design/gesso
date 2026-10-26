@@ -1071,7 +1071,7 @@ class CoverageMergeCommandTest extends TestCase
     #[Test]
     public function a_stray_positional_token_is_still_ignored(): void
     {
-        // Merge never reads `invalid_options`; rejecting them is #507's v3 half.
+        // Merge only warns about `invalid_options`; rejecting them is #507's v3 half.
         $options = CoverageMergeCommand::parseArgv(['coverage:merge', '--help']);
 
         $this->assertSame(['coverage:merge'], $options['invalid_options'] ?? null);

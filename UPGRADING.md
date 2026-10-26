@@ -132,6 +132,22 @@ nothing there.
 | 2.8.0 | `enum_spec_base_path` (PHPUnit parameter) | none — delete it; enum bindings resolve by `components.schemas` name | 3.0 |
 | 2.8.0 | `OpenApiSpecLoader::configure(enumBasePath:)` / `getEnumBasePath()` | `configure()` without the argument | 3.0 |
 | 2.8.0 | `#[BoundToOpenApiEnum('path/to/file.json')]` (file-path binding) | `#[BoundToOpenApiEnum(component: 'Name')]`, or no attribute when the component is named after the class | 3.0 |
+| 2.9.0 | `--specs` (`coverage:merge` flag) | `--spec-name` | 3.0 |
+| 2.9.0 | `--strip-prefixes` (`coverage:merge` flag) | `--strip-prefix` | 3.0 |
+| 2.9.0 | `--json-output` (`coverage:merge` flag) | `--report=json:<path>` | 3.0 |
+| 2.9.0 | `--junit-output` (`coverage:merge` flag) | `--report=junit:<path>` | 3.0 |
+| 2.9.0 | `--html-output` (`coverage:merge` flag) | `--report=html:<path>` | 3.0 |
+| 2.9.0 | `--console-output` (`coverage:merge` flag) | `--console-report` | 3.0 |
+| 2.9.0 | `--min-endpoint-coverage` (`coverage:merge` flag) | `--min-coverage="endpoint=…"` | 3.0 |
+| 2.9.0 | `--min-response-coverage` (`coverage:merge` flag) | `--min-coverage="response=…"` | 3.0 |
+| 2.9.0 | `--min-sdk-exercise-coverage` (`coverage:merge` flag) | `--min-coverage="sdk_exercise=…"` | 3.0 |
+| 2.9.0 | `--min-coverage-strict` (`coverage:merge` flag) | `--min-coverage="strict"` | 3.0 |
+| 2.9.0 | `--baseline-file` (`coverage:merge` flag) | `--baseline="violations=…"` | 3.0 |
+| 2.9.0 | `--coverage-baseline-file` (`coverage:merge` flag) | `--baseline="coverage=…"` | 3.0 |
+| 2.9.0 | `--coverage-baseline-stale` (`coverage:merge` flag) | `--baseline-stale="coverage=…"` | 3.0 |
+| 2.9.0 | `--strict-required=<mode>` (`coverage:merge` flag) | `--strict-required="run=…,per_call=…"` | 3.0 |
+| 2.9.0 | `--strict-additional-properties=<mode>` (`coverage:merge` flag) | `--strict-additional-properties="run=…,per_call=…"` | 3.0 |
+| 2.9.0 | `--output` (`gesso stubs` / `gesso:stubs` flag) | `--output-dir` | 3.0 |
 
 Enum drift bindings: a backed enum now matches the `components.schemas` entry
 named after its class (an `Enum` suffix on either side is ignored) in the
@@ -168,6 +184,11 @@ test-set value satisfies the presence check, and an empty one counts as
 absent and is injected over, matching the validator's own missing-credential
 rule. Keep the flag off (it can be set per test) where that failure is the
 behavior under test.
+
+The old CLI flag spellings keep working until 3.0; each writes one
+`[Gesso deprecation]` line to stderr, and `coverage:merge` counts its own in
+the summary line. Passing an old and a new spelling of the same setting is a
+usage error. See [Renamed flags](docs/cli.md#renamed-flags).
 
 The PHPUnit parameters keep working, and an XML value still wins over
 `gesso.php`; move each one to its key in a root `gesso.php` (see

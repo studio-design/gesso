@@ -90,7 +90,7 @@ GESSO_BASELINE_GENERATE=1 vendor/bin/paratest --processes=4
 # 2. Union the worker halves and write the baseline.
 vendor/bin/gesso coverage:merge \
     --spec-base-path=openapi/bundled \
-    --baseline-file=gesso-baseline.json
+    --baseline="violations=gesso-baseline.json"
 ```
 
 The union is deterministic — the same contract debt produces a byte-identical
@@ -99,12 +99,12 @@ file regardless of how tests were distributed across workers.
 The merge fails loudly (exit 1, sidecars preserved for a retry) instead of
 writing a wrong or missing baseline when:
 
-- sidecars carry baseline data but `--baseline-file` was not given —
+- sidecars carry baseline data but `--baseline="violations=…"` was not given —
   discarding it would silently hide the violations the workers demoted;
-- `--baseline-file` was given but some sidecar carries no baseline data
+- `--baseline="violations=…"` was given but some sidecar carries no baseline data
   (a worker ran without generation mode, or on a pre-2.2 library version) —
   the union would be an incomplete baseline;
-- `--baseline-file` was given but no sidecars exist at all.
+- `--baseline="violations=…"` was given but no sidecars exist at all.
 
 Because generation demotes failures per worker, the merge step is what makes
 the run trustworthy — wire both steps into the same CI job so a forgotten

@@ -2,7 +2,7 @@
 
 `studio-design/gesso` can emit machine-readable coverage
 output via the `json_output` PHPUnit Extension parameter or the
-`--json-output` flag on `gesso coverage:merge`. This page documents the
+`--report=json:<path>` flag on `gesso coverage:merge`. This page documents the
 schema so downstream consumers (custom dashboards, contract-coverage
 analytics, scripted gating) can rely on a stable shape.
 
@@ -131,7 +131,7 @@ Paratest merge CLI:
 ```bash
 vendor/bin/gesso coverage:merge \
   --spec-base-path=openapi \
-  --json-output=build/coverage.json
+  --report=json:build/coverage.json
 ```
 
 Multiple format outputs are independent: setting `output_file`, `junit_output`, `json_output`, and `html_output` simultaneously writes all four. A write failure on one does not block the others; severity follows the existing convention (subscriber WARN, CLI FATAL+exit 1).

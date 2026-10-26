@@ -30,7 +30,7 @@ vendor/bin/pest --parallel --processes=4
 # 2. Merge sidecars into a single coverage report.
 vendor/bin/gesso coverage:merge \
     --spec-base-path=openapi/bundled \
-    --specs=front,admin \
+    --spec-name=front,admin \
     --output-file=coverage-report.md
 ```
 
@@ -39,25 +39,19 @@ vendor/bin/gesso coverage:merge \
 | Flag | Default | Description |
 |---|---|---|
 | `--spec-base-path=<path>` | — (required) | Path to bundled spec directory |
-| `--specs=<a,b>` | `front` | Comma-separated spec names |
-| `--strip-prefixes=<a,b>` | — | Comma-separated request-path prefixes to strip |
+| `--spec-name=<name>` | `front` | Spec name; repeatable or comma-separated |
+| `--strip-prefix=<prefix>` | — | Request-path prefix to strip; repeatable or comma-separated |
 | `--sidecar-dir=<path>` | `sys_get_temp_dir()/openapi-coverage-sidecars` | Where workers wrote sidecars |
 | `--format=<name>` | `text`; `markdown` with `--output-file` | `text` / `markdown` / `json` / `junit` / `html`. Rendering of the primary report. See [CLI reference](cli.md#merge-output) |
 | `--output-file=<path>` | — | Primary report output path: the `--format` rendering, Markdown by default |
-| `--junit-output=<path>` | — | JUnit XML report output path (CI dashboards). See [Coverage output formats](ci.md#coverage-output-formats) |
-| `--json-output=<path>` | — | Machine-readable JSON report output path. Schema: [`coverage-json-schema.md`](coverage-json-schema.md) |
-| `--html-output=<path>` | — | Self-contained HTML report output path. See [`coverage-html-output.md`](coverage-html-output.md) |
+| `--report=<format>:<path>` | — | Also write a `json`, `junit` or `html` report to `<path>`; repeatable. JSON schema: [`coverage-json-schema.md`](coverage-json-schema.md); JUnit: [Coverage output formats](ci.md#coverage-output-formats); HTML: [`coverage-html-output.md`](coverage-html-output.md) |
 | `--github-step-summary=<path>` | `$GITHUB_STEP_SUMMARY` | Append Markdown report to this file |
-| `--console-output=<mode>` | `default` | `default` / `all` / `uncovered_only` |
-| `--min-endpoint-coverage=<pct>` | — | Threshold gate (see [Coverage threshold gate](coverage.md#coverage-threshold-gate)) |
-| `--min-response-coverage=<pct>` | — | Threshold gate at `(method, path, status, content-type)` granularity |
-| `--min-sdk-exercise-coverage=<pct>` | — | Threshold gate for eligible response schemas attempted by SDK decoder callbacks |
-| `--min-coverage-strict` | `false` (warn-only) | Treat threshold misses as exit non-zero |
-| `--strict-required=<mode>` | `off` | `off` / `warn` / `fail`. Assert no schema under-description drift across worker observations. See [`strict-required.md`](strict-required.md#paratest) |
-| `--strict-additional-properties=<mode>` | `off` | `off` / `warn` / `fail`. Report returned response properties absent from schema declarations. See [`strict-additional-properties.md`](strict-additional-properties.md#parallel-test-runners) |
-| `--baseline-file=<path>` | — | Union the violation-baseline halves staged by an `GESSO_BASELINE_GENERATE=1` parallel run and write the merged baseline. See [`baseline.md`](baseline.md#generating-under-parallel-runners) |
-| `--coverage-baseline-file=<path>` | — | Gate the merged coverage against a committed set of known-uncovered responses; writes the file instead when `GESSO_BASELINE_GENERATE=1` is set. See [`coverage-baseline.md`](coverage-baseline.md#parallel-runners) |
-| `--coverage-baseline-stale=<mode>` | `note` | `off` / `note` / `fail`. How baseline entries that are covered now are reported |
+| `--console-report=<mode>` | `default` | `default` / `all` / `uncovered_only` |
+| `--min-coverage="endpoint=<pct>,response=<pct>,sdk_exercise=<pct>,strict"` | — (warn-only) | Threshold gates (see [Coverage threshold gate](coverage.md#coverage-threshold-gate)): fully-covered endpoints, `(method, path, status, content-type)` responses, and eligible response schemas attempted by SDK decoder callbacks. `strict` (or `strict=true`) makes a miss exit non-zero. Name only the members you need |
+| `--strict-required="run=<mode>"` | `off` | `off` / `warn` / `fail`. Assert no schema under-description drift across worker observations. A `per_call=off\|warn` member is accepted and left to the workers. See [`strict-required.md`](strict-required.md#paratest) |
+| `--strict-additional-properties="run=<mode>"` | `off` | `off` / `warn` / `fail`. Report returned response properties absent from schema declarations. See [`strict-additional-properties.md`](strict-additional-properties.md#parallel-test-runners) |
+| `--baseline="violations=<path>,coverage=<path>"` | — | `violations`: union the violation-baseline halves staged by a `GESSO_BASELINE_GENERATE=1` parallel run and write the merged baseline ([`baseline.md`](baseline.md#generating-under-parallel-runners)). `coverage`: gate the merged coverage against a committed set of known-uncovered responses, or write the file when `GESSO_BASELINE_GENERATE=1` is set ([`coverage-baseline.md`](coverage-baseline.md#parallel-runners)) |
+| `--baseline-stale="coverage=<mode>"` | `note` | `off` / `note` / `fail`. How coverage-baseline entries that are covered now are reported |
 | `--expect-sidecars=<n>` | — | Fail unless exactly `n` sidecars are present. See [Sharded CI jobs](#sharded-ci-jobs) |
 | `--run-id=<id>` | `$GESSO_RUN_ID`, else the run that wrote the newest sidecar | Merge only this run's sidecars; other runs' files are listed in a NOTE and left in place. See [Stale sidecars](#stale-sidecars-from-earlier-runs) |
 | `--no-cleanup` | (cleanup is on by default) | Keep sidecar files after merge |
@@ -144,7 +138,7 @@ vendor/bin/gesso coverage:merge \
     --sidecar-dir=sidecars \
     --expect-sidecars=3 \
     --strict-required=fail \
-    --min-response-coverage=80
+    --min-coverage="response=80"
 ```
 
 `--expect-sidecars=<n>` is worth setting whenever the shard count is known up
@@ -199,7 +193,7 @@ coverage state `version: 1`, so HTTP coverage can still be combined while a
 worker fleet is being upgraded. A missing half is reported, not treated as
 empty: a strict SDK exercise threshold requires every worker to carry SDK
 exercise state (warn-only mode reports the missing workers and evaluates the
-available observations), and `--baseline-file` requires every worker to carry
+available observations), and `--baseline="violations=…"` requires every worker to carry
 the baseline half.
 
 Deprecation counts travel the same way. A worker never reaches the end-of-run
@@ -247,7 +241,7 @@ changing a sidecar shape or filename pattern.
   `GESSO_SIDECAR_TOKEN` instead.
 - **Baseline generation aggregates across workers too.** An
   `GESSO_BASELINE_GENERATE=1` parallel run stages fingerprints in the
-  sidecars; pass `--baseline-file=<path>` to the merge to write the union.
+  sidecars; pass `--baseline="violations=<path>"` to the merge to write the union.
   See [`baseline.md`](baseline.md#generating-under-parallel-runners).
 - **Worker counts are not exposed by paratest.** A child cannot reliably
   tell how many siblings it has, so the merge has to run as a separate

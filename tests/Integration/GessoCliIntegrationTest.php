@@ -144,7 +144,7 @@ final class GessoCliIntegrationTest extends TestCase
         [$helpExit, $helpStdout, $helpStderr] = $this->runCli(['coverage:merge', '--help']);
         [$errorExit, $errorStdout, $errorStderr] = $this->runCli([
             'coverage:merge',
-            '--specs=petstore-3.0',
+            '--spec-name=petstore-3.0',
         ]);
 
         $this->assertSame(0, $helpExit);

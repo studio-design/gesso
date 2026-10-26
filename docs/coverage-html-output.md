@@ -1,7 +1,7 @@
 # Coverage HTML Output
 
 `studio-design/gesso` can emit a single self-contained HTML
-report via the `html_output` PHPUnit Extension parameter or the `--html-output`
+report via the `html_output` PHPUnit Extension parameter or the `--report=html:<path>`
 flag on `gesso coverage:merge`. The file is intended for human review (PR
 comments, CI artifact preview, offline inspection).
 
@@ -44,7 +44,7 @@ Paratest merge CLI:
 ```bash
 vendor/bin/gesso coverage:merge \
   --spec-base-path=openapi \
-  --html-output=build/coverage.html
+  --report=html:build/coverage.html
 ```
 
 ## Multiple formats
