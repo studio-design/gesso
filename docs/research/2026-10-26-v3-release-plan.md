@@ -39,6 +39,8 @@ Sequence:
 2. Land the deprecations that are still missing (§1.6) on `main` as `feat:` PRs.
    Additive v3 features can land here too and ship as v2 value. Merge the release
    PR → **v2.9.0**, the "deprecation-complete" minor (`unstaged_count` = 0).
+   The `ci.yml` and `release-please.yml` trigger edits (§1.3) merge **before**
+   this release PR, so the `v2.9.0` tag already carries them.
 3. Cut `2.x` from the `v2.9.0` tag commit once the tag and GitHub Release exist
    (the same rule used for `1.x` from `v1.10.0`).
 4. On `main`, merge the prerelease flip (§1.4) **before** any `!` commit.
@@ -63,7 +65,7 @@ the same as in (a), but the conflicts last longer.
 | Cost | Size today | Mitigation |
 | --- | --- | --- |
 | Backports | `1.x` has had **zero** releases since v1.10.0 (manifest `1.10.0`); it goes security-only on 2027-01-01 | two separate cherry-picks (§1.2) |
-| CI | full matrix on 3 branches | `1.x` keeps its own `ci.yml` copy; only `main`'s needs edits |
+| CI | full matrix on 3 branches | `1.x` keeps its own `ci.yml` copy; `main` and `2.x` both need `2.x` in their triggers (§1.3) |
 | Release PRs | up to 3 open (`chore(main)`, `chore(2.x)`, `chore(1.x)`) | already supported: the workflow sets `target-branch` from `github.ref_name` |
 | Dependencies | `renovate.json` has no `baseBranches`, so `2.x` gets nothing | add `2.x` for security and lock-file updates only (§1.3) |
 | Docs site | `docs.yml` deploys `main` only, so v3 docs would replace v2 docs | deploy from `2.x` until 3.0.0 stable (§1.3) |
@@ -82,7 +84,18 @@ the same as in (a), but the conflicts last longer.
 
 ### 1.3 Config and workflow edits: "chore(release): cut the 2.x maintenance line"
 
-On `main`, right after the `2.x` branch is created.
+GitHub reads a `push` or `pull_request` trigger from the workflow file on the
+branch the event targets
+([events that trigger workflows](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#push)).
+An edit that lands on `main` only after the cut leaves `2.x` with
+`[main, 1.x]`: maintenance PRs get no CI and pushes to `2.x` open no release PR.
+So the `release-please.yml` and `ci.yml` edits below merge on `main` **before**
+the v2.9.0 release PR, and `2.x` inherits them from the tag. If `2.x` is ever
+cut without them, open the same edit as a PR targeting `2.x` first; every other
+maintenance PR waits for it.
+
+After the cut, verify both: a test PR targeting `2.x` shows the CI checks, and
+the first push to `2.x` runs release-please with `target-branch: 2.x`.
 
 `.github/workflows/release-please.yml`:
 
@@ -106,8 +119,8 @@ on:
 ```
 
 `.github/workflows/docs.yml` publishes the installable stable line until v3 GA.
-The edit goes on `main` **and** the same file goes on `2.x`, because a push
-trigger is read from the branch that was pushed:
+Unlike the two above, this one differs per branch, so it is edited after the
+cut: on `main` **and** the same file on `2.x`, for the same reason:
 
 ```yaml
 on:

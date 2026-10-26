@@ -58,8 +58,11 @@ v2's support floor.
      cannot raise a runtime notice (enum cases, Composer constraints,
      wire-format cutoffs) count as deprecated when a tagged v2 release carries
      a docblock `@deprecated` (where a declaration exists) **and** an
-     `UPGRADING.md` "Deprecations" row. A wire-format cutoff additionally emits
-     a `[Gesso deprecation]` notice from the reader that would reject it.
+     `UPGRADING.md` "Deprecations" row; enum-case and Composer-constraint rows
+     are marked *static only*, because the zero-notice upgrade guarantee in
+     `docs/versioning.md` does not cover them. A wire-format cutoff
+     additionally emits a `[Gesso deprecation]` notice from the reader that
+     would reject it.
    - (b) *Evidence.* The removal cites either a **measured cost** (a benchmark
      delta in time or peak memory, a bug class it carries, or lines and
      branches that have to be maintained twice) **or** **no demand** (no

@@ -223,19 +223,28 @@ the worker sidecars. See [diagnostic
 channels](supported-features.md#diagnostic-channels-e_user_warning-and-e_user_deprecated).
 
 **If a run on the final minor of a major reports zero Gesso deprecations,
-upgrading to the next major requires no consumer code, configuration, or CLI
-changes.** That is what the rule buys: the deprecation report, not the upgrade
-guide, is the authoritative answer to "am I ready?".
+upgrading to the next major requires no changes for any surface that announces
+its deprecation at runtime** — configuration keys, CLI flags, environment
+variables, Artisan commands, PHP symbols that raise a notice, and wire formats.
+For those, the deprecation report, not the upgrade guide, is the authoritative
+answer to "am I ready?".
+
+Two kinds of surface cannot raise a notice and are outside that guarantee:
+**enum cases** (referencing a case runs no Gesso code) and **Composer
+constraints** (a raised PHP or dependency floor). Their `UPGRADING.md`
+"Deprecations" rows are marked *static only*. Check them separately: search
+your code for the listed names, or run a static analyser that reports
+`@deprecated` symbols, and compare your platform with the listed floors.
 
 For the v2 → v3 transition, the deprecation-carrying release is v2.9.0. The
 `2.x` maintenance branch is cut from its tag, and only then does `main` take
 its first breaking commit (as a v3 prerelease). A deprecation found later ships
 as a `2.x` minor; a removal merges only after its deprecation is in a tagged v2
-release. Surfaces that cannot raise a runtime notice (enum cases, Composer
-constraints, wire-format cutoffs) count as deprecated once a tagged v2 release
-carries a docblock `@deprecated` where a declaration exists and an
-`UPGRADING.md` "Deprecations" row; a wire-format cutoff also emits a
-`[Gesso deprecation]` notice from the reader that would reject it. See
+release. Enum cases and Composer constraints count as deprecated once a tagged v2
+release carries a docblock `@deprecated` where a declaration exists and an
+`UPGRADING.md` "Deprecations" row marked *static only*. A wire-format cutoff
+counts once that release also emits a `[Gesso deprecation]` notice from the
+reader that would reject it, so it stays inside the runtime guarantee above. See
 [ADR 0007](adr/0007-v3-scope-and-release-window.md) rule 3.
 
 ### The rename checklist
