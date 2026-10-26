@@ -148,6 +148,15 @@ nothing there.
 | 2.9.0 | `--strict-required=<mode>` (`coverage:merge` flag) | `--strict-required="run=…,per_call=…"` | 3.0 |
 | 2.9.0 | `--strict-additional-properties=<mode>` (`coverage:merge` flag) | `--strict-additional-properties="run=…,per_call=…"` | 3.0 |
 | 2.9.0 | `--output` (`gesso stubs` / `gesso:stubs` flag) | `--output-dir` | 3.0 |
+| 2.9.0 | *static only* `EnumBindingReason::BasePathNotConfigured` (enum case) | none — only file-path bindings raise it; component-name bindings report a missing component as `ComponentNotFound` | 3.0 |
+| 2.9.0 | *static only* `EnumBindingReason::EnumBasePathNotFound` (enum case) | none — only file-path bindings raise it; component-name bindings report a missing component as `ComponentNotFound` | 3.0 |
+| 2.9.0 | *static only* `EnumBindingReason::EnumSpecBasePathOrphaned` (enum case) | none — only file-path bindings raise it; component-name bindings report a missing component as `ComponentNotFound` | 3.0 |
+| 2.9.0 | *static only* `EnumBindingReason::SpecFileNotFound` (enum case) | none — only file-path bindings raise it; component-name bindings report a missing component as `ComponentNotFound` | 3.0 |
+| 2.9.0 | *static only* `EnumBindingReason::MalformedJson` (enum case) | none — only file-path bindings raise it; component-name bindings report a missing component as `ComponentNotFound` | 3.0 |
+| 2.9.0 | *static only* `EnumBindingReason::MalformedYaml` (enum case) | none — only file-path bindings raise it; component-name bindings report a missing component as `ComponentNotFound` | 3.0 |
+| 2.9.0 | *static only* `EnumBindingReason::YamlLibraryMissing` (enum case) | none — only file-path bindings raise it; component-name bindings report a missing component as `ComponentNotFound` | 3.0 |
+| 2.9.0 | *static only* `EnumBindingReason::NonMappingRoot` (enum case) | none — only file-path bindings raise it; component-name bindings report a missing component as `ComponentNotFound` | 3.0 |
+| 2.9.0 | *static only* `EnumBindingReason::EnumKeyMissing` (enum case) | none — only file-path bindings raise it; component-name bindings report a missing component as `ComponentNotFound` | 3.0 |
 
 Enum drift bindings: a backed enum now matches the `components.schemas` entry
 named after its class (an `Enum` suffix on either side is ignored) in the
