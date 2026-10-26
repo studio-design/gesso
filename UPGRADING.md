@@ -87,8 +87,19 @@ and the PHPUnit extension prints a single end-of-run STDERR line:
 ```
 
 **If your suite prints no such line on the final v2 minor, upgrading to v3.0
-needs no changes to your code, configuration, or CLI invocations.** Work through
-the table below until it does.
+needs no changes for any surface that announces its deprecation at runtime**
+(configuration keys, CLI flags, environment variables, Artisan commands, PHP
+symbols that raise a notice, and wire formats). Work through the table below
+until it does.
+
+Rows whose Surface starts with *static only* are outside that guarantee: enum
+cases and Composer constraints cannot raise a notice, because referencing an
+enum case runs no Gesso code. Code that still names a removed case (for
+example an arm of a `match` over `EnumBindingReason`) breaks in v3 even on a
+silent run. Search your code for the names those rows list, or run a static
+analyser that reports `@deprecated` symbols, and compare your platform with
+the listed Composer floors. See the
+[deprecation policy](docs/versioning.md#deprecation-policy).
 
 The summary line is the signal to trust: it is rendered from recorded
 per-process counts by the PHPUnit extension (and by `gesso coverage:merge` for
