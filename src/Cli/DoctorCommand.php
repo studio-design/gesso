@@ -58,6 +58,7 @@ use function class_exists;
 use function compact;
 use function count;
 use function dirname;
+use function filesize;
 use function filter_var;
 use function get_debug_type;
 use function getcwd;
@@ -193,10 +194,15 @@ final class DoctorCommand
             return $this->usageError('--config must name a gesso.php file.', self::USAGE_PREFIX);
         }
 
-        try {
-            $options = self::withSharedDefaults($options, ConfigurationBridge::phpunit(GessoConfig::load($options['config'] ?? null)));
-        } catch (InvalidGessoConfigurationException $e) {
-            return $this->usageError($e->getMessage(), self::USAGE_PREFIX);
+        // `--emit-config > gesso.php` lets the shell truncate the default file
+        // before doctor runs; an empty default file is not a config to read then.
+        $default = GessoConfig::FILENAME;
+        if (!($options['emit_config'] ?? false) || isset($options['config']) || !is_file($default) || filesize($default) !== 0) {
+            try {
+                $options = self::withSharedDefaults($options, ConfigurationBridge::phpunit(GessoConfig::load($options['config'] ?? null)));
+            } catch (InvalidGessoConfigurationException $e) {
+                return $this->usageError($e->getMessage(), self::USAGE_PREFIX);
+            }
         }
         if (($options['specs'] ?? []) === []) {
             return $this->usageError('At least one --spec is required.', self::USAGE_PREFIX);
@@ -319,14 +325,18 @@ final class DoctorCommand
     private static function withSharedDefaults(array $options, array $shared): array
     {
         $basePath = $shared['spec_base_path'] ?? null;
-        if (($options['specs'] ?? []) === [] && is_string($basePath)) {
+        if (is_string($basePath)) {
             $basePath = realpath($basePath) ?: $basePath;
-            $names = $shared['specs'] ?? ['front'];
-            $options['specs'] = array_map(
-                static fn(string $name): string => self::cwdRelative(self::entryDocument($basePath, $name)),
-                is_array($names) ? $names : ['front'],
-            );
-            if (is_dir($basePath)) {
+            if (($options['specs'] ?? []) === []) {
+                $names = $shared['specs'] ?? ['front'];
+                $options['specs'] = array_map(
+                    static fn(string $name): string => self::cwdRelative(self::entryDocument($basePath, $name)),
+                    is_array($names) ? $names : ['front'],
+                );
+            }
+            // The runtime confines refs to the base path whichever way the
+            // spec was named; a --spec outside it keeps the default root.
+            if (is_dir($basePath) && self::allBelow($options['specs'] ?? [], $basePath)) {
                 $options['local_ref_root'] ??= $basePath;
             }
         }
@@ -337,6 +347,19 @@ final class DoctorCommand
         }
 
         return $options;
+    }
+
+    /** @param list<string> $paths */
+    private static function allBelow(array $paths, string $directory): bool
+    {
+        foreach ($paths as $path) {
+            $real = realpath($path);
+            if ($real === false || !str_starts_with($real, rtrim($directory, '/') . '/')) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /** The entry document the runtime loader selects for `$name` (`.json` when none exists, reported as unreadable). */

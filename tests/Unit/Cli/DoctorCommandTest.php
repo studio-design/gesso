@@ -1152,6 +1152,52 @@ class DoctorCommandTest extends TestCase
     }
 
     #[Test]
+    public function emit_config_redirected_into_the_default_gesso_php_succeeds(): void
+    {
+        // The shell creates and truncates `gesso.php` before doctor runs.
+        $this->writeSpec('front.json', $this->validSpec('/pets'));
+        $cwd = (string) getcwd();
+        chdir($this->workDir);
+
+        try {
+            file_put_contents('gesso.php', '');
+            [$exit, $stdout, $stderr] = $this->runDoctor(['specs' => ['front.json'], 'emit_config' => true]);
+        } finally {
+            chdir($cwd);
+        }
+
+        $this->assertSame(DoctorCommand::EXIT_OK, $exit, $stderr);
+        $this->assertStringStartsWith('<?php', $stdout);
+    }
+
+    #[Test]
+    public function an_explicit_spec_under_the_base_path_keeps_it_as_the_local_ref_root(): void
+    {
+        mkdir($this->workDir . '/specs/bundled', 0o777, true);
+        file_put_contents($this->workDir . '/specs/schema.json', (string) json_encode(['type' => 'object'], JSON_THROW_ON_ERROR));
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 't', 'version' => '1'],
+            'paths' => ['/pets' => ['get' => ['responses' => ['200' => [
+                'description' => 'ok',
+                'content' => ['application/json' => ['schema' => ['$ref' => '../schema.json']]],
+            ]]]]],
+        ];
+        $front = $this->workDir . '/specs/bundled/front.json';
+        file_put_contents($front, (string) json_encode($spec, JSON_THROW_ON_ERROR));
+        $config = $this->writeSpec('gesso.php', <<<'PHP'
+            <?php
+            return ['spec' => ['base_path' => __DIR__ . '/specs', 'names' => ['bundled/front']]];
+            PHP);
+
+        [$fromConfig, , $configStderr] = $this->runDoctor(['config' => $config]);
+        [$explicit, , $explicitStderr] = $this->runDoctor(['config' => $config, 'specs' => [$front]]);
+
+        $this->assertSame(DoctorCommand::EXIT_OK, $fromConfig, $configStderr);
+        $this->assertSame(DoctorCommand::EXIT_OK, $explicit, $explicitStderr);
+    }
+
+    #[Test]
     public function explicit_flags_win_over_the_config_file(): void
     {
         $this->writeSpec('front.json', $this->basicAuthSpec('/pets'));
