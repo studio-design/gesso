@@ -100,10 +100,17 @@ final class PrivateHelperDeprecationTest extends TestCase
             );
             $this->fail('expected the contract assertion to fail');
         } catch (AssertionFailedError $e) {
-            $this->assertStringNotContainsString('expected the contract', $e->getMessage());
+            // A schema verdict, not an early exit (e.g. no spec configured).
+            $this->assertStringContainsString('spec: psr7', $e->getMessage());
+            $this->assertStringContainsString('/id', $e->getMessage());
         }
 
         $this->assertSame([], Deprecations::counts());
         $this->assertSame([], $this->captured);
+    }
+
+    protected function openApiSpec(): string
+    {
+        return 'psr7';
     }
 }
