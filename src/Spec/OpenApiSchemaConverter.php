@@ -445,18 +445,19 @@ final class OpenApiSchemaConverter
         SchemaContext $context,
         DiscriminatorContext $discriminator,
     ): void {
-        if ($slot === []) {
-            $slot = true;
-
-            return;
-        }
-
         if (!is_array($slot)) {
             return;
         }
 
         /** @var array<string, mixed> $slot */
         self::convertInPlace($slot, $version, $context, $discriminator);
+
+        // Checked after conversion, not before: an annotation-only subschema
+        // (`{nullable: true}`, `{example: 1}`, `{deprecated: true}`) is empty
+        // only once convertInPlace() strips its OpenAPI keywords.
+        if ($slot === []) {
+            $slot = true;
+        }
     }
 
     /**
