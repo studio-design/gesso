@@ -76,6 +76,7 @@ use function sprintf;
 use function str_contains;
 use function str_starts_with;
 use function strlen;
+use function strtolower;
 use function strtoupper;
 use function substr;
 use function trim;
@@ -633,7 +634,11 @@ final class DoctorCommand
             $normalized = ContentTypeMatcher::normalizeMediaType($mediaType);
             $hasSchema = isset($mediaTypeSpec['schema']);
             $reason = null;
-            if (in_array($mediaType, $jsonKeys, true)) {
+            if ($hasSchema && strtolower($mediaType) !== $normalized && in_array($mediaType, $jsonKeys, true)) {
+                // The runtime matches JSON keys literally, so a key carrying
+                // media-type parameters (`; charset=utf-8`) is never selected.
+                $reason = 'carries media-type parameters, which runtime validation does not match against a JSON body';
+            } elseif (in_array($mediaType, $jsonKeys, true)) {
                 // A JSON key validates `schema`; `itemSchema` alone is skipped.
                 if (!$hasSchema && isset($mediaTypeSpec['itemSchema'])) {
                     $reason = 'uses `itemSchema` streaming, which is not validated';

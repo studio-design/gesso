@@ -43,6 +43,8 @@ report means what the test suite will actually enforce:
   `application/x-www-form-urlencoded` responses (an `application/*` range is
   reported too: it validates JSON bodies only);
 - `multipart/form-data` responses with a `schema`;
+- JSON media-type keys that carry parameters (`application/json; charset=utf-8`):
+  runtime validation matches JSON keys literally and never selects them;
 - operation `callbacks` and root `webhooks`, which no request path reaches.
 
 Media types are reported only when the surrounding body structure is valid;

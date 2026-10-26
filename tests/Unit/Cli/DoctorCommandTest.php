@@ -1200,6 +1200,25 @@ class DoctorCommandTest extends TestCase
     }
 
     #[Test]
+    public function reports_a_json_media_type_key_with_parameters(): void
+    {
+        $schema = ['type' => 'object', 'required' => ['id']];
+        $this->assertSkippedFeature(
+            $this->responseSpec(['application/json; charset=utf-8' => ['schema' => $schema]]),
+            ['application/json; charset=utf-8', 'GET /pets response 200', 'media-type parameters'],
+        );
+        $this->assertTrue($this->runtimeResponse('{}', 'application/json')->isSkipped());
+
+        $operation = ['requestBody' => ['content' => ['application/json; charset=utf-8' => ['schema' => $schema]]]];
+        $this->assertSkippedFeature(
+            $this->operationSpec($operation, method: 'post'),
+            ['application/json; charset=utf-8', 'POST /pets request body', 'media-type parameters'],
+        );
+        $result = (new OpenApiRequestValidator())->validateWithoutRecording('parity', 'POST', '/pets', [], [], '{}', 'application/json');
+        $this->assertTrue($result->isValid());
+    }
+
+    #[Test]
     public function reports_a_non_json_response_schema(): void
     {
         $this->assertSkippedFeature(
