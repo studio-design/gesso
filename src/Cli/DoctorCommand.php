@@ -22,6 +22,9 @@ use InvalidArgumentException;
 use Psr\Http\Client\ClientInterface;
 use Psr\Http\Message\RequestFactoryInterface;
 use RuntimeException;
+use Studio\Gesso\Config\ConfigurationBridge;
+use Studio\Gesso\Config\GessoConfig;
+use Studio\Gesso\Config\InvalidGessoConfigurationException;
 use Studio\Gesso\Exception\InvalidOpenApiSpecException;
 use Studio\Gesso\Exception\MalformedDiscriminatorException;
 use Studio\Gesso\Exception\SpecFileNotFoundException;
@@ -86,7 +89,7 @@ use function var_export;
 /**
  * Pre-test compatibility diagnostics for one or more OpenAPI documents.
  *
- * @phpstan-type DoctorOptions array{specs?: list<string>, strip_prefixes?: list<string>, remote_ref_hosts?: list<string>, acknowledged_unvalidatable_schemes?: list<string>, remote_ref_max_bytes?: int|string, local_ref_root?: string, format?: string, output_file?: string, allow_remote_refs?: bool, phpunit_snippet?: bool, emit_config?: bool, help?: bool, invalid_options?: list<string>}
+ * @phpstan-type DoctorOptions array{specs?: list<string>, strip_prefixes?: list<string>, remote_ref_hosts?: list<string>, acknowledged_unvalidatable_schemes?: list<string>, remote_ref_max_bytes?: int|string, local_ref_root?: string, config?: string, format?: string, output_file?: string, allow_remote_refs?: bool, phpunit_snippet?: bool, emit_config?: bool, help?: bool, invalid_options?: list<string>}
  * @phpstan-type DoctorIssue array{severity: 'error'|'warning'|'skipped', category: string, spec: ?string, message: string, suggestion: ?string}
  * @phpstan-type SpecResult array{path: string, name: string, openapi: string, dialect: string, operations: int, responses: int}
  *
@@ -119,7 +122,7 @@ final class DoctorCommand
         return ArgvParser::parse(
             $argv,
             flags: ['allow_remote_refs', 'phpunit_snippet', 'emit_config'],
-            values: ['format', 'output_file', 'remote_ref_max_bytes', 'local_ref_root'],
+            values: ['format', 'output_file', 'remote_ref_max_bytes', 'local_ref_root', 'config'],
             lists: [
                 'spec' => 'specs',
                 'strip_prefix' => 'strip_prefixes',
@@ -159,6 +162,9 @@ final class DoctorCommand
               --emit-config              Print the equivalent gesso.php to stdout (the
                                          report goes to stderr or --output-file).
                                          Redirect: > gesso.php
+              --config=<path>            gesso.php to default the options above from
+                                         (default: ./gesso.php when present). Explicit
+                                         flags win; see docs/configuration.md.
               --help                     Show this message.
 
             Exit codes:
@@ -182,6 +188,15 @@ final class DoctorCommand
         $invalid = $options['invalid_options'] ?? [];
         if ($invalid !== []) {
             return $this->usageError('Unknown argument(s): ' . implode(', ', $invalid), self::USAGE_PREFIX);
+        }
+        if (($options['config'] ?? null) === '') {
+            return $this->usageError('--config must name a gesso.php file.', self::USAGE_PREFIX);
+        }
+
+        try {
+            $options = self::withSharedDefaults($options, ConfigurationBridge::phpunit(GessoConfig::load($options['config'] ?? null)));
+        } catch (InvalidGessoConfigurationException $e) {
+            return $this->usageError($e->getMessage(), self::USAGE_PREFIX);
         }
         if (($options['specs'] ?? []) === []) {
             return $this->usageError('At least one --spec is required.', self::USAGE_PREFIX);
@@ -287,6 +302,68 @@ final class DoctorCommand
         }
 
         return self::EXIT_OK;
+    }
+
+    /**
+     * Issue #660: default the options the PHPUnit extension also reads from
+     * `gesso.php`, so the doctor checks the bundle the suite enforces. The spec
+     * list follows `spec.base_path` + `spec.names` (`front` when names are
+     * absent, as in the extension), with the base path as the local-ref root
+     * the runtime loader confines refs to. Explicit flags win.
+     *
+     * @param DoctorOptions $options
+     * @param array<string, bool|float|int|list<string>|string> $shared
+     *
+     * @return DoctorOptions
+     */
+    private static function withSharedDefaults(array $options, array $shared): array
+    {
+        $basePath = $shared['spec_base_path'] ?? null;
+        if (($options['specs'] ?? []) === [] && is_string($basePath)) {
+            $basePath = realpath($basePath) ?: $basePath;
+            $names = $shared['specs'] ?? ['front'];
+            $options['specs'] = array_map(
+                static fn(string $name): string => self::cwdRelative(self::entryDocument($basePath, $name)),
+                is_array($names) ? $names : ['front'],
+            );
+            if (is_dir($basePath)) {
+                $options['local_ref_root'] ??= $basePath;
+            }
+        }
+        foreach (['strip_prefixes', 'acknowledged_unvalidatable_schemes'] as $key) {
+            if (($options[$key] ?? []) === [] && is_array($shared[$key] ?? null)) {
+                $options[$key] = $shared[$key];
+            }
+        }
+
+        return $options;
+    }
+
+    /** The entry document the runtime loader selects for `$name` (`.json` when none exists, reported as unreadable). */
+    private static function entryDocument(string $basePath, string $name): string
+    {
+        foreach (['json', 'yaml', 'yml'] as $extension) {
+            if (is_file("{$basePath}/{$name}.{$extension}")) {
+                return "{$basePath}/{$name}.{$extension}";
+            }
+        }
+
+        return "{$basePath}/{$name}.json";
+    }
+
+    /** `$path` relative to the cwd when it is the cwd or lies below it; `$path` itself otherwise. */
+    private static function cwdRelative(string $path): string
+    {
+        $cwd = getcwd();
+        if ($cwd === false) {
+            return $path;
+        }
+        $cwd = rtrim($cwd, '/');
+        if ($path === $cwd) {
+            return '.';
+        }
+
+        return str_starts_with($path, $cwd . '/') ? substr($path, strlen($cwd) + 1) : $path;
     }
 
     private static function pathIsInsideRoot(string $path, string $root): bool
@@ -1043,18 +1120,8 @@ final class DoctorCommand
                 }
             }
         }
-        $cwd = getcwd();
-        if ($cwd !== false) {
-            $cwd = rtrim($cwd, '/');
-            if ($basePath === $cwd) {
-                return '.';
-            }
-            if (str_starts_with($basePath, $cwd . '/')) {
-                $basePath = substr($basePath, strlen($cwd) + 1);
-            }
-        }
 
-        return $basePath;
+        return self::cwdRelative($basePath);
     }
 
     /**

@@ -51,9 +51,9 @@ of the `--request-prefix` option used to generate test requests.
 - PHPUnit resolves the `config` parameter relative to the selected PHPUnit XML
   file. Without the parameter, it looks for `gesso.php` beside that XML file.
   If no XML file is selected, it uses the working directory.
-- `vendor/bin/gesso coverage:merge` and `coverage:gate` read `--config`
-  (relative to the working directory), or `gesso.php` in the working
-  directory when the flag is absent.
+- `vendor/bin/gesso coverage:merge`, `coverage:gate` and `doctor` read
+  `--config` (relative to the working directory), or `gesso.php` in the
+  working directory when the flag is absent.
 - Laravel looks in `Application::basePath()`, independently of the working
   directory. A custom PHPUnit config path should point to that same root file
   when sharing settings with Laravel.

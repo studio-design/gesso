@@ -104,15 +104,41 @@ is printed to stdout when a spec is rejected, and, as with
 `--phpunit-snippet`, every entry document must share one directory unless
 `--local-ref-root` names a common one; otherwise the command exits `2`.
 
-## Acknowledged unvalidatable security schemes
+## Read settings from gesso.php
 
-When the test suite acknowledges an unvalidatable security scheme by name (see [Acknowledging an unvalidatable security scheme](setup.md#acknowledging-an-unvalidatable-security-scheme)), pass the same names so the doctor report reflects the acknowledgement:
+The doctor reads `./gesso.php`, or the file named by `--config=<path>` (relative
+to the working directory), and defaults these options from it:
+
+| Option | `gesso.php` key |
+|---|---|
+| `--spec` | `spec.base_path` + `spec.names` (`front` when `names` is absent), the same specs the PHPUnit extension loads |
+| `--strip-prefix` | `spec.strip_prefixes` |
+| `--acknowledge-unvalidatable-scheme` | `validation.acknowledged_unvalidatable_schemes` |
+
+Each name resolves to the entry document the runtime loader picks
+(`<base_path>/<name>.json`, then `.yaml`, then `.yml`), and `spec.base_path` is
+the local-ref root unless `--local-ref-root` is given. Once the file from
+`--emit-config` is in place, run the doctor without flags:
 
 ```bash
-vendor/bin/gesso doctor \
-  --spec=openapi/front.yaml \
-  --acknowledge-unvalidatable-scheme=ClientBasicAuth
+vendor/bin/gesso doctor
 ```
+
+The report is the same as the run that emitted the file. An explicit flag wins
+over the file. A `--config` file that is missing or invalid is a usage error
+(exit `2`); an absent `./gesso.php` changes nothing.
+
+## Acknowledged unvalidatable security schemes
+
+When the test suite acknowledges an unvalidatable security scheme by name (see [Acknowledging an unvalidatable security scheme](setup.md#acknowledging-an-unvalidatable-security-scheme)), set it once in [`gesso.php`](configuration.md) and the doctor reads it from there (see [Read settings from gesso.php](#read-settings-from-gessophp)):
+
+```php
+'validation' => [
+    'acknowledged_unvalidatable_schemes' => ['ClientBasicAuth'],
+],
+```
+
+`--acknowledge-unvalidatable-scheme=<name>` (repeatable) overrides the file for one run.
 
 The scheme is still listed as a skipped feature, marked as acknowledged instead of prompting for a separate authentication test. A name that is not defined in `components.securitySchemes`, or that names a scheme the validator can enforce, is reported as a `configuration` warning so the acknowledged list cannot rot.
 
