@@ -20,11 +20,11 @@ factory lets direct callers opt into unambiguous JSON types.
 The same correction applies to **requests**. Laravel's `postJson($uri, [])`
 and Symfony's `jsonRequest('POST', $uri, [])` send `[]`, not `{}`, and now fail
 an object request schema. Their array-only payload arguments cannot express
-an empty object. Send raw JSON instead:
+an empty object. Send raw JSON instead; `{}` is the canonical empty-object body:
 
 ```php
-// Laravel: use your application's Tests\TestCase.
-$this->call('POST', '/object', server: ['CONTENT_TYPE' => 'application/json'], content: '{}');
+// Laravel (ValidatesOpenApiSchema): sent verbatim, auto-assert / auto-validate still apply.
+$this->jsonRaw('POST', '/object', '{}');
 
 // Symfony KernelBrowser / HttpKernelBrowser:
 $client->request('POST', '/object', server: ['CONTENT_TYPE' => 'application/json'], content: '{}');

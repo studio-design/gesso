@@ -6908,6 +6908,58 @@
         "constants": [],
         "properties": [],
         "methods": {
+            "jsonRaw": {
+                "static": false,
+                "final": false,
+                "abstract": false,
+                "returns_reference": false,
+                "return_type": "Illuminate\\Testing\\TestResponse",
+                "attributes": [],
+                "parameters": [
+                    {
+                        "name": "method",
+                        "type": "string",
+                        "optional": false,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": {
+                            "unavailable": true
+                        },
+                        "attributes": []
+                    },
+                    {
+                        "name": "uri",
+                        "type": "string",
+                        "optional": false,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": {
+                            "unavailable": true
+                        },
+                        "attributes": []
+                    },
+                    {
+                        "name": "json",
+                        "type": "string",
+                        "optional": false,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": {
+                            "unavailable": true
+                        },
+                        "attributes": []
+                    },
+                    {
+                        "name": "headers",
+                        "type": "array",
+                        "optional": true,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": [],
+                        "attributes": []
+                    }
+                ]
+            },
             "skipResponseCode": {
                 "static": false,
                 "final": false,
@@ -7695,6 +7747,59 @@
                     "return_type": "bool",
                     "attributes": [],
                     "parameters": []
+                },
+                "jsonRaw": {
+                    "visibility": "public",
+                    "static": false,
+                    "final": false,
+                    "abstract": false,
+                    "returns_reference": false,
+                    "return_type": "Illuminate\\Testing\\TestResponse",
+                    "attributes": [],
+                    "parameters": [
+                        {
+                            "name": "method",
+                            "type": "string",
+                            "optional": false,
+                            "variadic": false,
+                            "by_reference": false,
+                            "default": {
+                                "unavailable": true
+                            },
+                            "attributes": []
+                        },
+                        {
+                            "name": "uri",
+                            "type": "string",
+                            "optional": false,
+                            "variadic": false,
+                            "by_reference": false,
+                            "default": {
+                                "unavailable": true
+                            },
+                            "attributes": []
+                        },
+                        {
+                            "name": "json",
+                            "type": "string",
+                            "optional": false,
+                            "variadic": false,
+                            "by_reference": false,
+                            "default": {
+                                "unavailable": true
+                            },
+                            "attributes": []
+                        },
+                        {
+                            "name": "headers",
+                            "type": "array",
+                            "optional": true,
+                            "variadic": false,
+                            "by_reference": false,
+                            "default": [],
+                            "attributes": []
+                        }
+                    ]
                 },
                 "markValidated": {
                     "visibility": "private",

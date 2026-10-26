@@ -74,6 +74,47 @@ class AutoValidateRequestIntegrationTest extends TestCase
     }
 
     #[Test]
+    public function json_raw_sends_an_empty_object_body_that_passes_an_object_schema(): void
+    {
+        // Issue #662: `patchJson($uri, [])` can only send `[]`; jsonRaw()
+        // sends `{}` verbatim and still goes through auto-validation.
+        config()->set('gesso.auto_validate_request', true);
+
+        $response = $this->jsonRaw('PATCH', '/v1/pets/42', '{}');
+        $response->assertOk();
+
+        $covered = OpenApiCoverageTracker::getCovered();
+        $this->assertArrayHasKey('PATCH /v1/pets/{petId}', $covered['petstore-3.0'] ?? []);
+    }
+
+    #[Test]
+    public function json_raw_empty_array_body_fails_an_object_schema(): void
+    {
+        config()->set('gesso.auto_validate_request', true);
+
+        $this->expectException(AssertionFailedError::class);
+        $this->expectExceptionMessage('OpenAPI request validation failed');
+
+        $this->jsonRaw('PATCH', '/v1/pets/42', '[]');
+    }
+
+    #[Test]
+    public function json_raw_headers_override_the_json_defaults(): void
+    {
+        $seen = null;
+        Route::post('/echo-content-type', static function (Request $request) use (&$seen) {
+            $seen = [$request->header('Content-Type'), $request->header('Accept'), $request->getContent()];
+
+            return response()->noContent();
+        });
+
+        $this->jsonRaw('POST', '/echo-content-type', '{"a":1}', ['CONTENT_TYPE' => 'application/merge-patch+json'])
+            ->assertNoContent();
+
+        $this->assertSame(['application/merge-patch+json', 'application/json', '{"a":1}'], $seen);
+    }
+
+    #[Test]
     public function auto_validate_request_false_does_not_validate_invalid_body(): void
     {
         config()->set('gesso.auto_validate_request', false);
@@ -404,5 +445,8 @@ class AutoValidateRequestIntegrationTest extends TestCase
         Route::get('/v1/secure/bearer', static fn() => response()->json(null));
 
         Route::get('/filter', static fn() => response()->noContent());
+        Route::patch('/v1/pets/{petId}', static fn() => response()->json(
+            ['data' => ['id' => 42, 'name' => 'Buddy', 'tag' => null]],
+        ));
     }
 }
