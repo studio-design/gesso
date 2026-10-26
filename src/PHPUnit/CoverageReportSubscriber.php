@@ -157,6 +157,39 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
         $this->loaderConfiguration = OpenApiSpecLoader::exportConfiguration();
     }
 
+    /**
+     * Resolve the token that puts this process into sidecar-only mode, or
+     * `null` for the normal in-process rendering path.
+     *
+     * Two sources, in priority order:
+     *
+     *  - `GESSO_SIDECAR_TOKEN` (issue #434): the explicit opt-in for any
+     *    process. Sharding a suite across CI *jobs* produces the same "N
+     *    processes each hold a slice" situation paratest produces, but
+     *    nothing in the environment says so — so the user names the shard
+     *    and that name is both the request to export and the sidecar's
+     *    identity. One knob: an export mode with no name could not produce
+     *    distinct filenames across runners, and a name with no export mode
+     *    would do nothing. It wins over `TEST_TOKEN` so a sharded job that
+     *    *also* runs paratest namespaces its sidecars by shard; the pid in
+     *    the filename keeps that job's workers apart.
+     *  - `TEST_TOKEN`: set by paratest in every worker process (currently a
+     *    1..N slot index) and unset for sequential PHPUnit runs. Runners
+     *    that wrap paratest (e.g. Pest `--parallel`) inherit it, so no
+     *    per-runner detection is needed.
+     */
+    public static function resolveWorkerToken(): ?string
+    {
+        foreach (['GESSO_SIDECAR_TOKEN', 'TEST_TOKEN'] as $name) {
+            $token = getenv($name);
+            if ($token !== false && trim($token) !== '') {
+                return $token;
+            }
+        }
+
+        return null;
+    }
+
     /** @phpcsSuppress SlevomatCodingStandard.Functions.UnusedParameter.UnusedParameter */
     public function notify(ExecutionFinished $event): void
     {
@@ -221,39 +254,6 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
         // report users rely on for triaging the failure.
         $this->evaluateStrictRequiredGate();
         $this->evaluateStrictAdditionalPropertiesGate();
-    }
-
-    /**
-     * Resolve the token that puts this process into sidecar-only mode, or
-     * `null` for the normal in-process rendering path.
-     *
-     * Two sources, in priority order:
-     *
-     *  - `GESSO_SIDECAR_TOKEN` (issue #434): the explicit opt-in for any
-     *    process. Sharding a suite across CI *jobs* produces the same "N
-     *    processes each hold a slice" situation paratest produces, but
-     *    nothing in the environment says so — so the user names the shard
-     *    and that name is both the request to export and the sidecar's
-     *    identity. One knob: an export mode with no name could not produce
-     *    distinct filenames across runners, and a name with no export mode
-     *    would do nothing. It wins over `TEST_TOKEN` so a sharded job that
-     *    *also* runs paratest namespaces its sidecars by shard; the pid in
-     *    the filename keeps that job's workers apart.
-     *  - `TEST_TOKEN`: set by paratest in every worker process (currently a
-     *    1..N slot index) and unset for sequential PHPUnit runs. Runners
-     *    that wrap paratest (e.g. Pest `--parallel`) inherit it, so no
-     *    per-runner detection is needed.
-     */
-    private static function resolveWorkerToken(): ?string
-    {
-        foreach (['GESSO_SIDECAR_TOKEN', 'TEST_TOKEN'] as $name) {
-            $token = getenv($name);
-            if ($token !== false && trim($token) !== '') {
-                return $token;
-            }
-        }
-
-        return null;
     }
 
     /**

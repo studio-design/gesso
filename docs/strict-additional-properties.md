@@ -152,3 +152,7 @@ of whether the requested `--specs` produce any coverage-report rows.
 The extension parameter controls sequential PHPUnit. The merge CLI flag
 controls the merged parallel gate, so changing warn/fail does not require
 rerunning workers.
+
+In a sequential run (no `TEST_TOKEN` or `GESSO_SIDECAR_TOKEN`) with both
+`strict_additional_properties` and `strict_additional_properties_per_call` off,
+the extension skips the inspection and records nothing.
