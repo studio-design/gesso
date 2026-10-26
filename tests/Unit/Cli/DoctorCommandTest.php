@@ -14,7 +14,9 @@ use ReflectionMethod;
 use Studio\Gesso\Cli\DoctorCommand;
 use Studio\Gesso\Config\GessoConfig;
 use Studio\Gesso\DecodedBody;
+use Studio\Gesso\OpenApiRequestValidator;
 use Studio\Gesso\OpenApiVersion;
+use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Tests\Helpers\FakeHttpClient;
 use Studio\Gesso\Validation\Request\RequestBodyValidator;
 use Studio\Gesso\Validation\Support\SchemaValidatorRunner;
@@ -543,6 +545,38 @@ class DoctorCommandTest extends TestCase
         $this->assertSame(DoctorCommand::EXIT_OK, $exit);
         $this->assertSame('ok', $report['status']);
         $this->assertSame([], $report['issues']);
+    }
+
+    #[Test]
+    public function reserved_header_parameters_are_ignored_by_doctor_and_runtime_alike(): void
+    {
+        // OAS 3.0/3.1/3.2: an in:header `Accept` / `Content-Type` /
+        // `Authorization` parameter definition "SHALL be ignored" — even one
+        // with a malformed schema. The doctor must not call such a spec
+        // compatible while the runtime fails every request to the operation.
+        $spec = $this->writeSpec('reserved-headers.json', (string) json_encode([
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'Test', 'version' => '1'],
+            'paths' => ['/pets' => ['get' => [
+                'parameters' => [
+                    ['name' => 'authorization', 'in' => 'header', 'required' => true, 'schema' => 'not-a-schema'],
+                    ['name' => 'ACCEPT', 'in' => 'header', 'required' => true, 'schema' => ['type' => 'integer']],
+                ],
+                'responses' => ['200' => ['description' => 'ok']],
+            ]]],
+        ], JSON_THROW_ON_ERROR));
+
+        try {
+            $report = $this->runJsonDoctor($spec, $exit);
+            OpenApiSpecLoader::configure($this->workDir);
+            $result = (new OpenApiRequestValidator())->validate('reserved-headers', 'GET', '/pets', [], [], null, null);
+        } finally {
+            OpenApiSpecLoader::reset();
+        }
+
+        $this->assertSame(DoctorCommand::EXIT_OK, $exit);
+        $this->assertSame([], $report['issues']);
+        $this->assertTrue($result->isValid(), $result->errorMessage());
     }
 
     #[Test]

@@ -64,20 +64,42 @@ class ParameterCollectorTest extends TestCase
     }
 
     #[Test]
-    public function collect_rejects_reserved_in_header_names(): void
+    public function collect_ignores_reserved_in_header_names_case_insensitively(): void
     {
+        // OAS 3.0/3.1/3.2: these in:header definitions "SHALL be ignored" — the
+        // entry is dropped without a spec error, whatever its casing, level, or
+        // (even malformed) schema.
+        $pathSpec = [
+            'parameters' => [
+                ['name' => 'authorization', 'in' => 'header', 'required' => true, 'schema' => 'not-a-schema'],
+            ],
+        ];
         $operation = [
             'parameters' => [
                 ['name' => 'Content-Type', 'in' => 'header', 'required' => true, 'schema' => ['type' => 'string']],
+                ['name' => 'ACCEPT', 'in' => 'header', 'required' => true, 'schema' => ['type' => 'integer']],
+                ['name' => 'X-Request-ID', 'in' => 'header', 'schema' => ['type' => 'string']],
             ],
         ];
 
-        $result = ParameterCollector::collect('POST', '/pets', [], $operation);
+        $result = ParameterCollector::collect('POST', '/pets', $pathSpec, $operation);
+
+        $this->assertSame([], $result->specErrors);
+        $this->assertSame([$operation['parameters'][2]], $result->parameters);
+    }
+
+    #[Test]
+    public function collect_still_rejects_reserved_name_with_malformed_in(): void
+    {
+        // Only a well-formed in:header entry is "ignored"; a non-string `in`
+        // stays a loud malformed-entry error.
+        $result = ParameterCollector::collect('GET', '/pets', [], [
+            'parameters' => [['name' => 'Authorization', 'in' => ['header']]],
+        ]);
 
         $this->assertSame([], $result->parameters);
         $this->assertCount(1, $result->specErrors);
-        $this->assertStringContainsString('Reserved in:header parameter', $result->specErrors[0]);
-        $this->assertStringContainsString('§4.7.12.1', $result->specErrors[0]);
+        $this->assertStringContainsString('Malformed parameter entry', $result->specErrors[0]);
     }
 
     #[Test]

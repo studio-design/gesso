@@ -8,7 +8,6 @@ use function array_values;
 use function in_array;
 use function is_array;
 use function is_string;
-use function sprintf;
 use function strtolower;
 
 /**
@@ -62,23 +61,14 @@ final class ParameterCollector
                     continue;
                 }
 
-                // OAS 3.x §4.7.12.1 says `Accept`/`Content-Type`/`Authorization`
-                // in:header parameter definitions SHALL be ignored — content
-                // negotiation and security schemes own them. Silently skipping
-                // would let a spec author's `required: true` pass every request;
-                // surface as a hard spec error and drop the entry so downstream
-                // per-request validation stays OAS-compliant (no runtime effect).
-                // The `in === 'header'` guard keeps a non-header parameter that
-                // coincidentally shares a reserved name (e.g. `in: query, name: accept`)
-                // out of scope — only in:header entries are governed by §4.7.12.1.
+                // OAS 3.0/3.1/3.2 Parameter Object `name`: "If `in` is "header"
+                // and the `name` field is "Accept", "Content-Type" or
+                // "Authorization", the parameter definition SHALL be ignored."
+                // Ignored means ignored: drop the entry without an error, like
+                // `ResponseHeaderValidator` does for a response `Content-Type`
+                // header. The `in === 'header'` guard keeps e.g.
+                // `in: query, name: accept` in scope as an ordinary parameter.
                 if ($param['in'] === 'header' && in_array(strtolower($param['name']), self::RESERVED_HEADER_NAMES, true)) {
-                    $errors[] = sprintf(
-                        'Reserved in:header parameter declared for %s %s: [header.%s] — per OpenAPI 3.x §4.7.12.1, `Accept`/`Content-Type`/`Authorization` parameter definitions SHALL be ignored. Remove the declaration or use `content` / security schemes instead.',
-                        $method,
-                        $matchedPath,
-                        $param['name'],
-                    );
-
                     continue;
                 }
 
