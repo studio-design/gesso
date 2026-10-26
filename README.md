@@ -104,7 +104,7 @@ Choose based on the workflow you need rather than on a single yes/no feature cou
 ## Installation
 
 ```bash
-composer require --dev "studio-design/gesso:^2.0"
+composer require --dev "studio-design/gesso:^2.0" phpunit/phpunit
 ```
 
 > **YAML specs require `symfony/yaml`.** It is listed under `suggest` so it isn't installed automatically. If your spec is JSON, you can skip this. If your spec is `.yaml` / `.yml`, add it explicitly:
@@ -131,7 +131,7 @@ Choose the CI-tested five-minute path matching your stack:
 All paths start with the same development dependency:
 
 ```bash
-composer require --dev "studio-design/gesso:^2.0"
+composer require --dev "studio-design/gesso:^2.0" phpunit/phpunit
 ```
 
 The example below uses a PSR-7 request and response. The searchable documentation contains the complete [core](https://studio-design.github.io/gesso/quickstarts/core), [Laravel](https://studio-design.github.io/gesso/quickstarts/laravel), [Symfony](https://studio-design.github.io/gesso/quickstarts/symfony), and [Pest](https://studio-design.github.io/gesso/quickstarts/pest) quickstarts.

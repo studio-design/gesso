@@ -23,23 +23,46 @@ use function is_scalar;
  * Assertion plumbing shared verbatim by the Laravel, Symfony and PSR-7
  * assertion traits: clean-trace fail/assert, the baseline-aware result
  * assertion, and the HttpFoundation reproduce command the two
- * HttpFoundation adapters hand requests straight through to. Consuming
- * traits keep their frozen private method names (docs/versioning.md) as
- * forwarders onto the methods here.
+ * HttpFoundation adapters hand requests straight through to. Gesso's own
+ * callers use {@see CleanTraceAssert} directly; the frozen private names
+ * (docs/versioning.md) stay only as deprecated forwarders for consumer code.
  *
  * @internal Framework adapter implementation detail.
  */
 trait OpenApiAssertionCore
 {
-    /** Frozen private surface of the public adapter traits (docs/versioning.md). */
+    /**
+     * @deprecated Use PHPUnit's `$this->fail()`. Kept because the method is
+     *             composed into the public adapter traits, whose private
+     *             members the v2 compatibility policy freezes; nothing in
+     *             Gesso calls it, so the notice reaches consumer code only.
+     *             Removed in Gesso 3.0.
+     */
     private function failOpenApi(string $message): never
     {
+        Deprecations::notice(
+            id: 'trait.open_api_assertions.fail_open_api',
+            subject: 'The private trait helper failOpenApi()',
+            replacement: '$this->fail() (PHPUnit)',
+            removedIn: '3.0',
+        );
+
         CleanTraceAssert::fail($message);
     }
 
-    /** Frozen private surface of the public adapter traits (docs/versioning.md). */
+    /**
+     * @deprecated Use PHPUnit's `$this->assertTrue()`. Kept for the same
+     *             reason as {@see self::failOpenApi()}. Removed in Gesso 3.0.
+     */
     private function assertOpenApi(bool $condition, string $message): void
     {
+        Deprecations::notice(
+            id: 'trait.open_api_assertions.assert_open_api',
+            subject: 'The private trait helper assertOpenApi()',
+            replacement: '$this->assertTrue() (PHPUnit)',
+            removedIn: '3.0',
+        );
+
         CleanTraceAssert::assertTrue($condition, $message);
     }
 
@@ -164,7 +187,7 @@ trait OpenApiAssertionCore
         ?string $recordExcludeCategory = null,
     ): void {
         if ($result->isValid()) {
-            $this->assertOpenApi(true, '');
+            CleanTraceAssert::assertTrue(true, '');
 
             return;
         }
@@ -172,14 +195,14 @@ trait OpenApiAssertionCore
         $collector = ViolationBaselineCollector::current();
         if ($collector !== null) {
             $collector->recordResult($specName, $result, $method, $path, $recordExcludeCategory);
-            $this->assertOpenApi(true, '');
+            CleanTraceAssert::assertTrue(true, '');
 
             return;
         }
 
         $enforcer = ViolationBaselineEnforcer::current();
         if ($enforcer !== null && $enforcer->suppressesResult($specName, $result, $method, $path, $recordExcludeCategory)) {
-            $this->assertOpenApi(true, '');
+            CleanTraceAssert::assertTrue(true, '');
 
             return;
         }
@@ -187,9 +210,9 @@ trait OpenApiAssertionCore
         $message = FailureOutput::compose($header, $result, $reproduceCommand);
 
         if (ValidationOutput::format() === ValidationOutputFormat::Json) {
-            $this->failOpenApi($message);
+            CleanTraceAssert::fail($message);
         }
 
-        $this->assertOpenApi(false, $message);
+        CleanTraceAssert::assertTrue(false, $message);
     }
 }

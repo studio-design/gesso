@@ -1,7 +1,7 @@
 # Laravel quickstart
 
 ```bash
-composer require --dev "studio-design/gesso:^2.0"
+composer require --dev "studio-design/gesso:^2.0" phpunit/phpunit
 php artisan vendor:publish --tag=gesso
 ```
 

@@ -1,7 +1,7 @@
 # Core / PHPUnit quickstart
 
 ```bash
-composer require --dev "studio-design/gesso:^2.0"
+composer require --dev "studio-design/gesso:^2.0" phpunit/phpunit
 ```
 
 Register the extension in `phpunit.xml`. It configures the spec loader and prints
