@@ -10,6 +10,28 @@ the README for the full surface contract.
 
 ## Unreleased
 
+## [2.8.0](https://github.com/studio-design/gesso/compare/v2.7.1...v2.8.0) (2026-10-26)
+
+
+### Features
+
+* **config:** deprecate the phpunit.xml parameters that gesso.php collapses ([#622](https://github.com/studio-design/gesso/issues/622)) ([e4c9d71](https://github.com/studio-design/gesso/commit/e4c9d7126410fdce51800f789d3ca73b5e716dca))
+* **coverage:merge:** scope sidecars to a run id so stale sidecars are ignored instead of fatal ([#624](https://github.com/studio-design/gesso/issues/624)) ([eb155f6](https://github.com/studio-design/gesso/commit/eb155f66a34e93c89f189fc76394fac74fbab86d))
+* **enum-drift:** deprecate file-path enum bindings and enum_spec_base_path ([#628](https://github.com/studio-design/gesso/issues/628)) ([60f8245](https://github.com/studio-design/gesso/commit/60f824560d86b6094d3ba2cad3a70943f3b38581))
+* **enum-drift:** resolve enum bindings by spec component name ([#623](https://github.com/studio-design/gesso/issues/623)) ([b9e1d6e](https://github.com/studio-design/gesso/commit/b9e1d6ed605dad21a227190a916f6a4c553fa9a0))
+* **fuzz:** follow openapi links during whole-spec exploration ([#634](https://github.com/studio-design/gesso/issues/634)) ([bd762d8](https://github.com/studio-design/gesso/commit/bd762d85b68cb90baf423570d0a6171c2bac7d15))
+* **fuzz:** synthesize form-encoded request bodies ([#631](https://github.com/studio-design/gesso/issues/631)) ([872a628](https://github.com/studio-design/gesso/commit/872a628f72c038264faefb6b07ca22b6f688d391))
+* **runtime:** evaluate http runtime expressions for links ([a4f44a3](https://github.com/studio-design/gesso/commit/a4f44a3657d635dd4a70ff4017be90dd881dbd88))
+* **validation:** validate form response bodies against their schemas ([#629](https://github.com/studio-design/gesso/issues/629)) ([495bff6](https://github.com/studio-design/gesso/commit/495bff652f9c7aac0fcf68edfd9fe1778ec2f4df))
+
+
+### Bug Fixes
+
+* **doctor:** report the operations runtime validation skips ([#650](https://github.com/studio-design/gesso/issues/650)) ([55a0da6](https://github.com/studio-design/gesso/commit/55a0da6d2c7c9d0843082612400448eb43c7ce9b))
+* **spec:** accept annotation-only subschemas ([#648](https://github.com/studio-design/gesso/issues/648)) ([73fa17a](https://github.com/studio-design/gesso/commit/73fa17aec0647f01aea3ecbad3a4ccc45c9eeff8))
+* **spec:** match path templates that mix literals and parameters in one segment ([#652](https://github.com/studio-design/gesso/issues/652)) ([2115f7a](https://github.com/studio-design/gesso/commit/2115f7a7cbeb14a6e4f5df1fa3265e04be86ac26))
+* **validation:** ignore reserved header parameters instead of failing the request ([#649](https://github.com/studio-design/gesso/issues/649)) ([464400a](https://github.com/studio-design/gesso/commit/464400a164d867de6e5753386b2323f45f78e1eb))
+
 ## [2.7.1](https://github.com/studio-design/gesso/compare/v2.7.0...v2.7.1) (2026-10-24)
 
 
