@@ -22,7 +22,8 @@ chaining, and a coverage-tracker smoke assertion.
 |---|---|
 | `composer.json` | Wires the library via a `path` repository (`../..`). In your real project, replace it with `composer require --dev "studio-design/gesso:^2.0" pestphp/pest`. |
 | `openapi/petstore.json` | Tiny OpenAPI 3.1 spec with three endpoints (`GET /v1/pets`, `POST /v1/pets`, `GET /v1/health`). |
-| `phpunit.xml.dist` | Minimal PHPUnit config that registers `OpenApiCoverageExtension` and points it at `openapi/`. |
+| `gesso.php` | Shared settings: `spec.base_path` points the extension at `openapi/`. |
+| `phpunit.xml.dist` | Minimal PHPUnit config that registers `OpenApiCoverageExtension`; it reads `gesso.php` beside it. |
 | `tests/TestCase.php` | Base test case extending Orchestra Testbench, mixing in `ValidatesOpenApiSchema`, declaring sample routes, and resetting library state per test. |
 | `tests/Pest.php` | Pest configuration — `uses(TestCase::class)->in('Feature')` so every `it(...)` block under `tests/Feature` inherits the harness. |
 | `tests/Feature/PetsContractTest.php` | Sample tests demonstrating the public expectation API. |
@@ -41,10 +42,11 @@ asks for are:
 1. `use ValidatesOpenApiSchema;` on the test case (or via `uses(...)` in
    `tests/Pest.php`).
 2. `OpenApiSpecLoader::configure(...)` once at boot (typically in your
-   base test case's `setUp` or via the PHPUnit extension's `spec_base_path`
-   parameter).
-3. `config('gesso.default_spec', '...')` for the spec
-   the suite validates against.
+   base test case's `setUp`, or let the PHPUnit extension do it from
+   `spec.base_path` in the root `gesso.php`).
+3. `spec.default` in the root `gesso.php` for the spec the suite validates
+   against (the example overrides `openApiSpec()` instead, because Testbench
+   boots its own skeleton app).
 
 Then the Pest expectations are available everywhere:
 

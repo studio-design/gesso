@@ -198,8 +198,8 @@ final class OpenApiCoverageExtension implements Extension
                 OpenApiSpecLoader::load($spec);
             } catch (SpecFileNotFoundException $e) {
                 Diagnostics::stderr(
-                    "[OpenAPI Coverage] FATAL: spec '{$spec}' configured in `specs=` is not loadable: {$e->getMessage()}\n"
-                    . "  Action: regenerate the bundle (e.g. `cd openapi && npm run bundle`) or remove '{$spec}' from `specs=`.\n",
+                    "[OpenAPI Coverage] FATAL: spec '{$spec}' configured in spec.names is not loadable: {$e->getMessage()}\n"
+                    . "  Action: regenerate the bundle (e.g. `cd openapi && npm run bundle`) or remove '{$spec}' from spec.names.\n",
                 );
                 Diagnostics::appendGithubStepSummaryFatalSpecBlock($githubSummaryPath, $spec, $e->getMessage());
 
@@ -293,9 +293,8 @@ final class OpenApiCoverageExtension implements Extension
             // on the floor — abort bootstrap instead.
             Diagnostics::stderr(
                 "[Gesso] FATAL: GESSO_BASELINE_GENERATE is set but neither `baseline_file` nor `coverage_baseline_file` is configured.\n"
-                . "  Action: add <parameter name=\"baseline_file\" value=\"gesso-baseline.json\"/> (violations) or\n"
-                . "          <parameter name=\"coverage_baseline_file\" value=\"gesso-coverage-baseline.json\"/> (coverage)\n"
-                . "          to the extension bootstrap.\n",
+                . "  Action: set 'baseline' => ['violations' => 'gesso-baseline.json'] and/or\n"
+                . "          ['coverage' => 'gesso-coverage-baseline.json'] in gesso.php.\n",
             );
 
             throw new InvalidBaselineConfigurationException(

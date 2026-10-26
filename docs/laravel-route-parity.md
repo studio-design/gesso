@@ -11,44 +11,46 @@ operation and validated its responses.
 
 ## Configuration
 
-Publish the Laravel config if you have not already:
-
-```bash
-php artisan vendor:publish --tag=gesso
-```
-
 Configure the spec directory, default spec, and the same prefixes used by the
-PHPUnit extension:
+PHPUnit extension in the root [`gesso.php`](configuration.md), which both
+adapters read:
 
 ```php
 return [
-    'default_spec' => 'front',
-    'specs' => ['front', 'admin'],
-    'spec_base_path' => base_path('openapi/bundled'),
-    'strip_prefixes' => ['/api'],
-    'route_parity' => [
-        'external_operation_ids' => ['forms.*'],
-        'external_openapi_paths' => ['/v2/proxy/*'],
-        'excluded_route_names' => ['internal.*'],
+    'spec' => [
+        'base_path' => 'openapi/bundled',
+        'default' => 'front',
+        'names' => ['front', 'admin'],
+        'strip_prefixes' => ['/api'],
+    ],
+    'laravel' => [
+        'route_parity' => [
+            'external_operation_ids' => ['forms.*'],
+            'external_openapi_paths' => ['/v2/proxy/*'],
+            'excluded_route_names' => ['internal.*'],
+        ],
     ],
 ];
 ```
 
-`spec_base_path` is the directory searched for `front.json`, `front.yaml`, or
-`front.yml`. Keep `strip_prefixes` aligned with the PHPUnit extension — or move both to
-the root [`gesso.php`](configuration.md) so nothing needs aligning. The
+`spec.base_path` is the directory searched for `front.json`, `front.yaml`, or
+`front.yml`, relative to `gesso.php`. Because PHPUnit reads the same
+`spec.strip_prefixes`, static parity and runtime validation agree. The
 command applies the runtime matcher's first-match prefix and trailing-slash
-rules, so the static result matches request/response validation.
+rules, so the static result matches request/response validation. The flat
+keys of a published `config/gesso.php` (`default_spec`, `specs`,
+`spec_base_path`, `strip_prefixes`, `route_parity`) still work but are
+deprecated since 2.9.0 and removed in 3.0.
 
 ## Usage
 
-Use the configured `specs`, or `default_spec` when `specs` is empty:
+Use the configured `spec.names`, or `spec.default` when the list is empty:
 
 ```bash
 php artisan gesso:routes
 ```
 
-`--spec` replaces the configured `specs` list rather than adding to it.
+`--spec` replaces the configured `spec.names` list rather than adding to it.
 
 Select multiple specs and narrow the Laravel route collection:
 
@@ -70,14 +72,14 @@ Filters are combined with AND semantics:
 - Repeat `--middleware` to require every listed middleware name.
 - Repeat `--domain` to allow any listed exact route domain.
 - Repeat `--exclude-route` to exclude named routes; `*` wildcards are
-  supported. Values are merged with `route_parity.excluded_route_names` from
-  the Laravel config. Unnamed routes are not excluded.
+  supported. Values are merged with `laravel.route_parity.excluded_route_names`
+  from `gesso.php`. Unnamed routes are not excluded.
 
 Documented-side exclusions classify operations implemented by another service
 in a gateway topology. Repeat `--exclude-operation` to match `operationId`, or
 `--exclude-openapi-path` to match the OpenAPI path template. Both support `*`
-wildcards and are merged with `route_parity.external_operation_ids` and
-`route_parity.external_openapi_paths` from the Laravel config. An exclusion is
+wildcards and are merged with `laravel.route_parity.external_operation_ids` and
+`laravel.route_parity.external_openapi_paths` from `gesso.php`. An exclusion is
 applied only when the operation has no matching Laravel route: implemented
 operations remain in `matched`. External operations are reported separately
 instead of being silently removed.

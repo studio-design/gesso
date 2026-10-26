@@ -28,18 +28,22 @@ The Symfony packages are suggestions, not hard requirements of Gesso — the cor
 
 ### 1. The spec
 
-Gesso finds spec files through the PHPUnit extension, not a Symfony bundle or a `config/packages/*.yaml` file. Register the extension in `phpunit.xml`:
+Gesso finds spec files through the PHPUnit extension, not a Symfony bundle or a `config/packages/*.yaml` file. Put its settings in a root [`gesso.php`](configuration.md) and register the extension in `phpunit.xml`:
+
+```php
+// gesso.php
+return [
+    'spec' => ['base_path' => 'openapi', 'names' => ['petstore']],
+];
+```
 
 ```xml
 <extensions>
-    <bootstrap class="Studio\Gesso\PHPUnit\OpenApiCoverageExtension">
-        <parameter name="spec_base_path" value="openapi"/>
-        <parameter name="specs" value="petstore"/>
-    </bootstrap>
+    <bootstrap class="Studio\Gesso\PHPUnit\OpenApiCoverageExtension"/>
 </extensions>
 ```
 
-`spec_base_path` is the directory holding your documents; `specs` lists the ones to report coverage for. YAML or JSON, 3.0.x, 3.1.x, or 3.2.x — the same loader accepts all of them (YAML needs `symfony/yaml`). Which spec a given test uses is pinned by a `#[OpenApiSpec]` attribute or by overriding `openApiSpec()`; without either, set `spec.default` in [`gesso.php`](configuration.md) (or the `default_spec` extension parameter).
+`spec.base_path` is the directory holding your documents; `spec.names` lists the ones to report coverage for. YAML or JSON, 3.0.x, 3.1.x, or 3.2.x — the same loader accepts all of them (YAML needs `symfony/yaml`). Which spec a given test uses is pinned by a `#[OpenApiSpec]` attribute or by overriding `openApiSpec()`; without either, set `spec.default` in `gesso.php`.
 
 ### 2. A WebTestCase
 

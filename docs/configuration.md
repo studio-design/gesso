@@ -1,7 +1,5 @@
 # Shared PHPUnit and Laravel configuration
 
-> Available on `main`; not included in the published 2.6.0 release.
-
 Put shared settings in `gesso.php` at the application root. The PHPUnit
 extension and Laravel service provider read the same file, so spec paths,
 request prefixes, and validation policy need only be written once.
@@ -30,11 +28,13 @@ Register the extension in `phpunit.xml`:
 
 ```xml
 <extensions>
-    <bootstrap class="Studio\Gesso\PHPUnit\OpenApiCoverageExtension">
-        <parameter name="config" value="gesso.php"/>
-    </bootstrap>
+    <bootstrap class="Studio\Gesso\PHPUnit\OpenApiCoverageExtension"/>
 </extensions>
 ```
+
+The extension reads `gesso.php` beside the PHPUnit XML file by default; add
+`<parameter name="config" value="path/to/gesso.php"/>` only for another
+location.
 
 Laravel discovers its application-root `gesso.php` automatically. Keep the
 usual `ValidatesOpenApiSchema` trait and assertions in your tests. You do not
@@ -71,8 +71,10 @@ Use plain PHP values and `__DIR__` if needed; Laravel-only helpers such as
 ## Compatibility and precedence
 
 This is an additive v2 bridge. Existing XML parameters and Laravel config keys
-continue to work. Only keys explicitly declared in `gesso.php` contribute
-values; omitted or nullable settings left at `null` retain existing consumer
+continue to work, but each one emits a one-shot `[Gesso deprecation]` notice
+and is removed in 3.0 (see
+[Deprecations in `UPGRADING.md`](https://github.com/studio-design/gesso/blob/main/UPGRADING.md#deprecations)).
+Only keys explicitly declared in `gesso.php` contribute values; omitted or nullable settings left at `null` retain existing consumer
 defaults. In particular, an omitted `spec.names` retains PHPUnit's `front`
 default; an omitted `spec.base_path` retains the programmatic loader setup.
 In that case, an explicit `spec.strip_prefixes` still replaces the loader's
@@ -95,7 +97,7 @@ then remove their matching XML parameters and the copied keys from
 have moved, delete `config/gesso.php` and clear any Laravel configuration cache.
 Leaving copies behind means each adapter's old values still win, which can
 keep the two adapters inconsistent. `vendor:publish --tag=gesso` still publishes
-the existing v2 file; avoid republishing it after migration.
+the existing v2 file, whose keys are all deprecated; avoid republishing it.
 
 Laravel's `config:cache` captures the resolved shared settings in its normal
 snapshot. While cached, the provider does not evaluate `gesso.php` again.
@@ -126,6 +128,11 @@ require both Bearer and an API key. The named mode does not use the deprecated
 `auto_inject_dummy_bearer` setting or emit its deprecation.
 
 ## Settings connected in this release
+
+The PHPUnit parameter and Laravel config key columns are the deprecated v2
+spellings — the strict, coverage-threshold, report-output, console and baseline
+parameters since 2.8.0, every other one since 2.9.0 — kept here as a migration
+reference. Each still works, still wins over `gesso.php`, and is removed in 3.0.
 
 | Shared setting | PHPUnit parameter | Laravel config key (`gesso.` prefix) |
 | --- | --- | --- |
@@ -169,6 +176,6 @@ This step connects PHPUnit and Laravel, including `gesso:routes` and
 PSR-7 and Symfony policy hooks (`openApiSpec()`, `openApiMaxErrors()`,
 `openApiSkipResponseCodes()`, `openApiSkipRequestValidationResponseCodes()`)
 default to the shared `spec.default` and `validation.*` values; an override
-still wins. This does not yet migrate every surface or implement the complete
+still wins. Every flat PHPUnit parameter and Laravel config key in the table is
+deprecated; v3 removes them in favour of this file, per the
 [v3 configuration plan](adr/0005-v3-configuration-and-cli-naming.md).
-Legacy-input deprecations and removals are separate follow-up work.

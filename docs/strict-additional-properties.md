@@ -10,15 +10,20 @@ fields after ordinary conformance validation succeeds.
 
 ## Configuration
 
-```xml
-<extensions>
-    <bootstrap class="Studio\Gesso\PHPUnit\OpenApiCoverageExtension">
-        <parameter name="spec_base_path" value="openapi/bundled"/>
-        <parameter name="specs" value="front,admin"/>
-        <parameter name="strict_additional_properties" value="warn"/>
-    </bootstrap>
-</extensions>
+Set `strict.additional_properties['run']` in the root `gesso.php` the extension
+reads (see [Shared configuration](configuration.md)):
+
+```php
+// gesso.php
+return [
+    'spec' => ['base_path' => 'openapi/bundled', 'names' => ['front', 'admin']],
+    'strict' => ['additional_properties' => ['run' => 'warn']],
+];
 ```
+
+The v2 `strict_additional_properties` /
+`strict_additional_properties_per_call` PHPUnit parameters still work but are
+deprecated (removed in 3.0).
 
 | Value | Behaviour |
 |---|---|
@@ -98,21 +103,26 @@ semantics.
 
 ## Per-call mode
 
-`strict_additional_properties_per_call=warn` emits an `E_USER_WARNING`
+`strict.additional_properties['per_call'] = 'warn'` emits an `E_USER_WARNING`
 immediately for each passing response with a finding:
+
+```php
+// gesso.php
+return [
+    'strict' => ['additional_properties' => ['per_call' => 'warn']],
+];
+```
 
 ```xml
 <phpunit failOnWarning="true">
     <extensions>
-        <bootstrap class="Studio\Gesso\PHPUnit\OpenApiCoverageExtension">
-            <parameter name="strict_additional_properties_per_call" value="warn"/>
-        </bootstrap>
+        <bootstrap class="Studio\Gesso\PHPUnit\OpenApiCoverageExtension"/>
     </extensions>
 </phpunit>
 ```
 
 Per-call mode is warn-only. Use PHPUnit's `failOnWarning="true"` to turn it
-into a per-test failure, or use `strict_additional_properties=fail` for the
+into a per-test failure, or use `strict.additional_properties['run'] = 'fail'` for the
 aggregated run-level gate.
 
 Unlike `strict_required`, this check does not infer an invariant from an
@@ -149,7 +159,7 @@ Fail mode exits non-zero when no worker sidecars exist because the gate cannot
 be evaluated. When sidecars do exist, the strict gate is evaluated independently
 of whether the requested `--spec-name` values produce any coverage-report rows.
 
-The extension parameter controls sequential PHPUnit. The merge CLI flag
+The `gesso.php` setting controls sequential PHPUnit. The merge CLI flag
 controls the merged parallel gate, so changing warn/fail does not require
 rerunning workers.
 

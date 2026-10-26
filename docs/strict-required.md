@@ -31,17 +31,20 @@ Only **conformance-passing** responses are recorded. A response that fails the e
 
 ## Configuration
 
-`strict_required` is a single PHPUnit extension parameter with three values:
+The run-level gate is `strict.required['run']` in the root `gesso.php` the
+extension reads (see [Shared configuration](configuration.md)), with three values:
 
-```xml
-<extensions>
-    <bootstrap class="Studio\Gesso\PHPUnit\OpenApiCoverageExtension">
-        <parameter name="spec_base_path" value="openapi/bundled"/>
-        <parameter name="specs" value="front,admin"/>
-        <parameter name="strict_required" value="warn"/>
-    </bootstrap>
-</extensions>
+```php
+// gesso.php
+return [
+    'spec' => ['base_path' => 'openapi/bundled', 'names' => ['front', 'admin']],
+    'strict' => ['required' => ['run' => 'warn']],
+];
 ```
+
+The v2 `strict_required` / `strict_required_per_call` PHPUnit parameters still
+work but are deprecated (removed in 3.0); see
+[`UPGRADING.md`](https://github.com/studio-design/gesso/blob/main/UPGRADING.md#deprecations).
 
 | Value | Behaviour |
 |---|---|
@@ -132,17 +135,17 @@ After re-running the suite the diagnostic disappears and downstream SDK consumer
 
 The default `strict_required` mode aggregates observations and reports drift only after the run finishes. Endpoints with a single test case never reach the `hits >= 2` threshold needed to confirm "this key appears in *every* call" — they silently pass even when the spec is under-described.
 
-`strict_required_per_call` is a separate, lightweight gate that fires immediately on every conformance-passing response: any optional field present in this single observation is reported as `E_USER_WARNING`. Pair it with PHPUnit's `failOnWarning="true"` to convert per-call drift into per-test failures.
+`strict.required['per_call']` is a separate, lightweight gate that fires immediately on every conformance-passing response: any optional field present in this single observation is reported as `E_USER_WARNING`. Pair it with PHPUnit's `failOnWarning="true"` to convert per-call drift into per-test failures.
 
-```xml
-<extensions>
-    <bootstrap class="Studio\Gesso\PHPUnit\OpenApiCoverageExtension">
-        <parameter name="spec_base_path" value="openapi/bundled"/>
-        <parameter name="specs" value="front,admin"/>
-        <parameter name="strict_required"          value="fail"/>  <!-- run-level safe gate  -->
-        <parameter name="strict_required_per_call" value="warn"/>  <!-- per-call early signal -->
-    </bootstrap>
-</extensions>
+```php
+// gesso.php
+return [
+    'spec' => ['base_path' => 'openapi/bundled', 'names' => ['front', 'admin']],
+    'strict' => ['required' => [
+        'run' => 'fail',      // run-level safe gate
+        'per_call' => 'warn', // per-call early signal
+    ]],
+];
 ```
 
 | Value | Behaviour |
@@ -220,13 +223,13 @@ vendor/bin/gesso coverage:merge \
   --strict-required=fail
 ```
 
-`--strict-required` accepts `off` (default), `warn` (emit diagnostic, exit 0), and `fail` (emit diagnostic, exit 1). The `strict_required` parameter on the PHPUnit extension does **not** propagate to the merge CLI — workers always export observations, and the merge step decides whether to assert. This keeps mode flips a single-knob CI operation without per-worker reruns.
+`--strict-required` accepts `off` (default), `warn` (emit diagnostic, exit 0), and `fail` (emit diagnostic, exit 1). The `strict.required` setting the PHPUnit extension reads does **not** propagate to the merge CLI — workers always export observations, and the merge step decides whether to assert. This keeps mode flips a single-knob CI operation without per-worker reruns.
 
 In a sequential run (no `TEST_TOKEN` or `GESSO_SIDECAR_TOKEN`) with both `strict_required` and `strict_required_per_call` off, the extension skips the body walk and records nothing.
 
 The diagnostic block is rendered after the coverage report (Markdown, JUnit, JSON, HTML, GITHUB_STEP_SUMMARY) so a fatal drift does not suppress the coverage output that helps triage the failure.
 
-**Per-call mode is worker-local.** `strict_required_per_call=warn` fires `E_USER_WARNING` inside the worker process. PHPUnit's `failOnWarning="true"` converts those warnings into per-worker test failures, which paratest aggregates into its own non-zero exit code — the gate works correctly under paratest. The `strict_required_per_call` parameter is **not** consumed by the merge CLI; there is no `--strict-required-per-call` flag because the per-call decision is made entirely inside the worker. NOTEs (see [Per-call silent paths](#per-call-silent-paths-and-note-channel)) are also per-worker, so the same condition may produce multiple NOTEs across a paratest run.
+**Per-call mode is worker-local.** `strict_required_per_call=warn` fires `E_USER_WARNING` inside the worker process. PHPUnit's `failOnWarning="true"` converts those warnings into per-worker test failures, which paratest aggregates into its own non-zero exit code — the gate works correctly under paratest. The `strict.required['per_call']` setting is **not** consumed by the merge CLI; there is no `--strict-required-per-call` flag because the per-call decision is made entirely inside the worker. NOTEs (see [Per-call silent paths](#per-call-silent-paths-and-note-channel)) are also per-worker, so the same condition may produce multiple NOTEs across a paratest run.
 
 ## Partial-run skipping
 

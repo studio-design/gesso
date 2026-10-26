@@ -148,6 +148,25 @@ nothing there.
 | 2.9.0 | `--strict-required=<mode>` (`coverage:merge` flag) | `--strict-required="run=…,per_call=…"` | 3.0 |
 | 2.9.0 | `--strict-additional-properties=<mode>` (`coverage:merge` flag) | `--strict-additional-properties="run=…,per_call=…"` | 3.0 |
 | 2.9.0 | `--output` (`gesso stubs` / `gesso:stubs` flag) | `--output-dir` | 3.0 |
+| 2.9.0 | `spec_base_path` (PHPUnit parameter / Laravel config key) | `spec.base_path` in `gesso.php` | 3.0 |
+| 2.9.0 | `default_spec` (PHPUnit parameter / Laravel config key) | `spec.default` in `gesso.php` | 3.0 |
+| 2.9.0 | `specs` (PHPUnit parameter / Laravel config key) | `spec.names` in `gesso.php` | 3.0 |
+| 2.9.0 | `strip_prefixes` (PHPUnit parameter / Laravel config key) | `spec.strip_prefixes` in `gesso.php` | 3.0 |
+| 2.9.0 | `validation_output` (PHPUnit parameter) | `validation.format` in `gesso.php` | 3.0 |
+| 2.9.0 | `max_errors` (PHPUnit parameter / Laravel config key) | `validation.max_errors` in `gesso.php` | 3.0 |
+| 2.9.0 | `enforce_discriminator` (PHPUnit parameter / Laravel config key) | `validation.enforce_discriminator` in `gesso.php` | 3.0 |
+| 2.9.0 | `acknowledged_unvalidatable_schemes` (PHPUnit parameter / Laravel config key) | `validation.acknowledged_unvalidatable_schemes` in `gesso.php` | 3.0 |
+| 2.9.0 | `skip_response_codes` (PHPUnit parameter / Laravel config key) | `validation.skip_response_codes` in `gesso.php` | 3.0 |
+| 2.9.0 | `skip_request_validation_response_codes` (PHPUnit parameter / Laravel config key) | `validation.skip_request_validation_response_codes` in `gesso.php` | 3.0 |
+| 2.9.0 | `sidecar_dir` (PHPUnit parameter) | `coverage.sidecar_dir` in `gesso.php` | 3.0 |
+| 2.9.0 | `enum_drift_enabled` (PHPUnit parameter) | `enum_drift.enabled` in `gesso.php` | 3.0 |
+| 2.9.0 | `enum_drift_scan_namespaces` (PHPUnit parameter) | `enum_drift.scan_namespaces` in `gesso.php` | 3.0 |
+| 2.9.0 | `enum_drift_fail_on_drift` (PHPUnit parameter) | `enum_drift.fail_on_drift` in `gesso.php` | 3.0 |
+| 2.9.0 | `default_testsuite_as_full` (PHPUnit parameter) | `phpunit.default_testsuite_as_full` in `gesso.php` | 3.0 |
+| 2.9.0 | `auto_assert` (Laravel config key) | `laravel.auto_assert` in `gesso.php` | 3.0 |
+| 2.9.0 | `auto_validate_request` (Laravel config key) | `laravel.auto_validate_request` in `gesso.php` | 3.0 |
+| 2.9.0 | `auto_inject_dummy_credentials` (Laravel config key) | `laravel.auto_inject_dummy_credentials` in `gesso.php` | 3.0 |
+| 2.9.0 | `route_parity` (Laravel config key) | `laravel.route_parity` in `gesso.php` | 3.0 |
 
 Enum drift bindings: a backed enum now matches the `components.schemas` entry
 named after its class (an `Enum` suffix on either side is ignored) in the
@@ -196,6 +215,16 @@ The PHPUnit parameters keep working, and an XML value still wins over
 notice fires at extension bootstrap, before PHPUnit's error handler is active,
 so it is printed by PHP itself (subject to `display_errors`) rather than
 counted by `failOnDeprecation`; the end-of-run summary line lists it either way.
+
+The Laravel config keys (2.9.0) work the same way: a key set in the published
+`config/gesso.php` (or any other source that fills `gesso.*` before the service
+provider registers) keeps working and still wins over the root `gesso.php`,
+and emits one notice per key. Move each key to its section of the root
+`gesso.php` — `spec`, `validation`, or `laravel` — and delete
+`config/gesso.php` once it is empty. The check runs when the service provider
+registers, so a cached configuration (`php artisan config:cache`), which cannot
+tell a published key from a package default, raises no notice; run the suite
+uncached to see them. Values set later with `config()->set()` are not reported.
 
 The table mirrors `tests/fixtures/compatibility/v2-deprecations.json`, which a
 test keeps in sync with the emitters in `src/`. The `Deprecated in` column names

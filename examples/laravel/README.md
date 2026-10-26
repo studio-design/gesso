@@ -2,9 +2,8 @@
 
 ```bash
 composer require --dev "studio-design/gesso:^2.0"
-php artisan vendor:publish --tag=gesso
 composer install
 composer test
 ```
 
-The fixture covers explicit response assertions and the `auto_assert` / `auto_validate_request` configuration. Its PHPUnit extension prints endpoint coverage.
+The fixture covers explicit response assertions and the `auto_assert` / `auto_validate_request` switches. Settings live in [`gesso.php`](gesso.php) beside `phpunit.xml.dist` (there is no `config/gesso.php` to publish); its PHPUnit extension prints endpoint coverage.

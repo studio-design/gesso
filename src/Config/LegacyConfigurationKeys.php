@@ -7,8 +7,10 @@ namespace Studio\Gesso\Config;
 use Studio\Gesso\Internal\Deprecations;
 
 /**
- * The v2 phpunit.xml parameter spellings that `gesso.php` collapses (#502),
- * and the one-shot notice each emits.
+ * The v2 flat configuration spellings that `gesso.php` replaces — the
+ * phpunit.xml parameters (#502, #501) and the top-level keys of Laravel's
+ * `config/gesso.php` (#501) — and the one-shot notice each emits. A spelling
+ * both surfaces read carries one surface-neutral notice.
  *
  * @internal Deprecation table for the v2 configuration spellings; one literal
  *           `Deprecations::notice()` per spelling because
@@ -35,6 +37,41 @@ final class LegacyConfigurationKeys
         'coverage_baseline_file',
         'baseline_stale',
         'coverage_baseline_stale',
+        'spec_base_path',
+        'default_spec',
+        'specs',
+        'strip_prefixes',
+        'validation_output',
+        'max_errors',
+        'enforce_discriminator',
+        'acknowledged_unvalidatable_schemes',
+        'skip_response_codes',
+        'skip_request_validation_response_codes',
+        'sidecar_dir',
+        'enum_drift_enabled',
+        'enum_drift_scan_namespaces',
+        'enum_drift_fail_on_drift',
+        'default_testsuite_as_full',
+    ];
+
+    /**
+     * The deprecated top-level keys of Laravel's `config/gesso.php`, read by
+     * `GessoServiceProvider` before the package defaults are merged in.
+     */
+    public const LARAVEL = [
+        'spec_base_path',
+        'default_spec',
+        'specs',
+        'strip_prefixes',
+        'max_errors',
+        'enforce_discriminator',
+        'acknowledged_unvalidatable_schemes',
+        'skip_response_codes',
+        'skip_request_validation_response_codes',
+        'auto_assert',
+        'auto_validate_request',
+        'auto_inject_dummy_credentials',
+        'route_parity',
     ];
 
     /** Static-only table — no instances. */
@@ -193,6 +230,177 @@ final class LegacyConfigurationKeys
                     id: 'phpunit.coverage_baseline_stale',
                     subject: 'The PHPUnit config key \'coverage_baseline_stale\'',
                     replacement: 'baseline_stale[\'coverage\'] (in gesso.php)',
+                    removedIn: '3.0',
+                );
+
+                return;
+            case 'spec_base_path':
+                Deprecations::notice(
+                    id: 'config.spec_base_path',
+                    subject: 'The config key \'spec_base_path\'',
+                    replacement: 'spec.base_path (in gesso.php)',
+                    removedIn: '3.0',
+                );
+
+                return;
+            case 'default_spec':
+                Deprecations::notice(
+                    id: 'config.default_spec',
+                    subject: 'The config key \'default_spec\'',
+                    replacement: 'spec.default (in gesso.php)',
+                    removedIn: '3.0',
+                );
+
+                return;
+            case 'specs':
+                Deprecations::notice(
+                    id: 'config.specs',
+                    subject: 'The config key \'specs\'',
+                    replacement: 'spec.names (in gesso.php)',
+                    removedIn: '3.0',
+                );
+
+                return;
+            case 'strip_prefixes':
+                Deprecations::notice(
+                    id: 'config.strip_prefixes',
+                    subject: 'The config key \'strip_prefixes\'',
+                    replacement: 'spec.strip_prefixes (in gesso.php)',
+                    removedIn: '3.0',
+                );
+
+                return;
+            case 'validation_output':
+                Deprecations::notice(
+                    id: 'phpunit.validation_output',
+                    subject: 'The PHPUnit config key \'validation_output\'',
+                    replacement: 'validation.format (in gesso.php)',
+                    removedIn: '3.0',
+                );
+
+                return;
+            case 'max_errors':
+                Deprecations::notice(
+                    id: 'config.max_errors',
+                    subject: 'The config key \'max_errors\'',
+                    replacement: 'validation.max_errors (in gesso.php)',
+                    removedIn: '3.0',
+                );
+
+                return;
+            case 'enforce_discriminator':
+                Deprecations::notice(
+                    id: 'config.enforce_discriminator',
+                    subject: 'The config key \'enforce_discriminator\'',
+                    replacement: 'validation.enforce_discriminator (in gesso.php)',
+                    removedIn: '3.0',
+                );
+
+                return;
+            case 'acknowledged_unvalidatable_schemes':
+                Deprecations::notice(
+                    id: 'config.acknowledged_unvalidatable_schemes',
+                    subject: 'The config key \'acknowledged_unvalidatable_schemes\'',
+                    replacement: 'validation.acknowledged_unvalidatable_schemes (in gesso.php)',
+                    removedIn: '3.0',
+                );
+
+                return;
+            case 'skip_response_codes':
+                Deprecations::notice(
+                    id: 'config.skip_response_codes',
+                    subject: 'The config key \'skip_response_codes\'',
+                    replacement: 'validation.skip_response_codes (in gesso.php)',
+                    removedIn: '3.0',
+                );
+
+                return;
+            case 'skip_request_validation_response_codes':
+                Deprecations::notice(
+                    id: 'config.skip_request_validation_response_codes',
+                    subject: 'The config key \'skip_request_validation_response_codes\'',
+                    replacement: 'validation.skip_request_validation_response_codes (in gesso.php)',
+                    removedIn: '3.0',
+                );
+
+                return;
+            case 'sidecar_dir':
+                Deprecations::notice(
+                    id: 'phpunit.sidecar_dir',
+                    subject: 'The PHPUnit config key \'sidecar_dir\'',
+                    replacement: 'coverage.sidecar_dir (in gesso.php)',
+                    removedIn: '3.0',
+                );
+
+                return;
+            case 'enum_drift_enabled':
+                Deprecations::notice(
+                    id: 'phpunit.enum_drift_enabled',
+                    subject: 'The PHPUnit config key \'enum_drift_enabled\'',
+                    replacement: 'enum_drift.enabled (in gesso.php)',
+                    removedIn: '3.0',
+                );
+
+                return;
+            case 'enum_drift_scan_namespaces':
+                Deprecations::notice(
+                    id: 'phpunit.enum_drift_scan_namespaces',
+                    subject: 'The PHPUnit config key \'enum_drift_scan_namespaces\'',
+                    replacement: 'enum_drift.scan_namespaces (in gesso.php)',
+                    removedIn: '3.0',
+                );
+
+                return;
+            case 'enum_drift_fail_on_drift':
+                Deprecations::notice(
+                    id: 'phpunit.enum_drift_fail_on_drift',
+                    subject: 'The PHPUnit config key \'enum_drift_fail_on_drift\'',
+                    replacement: 'enum_drift.fail_on_drift (in gesso.php)',
+                    removedIn: '3.0',
+                );
+
+                return;
+            case 'default_testsuite_as_full':
+                Deprecations::notice(
+                    id: 'phpunit.default_testsuite_as_full',
+                    subject: 'The PHPUnit config key \'default_testsuite_as_full\'',
+                    replacement: 'phpunit.default_testsuite_as_full (in gesso.php)',
+                    removedIn: '3.0',
+                );
+
+                return;
+            case 'auto_assert':
+                Deprecations::notice(
+                    id: 'laravel.config.auto_assert',
+                    subject: 'The Laravel config key \'auto_assert\'',
+                    replacement: 'laravel.auto_assert (in gesso.php)',
+                    removedIn: '3.0',
+                );
+
+                return;
+            case 'auto_validate_request':
+                Deprecations::notice(
+                    id: 'laravel.config.auto_validate_request',
+                    subject: 'The Laravel config key \'auto_validate_request\'',
+                    replacement: 'laravel.auto_validate_request (in gesso.php)',
+                    removedIn: '3.0',
+                );
+
+                return;
+            case 'auto_inject_dummy_credentials':
+                Deprecations::notice(
+                    id: 'laravel.config.auto_inject_dummy_credentials',
+                    subject: 'The Laravel config key \'auto_inject_dummy_credentials\'',
+                    replacement: 'laravel.auto_inject_dummy_credentials (in gesso.php)',
+                    removedIn: '3.0',
+                );
+
+                return;
+            case 'route_parity':
+                Deprecations::notice(
+                    id: 'laravel.config.route_parity',
+                    subject: 'The Laravel config key \'route_parity\'',
+                    replacement: 'laravel.route_parity (in gesso.php)',
                     removedIn: '3.0',
                 );
 

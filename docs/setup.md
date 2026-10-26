@@ -38,7 +38,7 @@ openapi/
 
 HTTP(S) `$ref` (`https://example.com/schemas/pet.yaml`) is **opt-in** for security and CI predictability — see [HTTP `$ref` resolution](#http-ref-resolution-opt-in) below. If you prefer the legacy bundled-spec workflow, the loader still accepts the output of `npx @redocly/cli bundle --dereferenced` unchanged.
 
-`spec_base_path` is also the filesystem trust boundary for entry documents and
+`spec.base_path` is also the filesystem trust boundary for entry documents and
 local external references. Entry spec names may include nested directories but
 cannot use `..`, an absolute path, or a symlink to escape that root. Gesso also
 canonicalizes each local `$ref` target before reading it and rejects the target
@@ -47,9 +47,8 @@ When entry documents and shared schemas live in sibling directories, configure
 their narrowest trusted common parent and include the entry subdirectory in the
 spec name:
 
-```xml
-<parameter name="spec_base_path" value="openapi"/>
-<parameter name="specs" value="bundled/front"/>
+```php
+'spec' => ['base_path' => 'openapi', 'names' => ['bundled/front']],
 ```
 
 Here `openapi/bundled/front.yaml` may safely reference
@@ -60,11 +59,9 @@ location.
 
 ## 2. Configure the PHPUnit extension
 
-For a single file shared with Laravel, see [Shared configuration](configuration.md)
-(available on `main`, not yet in 2.6.0). It replaces the duplicated settings
-below with a root `gesso.php` and one `config` extension parameter.
-
-For a plain PHPUnit or Symfony suite this is the whole configuration — no
+Configure Gesso in a root `gesso.php`; the PHPUnit extension and Laravel read
+the same file (see [Shared configuration](configuration.md)). For a plain
+PHPUnit or Symfony suite this is the whole configuration — no
 `config/gesso.php` and no per-parameter XML:
 
 ```php
@@ -78,57 +75,52 @@ return [
 
 ```xml
 <extensions>
-    <bootstrap class="Studio\Gesso\PHPUnit\OpenApiCoverageExtension">
-        <parameter name="config" value="gesso.php"/>
-    </bootstrap>
+    <bootstrap class="Studio\Gesso\PHPUnit\OpenApiCoverageExtension"/>
 </extensions>
 ```
 
-The existing v2 setup continues to work. Add the coverage extension to your `phpunit.xml`:
+The extension reads `gesso.php` beside the selected PHPUnit XML file; the
+`config` parameter points it elsewhere. Each key is listed in
+[Shared configuration](configuration.md#settings-connected-in-this-release).
 
-```xml
-<extensions>
-    <bootstrap class="Studio\Gesso\PHPUnit\OpenApiCoverageExtension">
-        <parameter name="spec_base_path" value="openapi/bundled"/>
-        <parameter name="strip_prefixes" value="/api"/>
-        <parameter name="specs" value="front,admin"/>
-    </bootstrap>
-</extensions>
-```
+The v2 `<parameter>` spellings below keep working until 3.0 but are
+deprecated (†); the table remains as a reference for what each setting does.
 
 | Parameter | Required | Default | Description |
 |---|---|---|---|
 | `config` | No | Beside the selected PHPUnit XML file | Path to shared `gesso.php`; see [discovery and relative paths](configuration.md#discovery-and-relative-paths) (2.7.0+) |
-| `spec_base_path` | Yes* | — | Path to bundled spec directory (relative paths resolve from `getcwd()`) |
-| `strip_prefixes` | No | `[]` | Comma-separated prefixes to strip from request paths (e.g., `/api`). Required even when the spec declares the same base path in `servers` — see [Server base paths are not stripped automatically](#server-base-paths-are-not-stripped-automatically) |
-| `specs` | No | `front` | Comma-separated spec names for coverage tracking |
+| `spec_base_path` † | Yes* | — | Path to bundled spec directory (relative paths resolve from `getcwd()`) |
+| `strip_prefixes` † | No | `[]` | Comma-separated prefixes to strip from request paths (e.g., `/api`). Required even when the spec declares the same base path in `servers` — see [Server base paths are not stripped automatically](#server-base-paths-are-not-stripped-automatically) |
+| `specs` † | No | `front` | Comma-separated spec names for coverage tracking |
 | `output_file` † | No | — | File path to write Markdown coverage report (relative paths resolve from `getcwd()`). Skipped on partial runs — see [Partial test runs](ci.md#partial-test-runs-filter-testsuite-path-args) |
 | `junit_output` † | No | — | File path to write JUnit XML coverage report (for CI dashboards — GitLab CI, Jenkins, SonarQube, Bitrise). A missing parent directory is created automatically at bootstrap (applies to `json_output` / `html_output` too); an empty value, a failed creation, or an unwritable parent directory is FATAL at bootstrap. See [Coverage output formats](ci.md#coverage-output-formats) |
 | `json_output` † | No | — | File path to write machine-readable JSON coverage report (custom dashboards, analytics, scripted gating). Schema: [`coverage-json-schema.md`](coverage-json-schema.md) |
 | `html_output` † | No | — | File path to write self-contained HTML coverage report (PR comments, CI artifact preview, offline review). See [`coverage-html-output.md`](coverage-html-output.md) |
 | `console_output` † | No | `default` | Console output mode: `default`, `all`, `uncovered_only`, or `active_only` (overridden by `GESSO_CONSOLE_OUTPUT` env var) |
-| `validation_output` | No | `text` | Validation failure output format for all framework adapters: `text` or `json` (overridden by `GESSO_VALIDATION_FORMAT` env var). See [Validation JSON schema](validation-json-schema.md#selecting-json-failure-output-in-adapters) |
-| `max_errors` | No | `20` | Maximum validation errors reported per request/response, `0` = unlimited. Process-wide default for validators constructed without an explicit `maxErrors` argument (the [framework-agnostic usage](#framework-agnostic)); the PSR-7 and Symfony hook defaults follow it, Laravel reads `config('gesso.max_errors')`. See [Controlling the number of validation errors](#controlling-the-number-of-validation-errors) |
-| `skip_response_codes` | No | `5\d\d` | Comma-separated status-code regex patterns whose responses skip body validation (patterns must not contain commas). An explicitly empty value (`value=""`) means no skip patterns — 5xx bodies are validated too, matching Laravel's `[]`. Same process-wide default rule as `max_errors` |
-| `skip_request_validation_response_codes` | No | — | Comma-separated status-code regex patterns (e.g. `422,400`) enabling the documented-4xx request downgrade: an invalid request that yields a matching, spec-documented status is reported Skipped instead of Failure. Same process-wide default rule as `max_errors` |
-| `default_spec` | No | — | Spec name used when neither an `#[OpenApiSpec]` attribute nor an `openApiSpec()` override supplies one, including by the PSR-7 and Symfony adapters. Laravel reads `config('gesso.default_spec')` |
+| `validation_output` † | No | `text` | Validation failure output format for all framework adapters: `text` or `json` (overridden by `GESSO_VALIDATION_FORMAT` env var). See [Validation JSON schema](validation-json-schema.md#selecting-json-failure-output-in-adapters) |
+| `max_errors` † | No | `20` | Maximum validation errors reported per request/response, `0` = unlimited. Process-wide default for validators constructed without an explicit `maxErrors` argument (the [framework-agnostic usage](#framework-agnostic)); the PSR-7 and Symfony hook defaults follow it, Laravel reads `config('gesso.max_errors')`. See [Controlling the number of validation errors](#controlling-the-number-of-validation-errors) |
+| `skip_response_codes` † | No | `5\d\d` | Comma-separated status-code regex patterns whose responses skip body validation (patterns must not contain commas). An explicitly empty value (`value=""`) means no skip patterns — 5xx bodies are validated too, matching Laravel's `[]`. Same process-wide default rule as `max_errors` |
+| `skip_request_validation_response_codes` † | No | — | Comma-separated status-code regex patterns (e.g. `422,400`) enabling the documented-4xx request downgrade: an invalid request that yields a matching, spec-documented status is reported Skipped instead of Failure. Same process-wide default rule as `max_errors` |
+| `default_spec` † | No | — | Spec name used when neither an `#[OpenApiSpec]` attribute nor an `openApiSpec()` override supplies one, including by the PSR-7 and Symfony adapters. Laravel reads `config('gesso.default_spec')` |
 | `baseline_file` † | No | — | Violation baseline file path (relative paths resolve from `getcwd()`). Running the suite with `GESSO_BASELINE_GENERATE=1` records every contract violation instead of failing and writes the sorted, versioned baseline here at run end (refused on partial runs; parallel workers stage their fingerprints in sidecars for `gesso coverage:merge --baseline="violations=…"` to union — see [Generating under parallel runners](baseline.md#generating-under-parallel-runners)). On normal runs the file is loaded (missing or malformed file is FATAL) and failures whose every violation is baselined are suppressed — only **new** violations fail. See the [baseline adoption guide](baseline.md) |
 | `baseline_stale` † | No | `note` | How baseline entries that no longer occur during a full run are reported: `off` (not evaluated), `note` (listed as removable), or `fail` (listed and the run exits non-zero). Requires `baseline_file`; skipped on partial runs. See [Ratcheting down](baseline.md#ratcheting-down) |
-| `sidecar_dir` | No | `sys_get_temp_dir()/openapi-coverage-sidecars` | Directory exporting processes drop their JSON sidecar into — paratest workers, or CI shards that set `GESSO_SIDECAR_TOKEN`. Used only when the state is merged afterwards; see [Parallel test runners](parallel.md) and [Sharded CI jobs](parallel.md#sharded-ci-jobs) |
+| `sidecar_dir` † | No | `sys_get_temp_dir()/openapi-coverage-sidecars` | Directory exporting processes drop their JSON sidecar into — paratest workers, or CI shards that set `GESSO_SIDECAR_TOKEN`. Used only when the state is merged afterwards; see [Parallel test runners](parallel.md) and [Sharded CI jobs](parallel.md#sharded-ci-jobs) |
 | `min_endpoint_coverage` † | No | — | Minimum fully covered endpoint percentage (`0`–`100`). See [Coverage threshold gate](coverage.md#coverage-threshold-gate) |
 | `min_response_coverage` † | No | — | Minimum validated response-row percentage (`0`–`100`) |
 | `min_sdk_exercise_coverage` † | No | — | Minimum eligible response-schema percentage attempted by SDK decoder callbacks (`0`–`100`) |
 | `min_coverage_strict` † | No | `false` | When true, any configured coverage-threshold miss exits non-zero; otherwise misses warn only |
 | `strict_additional_properties` † | No | `off` | Undocumented response-property gate: `off`, `warn`, or `fail`. See [`strict-additional-properties.md`](strict-additional-properties.md) |
 | `strict_additional_properties_per_call` † | No | `off` | Immediate undocumented response-property warning: `off` or `warn`. Pair with PHPUnit `failOnWarning="true"` for per-test failure. |
-| `default_testsuite_as_full` | No | `false` | Opt-in. When `true` and PHPUnit's `includeTestSuites` resolves exactly to the configured `defaultTestSuite`, treat the run as full instead of partial (so `strict_required` and coverage outputs aren't suppressed). See [default_testsuite_as_full opt-in](ci.md#default_testsuite_as_full-opt-in) for trade-offs |
-| `enforce_discriminator` | No | `true` | When `true` (default), `discriminator` + `mapping` is enforced via `if`/`then` lowering so a body that lies about its type fails. Set to `false` (or `0` / `no`) to strip `discriminator` without enforcing (no warning either). See [Schema features → discriminator](supported-features.md#schema-features) |
-| `acknowledged_unvalidatable_schemes` | No | — | Comma-separated `components.securitySchemes` names acknowledged as unvalidatable. Suppresses the one-shot `[security]` silent-pass warning for exactly those schemes; every other unvalidatable scheme keeps warning. See [Acknowledging an unvalidatable security scheme](#acknowledging-an-unvalidatable-security-scheme) |
+| `default_testsuite_as_full` † | No | `false` | Opt-in. When `true` and PHPUnit's `includeTestSuites` resolves exactly to the configured `defaultTestSuite`, treat the run as full instead of partial (so `strict_required` and coverage outputs aren't suppressed). See [default_testsuite_as_full opt-in](ci.md#default_testsuite_as_full-opt-in) for trade-offs |
+| `enforce_discriminator` † | No | `true` | When `true` (default), `discriminator` + `mapping` is enforced via `if`/`then` lowering so a body that lies about its type fails. Set to `false` (or `0` / `no`) to strip `discriminator` without enforcing (no warning either). See [Schema features → discriminator](supported-features.md#schema-features) |
+| `acknowledged_unvalidatable_schemes` † | No | — | Comma-separated `components.securitySchemes` names acknowledged as unvalidatable. Suppresses the one-shot `[security]` silent-pass warning for exactly those schemes; every other unvalidatable scheme keeps warning. See [Acknowledging an unvalidatable security scheme](#acknowledging-an-unvalidatable-security-scheme) |
 
 *Not required if you call `OpenApiSpecLoader::configure()` manually.
 
 † Deprecated in favour of its `gesso.php` key (see
-[Shared configuration](configuration.md)) and removed in 3.0. The parameter
+[Shared configuration](configuration.md)) and removed in 3.0 — since 2.8.0
+for the strict, coverage-threshold, report-output, console, and baseline
+parameters, since 2.9.0 for the rest. The parameter
 still works and still wins over `gesso.php`; setting it emits a one-shot
 `[Gesso deprecation]` notice (see [Deprecations in `UPGRADING.md`](https://github.com/studio-design/gesso/blob/main/UPGRADING.md#deprecations)).
 
@@ -136,10 +128,10 @@ still works and still wins over `gesso.php`; setting it emits a one-shot
 
 `servers[].url` **does not participate in request-path matching.** A spec that
 declares `servers: [{ url: "/api" }]` alongside a `/pets` path still needs
-`strip_prefixes` set to `/api` for a request to `/api/pets` to match.
+`spec.strip_prefixes` set to `['/api']` for a request to `/api/pets` to match.
 
 The two values look interchangeable and are not: `servers[].url` says where the
-published API is served, while `strip_prefixes` says where the application under
+published API is served, while `spec.strip_prefixes` says where the application under
 test mounts its routes. They diverge whenever a gateway terminates the prefix,
 the test harness boots the app at the root, or the spec's `servers` carries a
 hostname and no path. `servers` is also overridable per path item and per
@@ -156,7 +148,7 @@ be derived:
 ```text
 No matching path found in 'petstore' spec for GET /api/pets
   servers[0].url declares base path '/api'; '/pets' matches after removing it.
-  Gesso does not strip server base paths automatically — add '/api' to strip_prefixes.
+  Gesso does not strip server base paths automatically — add '/api' to spec.strip_prefixes in gesso.php.
   closest spec paths:
     - GET /pets
 ```
@@ -165,54 +157,41 @@ No matching path found in 'petstore' spec for GET /api/pets
 
 ### With Laravel (recommended)
 
-Publish the config file:
-
-```bash
-php artisan vendor:publish --tag=gesso
-```
-
-This creates `config/gesso.php`:
+Laravel reads the same root `gesso.php` as the PHPUnit extension, so the spec
+directory, prefixes, and validation policy are written once and `gesso:routes`
+and runtime validation compare the same paths. Laravel-only switches live under
+`laravel`:
 
 ```php
+<?php // gesso.php, at the application root
+
 return [
-    'default_spec' => '', // e.g., 'front'
-
-    // Used by Laravel Artisan commands such as gesso:routes.
-    'spec_base_path' => base_path('openapi'),
-
-    // Keep aligned with the PHPUnit extension's strip_prefixes parameter —
-    // or move both to the root gesso.php so nothing needs aligning.
-    'strip_prefixes' => [],
-
-    // Maximum number of validation errors to report per response.
-    // 0 = unlimited (reports all errors).
-    'max_errors' => 20,
-
-    // Enforce `discriminator` + `mapping` by lowering it into if/then
-    // conditionals so a body that lies about its type fails (default true).
-    // Set false to strip discriminator without enforcing (no warning either).
-    'enforce_discriminator' => true,
-
-    // Automatically validate every TestResponse produced by Laravel HTTP
-    // helpers (get(), post(), etc.) against the OpenAPI spec. Defaults to
-    // false for backward compatibility.
-    'auto_assert' => false,
-
-    // Regex patterns (without delimiters or anchors) matched against the
-    // response status code. Matching codes short-circuit body validation —
-    // the test passes and the endpoint is still recorded as covered.
-    // Defaults to skipping every 5xx. Set to [] to validate every code.
-    'skip_response_codes' => ['5\d\d'],
+    'spec' => [
+        'base_path' => 'openapi',   // also used by gesso:routes / gesso:stubs
+        'default' => 'front',
+        'names' => ['front'],
+        'strip_prefixes' => ['/api'],
+    ],
+    'validation' => [
+        'max_errors' => 20,                    // 0 = unlimited
+        'enforce_discriminator' => true,
+        'skip_response_codes' => ['5\d\d'],   // [] validates every code
+    ],
+    'laravel' => [
+        'auto_assert' => false,
+    ],
 ];
 ```
 
-Set `default_spec` to your spec name, then use the trait — no per-class override needed:
+The published `config/gesso.php` (`php artisan vendor:publish --tag=gesso`) is
+the deprecated v2 spelling of these settings: each key still works and still
+wins over `gesso.php`, but emits a `[Gesso deprecation]` notice and is removed
+in 3.0. Do not publish it for a new project; see [Shared
+configuration](configuration.md#compatibility-and-precedence) to migrate an
+existing one. See [Laravel route parity](laravel-route-parity.md) for filters,
+JSON output, and CI exit codes.
 
-The Laravel config and PHPUnit extension are separate entry points. Configure
-the same spec directory and prefixes in both so `gesso:routes` and runtime
-validation compare the same paths — or move both to the root `gesso.php`
-([Shared configuration](configuration.md)) so nothing needs aligning. See [Laravel route parity](laravel-route-parity.md)
-for filters, JSON output, and CI exit codes.
+With `spec.default` set, use the trait — no per-class override needed:
 
 ```php
 use Studio\Gesso\Laravel\ValidatesOpenApiSchema;
@@ -273,14 +252,14 @@ Resolution priority (highest to lowest) — the first match wins:
 | 1 | Method-level `#[OpenApiSpec]` attribute | Per-test override inside a class whose other tests target a different spec |
 | 2 | Class-level `#[OpenApiSpec]` attribute  | Default spec for a class whose tests all hit the same API surface |
 | 3 | `openApiSpec()` method override          | Class-specific spec without the attribute (e.g. dynamically chosen at runtime) |
-| 4 | `config('gesso.default_spec')` | Project-wide default set once in `config/gesso.php` |
+| 4 | `spec.default` in `gesso.php` | Project-wide default set once |
 
 Concrete example where all four layers are populated (class name differs from the earlier `MixedApiTest` example so both snippets can coexist in one project):
 
 ```php
 use Studio\Gesso\Attribute\OpenApiSpec;
 
-// config/gesso.php → ['default_spec' => 'front']   (layer 4)
+// gesso.php → ['spec' => ['default' => 'front']]   (layer 4)
 
 #[OpenApiSpec('admin')]                                             // layer 2
 class AllLayersPriorityTest extends TestCase
@@ -305,13 +284,12 @@ class AllLayersPriorityTest extends TestCase
 }
 ```
 
-If every layer is absent (no attributes, `openApiSpec()` not overridden, and `default_spec` empty), the assertion fails with a message that points at each opt-in location:
+If every layer is absent (no attributes, `openApiSpec()` not overridden, and `spec.default` empty), the assertion fails with a message that points at each opt-in location:
 
 ```
 openApiSpec() must return a non-empty spec name, but an empty string was returned.
 Either add #[OpenApiSpec('your-spec')] to your test class or method,
-override openApiSpec() in your test class, or set the "default_spec" key
-in config/gesso.php.
+override openApiSpec() in your test class, or set spec.default in gesso.php.
 ```
 
 > **Note:** `openApiSpec()` remains the original extension hook and is fully backward-compatible — overriding it works exactly as before.
@@ -351,18 +329,19 @@ $this->assertResponseMatchesOpenApiSchema($request, $response);
 $this->assertRequestMatchesOpenApiSchema($request, $response->getStatusCode());
 ```
 
-Spec resolution uses the same `#[OpenApiSpec]` attribute / `openApiSpec()` chain as the framework-agnostic usage below. Without either, set `spec.default` in `gesso.php` (or the `default_spec` extension parameter); the attribute and an `openApiSpec()` override still win. The `max_errors` and skip-code hooks follow the same shared settings unless overridden. Spec files are still discovered through the [PHPUnit extension](#2-configure-the-phpunit-extension) (`spec_base_path`) or a direct `OpenApiSpecLoader::configure()` call.
+Spec resolution uses the same `#[OpenApiSpec]` attribute / `openApiSpec()` chain as the framework-agnostic usage below. Without either, set `spec.default` in `gesso.php`; the attribute and an `openApiSpec()` override still win. The `validation.max_errors` and skip-code hooks follow the same shared settings unless overridden. Spec files are still discovered through the [PHPUnit extension](#2-configure-the-phpunit-extension) (`spec.base_path`) or a direct `OpenApiSpecLoader::configure()` call.
 
 > **Requires `symfony/http-foundation`.** Symfony projects already depend on it; it is listed under `suggest` so standalone installs aren't forced to pull it in.
 
 ### Framework-agnostic
 
 You can use the `#[OpenApiSpec]` attribute with the `OpenApiSpecResolver` trait in any PHPUnit test.
-Validators constructed without explicit arguments pick up the extension's
-`max_errors`, `skip_response_codes`, and `skip_request_validation_response_codes`
-parameters, and when no attribute or `openApiSpec()` override names a spec,
-`resolveOpenApiSpec()` falls back to the `default_spec` parameter — so a plain
-suite can configure the validation policy entirely from `phpunit.xml`:
+Validators constructed without explicit arguments pick up
+`validation.max_errors`, `validation.skip_response_codes`, and
+`validation.skip_request_validation_response_codes` from `gesso.php` (applied by
+the extension), and when no attribute or `openApiSpec()` override names a spec,
+`resolveOpenApiSpec()` falls back to `spec.default` — so a plain suite can
+configure the validation policy entirely from `gesso.php`:
 
 ```php
 use Studio\Gesso\Attribute\OpenApiSpec;
@@ -434,9 +413,9 @@ $validator = new OpenApiResponseValidator($tracker, maxErrors: 0);
 $validator = new OpenApiResponseValidator($tracker, maxErrors: 1);
 ```
 
-For Laravel, set the `max_errors` key in `config/gesso.php`. For plain PHPUnit,
-PSR-7, and Symfony suites, `validation.max_errors` in `gesso.php` (or the
-extension's `max_errors` parameter) sets the process-wide default that
+Set `validation.max_errors` in `gesso.php`. Laravel reads it directly; for
+plain PHPUnit, PSR-7, and Symfony suites the extension applies it as the
+process-wide default that
 validators constructed without an explicit `maxErrors` argument, and the
 adapters' `openApiMaxErrors()` hooks, pick up
 — see the [parameter table](#2-configure-the-phpunit-extension).
@@ -486,18 +465,20 @@ seekable streams (and restores the cursor) either way.
 
 Production error responses (typically `5xx`) are often deliberately left out of the OpenAPI spec. Without special handling, a test that hits a `500` would fail twice: once from the underlying bug, and again from "Status code 500 not defined". To avoid that noise, every `5xx` response is **skipped by default** — body validation is not performed, the assertion passes, and the endpoint is still recorded as covered.
 
-Override via `skip_response_codes` in `config/gesso.php`:
+Override via `validation.skip_response_codes` in `gesso.php`:
 
 ```php
 return [
-    // Default — skip all 5xx
-    'skip_response_codes' => ['5\d\d'],
+    'validation' => [
+        // Default — skip all 5xx
+        'skip_response_codes' => ['5\d\d'],
 
-    // Widen to also skip all 4xx
-    'skip_response_codes' => ['4\d\d', '5\d\d'],
+        // Widen to also skip all 4xx
+        // 'skip_response_codes' => ['4\d\d', '5\d\d'],
 
-    // Disable entirely — validate every status code
-    'skip_response_codes' => [],
+        // Disable entirely — validate every status code
+        // 'skip_response_codes' => [],
+    ],
 ];
 ```
 
@@ -521,13 +502,13 @@ Notes:
 
 ## Auto-assert every response
 
-Forgetting `$this->assertResponseMatchesOpenApiSchema($response)` in a test means the contract is silently unchecked. Enable `auto_assert` to validate every response produced by Laravel's HTTP helpers automatically — just include the trait:
+Forgetting `$this->assertResponseMatchesOpenApiSchema($response)` in a test means the contract is silently unchecked. Enable `laravel.auto_assert` to validate every response produced by Laravel's HTTP helpers automatically — just include the trait:
 
 ```php
-// config/gesso.php
+// gesso.php
 return [
-    'default_spec' => 'front',
-    'auto_assert'  => true,
+    'spec' => ['default' => 'front'],
+    'laravel' => ['auto_assert' => true],
 ];
 ```
 
@@ -552,8 +533,8 @@ Notes:
 - Auto-assert hooks into `MakesHttpRequests::createTestResponse()`. Responses you construct manually (outside `$this->get()`, `$this->post()`, etc.) are not touched.
 - Idempotency is keyed on the `(spec, method, path)` tuple. Calling `assertResponseMatchesOpenApiSchema($response)` after auto-assert with the matching signature is a no-op. Calling it with a different `method`/`path` — or a different `#[OpenApiSpec]` — runs validation again.
 - When auto-assert fails, the exception is thrown from inside `$this->get(...)`, so any chained assertion on the same line (`$this->get(...)->assertOk()`) will not run. This is usually what you want — the schema failure takes precedence over status-code checks.
-- `auto_assert` accepts boolean-compatible values (`true`/`false`/`"1"`/`"0"`/`"true"`/`"false"`) so `'auto_assert' => env('OPENAPI_AUTO_ASSERT')` works. Unrecognized values fail the test loudly with a clear message, not silently.
-- Streamed responses (`StreamedResponse`, binary downloads) cause `getContent()` to return `false`, which fails auto-assert with a clear message. If you use `auto_assert=true` on tests that exercise streams, scope the config change per-test or fall back to explicit manual asserts.
+- `auto_assert` accepts boolean-compatible values (`true`/`false`/`"1"`/`"0"`/`"true"`/`"false"`) so an environment-driven value works. Unrecognized values fail the test loudly with a clear message, not silently.
+- Streamed responses (`StreamedResponse`, binary downloads) cause `getContent()` to return `false`, which fails auto-assert with a clear message. If you enable `auto_assert` on tests that exercise streams, scope the config change per-test or fall back to explicit manual asserts.
 
 ## Opting out with `#[SkipOpenApi]`
 
@@ -654,14 +635,16 @@ Notes:
 
 ## Auto-validate every request
 
-Request-side contract drift (missing query params, body-shape divergence, absent security headers) goes undetected unless the test explicitly checks for it. Enable `auto_validate_request` to run `OpenApiRequestValidator` against every request Laravel's HTTP helpers dispatch:
+Request-side contract drift (missing query params, body-shape divergence, absent security headers) goes undetected unless the test explicitly checks for it. Enable `laravel.auto_validate_request` to run `OpenApiRequestValidator` against every request Laravel's HTTP helpers dispatch:
 
 ```php
-// config/gesso.php
+// gesso.php
 return [
-    'default_spec'                  => 'front',
-    'auto_validate_request'         => true,
-    'auto_inject_dummy_credentials' => true, // optional — see below
+    'spec' => ['default' => 'front'],
+    'laravel' => [
+        'auto_validate_request' => true,
+        'auto_inject_dummy_credentials' => true, // optional — see below
+    ],
 ];
 ```
 
@@ -676,18 +659,20 @@ Notes:
 
 ## Skip request validation when the response is a documented 4xx
 
-Tests that intentionally send invalid input to verify the impl returns a documented 422 / 400 would otherwise double-fail under `auto_validate_request`: the request is genuinely spec-invalid (that's the point), but the test only cares about asserting the 4xx response. By default, the library downgrades the request validation result from Failure to Skipped when the response status matches `skip_request_validation_response_codes` AND the spec documents that status for the operation. Default `['422', '400']`:
+Tests that intentionally send invalid input to verify the impl returns a documented 422 / 400 would otherwise double-fail under `auto_validate_request`: the request is genuinely spec-invalid (that's the point), but the test only cares about asserting the 4xx response. By default, the library downgrades the request validation result from Failure to Skipped when the response status matches `validation.skip_request_validation_response_codes` AND the spec documents that status for the operation. Default `['422', '400']`:
 
 ```php
 return [
-    // default — downgrade documented 422 / 400 responses, keep undocumented 4xx loud
-    'skip_request_validation_response_codes' => ['422', '400'],
+    'validation' => [
+        // default — downgrade documented 422 / 400 responses, keep undocumented 4xx loud
+        'skip_request_validation_response_codes' => ['422', '400'],
 
-    // strict — every spec violation surfaces, even for documented 4xx
-    'skip_request_validation_response_codes' => [],
+        // strict — every spec violation surfaces, even for documented 4xx
+        // 'skip_request_validation_response_codes' => [],
 
-    // wider net — downgrade every documented 4xx
-    'skip_request_validation_response_codes' => ['4\d\d'],
+        // wider net — downgrade every documented 4xx
+        // 'skip_request_validation_response_codes' => ['4\d\d'],
+    ],
 ];
 ```
 
@@ -731,20 +716,15 @@ The validator cannot enforce `oauth2`, `openIdConnect`, `mutualTLS`, or `http` s
 Under Laravel that warning is converted into a test failure by the framework's error handler — and because it is one-shot, *which* test fails depends on execution order. When the scheme genuinely cannot be avoided (e.g. RFC 7009 / RFC 7662 mandate HTTP Basic client authentication for token revocation / introspection endpoints) and the authentication is covered by a dedicated test, acknowledge the scheme **by name** instead of filtering `E_USER_WARNING` globally:
 
 ```php
-// config/gesso.php (Laravel)
+// gesso.php (read by Laravel and the PHPUnit extension alike)
 return [
-    'auto_validate_request' => true,
-    // components.securitySchemes keys covered by a dedicated auth test.
-    'acknowledged_unvalidatable_schemes' => ['ClientBasicAuth'],
+    'spec' => ['base_path' => 'openapi'],
+    'validation' => [
+        // components.securitySchemes keys covered by a dedicated auth test.
+        'acknowledged_unvalidatable_schemes' => ['ClientBasicAuth'],
+    ],
+    'laravel' => ['auto_validate_request' => true],
 ];
-```
-
-```xml
-<!-- phpunit.xml (framework-agnostic suites) -->
-<bootstrap class="Studio\Gesso\PHPUnit\OpenApiCoverageExtension">
-    <parameter name="spec_base_path" value="openapi"/>
-    <parameter name="acknowledged_unvalidatable_schemes" value="ClientBasicAuth"/>
-</bootstrap>
 ```
 
 Notes:
@@ -870,10 +850,10 @@ export GESSO_SPEC_TOKEN='Bearer github_pat_…'
 ```
 
 After that, `front` and `admin` behave like any other spec name — in
-`specs=` for coverage, in `#[OpenApiSpec(...)]` attributes, and in the direct
-validators. Call `configure()` from your PHPUnit bootstrap file and omit the
-extension's `spec_base_path` parameter (the extension would otherwise
-re-configure the loader without your HTTP client); keep `specs=` so remote
+`spec.names` for coverage, in `#[OpenApiSpec(...)]` attributes, and in the direct
+validators. Call `configure()` from your PHPUnit bootstrap file and omit
+`spec.base_path` from `gesso.php` (the extension would otherwise
+re-configure the loader without your HTTP client); keep `spec.names` so remote
 documents are eagerly fetched and structurally validated at bootstrap.
 
 Rules and behavior:

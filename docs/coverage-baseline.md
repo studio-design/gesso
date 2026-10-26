@@ -19,15 +19,15 @@ today's gaps, fail on new ones by name, and let the ratchet show up as a diff.
 
 ## Quick start
 
-1. Point the PHPUnit extension at a coverage baseline file:
+1. Point the PHPUnit extension at a coverage baseline file in the root
+   `gesso.php` (registered with
+   `<bootstrap class="Studio\Gesso\PHPUnit\OpenApiCoverageExtension"/>`):
 
-   ```xml
-   <extensions>
-       <bootstrap class="Studio\Gesso\PHPUnit\OpenApiCoverageExtension">
-           <parameter name="spec_base_path" value="openapi/bundled"/>
-           <parameter name="coverage_baseline_file" value="gesso-coverage-baseline.json"/>
-       </bootstrap>
-   </extensions>
+   ```php
+   return [
+       'spec' => ['base_path' => 'openapi/bundled'],
+       'baseline' => ['coverage' => 'gesso-coverage-baseline.json'],
+   ];
    ```
 
 2. Generate it from a full run (no `--filter`):
@@ -42,9 +42,9 @@ today's gaps, fail on new ones by name, and let the ratchet show up as a diff.
 
 3. Commit the file. Every later run compares its uncovered set against it.
 
-`GESSO_BASELINE_GENERATE` drives both baselines: if `baseline_file` is
+`GESSO_BASELINE_GENERATE` drives both baselines: if `baseline['violations']` is
 configured too, one command regenerates both. Configuring only
-`coverage_baseline_file` is fine — the violation baseline stays uninvolved.
+`baseline['coverage']` is fine — the violation baseline stays uninvolved.
 
 The file is deterministic — fully sorted, no timestamps — so regenerating an
 unchanged suite produces a byte-identical file. Its format is a versioned
@@ -115,7 +115,7 @@ vacuous pass — an empty uncovered set there means "no data", not "no gaps".
 ## Ratcheting down
 
 Baseline entries that are covered now — the ratchet-down signal — are
-reported per `coverage_baseline_stale`:
+reported per `baseline_stale['coverage']`:
 
 | Value | Behavior |
 |---|---|

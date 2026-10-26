@@ -4,16 +4,28 @@
 composer require --dev "studio-design/gesso:^2.0"
 ```
 
-Register the extension in `phpunit.xml`. It configures the spec loader and prints
+Put the shared settings in a root `gesso.php` and register the extension in
+`phpunit.xml`, which reads that file. The extension configures the spec loader and prints
 the coverage report; without it the first validation call throws
 `OpenApiSpecLoader base path not configured`:
 
+```php
+<?php
+// gesso.php, beside phpunit.xml
+
+declare(strict_types=1);
+
+return [
+    'spec' => [
+        'base_path' => 'openapi',
+        'names' => ['petstore'],
+    ],
+];
+```
+
 ```xml
 <extensions>
-    <bootstrap class="Studio\Gesso\PHPUnit\OpenApiCoverageExtension">
-        <parameter name="spec_base_path" value="openapi"/>
-        <parameter name="specs" value="petstore"/>
-    </bootstrap>
+    <bootstrap class="Studio\Gesso\PHPUnit\OpenApiCoverageExtension"/>
 </extensions>
 ```
 

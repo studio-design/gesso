@@ -33,7 +33,6 @@ use function array_map;
 use function array_unique;
 use function array_values;
 use function chdir;
-use function explode;
 use function fclose;
 use function file_get_contents;
 use function file_put_contents;
@@ -44,7 +43,6 @@ use function json_decode;
 use function json_encode;
 use function md5;
 use function mkdir;
-use function preg_match;
 use function proc_close;
 use function proc_open;
 use function proc_terminate;
@@ -188,8 +186,10 @@ class DoctorCommandTest extends TestCase
         $this->assertSame(2, $report['summary']['specs']);
         $this->assertSame(2, $report['summary']['operations']);
         $this->assertSame(2, $report['summary']['responses']);
-        $this->assertStringContainsString('spec_base_path', $report['phpunit']);
-        $this->assertStringContainsString('front,admin', $report['phpunit']);
+        $this->assertStringContainsString("'names' => ['front', 'admin']", $report['phpunit']);
+        $this->assertStringContainsString("'strip_prefixes' => ['/api']", $report['phpunit']);
+        // The flat v2 parameters are deprecated, so the snippet sets none.
+        $this->assertStringNotContainsString('<parameter', $report['phpunit']);
     }
 
     #[Test]
@@ -771,12 +771,12 @@ class DoctorCommandTest extends TestCase
     }
 
     #[Test]
-    public function phpunit_snippet_includes_acknowledged_schemes_parameter(): void
+    public function phpunit_snippet_includes_acknowledged_schemes(): void
     {
         // The "Equivalent PHPUnit configuration" must reproduce the doctor
         // invocation: dropping the acknowledgement from the snippet would
         // silently re-enable the warnings the user just scoped out. The `&`
-        // in the name pins XML escaping.
+        // pins that the gesso.php half is PHP source, not XML-escaped.
         $spec = $this->writeSpec('snippet.json', $this->validSpec('/pets'));
         $output = '';
         $command = new DoctorCommand(stdoutWriter: static function (string $message) use (&$output): void {
@@ -793,7 +793,7 @@ class DoctorCommandTest extends TestCase
 
         $this->assertSame(DoctorCommand::EXIT_OK, $exit);
         $this->assertStringContainsString(
-            '<parameter name="acknowledged_unvalidatable_schemes" value="ClientBasicAuth,A&amp;B"/>',
+            "'acknowledged_unvalidatable_schemes' => ['ClientBasicAuth', 'A&B']",
             $report['phpunit'],
         );
     }
@@ -1109,10 +1109,11 @@ class DoctorCommandTest extends TestCase
 
         [, $snippetReport] = $this->runDoctor($options + ['phpunit_snippet' => true, 'format' => 'json']);
         $snippet = json_decode($snippetReport, true, flags: JSON_THROW_ON_ERROR)['phpunit'];
-        $this->assertSame(1, preg_match('/name="specs" value="([^"]*)"/', $snippet, $specs));
+        // The snippet carries the same gesso.php, after the bare extension XML.
+        $this->assertStringEndsWith($stdout, $snippet);
 
         $this->assertSame(realpath($this->workDir), $config->string('spec.base_path'));
-        $this->assertSame(explode(',', $specs[1]), $config->strings('spec.names'));
+        $this->assertSame(['front', 'admin'], $config->strings('spec.names'));
         $this->assertSame(['/api'], $config->strings('spec.strip_prefixes'));
         // No XML escaping leaks into the PHP source.
         $this->assertSame(['A&B'], $config->strings('validation.acknowledged_unvalidatable_schemes'));

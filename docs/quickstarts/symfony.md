@@ -4,15 +4,27 @@
 composer require --dev "studio-design/gesso:^2.0" symfony/http-foundation symfony/http-kernel
 ```
 
-Register the extension in `phpunit.xml`. Gesso finds spec files through the
-PHPUnit extension, not a Symfony bundle:
+Put the shared settings in a root `gesso.php` and register the extension in
+`phpunit.xml`. Gesso finds spec files through the PHPUnit extension, not a
+Symfony bundle:
+
+```php
+<?php
+// gesso.php, beside phpunit.xml
+
+declare(strict_types=1);
+
+return [
+    'spec' => [
+        'base_path' => 'openapi',
+        'names' => ['petstore'],
+    ],
+];
+```
 
 ```xml
 <extensions>
-    <bootstrap class="Studio\Gesso\PHPUnit\OpenApiCoverageExtension">
-        <parameter name="spec_base_path" value="openapi"/>
-        <parameter name="specs" value="petstore"/>
-    </bootstrap>
+    <bootstrap class="Studio\Gesso\PHPUnit\OpenApiCoverageExtension"/>
 </extensions>
 ```
 

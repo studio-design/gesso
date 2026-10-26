@@ -1,6 +1,6 @@
 # Coverage Report
 
-After running tests, the PHPUnit extension prints a coverage report. The output format is controlled by the `console_output` parameter (or `GESSO_CONSOLE_OUTPUT` environment variable).
+After running tests, the PHPUnit extension prints a coverage report. The output format is controlled by `coverage.console_report` in `gesso.php` (or `GESSO_CONSOLE_OUTPUT` environment variable).
 
 Coverage is tracked at **`(method, path, statusCode, contentType)` granularity**: a `GET /v1/pets` test that only exercises `200 application/json` does not count `404` or `application/problem+json` as covered. Per-endpoint markers reflect the resolved state across all declared response definitions:
 
@@ -93,7 +93,7 @@ To turn that list into pre-written tests, feed the same run's JSON output to
 
 ### `active_only` mode
 
-Useful for the local TDD loop with a multi-spec setup (e.g. `specs="front,store,admin"`). Specs that no test in this run touched are collapsed to a single line, so a focused single-test run no longer has to scroll past hundreds of `✗ uncovered` rows for unrelated specs. Specs with at least one validated, skipped, or request-only observation render the same one-line-per-endpoint view as `default`:
+Useful for the local TDD loop with a multi-spec setup (e.g. `spec.names` = `['front', 'store', 'admin']`). Specs that no test in this run touched are collapsed to a single line, so a focused single-test run no longer has to scroll past hundreds of `✗ uncovered` rows for unrelated specs. Specs with at least one validated, skipped, or request-only observation render the same one-line-per-endpoint view as `default`:
 
 ```
 [front] no test activity (373 endpoints, 894 responses in spec)
@@ -108,13 +108,13 @@ Legend: ✓=validated  ⚠=skipped  ✗=uncovered  ◐=partial  ·=request-only 
   ...
 ```
 
-You can set the mode via `phpunit.xml`:
+You can set the mode in `gesso.php`:
 
-```xml
-<parameter name="console_output" value="uncovered_only"/>
+```php
+'coverage' => ['console_report' => 'uncovered_only'],
 ```
 
-Or via environment variable (takes priority over `phpunit.xml`):
+Or via environment variable (takes priority over `gesso.php`):
 
 ```bash
 GESSO_CONSOLE_OUTPUT=uncovered_only vendor/bin/phpunit
@@ -122,18 +122,18 @@ GESSO_CONSOLE_OUTPUT=uncovered_only vendor/bin/phpunit
 
 ## Coverage threshold gate
 
-Optional CI gate that fails the run when contract or SDK exercise coverage drops below a configured percentage — the contract-testing analogue of PHPUnit's own `--coverage-threshold`. All metrics are aggregated across every spec listed in `specs=`:
+Optional CI gate that fails the run when contract or SDK exercise coverage drops below a configured percentage — the contract-testing analogue of PHPUnit's own `--coverage-threshold`. All metrics are aggregated across every spec listed in `spec.names`. The thresholds are the members of `coverage.min_coverage` in `gesso.php`:
 
-- `min_endpoint_coverage` — percentage of endpoints with **all** declared `(status, content-type)` pairs validated.
-- `min_response_coverage` — percentage of `(method, path, status, content-type)` rows validated (the same rate the report calls "responses covered").
-- `min_sdk_exercise_coverage` — percentage of eligible JSON response schemas for which an SDK decoder callback was attempted.
+- `endpoint` — percentage of endpoints with **all** declared `(status, content-type)` pairs validated.
+- `response` — percentage of `(method, path, status, content-type)` rows validated (the same rate the report calls "responses covered").
+- `sdk_exercise` — percentage of eligible JSON response schemas for which an SDK decoder callback was attempted.
 
 The SDK denominator includes resolved JSON-compatible response media types
 with a schema. It excludes no-content responses, non-JSON media types, missing
 or non-JSON schemas, and OpenAPI 3.2 `itemSchema` streaming responses. A
 configured SDK gate fails as unevaluable when that denominator is empty.
 
-Default is **warn-only**: a miss prints `[OpenAPI Coverage] WARN: …` to stderr but the run exits 0. Flip `min_coverage_strict=true` to make a miss fail-fast with exit 1.
+Default is **warn-only**: a miss prints `[OpenAPI Coverage] WARN: …` to stderr but the run exits 0. Set `'strict' => true` to make a miss fail-fast with exit 1.
 
 > To stop coverage from *regressing*, prefer the
 > [coverage baseline](coverage-baseline.md): it gates the set of uncovered
@@ -143,17 +143,19 @@ Default is **warn-only**: a miss prints `[OpenAPI Coverage] WARN: …` to stderr
 > actually touched, add the
 > [spec patch coverage gate](coverage-gate.md).
 
-```xml
-<extensions>
-    <bootstrap class="Studio\Gesso\PHPUnit\OpenApiCoverageExtension">
-        <parameter name="spec_base_path" value="openapi/bundled"/>
-        <parameter name="specs" value="front,admin"/>
-        <parameter name="min_endpoint_coverage" value="80"/>   <!-- percent, optional -->
-        <parameter name="min_response_coverage" value="60"/>   <!-- percent, optional -->
-        <parameter name="min_sdk_exercise_coverage" value="100"/> <!-- percent, optional -->
-        <parameter name="min_coverage_strict" value="true"/>   <!-- default false → warn-only -->
-    </bootstrap>
-</extensions>
+```php
+// gesso.php
+return [
+    'spec' => ['base_path' => 'openapi/bundled', 'names' => ['front', 'admin']],
+    'coverage' => [
+        'min_coverage' => [
+            'endpoint' => 80,      // percent, optional
+            'response' => 60,      // percent, optional
+            'sdk_exercise' => 100, // percent, optional
+            'strict' => true,      // default false → warn-only
+        ],
+    ],
+];
 ```
 
 Failure looks like:

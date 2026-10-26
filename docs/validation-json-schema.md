@@ -29,23 +29,21 @@ process-wide switch selects the mode everywhere, resolved in priority order:
 
 1. the `GESSO_VALIDATION_FORMAT` environment variable (`text` | `json`);
 2. `ValidationOutput::use(ValidationOutputFormat::Json)` — call it from your
-   test bootstrap, or set the `validation_output` parameter on the PHPUnit
-   extension, which calls it for you:
+   test bootstrap, or set `validation.format` in the root `gesso.php` read
+   by the PHPUnit extension, which calls it for you:
 
-   ```xml
-   <extensions>
-       <bootstrap class="Studio\Gesso\PHPUnit\OpenApiCoverageExtension">
-           <parameter name="spec_base_path" value="openapi/dist"/>
-           <parameter name="validation_output" value="json"/>
-       </bootstrap>
-   </extensions>
+   ```php
+   return [
+       'spec' => ['base_path' => 'openapi/dist'],
+       'validation' => ['format' => 'json'],
+   ];
    ```
 
 3. `text` (the default — failure output is unchanged unless you opt in).
 
 An unrecognised value warns on STDERR and never changes the selection:
-resolution falls through to the next source (so an invalid `validation_output`
-parameter keeps a format already selected via `ValidationOutput::use()`).
+resolution falls through to the next source (so an invalid `GESSO_VALIDATION_FORMAT`
+value keeps a format already selected via `ValidationOutput::use()`).
 
 In json mode a failing assertion message is one human-readable header line
 followed by this document (the curl reproduction moves into

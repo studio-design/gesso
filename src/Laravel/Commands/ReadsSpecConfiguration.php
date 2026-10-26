@@ -18,7 +18,7 @@ trait ReadsSpecConfiguration
     {
         $defaultSpec = config('gesso.default_spec');
         if (!is_string($defaultSpec) || trim($defaultSpec) === '') {
-            throw new InvalidArgumentException('No OpenAPI spec selected. Pass --spec or configure gesso.default_spec.');
+            throw new InvalidArgumentException('No OpenAPI spec selected. Pass --spec or set spec.default in gesso.php.');
         }
 
         return trim($defaultSpec);

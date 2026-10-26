@@ -28,7 +28,7 @@ class PathDiagnosticsFormatterTest extends TestCase
             $message,
         );
         $this->assertStringContainsString(
-            "Gesso does not strip server base paths automatically — add '/api' to strip_prefixes.",
+            "Gesso does not strip server base paths automatically — add '/api' to spec.strip_prefixes in gesso.php.",
             $message,
         );
     }

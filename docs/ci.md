@@ -9,19 +9,23 @@
 
 When running in GitHub Actions, the extension **automatically** detects the `GITHUB_STEP_SUMMARY` environment variable and appends a Markdown coverage report to the job summary. No configuration needed.
 
-> **Note:** Both features are independent — when running in GitHub Actions with `output_file` configured, the Markdown report is written to both the file and the Step Summary.
+> **Note:** Both features are independent — when running in GitHub Actions with `coverage.report_output['markdown']` configured, the Markdown report is written to both the file and the Step Summary.
 
 ## Markdown output file
 
-Use the `output_file` parameter to write a Markdown report to a file. This is useful for posting coverage as a PR comment:
+Set `coverage.report_output['markdown']` in the root `gesso.php` to write a Markdown report to a file. This is useful for posting coverage as a PR comment:
+
+```php
+// gesso.php
+return [
+    'spec' => ['base_path' => 'openapi/bundled', 'names' => ['front', 'admin']],
+    'coverage' => ['report_output' => ['markdown' => 'coverage-report.md']],
+];
+```
 
 ```xml
 <extensions>
-    <bootstrap class="Studio\Gesso\PHPUnit\OpenApiCoverageExtension">
-        <parameter name="spec_base_path" value="openapi/bundled"/>
-        <parameter name="specs" value="front,admin"/>
-        <parameter name="output_file" value="coverage-report.md"/>
-    </bootstrap>
+    <bootstrap class="Studio\Gesso\PHPUnit\OpenApiCoverageExtension"/>
 </extensions>
 ```
 
@@ -49,32 +53,34 @@ Example GitHub Actions workflow step to post the report as a PR comment:
 
 ## Coverage output formats
 
-In addition to the Markdown report (`output_file`), the extension can emit
+In addition to the Markdown report (`report_output['markdown']`), the extension can emit
 three additional formats from the same test run. All four are independent:
 setting any combination writes every configured format, and a write failure
 on one format does not block the others (subscriber emits a `WARNING`, the
 merge CLI emits `FATAL` and exits non-zero).
 
-| Format | Parameter / Flag | When to use | Reference |
+| Format | `coverage.report_output` key / Flag | When to use | Reference |
 |---|---|---|---|
-| Markdown | `output_file` / `--output-file` | PR comments, GitHub Step Summary | (above) |
-| JUnit XML | `junit_output` / `--report=junit:<path>` | CI test-report tabs (GitLab CI, Jenkins, SonarQube, Bitrise, CircleCI) | — |
-| JSON | `json_output` / `--report=json:<path>` | Custom dashboards, scripted gating, analytics pipelines | [`coverage-json-schema.md`](coverage-json-schema.md) |
-| HTML | `html_output` / `--report=html:<path>` | Self-contained artifact for human review (PR comments, CI artifact preview, offline inspection) | [`coverage-html-output.md`](coverage-html-output.md) |
+| Markdown | `markdown` / `--output-file` | PR comments, GitHub Step Summary | (above) |
+| JUnit XML | `junit` / `--report=junit:<path>` | CI test-report tabs (GitLab CI, Jenkins, SonarQube, Bitrise, CircleCI) | — |
+| JSON | `json` / `--report=json:<path>` | Custom dashboards, scripted gating, analytics pipelines | [`coverage-json-schema.md`](coverage-json-schema.md) |
+| HTML | `html` / `--report=html:<path>` | Self-contained artifact for human review (PR comments, CI artifact preview, offline inspection) | [`coverage-html-output.md`](coverage-html-output.md) |
 
 Example: write every format from one PHPUnit run:
 
-```xml
-<extensions>
-    <bootstrap class="Studio\Gesso\PHPUnit\OpenApiCoverageExtension">
-        <parameter name="spec_base_path" value="openapi/bundled"/>
-        <parameter name="specs" value="front,admin"/>
-        <parameter name="output_file" value="build/coverage.md"/>
-        <parameter name="junit_output" value="build/coverage.junit.xml"/>
-        <parameter name="json_output" value="build/coverage.json"/>
-        <parameter name="html_output" value="build/coverage.html"/>
-    </bootstrap>
-</extensions>
+```php
+// gesso.php
+return [
+    'spec' => ['base_path' => 'openapi/bundled', 'names' => ['front', 'admin']],
+    'coverage' => [
+        'report_output' => [
+            'markdown' => 'build/coverage.md',
+            'junit' => 'build/coverage.junit.xml',
+            'json' => 'build/coverage.json',
+            'html' => 'build/coverage.html',
+        ],
+    ],
+];
 ```
 
 Same idea from the paratest merge CLI (with a `gesso.php` that declares these
@@ -92,7 +98,7 @@ vendor/bin/gesso coverage:merge \
 
 > **Note:** `GITHUB_STEP_SUMMARY` is Markdown-only by design — GitHub renders
 > the file as Markdown, so an HTML/JUnit/JSON payload would be escaped. Use
-> the per-format flags above for artifact uploads and `output_file` /
+> the per-format keys above for artifact uploads and `report_output['markdown']` /
 > `github_step_summary` for the in-PR summary.
 
 ## Spec patch coverage gate
@@ -144,8 +150,8 @@ jobs:
             --format=markdown | tee -a "${GITHUB_STEP_SUMMARY}"
 ```
 
-The PHPUnit run must emit `build/coverage.json`; add the `json_output`
-parameter (or `coverage:merge --report=json:<path>` for parallel runs) as shown in
+The PHPUnit run must emit `build/coverage.json`; set
+`coverage.report_output['json']` in `gesso.php` (or `coverage:merge --report=json:<path>` for parallel runs) as shown in
 [Coverage output formats](#coverage-output-formats).
 
 > **Note:** `set -o pipefail` is required. GitHub Actions runs `run:` blocks
@@ -225,14 +231,15 @@ merge) rendering path.
 `--testsuite` 由来の partial と判定され、`strict_required` ゲート等が
 スキップされる (issue #236)。
 
-これがユーザー側のワークフローに合致しているなら、`default_testsuite_as_full`
-を立てて partial 判定を解除できる:
+これがユーザー側のワークフローに合致しているなら、`gesso.php` の
+`phpunit.default_testsuite_as_full` を立てて partial 判定を解除できる:
 
-```xml
-<bootstrap class="Studio\Gesso\PHPUnit\OpenApiCoverageExtension">
-    <parameter name="default_testsuite_as_full" value="true"/>
-    <parameter name="strict_required" value="warn"/>
-</bootstrap>
+```php
+// gesso.php
+return [
+    'phpunit' => ['default_testsuite_as_full' => true],
+    'strict' => ['required' => ['run' => 'warn']],
+];
 ```
 
 挙動:
@@ -241,10 +248,10 @@ merge) rendering path.
   `--testsuite` 由来の partial signal を打ち消す。`--testsuite=Other` のように
   default を越える選択をした場合や、他の partial signal (`--filter`, path 引数, …)
   が立っている場合は引き続き partial。
-- 副作用として `output_file` / `junit_output` 等の persistent 書き込みも実行される。
+- 副作用として `report_output` の persistent 書き込みも実行される。
   defaultTestSuite に含まれないテストスイート (例: 別 job で動かす Integration suite)
   が抜けた状態のレポートが書かれる点を許容できる場合のみ有効化する。
-- 設定ミス検知: `default_testsuite_as_full=true` だが `defaultTestSuite` 属性が
+- 設定ミス検知: `default_testsuite_as_full` が `true` だが `defaultTestSuite` 属性が
   未設定 (`<phpunit defaultTestSuite="...">` 不在) や空文字 (`defaultTestSuite=""`)
   の場合、opt-in が黙って no-op になるのを避けるため bootstrap で stderr に
   WARNING を出す (FATAL ではない — 設計上 opt-in を立てたまま XML を直さなくても

@@ -64,7 +64,7 @@ vendor/bin/gesso doctor \
   --strip-prefix=/api
 ```
 
-`--phpunit-snippet` prints the equivalent extension configuration when all entry documents share one directory. The snippet uses each entry document's filename without its extension as the configured spec name.
+`--phpunit-snippet` prints the equivalent extension configuration when all entry documents share one directory: the bare `<bootstrap>` XML, followed by the same `gesso.php` that [`--emit-config`](#generate-a-gessophp) writes. The snippet uses each entry document's filename without its extension as the configured spec name.
 
 Local external references are confined to each entry document's directory by
 default. If an entry and its shared schemas use sibling directories, pass their
@@ -77,7 +77,7 @@ vendor/bin/gesso doctor \
   --phpunit-snippet
 ```
 
-The generated PHPUnit snippet then uses `spec_base_path="openapi"` and the
+The generated PHPUnit snippet then uses `'base_path' => 'openapi'` and the
 spec name `bundled/front`. Targets that escape the canonical root through
 `../`, an absolute path, or a symlink are rejected; those forms remain valid
 when their canonical targets stay inside the root.

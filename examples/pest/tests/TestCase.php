@@ -22,9 +22,11 @@ use function dirname;
  * Library-specific lines for a real project to copy:
  *  - `use ValidatesOpenApiSchema;` on the class.
  *  - `OpenApiSpecLoader::configure(...)` once at boot (here in setUp; in a
- *    real project typically driven by the PHPUnit extension's
- *    `spec_base_path` parameter — see phpunit.xml.dist).
- *  - `config('gesso.default_spec', '...')`.
+ *    real project typically driven by the PHPUnit extension reading
+ *    `spec.base_path` from gesso.php — see gesso.php beside phpunit.xml.dist).
+ *  - The spec to validate against: `spec.default` in a real project's root
+ *    gesso.php; here the `openApiSpec()` override below, because Testbench
+ *    boots its own skeleton app that does not see this directory's gesso.php.
  *  - The static-state resets in `setUp()` / `tearDown()`
  *    (`OpenApiSpecLoader::reset`, `OpenApiCoverageTracker::reset`).
  *    Orchestra Testbench shares these
@@ -44,12 +46,17 @@ class TestCase extends TestbenchTestCase
         OpenApiSpecLoader::configure(dirname(__DIR__) . '/openapi');
         OpenApiCoverageTracker::reset();
 
-        config()->set('gesso.default_spec', 'petstore');
         // `auto_assert` and `auto_validate_request` are deliberately left at
         // their package defaults (false) so the example showcases the
-        // explicit `expect(...)->toMatchOpenApi*Schema()` form. Set either to
-        // true in your real project to validate every Laravel HTTP helper
+        // explicit `expect(...)->toMatchOpenApi*Schema()` form. Set
+        // `laravel.auto_assert` / `laravel.auto_validate_request` to true in
+        // your real project's gesso.php to validate every Laravel HTTP helper
         // call automatically — the Pest expectations still work alongside.
+    }
+
+    protected function openApiSpec(): string
+    {
+        return 'petstore';
     }
 
     protected function tearDown(): void

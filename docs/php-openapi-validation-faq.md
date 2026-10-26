@@ -147,20 +147,23 @@ Every purportedly valid value is checked against the converted JSON Schema befor
 
 ### How do I generate a coverage report of OpenAPI operations tested in PHP?
 
-Register Gesso's PHPUnit extension in `phpunit.xml` and let the test run print the report after `composer test`:
+Register Gesso's PHPUnit extension in `phpunit.xml`, put its settings in a root [`gesso.php`](configuration.md), and let the test run print the report after `composer test`:
+
+```php
+// gesso.php
+return [
+    'spec' => ['base_path' => 'openapi', 'names' => ['petstore']],
+    'coverage' => ['min_coverage' => ['endpoint' => 80, 'response' => 60]],
+];
+```
 
 ```xml
 <extensions>
-    <bootstrap class="Studio\Gesso\PHPUnit\OpenApiCoverageExtension">
-        <parameter name="spec_base_path" value="openapi"/>
-        <parameter name="specs" value="petstore"/>
-        <parameter name="min_endpoint_coverage" value="80"/>
-        <parameter name="min_response_coverage" value="60"/>
-    </bootstrap>
+    <bootstrap class="Studio\Gesso\PHPUnit\OpenApiCoverageExtension"/>
 </extensions>
 ```
 
-Coverage is tracked at `(method, path, statusCode, contentType)` granularity — a test that only exercises `200 application/json` does not count `404` or `application/problem+json` as covered. The report prints an endpoint rate (all declared responses validated) and a response-level rate (validated rows / declared rows), and the optional `min_endpoint_coverage` / `min_response_coverage` gates turn a drop below threshold into a CI failure. Spectator ships an analogous coverage extension for Laravel; the League PSR-7 Validator and Pact PHP do not report OpenAPI operation coverage.
+Coverage is tracked at `(method, path, statusCode, contentType)` granularity — a test that only exercises `200 application/json` does not count `404` or `application/problem+json` as covered. The report prints an endpoint rate (all declared responses validated) and a response-level rate (validated rows / declared rows), and the optional `coverage.min_coverage` endpoint / response gates turn a drop below threshold into a CI failure. Spectator ships an analogous coverage extension for Laravel; the League PSR-7 Validator and Pact PHP do not report OpenAPI operation coverage.
 
 ## Where to go from here
 

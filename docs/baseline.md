@@ -13,15 +13,15 @@ command.
 
 ## Quick start
 
-1. Point the PHPUnit extension at a baseline file:
+1. Point the PHPUnit extension at a baseline file in the root `gesso.php`
+   (registered with
+   `<bootstrap class="Studio\Gesso\PHPUnit\OpenApiCoverageExtension"/>`):
 
-   ```xml
-   <extensions>
-       <bootstrap class="Studio\Gesso\PHPUnit\OpenApiCoverageExtension">
-           <parameter name="spec_base_path" value="openapi/bundled"/>
-           <parameter name="baseline_file" value="gesso-baseline.json"/>
-       </bootstrap>
-   </extensions>
+   ```php
+   return [
+       'spec' => ['base_path' => 'openapi/bundled'],
+       'baseline' => ['violations' => 'gesso-baseline.json'],
+   ];
    ```
 
 2. Generate the baseline (full suite, no `--filter`):
@@ -121,7 +121,7 @@ baseline.
   regenerate deliberately, never silently).
 - The PSR-7 exchange assertion evaluates each failing side independently and
   passes only when all failing sides are fully baselined.
-- A missing or malformed `baseline_file` is FATAL at bootstrap. A typo'd path
+- A missing or malformed `baseline['violations']` file is FATAL at bootstrap. A typo'd path
   must not silently disable suppression.
 - A body that fails to decode as JSON is baselined as a body-category entry
   with the synthetic `parse` keyword. In the Laravel and Symfony adapters it
@@ -139,7 +139,7 @@ baseline.
   the body errors beside it rather than being a violation of its own. It is
   neither recorded nor required to be baselined, so a baseline written before
   the note existed keeps suppressing the same failure.
-- While a baseline is active the `max_errors` cap is lifted: a truncated
+- While a baseline is active the `validation.max_errors` cap is lifted: a truncated
   error list could hide a new violation behind baselined ones. Failure output
   may therefore list more errors than the configured cap.
 
@@ -157,8 +157,8 @@ from the file.
 
 ## Ratcheting down
 
-Stale entries are the ratchet-down signal. The `baseline_stale` parameter
-controls how they are reported:
+Stale entries are the ratchet-down signal. `baseline_stale['violations']` in
+`gesso.php` controls how they are reported:
 
 | Value | Behavior |
 |---|---|

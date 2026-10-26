@@ -2,7 +2,7 @@
     "$comment": "Every spelling v3 renames or removes, transcribed from the two tables in docs/adr/0005-v3-configuration-and-cli-naming.md, plus the spellings that ADR names in prose rather than in a table cell. Checked by tests/Unit/Compatibility/V3RenameRegistryTest.php. This is the other direction of the deprecation registry: v2-deprecations.json is scanned code-first (issue #499), so a rename that simply never calls Deprecations::notice() is invisible to it. This file is scanned ADR-first, so it is not. A v3 rename PR stages its entries here and in the registry in the same change; see docs/versioning.md#deprecation-policy.",
     "format_version": 1,
     "$unstaged_count": "Old spellings that still have no deprecation staged. This is a ratchet: it may go down, never up. When it reaches 0 every v3 rename has shipped its notice, and the final v2 minor can be cut. Entries with channel `unchanged-spelling` are not counted — nothing about them is removed.",
-    "unstaged_count": 19,
+    "unstaged_count": 0,
     "$channels": {
         "deprecation": "The old spelling stops working in `removed_in`. Routed through Studio\\Gesso\\Internal\\Deprecations (E_USER_DEPRECATED); `deprecation_id` links to the matching v2-deprecations.json entry, and is null until the owning issue stages it.",
         "accepted-spelling": "The old spelling keeps working through `removed_in`. Routed through Studio\\Gesso\\Internal\\LegacyIdentity's `[Gesso]` E_USER_WARNING channel instead, because a suite running failOnDeprecation must not fail for spelling a name that still works (docs/versioning.md#renamed-spellings-still-accepted).",
@@ -15,7 +15,7 @@
             "channel": "deprecation",
             "removed_in": "3.0",
             "owner": "#501",
-            "deprecation_id": null
+            "deprecation_id": "config.spec_base_path"
         },
         "default_spec": {
             "surface": "config-key",
@@ -23,7 +23,7 @@
             "channel": "deprecation",
             "removed_in": "3.0",
             "owner": "#501",
-            "deprecation_id": null
+            "deprecation_id": "config.default_spec"
         },
         "specs": {
             "surface": "config-key",
@@ -31,7 +31,7 @@
             "channel": "deprecation",
             "removed_in": "3.0",
             "owner": "#501",
-            "deprecation_id": null
+            "deprecation_id": "config.specs"
         },
         "strip_prefixes": {
             "surface": "config-key",
@@ -39,7 +39,7 @@
             "channel": "deprecation",
             "removed_in": "3.0",
             "owner": "#501",
-            "deprecation_id": null
+            "deprecation_id": "config.strip_prefixes"
         },
         "validation_output": {
             "surface": "config-key",
@@ -47,7 +47,7 @@
             "channel": "deprecation",
             "removed_in": "3.0",
             "owner": "#501",
-            "deprecation_id": null
+            "deprecation_id": "phpunit.validation_output"
         },
         "max_errors": {
             "surface": "config-key",
@@ -55,7 +55,7 @@
             "channel": "deprecation",
             "removed_in": "3.0",
             "owner": "#501",
-            "deprecation_id": null
+            "deprecation_id": "config.max_errors"
         },
         "enforce_discriminator": {
             "surface": "config-key",
@@ -63,7 +63,7 @@
             "channel": "deprecation",
             "removed_in": "3.0",
             "owner": "#501",
-            "deprecation_id": null
+            "deprecation_id": "config.enforce_discriminator"
         },
         "acknowledged_unvalidatable_schemes": {
             "surface": "config-key",
@@ -71,7 +71,7 @@
             "channel": "deprecation",
             "removed_in": "3.0",
             "owner": "#501",
-            "deprecation_id": null
+            "deprecation_id": "config.acknowledged_unvalidatable_schemes"
         },
         "skip_response_codes": {
             "surface": "config-key",
@@ -79,7 +79,7 @@
             "channel": "deprecation",
             "removed_in": "3.0",
             "owner": "#501",
-            "deprecation_id": null
+            "deprecation_id": "config.skip_response_codes"
         },
         "skip_request_validation_response_codes": {
             "surface": "config-key",
@@ -87,7 +87,7 @@
             "channel": "deprecation",
             "removed_in": "3.0",
             "owner": "#501",
-            "deprecation_id": null
+            "deprecation_id": "config.skip_request_validation_response_codes"
         },
         "strict_required": {
             "surface": "config-key",
@@ -199,7 +199,7 @@
             "channel": "deprecation",
             "removed_in": "3.0",
             "owner": "#501",
-            "deprecation_id": null
+            "deprecation_id": "phpunit.sidecar_dir"
         },
         "baseline_file": {
             "surface": "config-key",
@@ -240,7 +240,7 @@
             "channel": "deprecation",
             "removed_in": "3.0",
             "owner": "#501",
-            "deprecation_id": null
+            "deprecation_id": "phpunit.enum_drift_enabled"
         },
         "enum_drift_scan_namespaces": {
             "surface": "config-key",
@@ -248,7 +248,7 @@
             "channel": "deprecation",
             "removed_in": "3.0",
             "owner": "#501",
-            "deprecation_id": null
+            "deprecation_id": "phpunit.enum_drift_scan_namespaces"
         },
         "enum_drift_fail_on_drift": {
             "surface": "config-key",
@@ -256,7 +256,7 @@
             "channel": "deprecation",
             "removed_in": "3.0",
             "owner": "#501",
-            "deprecation_id": null
+            "deprecation_id": "phpunit.enum_drift_fail_on_drift"
         },
         "default_testsuite_as_full": {
             "surface": "config-key",
@@ -264,7 +264,7 @@
             "channel": "deprecation",
             "removed_in": "3.0",
             "owner": "#501",
-            "deprecation_id": null
+            "deprecation_id": "phpunit.default_testsuite_as_full"
         },
         "auto_assert": {
             "surface": "config-key",
@@ -272,7 +272,7 @@
             "channel": "deprecation",
             "removed_in": "3.0",
             "owner": "#501",
-            "deprecation_id": null
+            "deprecation_id": "laravel.config.auto_assert"
         },
         "auto_validate_request": {
             "surface": "config-key",
@@ -280,7 +280,7 @@
             "channel": "deprecation",
             "removed_in": "3.0",
             "owner": "#501",
-            "deprecation_id": null
+            "deprecation_id": "laravel.config.auto_validate_request"
         },
         "auto_inject_dummy_credentials": {
             "surface": "config-key",
@@ -288,7 +288,7 @@
             "channel": "deprecation",
             "removed_in": "3.0",
             "owner": "#501",
-            "deprecation_id": null
+            "deprecation_id": "laravel.config.auto_inject_dummy_credentials"
         },
         "auto_inject_dummy_bearer": {
             "surface": "config-key",
@@ -304,7 +304,7 @@
             "channel": "deprecation",
             "removed_in": "3.0",
             "owner": "#501",
-            "deprecation_id": null
+            "deprecation_id": "laravel.config.route_parity"
         },
         "enum_spec_base_path": {
             "surface": "config-key",

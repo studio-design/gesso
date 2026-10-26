@@ -80,7 +80,7 @@ final class PathDiagnosticsFormatter
             : null;
         if ($serverHint !== null) {
             $lines[] = "  servers[{$serverHint['index']}].url declares base path '{$serverHint['prefix']}'; '{$serverHint['stripped']}' matches after removing it.";
-            $lines[] = "  Gesso does not strip server base paths automatically — add '{$serverHint['prefix']}' to strip_prefixes.";
+            $lines[] = "  Gesso does not strip server base paths automatically — add '{$serverHint['prefix']}' to spec.strip_prefixes in gesso.php.";
         }
 
         if ($suggestions !== []) {
