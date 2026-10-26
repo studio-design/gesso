@@ -117,9 +117,11 @@ to the working directory), and defaults these options from it:
 
 Each name resolves to the entry document the runtime loader picks
 (`<base_path>/<name>.json`, then `.yaml`, then `.yml`), and `spec.base_path` is
-the local-ref root unless `--local-ref-root` is given. That also holds when
-`--spec` names files under `spec.base_path`; a spec outside it keeps the default
-root. Writing `--emit-config > gesso.php` over the conventional file works: the
+the local-ref root unless `--local-ref-root` is given. Specs taken from the file
+always stay inside it, as at runtime: a `spec.names` entry with a `..` segment
+or an absolute path is an error. An explicit `--spec` under `spec.base_path`
+uses it too; one outside it keeps its own directory as the root, without
+affecting the others. Writing `--emit-config > gesso.php` over the conventional file works: the
 empty file the shell creates is not read as a configuration. Once the file from
 `--emit-config` is in place, run the doctor without flags:
 

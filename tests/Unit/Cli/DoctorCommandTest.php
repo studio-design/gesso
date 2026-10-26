@@ -1198,6 +1198,49 @@ class DoctorCommandTest extends TestCase
     }
 
     #[Test]
+    public function a_config_spec_name_that_leaves_the_base_path_is_an_error(): void
+    {
+        // The runtime loader rejects `..` names; doctor must not pass them.
+        mkdir($this->workDir . '/specs');
+        $this->writeSpec('front.json', $this->validSpec('/pets'));
+        $config = $this->writeSpec('gesso.php', <<<'PHP'
+            <?php
+            return ['spec' => ['base_path' => __DIR__ . '/specs', 'names' => ['../front']]];
+            PHP);
+
+        [$exit, $stdout] = $this->runDoctor(['config' => $config, 'format' => 'json']);
+
+        $this->assertSame(DoctorCommand::EXIT_DIAGNOSTIC_FAILURE, $exit);
+        $this->assertStringContainsString('leaves spec.base_path', $stdout);
+    }
+
+    #[Test]
+    public function a_spec_outside_the_base_path_does_not_unroot_the_specs_inside_it(): void
+    {
+        mkdir($this->workDir . '/specs/bundled', 0o777, true);
+        file_put_contents($this->workDir . '/specs/schema.json', (string) json_encode(['type' => 'object'], JSON_THROW_ON_ERROR));
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 't', 'version' => '1'],
+            'paths' => ['/pets' => ['get' => ['responses' => ['200' => [
+                'description' => 'ok',
+                'content' => ['application/json' => ['schema' => ['$ref' => '../schema.json']]],
+            ]]]]],
+        ];
+        $inside = $this->workDir . '/specs/bundled/front.json';
+        file_put_contents($inside, (string) json_encode($spec, JSON_THROW_ON_ERROR));
+        $outside = $this->writeSpec('other.json', $this->validSpec('/users'));
+        $config = $this->writeSpec('gesso.php', <<<'PHP'
+            <?php
+            return ['spec' => ['base_path' => __DIR__ . '/specs', 'names' => ['bundled/front']]];
+            PHP);
+
+        [$exit, , $stderr] = $this->runDoctor(['config' => $config, 'specs' => [$inside, $outside]]);
+
+        $this->assertSame(DoctorCommand::EXIT_OK, $exit, $stderr);
+    }
+
+    #[Test]
     public function explicit_flags_win_over_the_config_file(): void
     {
         $this->writeSpec('front.json', $this->basicAuthSpec('/pets'));

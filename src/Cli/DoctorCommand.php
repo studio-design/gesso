@@ -32,6 +32,7 @@ use Studio\Gesso\Internal\ArgvParser;
 use Studio\Gesso\Internal\CliDocuments;
 use Studio\Gesso\Internal\CliIo;
 use Studio\Gesso\Internal\HttpRefLoader;
+use Studio\Gesso\Internal\SpecPath;
 use Studio\Gesso\Internal\ToolVersion;
 use Studio\Gesso\OpenApiVersion;
 use Studio\Gesso\Spec\OpenApiOperationResolver;
@@ -52,8 +53,10 @@ use Symfony\Component\HttpClient\Psr18Client;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 use Throwable;
 
+use function array_filter;
 use function array_key_exists;
 use function array_map;
+use function array_values;
 use function class_exists;
 use function compact;
 use function count;
@@ -90,7 +93,7 @@ use function var_export;
 /**
  * Pre-test compatibility diagnostics for one or more OpenAPI documents.
  *
- * @phpstan-type DoctorOptions array{specs?: list<string>, strip_prefixes?: list<string>, remote_ref_hosts?: list<string>, acknowledged_unvalidatable_schemes?: list<string>, remote_ref_max_bytes?: int|string, local_ref_root?: string, config?: string, format?: string, output_file?: string, allow_remote_refs?: bool, phpunit_snippet?: bool, emit_config?: bool, help?: bool, invalid_options?: list<string>}
+ * @phpstan-type DoctorOptions array{specs?: list<string>, strip_prefixes?: list<string>, remote_ref_hosts?: list<string>, acknowledged_unvalidatable_schemes?: list<string>, remote_ref_max_bytes?: int|string, local_ref_root?: string, config_ref_root?: string, config_specs?: list<string>, config_escaping_names?: list<string>, config?: string, format?: string, output_file?: string, allow_remote_refs?: bool, phpunit_snippet?: bool, emit_config?: bool, help?: bool, invalid_options?: list<string>}
  * @phpstan-type DoctorIssue array{severity: 'error'|'warning'|'skipped', category: string, spec: ?string, message: string, suggestion: ?string}
  * @phpstan-type SpecResult array{path: string, name: string, openapi: string, dialect: string, operations: int, responses: int}
  *
@@ -204,7 +207,7 @@ final class DoctorCommand
                 return $this->usageError($e->getMessage(), self::USAGE_PREFIX);
             }
         }
-        if (($options['specs'] ?? []) === []) {
+        if (($options['specs'] ?? []) === [] && ($options['config_escaping_names'] ?? []) === []) {
             return $this->usageError('At least one --spec is required.', self::USAGE_PREFIX);
         }
         if (!in_array($format, ['text', 'json'], true)) {
@@ -241,6 +244,7 @@ final class DoctorCommand
         }
 
         $transport = $allowRemoteRefs ? $this->remoteTransport() : null;
+        $everySpecUsesConfigRoot = false;
         $specResults = [];
         $issues = [];
         if ($allowRemoteRefs && $transport === null) {
@@ -252,14 +256,37 @@ final class DoctorCommand
                 'suggestion' => 'Install guzzlehttp/guzzle + guzzlehttp/psr7, or symfony/http-client.',
             ];
         } else {
-            foreach ($options['specs'] as $path) {
+            foreach ($options['config_escaping_names'] ?? [] as $name) {
+                // The runtime loader rejects these names before touching the disk.
+                $issues[] = $this->issue(
+                    'error',
+                    'configuration',
+                    $name,
+                    "spec.names entry '{$name}' leaves spec.base_path; the runtime loader rejects it.",
+                    'Name specs relative to spec.base_path, without `..` segments or absolute paths.',
+                );
+            }
+            $configRoot = $options['config_ref_root'] ?? null;
+            $everySpecUsesConfigRoot = $configRoot !== null;
+            foreach ($options['specs'] ?? [] as $path) {
+                $root = $options['local_ref_root'] ?? null;
+                if ($root === null && $configRoot !== null) {
+                    // Config-derived specs always stay confined to spec.base_path,
+                    // as at runtime; an explicit --spec inherits it per spec,
+                    // only when it lies inside.
+                    $real = realpath($this->absolutise($path));
+                    $root = in_array($path, $options['config_specs'] ?? [], true) || ($real !== false && self::pathIsInsideRoot($real, $configRoot))
+                        ? $configRoot
+                        : null;
+                    $everySpecUsesConfigRoot = $everySpecUsesConfigRoot && $root !== null;
+                }
                 $this->diagnoseSpec(
                     $path,
                     $options['strip_prefixes'] ?? [],
                     $allowRemoteRefs,
                     $remoteRefHosts,
                     $maxRemoteRefBytes,
-                    $options['local_ref_root'] ?? null,
+                    $root,
                     $transport,
                     $options['acknowledged_unvalidatable_schemes'] ?? [],
                     $specResults,
@@ -270,6 +297,10 @@ final class DoctorCommand
 
         $report = $this->report($specResults, $issues, $options);
         $emitConfig = $options['emit_config'] ?? false;
+        if (!isset($options['local_ref_root']) && $everySpecUsesConfigRoot && isset($options['config_ref_root'])) {
+            // The emitted config and snippet describe the root every spec used.
+            $options['local_ref_root'] = $options['config_ref_root'];
+        }
         $basePath = $this->sharedSpecBasePath($specResults, $options['local_ref_root'] ?? null);
         if ($emitConfig && $specResults !== [] && $basePath === null) {
             return $this->usageError(
@@ -329,15 +360,16 @@ final class DoctorCommand
             $basePath = realpath($basePath) ?: $basePath;
             if (($options['specs'] ?? []) === []) {
                 $names = $shared['specs'] ?? ['front'];
+                $names = is_array($names) ? $names : ['front'];
+                $options['config_escaping_names'] = array_values(array_filter($names, SpecPath::escapesBase(...)));
                 $options['specs'] = array_map(
                     static fn(string $name): string => self::cwdRelative(self::entryDocument($basePath, $name)),
-                    is_array($names) ? $names : ['front'],
+                    array_values(array_filter($names, static fn(string $name): bool => !SpecPath::escapesBase($name))),
                 );
+                $options['config_specs'] = $options['specs'];
             }
-            // The runtime confines refs to the base path whichever way the
-            // spec was named; a --spec outside it keeps the default root.
-            if (is_dir($basePath) && self::allBelow($options['specs'], $basePath)) {
-                $options['local_ref_root'] ??= $basePath;
+            if (is_dir($basePath)) {
+                $options['config_ref_root'] = $basePath;
             }
         }
         foreach (['strip_prefixes', 'acknowledged_unvalidatable_schemes'] as $key) {
@@ -347,19 +379,6 @@ final class DoctorCommand
         }
 
         return $options;
-    }
-
-    /** @param list<string> $paths */
-    private static function allBelow(array $paths, string $directory): bool
-    {
-        foreach ($paths as $path) {
-            $real = realpath($path);
-            if ($real === false || !str_starts_with($real, rtrim($directory, '/') . '/')) {
-                return false;
-            }
-        }
-
-        return true;
     }
 
     /** The entry document the runtime loader selects for `$name` (`.json` when none exists, reported as unreadable). */
