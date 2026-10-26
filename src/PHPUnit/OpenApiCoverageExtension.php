@@ -1209,7 +1209,8 @@ final class OpenApiCoverageExtension implements Extension
             Diagnostics::stderr(
                 "[OpenAPI Enum Drift] FATAL: {$reason}\n"
                 . '  Action: provide one or more PSR-4 namespace prefixes '
-                . "(e.g. `'enum_drift' => ['scan_namespaces' => ['App\\Enums\\']]` in gesso.php).\n",
+                // Doubled backslashes: the example is pasted into a single-quoted PHP string.
+                . "(e.g. `'enum_drift' => ['scan_namespaces' => ['App\\\\Enums\\\\']]` in gesso.php).\n",
             );
             Diagnostics::appendGithubStepSummaryEnumDriftBlock($githubSummaryPath, $reason, isFatal: true);
 
