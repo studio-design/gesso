@@ -7,6 +7,7 @@ namespace Studio\Gesso\Tests\Unit\Coverage;
 use const DIRECTORY_SEPARATOR;
 
 use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\IgnoreDeprecations;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
@@ -14,6 +15,7 @@ use Studio\Gesso\Coverage\CoverageSidecarEnvelope;
 use Studio\Gesso\Coverage\CoverageSidecarReader;
 use Studio\Gesso\Coverage\CoverageSidecarWriter;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
+use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\Validation\Strict\StrictAdditionalPropertiesTracker;
 use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 
@@ -62,6 +64,7 @@ class CoverageSidecarTest extends TestCase
     {
         OpenApiCoverageTracker::reset();
         StrictRequiredTracker::reset();
+        Deprecations::resetForTesting();
         if (is_dir($this->tmpDir)) {
             $entries = glob($this->tmpDir . '/*') ?: [];
             foreach ($entries as $entry) {
@@ -355,6 +358,7 @@ class CoverageSidecarTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function reader_still_loads_legacy_v1_payloads(): void
     {
         // Worker on an older library version writes a bare v1 coverage

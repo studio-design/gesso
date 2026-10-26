@@ -10,6 +10,7 @@ use const JSON_UNESCAPED_SLASHES;
 use const JSON_UNESCAPED_UNICODE;
 
 use DateTimeImmutable;
+use PHPUnit\Framework\Attributes\IgnoreDeprecations;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Studio\Gesso\Coverage\CoverageSidecarEnvelope;
@@ -18,6 +19,7 @@ use Studio\Gesso\Coverage\JsonCoverageRenderer;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\Coverage\ResponseCoverageState;
 use Studio\Gesso\Coverage\SdkExerciseCoverageTracker;
+use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\Validation\Strict\StrictAdditionalPropertiesTracker;
 use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 
@@ -34,6 +36,13 @@ use function json_encode;
  */
 final class MachineReadableFormatsBaselineTest extends TestCase
 {
+    protected function tearDown(): void
+    {
+        // The legacy-sidecar tests raise the #505 notice; its dedup state is per process.
+        Deprecations::resetForTesting();
+        parent::tearDown();
+    }
+
     #[Test]
     public function coverage_json_matches_the_v3_fixture(): void
     {
@@ -140,6 +149,7 @@ final class MachineReadableFormatsBaselineTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function v1_9_sidecar_fixture_is_consumable_by_the_reader_and_trackers(): void
     {
         /** @var array<string, mixed> $fixture */
@@ -161,6 +171,7 @@ final class MachineReadableFormatsBaselineTest extends TestCase
     }
 
     #[Test]
+    #[IgnoreDeprecations]
     public function embedded_coverage_state_remains_accepted_as_a_legacy_bare_sidecar(): void
     {
         /** @var array{coverage: array<string, mixed>} $fixture */

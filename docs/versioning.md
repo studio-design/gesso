@@ -148,6 +148,11 @@ number enumerated the halves: 3/5/7/9 carry `baseline` and their even
 sibling must not; 4–9 carry strict-additional-properties state, 6–9 SDK
 exercise state, and 8/9 deprecation state. Those rules still apply to legacy
 inputs, and a half that a legacy version does not carry reads as absent.
+Since 2.9.0 the merge raises a one-shot `[Gesso deprecation]` notice for each
+of the two legacy shapes it accepts, and its summary line counts the legacy
+sidecars it read. Gesso 3.0 reads only `envelopeVersion: 10` (#505); sidecars
+are per-run artifacts, so re-running the suite on the current release is the
+whole migration.
 
 Absence is reported, never treated as "this worker recorded none". The merge
 says its deprecation count is a lower bound when a sidecar has no deprecation
