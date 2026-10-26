@@ -1,7 +1,7 @@
 # Coverage JSON Schema
 
 `studio-design/gesso` can emit machine-readable coverage
-output via the `json_output` PHPUnit Extension parameter or the
+output via `coverage.report_output['json']` in `gesso.php` or the
 `--report=json:<path>` flag on `gesso coverage:merge`. This page documents the
 schema so downstream consumers (custom dashboards, contract-coverage
 analytics, scripted gating) can rely on a stable shape.
@@ -111,19 +111,19 @@ Each SDK `unexpected_observations` row contains `endpoint`, `status_key`,
   structures. All version 2 HTTP fields retain their names, types, and
   meanings. Version 2 had previously changed only the fixed `tool.name` from
   `studio-design/openapi-contract-testing` to `studio-design/gesso`.
-- The wire format used by paratest worker sidecars is **separate** from this schema. Coverage, strict, and SDK tracker state are versioned independently inside the sidecar envelope. Do not consume sidecar payloads as if they were `json_output`; they omit derived report fields and have a different compatibility policy.
+- The wire format used by paratest worker sidecars is **separate** from this schema. Coverage, strict, and SDK tracker state are versioned independently inside the sidecar envelope. Do not consume sidecar payloads as if they were the JSON report; they omit derived report fields and have a different compatibility policy.
 
 ## Generating the file
 
-PHPUnit Extension:
+PHPUnit Extension (root `gesso.php`, with
+`<bootstrap class="Studio\Gesso\PHPUnit\OpenApiCoverageExtension"/>` in
+`phpunit.xml`):
 
-```xml
-<extensions>
-  <bootstrap class="Studio\Gesso\PHPUnit\OpenApiCoverageExtension">
-    <parameter name="spec_base_path" value="openapi" />
-    <parameter name="json_output" value="build/coverage.json" />
-  </bootstrap>
-</extensions>
+```php
+return [
+    'spec' => ['base_path' => 'openapi'],
+    'coverage' => ['report_output' => ['json' => 'build/coverage.json']],
+];
 ```
 
 Paratest merge CLI:
@@ -134,4 +134,4 @@ vendor/bin/gesso coverage:merge \
   --report=json:build/coverage.json
 ```
 
-Multiple format outputs are independent: setting `output_file`, `junit_output`, `json_output`, and `html_output` simultaneously writes all four. A write failure on one does not block the others; severity follows the existing convention (subscriber WARN, CLI FATAL+exit 1).
+Multiple format outputs are independent: setting the `markdown`, `junit`, `json`, and `html` entries of `coverage.report_output` simultaneously writes all four. A write failure on one does not block the others; severity follows the existing convention (subscriber WARN, CLI FATAL+exit 1).

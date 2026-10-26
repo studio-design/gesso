@@ -34,6 +34,8 @@ use Studio\Gesso\Validation\Strict\StrictRequiredPerCallMode;
 use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 use Studio\Gesso\Validation\Support\DiscriminatorEnforcement;
 
+use function array_filter;
+use function array_values;
 use function chmod;
 use function fclose;
 use function file_get_contents;
@@ -49,6 +51,7 @@ use function restore_error_handler;
 use function rewind;
 use function rmdir;
 use function set_error_handler;
+use function str_contains;
 use function stream_get_contents;
 use function substr_count;
 use function sys_get_temp_dir;
@@ -223,12 +226,20 @@ class OpenApiCoverageExtensionTest extends TestCase
             restore_error_handler();
         }
 
+        // `spec_base_path` and `specs` raise their own flat-key notices.
+        $captured = array_values(array_filter(
+            $captured,
+            static fn(array $entry): bool => str_contains($entry[1], 'enum_spec_base_path'),
+        ));
         $this->assertCount(1, $captured);
         $this->assertSame(E_USER_DEPRECATED, $captured[0][0]);
         $this->assertStringStartsWith(Deprecations::PREFIX, $captured[0][1]);
         $this->assertStringContainsString("'enum_spec_base_path'", $captured[0][1]);
         // The loader's own configure(enumBasePath:) notice must not fire too.
-        $this->assertSame(['phpunit.enum_spec_base_path' => 1], Deprecations::counts());
+        $this->assertSame(
+            ['config.spec_base_path' => 1, 'config.specs' => 1, 'phpunit.enum_spec_base_path' => 1],
+            Deprecations::counts(),
+        );
         $this->assertSame('/absolute/path/to/openapi', OpenApiSpecLoader::getEnumBasePath());
     }
 

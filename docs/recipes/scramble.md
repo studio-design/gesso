@@ -41,7 +41,6 @@ requires PHPUnit 12 or 13. The example uses 12, which supports PHP 8.3.
 
 ```bash
 composer require --dev "studio-design/gesso:^2.6" "phpunit/phpunit:^12.0" --with-all-dependencies
-php artisan vendor:publish --tag=gesso
 ```
 
 Keep your existing compatible PHPUnit version if it is already 12 or 13.
@@ -61,25 +60,31 @@ The example pins a Scramble version supporting `--fail-on-unknown`. Inspect
 export diagnostics as well: unknown schema types and unavailable model tables
 need to be resolved before relying on the generated contract.
 
-Set these values in the published `config/gesso.php`:
+Set these values in a root `gesso.php`, which both the PHPUnit extension and
+Laravel read (see [Shared configuration](../configuration.md)):
 
 ```php
-'default_spec' => 'api',
-'spec_base_path' => 'openapi',
-'strip_prefixes' => ['/api'],
+<?php
+
+declare(strict_types=1);
+
+return [
+    'spec' => [
+        'base_path' => 'openapi',
+        'default' => 'api',
+        'names' => ['api'],
+        'strip_prefixes' => ['/api'],
+    ],
+    'coverage' => ['report_output' => ['json' => 'build/coverage.json']],
+];
 ```
 
 Register the PHPUnit extension too. It configures the runtime spec loader;
-the Laravel `spec_base_path` setting is used by Gesso's Artisan commands.
+Gesso's Artisan commands read the same file through Laravel.
 
 ```xml
 <extensions>
-    <bootstrap class="Studio\Gesso\PHPUnit\OpenApiCoverageExtension">
-        <parameter name="spec_base_path" value="openapi"/>
-        <parameter name="specs" value="api"/>
-        <parameter name="strip_prefixes" value="/api"/>
-        <parameter name="json_output" value="build/coverage.json"/>
-    </bootstrap>
+    <bootstrap class="Studio\Gesso\PHPUnit\OpenApiCoverageExtension"/>
 </extensions>
 ```
 
@@ -182,9 +187,9 @@ The generated empty JSON object is appropriate here: this endpoint rejects it
 with 422. Other cases may need payload, authentication, or database fixtures.
 
 Run the full suite again, then the coverage gate using the same base spec. This
-response should now be covered. Keep `strip_prefixes=/api` in the PHPUnit
-configuration: `--request-prefix` controls generated requests, while
-`strip_prefixes` controls runtime matching against the spec.
+response should now be covered. Keep `spec.strip_prefixes` = `['/api']` in
+`gesso.php`: `--request-prefix` controls generated requests, while
+`spec.strip_prefixes` controls runtime matching against the spec.
 
 `composer verify` automates the entire sequence in an isolated app copy. It
 checks that CLI and Artisan generate the same test, that the fresh test is

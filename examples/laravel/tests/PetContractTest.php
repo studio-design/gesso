@@ -23,6 +23,8 @@ final class PetContractTest extends TestCase
 
     public function test_automatic_request_and_response_validation(): void
     {
+        // Per-test switch. To enable it for the whole suite, set
+        // `laravel.auto_assert` / `laravel.auto_validate_request` in gesso.php.
         config()->set('gesso.auto_assert', true);
         config()->set('gesso.auto_validate_request', true);
 
@@ -35,10 +37,12 @@ final class PetContractTest extends TestCase
         return [GessoServiceProvider::class];
     }
 
-    protected function defineEnvironment($app): void
+    // A real app sets `spec.default` in its root gesso.php. Testbench boots a
+    // skeleton app elsewhere, so the example names the spec here instead; the
+    // PHPUnit extension loads it from the gesso.php beside phpunit.xml.dist.
+    protected function openApiSpec(): string
     {
-        $app['config']->set('gesso.default_spec', 'petstore');
-        $app['config']->set('gesso.spec_base_path', __DIR__ . '/../openapi');
+        return 'petstore';
     }
 
     protected function defineRoutes($router): void

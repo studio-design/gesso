@@ -4,16 +4,28 @@
 composer require --dev "studio-design/gesso:^2.0" pestphp/pest
 ```
 
-Pest runs on PHPUnit, so the spec loader comes from the same extension. Register
-it in `phpunit.xml` — without it the first expectation throws
+Pest runs on PHPUnit, so the spec loader comes from the same extension. Put the
+settings in a root `gesso.php` and register the extension in `phpunit.xml` — without it the first expectation throws
 `OpenApiSpecLoader base path not configured`:
+
+```php
+<?php
+// gesso.php, beside phpunit.xml
+
+declare(strict_types=1);
+
+return [
+    'spec' => [
+        'base_path' => 'openapi',
+        'default' => 'petstore',
+        'names' => ['petstore'],
+    ],
+];
+```
 
 ```xml
 <extensions>
-    <bootstrap class="Studio\Gesso\PHPUnit\OpenApiCoverageExtension">
-        <parameter name="spec_base_path" value="openapi"/>
-        <parameter name="specs" value="petstore"/>
-    </bootstrap>
+    <bootstrap class="Studio\Gesso\PHPUnit\OpenApiCoverageExtension"/>
 </extensions>
 ```
 

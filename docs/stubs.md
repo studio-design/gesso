@@ -28,7 +28,7 @@ document reports as `validated` is skipped; `uncovered` and `skipped` responses
 both get a stub, because a skipped response is untested too.
 
 Laravel users can run the same thing through Artisan, which takes the spec from
-`gesso.default_spec` / `gesso.spec_base_path`:
+`spec.default` / `spec.base_path` in the root `gesso.php`:
 
 ```bash
 php artisan gesso:stubs --coverage=build/coverage.json
@@ -62,7 +62,7 @@ means a usage error or an unreadable input. Shared conventions:
 
 The Artisan command takes the same options except `--format` and
 `--output-file`: its summary goes to the Artisan console. Its `--spec` accepts a spec *name*
-resolved under `gesso.spec_base_path` as well as a path.
+resolved under `spec.base_path` as well as a path.
 
 ## Applications mounted under a prefix
 

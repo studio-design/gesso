@@ -150,26 +150,38 @@ openapi/
 
 ### 2. Register the PHPUnit extension
 
-Before running your first test, verify that the package can load and enforce the contract:
+Before running your first test, verify that the package can load and enforce the contract, and write the matching `gesso.php`:
 
 ```bash
 vendor/bin/gesso doctor \
   --spec=openapi/root.yaml \
   --strip-prefix=/api \
-  --phpunit-snippet
+  --emit-config > gesso.php
 ```
 
 The command resolves local references, checks the OpenAPI/JSON Schema dialect, reports unsupported enforcement features, counts discovered operations and responses, and exits non-zero for incompatible specs. Use `--format=json` in CI. See the [doctor command reference](docs/doctor.md) for multiple specs, HTTP references, output categories, and exit codes.
 
-Then register the emitted configuration:
+The generated root `gesso.php` holds the shared settings ([configuration reference](docs/configuration.md)):
+
+```php
+<?php
+
+declare(strict_types=1);
+
+return [
+    'spec' => [
+        'base_path' => 'openapi',
+        'names' => ['root'],
+        'strip_prefixes' => ['/api'],
+    ],
+];
+```
+
+Then register the extension; it reads `gesso.php` beside `phpunit.xml`:
 
 ```xml
 <extensions>
-    <bootstrap class="Studio\Gesso\PHPUnit\OpenApiCoverageExtension">
-        <parameter name="spec_base_path" value="openapi/bundled"/>
-        <parameter name="strip_prefixes" value="/api"/>
-        <parameter name="specs" value="front,admin"/>
-    </bootstrap>
+    <bootstrap class="Studio\Gesso\PHPUnit\OpenApiCoverageExtension"/>
 </extensions>
 ```
 
@@ -181,7 +193,7 @@ both sides and record coverage with one framework-independent call:
 ```php
 use Studio\Gesso\Psr7\OpenApiPsr7Validator;
 
-$validator = new OpenApiPsr7Validator('front');
+$validator = new OpenApiPsr7Validator('root');
 $result = $validator->validateExchange($request, $response);
 
 $this->assertTrue($result->isValid(), $result->errorMessage());
@@ -194,11 +206,18 @@ are covered in the [PSR-7 guide](docs/psr7.md).
 
 ### Laravel adapter
 
-```bash
-php artisan vendor:publish --tag=gesso
+Laravel reads the same root `gesso.php`; there is no `config/gesso.php` to publish. Add `spec.default` so assertions know which spec to use:
+
+```php
+'spec' => [
+    'base_path' => 'openapi',
+    'default' => 'root',
+    'names' => ['root'],
+    'strip_prefixes' => ['/api'],
+],
 ```
 
-Set `default_spec` in the published `config/gesso.php`, then mix in the trait:
+Then mix in the trait:
 
 ```php
 use Studio\Gesso\Laravel\ValidatesOpenApiSchema;
@@ -222,7 +241,7 @@ Before running tests, compare Laravel's registered routes with the spec:
 php artisan gesso:routes --fail-on-undocumented --fail-on-unimplemented
 ```
 
-To validate every response automatically, set `'auto_assert' => true` and drop the explicit assert call. To also catch request-side drift, set `'auto_validate_request' => true`. See [`docs/setup.md`](docs/setup.md) for the full configuration and opt-out reference.
+To validate every response automatically, set `'laravel' => ['auto_assert' => true]` in `gesso.php` and drop the explicit assert call. To also catch request-side drift, add `'auto_validate_request' => true` to the same section. See [`docs/setup.md`](docs/setup.md) for the full configuration and opt-out reference.
 
 ## Documentation
 

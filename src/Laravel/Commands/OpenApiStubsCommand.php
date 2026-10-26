@@ -40,7 +40,7 @@ final class OpenApiStubsCommand extends Command
     /** Issue #504: the pre-v3 spelling, accepted through v3 and removed in v4. */
     protected $aliases = ['openapi:stubs'];
     protected $signature = 'gesso:stubs
-        {--spec= : Spec name resolved under gesso.spec_base_path, or a path to a spec file}
+        {--spec= : Spec name resolved under spec.base_path (gesso.php), or a path to a spec file}
         {--coverage= : Coverage JSON (schema_version 3); only uncovered responses are stubbed}
         {--adapter=laravel : Generated test idiom: phpunit, laravel, symfony or pest}
         {--output-dir= : Directory to write into; defaults to the conventional location for the adapter}

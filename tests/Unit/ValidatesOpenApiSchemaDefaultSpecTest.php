@@ -78,8 +78,8 @@ class ValidatesOpenApiSchemaDefaultSpecTest extends TestCase
         $this->expectExceptionMessage(
             'openApiSpec() must return a non-empty spec name, but an empty string was returned. '
             . 'Either add #[OpenApiSpec(\'your-spec\')] to your test class or method, '
-            . 'override openApiSpec() in your test class, or set the "default_spec" key '
-            . 'in config/gesso.php.',
+            . 'override openApiSpec() in your test class, or set spec.default '
+            . 'in gesso.php.',
         );
 
         $this->assertResponseMatchesOpenApiSchema(

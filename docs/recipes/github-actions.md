@@ -1,11 +1,11 @@
 # GitHub Actions coverage recipe
 
-Register the PHPUnit extension with `output_file`; when the job exposes
-`GITHUB_STEP_SUMMARY`, the extension appends the same Markdown report to it
-automatically:
+Register the PHPUnit extension and set `coverage.report_output['markdown']` in
+the root `gesso.php`; when the job exposes `GITHUB_STEP_SUMMARY`, the extension
+appends the same Markdown report to it automatically:
 
-```xml
-<parameter name="output_file" value="build/openapi-coverage.md"/>
+```php
+'coverage' => ['report_output' => ['markdown' => 'build/openapi-coverage.md']],
 ```
 
 Then preserve the same report as a workflow artifact:

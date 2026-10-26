@@ -1,7 +1,7 @@
 # Coverage HTML Output
 
 `studio-design/gesso` can emit a single self-contained HTML
-report via the `html_output` PHPUnit Extension parameter or the `--report=html:<path>`
+report via `coverage.report_output['html']` in `gesso.php` or the `--report=html:<path>`
 flag on `gesso coverage:merge`. The file is intended for human review (PR
 comments, CI artifact preview, offline inspection).
 
@@ -28,15 +28,15 @@ A sample document is committed in the repository at [`docs/samples/coverage.html
 
 ## Generating the file
 
-PHPUnit Extension:
+PHPUnit Extension (root `gesso.php`, with
+`<bootstrap class="Studio\Gesso\PHPUnit\OpenApiCoverageExtension"/>` in
+`phpunit.xml`):
 
-```xml
-<extensions>
-  <bootstrap class="Studio\Gesso\PHPUnit\OpenApiCoverageExtension">
-    <parameter name="spec_base_path" value="openapi" />
-    <parameter name="html_output" value="build/coverage.html" />
-  </bootstrap>
-</extensions>
+```php
+return [
+    'spec' => ['base_path' => 'openapi'],
+    'coverage' => ['report_output' => ['html' => 'build/coverage.html']],
+];
 ```
 
 Paratest merge CLI:
@@ -49,15 +49,15 @@ vendor/bin/gesso coverage:merge \
 
 ## Multiple formats
 
-`output_file`, `junit_output`, `json_output`, and `html_output` are independent;
+The `markdown`, `junit`, `json`, and `html` entries of `coverage.report_output` are independent;
 setting any combination writes all configured formats. A write failure on one
 format does not block the others. Severity follows the existing convention:
 subscriber WARN-and-continue, CLI FATAL + exit 1.
 
 **Note on `GITHUB_STEP_SUMMARY`.** The HTML output is *not* appended to
 `GITHUB_STEP_SUMMARY` (which is Markdown-only by design; GitHub renders the
-file as Markdown, so an HTML payload would be escaped). Use `html_output` for
-artifact uploads and `output_file` / `github_step_summary` for the Markdown
+file as Markdown, so an HTML payload would be escaped). Use `report_output['html']` for
+artifact uploads and `report_output['markdown']` / `github_step_summary` for the Markdown
 summary.
 
 ## Future extensions

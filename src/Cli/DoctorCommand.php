@@ -6,8 +6,6 @@ namespace Studio\Gesso\Cli;
 
 use const DIRECTORY_SEPARATOR;
 use const E_USER_WARNING;
-use const ENT_QUOTES;
-use const ENT_XML1;
 use const FILTER_VALIDATE_INT;
 use const JSON_PRETTY_PRINT;
 use const JSON_THROW_ON_ERROR;
@@ -65,7 +63,6 @@ use function filesize;
 use function filter_var;
 use function get_debug_type;
 use function getcwd;
-use function htmlspecialchars;
 use function implode;
 use function in_array;
 use function is_array;
@@ -1121,25 +1118,18 @@ final class DoctorCommand
         }
         $basePath = $this->sharedSpecBasePath($specs, $localRefRoot);
         if ($basePath === null) {
-            return '<!-- Specs use different directories; one PHPUnit extension instance requires a shared spec_base_path. -->';
+            return '<!-- Specs use different directories; one PHPUnit extension instance requires a shared spec.base_path. -->';
         }
-        $names = implode(',', array_map(static fn(array $spec): string => $spec['name'], $specs));
-        $prefixes = implode(',', $stripPrefixes);
-        $basePath = htmlspecialchars($basePath, ENT_XML1 | ENT_QUOTES, 'UTF-8');
-        $names = htmlspecialchars($names, ENT_XML1 | ENT_QUOTES, 'UTF-8');
-        $prefixLine = $prefixes === '' ? '' : "\n        <parameter name=\"strip_prefixes\" value=\"" . htmlspecialchars($prefixes, ENT_XML1 | ENT_QUOTES, 'UTF-8') . '"/>';
-        $acknowledgedLine = $acknowledgedSchemes === []
-            ? ''
-            : "\n        <parameter name=\"acknowledged_unvalidatable_schemes\" value=\"" . htmlspecialchars(implode(',', $acknowledgedSchemes), ENT_XML1 | ENT_QUOTES, 'UTF-8') . '"/>';
 
-        return <<<XML
+        // The extension reads ./gesso.php by default, so the XML carries no
+        // parameter: the flat v2 parameters are deprecated (#501).
+        return <<<'XML'
             <extensions>
-                <bootstrap class="Studio\Gesso\PHPUnit\OpenApiCoverageExtension">
-                    <parameter name="spec_base_path" value="{$basePath}"/>
-                    <parameter name="specs" value="{$names}"/>{$prefixLine}{$acknowledgedLine}
-                </bootstrap>
+                <bootstrap class="Studio\Gesso\PHPUnit\OpenApiCoverageExtension"/>
             </extensions>
-            XML;
+            XML
+            . "\n\n<!-- Save the PHP below as gesso.php next to phpunit.xml. -->\n"
+            . $this->gessoConfigSource($specs, $stripPrefixes, $basePath, $acknowledgedSchemes);
     }
 
     /**
@@ -1167,7 +1157,7 @@ final class DoctorCommand
     }
 
     /**
-     * The `gesso.php` equivalent of {@see self::phpunitSnippet()}. The base path
+     * The `gesso.php` the doctor invocation describes. The base path
      * is cwd-relative, which is what `gesso.php` resolves against when the file
      * is written to the cwd.
      *

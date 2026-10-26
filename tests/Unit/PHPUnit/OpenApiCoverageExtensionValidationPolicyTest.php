@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Tests\Unit\PHPUnit;
 
+use PHPUnit\Framework\Attributes\IgnoreDeprecations;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use PHPUnit\Runner\Extension\ParameterCollection;
+use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\OpenApiResponseValidator;
 use Studio\Gesso\PHPUnit\InvalidValidationPolicyConfigurationException;
 use Studio\Gesso\PHPUnit\OpenApiCoverageExtension;
@@ -27,6 +29,7 @@ use function stream_get_contents;
  * parameters give plain PHPUnit suites the validation-policy configuration
  * that previously existed only as Laravel config keys.
  */
+#[IgnoreDeprecations]
 class OpenApiCoverageExtensionValidationPolicyTest extends TestCase
 {
     /** @var null|resource */
@@ -48,6 +51,7 @@ class OpenApiCoverageExtensionValidationPolicyTest extends TestCase
 
     protected function tearDown(): void
     {
+        Deprecations::resetForTesting();
         OpenApiCoverageExtension::overrideStderrForTesting(null);
         if ($this->stderrBuffer !== null) {
             fclose($this->stderrBuffer);

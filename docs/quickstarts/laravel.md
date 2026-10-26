@@ -2,24 +2,37 @@
 
 ```bash
 composer require --dev "studio-design/gesso:^2.0" phpunit/phpunit
-php artisan vendor:publish --tag=gesso
 ```
 
-Register the extension in `phpunit.xml`. This is what configures the spec loader
-for the runtime validator; `gesso.spec_base_path` in the published
-`config/gesso.php` does not — it only feeds the `gesso:routes` and
-`gesso:stubs` Artisan commands:
+Put the shared settings in the application-root `gesso.php` — the PHPUnit
+extension and the Laravel service provider both read it, so there is no
+`config/gesso.php` to publish — and register the extension in `phpunit.xml`.
+The extension is what configures the spec loader for the runtime validator;
+Laravel uses `spec.default` for assertions and `spec.base_path` for the
+`gesso:routes` and `gesso:stubs` Artisan commands:
+
+```php
+<?php
+// gesso.php, beside phpunit.xml
+
+declare(strict_types=1);
+
+return [
+    'spec' => [
+        'base_path' => 'openapi',
+        'default' => 'petstore',
+        'names' => ['petstore'],
+    ],
+];
+```
 
 ```xml
 <extensions>
-    <bootstrap class="Studio\Gesso\PHPUnit\OpenApiCoverageExtension">
-        <parameter name="spec_base_path" value="openapi"/>
-        <parameter name="specs" value="petstore"/>
-    </bootstrap>
+    <bootstrap class="Studio\Gesso\PHPUnit\OpenApiCoverageExtension"/>
 </extensions>
 ```
 
-Set `default_spec` to `petstore`, add `ValidatesOpenApiSchema` to your base test case, then assert a normal Laravel response:
+Add `ValidatesOpenApiSchema` to your base test case, then assert a normal Laravel response:
 
 ```php
 $response = $this->getJson('/pets');
@@ -33,7 +46,7 @@ The complete [`examples/laravel`](https://github.com/studio-design/gesso/tree/ma
 composer test
 ```
 
-Its second test enables `auto_assert` and `auto_validate_request`, demonstrating validation without an explicit assertion. The PHPUnit extension prints coverage for both tests.
+Its second test switches on `auto_assert` and `auto_validate_request` for one test, demonstrating validation without an explicit assertion; set `laravel.auto_assert` / `laravel.auto_validate_request` in `gesso.php` to enable them suite-wide. The PHPUnit extension prints coverage for both tests.
 
 To send a body a PHP array cannot express (the empty object `{}`), use
 `$this->jsonRaw('PATCH', '/pets/1', '{}')`; see

@@ -15,8 +15,11 @@ use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\PHPUnit\ExtensionParameters;
 
 use function array_keys;
+use function array_unique;
+use function array_values;
 use function count;
 use function file_get_contents;
+use function in_array;
 use function json_decode;
 use function restore_error_handler;
 use function set_error_handler;
@@ -48,11 +51,11 @@ final class LegacyConfigurationKeysTest extends TestCase
     }
 
     #[Test]
-    public function the_table_covers_exactly_the_spellings_v3_renames_assigns_to_502(): void
+    public function the_tables_cover_exactly_the_config_keys_v3_renames_stages_here(): void
     {
-        $owned = array_keys($this->renamesOwnedBy502());
+        $owned = array_keys($this->renamesStagedHere());
         sort($owned);
-        $table = LegacyConfigurationKeys::PHPUNIT;
+        $table = array_values(array_unique([...LegacyConfigurationKeys::PHPUNIT, ...LegacyConfigurationKeys::LARAVEL]));
         sort($table);
 
         $this->assertSame($owned, $table);
@@ -61,7 +64,7 @@ final class LegacyConfigurationKeysTest extends TestCase
     #[Test]
     public function every_spelling_emits_one_notice_naming_its_gesso_php_key(): void
     {
-        $owned = $this->renamesOwnedBy502();
+        $owned = $this->renamesStagedHere();
         foreach ($owned as $spelling => $replacement) {
             LegacyConfigurationKeys::deprecate($spelling);
             LegacyConfigurationKeys::deprecate($spelling);
@@ -79,10 +82,10 @@ final class LegacyConfigurationKeysTest extends TestCase
     }
 
     #[Test]
-    public function unknown_and_501_owned_names_are_a_no_op(): void
+    public function unknown_names_are_a_no_op(): void
     {
         LegacyConfigurationKeys::deprecate('config');
-        LegacyConfigurationKeys::deprecate('spec_base_path');
+        LegacyConfigurationKeys::deprecate('auto_inject_dummy_bearer');
 
         $this->assertSame([], $this->captured);
         $this->assertSame([], Deprecations::counts());
@@ -96,10 +99,12 @@ final class LegacyConfigurationKeysTest extends TestCase
         $first = ExtensionParameters::load($collection, sys_get_temp_dir());
         ExtensionParameters::load($collection, sys_get_temp_dir());
 
-        $this->assertCount(1, $this->captured);
+        $this->assertCount(2, $this->captured);
         $this->assertStringContainsString("strict.required['run']", $this->captured[0][1]);
-        $this->assertSame(['phpunit.strict_required' => 2], Deprecations::counts());
+        $this->assertStringContainsString('spec.base_path', $this->captured[1][1]);
+        $this->assertSame(['config.spec_base_path' => 2, 'phpunit.strict_required' => 2], Deprecations::counts());
         $this->assertSame('warn', $first->get('strict_required'));
+        $this->assertSame('specs', $first->get('spec_base_path'));
     }
 
     #[Test]
@@ -110,10 +115,16 @@ final class LegacyConfigurationKeysTest extends TestCase
         $this->assertSame(['phpunit.console_output' => 1], Deprecations::counts());
     }
 
-    /** @return array<string, string> spelling => v3 replacement */
-    private function renamesOwnedBy502(): array
+    /**
+     * The config keys this table stages: everything but the two emitted
+     * elsewhere (`auto_inject_dummy_bearer` from the Laravel trait,
+     * `enum_spec_base_path` from the extension).
+     *
+     * @return array<string, string> spelling => v3 replacement
+     */
+    private function renamesStagedHere(): array
     {
-        /** @var array{renames: array<string, array{owner: string, replacement: string}>} $fixture */
+        /** @var array{renames: array<string, array{surface: string, owner: string, replacement: string}>} $fixture */
         $fixture = json_decode(
             (string) file_get_contents(__DIR__ . '/../../fixtures/compatibility/v3-renames.json'),
             true,
@@ -122,7 +133,7 @@ final class LegacyConfigurationKeysTest extends TestCase
         );
         $owned = [];
         foreach ($fixture['renames'] as $spelling => $entry) {
-            if ($entry['owner'] === '#502') {
+            if ($entry['surface'] === 'config-key' && !in_array($spelling, ['auto_inject_dummy_bearer', 'enum_spec_base_path'], true)) {
                 $owned[$spelling] = $entry['replacement'];
             }
         }

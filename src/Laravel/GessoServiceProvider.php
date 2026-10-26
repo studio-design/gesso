@@ -10,6 +10,7 @@ use Illuminate\Support\ServiceProvider;
 use LogicException;
 use Studio\Gesso\Config\ConfigurationBridge;
 use Studio\Gesso\Config\GessoConfig;
+use Studio\Gesso\Config\LegacyConfigurationKeys;
 use Studio\Gesso\Laravel\Commands\OpenApiRoutesCommand;
 use Studio\Gesso\Laravel\Commands\OpenApiStubsCommand;
 
@@ -37,6 +38,13 @@ class GessoServiceProvider extends ServiceProvider
         // config:cache stores these resolved values in Laravel's repository.
         // Do not execute the root file again while using that snapshot.
         if (!($this->app instanceof CachesConfiguration && $this->app->configurationIsCached())) {
+            // Before the package defaults merge in, a present key is one the
+            // app set (a published config/gesso.php), not a default.
+            foreach (LegacyConfigurationKeys::LARAVEL as $key) {
+                if ($configuration->has(self::CONFIG_KEY . '.' . $key)) {
+                    LegacyConfigurationKeys::deprecate($key);
+                }
+            }
             $path = $this->app->basePath(GessoConfig::FILENAME);
             if (is_file($path)) {
                 foreach (ConfigurationBridge::laravel(GessoConfig::load($path)) as $key => $value) {

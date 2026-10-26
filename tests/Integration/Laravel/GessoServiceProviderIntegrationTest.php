@@ -12,6 +12,7 @@ use Illuminate\Support\ServiceProvider;
 use LogicException;
 use Orchestra\Testbench\TestCase;
 use PHPUnit\Framework\Attributes\Test;
+use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\Laravel\GessoServiceProvider;
 
 use function config;
@@ -22,6 +23,18 @@ use function json_encode;
 
 final class GessoServiceProviderIntegrationTest extends TestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+        Deprecations::resetForTesting();
+    }
+
+    protected function tearDown(): void
+    {
+        Deprecations::resetForTesting();
+        parent::tearDown();
+    }
+
     #[Test]
     public function provider_merges_v2_defaults_under_the_gesso_key(): void
     {
@@ -59,6 +72,34 @@ final class GessoServiceProviderIntegrationTest extends TestCase
         $this->assertSame('application-spec', config('gesso.default_spec'));
         $this->assertSame(7, config('gesso.max_errors'));
         $this->assertSame('openapi', config('gesso.spec_base_path'));
+    }
+
+    #[Test]
+    public function provider_deprecates_each_flat_key_the_application_sets(): void
+    {
+        config()->set('gesso', [
+            'max_errors' => 7,
+            'auto_assert' => true,
+            'route_parity' => ['excluded_route_names' => ['horizon.*']],
+        ]);
+
+        $this->provider()->register();
+
+        $this->assertSame([
+            'config.max_errors' => 1,
+            'laravel.config.auto_assert' => 1,
+            'laravel.config.route_parity' => 1,
+        ], Deprecations::counts());
+        // The flat value keeps working.
+        $this->assertSame(7, config('gesso.max_errors'));
+    }
+
+    #[Test]
+    public function provider_defaults_alone_raise_no_deprecation(): void
+    {
+        $this->provider()->register();
+
+        $this->assertSame([], Deprecations::counts());
     }
 
     #[Test]

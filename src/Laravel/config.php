@@ -5,6 +5,12 @@ declare(strict_types=1);
 use Studio\Gesso\OpenApiRequestValidator;
 use Studio\Gesso\OpenApiResponseValidator;
 
+// Package defaults for the v2 `gesso.*` config keys. Every key below is
+// deprecated (2.9.0) and removed in Gesso 3.0: a key set in a published
+// config/gesso.php emits a one-shot deprecation notice. Set these in the
+// root gesso.php instead (`spec`, `validation`, and `laravel` sections), then
+// delete config/gesso.php. See docs/configuration.md and
+// UPGRADING.md#deprecations.
 return [
     'default_spec' => '',
 

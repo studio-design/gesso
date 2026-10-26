@@ -496,6 +496,177 @@
                 "replacement": "exit code 2 (what Gesso 3.0 returns when a sidecar, report, or baseline file cannot be read or written; a check for any non-zero exit needs no change)",
                 "removed_in": "3.0"
             }
+        },
+        "config.spec_base_path": {
+            "spelling": "spec_base_path",
+            "v3_target": "spec.base_path",
+            "notice": {
+                "subject": "The config key 'spec_base_path'",
+                "replacement": "spec.base_path (in gesso.php)",
+                "removed_in": "3.0"
+            }
+        },
+        "config.default_spec": {
+            "spelling": "default_spec",
+            "v3_target": "spec.default",
+            "notice": {
+                "subject": "The config key 'default_spec'",
+                "replacement": "spec.default (in gesso.php)",
+                "removed_in": "3.0"
+            }
+        },
+        "config.specs": {
+            "spelling": "specs",
+            "v3_target": "spec.names",
+            "notice": {
+                "subject": "The config key 'specs'",
+                "replacement": "spec.names (in gesso.php)",
+                "removed_in": "3.0"
+            }
+        },
+        "config.strip_prefixes": {
+            "spelling": "strip_prefixes",
+            "v3_target": "spec.strip_prefixes",
+            "notice": {
+                "subject": "The config key 'strip_prefixes'",
+                "replacement": "spec.strip_prefixes (in gesso.php)",
+                "removed_in": "3.0"
+            }
+        },
+        "phpunit.validation_output": {
+            "spelling": "validation_output",
+            "v3_target": "validation.format",
+            "notice": {
+                "subject": "The PHPUnit config key 'validation_output'",
+                "replacement": "validation.format (in gesso.php)",
+                "removed_in": "3.0"
+            }
+        },
+        "config.max_errors": {
+            "spelling": "max_errors",
+            "v3_target": "validation.max_errors",
+            "notice": {
+                "subject": "The config key 'max_errors'",
+                "replacement": "validation.max_errors (in gesso.php)",
+                "removed_in": "3.0"
+            }
+        },
+        "config.enforce_discriminator": {
+            "spelling": "enforce_discriminator",
+            "v3_target": "validation.enforce_discriminator",
+            "notice": {
+                "subject": "The config key 'enforce_discriminator'",
+                "replacement": "validation.enforce_discriminator (in gesso.php)",
+                "removed_in": "3.0"
+            }
+        },
+        "config.acknowledged_unvalidatable_schemes": {
+            "spelling": "acknowledged_unvalidatable_schemes",
+            "v3_target": "validation.acknowledged_unvalidatable_schemes",
+            "notice": {
+                "subject": "The config key 'acknowledged_unvalidatable_schemes'",
+                "replacement": "validation.acknowledged_unvalidatable_schemes (in gesso.php)",
+                "removed_in": "3.0"
+            }
+        },
+        "config.skip_response_codes": {
+            "spelling": "skip_response_codes",
+            "v3_target": "validation.skip_response_codes",
+            "notice": {
+                "subject": "The config key 'skip_response_codes'",
+                "replacement": "validation.skip_response_codes (in gesso.php)",
+                "removed_in": "3.0"
+            }
+        },
+        "config.skip_request_validation_response_codes": {
+            "spelling": "skip_request_validation_response_codes",
+            "v3_target": "validation.skip_request_validation_response_codes",
+            "notice": {
+                "subject": "The config key 'skip_request_validation_response_codes'",
+                "replacement": "validation.skip_request_validation_response_codes (in gesso.php)",
+                "removed_in": "3.0"
+            }
+        },
+        "phpunit.sidecar_dir": {
+            "spelling": "sidecar_dir",
+            "v3_target": "coverage.sidecar_dir",
+            "notice": {
+                "subject": "The PHPUnit config key 'sidecar_dir'",
+                "replacement": "coverage.sidecar_dir (in gesso.php)",
+                "removed_in": "3.0"
+            }
+        },
+        "phpunit.enum_drift_enabled": {
+            "spelling": "enum_drift_enabled",
+            "v3_target": "enum_drift.enabled",
+            "notice": {
+                "subject": "The PHPUnit config key 'enum_drift_enabled'",
+                "replacement": "enum_drift.enabled (in gesso.php)",
+                "removed_in": "3.0"
+            }
+        },
+        "phpunit.enum_drift_scan_namespaces": {
+            "spelling": "enum_drift_scan_namespaces",
+            "v3_target": "enum_drift.scan_namespaces",
+            "notice": {
+                "subject": "The PHPUnit config key 'enum_drift_scan_namespaces'",
+                "replacement": "enum_drift.scan_namespaces (in gesso.php)",
+                "removed_in": "3.0"
+            }
+        },
+        "phpunit.enum_drift_fail_on_drift": {
+            "spelling": "enum_drift_fail_on_drift",
+            "v3_target": "enum_drift.fail_on_drift",
+            "notice": {
+                "subject": "The PHPUnit config key 'enum_drift_fail_on_drift'",
+                "replacement": "enum_drift.fail_on_drift (in gesso.php)",
+                "removed_in": "3.0"
+            }
+        },
+        "phpunit.default_testsuite_as_full": {
+            "spelling": "default_testsuite_as_full",
+            "v3_target": "phpunit.default_testsuite_as_full",
+            "notice": {
+                "subject": "The PHPUnit config key 'default_testsuite_as_full'",
+                "replacement": "phpunit.default_testsuite_as_full (in gesso.php)",
+                "removed_in": "3.0"
+            }
+        },
+        "laravel.config.auto_assert": {
+            "spelling": "auto_assert",
+            "v3_target": "laravel.auto_assert",
+            "notice": {
+                "subject": "The Laravel config key 'auto_assert'",
+                "replacement": "laravel.auto_assert (in gesso.php)",
+                "removed_in": "3.0"
+            }
+        },
+        "laravel.config.auto_validate_request": {
+            "spelling": "auto_validate_request",
+            "v3_target": "laravel.auto_validate_request",
+            "notice": {
+                "subject": "The Laravel config key 'auto_validate_request'",
+                "replacement": "laravel.auto_validate_request (in gesso.php)",
+                "removed_in": "3.0"
+            }
+        },
+        "laravel.config.auto_inject_dummy_credentials": {
+            "spelling": "auto_inject_dummy_credentials",
+            "v3_target": "laravel.auto_inject_dummy_credentials",
+            "notice": {
+                "subject": "The Laravel config key 'auto_inject_dummy_credentials'",
+                "replacement": "laravel.auto_inject_dummy_credentials (in gesso.php)",
+                "removed_in": "3.0"
+            }
+        },
+        "laravel.config.route_parity": {
+            "spelling": "route_parity",
+            "v3_target": "laravel.route_parity",
+            "notice": {
+                "subject": "The Laravel config key 'route_parity'",
+                "replacement": "laravel.route_parity (in gesso.php)",
+                "removed_in": "3.0"
+            }
         }
     }
 }

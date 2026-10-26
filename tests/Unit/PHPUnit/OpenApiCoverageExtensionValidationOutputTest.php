@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Tests\Unit\PHPUnit;
 
+use PHPUnit\Framework\Attributes\IgnoreDeprecations;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use PHPUnit\Runner\Extension\ParameterCollection;
+use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\Internal\LegacyIdentity;
 use Studio\Gesso\PHPUnit\OpenApiCoverageExtension;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
@@ -19,6 +21,7 @@ use function putenv;
 use function rewind;
 use function stream_get_contents;
 
+#[IgnoreDeprecations]
 class OpenApiCoverageExtensionValidationOutputTest extends TestCase
 {
     /** @var null|resource */
@@ -41,6 +44,7 @@ class OpenApiCoverageExtensionValidationOutputTest extends TestCase
 
     protected function tearDown(): void
     {
+        Deprecations::resetForTesting();
         OpenApiCoverageExtension::overrideStderrForTesting(null);
         if ($this->stderrBuffer !== null) {
             fclose($this->stderrBuffer);
