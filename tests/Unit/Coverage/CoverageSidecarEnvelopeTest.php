@@ -65,20 +65,17 @@ class CoverageSidecarEnvelopeTest extends TestCase
     }
 
     #[Test]
-    public function only_legacy_inputs_record_their_deprecation(): void
+    public function parse_alone_records_no_deprecation(): void
     {
         $coverage = ['version' => 1, 'specs' => []];
 
         CoverageSidecarEnvelope::parse(['envelopeVersion' => 10, 'coverage' => $coverage]);
-        $this->assertSame([], Deprecations::counts());
-
+        // Legacy shapes are announced by the merge, once the trackers
+        // validated every half; parse() alone cannot tell they are well-formed.
         CoverageSidecarEnvelope::parse(['envelopeVersion' => 2, 'coverage' => $coverage, 'strictRequired' => null]);
-        CoverageSidecarEnvelope::parse(['envelopeVersion' => 2, 'coverage' => $coverage, 'strictRequired' => null]);
-        // The bare v1 state is announced by the merge, after the coverage
-        // tracker validates it; parse() alone cannot tell it is well-formed.
         CoverageSidecarEnvelope::parse($coverage);
 
-        $this->assertSame(['coverage.sidecar.legacy_envelope' => 2], Deprecations::counts());
+        $this->assertSame([], Deprecations::counts());
     }
 
     #[Test]

@@ -239,17 +239,9 @@ final class CoverageSidecarEnvelope
             ));
         }
 
-        // Announced only once the payload is accepted: a malformed legacy
-        // sidecar fails the merge on its own.
-        $parsed = self::parseLegacyEnvelope($payload, $version);
-        Deprecations::notice(
-            id: 'coverage.sidecar.legacy_envelope',
-            subject: 'Reading a coverage sidecar with envelopeVersion 2-9 (written by Gesso 1.9-2.6)',
-            replacement: 'envelopeVersion 10 (re-run the suite on this Gesso so its workers write fresh sidecars; Gesso 3.0 rejects the old ones)',
-            removedIn: '3.0',
-        );
-
-        return $parsed;
+        // The #505 deprecation is raised by the merge once the trackers
+        // accepted every half, so a malformed sidecar records no count.
+        return self::parseLegacyEnvelope($payload, $version);
     }
 
     /**

@@ -510,11 +510,29 @@ final class CoverageMergeCommand
         }
 
         try {
+            $allSidecarPaths = CoverageSidecarReader::listPaths($sidecarDir);
+            $allFailureMarkers = CoverageSidecarReader::listFailureMarkerPaths($sidecarDir);
+        } catch (RuntimeException $e) {
+            $this->writeStderr(sprintf("[OpenAPI Coverage] FATAL: %s\n", $e->getMessage()));
+            $this->deprecateIoFailureExitCode();
+
+            return self::EXIT_FAILURE;
+        }
+
+        try {
+            // Not an I/O failure: an ambiguous run selection keeps exit 1 in 3.0.
             [$sidecarPaths, $failureMarkers, $ignored, $ignoredRunIds] = self::scopeToRun(
                 $runId === '' ? null : CoverageSidecarWriter::sanitise($runId),
-                CoverageSidecarReader::listPaths($sidecarDir),
-                CoverageSidecarReader::listFailureMarkerPaths($sidecarDir),
+                $allSidecarPaths,
+                $allFailureMarkers,
             );
+        } catch (RuntimeException $e) {
+            $this->writeStderr(sprintf("[OpenAPI Coverage] FATAL: %s\n", $e->getMessage()));
+
+            return self::EXIT_FAILURE;
+        }
+
+        try {
             if ($ignored !== []) {
                 $this->writeStderr(sprintf(
                     "[Gesso] NOTE: ignoring %d sidecar/marker file(s) from other run(s) in %s (run ids: %s); they are neither merged nor deleted.\n",
@@ -654,19 +672,8 @@ final class CoverageMergeCommand
         $deprecationStates = [];
         foreach ($payloads as $payload) {
             try {
-                // Issue #505: a legacy payload raises its deprecation here.
-                $parsed = $this->deprecationsToStderr(static fn(): array => CoverageSidecarEnvelope::parse($payload));
+                $parsed = CoverageSidecarEnvelope::parse($payload);
                 $coverageTracker->importStateOn($parsed['coverage']);
-                if (!array_key_exists('envelopeVersion', $payload)) {
-                    // Issue #505: announced only once the tracker accepted the
-                    // bare v1 state, as the envelope does for versions 2-9.
-                    $this->deprecationsToStderr(static fn() => Deprecations::notice(
-                        id: 'coverage.sidecar.bare_state',
-                        subject: 'Reading a coverage sidecar that holds a bare v1 coverage state (no envelopeVersion)',
-                        replacement: 'envelopeVersion 10 (re-run the suite on this Gesso so its workers write fresh sidecars; Gesso 3.0 rejects the old ones)',
-                        removedIn: '3.0',
-                    ));
-                }
                 if ($parsed['strictRequired'] !== null) {
                     $strictRequiredTracker->importStateOn($parsed['strictRequired']);
                 }
@@ -695,6 +702,9 @@ final class CoverageMergeCommand
                 } else {
                     $sidecarsWithoutBaseline++;
                 }
+                // Issue #505: announced only once every half of the legacy
+                // payload was accepted; a malformed one fails the merge alone.
+                $this->deprecateLegacySidecar($payload);
             } catch (InvalidArgumentException $e) {
                 $this->writeStderr(sprintf("[OpenAPI Coverage] FATAL: invalid sidecar payload: %s\n", $e->getMessage()));
 
@@ -1602,6 +1612,26 @@ final class CoverageMergeCommand
      * cannot be read or written) exits 1 in 2.x and 2 from Gesso 3.0, so the
      * exit-code contract matches the other commands.
      */
+    /** @param array<array-key, mixed> $payload */
+    private function deprecateLegacySidecar(array $payload): void
+    {
+        if (!array_key_exists('envelopeVersion', $payload)) {
+            $this->deprecationsToStderr(static fn() => Deprecations::notice(
+                id: 'coverage.sidecar.bare_state',
+                subject: 'Reading a coverage sidecar that holds a bare v1 coverage state (no envelopeVersion)',
+                replacement: 'envelopeVersion 10 (re-run the suite on this Gesso so its workers write fresh sidecars; Gesso 3.0 rejects the old ones)',
+                removedIn: '3.0',
+            ));
+        } elseif ($payload['envelopeVersion'] !== CoverageSidecarEnvelope::ENVELOPE_VERSION) {
+            $this->deprecationsToStderr(static fn() => Deprecations::notice(
+                id: 'coverage.sidecar.legacy_envelope',
+                subject: 'Reading a coverage sidecar with envelopeVersion 2-9 (written by Gesso 1.9-2.6)',
+                replacement: 'envelopeVersion 10 (re-run the suite on this Gesso so its workers write fresh sidecars; Gesso 3.0 rejects the old ones)',
+                removedIn: '3.0',
+            ));
+        }
+    }
+
     private function deprecateIoFailureExitCode(): void
     {
         $this->deprecationsToStderr(static fn() => Deprecations::notice(

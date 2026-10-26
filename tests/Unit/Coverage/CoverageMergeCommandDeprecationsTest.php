@@ -26,6 +26,7 @@ use function mkdir;
 use function rmdir;
 use function substr_count;
 use function sys_get_temp_dir;
+use function touch;
 use function uniqid;
 use function unlink;
 
@@ -210,6 +211,42 @@ final class CoverageMergeCommandDeprecationsTest extends TestCase
 
         $this->assertSame(1, $exit);
         $this->assertStringContainsString('invalid sidecar payload', $stderr);
+        $this->assertSame([], Deprecations::counts());
+    }
+
+    #[Test]
+    public function a_legacy_envelope_with_a_malformed_tracker_half_records_no_deprecation(): void
+    {
+        CoverageSidecarWriter::write($this->sidecarDir, '1', [
+            'envelopeVersion' => 2,
+            'coverage' => ['version' => 1, 'specs' => 'not-a-map'],
+            'strictRequired' => null,
+        ]);
+
+        $stderr = '';
+        $exit = $this->command($stderr)->run($this->options());
+
+        $this->assertSame(1, $exit);
+        $this->assertStringContainsString('invalid sidecar payload', $stderr);
+        $this->assertSame([], Deprecations::counts());
+    }
+
+    #[Test]
+    public function an_ambiguous_run_selection_is_not_announced_as_an_io_failure(): void
+    {
+        // Two runs in the same second: the files are readable, so 3.0 keeps exit 1.
+        $state = (new OpenApiCoverageTracker())->exportStateOn();
+        $a = CoverageSidecarWriter::write($this->sidecarDir, '1', $state, 'run-a');
+        $b = CoverageSidecarWriter::write($this->sidecarDir, '2', $state, 'run-b');
+        touch($a, 1_700_000_000);
+        touch($b, 1_700_000_000);
+
+        $stderr = '';
+        $exit = $this->command($stderr)->run($this->options());
+
+        $this->assertSame(1, $exit);
+        $this->assertStringContainsString('cannot tell which run is newest', $stderr);
+        $this->assertStringNotContainsString('I/O failure', $stderr);
         $this->assertSame([], Deprecations::counts());
     }
 
