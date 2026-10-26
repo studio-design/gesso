@@ -2,7 +2,7 @@
 
 - Date: 2026-10-26
 - Status: research input for [ADR 0007](../adr/0007-v3-scope-and-release-window.md)
-  (Proposed). Internal; not shipped in the package.
+  (Accepted 2026-10-26). Internal; not shipped in the package.
 - Baseline: `origin/main` at `6f2c26c`.
 
 ## Method and caveats

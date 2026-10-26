@@ -1,24 +1,17 @@
 # ADR 0007: v3 scope and release window
 
-- Status: Proposed
+- Status: Accepted (2026-10-26)
 - Date: 2026-10-26
 - Issue: none
 - Related: [ADR 0004](0004-v3-consistency-policy-and-protected-core.md),
   [ADR 0005](0005-v3-configuration-and-cli-naming.md) (names, unchanged),
   [docs/versioning.md § Deprecation policy](../versioning.md#deprecation-policy)
-- Supersedes: none while Proposed. If Accepted, it supersedes
+- Supersedes:
   [ADR 0004](0004-v3-consistency-policy-and-protected-core.md) **in part**:
   its Decision section, the 2026-08-07 #508 amendment, and the two release
   amendments (2026-08-07 sequencing, 2026-08-12 condition-gated window). It
   retains ADR 0004's protected core (both tables), inclusion criterion,
   non-goals, and the scope boundary against splitting the package.
-
-> **This ADR is Proposed, not Accepted.** Until a follow-up change sets its
-> status to Accepted, [ADR 0004](0004-v3-consistency-policy-and-protected-core.md)
-> stays in force in full, including its 2026-08-12 amendment: v3 is "shape, not
-> capability", and the v3.0 window opens only on the floor, a trigger, and an
-> amendment recording both. Nothing in this file authorizes a v3 change on its
-> own.
 
 The supporting research is recorded under `docs/research/` (internal, not
 shipped in the package): `2026-10-26-v3-release-plan.md` (branch mechanics, the
@@ -34,7 +27,7 @@ ADR 0004 limited v3 to "shape, not capability" and gated its release on v1 EOL
 v3.0's payload was only deletion, so a major had nothing to offer adopters and
 no reason to come early.
 
-The owner proposes to change that premise (2026-10-26). v3 would also be the
+The owner changed that premise (2026-10-26). v3 is also the
 release that adds capability, closes measured gaps against competing tools,
 and removes features, settings, and code that cost memory or time without
 matching demand. A major with adopter value does not need a trigger to justify
@@ -123,14 +116,15 @@ are retained verbatim. They may be renamed or relocated, never weakened.
 - Accepted spellings documented "through v3.x" (the #504 environment variables
   and Artisan aliases) keep that promise; their removal (#523) stays in v4.0.
 
-## Accepting this ADR
+## Acceptance
 
-Acceptance is a separate change that:
+Accepted by the owner on 2026-10-26, together with two of the open decisions in
+`docs/research/2026-10-26-v3-release-plan.md`:
 
-- sets `Status: Accepted` here and in [the index](index.md);
-- changes ADR 0004's status line to name the sections this ADR supersedes;
-- updates `docs/versioning.md` (v2 maintenance lifecycle intro, the last
-  paragraph of the deprecation policy, the non-runtime-surface rule from
-  rule 3(a), and the two links to ADR 0004's 2026-08-12 amendment).
+- **Branch strategy:** option (a). `2.x` is cut from the `v2.9.0` tag, and
+  `main` becomes the v3 prerelease line before its first breaking commit.
+- **#507 renamed CLI flags:** the old spellings warn throughout v2 and are
+  removed in v3.0, as `v3-renames.json` records.
 
-Until that change merges, ADR 0004 governs.
+Arazzo extraction, SDK exercise coverage, and fuzz breadth stay open; rule 4
+and rule 5 govern them until an amendment decides otherwise.

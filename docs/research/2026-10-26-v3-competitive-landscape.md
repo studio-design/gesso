@@ -2,7 +2,7 @@
 
 - Date: 2026-10-26
 - Status: research input for [ADR 0007](../adr/0007-v3-scope-and-release-window.md)
-  (Proposed). Internal; not shipped in the package and not part of the docs site
+  (Accepted 2026-10-26). Internal; not shipped in the package and not part of the docs site
   navigation.
 - Sources: the GitHub REST API (stars, releases, issue state) and Packagist
   `stats.json` (monthly and total installs), both read on 2026-10-26.

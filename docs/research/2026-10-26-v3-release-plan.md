@@ -2,10 +2,7 @@
 
 - Date: 2026-10-26
 - Status: research input for [ADR 0007](../adr/0007-v3-scope-and-release-window.md)
-  (Proposed). Internal; not shipped in the package. Until ADR 0007 is accepted,
-  [ADR 0004](../adr/0004-v3-consistency-policy-and-protected-core.md) governs,
-  and every step below that depends on ADR 0007 (cutting `2.x` before v1 EOL,
-  verdict changes and removals in v3, the release gates) is a proposal.
+  (Accepted 2026-10-26). Internal; not shipped in the package.
 - Baseline: `origin/main` at `6f2c26c` (release manifest `2.7.1`, release PR
   [#642](https://github.com/studio-design/gesso/pull/642) `chore(main): release 2.8.0`
   open). Counts were derived from that checkout or from `git show v2.7.1:…`.
@@ -355,19 +352,18 @@ Order: B → A (and C in parallel after B) → D (any time) → F (at the v3 rel
 
 ## Open decisions
 
-1. **Accept ADR 0007?** Until it is accepted, ADR 0004 governs: v3 is shape-only,
-   and the v3.0 window opens only on v1 EOL plus a trigger plus an amendment.
-2. **Extract Arazzo into a separate package?** Owner undecided. Conflicts with
-   the package-split scope boundary that both ADR 0004 and ADR 0007 rule 5 keep;
-   accepting it needs an ADR 0007 amendment and an ADR 0002 note.
-3. **Drop SDK exercise coverage?** Owner undecided. ADR 0004 "What v3 does not
-   delete" and ADR 0007 rule 4 keep it; removal needs the rule 3(b) evidence, a
-   coverage-JSON format bump, and an amendment.
-4. **Remove fuzz breadth (spec-wide exploration, link chains, failure
-   reducer)?** Owner undecided. `src/Fuzz/` is kept by ADR 0004 and ADR 0007
-   rule 4, and link following shipped recently (#634).
-5. **Confirm the branch strategy**: option (a), cut `2.x` from the v2.9.0 tag,
-   with option (b), a long-lived `3.x` branch, rejected (§1).
-6. **#507 renamed flags: removed in 3.0 or accepted through v3.x?** The
-   recommendation is 3.0, matching `v3-renames.json`, and editing #507's body
-   (§1.6).
+Resolved on 2026-10-26: ADR 0007 is accepted; the branch strategy is option (a)
+(§1); the #507 renamed flags warn through v2 and are removed in 3.0 (§1.6).
+
+Still open:
+
+1. **Extract Arazzo into a separate package?** Conflicts with the package-split
+   scope boundary that both ADR 0004 and ADR 0007 rule 5 keep; accepting it
+   needs an ADR 0007 amendment and an ADR 0002 note. To be decided together
+   with the packaging of the Laravel, Symfony, and Pest adapters.
+2. **Drop SDK exercise coverage?** ADR 0004 "What v3 does not delete" and ADR
+   0007 rule 4 keep it; removal needs the rule 3(b) evidence, a coverage-JSON
+   format bump, and an amendment.
+3. **Remove fuzz breadth (spec-wide exploration, link chains, failure
+   reducer)?** `src/Fuzz/` is kept by ADR 0004 and ADR 0007 rule 4, and link
+   following shipped recently (#634).

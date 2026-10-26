@@ -2,7 +2,7 @@
 
 - Date: 2026-10-26
 - Status: research input for [ADR 0007](../adr/0007-v3-scope-and-release-window.md)
-  (Proposed). Internal; not shipped in the package.
+  (Accepted 2026-10-26). Internal; not shipped in the package.
 - Baseline: `origin/main` at `6f2c26c` (release manifest 2.7.1).
 - Method: small probe scripts (not committed) built one minimal OpenAPI document
   per case and drove it through the public `OpenApiRequestValidator::validate()`
@@ -20,8 +20,8 @@ everything below is a bug fix or an additive feature, and both are SemVer-clean
 in 2.x minors. Verdict-tightening fixes (for example, cookie parameters that
 used to pass now fail) are allowed in a minor under the same reasoning #262 used
 for discriminator enforcement, but each one needs a changelog note, and the ones
-that move a conformance baseline need their own review. ADR 0007 (Proposed)
-addresses the scope question for v3; until it is accepted, ADR 0004 governs.
+that move a conformance baseline need their own review. ADR 0007 (accepted
+2026-10-26) allows these in v3 under its rule 2.
 
 ## 1. Dependency tree
 

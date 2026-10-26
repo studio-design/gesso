@@ -1,6 +1,10 @@
 # ADR 0004: v3 consistency policy and protected core
 
-- Status: Accepted
+- Status: Accepted; partly superseded by
+  [ADR 0007](0007-v3-scope-and-release-window.md) (2026-10-26): the Decision
+  section, the 2026-08-07 #508 and sequencing amendments, and the 2026-08-12
+  window amendment. The protected core, inclusion criterion, non-goals, and the
+  package-split boundary remain in force.
 - Date: 2026-08-06
 - Issue: [#500](https://github.com/studio-design/gesso/issues/500)
 - Related: [#499](https://github.com/studio-design/gesso/issues/499),
