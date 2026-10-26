@@ -11,6 +11,7 @@ use PHPUnit\Framework\Attributes\IgnoreDeprecations;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use PHPUnit\Runner\Extension\ParameterCollection;
+use Studio\Gesso\Config\GessoConfig;
 use Studio\Gesso\Coverage\InvalidCoverageOutputPathException;
 use Studio\Gesso\Coverage\InvalidThresholdConfigurationException;
 use Studio\Gesso\Coverage\SdkExerciseCoverageTracker;
@@ -36,11 +37,13 @@ use Studio\Gesso\Validation\Support\DiscriminatorEnforcement;
 use function chmod;
 use function fclose;
 use function file_get_contents;
+use function file_put_contents;
 use function fopen;
 use function getcwd;
 use function getenv;
 use function is_writable;
 use function mkdir;
+use function preg_match;
 use function putenv;
 use function restore_error_handler;
 use function rewind;
@@ -56,6 +59,9 @@ use function unlink;
 #[IgnoreDeprecations]
 class OpenApiCoverageExtensionTest extends TestCase
 {
+    private const CLEAN_BINDINGS = "[OpenAPI Enum Drift] 1 bound (0 by name, 1 by attribute), 0 unbound.\n"
+        . "  Studio\\Gesso\\Tests\\Unit\\PHPUnit\\Fixture\\EnumDrift\\Clean\\CleanPetStatus  ->  enum-drift/_shared/components/schemas/enums/PetStatusEnum.json\n";
+
     /** @var null|resource */
     private $stderrBuffer;
     private ?string $githubSummaryTmp = null;
@@ -775,7 +781,32 @@ class OpenApiCoverageExtensionTest extends TestCase
 
         $extension->setupExtension(null, $parameters, null);
 
-        $this->assertSame('', $this->readStderr());
+        $this->assertSame(self::CLEAN_BINDINGS, $this->readStderr());
+    }
+
+    #[Test]
+    public function bootstrap_appends_bindings_block_to_step_summary_when_no_drift(): void
+    {
+        $tmp = tempnam(sys_get_temp_dir(), 'openapi-enum-summary-');
+        if ($tmp === false) {
+            $this->fail('Could not create temp file for GITHUB_STEP_SUMMARY');
+        }
+        $this->githubSummaryTmp = $tmp;
+
+        $extension = new OpenApiCoverageExtension();
+        $parameters = ParameterCollection::fromArray([
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => 'refs-valid',
+            'enum_drift_enabled' => 'true',
+            'enum_drift_scan_namespaces' => 'Studio\\Gesso\\Tests\\Unit\\PHPUnit\\Fixture\\EnumDrift\\Clean\\',
+        ]);
+
+        $extension->setupExtension(null, $parameters, $tmp);
+
+        $contents = (string) file_get_contents($tmp);
+        $this->assertStringContainsString('OpenAPI enum drift', $contents);
+        $this->assertStringContainsString(self::CLEAN_BINDINGS, $contents);
+        $this->assertStringNotContainsString('FATAL', $contents);
     }
 
     #[Test]
@@ -818,6 +849,17 @@ class OpenApiCoverageExtensionTest extends TestCase
         } catch (EnumBindingException $e) {
             $this->assertSame(EnumBindingReason::NoNamespacesConfigured, $e->reason);
         }
+
+        // The suggested gesso.php snippet must load as written.
+        $this->assertSame(1, preg_match('/`(\'enum_drift\' => [^`]+)`/', $this->readStderr(), $example));
+        $config = tempnam(sys_get_temp_dir(), 'gesso-enum-hint-') . '.php';
+        file_put_contents($config, "<?php\nreturn [{$example[1]}];\n");
+
+        try {
+            $this->assertSame(['App\\Enums\\'], GessoConfig::load($config)->strings('enum_drift.scan_namespaces'));
+        } finally {
+            unlink($config);
+        }
     }
 
     #[Test]
@@ -837,7 +879,7 @@ class OpenApiCoverageExtensionTest extends TestCase
 
         $extension->setupExtension(null, $parameters, null);
 
-        $this->assertSame('', $this->readStderr());
+        $this->assertSame(self::CLEAN_BINDINGS, $this->readStderr());
     }
 
     #[Test]
@@ -856,6 +898,11 @@ class OpenApiCoverageExtensionTest extends TestCase
             $this->fail('Expected EnumDriftException');
         } catch (EnumDriftException) {
             $stderr = $this->readStderr();
+            $this->assertStringStartsWith(
+                "[OpenAPI Enum Drift] 1 bound (1 by name, 0 by attribute), 1 unbound.\n"
+                . "  Studio\\Gesso\\Tests\\Unit\\PHPUnit\\Fixture\\EnumDrift\\ByName\\Color  ->  #/components/schemas/Color\n",
+                $stderr,
+            );
             $this->assertStringContainsString('[OpenAPI Enum Drift] FATAL', $stderr);
             $this->assertStringContainsString('ByName\\Color  ->  #/components/schemas/Color', $stderr);
             $this->assertStringContainsString('"black"', $stderr);

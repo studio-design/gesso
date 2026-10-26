@@ -100,6 +100,17 @@ final class Diagnostics
         );
     }
 
+    public static function appendGithubStepSummaryEnumBindingsBlock(?string $path, string $body): void
+    {
+        self::appendGithubStepSummaryBlock(
+            $path,
+            '## :white_check_mark: OpenAPI enum drift',
+            'Every bound enum matches its spec enum.',
+            $body,
+            '[OpenAPI Enum Drift] WARNING: Failed to append block',
+        );
+    }
+
     public static function appendGithubStepSummaryFatalSpecBlock(?string $path, string $spec, string $reason): void
     {
         self::appendGithubStepSummaryBlock(

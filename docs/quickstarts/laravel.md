@@ -1,7 +1,7 @@
 # Laravel quickstart
 
 ```bash
-composer require --dev "studio-design/gesso:^2.0"
+composer require --dev "studio-design/gesso:^2.0" phpunit/phpunit
 php artisan vendor:publish --tag=gesso
 ```
 
@@ -34,6 +34,10 @@ composer test
 ```
 
 Its second test enables `auto_assert` and `auto_validate_request`, demonstrating validation without an explicit assertion. The PHPUnit extension prints coverage for both tests.
+
+To send a body a PHP array cannot express (the empty object `{}`), use
+`$this->jsonRaw('PATCH', '/pets/1', '{}')`; see
+[raw JSON request bodies](../setup.md#raw-json-request-bodies-with-jsonraw).
 
 Already generating your spec with Scramble? Follow the
 [Scramble integration recipe](../recipes/scramble.md) to validate generated

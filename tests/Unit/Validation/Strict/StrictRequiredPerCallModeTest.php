@@ -64,7 +64,7 @@ final class StrictRequiredPerCallModeTest extends TestCase
         $this->expectExceptionMessage("strict_required_per_call does not support 'fail'");
         $this->expectExceptionMessage('warn-only by design');
         $this->expectExceptionMessage('failOnWarning');
-        $this->expectExceptionMessage('strict_required=fail');
+        $this->expectExceptionMessage('strict.required.run = fail');
         StrictRequiredPerCallMode::fromConfigValue('fail');
     }
 

@@ -111,8 +111,8 @@ final class CoverageGateCommand
                                    unless the spec is a single self-contained file.
               --spec=<path>        Spec as it looks on this branch.
               --coverage=<path>    Coverage JSON (schema_version 3) written by the
-                                   `json_output` extension parameter or
-                                   `gesso coverage:merge --json-output`. Defaults to
+                                   `coverage.report_output.json` setting or
+                                   `gesso coverage:merge --report=json:<path>`. Defaults to
                                    `coverage.report_output.json` from gesso.php.
               --spec-name=<name>   Key under `specs` in the coverage document.
                                    Defaults to the --spec filename without extension.

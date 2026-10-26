@@ -425,6 +425,51 @@
                 "removed_in": "3.0"
             }
         },
+        "trait.open_api_assertions.fail_open_api": {
+            "spelling": "failOpenApi()",
+            "v3_target": "$this->fail()",
+            "notice": {
+                "subject": "The private trait helper failOpenApi()",
+                "replacement": "$this->fail() (PHPUnit)",
+                "removed_in": "3.0"
+            }
+        },
+        "trait.open_api_assertions.assert_open_api": {
+            "spelling": "assertOpenApi()",
+            "v3_target": "$this->assertTrue()",
+            "notice": {
+                "subject": "The private trait helper assertOpenApi()",
+                "replacement": "$this->assertTrue() (PHPUnit)",
+                "removed_in": "3.0"
+            }
+        },
+        "trait.psr7_open_api_assertions.fail_psr7": {
+            "spelling": "failPsr7()",
+            "v3_target": "$this->fail()",
+            "notice": {
+                "subject": "The private trait helper failPsr7()",
+                "replacement": "$this->fail() (PHPUnit)",
+                "removed_in": "3.0"
+            }
+        },
+        "trait.psr7_open_api_assertions.assert_psr7": {
+            "spelling": "assertPsr7()",
+            "v3_target": "$this->assertTrue()",
+            "notice": {
+                "subject": "The private trait helper assertPsr7()",
+                "replacement": "$this->assertTrue() (PHPUnit)",
+                "removed_in": "3.0"
+            }
+        },
+        "trait.explores_open_api_endpoint.fail_explore": {
+            "spelling": "failExplore()",
+            "v3_target": "$this->fail()",
+            "notice": {
+                "subject": "The private trait helper failExplore()",
+                "replacement": "$this->fail() (PHPUnit)",
+                "removed_in": "3.0"
+            }
+        },
         "coverage.sidecar.legacy_envelope": {
             "spelling": "envelopeVersion 2-9",
             "v3_target": "envelopeVersion 10",

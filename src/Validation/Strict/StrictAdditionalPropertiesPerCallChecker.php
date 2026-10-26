@@ -57,7 +57,7 @@ final class StrictAdditionalPropertiesPerCallChecker
         }
         trigger_error(sprintf(
             "[OpenAPI Strict Additional Properties per-call] WARN: %s %s  %s  %s returned %d undocumented response propert%s:\n%s\n"
-            . 'Action: declare the properties, explicitly document the object as open, or set strict_additional_properties_per_call=off.',
+            . 'Action: declare the properties, explicitly document the object as open, or set `strict.additional_properties.per_call` to `off` in gesso.php.',
             $method,
             $path,
             $statusKey,

@@ -141,7 +141,7 @@ final class StrictRequiredAsserter
             $reports,
         );
 
-        $footer = "\nAction: add these fields to the response schema's `required` array, or set `strict_required = off` if intentional.\nConfiguration: phpunit.xml <parameter name=\"strict_required\">warn|fail|off</parameter>";
+        $footer = "\nAction: add these fields to the response schema's `required` array, or set `strict.required.run` to `off` if intentional.\nConfiguration: gesso.php `'strict' => ['required' => ['run' => 'off'|'warn'|'fail']]`\n               (the phpunit.xml `strict_required` parameter is deprecated, removed in 3.0)";
 
         return $header . "\n" . implode("\n\n", $bodies) . "\n" . $footer;
     }

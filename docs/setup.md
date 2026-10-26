@@ -18,11 +18,20 @@ of `bin/gesso` from a library checkout uses that checkout's dependencies.
 - [Opting out with `#[SkipOpenApi]`](#opting-out-with-skipopenapi)
 - [Per-request skip with `withoutValidation()`](#per-request-skip-with-withoutvalidation)
 - [Per-request status-code skip with `skipResponseCode()`](#per-request-status-code-skip-with-skipresponsecode)
+- [Raw JSON request bodies with `jsonRaw()`](#raw-json-request-bodies-with-jsonraw)
 - [Auto-validate every request](#auto-validate-every-request)
 - [Skip request validation when the response is a documented 4xx](#skip-request-validation-when-the-response-is-a-documented-4xx)
 - [Auto-inject dummy credentials](#auto-inject-dummy-credentials)
 - [HTTP `$ref` resolution (opt-in)](#http-ref-resolution-opt-in)
 - [Remote spec sources (opt-in)](#remote-spec-sources-opt-in)
+
+Install Gesso and PHPUnit as development dependencies. Declare PHPUnit
+yourself: v3 moves it to Gesso's `require-dev`, so it will no longer arrive
+transitively.
+
+```bash
+composer require --dev "studio-design/gesso:^2.0" phpunit/phpunit
+```
 
 ## 1. Provide your OpenAPI spec
 
@@ -652,6 +661,26 @@ Notes:
 - **Auto-assert only**. Explicit `assertResponseMatchesOpenApiSchema()` calls ignore per-request codes — explicit calls are the user's direct intent.
 - **Chainable**: returns `$this`. Multiple chained calls accumulate (`$this->skipResponseCode(404)->skipResponseCode(503)` registers both).
 
+## Raw JSON request bodies with `jsonRaw()`
+
+Laravel's `postJson()` / `patchJson()` / `json()` take a PHP array, so an empty
+payload is always sent as `[]` — which fails a `type: object` request schema.
+`jsonRaw()` is `json()` with a pre-encoded body: the string is sent verbatim,
+and the call goes through the same auto-assert / auto-validate-request hook as
+the other HTTP helpers.
+
+```php
+// `{}` is the canonical empty-object body.
+$this->jsonRaw('PATCH', '/v1/pets/42', '{}')->assertOk();
+
+// Defaults match json(): Content-Type / Accept application/json and
+// CONTENT_LENGTH. Pass headers to override them.
+$this->jsonRaw('PATCH', '/v1/pets/42', '{"name":"Rex"}', ['CONTENT_TYPE' => 'application/merge-patch+json']);
+```
+
+Symfony needs no helper: `$client->request('PATCH', $uri, server: ['CONTENT_TYPE' => 'application/json'], content: '{}')`
+already sends raw JSON.
+
 ## Auto-validate every request
 
 Request-side contract drift (missing query params, body-shape divergence, absent security headers) goes undetected unless the test explicitly checks for it. Enable `auto_validate_request` to run `OpenApiRequestValidator` against every request Laravel's HTTP helpers dispatch:
@@ -752,7 +781,7 @@ Notes:
 - **Scheme-scoped, not global**: only the listed scheme names stop warning. Any other unvalidatable scheme — including one added to the spec later — still warns.
 - **The list cannot rot**: acknowledging a name that is not defined in `components.securitySchemes`, or one the validator *can* enforce (`http` + `bearer`, `apiKey`), itself emits a one-shot warning. These rot warnings carry the `[Gesso]` prefix (not `[security]`) — route them accordingly in a prefix-matching error handler.
 - **Validation behavior is unchanged**: acknowledged schemes were already silently passed; the acknowledgement only silences the warning.
-- `gesso doctor` reflects the acknowledgement via `--acknowledge-unvalidatable-scheme` — see [the doctor guide](doctor.md#acknowledged-unvalidatable-security-schemes).
+- `gesso doctor` reads the same `validation.acknowledged_unvalidatable_schemes` from `gesso.php` (or takes `--acknowledge-unvalidatable-scheme`) — see [the doctor guide](doctor.md#acknowledged-unvalidatable-security-schemes).
 
 ## HTTP `$ref` resolution (opt-in)
 

@@ -10,10 +10,12 @@ use Psr\Http\Message\ResponseInterface;
 use Studio\Gesso\Baseline\ViolationBaselineCollector;
 use Studio\Gesso\Baseline\ViolationBaselineEnforcer;
 use Studio\Gesso\Internal\CurlCommandFormatter;
+use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\Internal\FailureOutput;
 use Studio\Gesso\Internal\OpenApiAssertionCore;
 use Studio\Gesso\OpenApiRequestValidator;
 use Studio\Gesso\OpenApiValidationResult;
+use Studio\Gesso\PHPUnit\CleanTraceAssert;
 use Studio\Gesso\Spec\OpenApiSpecResolver;
 use Studio\Gesso\Validation\Support\ValidationPolicyDefaults;
 use Studio\Gesso\ValidationOutput;
@@ -96,7 +98,7 @@ trait OpenApiAssertions
         $result = $this->psr7Validator()->validateExchange($request, $response);
 
         if ($result->isValid()) {
-            $this->assertPsr7(true, '');
+            CleanTraceAssert::assertTrue(true, '');
 
             return;
         }
@@ -110,7 +112,7 @@ trait OpenApiAssertions
                     $collector->recordResult((string) $this->cachedPsr7SpecName, $sideResult, $method, $path);
                 }
             }
-            $this->assertPsr7(true, '');
+            CleanTraceAssert::assertTrue(true, '');
 
             return;
         }
@@ -131,7 +133,7 @@ trait OpenApiAssertions
                 }
             }
             if ($allSuppressed) {
-                $this->assertPsr7(true, '');
+                CleanTraceAssert::assertTrue(true, '');
 
                 return;
             }
@@ -150,10 +152,10 @@ trait OpenApiAssertions
 
         // See OpenApiAssertionCore::assertOpenApiResult(): json mode must end with parseable documents.
         if (ValidationOutput::format() === ValidationOutputFormat::Json) {
-            $this->failPsr7($message);
+            CleanTraceAssert::fail($message);
         }
 
-        $this->assertPsr7(false, $message);
+        CleanTraceAssert::assertTrue(false, $message);
     }
 
     /**
@@ -205,7 +207,7 @@ trait OpenApiAssertions
     {
         $specName = $this->resolveOpenApiSpec();
         if ($specName === '') {
-            $this->failPsr7(
+            CleanTraceAssert::fail(
                 'No OpenAPI spec is configured for this PSR-7 assertion. Add '
                 . "#[OpenApiSpec('your-spec')] or override openApiSpec().",
             );
@@ -285,18 +287,35 @@ trait OpenApiAssertions
     }
 
     /**
-     * Frozen private name (docs/versioning.md): forwards to the shared body.
+     * @deprecated Use PHPUnit's `$this->fail()`. Kept because private members
+     *             of this public trait are frozen by the v2 compatibility
+     *             policy; nothing in Gesso calls it. Removed in Gesso 3.0.
      */
     private function failPsr7(string $message): never
     {
-        $this->failOpenApi($message);
+        Deprecations::notice(
+            id: 'trait.psr7_open_api_assertions.fail_psr7',
+            subject: 'The private trait helper failPsr7()',
+            replacement: '$this->fail() (PHPUnit)',
+            removedIn: '3.0',
+        );
+
+        CleanTraceAssert::fail($message);
     }
 
     /**
-     * Frozen private name (docs/versioning.md): forwards to the shared body.
+     * @deprecated Use PHPUnit's `$this->assertTrue()`. Kept for the same
+     *             reason as {@see self::failPsr7()}. Removed in Gesso 3.0.
      */
     private function assertPsr7(bool $condition, string $message): void
     {
-        $this->assertOpenApi($condition, $message);
+        Deprecations::notice(
+            id: 'trait.psr7_open_api_assertions.assert_psr7',
+            subject: 'The private trait helper assertPsr7()',
+            replacement: '$this->assertTrue() (PHPUnit)',
+            removedIn: '3.0',
+        );
+
+        CleanTraceAssert::assertTrue($condition, $message);
     }
 }

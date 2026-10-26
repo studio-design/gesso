@@ -67,6 +67,12 @@ Auto-discovery also checks any enum in the scanned namespaces whose name matches
 > `[Gesso deprecation]` notice. Use [component-name binding](#binding-by-component-name)
 > instead: delete the attribute when the component is named after the class,
 > or write `#[BoundToOpenApiEnum(component: 'Name')]`.
+>
+> The `EnumBindingReason` cases only this path raises — `BasePathNotConfigured`,
+> `EnumBasePathNotFound`, `EnumSpecBasePathOrphaned`, `SpecFileNotFound`,
+> `MalformedJson`, `MalformedYaml`, `YamlLibraryMissing`, `NonMappingRoot`, and
+> `EnumKeyMissing` — are deprecated too and removed in 3.0. Referencing a case
+> raises no notice, so search your code for these names.
 
 ```php
 use Studio\Gesso\Attribute\BoundToOpenApiEnum;
@@ -271,7 +277,18 @@ Add the opt-in parameters to your `phpunit.xml`:
 
 Discovery merges results from Composer's classmap (`getClassMap()`) and a recursive scan of each PSR-4-registered directory, deduplicating across both sources. Production deployments using `--optimize-autoloader` or `--classmap-authoritative` are covered by the classmap pass; default dev installs are covered by the PSR-4 directory walk. Every backed enum found is passed to `EnumDriftAsserter` together with the configured `specs`. Enums bound by attribute or by component name are checked, and backed enums that match neither are skipped. Pure enums, traits, abstract classes, and plain classes in the same directory are skipped too.
 
-A strict-mode (default) drift run produces the same diagnostic block documented above:
+Every run that binds at least one enum first lists what it bound, on stderr and in `GITHUB_STEP_SUMMARY`. A clean run writes this list too:
+
+```
+[OpenAPI Enum Drift] 3 bound (2 by name, 1 by attribute), 41 unbound.
+  App\Enums\Color  ->  #/components/schemas/Color
+  App\Enums\IdpErrorEnum  ->  #/components/schemas/IdpAuthorizeErrorCode
+  App\Enums\OrderStatus  ->  #/components/schemas/OrderStatus
+```
+
+An enum with a `#[BoundToOpenApiEnum]` attribute counts as "by attribute", and any other bound enum counts as "by name". "Unbound" is the number of scanned backed enums that matched nothing, so they were skipped. When you rename a component that an enum bound by name, that enum becomes unbound. Nothing fails, but the counts and the list change, and the change shows in the PR's step summary.
+
+A strict-mode (default) drift run then produces the same diagnostic block documented above:
 
 ```
 [OpenAPI Enum Drift] FATAL: 1 enum binding(s) drift from spec.

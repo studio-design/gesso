@@ -296,7 +296,7 @@ final class StrictRequiredPerCallChecker
             $lines[] = sprintf('  %s : %s', $pointer, implode(', ', $missing));
         }
 
-        $footer = "Action: add these fields to the schema's `required` array, or set strict_required_per_call=off if intentional.\n"
+        $footer = "Action: add these fields to the schema's `required` array, or set `strict.required.per_call` to `off` in gesso.php if intentional.\n"
             . 'Note: per-call mode warns on every legitimately-optional field present in this single observation. See docs/strict-required.md "Per-call mode" for the trade-off.';
 
         return $header . "\n" . implode("\n", $lines) . "\n" . $footer;

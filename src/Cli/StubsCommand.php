@@ -90,7 +90,7 @@ final class StubsCommand
             Options:
               --spec=<path>        OpenAPI document to scaffold from (.json/.yaml/.yml).
               --coverage=<path>    Coverage JSON (schema_version 3) written by the
-                                   `json_output` extension parameter or
+                                   `coverage.report_output.json` setting or
                                    `gesso coverage:merge --report=json:<path>`. Only the
                                    responses it does not report as validated are
                                    stubbed. Omit it to stub the whole spec.
