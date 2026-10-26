@@ -198,8 +198,8 @@ final class OpenApiCoverageExtension implements Extension
                 OpenApiSpecLoader::load($spec);
             } catch (SpecFileNotFoundException $e) {
                 Diagnostics::stderr(
-                    "[OpenAPI Coverage] FATAL: spec '{$spec}' configured in `specs=` is not loadable: {$e->getMessage()}\n"
-                    . "  Action: regenerate the bundle (e.g. `cd openapi && npm run bundle`) or remove '{$spec}' from `specs=`.\n",
+                    "[OpenAPI Coverage] FATAL: spec '{$spec}' configured in `spec.names` is not loadable: {$e->getMessage()}\n"
+                    . "  Action: regenerate the bundle (e.g. `cd openapi && npm run bundle`) or remove '{$spec}' from `spec.names` in gesso.php.\n",
                 );
                 Diagnostics::appendGithubStepSummaryFatalSpecBlock($githubSummaryPath, $spec, $e->getMessage());
 
@@ -292,14 +292,13 @@ final class OpenApiCoverageExtension implements Extension
             // (all failures demoted) and then drop every recorded violation
             // on the floor — abort bootstrap instead.
             Diagnostics::stderr(
-                "[Gesso] FATAL: GESSO_BASELINE_GENERATE is set but neither `baseline_file` nor `coverage_baseline_file` is configured.\n"
-                . "  Action: add <parameter name=\"baseline_file\" value=\"gesso-baseline.json\"/> (violations) or\n"
-                . "          <parameter name=\"coverage_baseline_file\" value=\"gesso-coverage-baseline.json\"/> (coverage)\n"
-                . "          to the extension bootstrap.\n",
+                "[Gesso] FATAL: GESSO_BASELINE_GENERATE is set but neither `baseline.violations` nor `baseline.coverage` is configured.\n"
+                . "  Action: set `'baseline' => ['violations' => 'gesso-baseline.json']` (violations) and/or\n"
+                . "          `'baseline' => ['coverage' => 'gesso-coverage-baseline.json']` (coverage) in gesso.php.\n",
             );
 
             throw new InvalidBaselineConfigurationException(
-                'GESSO_BASELINE_GENERATE requires the baseline_file or coverage_baseline_file extension parameter.',
+                'GESSO_BASELINE_GENERATE requires baseline.violations or baseline.coverage in gesso.php.',
             );
         }
 
@@ -337,7 +336,7 @@ final class OpenApiCoverageExtension implements Extension
             } catch (InvalidArgumentException $e) {
                 Diagnostics::stderr(
                     "[Gesso] FATAL: baseline_file could not be loaded: {$e->getMessage()}\n"
-                    . "  Action: generate it with `GESSO_BASELINE_GENERATE=1 vendor/bin/phpunit`, fix the path, or remove the `baseline_file` parameter.\n",
+                    . "  Action: generate it with `GESSO_BASELINE_GENERATE=1 vendor/bin/phpunit`, fix the path, or remove `baseline.violations` from gesso.php.\n",
                 );
 
                 throw new InvalidBaselineConfigurationException(
@@ -638,7 +637,7 @@ final class OpenApiCoverageExtension implements Extension
         } catch (InvalidArgumentException $e) {
             Diagnostics::stderr(
                 "[Gesso] FATAL: coverage_baseline_file could not be loaded: {$e->getMessage()}\n"
-                . "  Action: generate it with `GESSO_BASELINE_GENERATE=1 vendor/bin/phpunit`, fix the path, or remove the `coverage_baseline_file` parameter.\n",
+                . "  Action: generate it with `GESSO_BASELINE_GENERATE=1 vendor/bin/phpunit`, fix the path, or remove `baseline.coverage` from gesso.php.\n",
             );
 
             throw new InvalidBaselineConfigurationException(
@@ -666,13 +665,14 @@ final class OpenApiCoverageExtension implements Extension
         }
 
         if (!$hasBaselineFile) {
+            $kind = $fileName === 'baseline_file' ? 'violations' : 'coverage';
             $reason = sprintf(
-                '%s is set but no `%s` extension parameter is configured. '
-                . 'Stale evaluation needs a baseline to compare against; set `%s` or remove `%s`.',
+                '%s is set but no `%s` baseline is configured. '
+                . 'Stale evaluation needs a baseline to compare against; set `baseline.%s` or remove `baseline_stale.%s` in gesso.php.',
                 $name,
                 $fileName,
-                $fileName,
-                $name,
+                $kind,
+                $kind,
             );
             Diagnostics::stderr("[Gesso] FATAL: {$reason}\n");
 
@@ -1209,7 +1209,8 @@ final class OpenApiCoverageExtension implements Extension
             Diagnostics::stderr(
                 "[OpenAPI Enum Drift] FATAL: {$reason}\n"
                 . '  Action: provide one or more PSR-4 namespace prefixes '
-                . "(e.g. enum_drift_scan_namespaces=\"App\\Enums\").\n",
+                // Doubled backslashes: the example is pasted into a single-quoted PHP string.
+                . "(e.g. `'enum_drift' => ['scan_namespaces' => ['App\\\\Enums\\\\']]` in gesso.php).\n",
             );
             Diagnostics::appendGithubStepSummaryEnumDriftBlock($githubSummaryPath, $reason, isFatal: true);
 

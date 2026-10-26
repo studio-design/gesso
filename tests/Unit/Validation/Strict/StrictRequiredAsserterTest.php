@@ -165,6 +165,24 @@ final class StrictRequiredAsserterTest extends TestCase
     }
 
     #[Test]
+    public function footer_points_at_gesso_php_instead_of_the_deprecated_parameter(): void
+    {
+        // Issue #659: the footer must not teach the deprecated phpunit.xml
+        // `strict_required` parameter as the way to configure the gate.
+        StrictRequiredTracker::record(self::SPEC_NAME, 'PUT', '/signed-url', '200', 'application/json', [
+            '/' => ['expires', 'signed_url', 'url'],
+        ]);
+
+        try {
+            StrictRequiredAsserter::assertNoDrift(StrictRequiredMode::Fail);
+            $this->fail('expected StrictRequiredDriftException');
+        } catch (StrictRequiredDriftException $e) {
+            $this->assertStringContainsString("Configuration: gesso.php `'strict' => ['required' => ['run' =>", $e->getMessage());
+            $this->assertStringNotContainsString('<parameter name="strict_required"', $e->getMessage());
+        }
+    }
+
+    #[Test]
     public function fail_mode_throws_strict_required_drift_exception(): void
     {
         StrictRequiredTracker::record(self::SPEC_NAME, 'PUT', '/signed-url', '200', 'application/json', [
