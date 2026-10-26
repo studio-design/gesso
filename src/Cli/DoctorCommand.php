@@ -295,12 +295,12 @@ final class DoctorCommand
             }
         }
 
-        $report = $this->report($specResults, $issues, $options);
-        $emitConfig = $options['emit_config'] ?? false;
         if (!isset($options['local_ref_root']) && $everySpecUsesConfigRoot && isset($options['config_ref_root'])) {
             // The emitted config and snippet describe the root every spec used.
             $options['local_ref_root'] = $options['config_ref_root'];
         }
+        $report = $this->report($specResults, $issues, $options);
+        $emitConfig = $options['emit_config'] ?? false;
         $basePath = $this->sharedSpecBasePath($specResults, $options['local_ref_root'] ?? null);
         if ($emitConfig && $specResults !== [] && $basePath === null) {
             return $this->usageError(

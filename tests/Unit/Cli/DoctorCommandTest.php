@@ -1241,6 +1241,24 @@ class DoctorCommandTest extends TestCase
     }
 
     #[Test]
+    public function the_phpunit_snippet_uses_the_inherited_base_path_for_nested_names(): void
+    {
+        mkdir($this->workDir . '/specs/bundled', 0o777, true);
+        file_put_contents($this->workDir . '/specs/bundled/front.json', $this->validSpec('/pets'));
+        $config = $this->writeSpec('gesso.php', <<<'PHP'
+            <?php
+            return ['spec' => ['base_path' => __DIR__ . '/specs', 'names' => ['bundled/front']]];
+            PHP);
+
+        [$exit, $stdout] = $this->runDoctor(['config' => $config, 'phpunit_snippet' => true, 'format' => 'json']);
+        $snippet = (string) json_decode($stdout, true, flags: JSON_THROW_ON_ERROR)['phpunit'];
+
+        $this->assertSame(DoctorCommand::EXIT_OK, $exit);
+        $this->assertStringContainsString('name="specs" value="bundled/front"', $snippet);
+        $this->assertStringNotContainsString('specs/bundled"', $snippet);
+    }
+
+    #[Test]
     public function explicit_flags_win_over_the_config_file(): void
     {
         $this->writeSpec('front.json', $this->basicAuthSpec('/pets'));
