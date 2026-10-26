@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Spec;
 
+use const PREG_SPLIT_DELIM_CAPTURE;
+
 use InvalidArgumentException;
 
 use function count;
@@ -12,8 +14,10 @@ use function implode;
 use function in_array;
 use function preg_match;
 use function preg_quote;
+use function preg_split;
 use function rtrim;
 use function sprintf;
+use function str_contains;
 use function str_ends_with;
 use function str_starts_with;
 use function strlen;
@@ -45,7 +49,7 @@ final class OpenApiPathMatcher
     /**
      * @var array<int, list<array{
      *     pattern: string,
-     *     matches: array<int, array{path: string, parameters: array<string, int>}>,
+     *     matches: array<int, array{path: string, offset: int, names: list<string>, pattern: string}>,
      * }>>
      */
     private array $compiledPathsBySegmentCount;
@@ -67,28 +71,73 @@ final class OpenApiPathMatcher
             $paramNames = [];
             $patternBytes = 16; // anchors, non-capturing wrapper, and MARK
 
+            $mixedLiteralBytes = 0;
+
             foreach ($segments as $segment) {
-                if (preg_match('/^\{(.+)\}$/', $segment, $m)) {
+                // OpenAPI's path-segment grammar is `1*( path-literal / template-expression )`,
+                // so one segment may mix literals and expressions (`report.{format}`).
+                // Even indexes are literals (possibly empty); odd indexes are names.
+                $pieces = str_contains($segment, '{')
+                    ? preg_split('/\{([^{}]+)\}/', $segment, -1, PREG_SPLIT_DELIM_CAPTURE)
+                    : false;
+                if ($pieces === false || count($pieces) === 1) {
+                    $compiledSegments[] = ['regex' => preg_quote($segment, '#'), 'parameters' => []];
+                    $literalCount++;
+                    $patternBytes += strlen(preg_quote($segment, '#')) + 1;
+
+                    continue;
+                }
+
+                $regex = '';
+                $segmentParameters = [];
+                $lastIndex = count($pieces) - 1;
+                foreach ($pieces as $index => $piece) {
+                    if ($index % 2 === 0) {
+                        if ($piece !== '') {
+                            $regex .= preg_quote($piece, '#');
+                            $mixedLiteralBytes += strlen($piece);
+                        } elseif ($index > 0 && $index < $lastIndex) {
+                            // The grammar allows `{a}{b}`, but nothing decides where
+                            // one value ends and the next begins. OpenAPI leaves
+                            // ambiguous matching to tooling; refuse to guess a split.
+                            throw new InvalidArgumentException(sprintf(
+                                "Adjacent path placeholders with no literal between them in spec path '%s'. The boundary between their values is ambiguous.",
+                                $specPath,
+                            ));
+                        }
+
+                        continue;
+                    }
+
                     // OpenAPI forbids duplicate placeholder names in a single template.
                     // If we silently overwrote the earlier capture, one of the segments
                     // would skip validation depending on position — a direction-dependent
                     // silent pass. Refuse to compile instead.
-                    if (in_array($m[1], $paramNames, true)) {
+                    if (in_array($piece, $paramNames, true)) {
                         throw new InvalidArgumentException(sprintf(
                             "Duplicate path placeholder name '%s' in spec path '%s'. OpenAPI requires unique placeholder names within a single template.",
-                            $m[1],
+                            $piece,
                             $specPath,
                         ));
                     }
 
-                    $compiledSegments[] = ['parameter' => $m[1]];
-                    $paramNames[] = $m[1];
-                    $patternBytes += 8; // slash plus `([^/]+)`
-                } else {
-                    $compiledSegments[] = ['literal' => $segment];
-                    $literalCount++;
-                    $patternBytes += strlen(preg_quote($segment, '#')) + 1;
+                    // A value ends at the first occurrence of the literal that
+                    // follows it (Symfony/Laravel give the same split for separators): `{name}.{ext}`
+                    // splits `a.tar.gz` into `a` and `tar.gz`. The possessive
+                    // quantifier keeps matching linear — unbounded backtracking
+                    // across several captures could exhaust PCRE's limit and
+                    // hide a fallback template in the same combined pattern.
+                    // A `%HH` triplet is one unit, so a literal is never found
+                    // inside an encoded character (`a%2Fb` stays whole).
+                    $next = $pieces[$index + 1];
+                    $regex .= $next === ''
+                        ? '([^/]+)'
+                        : '((?:(?!' . preg_quote($next, '#') . ')(?:%[0-9A-Fa-f]{2}|[^/]))++)';
+                    $segmentParameters[] = $piece;
+                    $paramNames[] = $piece;
                 }
+                $compiledSegments[] = ['regex' => $regex, 'parameters' => $segmentParameters];
+                $patternBytes += strlen($regex) + 1;
             }
 
             $parameterCount = count($paramNames);
@@ -118,13 +167,16 @@ final class OpenApiPathMatcher
                 'segments' => $compiledSegments,
                 'path' => $specPath,
                 'literalSegments' => $literalCount,
+                'mixedLiteralBytes' => $mixedLiteralBytes,
                 'parameterCount' => $parameterCount,
                 'patternBytes' => $patternBytes,
             ];
         }
 
-        // Sort by literal segment count descending so more specific paths match first
-        usort($compiled, static fn(array $a, array $b): int => $b['literalSegments'] <=> $a['literalSegments']);
+        // More specific paths match first: whole literal segments, then literal
+        // bytes inside mixed segments (`/report.{format}` before `/{file}`).
+        // usort is stable, so otherwise-equal templates keep declaration order.
+        usort($compiled, static fn(array $a, array $b): int => [$b['literalSegments'], $b['mixedLiteralBytes']] <=> [$a['literalSegments'], $a['mixedLiteralBytes']]);
 
         $pathsBySegmentCount = [];
         foreach ($compiled as $path) {
@@ -165,21 +217,25 @@ final class OpenApiPathMatcher
                 $captureIndex = 1;
                 foreach ($chunk as $pathIndex => $path) {
                     $regexSegments = [];
-                    $parameters = [];
+                    $names = [];
                     foreach ($path['segments'] as $segment) {
-                        if (isset($segment['literal'])) {
-                            $regexSegments[] = preg_quote($segment['literal'], '#');
-
-                            continue;
+                        $regexSegments[] = $segment['regex'];
+                        foreach ($segment['parameters'] as $parameter) {
+                            $names[] = $parameter;
                         }
-
-                        $regexSegments[] = '([^/]+)';
-                        $parameters[$segment['parameter']] = $captureIndex++;
                     }
 
                     $marker = (string) $pathIndex;
-                    $alternatives[] = '/' . implode('/', $regexSegments) . sprintf('(*MARK:%s)', $marker);
-                    $matches[$marker] = ['path' => $path['path'], 'parameters' => $parameters];
+                    $alternative = '/' . implode('/', $regexSegments);
+                    $alternatives[] = $alternative . sprintf('(*MARK:%s)', $marker);
+                    $matches[$marker] = [
+                        'path' => $path['path'],
+                        'offset' => $captureIndex,
+                        'names' => $names,
+                        // Fallback when the combined pattern hits a PCRE limit.
+                        'pattern' => '#' . ($path['parameterCount'] > self::MAX_CAPTURES_PER_JIT_PATTERN ? '(*NO_JIT)' : '') . '^' . $alternative . '$#',
+                    ];
+                    $captureIndex += count($names);
                 }
 
                 $jitControl = $captureIndex - 1 > self::MAX_CAPTURES_PER_JIT_PATTERN
@@ -293,6 +349,22 @@ final class OpenApiPathMatcher
     }
 
     /**
+     * @param list<string> $names
+     * @param array<int, string> $captures
+     *
+     * @return array{path: string, variables: array<string, string>}
+     */
+    private static function matchResult(string $path, array $names, array $captures, int $offset): array
+    {
+        $variables = [];
+        foreach ($names as $i => $name) {
+            $variables[$name] = $captures[$offset + $i];
+        }
+
+        return ['path' => $path, 'variables' => $variables];
+    }
+
+    /**
      * The spec-path lookup itself, on an already-normalized request path.
      *
      * @return null|array{path: string, variables: array<string, string>}
@@ -306,19 +378,26 @@ final class OpenApiPathMatcher
         $compiledPatterns = $this->compiledPathsBySegmentCount[self::segmentCount($normalizedPath)] ?? [];
         foreach ($compiledPatterns as $compiled) {
             $captures = [];
-            if (preg_match($compiled['pattern'], $normalizedPath, $captures) !== 1) {
+            $result = preg_match($compiled['pattern'], $normalizedPath, $captures);
+            if ($result === 1) {
+                // Numeric-string array keys are stored as integers by PHP; PCRE's
+                // MARK capture is the corresponding numeric string.
+                $matched = $compiled['matches'][(int) $captures['MARK']];
+
+                return self::matchResult($matched['path'], $matched['names'], $captures, $matched['offset']);
+            }
+            if ($result !== false) {
                 continue;
             }
 
-            // Numeric-string array keys are stored as integers by PHP; PCRE's
-            // MARK capture is the corresponding numeric string.
-            $matched = $compiled['matches'][(int) $captures['MARK']];
-            $variables = [];
-            foreach ($matched['parameters'] as $name => $captureIndex) {
-                $variables[$name] = $captures[$captureIndex];
+            // A PCRE limit (backtracking on a long path) fails the whole
+            // combined pattern; retry its templates one at a time, in order,
+            // so a later fallback template still matches.
+            foreach ($compiled['matches'] as $matched) {
+                if (preg_match($matched['pattern'], $normalizedPath, $captures) === 1) {
+                    return self::matchResult($matched['path'], $matched['names'], $captures, 1);
+                }
             }
-
-            return ['path' => $matched['path'], 'variables' => $variables];
         }
 
         return null;

@@ -9,6 +9,7 @@ use const PHP_BINARY;
 use const SORT_REGULAR;
 
 use GuzzleHttp\Psr7\HttpFactory;
+use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use ReflectionMethod;
@@ -19,6 +20,7 @@ use Studio\Gesso\OpenApiRequestValidator;
 use Studio\Gesso\OpenApiResponseValidator;
 use Studio\Gesso\OpenApiValidationResult;
 use Studio\Gesso\OpenApiVersion;
+use Studio\Gesso\Spec\OpenApiPathMatcher;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Tests\Helpers\FakeHttpClient;
 use Studio\Gesso\Validation\Request\RequestBodyValidator;
@@ -40,6 +42,7 @@ use function getcwd;
 use function glob;
 use function json_decode;
 use function json_encode;
+use function md5;
 use function mkdir;
 use function preg_match;
 use function proc_close;
@@ -944,6 +947,55 @@ class DoctorCommandTest extends TestCase
             $this->assertSame(DoctorCommand::EXIT_DIAGNOSTIC_FAILURE, $exit, "case {$index}");
             $this->assertSame('structure', $report['issues'][0]['category'], "case {$index}");
             $this->assertSame($expectedMessage, $report['issues'][0]['message'], "case {$index}");
+        }
+    }
+
+    #[Test]
+    public function path_templates_the_runtime_matcher_rejects_are_structure_errors(): void
+    {
+        $cases = [
+            '/v/{a}{b}' => "Adjacent path placeholders with no literal between them in spec path '/v/{a}{b}'",
+            '/v/{id}-{id}' => "Duplicate path placeholder name 'id' in spec path '/v/{id}-{id}'",
+            '/a/{id}/b/{id}' => "Duplicate path placeholder name 'id' in spec path '/a/{id}/b/{id}'",
+        ];
+
+        foreach ($cases as $template => $expectedMessage) {
+            $paths = [$template => ['get' => ['responses' => ['200' => ['description' => 'OK']]]]];
+            $spec = $this->writeSpec('template-' . md5($template) . '.json', (string) json_encode([
+                'openapi' => '3.2.0',
+                'info' => ['title' => 'Test', 'version' => '1'],
+                'paths' => $paths,
+            ], JSON_THROW_ON_ERROR));
+
+            $report = $this->runJsonDoctor($spec, $exit);
+
+            $this->assertSame(DoctorCommand::EXIT_DIAGNOSTIC_FAILURE, $exit, $template);
+            $this->assertSame('structure', $report['issues'][0]['category'], $template);
+            $this->assertStringContainsString($expectedMessage, $report['issues'][0]['message'], $template);
+        }
+    }
+
+    #[Test]
+    public function doctor_and_runtime_matcher_agree_on_path_templates(): void
+    {
+        $templates = ['/report.{format}', '/v/{a}-{b}', '/files/{name}.{ext}', '/v/{a}{b}', '/v/{id}-{id}'];
+
+        foreach ($templates as $template) {
+            try {
+                new OpenApiPathMatcher([$template]);
+                $runtimeAccepts = true;
+            } catch (InvalidArgumentException) {
+                $runtimeAccepts = false;
+            }
+
+            $spec = $this->writeSpec('agree-' . md5($template) . '.json', (string) json_encode([
+                'openapi' => '3.2.0',
+                'info' => ['title' => 'Test', 'version' => '1'],
+                'paths' => [$template => ['get' => ['responses' => ['200' => ['description' => 'OK']]]]],
+            ], JSON_THROW_ON_ERROR));
+            $this->runJsonDoctor($spec, $exit);
+
+            $this->assertSame($runtimeAccepts, $exit === DoctorCommand::EXIT_OK, $template);
         }
     }
 

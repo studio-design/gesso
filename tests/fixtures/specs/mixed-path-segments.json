@@ -1,0 +1,23 @@
+{
+  "openapi": "3.2.0",
+  "info": { "title": "Mixed path segments", "version": "1.0.0" },
+  "paths": {
+    "/reports/report.{format}": {
+      "get": {
+        "parameters": [
+          { "name": "format", "in": "path", "required": true, "schema": { "type": "string", "enum": ["json", "csv"] } }
+        ],
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/versions/{major}-{minor}": {
+      "get": {
+        "parameters": [
+          { "name": "major", "in": "path", "required": true, "schema": { "type": "integer" } },
+          { "name": "minor", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": { "200": { "description": "OK" } }
+      }
+    }
+  }
+}

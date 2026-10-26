@@ -255,6 +255,31 @@ to partial runs (#453) and v2.3.0 began rejecting `null` response content
 the `### Bug Fixes` entries for each intermediate release in `CHANGELOG.md`;
 this file cannot be relied on to list them.
 
+### Unreleased: path templates with literals inside a segment (#652)
+
+Path templates that mix literals and placeholders in one segment
+(`/report.{format}`, `/v/{major}-{minor}`, `/files/{name}.{ext}`) now match
+requests, and their placeholder values reach path-parameter validation.
+Before this, they never matched. A value ends at the first occurrence of the
+literal that follows it, so `{name}.{ext}` splits `archive.tar.gz` into
+`archive` and `tar.gz`.
+
+Two template shapes that used to compile silently are now rejected, both when
+validation builds its path matcher and as a `gesso doctor` `structure` error:
+
+- **Adjacent placeholders** (`/v/{a}{b}`): no rule says where one value ends
+  and the next begins. Before this, the segment compiled as one placeholder
+  literally named `a}{b`, which matched anything and validated nothing. Put a
+  literal between them (`/v/{a}-{b}`) or merge them into one placeholder
+  (`/v/{ab}`).
+- **A placeholder name repeated inside one segment** (`/v/{id}-{id}`): OpenAPI
+  requires unique names within a template. Rename one of them
+  (`/v/{from}-{to}`).
+
+Because the matcher compiles every `paths` key, one such template makes
+validation fail for every request against that spec. Run `gesso doctor` to
+find them.
+
 ### Form-encoded explored cases (#498)
 
 `ExploredCase` gains an additive `$contentType` (default `application/json`, also a
