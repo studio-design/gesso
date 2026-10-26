@@ -74,12 +74,11 @@ class CoverageSidecarEnvelopeTest extends TestCase
 
         CoverageSidecarEnvelope::parse(['envelopeVersion' => 2, 'coverage' => $coverage, 'strictRequired' => null]);
         CoverageSidecarEnvelope::parse(['envelopeVersion' => 2, 'coverage' => $coverage, 'strictRequired' => null]);
+        // The bare v1 state is announced by the merge, after the coverage
+        // tracker validates it; parse() alone cannot tell it is well-formed.
         CoverageSidecarEnvelope::parse($coverage);
 
-        $this->assertSame(
-            ['coverage.sidecar.bare_state' => 1, 'coverage.sidecar.legacy_envelope' => 2],
-            Deprecations::counts(),
-        );
+        $this->assertSame(['coverage.sidecar.legacy_envelope' => 2], Deprecations::counts());
     }
 
     #[Test]

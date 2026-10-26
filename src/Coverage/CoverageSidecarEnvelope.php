@@ -47,7 +47,8 @@ use function sprintf;
  * The 2.x reader still accepts the legacy envelopes 2-9 (whose version
  * enumerated the halves they carried) and the bare v1 coverage state with
  * no `envelopeVersion` key, each with a one-shot `[Gesso deprecation]`
- * notice since 2.9.0; 3.0 rejects both (#505). See docs/versioning.md.
+ * notice since 2.9.0 once accepted (the bare state's from the merge, after
+ * the coverage tracker validates it); 3.0 rejects both (#505). See docs/versioning.md.
  * The wrapper key is `envelopeVersion` (not `version`) precisely so bare
  * v1 payloads remain distinguishable; see {@see self::parse()}'s
  * discriminator order.
@@ -194,14 +195,8 @@ final class CoverageSidecarEnvelope
 
             // Legacy v1 bare coverage payload. Hand it back as the coverage
             // half so OpenApiCoverageTracker::importState() validates the
-            // inner shape on its own terms.
-            Deprecations::notice(
-                id: 'coverage.sidecar.bare_state',
-                subject: 'Reading a coverage sidecar that holds a bare v1 coverage state (no envelopeVersion)',
-                replacement: 'envelopeVersion 10 (re-run the suite on this Gesso so its workers write fresh sidecars; Gesso 3.0 rejects the old ones)',
-                removedIn: '3.0',
-            );
-
+            // inner shape on its own terms; the merge announces the #505
+            // deprecation once that validation has passed.
             return [
                 'coverage' => $payload,
                 'strictRequired' => null,

@@ -186,6 +186,34 @@ final class CoverageMergeCommandDeprecationsTest extends TestCase
     }
 
     #[Test]
+    public function a_bare_v1_sidecar_is_announced_only_once_it_validates(): void
+    {
+        $bare = (new OpenApiCoverageTracker())->exportStateOn();
+        CoverageSidecarWriter::write($this->sidecarDir, '1', $bare);
+
+        $stderr = $this->merge();
+
+        $this->assertStringContainsString(
+            '[Gesso deprecation] Reading a coverage sidecar that holds a bare v1 coverage state',
+            $stderr,
+        );
+        $this->assertSame(['coverage.sidecar.bare_state' => 1], Deprecations::counts());
+    }
+
+    #[Test]
+    public function a_malformed_bare_v1_sidecar_records_no_deprecation(): void
+    {
+        CoverageSidecarWriter::write($this->sidecarDir, '1', ['version' => 1, 'specs' => 'not-a-map']);
+
+        $stderr = '';
+        $exit = $this->command($stderr)->run($this->options());
+
+        $this->assertSame(1, $exit);
+        $this->assertStringContainsString('invalid sidecar payload', $stderr);
+        $this->assertSame([], Deprecations::counts());
+    }
+
+    #[Test]
     public function an_io_failure_announces_the_v3_exit_code_and_still_exits_1(): void
     {
         // Issue #507: 3.0 exits 2 here, like the other commands.

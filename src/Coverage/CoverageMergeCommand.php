@@ -657,6 +657,16 @@ final class CoverageMergeCommand
                 // Issue #505: a legacy payload raises its deprecation here.
                 $parsed = $this->deprecationsToStderr(static fn(): array => CoverageSidecarEnvelope::parse($payload));
                 $coverageTracker->importStateOn($parsed['coverage']);
+                if (!array_key_exists('envelopeVersion', $payload)) {
+                    // Issue #505: announced only once the tracker accepted the
+                    // bare v1 state, as the envelope does for versions 2-9.
+                    $this->deprecationsToStderr(static fn() => Deprecations::notice(
+                        id: 'coverage.sidecar.bare_state',
+                        subject: 'Reading a coverage sidecar that holds a bare v1 coverage state (no envelopeVersion)',
+                        replacement: 'envelopeVersion 10 (re-run the suite on this Gesso so its workers write fresh sidecars; Gesso 3.0 rejects the old ones)',
+                        removedIn: '3.0',
+                    ));
+                }
                 if ($parsed['strictRequired'] !== null) {
                     $strictRequiredTracker->importStateOn($parsed['strictRequired']);
                 }

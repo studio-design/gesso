@@ -19,6 +19,7 @@ use Studio\Gesso\Coverage\CoverageSidecarWriter;
 use Studio\Gesso\Coverage\JsonCoverageRenderer;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\Coverage\SdkExerciseCoverageTracker;
+use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Validation\Strict\StrictAdditionalPropertiesTracker;
 use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
@@ -74,6 +75,7 @@ class CoverageMergeCommandTest extends TestCase
         StrictAdditionalPropertiesTracker::resetCurrent();
         SdkExerciseCoverageTracker::resetCurrent();
         OpenApiSpecLoader::reset();
+        Deprecations::resetForTesting();
 
         $base = sys_get_temp_dir() . '/openapi-coverage-merge-' . uniqid('', true);
         $this->sidecarDir = $base . '/sidecars';
@@ -96,6 +98,7 @@ class CoverageMergeCommandTest extends TestCase
         // Issue #229 / S6: actively drop the process-global locator slot so
         // the orphan instance run() installed does not leak into other
         // tests that introspect ::current() between cases.
+        Deprecations::resetForTesting();
         OpenApiCoverageTracker::resetCurrent();
         StrictRequiredTracker::resetCurrent();
         StrictAdditionalPropertiesTracker::resetCurrent();
@@ -305,7 +308,7 @@ class CoverageMergeCommandTest extends TestCase
         );
         CoverageSidecarWriter::write($this->sidecarDir, '2', OpenApiCoverageTracker::exportState());
 
-        $command = new CoverageMergeCommand(stdoutWriter: static fn(string $msg): null => null);
+        $command = new CoverageMergeCommand(stdoutWriter: static fn(string $msg): null => null, stderrWriter: static fn(string $msg): null => null);
         $exit = $command->run([
             'sidecar_dir' => $this->sidecarDir,
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
@@ -338,7 +341,7 @@ class CoverageMergeCommandTest extends TestCase
         );
         CoverageSidecarWriter::write($this->sidecarDir, '1', OpenApiCoverageTracker::exportState());
 
-        $command = new CoverageMergeCommand(stdoutWriter: static fn(string $msg): null => null);
+        $command = new CoverageMergeCommand(stdoutWriter: static fn(string $msg): null => null, stderrWriter: static fn(string $msg): null => null);
         $exit = $command->run([
             'sidecar_dir' => $this->sidecarDir,
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
@@ -413,7 +416,7 @@ class CoverageMergeCommandTest extends TestCase
         $stepSummary = $this->sidecarDir . '/../step-summary.md';
         file_put_contents($stepSummary, '');
 
-        $command = new CoverageMergeCommand(stdoutWriter: static fn(string $msg): null => null);
+        $command = new CoverageMergeCommand(stdoutWriter: static fn(string $msg): null => null, stderrWriter: static fn(string $msg): null => null);
         $exit = $command->run([
             'sidecar_dir' => $this->sidecarDir,
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
@@ -655,7 +658,7 @@ class CoverageMergeCommandTest extends TestCase
         $this->writeSidecar('Unit', 'GET', '/v1/pets', '200');
         $this->writeSidecar('Feature', 'POST', '/v1/pets', '201');
 
-        $command = new CoverageMergeCommand(stdoutWriter: static fn(string $msg): null => null);
+        $command = new CoverageMergeCommand(stdoutWriter: static fn(string $msg): null => null, stderrWriter: static fn(string $msg): null => null);
         $exit = $command->run([
             'sidecar_dir' => $this->sidecarDir,
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
@@ -795,7 +798,7 @@ class CoverageMergeCommandTest extends TestCase
 
         $jsonPath = dirname($this->sidecarDir) . '/coverage.json';
 
-        $command = new CoverageMergeCommand(stdoutWriter: static fn(string $msg): null => null);
+        $command = new CoverageMergeCommand(stdoutWriter: static fn(string $msg): null => null, stderrWriter: static fn(string $msg): null => null);
         $exit = $command->run([
             'sidecar_dir' => $this->sidecarDir,
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
@@ -875,7 +878,7 @@ class CoverageMergeCommandTest extends TestCase
         $jsonPath = $base . '/coverage.json';
         $htmlPath = $base . '/coverage.html';
 
-        $command = new CoverageMergeCommand(stdoutWriter: static fn(string $msg): null => null);
+        $command = new CoverageMergeCommand(stdoutWriter: static fn(string $msg): null => null, stderrWriter: static fn(string $msg): null => null);
         $exit = $command->run([
             'sidecar_dir' => $this->sidecarDir,
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
@@ -914,7 +917,7 @@ class CoverageMergeCommandTest extends TestCase
 
         $htmlPath = dirname($this->sidecarDir) . '/coverage.html';
 
-        $command = new CoverageMergeCommand(stdoutWriter: static fn(string $msg): null => null);
+        $command = new CoverageMergeCommand(stdoutWriter: static fn(string $msg): null => null, stderrWriter: static fn(string $msg): null => null);
         $exit = $command->run([
             'sidecar_dir' => $this->sidecarDir,
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
@@ -985,7 +988,7 @@ class CoverageMergeCommandTest extends TestCase
 
         $junitPath = dirname($this->sidecarDir) . '/coverage.junit.xml';
 
-        $command = new CoverageMergeCommand(stdoutWriter: static fn(string $msg): null => null);
+        $command = new CoverageMergeCommand(stdoutWriter: static fn(string $msg): null => null, stderrWriter: static fn(string $msg): null => null);
         $exit = $command->run([
             'sidecar_dir' => $this->sidecarDir,
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
@@ -1032,7 +1035,7 @@ class CoverageMergeCommandTest extends TestCase
         );
         CoverageSidecarWriter::write($this->sidecarDir, '1', OpenApiCoverageTracker::exportState());
 
-        $command = new CoverageMergeCommand(stdoutWriter: static fn(string $msg): null => null);
+        $command = new CoverageMergeCommand(stdoutWriter: static fn(string $msg): null => null, stderrWriter: static fn(string $msg): null => null);
         $exit = $command->run([
             'sidecar_dir' => $this->sidecarDir,
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
@@ -2968,7 +2971,7 @@ class CoverageMergeCommandTest extends TestCase
         $this->writeConfig();
         $this->recordOneWorker();
 
-        $exit = (new CoverageMergeCommand(stdoutWriter: static fn(string $msg): null => null))
+        $exit = (new CoverageMergeCommand(stdoutWriter: static fn(string $msg): null => null, stderrWriter: static fn(string $msg): null => null))
             ->run(['config' => $this->configPath()]);
 
         $this->assertSame(0, $exit);
@@ -3026,9 +3029,12 @@ class CoverageMergeCommandTest extends TestCase
         $this->recordOneWorker();
         $stdout = '';
 
-        $exit = (new CoverageMergeCommand(stdoutWriter: static function (string $msg) use (&$stdout): void {
-            $stdout .= $msg;
-        }))->run(['config' => $this->configPath(), 'format' => 'json']);
+        $exit = (new CoverageMergeCommand(
+            stdoutWriter: static function (string $msg) use (&$stdout): void {
+                $stdout .= $msg;
+            },
+            stderrWriter: static fn(string $msg): null => null,
+        ))->run(['config' => $this->configPath(), 'format' => 'json']);
 
         $this->assertSame(0, $exit);
         $this->assertFileDoesNotExist($this->outputFile);
