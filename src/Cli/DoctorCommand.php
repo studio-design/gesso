@@ -336,7 +336,7 @@ final class DoctorCommand
             }
             // The runtime confines refs to the base path whichever way the
             // spec was named; a --spec outside it keeps the default root.
-            if (is_dir($basePath) && self::allBelow($options['specs'] ?? [], $basePath)) {
+            if (is_dir($basePath) && self::allBelow($options['specs'], $basePath)) {
                 $options['local_ref_root'] ??= $basePath;
             }
         }
