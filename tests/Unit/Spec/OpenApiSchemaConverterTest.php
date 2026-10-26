@@ -145,6 +145,28 @@ class OpenApiSchemaConverterTest extends TestCase
     }
 
     #[Test]
+    public function annotation_only_subschemas_become_true_after_stripping(): void
+    {
+        $schema = [
+            'type' => 'object',
+            'properties' => [
+                'owner' => ['allOf' => [['type' => 'object'], ['nullable' => true]]],
+                'count' => ['example' => 1],
+                'tags' => ['type' => 'array', 'items' => ['deprecated' => true]],
+            ],
+        ];
+
+        $v30 = OpenApiSchemaConverter::convert($schema, OpenApiVersion::V3_0);
+        $this->assertTrue($v30['properties']['owner']['allOf'][1]);
+        $this->assertTrue($v30['properties']['count']);
+        $this->assertTrue($v30['properties']['tags']['items']);
+
+        $v31 = OpenApiSchemaConverter::convert($schema, OpenApiVersion::V3_1);
+        $this->assertTrue($v31['properties']['count']);
+        $this->assertTrue($v31['properties']['tags']['items']);
+    }
+
+    #[Test]
     public function v30_openapi_only_keys_removed(): void
     {
         $schema = [

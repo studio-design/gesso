@@ -309,7 +309,7 @@
         },
         "/header-reserved-accept-required": {
             "get": {
-                "summary": "in:header Accept declared with required:true — OAS 3.x §4.7.12.1 says SHALL be ignored",
+                "summary": "in:header Accept declared with required:true — OAS 3.x says the definition SHALL be ignored, so the request must pass",
                 "operationId": "headerReservedAcceptRequired",
                 "parameters": [
                     {
@@ -373,7 +373,7 @@
         },
         "/header-reserved-accept-upper": {
             "get": {
-                "summary": "in:header ACCEPT (upper-case) — detection must be case-insensitive",
+                "summary": "in:header ACCEPT (upper-case) — the reserved-name match is case-insensitive",
                 "operationId": "headerReservedAcceptUpper",
                 "parameters": [
                     {
@@ -394,7 +394,7 @@
         },
         "/header-reserved-multiple": {
             "get": {
-                "summary": "two reserved in:header entries in one operation — both must surface",
+                "summary": "two reserved in:header entries in one operation — both are ignored",
                 "operationId": "headerReservedMultiple",
                 "parameters": [
                     {
