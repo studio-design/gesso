@@ -1,6 +1,6 @@
 # ADR 0002: phase Arazzo workflow execution behind shared runtime expressions
 
-- Status: Accepted
+- Status: Accepted, amended 2026-10-26 (runner moves out of the core package)
 - Date: 2026-07-30
 - Issue: [#409](https://github.com/studio-design/gesso/issues/409)
 - Related: [#400](https://github.com/studio-design/gesso/issues/400)
@@ -270,3 +270,28 @@ conservative behaviour: an embedded array or object fails with a
 documented deviation from the specification, not an oversight. Lifting it
 (serialising embedded arrays and objects as JSON) is tracked under
 [#430](https://github.com/studio-design/gesso/issues/430).
+
+### 2026-10-26 — the workflow runner moves out of the core package
+
+The owner decided to extract Arazzo from `studio-design/gesso` into a separate
+package ([ADR 0007](0007-v3-scope-and-release-window.md) rule 5). The loader,
+preflight, runner, and actions phases
+([#630](https://github.com/studio-design/gesso/pull/630),
+[#632](https://github.com/studio-design/gesso/pull/632),
+[#633](https://github.com/studio-design/gesso/pull/633)) never shipped in a
+tagged release, so they leave the core before 2.8.0 without a deprecation. The
+tree is preserved on the `archive/arazzo` branch as the seed of the new
+package.
+
+The runtime-expression evaluator and its context stay in the core: OpenAPI
+Links exploration (`src/Fuzz/LinkFollower.php`) uses them, which is the shared
+boundary this ADR's Decision chose.
+
+Open for the new package: the runner imports about fifteen `@internal` core
+symbols (the runtime-expression classes, `OperationIndex`, `RequestUriBuilder`,
+`ParameterCollector`, `HeaderNormalizer`, `ContentTypeMatcher`,
+`SchemaValidatorRunner`, `StrictRequiredTracker`, and the loader's
+source-mapping methods). Before its first release it has to either depend on
+public core API added for it (named under ADR 0005 and covered by
+`docs/versioning.md`) or pin the core to one minor. That choice is made when the
+package is created, not here.

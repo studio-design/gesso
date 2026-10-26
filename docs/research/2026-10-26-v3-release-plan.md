@@ -330,8 +330,10 @@ From the [performance research](2026-10-26-v3-performance-and-pruning.md#6-propo
 ### 3.5 v3.0 breaking set
 
 P0–P7 in §2, in that dependency order, after v2.9.0 is tagged and `2.x` is cut.
-The performance research's G, H, and I (SDK exercise coverage, Arazzo, fuzz
-breadth) are **not** in the set unless their open decisions are resolved.
+The performance research's G and I (SDK exercise coverage, fuzz breadth) are
+**not** in the set unless their open decisions are resolved. H (Arazzo) was
+decided on 2026-10-26 and lands before 2.8.0 as a non-breaking removal, because
+Arazzo never shipped in a tagged release.
 
 ### 3.6 Adoption
 
@@ -353,17 +355,15 @@ Order: B → A (and C in parallel after B) → D (any time) → F (at the v3 rel
 ## Open decisions
 
 Resolved on 2026-10-26: ADR 0007 is accepted; the branch strategy is option (a)
-(§1); the #507 renamed flags warn through v2 and are removed in 3.0 (§1.6).
+(§1); the #507 renamed flags warn through v2 and are removed in 3.0 (§1.6);
+Arazzo is extracted into a separate package before 2.8.0 and the adapters stay
+in the core (ADR 0007 rule 5).
 
 Still open:
 
-1. **Extract Arazzo into a separate package?** Conflicts with the package-split
-   scope boundary that both ADR 0004 and ADR 0007 rule 5 keep; accepting it
-   needs an ADR 0007 amendment and an ADR 0002 note. To be decided together
-   with the packaging of the Laravel, Symfony, and Pest adapters.
-2. **Drop SDK exercise coverage?** ADR 0004 "What v3 does not delete" and ADR
+1. **Drop SDK exercise coverage?** ADR 0004 "What v3 does not delete" and ADR
    0007 rule 4 keep it; removal needs the rule 3(b) evidence, a coverage-JSON
    format bump, and an amendment.
-3. **Remove fuzz breadth (spec-wide exploration, link chains, failure
+2. **Remove fuzz breadth (spec-wide exploration, link chains, failure
    reducer)?** `src/Fuzz/` is kept by ADR 0004 and ADR 0007 rule 4, and link
    following shipped recently (#634).

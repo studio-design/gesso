@@ -69,16 +69,23 @@ v2's support floor.
 
    `@internal` code needs only the verification table green.
 4. **Kept by evidence.** Enum drift, SDK exercise coverage, `src/Fuzz/`, and the
-   named contract checks stay in v3. ADR 0004 recorded measured use for them
+   named contract checks stay in v3 (Arazzo leaves the core; see rule 5). ADR 0004 recorded measured use for them
    (52 backed enums under fail-on-drift; 2 files / 246 lines of contract
    checks). That is rule 3(b) applied, not an exemption. The pruning research
-   proposes extracting Arazzo, removing SDK exercise coverage, and removing
-   fuzz breadth; those proposals are **open decisions** listed in
+   also proposed removing SDK exercise coverage and removing fuzz breadth;
+   those proposals are **open decisions** listed in
    `docs/research/2026-10-26-v3-release-plan.md` and are not decided by this
-   ADR. Accepting any of them means amending this rule (and rule 5 for an
-   extraction into a separate package) with the evidence rule 3(b) asks for.
-5. **Scope boundaries, revised.** Still not authorized: splitting the
-   repository into several Composer packages; changing validation semantics
+   ADR. Accepting either means amending this rule with the evidence rule 3(b)
+   asks for.
+5. **Scope boundaries, revised.** One extraction is authorized: the Arazzo
+   workflow runner moves to a separate Composer package. It never shipped in
+   a tagged release and has no caller outside `src/Arazzo/`, so it leaves the
+   core before 2.8.0 without a deprecation
+   ([ADR 0002, 2026-10-26 amendment](0002-arazzo-workflow-execution.md#2026-10-26--the-workflow-runner-moves-out-of-the-core-package)).
+   The Laravel, Symfony, PHPUnit, and Pest adapters stay in the core package:
+   they are thin, coupled to core internals, and cost nothing at runtime when
+   unused, while one `composer require` keeps adoption simple. Still not
+   authorized: splitting off any other Composer package; changing validation semantics
    only because a major is available (rule 2 requires spec agreement). Newly
    authorized when a benchmark or bug evidence is attached: replacing or
    rewriting an internal component wholesale, and a major upgrade of a
@@ -126,5 +133,8 @@ Accepted by the owner on 2026-10-26, together with two of the open decisions in
 - **#507 renamed CLI flags:** the old spellings warn throughout v2 and are
   removed in v3.0, as `v3-renames.json` records.
 
-Arazzo extraction, SDK exercise coverage, and fuzz breadth stay open; rule 4
-and rule 5 govern them until an amendment decides otherwise.
+- **Arazzo:** extracted into a separate package; the adapters stay in the core
+  (rule 5).
+
+SDK exercise coverage and fuzz breadth stay open; rule 4 governs them until an
+amendment decides otherwise.
