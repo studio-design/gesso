@@ -168,6 +168,12 @@ nothing there.
 | 2.9.0 | *static only* `EnumBindingReason::YamlLibraryMissing` (enum case) | none — only file-path bindings raise it; component-name bindings report a missing component as `ComponentNotFound` | 3.0 |
 | 2.9.0 | *static only* `EnumBindingReason::NonMappingRoot` (enum case) | none — only file-path bindings raise it; component-name bindings report a missing component as `ComponentNotFound` | 3.0 |
 | 2.9.0 | *static only* `EnumBindingReason::EnumKeyMissing` (enum case) | none — only file-path bindings raise it; component-name bindings report a missing component as `ComponentNotFound` | 3.0 |
+| 2.9.0 | `failOpenApi()` (private, via `ValidatesOpenApiSchema`, Symfony and PSR-7 `OpenApiAssertions`) | PHPUnit's `$this->fail()` | 3.0 |
+| 2.9.0 | `assertOpenApi()` (private, via `ValidatesOpenApiSchema`, Symfony and PSR-7 `OpenApiAssertions`) | PHPUnit's `$this->assertTrue()` | 3.0 |
+| 2.9.0 | `failPsr7()` (private, via PSR-7 `OpenApiAssertions`) | PHPUnit's `$this->fail()` | 3.0 |
+| 2.9.0 | `assertPsr7()` (private, via PSR-7 `OpenApiAssertions`) | PHPUnit's `$this->assertTrue()` | 3.0 |
+| 2.9.0 | `failExplore()` (private, via `ExploresOpenApiEndpoint`) | PHPUnit's `$this->fail()` | 3.0 |
+| 2.9.0 | *static only* `phpunit/phpunit` in Gesso's `require` (Composer constraint) | declare it yourself: `composer require --dev "phpunit/phpunit:^12.0 \|\| ^13.0"`; v3 moves it to `require-dev` and no longer installs a runner for you | 3.0 |
 
 Enum drift bindings: a backed enum now matches the `components.schemas` entry
 named after its class (an `Enum` suffix on either side is ignored) in the

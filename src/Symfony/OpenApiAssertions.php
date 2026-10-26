@@ -14,6 +14,7 @@ use Studio\Gesso\Internal\OpenApiAssertionCore;
 use Studio\Gesso\OpenApiRequestValidator;
 use Studio\Gesso\OpenApiResponseValidator;
 use Studio\Gesso\OpenApiValidationResult;
+use Studio\Gesso\PHPUnit\CleanTraceAssert;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Spec\OpenApiSpecResolver;
 use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
@@ -109,7 +110,7 @@ trait OpenApiAssertions
 
         $content = $response->getContent();
         if ($content === false) {
-            $this->failOpenApi(
+            CleanTraceAssert::fail(
                 'OpenAPI contract testing requires buffered responses, but Response::getContent() '
                 . 'returned false (streamed response?).',
             );
@@ -251,7 +252,7 @@ trait OpenApiAssertions
             $request = $client->getRequest();
             $response = $client->getResponse();
         } catch (BadMethodCallException $e) {
-            $this->failOpenApi(
+            CleanTraceAssert::fail(
                 'assertClientMatchesOpenApiSchema() needs a completed request, but the test client '
                 . 'has not made one yet. Call $client->request(...) before asserting. '
                 . '(' . $e->getMessage() . ')',
@@ -324,7 +325,7 @@ trait OpenApiAssertions
     {
         $method = HttpMethod::tryFrom(strtoupper($request->getMethod()));
         if ($method === null) {
-            $this->failOpenApi(sprintf(
+            CleanTraceAssert::fail(sprintf(
                 'Request uses unsupported HTTP method %s. Supported methods: %s.',
                 var_export($request->getMethod(), true),
                 HttpMethod::listOfValues(),
@@ -343,7 +344,7 @@ trait OpenApiAssertions
     {
         $specName = $this->resolveOpenApiSpec();
         if ($specName === '') {
-            $this->failOpenApi(
+            CleanTraceAssert::fail(
                 'No OpenAPI spec is configured for this test. Add #[OpenApiSpec(\'your-spec\')] to the '
                 . 'test class or method, or override openApiSpec() to return the spec name.',
             );
@@ -380,7 +381,7 @@ trait OpenApiAssertions
         try {
             return HttpFoundationBody::request($request, $contentType);
         } catch (JsonException $e) {
-            $this->failOpenApi(HttpFoundationBody::parseFailure($e, $contentType, 'Request'));
+            CleanTraceAssert::fail(HttpFoundationBody::parseFailure($e, $contentType, 'Request'));
         }
     }
 
@@ -396,7 +397,7 @@ trait OpenApiAssertions
         try {
             return HttpFoundationBody::json($content, $contentType);
         } catch (JsonException $e) {
-            $this->failOpenApi(HttpFoundationBody::parseFailure($e, $contentType, $subject));
+            CleanTraceAssert::fail(HttpFoundationBody::parseFailure($e, $contentType, $subject));
         }
     }
 

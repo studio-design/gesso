@@ -18,7 +18,7 @@ This is the *provider-side, spec-driven* flavour of contract testing. It is diff
 Install:
 
 ```bash
-composer require --dev "studio-design/gesso:^2.0" \
+composer require --dev "studio-design/gesso:^2.0" phpunit/phpunit \
   symfony/http-foundation symfony/http-kernel symfony/framework-bundle
 ```
 

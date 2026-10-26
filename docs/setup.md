@@ -24,6 +24,14 @@ of `bin/gesso` from a library checkout uses that checkout's dependencies.
 - [HTTP `$ref` resolution (opt-in)](#http-ref-resolution-opt-in)
 - [Remote spec sources (opt-in)](#remote-spec-sources-opt-in)
 
+Install Gesso and PHPUnit as development dependencies. Declare PHPUnit
+yourself: v3 moves it to Gesso's `require-dev`, so it will no longer arrive
+transitively.
+
+```bash
+composer require --dev "studio-design/gesso:^2.0" phpunit/phpunit
+```
+
 ## 1. Provide your OpenAPI spec
 
 Internal `$ref` (`#/components/schemas/...`) and local-filesystem `$ref` (`./schemas/pet.yaml`, `../shared/error.json`) are resolved automatically — **no pre-bundling required**. Point the loader at your spec's entry file:
