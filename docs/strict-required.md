@@ -224,7 +224,7 @@ vendor/bin/gesso coverage:merge \
   --strict-required=fail
 ```
 
-`--strict-required` accepts `off` (default), `warn` (emit diagnostic, exit 0), and `fail` (emit diagnostic, exit 1). The `strict.required` setting the PHPUnit extension reads does **not** propagate to the merge CLI — workers always export observations, and the merge step decides whether to assert. This keeps mode flips a single-knob CI operation without per-worker reruns.
+`--strict-required` accepts `off` (default), `warn` (emit diagnostic, exit 0), and `fail` (emit diagnostic, exit 1). Workers always export observations, and the merge step decides whether to assert. The merge reads `strict.required['run']` from `gesso.php` (`./gesso.php`, or the file named by `--config`) as its default, and an explicit `--strict-required` wins over it, so `'run' => 'fail'` in the shared file enables the gate without a CLI flag. The v2 `strict_required` phpunit.xml parameter does not reach the merge. Flipping the mode is a single-knob CI change either way, without per-worker reruns.
 
 In a sequential run (no `TEST_TOKEN` or `GESSO_SIDECAR_TOKEN`) with both `strict_required` and `strict_required_per_call` off, the extension skips the body walk and records nothing.
 

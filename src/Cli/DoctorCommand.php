@@ -1128,7 +1128,7 @@ final class DoctorCommand
                 <bootstrap class="Studio\Gesso\PHPUnit\OpenApiCoverageExtension"/>
             </extensions>
             XML
-            . "\n\n<!-- gesso.php, next to phpunit.xml (`gesso doctor --emit-config > gesso.php` writes it): -->\n"
+            . "\n\n<!-- Save the PHP below as gesso.php next to phpunit.xml. -->\n"
             . $this->gessoConfigSource($specs, $stripPrefixes, $basePath, $acknowledgedSchemes);
     }
 
