@@ -436,39 +436,6 @@ final class OpenApiSpecLoader
     }
 
     /**
-     * @internal Arazzo source mapping. Canonical path load() would read for
-     * `$specName`, or the loader's own SpecFileNotFoundException.
-     */
-    public static function resolvedSpecFile(string $specName): string
-    {
-        return self::resolveSpecFile($specName)['path'];
-    }
-
-    /**
-     * @internal Arazzo source mapping. Spec name whose configured remote
-     * entry URL equals `$url` exactly, or null when none is configured.
-     */
-    public static function remoteSpecNameForUrl(string $url): ?string
-    {
-        foreach (self::$remoteSpecs as $specName => $source) {
-            if ($source->url === $url) {
-                return (string) $specName;
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * @internal Arazzo source mapping. True when `$specName` is a configured
-     * remoteSpecs entry, which load() prefers over any local file.
-     */
-    public static function isRemoteSpecName(string $specName): bool
-    {
-        return isset(self::$remoteSpecs[$specName]);
-    }
-
-    /**
      * @param array<string, mixed> $resolved
      *
      * @return array<string, mixed>

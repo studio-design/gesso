@@ -9,7 +9,7 @@ namespace Studio\Gesso\Internal;
  * failure: an expression never silently resolves to `null` or to its own
  * literal text.
  *
- * @internal Runtime-expression plumbing shared by Links exploration and the Arazzo runner; not public API.
+ * @internal Runtime-expression plumbing for Links exploration; not public API.
  */
 enum RuntimeExpressionFailure
 {

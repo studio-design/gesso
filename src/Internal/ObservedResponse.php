@@ -22,10 +22,10 @@ use function sprintf;
 /**
  * A caller-observed HTTP response normalised for runtime expressions and
  * the response validator. Accepts exactly the two shapes the Links explorer
- * and the Arazzo runner document: a PSR-7 response or
+ * documents: a PSR-7 response or
  * `['status' => int, 'headers' => array, 'body' => string]`.
  *
- * @internal Runtime-expression plumbing shared by Links exploration and the Arazzo runner; not public API.
+ * @internal Runtime-expression plumbing for Links exploration; not public API.
  */
 final readonly class ObservedResponse
 {

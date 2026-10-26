@@ -23,7 +23,6 @@ Each `.md` link below is the raw Markdown of a documentation page. The same page
 - [Laravel route parity](https://studio-design.github.io/gesso/laravel-route-parity.md): compare registered Laravel routes with spec operations to catch undocumented drift.
 - [Schema-driven fuzzing](https://studio-design.github.io/gesso/fuzzing.md): generate deterministic valid and invalid request cases from schemas, with replay tokens.
 - [Named contract checks](https://studio-design.github.io/gesso/contract-checks.md): probe protocol-level contract holes schema validation cannot see, with Schemathesis-style check names.
-- [Arazzo workflows](https://studio-design.github.io/gesso/arazzo.md): run synchronous Arazzo 1.1 workflows with every step's request and response validated against the OpenAPI contract.
 - [SDK response round trips](https://studio-design.github.io/gesso/sdk-roundtrip.md): generate branch-complete valid response payloads and exercise generated SDK decode/encode fidelity.
 - [Symfony contract testing](https://studio-design.github.io/gesso/contract-testing-symfony.md): full guide to spec-driven provider-side contract testing in a Symfony application.
 - [Consumer-side contract testing](https://studio-design.github.io/gesso/consumer-side-contract-testing.md): fake an external API from its OpenAPI document in `Http::fake()` or `MockHttpClient`, so fakes fail when the provider spec changes.

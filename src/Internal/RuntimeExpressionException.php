@@ -9,7 +9,7 @@ use RuntimeException;
 use function sprintf;
 
 /**
- * @internal Runtime-expression plumbing shared by Links exploration and the Arazzo runner; not public API.
+ * @internal Runtime-expression plumbing for Links exploration; not public API.
  */
 final class RuntimeExpressionException extends RuntimeException
 {
