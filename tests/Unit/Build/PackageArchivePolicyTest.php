@@ -186,6 +186,7 @@ final class PackageArchivePolicyTest extends TestCase
             '/benchmarks',
             // Internal design documents. A consumer's agent greps vendor/ and
             // reads whatever it finds as product documentation (issue #511).
+            '/docs/research',
             '/docs/superpowers',
             '/phpstan.neon.dist',
             '/phpunit.xml.dist',

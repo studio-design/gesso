@@ -157,6 +157,7 @@
             "/lychee.toml",
             "/docs/.vitepress",
             "/docs/public",
+            "/docs/research",
             "/docs/superpowers",
             "/examples",
             "/images",

@@ -223,16 +223,29 @@ the worker sidecars. See [diagnostic
 channels](supported-features.md#diagnostic-channels-e_user_warning-and-e_user_deprecated).
 
 **If a run on the final minor of a major reports zero Gesso deprecations,
-upgrading to the next major requires no consumer code, configuration, or CLI
-changes.** That is what the rule buys: the deprecation report, not the upgrade
-guide, is the authoritative answer to "am I ready?".
+upgrading to the next major requires no changes for any surface that announces
+its deprecation at runtime** — configuration keys, CLI flags, environment
+variables, Artisan commands, PHP symbols that raise a notice, and wire formats.
+For those, the deprecation report, not the upgrade guide, is the authoritative
+answer to "am I ready?".
 
-For the v2 → v3 transition, the deprecation-carrying release is the final v2
-minor. Its number is not chosen by hand — release-please derives it from
-Conventional Commit types — so the constraint is an ordering one: every v2
-release must ship before the first breaking commit reaches `main`, because that
-commit turns the pending release into `3.0.0` and no further v2 release can be
-cut from the branch.
+Two kinds of surface cannot raise a notice and are outside that guarantee:
+**enum cases** (referencing a case runs no Gesso code) and **Composer
+constraints** (a raised PHP or dependency floor). Their `UPGRADING.md`
+"Deprecations" rows are marked *static only*. Check them separately: search
+your code for the listed names, or run a static analyser that reports
+`@deprecated` symbols, and compare your platform with the listed floors.
+
+For the v2 → v3 transition, the deprecation-carrying release is v2.9.0. The
+`2.x` maintenance branch is cut from its tag, and only then does `main` take
+its first breaking commit (as a v3 prerelease). A deprecation found later ships
+as a `2.x` minor; a removal merges only after its deprecation is in a tagged v2
+release. Enum cases and Composer constraints count as deprecated once a tagged v2
+release carries a docblock `@deprecated` where a declaration exists and an
+`UPGRADING.md` "Deprecations" row marked *static only*. A wire-format cutoff
+counts once that release also emits a `[Gesso deprecation]` notice from the
+reader that would reject it, so it stays inside the runtime guarantee above. See
+[ADR 0007](adr/0007-v3-scope-and-release-window.md) rule 3.
 
 ### The rename checklist
 
@@ -353,11 +366,10 @@ receive fixes.
 
 ## v2 maintenance lifecycle
 
-v3.0 has no scheduled date: its window opens on a condition rather than a
-calendar deadline, recorded in
-[ADR 0004](adr/0004-v3-consistency-policy-and-protected-core.md#2026-08-12--the-v30-window-opens-on-a-condition-not-a-date).
-This line's support is therefore anchored to the v3.0.0 release rather than to
-fixed dates.
+v3.0 has no scheduled date: it ships when the release gates in
+[ADR 0007](adr/0007-v3-scope-and-release-window.md#release-window) hold.
+This line's support is therefore anchored to the v3.0.0 release, with a fixed
+floor.
 
 | Period | Ends | Accepted changes |
 | --- | --- | --- |
@@ -365,17 +377,15 @@ fixed dates.
 | Security maintenance | 6 months after active maintenance ends | Security fixes only; non-security changes require evidence that they are necessary to ship a security fix safely |
 | End of life | when security maintenance ends | No releases or support commitment |
 
-**Adopting v2 today does not carry an unknown support horizon.** The earliest
-v3.0.0 can be released is 2027-07-01, because the ADR 0004 window cannot open
-before v1 reaches end of life. Twelve months after that is 2028-07-01, so that
-is the earliest date active maintenance can end, and 2029-01-01 the earliest
-end of life.
+**Adopting v2 today does not carry an unknown support horizon.** However
+early v3.0.0 ships, active maintenance of v2 does not end before 2028-07-01,
+and v2 does not reach end of life before 2029-01-01.
 
-The 2028-07-01 floor in the table restates that derived date as a commitment
-of this document. It is not there to bind the relative rule — it cannot, since
-the two are equal by construction today — but to make the guarantee
-independent: shortening it requires changing this table, so amending ADR 0004
-cannot quietly shorten how long v2 is supported.
+The floor was first derived from ADR 0004, whose v3 window could not open
+before v1 reached end of life (2027-07-01). ADR 0007 removed that window, and
+the floor stays as a commitment of this document on its own: shortening it
+requires changing this table, so amending an ADR cannot quietly shorten how
+long v2 is supported.
 
 The window is longer than the one v1 received — v1 entered security
 maintenance about five months after v2.0.0 shipped — and the difference is
