@@ -7,7 +7,7 @@ full record.
 Sections are ordered newest-first. If you are jumping multiple minors,
 read each intermediate section in order — behavioural changes compose.
 
-## Unreleased: body-validation reliability
+## Body-validation reliability (2.7.0)
 
 Adapters now preserve the distinction between top-level JSON `{}` and `[]`.
 If an endpoint declares `type: object` but returns `[]`, its test now fails;
@@ -23,7 +23,7 @@ an object request schema. Their array-only payload arguments cannot express
 an empty object. Send raw JSON instead; `{}` is the canonical empty-object body:
 
 ```php
-// Laravel (ValidatesOpenApiSchema): sent verbatim, auto-assert / auto-validate still apply.
+// Laravel (ValidatesOpenApiSchema, 2.9.0+): sent verbatim, auto-assert / auto-validate still apply.
 $this->jsonRaw('POST', '/object', '{}');
 
 // Symfony KernelBrowser / HttpKernelBrowser:
