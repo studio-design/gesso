@@ -22,6 +22,9 @@ use InvalidArgumentException;
 use Psr\Http\Client\ClientInterface;
 use Psr\Http\Message\RequestFactoryInterface;
 use RuntimeException;
+use Studio\Gesso\Config\ConfigurationBridge;
+use Studio\Gesso\Config\GessoConfig;
+use Studio\Gesso\Config\InvalidGessoConfigurationException;
 use Studio\Gesso\Exception\InvalidOpenApiSpecException;
 use Studio\Gesso\Exception\MalformedDiscriminatorException;
 use Studio\Gesso\Exception\SpecFileNotFoundException;
@@ -29,6 +32,7 @@ use Studio\Gesso\Internal\ArgvParser;
 use Studio\Gesso\Internal\CliDocuments;
 use Studio\Gesso\Internal\CliIo;
 use Studio\Gesso\Internal\HttpRefLoader;
+use Studio\Gesso\Internal\SpecPath;
 use Studio\Gesso\Internal\ToolVersion;
 use Studio\Gesso\OpenApiVersion;
 use Studio\Gesso\Spec\OpenApiOperationResolver;
@@ -49,12 +53,15 @@ use Symfony\Component\HttpClient\Psr18Client;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 use Throwable;
 
+use function array_filter;
 use function array_key_exists;
 use function array_map;
+use function array_values;
 use function class_exists;
 use function compact;
 use function count;
 use function dirname;
+use function filesize;
 use function filter_var;
 use function get_debug_type;
 use function getcwd;
@@ -86,7 +93,7 @@ use function var_export;
 /**
  * Pre-test compatibility diagnostics for one or more OpenAPI documents.
  *
- * @phpstan-type DoctorOptions array{specs?: list<string>, strip_prefixes?: list<string>, remote_ref_hosts?: list<string>, acknowledged_unvalidatable_schemes?: list<string>, remote_ref_max_bytes?: int|string, local_ref_root?: string, format?: string, output_file?: string, allow_remote_refs?: bool, phpunit_snippet?: bool, emit_config?: bool, help?: bool, invalid_options?: list<string>}
+ * @phpstan-type DoctorOptions array{specs?: list<string>, strip_prefixes?: list<string>, remote_ref_hosts?: list<string>, acknowledged_unvalidatable_schemes?: list<string>, remote_ref_max_bytes?: int|string, local_ref_root?: string, config_ref_root?: string, config_specs?: list<string>, config_escaping_names?: list<string>, config?: string, format?: string, output_file?: string, allow_remote_refs?: bool, phpunit_snippet?: bool, emit_config?: bool, help?: bool, invalid_options?: list<string>}
  * @phpstan-type DoctorIssue array{severity: 'error'|'warning'|'skipped', category: string, spec: ?string, message: string, suggestion: ?string}
  * @phpstan-type SpecResult array{path: string, name: string, openapi: string, dialect: string, operations: int, responses: int}
  *
@@ -119,7 +126,7 @@ final class DoctorCommand
         return ArgvParser::parse(
             $argv,
             flags: ['allow_remote_refs', 'phpunit_snippet', 'emit_config'],
-            values: ['format', 'output_file', 'remote_ref_max_bytes', 'local_ref_root'],
+            values: ['format', 'output_file', 'remote_ref_max_bytes', 'local_ref_root', 'config'],
             lists: [
                 'spec' => 'specs',
                 'strip_prefix' => 'strip_prefixes',
@@ -159,6 +166,9 @@ final class DoctorCommand
               --emit-config              Print the equivalent gesso.php to stdout (the
                                          report goes to stderr or --output-file).
                                          Redirect: > gesso.php
+              --config=<path>            gesso.php to default the options above from
+                                         (default: ./gesso.php when present). Explicit
+                                         flags win; see docs/configuration.md.
               --help                     Show this message.
 
             Exit codes:
@@ -183,7 +193,21 @@ final class DoctorCommand
         if ($invalid !== []) {
             return $this->usageError('Unknown argument(s): ' . implode(', ', $invalid), self::USAGE_PREFIX);
         }
-        if (($options['specs'] ?? []) === []) {
+        if (($options['config'] ?? null) === '') {
+            return $this->usageError('--config must name a gesso.php file.', self::USAGE_PREFIX);
+        }
+
+        // `--emit-config > gesso.php` lets the shell truncate the default file
+        // before doctor runs; an empty default file is not a config to read then.
+        $default = GessoConfig::FILENAME;
+        if (!($options['emit_config'] ?? false) || isset($options['config']) || !is_file($default) || filesize($default) !== 0) {
+            try {
+                $options = self::withSharedDefaults($options, ConfigurationBridge::phpunit(GessoConfig::load($options['config'] ?? null)));
+            } catch (InvalidGessoConfigurationException $e) {
+                return $this->usageError($e->getMessage(), self::USAGE_PREFIX);
+            }
+        }
+        if (($options['specs'] ?? []) === [] && ($options['config_escaping_names'] ?? []) === []) {
             return $this->usageError('At least one --spec is required.', self::USAGE_PREFIX);
         }
         if (!in_array($format, ['text', 'json'], true)) {
@@ -220,6 +244,7 @@ final class DoctorCommand
         }
 
         $transport = $allowRemoteRefs ? $this->remoteTransport() : null;
+        $everySpecUsesConfigRoot = false;
         $specResults = [];
         $issues = [];
         if ($allowRemoteRefs && $transport === null) {
@@ -231,14 +256,37 @@ final class DoctorCommand
                 'suggestion' => 'Install guzzlehttp/guzzle + guzzlehttp/psr7, or symfony/http-client.',
             ];
         } else {
-            foreach ($options['specs'] as $path) {
+            foreach ($options['config_escaping_names'] ?? [] as $name) {
+                // The runtime loader rejects these names before touching the disk.
+                $issues[] = $this->issue(
+                    'error',
+                    'configuration',
+                    $name,
+                    "spec.names entry '{$name}' leaves spec.base_path; the runtime loader rejects it.",
+                    'Name specs relative to spec.base_path, without `..` segments or absolute paths.',
+                );
+            }
+            $configRoot = $options['config_ref_root'] ?? null;
+            $everySpecUsesConfigRoot = $configRoot !== null;
+            foreach ($options['specs'] ?? [] as $path) {
+                $root = $options['local_ref_root'] ?? null;
+                if ($root === null && $configRoot !== null) {
+                    // Config-derived specs always stay confined to spec.base_path,
+                    // as at runtime; an explicit --spec inherits it per spec,
+                    // only when it lies inside.
+                    $real = realpath($this->absolutise($path));
+                    $root = in_array($path, $options['config_specs'] ?? [], true) || ($real !== false && self::pathIsInsideRoot($real, $configRoot))
+                        ? $configRoot
+                        : null;
+                    $everySpecUsesConfigRoot = $everySpecUsesConfigRoot && $root !== null;
+                }
                 $this->diagnoseSpec(
                     $path,
                     $options['strip_prefixes'] ?? [],
                     $allowRemoteRefs,
                     $remoteRefHosts,
                     $maxRemoteRefBytes,
-                    $options['local_ref_root'] ?? null,
+                    $root,
                     $transport,
                     $options['acknowledged_unvalidatable_schemes'] ?? [],
                     $specResults,
@@ -247,6 +295,10 @@ final class DoctorCommand
             }
         }
 
+        if (!isset($options['local_ref_root']) && $everySpecUsesConfigRoot && isset($options['config_ref_root'])) {
+            // The emitted config and snippet describe the root every spec used.
+            $options['local_ref_root'] = $options['config_ref_root'];
+        }
         $report = $this->report($specResults, $issues, $options);
         $emitConfig = $options['emit_config'] ?? false;
         $basePath = $this->sharedSpecBasePath($specResults, $options['local_ref_root'] ?? null);
@@ -287,6 +339,73 @@ final class DoctorCommand
         }
 
         return self::EXIT_OK;
+    }
+
+    /**
+     * Issue #660: default the options the PHPUnit extension also reads from
+     * `gesso.php`, so the doctor checks the bundle the suite enforces. The spec
+     * list follows `spec.base_path` + `spec.names` (`front` when names are
+     * absent, as in the extension), with the base path as the local-ref root
+     * the runtime loader confines refs to. Explicit flags win.
+     *
+     * @param DoctorOptions $options
+     * @param array<string, bool|float|int|list<string>|string> $shared
+     *
+     * @return DoctorOptions
+     */
+    private static function withSharedDefaults(array $options, array $shared): array
+    {
+        $basePath = $shared['spec_base_path'] ?? null;
+        if (is_string($basePath)) {
+            $basePath = realpath($basePath) ?: $basePath;
+            if (($options['specs'] ?? []) === []) {
+                $names = $shared['specs'] ?? ['front'];
+                $names = is_array($names) ? $names : ['front'];
+                $options['config_escaping_names'] = array_values(array_filter($names, SpecPath::escapesBase(...)));
+                $options['specs'] = array_map(
+                    static fn(string $name): string => self::cwdRelative(self::entryDocument($basePath, $name)),
+                    array_values(array_filter($names, static fn(string $name): bool => !SpecPath::escapesBase($name))),
+                );
+                $options['config_specs'] = $options['specs'];
+            }
+            if (is_dir($basePath)) {
+                $options['config_ref_root'] = $basePath;
+            }
+        }
+        foreach (['strip_prefixes', 'acknowledged_unvalidatable_schemes'] as $key) {
+            if (($options[$key] ?? []) === [] && is_array($shared[$key] ?? null)) {
+                $options[$key] = $shared[$key];
+            }
+        }
+
+        return $options;
+    }
+
+    /** The entry document the runtime loader selects for `$name` (`.json` when none exists, reported as unreadable). */
+    private static function entryDocument(string $basePath, string $name): string
+    {
+        foreach (['json', 'yaml', 'yml'] as $extension) {
+            if (is_file("{$basePath}/{$name}.{$extension}")) {
+                return "{$basePath}/{$name}.{$extension}";
+            }
+        }
+
+        return "{$basePath}/{$name}.json";
+    }
+
+    /** `$path` relative to the cwd when it is the cwd or lies below it; `$path` itself otherwise. */
+    private static function cwdRelative(string $path): string
+    {
+        $cwd = getcwd();
+        if ($cwd === false) {
+            return $path;
+        }
+        $cwd = rtrim($cwd, '/');
+        if ($path === $cwd) {
+            return '.';
+        }
+
+        return str_starts_with($path, $cwd . '/') ? substr($path, strlen($cwd) + 1) : $path;
     }
 
     private static function pathIsInsideRoot(string $path, string $root): bool
@@ -1043,18 +1162,8 @@ final class DoctorCommand
                 }
             }
         }
-        $cwd = getcwd();
-        if ($cwd !== false) {
-            $cwd = rtrim($cwd, '/');
-            if ($basePath === $cwd) {
-                return '.';
-            }
-            if (str_starts_with($basePath, $cwd . '/')) {
-                $basePath = substr($basePath, strlen($cwd) + 1);
-            }
-        }
 
-        return $basePath;
+        return self::cwdRelative($basePath);
     }
 
     /**
