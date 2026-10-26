@@ -6,9 +6,18 @@ namespace Studio\Gesso\Tests\Unit\Spec;
 
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+use stdClass;
 use Studio\Gesso\Exception\InvalidOpenApiSpecException;
 use Studio\Gesso\Exception\InvalidOpenApiSpecReason;
+use Studio\Gesso\Internal\OpenApiDocumentShapeNormalizer;
 use Studio\Gesso\Spec\OpenApiRefResolver;
+
+use function get_object_vars;
+use function json_encode;
+use function memory_get_usage;
+use function serialize;
+use function str_repeat;
+use function unserialize;
 
 class OpenApiRefResolverTest extends TestCase
 {
@@ -1698,5 +1707,84 @@ class OpenApiRefResolverTest extends TestCase
 
         $this->assertSame('a~1b~0c~01d', OpenApiRefResolver::escapePointerSegment($raw));
         $this->assertSame($raw, OpenApiRefResolver::unescapePointerSegment(OpenApiRefResolver::escapePointerSegment($raw)));
+    }
+
+    #[Test]
+    public function shares_a_target_referenced_many_times_instead_of_copying_it(): void
+    {
+        $properties = [];
+        for ($i = 0; $i < 300; $i++) {
+            $properties['field' . $i] = ['type' => 'string', 'description' => str_repeat('d', 40) . $i];
+        }
+        $big = ['type' => 'object', 'properties' => $properties];
+        $paths = [];
+        for ($i = 0; $i < 200; $i++) {
+            $paths['/r' . $i]['get']['responses']['200']['content']['application/json']['schema'] = [
+                '$ref' => '#/components/schemas/Big',
+            ];
+        }
+        $spec = ['openapi' => '3.1.0', 'paths' => $paths, 'components' => ['schemas' => ['Big' => $big]]];
+
+        $before = memory_get_usage();
+        $copy = unserialize(serialize($big));
+        $oneCopy = memory_get_usage() - $before;
+        unset($copy);
+
+        $before = memory_get_usage();
+        $resolved = OpenApiDocumentShapeNormalizer::normalizeResolvedDocument(OpenApiRefResolver::resolve($spec));
+        $retained = memory_get_usage() - $before;
+
+        $this->assertSame($big, $resolved['paths']['/r199']['get']['responses']['200']['content']['application/json']['schema']);
+        // Copying per reference site retains about 200 copies. Sharing keeps
+        // the in-place component plus one walked copy; the bound is generous.
+        $this->assertLessThan(20 * $oneCopy, $retained);
+    }
+
+    #[Test]
+    public function does_not_reuse_walked_targets_across_resolutions(): void
+    {
+        $spec = static fn(string $type): array => [
+            'openapi' => '3.1.0',
+            'paths' => ['/a' => ['get' => ['responses' => ['200' => ['content' => ['application/json' => [
+                'schema' => ['$ref' => '#/components/schemas/Pet'],
+            ]]]]]]],
+            'components' => ['schemas' => ['Pet' => ['type' => $type]]],
+        ];
+        $schemaOf = static fn(array $resolved): mixed => $resolved['paths']['/a']['get']['responses']['200']['content']['application/json']['schema'];
+
+        $this->assertSame(['type' => 'string'], $schemaOf(OpenApiRefResolver::resolve($spec('string'))));
+        $this->assertSame(['type' => 'integer'], $schemaOf(OpenApiRefResolver::resolve($spec('integer'))));
+    }
+
+    #[Test]
+    public function leaves_objects_in_a_shared_target_unmodified_by_per_site_processing(): void
+    {
+        // The decoder keeps some nodes as stdClass (empty maps, a tagged
+        // `links` list). Arrays are shared copy-on-write, but object handles
+        // are shared by every site — already before memoization, since each
+        // site copied the same frozen root. They stay correct only while no
+        // per-site step writes into them; pin that.
+        $blob = new stdClass();
+        $links = (object) [(object) ['operationId' => 'getA']];
+        $site = static fn(array $siblings): array => ['get' => ['responses' => ['200' => [
+            'description' => 'ok',
+            'links' => ['$ref' => '#/components/links/Shared'],
+            'content' => ['application/json' => ['schema' => ['$ref' => '#/components/schemas/Shared'] + $siblings]],
+        ]]]];
+        $spec = [
+            'openapi' => '3.1.0',
+            'paths' => ['/a' => $site(['minProperties' => 1]), '/b' => $site(['maxProperties' => 3])],
+            'components' => [
+                'schemas' => ['Shared' => ['type' => 'object', 'x-blob' => $blob]],
+                'links' => ['Shared' => ['l' => $links]],
+            ],
+        ];
+
+        $resolved = OpenApiDocumentShapeNormalizer::normalizeResolvedDocument(OpenApiRefResolver::resolve($spec));
+
+        $this->assertSame(1, $resolved['paths']['/a']['get']['responses']['200']['content']['application/json']['schema']['minProperties']);
+        $this->assertArrayNotHasKey('minProperties', $resolved['paths']['/b']['get']['responses']['200']['content']['application/json']['schema']);
+        $this->assertSame([], get_object_vars($blob));
+        $this->assertSame('{"0":{"operationId":"getA"}}', json_encode($links));
     }
 }

@@ -278,12 +278,19 @@ final class OpenApiDocumentShapeNormalizer
             return $value;
         }
 
-        $normalized = [];
+        // Write only the children that change so untouched subtrees keep
+        // sharing their zvals (copy-on-write) with the resolver output.
         foreach ($value as $key => $child) {
-            $normalized[$key] = self::normalizeGeneric($child);
+            if (!is_array($child) && !$child instanceof stdClass) {
+                continue;
+            }
+            $normalizedChild = self::normalizeGeneric($child);
+            if ($normalizedChild !== $child || $child instanceof stdClass) {
+                $value[$key] = $normalizedChild;
+            }
         }
 
-        return $normalized;
+        return $value;
     }
 
     private static function isEmptyObject(mixed $value): bool

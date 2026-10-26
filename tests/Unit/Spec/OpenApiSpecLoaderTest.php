@@ -10,6 +10,7 @@ use const JSON_THROW_ON_ERROR;
 
 use GuzzleHttp\Psr7\HttpFactory;
 use InvalidArgumentException;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\IgnoreDeprecations;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
@@ -27,6 +28,7 @@ use Symfony\Component\Yaml\Yaml;
 
 use function class_exists;
 use function file_put_contents;
+use function get_object_vars;
 use function json_encode;
 use function ltrim;
 use function mkdir;
@@ -52,6 +54,15 @@ class OpenApiSpecLoaderTest extends TestCase
         OpenApiSpecLoader::reset();
         Deprecations::resetForTesting();
         parent::tearDown();
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function provideShared_ref_targets_keep_each_site_independentCases(): iterable
+    {
+        yield 'json' => ['shared-ref-objects'];
+        yield 'yaml' => ['shared-ref-objects-yaml'];
     }
 
     #[Test]
@@ -1139,5 +1150,30 @@ class OpenApiSpecLoaderTest extends TestCase
             $this->assertStringContainsString('.yml', $message);
             $this->assertStringContainsString('nowhere', $message);
         }
+    }
+
+    #[Test]
+    #[DataProvider('provideShared_ref_targets_keep_each_site_independentCases')]
+    public function shared_ref_targets_keep_each_site_independent(string $specName): void
+    {
+        OpenApiSpecLoader::configure(__DIR__ . '/../../fixtures/specs');
+        $spec = OpenApiSpecLoader::load($specName);
+
+        $component = $spec['components']['schemas']['Shared'];
+        $schemaAt = static fn(string $path): array => $spec['paths'][$path]['get']['responses']['200']['content']['application/json']['schema'];
+
+        // Each site carries only its own `$ref` siblings, and the shared
+        // component — including its empty-object children — is untouched.
+        $this->assertSame($component + ['minProperties' => 1], $schemaAt('/a'));
+        $this->assertSame($component + ['maxProperties' => 3], $schemaAt('/b'));
+        $this->assertSame(['type' => 'object', 'properties' => ['meta' => ['type' => 'object', 'properties' => []]], 'x-blob' => []], $component);
+
+        // The tagged `links` object survives normalization at both sites and
+        // still holds exactly what the component declares.
+        $linksAt = static fn(string $path): mixed => $spec['paths'][$path]['get']['responses']['200']['links'];
+        $this->assertInstanceOf(stdClass::class, $linksAt('/c'));
+        $this->assertInstanceOf(stdClass::class, $linksAt('/d'));
+        $this->assertSame(['0' => ['operationId' => 'getA']], get_object_vars($linksAt('/c')));
+        $this->assertSame(['0' => ['operationId' => 'getA']], get_object_vars($linksAt('/d')));
     }
 }
