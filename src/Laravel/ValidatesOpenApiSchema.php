@@ -50,6 +50,7 @@ use function is_int;
 use function is_numeric;
 use function is_string;
 use function sprintf;
+use function strlen;
 use function strtolower;
 use function strtoupper;
 use function trigger_error;
@@ -239,6 +240,35 @@ trait ValidatesOpenApiSchema
         } finally {
             $this->withExplicitOpenApiSpec(null);
         }
+    }
+
+    /**
+     * Laravel's `json()` with a pre-encoded body: `$json` is sent verbatim, so
+     * bodies a PHP array cannot express (`{}` — an empty array encodes as
+     * `[]`) reach the app and the validator as written. Defaults match
+     * `json()` (`Content-Type` / `Accept: application/json`, `CONTENT_LENGTH`);
+     * `$headers` overrides them. Goes through the same auto-assert /
+     * auto-validate-request hook as every other Laravel HTTP helper.
+     *
+     * @param array<string, mixed> $headers
+     */
+    public function jsonRaw(string $method, string $uri, string $json, array $headers = []): TestResponse
+    {
+        $headers = array_merge([
+            'CONTENT_LENGTH' => strlen($json),
+            'CONTENT_TYPE' => 'application/json',
+            'Accept' => 'application/json',
+        ], $headers);
+
+        return $this->call(
+            $method,
+            $uri,
+            [],
+            $this->prepareCookiesForJsonRequest(),
+            [],
+            $this->transformHeadersToServerVars($headers),
+            $json,
+        );
     }
 
     /**

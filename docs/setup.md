@@ -18,6 +18,7 @@ of `bin/gesso` from a library checkout uses that checkout's dependencies.
 - [Opting out with `#[SkipOpenApi]`](#opting-out-with-skipopenapi)
 - [Per-request skip with `withoutValidation()`](#per-request-skip-with-withoutvalidation)
 - [Per-request status-code skip with `skipResponseCode()`](#per-request-status-code-skip-with-skipresponsecode)
+- [Raw JSON request bodies with `jsonRaw()`](#raw-json-request-bodies-with-jsonraw)
 - [Auto-validate every request](#auto-validate-every-request)
 - [Skip request validation when the response is a documented 4xx](#skip-request-validation-when-the-response-is-a-documented-4xx)
 - [Auto-inject dummy credentials](#auto-inject-dummy-credentials)
@@ -659,6 +660,26 @@ Notes:
 - **One HTTP call**: same consumption model as `withoutValidation()`. The codes are consumed on the next auto-assert attempt and reset, so the next call falls back to the config-level set.
 - **Auto-assert only**. Explicit `assertResponseMatchesOpenApiSchema()` calls ignore per-request codes — explicit calls are the user's direct intent.
 - **Chainable**: returns `$this`. Multiple chained calls accumulate (`$this->skipResponseCode(404)->skipResponseCode(503)` registers both).
+
+## Raw JSON request bodies with `jsonRaw()`
+
+Laravel's `postJson()` / `patchJson()` / `json()` take a PHP array, so an empty
+payload is always sent as `[]` — which fails a `type: object` request schema.
+`jsonRaw()` is `json()` with a pre-encoded body: the string is sent verbatim,
+and the call goes through the same auto-assert / auto-validate-request hook as
+the other HTTP helpers.
+
+```php
+// `{}` is the canonical empty-object body.
+$this->jsonRaw('PATCH', '/v1/pets/42', '{}')->assertOk();
+
+// Defaults match json(): Content-Type / Accept application/json and
+// CONTENT_LENGTH. Pass headers to override them.
+$this->jsonRaw('PATCH', '/v1/pets/42', '{"name":"Rex"}', ['CONTENT_TYPE' => 'application/merge-patch+json']);
+```
+
+Symfony needs no helper: `$client->request('PATCH', $uri, server: ['CONTENT_TYPE' => 'application/json'], content: '{}')`
+already sends raw JSON.
 
 ## Auto-validate every request
 
