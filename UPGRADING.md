@@ -255,7 +255,7 @@ to partial runs (#453) and v2.3.0 began rejecting `null` response content
 the `### Bug Fixes` entries for each intermediate release in `CHANGELOG.md`;
 this file cannot be relied on to list them.
 
-### Unreleased: path templates with literals inside a segment (#652)
+### Path templates with literals inside a segment (2.8.0, #652)
 
 Path templates that mix literals and placeholders in one segment
 (`/report.{format}`, `/v/{major}-{minor}`, `/files/{name}.{ext}`) now match
