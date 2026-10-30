@@ -10,6 +10,31 @@ the README for the full surface contract.
 
 ## Unreleased
 
+## [2.9.0](https://github.com/studio-design/gesso/compare/v2.8.0...v2.9.0) (2026-10-30)
+
+
+### Features
+
+* **adapters:** deprecate the private assertion helpers and announce phpunit as a dev dependency ([#667](https://github.com/studio-design/gesso/issues/667)) ([32efac4](https://github.com/studio-design/gesso/commit/32efac4a33854f8ef418ff2b5ea6fc6ef9f1d56a))
+* **cli:** accept the v3 flag spellings and deprecate the old ones ([#655](https://github.com/studio-design/gesso/issues/655)) ([1f1d4cc](https://github.com/studio-design/gesso/commit/1f1d4cc83e49f32ae8e1c621d8ff9a010c3391ed))
+* **config:** deprecate the remaining flat phpunit and laravel configuration keys ([#671](https://github.com/studio-design/gesso/issues/671)) ([cb18658](https://github.com/studio-design/gesso/commit/cb18658eb8a4a68b597acec1c30532b4b5aeb154))
+* **coverage:** announce the v3 legacy-sidecar cutoff and merge i/o exit code ([#670](https://github.com/studio-design/gesso/issues/670)) ([f263f0d](https://github.com/studio-design/gesso/commit/f263f0d2d921ac9a2d31f1ea73cf744c32283f47))
+* **doctor:** default specs and acknowledged schemes from gesso.php via --config ([#665](https://github.com/studio-design/gesso/issues/665)) ([232727d](https://github.com/studio-design/gesso/commit/232727d876783f9c1148bc5d8fdad2ba83aeaeb0))
+* **enum-drift:** deprecate the file-path binding reasons removed in 3.0 ([#664](https://github.com/studio-design/gesso/issues/664)) ([be76d28](https://github.com/studio-design/gesso/commit/be76d28ecbf33faf3d5a2d3521d6f4fb60809f0f))
+* **enum-drift:** report the discovered bindings in the run summary ([#668](https://github.com/studio-design/gesso/issues/668)) ([a1ddf87](https://github.com/studio-design/gesso/commit/a1ddf87e82642d6a83dc126b8447d6b62937a942))
+* **laravel:** add a raw-json request helper for bodies php arrays cannot express ([#669](https://github.com/studio-design/gesso/issues/669)) ([9fb0f3b](https://github.com/studio-design/gesso/commit/9fb0f3b5eb464458bd45a5bd7db21c306e7b7975))
+
+
+### Bug Fixes
+
+* **strict:** point the strict-mode footers at gesso.php instead of deprecated phpunit parameters ([#666](https://github.com/studio-design/gesso/issues/666)) ([717f64f](https://github.com/studio-design/gesso/commit/717f64f89837e45b7387fe08111b68d9650d02e2))
+
+
+### Performance Improvements
+
+* **spec:** share resolved $ref targets instead of copying them per reference ([#651](https://github.com/studio-design/gesso/issues/651)) ([27f5cb4](https://github.com/studio-design/gesso/commit/27f5cb4ed42ad90e5cd30dbc7c0c928110d33395))
+* **validation:** skip strict-mode observation when both strict checks are off ([#653](https://github.com/studio-design/gesso/issues/653)) ([2d20d03](https://github.com/studio-design/gesso/commit/2d20d03a91beb0c5c47811a9d66713619892e2c9))
+
 ## [2.8.0](https://github.com/studio-design/gesso/compare/v2.7.1...v2.8.0) (2026-10-26)
 
 
