@@ -1,9 +1,13 @@
 name: Documentation
 
+# The site documents the installable stable line. Until v3.0.0 GA that is
+# 2.x, so this file is identical on main and 2.x and neither main pushes nor
+# v3 beta tags replace the v2 docs. Flip back to [main] / 'v*' in the GA
+# follow-up PR.
 on:
   push:
-    branches: [main]
-    tags: ['v*']
+    branches: [2.x]
+    tags: ['v2.*']
   workflow_dispatch:
 
 permissions: {}
