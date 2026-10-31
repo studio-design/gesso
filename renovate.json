@@ -8,7 +8,14 @@
   "schedule": ["before 9am on Monday"],
   "minimumReleaseAge": "7 days",
   "osvVulnerabilityAlerts": true,
+  "baseBranchPatterns": ["main", "2.x"],
   "packageRules": [
+    {
+      "description": "2.x is a maintenance line: patch, digest and security updates only",
+      "matchBaseBranches": ["2.x"],
+      "matchUpdateTypes": ["major", "minor"],
+      "enabled": false
+    },
     {
       "description": "Skip the example's path-linked self reference (resolved from the working tree, not Packagist)",
       "matchPackageNames": ["studio-design/gesso"],
