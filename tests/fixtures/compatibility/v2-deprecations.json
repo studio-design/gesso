@@ -191,69 +191,6 @@
                 "removed_in": "3.0"
             }
         },
-        "fuzz.namespace.contract_check": {
-            "spelling": "Studio\\Gesso\\Fuzz\\ContractCheck",
-            "v3_target": "Studio\\Gesso\\Contract\\ContractCheck",
-            "notice": {
-                "subject": "Studio\\Gesso\\Fuzz\\ContractCheck",
-                "replacement": "Studio\\Gesso\\Contract\\ContractCheck",
-                "removed_in": "3.0"
-            }
-        },
-        "fuzz.namespace.contract_check_plan": {
-            "spelling": "Studio\\Gesso\\Fuzz\\ContractCheckPlan",
-            "v3_target": "Studio\\Gesso\\Contract\\ContractCheckPlan",
-            "notice": {
-                "subject": "Studio\\Gesso\\Fuzz\\ContractCheckPlan",
-                "replacement": "Studio\\Gesso\\Contract\\ContractCheckPlan",
-                "removed_in": "3.0"
-            }
-        },
-        "fuzz.namespace.contract_check_probe": {
-            "spelling": "Studio\\Gesso\\Fuzz\\ContractCheckProbe",
-            "v3_target": "Studio\\Gesso\\Contract\\ContractCheckProbe",
-            "notice": {
-                "subject": "Studio\\Gesso\\Fuzz\\ContractCheckProbe",
-                "replacement": "Studio\\Gesso\\Contract\\ContractCheckProbe",
-                "removed_in": "3.0"
-            }
-        },
-        "fuzz.namespace.contract_check_failure": {
-            "spelling": "Studio\\Gesso\\Fuzz\\ContractCheckFailure",
-            "v3_target": "Studio\\Gesso\\Contract\\ContractCheckFailure",
-            "notice": {
-                "subject": "Studio\\Gesso\\Fuzz\\ContractCheckFailure",
-                "replacement": "Studio\\Gesso\\Contract\\ContractCheckFailure",
-                "removed_in": "3.0"
-            }
-        },
-        "fuzz.namespace.contract_check_skip": {
-            "spelling": "Studio\\Gesso\\Fuzz\\ContractCheckSkip",
-            "v3_target": "Studio\\Gesso\\Contract\\ContractCheckSkip",
-            "notice": {
-                "subject": "Studio\\Gesso\\Fuzz\\ContractCheckSkip",
-                "replacement": "Studio\\Gesso\\Contract\\ContractCheckSkip",
-                "removed_in": "3.0"
-            }
-        },
-        "fuzz.namespace.contract_check_summary": {
-            "spelling": "Studio\\Gesso\\Fuzz\\ContractCheckSummary",
-            "v3_target": "Studio\\Gesso\\Contract\\ContractCheckSummary",
-            "notice": {
-                "subject": "Studio\\Gesso\\Fuzz\\ContractCheckSummary",
-                "replacement": "Studio\\Gesso\\Contract\\ContractCheckSummary",
-                "removed_in": "3.0"
-            }
-        },
-        "fuzz.namespace.open_api_contract_checks": {
-            "spelling": "Studio\\Gesso\\Fuzz\\OpenApiContractChecks",
-            "v3_target": "Studio\\Gesso\\Contract\\OpenApiContractChecks",
-            "notice": {
-                "subject": "Studio\\Gesso\\Fuzz\\OpenApiContractChecks",
-                "replacement": "Studio\\Gesso\\Contract\\OpenApiContractChecks",
-                "removed_in": "3.0"
-            }
-        },
         "phpunit.enum_spec_base_path": {
             "spelling": "enum_spec_base_path",
             "v3_target": "none",

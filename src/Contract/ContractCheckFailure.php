@@ -7,7 +7,6 @@ namespace Studio\Gesso\Contract;
 use Studio\Gesso\Fuzz\ExploredCase;
 
 use function array_map;
-use function class_alias;
 use function implode;
 use function sprintf;
 use function strval;
@@ -66,8 +65,3 @@ final readonly class ContractCheckFailure
         return implode(' or ', $parts);
     }
 }
-
-// Declared beside the class, not by an autoloader, so the legacy name exists
-// whenever this file is included — including PHPUnit's direct require_once
-// in a separate process. See Autoload.php. Removed in Gesso 3.0.
-class_alias(ContractCheckFailure::class, 'Studio\\Gesso\\Fuzz\\ContractCheckFailure');

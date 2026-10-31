@@ -28,7 +28,6 @@ use function array_key_exists;
 use function array_keys;
 use function array_map;
 use function array_values;
-use function class_alias;
 use function count;
 use function crc32;
 use function get_debug_type;
@@ -1035,8 +1034,3 @@ final class ContractCheckPlan
         });
     }
 }
-
-// Declared beside the class, not by an autoloader, so the legacy name exists
-// whenever this file is included — including PHPUnit's direct require_once
-// in a separate process. See Autoload.php. Removed in Gesso 3.0.
-class_alias(ContractCheckPlan::class, 'Studio\\Gesso\\Fuzz\\ContractCheckPlan');
