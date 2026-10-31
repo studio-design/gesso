@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Studio\Gesso\Exception;
 
 use RuntimeException;
-use Studio\Gesso\Internal\Deprecations;
 use Throwable;
 
 /**
@@ -16,8 +15,8 @@ use Throwable;
  *
  * The exhaustive list of failure categories lives on `EnumBindingReason`;
  * consumers should branch on `$reason` rather than pattern-matching the
- * `$message`. `$specPath` is the bound file path, or the
- * `#/components/schemas/Name` pointer of a component binding.
+ * `$message`. `$specPath` is the `#/components/schemas/Name` pointer of
+ * the bound component.
  */
 final class EnumBindingException extends RuntimeException
 {
@@ -29,33 +28,6 @@ final class EnumBindingException extends RuntimeException
         ?Throwable $previous = null,
     ) {
         parent::__construct($message, 0, $previous);
-    }
-
-    /**
-     * Build an exception for a specific bound enum that failed to resolve
-     * against its spec file. `$enumFqcn` is required because all per-binding
-     * reasons (`TargetIsNotEnum`, `AttributeMissing`, `SpecFileNotFound`, …)
-     * carry it.
-     *
-     * @deprecated Construct the exception directly with
-     *             `new EnumBindingException($reason, $message, $enumFqcn, $specPath, $previous)`.
-     *             Removed in Gesso 3.0.
-     */
-    public static function forBinding(
-        EnumBindingReason $reason,
-        string $message,
-        string $enumFqcn,
-        ?string $specPath = null,
-        ?Throwable $previous = null,
-    ): self {
-        Deprecations::notice(
-            id: 'exception.enum_binding_exception.for_binding',
-            subject: 'EnumBindingException::forBinding()',
-            replacement: 'new EnumBindingException($reason, $message, $enumFqcn, $specPath, $previous)',
-            removedIn: '3.0',
-        );
-
-        return new self($reason, $message, $enumFqcn, $specPath, $previous);
     }
 
     /**
@@ -75,8 +47,8 @@ final class EnumBindingException extends RuntimeException
 
     /**
      * Build an exception for a configuration-level failure that is global
-     * to the test run rather than per-binding (`EnumBasePathNotFound`,
-     * `EnumSpecBasePathOrphaned`). Structurally identical to {@see forScan}
+     * to the test run rather than per-binding. Kept for compatibility; no
+     * built-in reason is raised through it in 3.0. Structurally identical to {@see forScan}
      * — no `$enumFqcn` / `$specPath` — but documented separately so callers
      * branching on the reason aren't misled by an arbitrary "first failing
      * binding" enumFqcn surfacing on a global error.

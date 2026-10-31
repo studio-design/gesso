@@ -10,7 +10,7 @@ use Studio\Gesso\Attribute\BoundToOpenApiEnum;
  * Pure (non-backed) enum carrying the binding attribute — the asserter
  * must reject this loudly rather than silently produce a useless diff.
  */
-#[BoundToOpenApiEnum('enum-drift/matching.json')]
+#[BoundToOpenApiEnum('Matching')]
 enum PureEnum
 {
     case Foo;

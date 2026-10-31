@@ -135,7 +135,6 @@ final class SharedConfigurationTest extends TestCase
                 httpClient: $client,
                 requestFactory: new \GuzzleHttp\Psr7\HttpFactory(),
                 allowRemoteRefs: true,
-                enumBasePath: __DIR__ . '/enums',
                 allowedRemoteRefHosts: ['specs.example.com'],
                 maxRemoteRefBytes: 2048,
                 remoteSpecs: ['api' => 'https://specs.example.com/api.json'],
@@ -162,7 +161,6 @@ final class SharedConfigurationTest extends TestCase
                     $expected = EXPECTED_PREFIXES;
                     self::assertSame($expected, OpenApiSpecLoader::getStripPrefixes());
                     self::assertSame(__DIR__ . '/specs', OpenApiSpecLoader::getBasePath());
-                    self::assertSame(__DIR__ . '/enums', OpenApiSpecLoader::getEnumBasePath());
                     self::assertCount(1, $GLOBALS['sharedConfigHttpClient']->sentUrls());
                     OpenApiSpecLoader::clearCache();
                     self::assertSame('remote', OpenApiSpecLoader::load('api')['info']['title']);

@@ -1,0 +1,64 @@
+{
+    "openapi": "3.1.0",
+    "info": {
+        "title": "Enum drift attribute bindings",
+        "version": "1.0.0"
+    },
+    "paths": {},
+    "components": {
+        "schemas": {
+            "Matching": {
+                "type": "string",
+                "enum": [
+                    "red",
+                    "green",
+                    "blue"
+                ]
+            },
+            "PhpExtra": {
+                "type": "string",
+                "enum": [
+                    "red",
+                    "green"
+                ]
+            },
+            "SpecExtra": {
+                "type": "string",
+                "enum": [
+                    "red",
+                    "green",
+                    "blue",
+                    "yellow"
+                ]
+            },
+            "IntegerBacked": {
+                "type": "integer",
+                "enum": [
+                    200,
+                    201,
+                    204
+                ]
+            },
+            "IntegerBackedDrift": {
+                "type": "integer",
+                "enum": [
+                    200,
+                    201,
+                    "201"
+                ]
+            },
+            "Empty": {
+                "type": "string",
+                "enum": []
+            },
+            "NonScalarValue": {
+                "type": "string",
+                "enum": [
+                    "red",
+                    null,
+                    "blue"
+                ]
+            }
+        }
+    }
+}

@@ -10,7 +10,7 @@ use Studio\Gesso\Attribute\BoundToOpenApiEnum;
  * Spec carries `[200, 201, "201"]` — the string `"201"` must surface as
  * spec-only drift via strict comparison, not silently match the int 201.
  */
-#[BoundToOpenApiEnum('enum-drift/integer-backed-drift.json')]
+#[BoundToOpenApiEnum('IntegerBackedDrift')]
 enum IntegerBackedDriftEnum: int
 {
     case Ok = 200;

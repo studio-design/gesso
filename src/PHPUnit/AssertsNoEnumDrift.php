@@ -25,8 +25,8 @@ use function array_values;
  * keep using it.
  *
  * Misconfiguration (`EnumBindingException`) is intentionally NOT routed
- * through `CleanTraceAssert::fail()` — a missing `#[BoundToOpenApiEnum]` or
- * unreadable spec file is a setup error, not a drift signal, and callers
+ * through `CleanTraceAssert::fail()` — an unbound enum or a component
+ * missing from the spec is a setup error, not a drift signal, and callers
  * want the structured exception properties (`$reason`, `$enumFqcn`,
  * `$specPath`) preserved.
  */

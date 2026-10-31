@@ -511,37 +511,6 @@ class CoverageReportSubscriberThresholdTest extends TestCase
     }
 
     #[Test]
-    public function loader_reset_restores_the_enum_base_path_without_a_configure_deprecation(): void
-    {
-        // The extension's enum_spec_base_path path: configure() then the
-        // notice-free setter, so the parameter's own notice is the only one.
-        OpenApiSpecLoader::configure(__DIR__ . '/../../fixtures/specs');
-        OpenApiSpecLoader::setEnumBasePath(__DIR__ . '/../../fixtures/specs');
-        $subscriber = new CoverageReportSubscriber(
-            specs: [],
-            outputFile: null,
-            consoleOutput: ConsoleOutput::DEFAULT,
-            githubSummaryPath: null,
-        );
-        OpenApiSpecLoader::reset();
-        Deprecations::resetForTesting();
-
-        ob_start();
-
-        try {
-            $subscriber->notify($this->fakeExecutionFinished());
-        } finally {
-            ob_end_clean();
-        }
-
-        $this->assertSame([], Deprecations::counts());
-        $this->assertSame(
-            OpenApiSpecLoader::getBasePath(),
-            OpenApiSpecLoader::getEnumBasePath(),
-        );
-    }
-
-    #[Test]
     public function warn_only_sdk_gate_is_still_evaluated_when_http_evidence_is_empty(): void
     {
         $tracker = new SdkExerciseCoverageTracker();

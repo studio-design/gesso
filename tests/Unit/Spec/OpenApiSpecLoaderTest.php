@@ -5,13 +5,11 @@ declare(strict_types=1);
 namespace Studio\Gesso\Tests\Unit\Spec;
 
 use const DIRECTORY_SEPARATOR;
-use const E_USER_DEPRECATED;
 use const JSON_THROW_ON_ERROR;
 
 use GuzzleHttp\Psr7\HttpFactory;
 use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\DataProvider;
-use PHPUnit\Framework\Attributes\IgnoreDeprecations;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use stdClass;
@@ -66,40 +64,6 @@ class OpenApiSpecLoaderTest extends TestCase
     }
 
     #[Test]
-    public function configure_with_enum_base_path_emits_a_deprecation_notice(): void
-    {
-        Deprecations::resetForTesting();
-        $captured = [];
-        set_error_handler(static function (int $errno, string $message) use (&$captured): bool {
-            $captured[] = [$errno, $message];
-
-            return true;
-        });
-
-        try {
-            OpenApiSpecLoader::configure('/path/to/specs', enumBasePath: '/path/to/enums');
-        } finally {
-            restore_error_handler();
-        }
-
-        $this->assertCount(1, $captured);
-        $this->assertSame(E_USER_DEPRECATED, $captured[0][0]);
-        $this->assertStringContainsString('OpenApiSpecLoader::configure(enumBasePath:)', $captured[0][1]);
-        $this->assertSame(['spec.loader.configure.enum_base_path' => 1], Deprecations::counts());
-        $this->assertSame('/path/to/enums', OpenApiSpecLoader::getEnumBasePath());
-    }
-
-    #[Test]
-    public function configure_without_enum_base_path_emits_nothing(): void
-    {
-        Deprecations::resetForTesting();
-
-        OpenApiSpecLoader::configure('/path/to/specs');
-
-        $this->assertSame([], Deprecations::counts());
-    }
-
-    #[Test]
     public function configure_sets_base_path_and_strip_prefixes(): void
     {
         OpenApiSpecLoader::configure('/path/to/specs', ['/api', '/internal']);
@@ -117,18 +81,15 @@ class OpenApiSpecLoaderTest extends TestCase
     }
 
     #[Test]
-    #[IgnoreDeprecations]
     public function configure_preserves_filesystem_roots(): void
     {
-        OpenApiSpecLoader::configure('/', enumBasePath: '/');
+        OpenApiSpecLoader::configure('/');
 
         $this->assertSame('/', OpenApiSpecLoader::getBasePath());
-        $this->assertSame('/', OpenApiSpecLoader::getEnumBasePath());
 
-        OpenApiSpecLoader::configure('C:/', enumBasePath: 'C:/');
+        OpenApiSpecLoader::configure('C:/');
 
         $this->assertSame('C:/', OpenApiSpecLoader::getBasePath());
-        $this->assertSame('C:/', OpenApiSpecLoader::getEnumBasePath());
     }
 
     #[Test]
@@ -171,75 +132,6 @@ class OpenApiSpecLoaderTest extends TestCase
         OpenApiSpecLoader::configure('/path/to/specs');
 
         $this->assertSame([], OpenApiSpecLoader::getStripPrefixes());
-    }
-
-    #[Test]
-    public function get_enum_base_path_returns_null_when_not_configured(): void
-    {
-        // Issue #170: enum_spec_base_path is opt-in. Absence is the
-        // documented default — getEnumBasePath() must not throw the way
-        // getBasePath() does, because the asserter relies on the null
-        // return to fall back to spec_base_path.
-        $this->assertNull(OpenApiSpecLoader::getEnumBasePath());
-    }
-
-    #[Test]
-    #[IgnoreDeprecations]
-    public function configure_stores_enum_base_path_with_trailing_slash_trimmed(): void
-    {
-        OpenApiSpecLoader::configure(
-            basePath: '/path/to/specs',
-            enumBasePath: '/path/to/openapi/',
-        );
-
-        $this->assertSame('/path/to/openapi', OpenApiSpecLoader::getEnumBasePath());
-    }
-
-    #[Test]
-    #[IgnoreDeprecations]
-    public function reset_clears_enum_base_path(): void
-    {
-        OpenApiSpecLoader::configure(
-            basePath: '/path/to/specs',
-            enumBasePath: '/path/to/openapi',
-        );
-        OpenApiSpecLoader::reset();
-
-        $this->assertNull(OpenApiSpecLoader::getEnumBasePath());
-    }
-
-    #[Test]
-    #[IgnoreDeprecations]
-    public function configure_rejects_empty_enum_base_path(): void
-    {
-        // Reject at the API surface. Without this, an empty string would
-        // surface later as `EnumBasePathNotFound: ... is not a directory: `
-        // (with nothing after the colon) — a confusing diagnostic that hides
-        // the real misconfiguration.
-        try {
-            OpenApiSpecLoader::configure(
-                basePath: '/path/to/specs',
-                enumBasePath: '',
-            );
-            $this->fail('expected InvalidArgumentException');
-        } catch (InvalidArgumentException $e) {
-            $this->assertStringContainsString('$enumBasePath is empty', $e->getMessage());
-        }
-    }
-
-    #[Test]
-    #[IgnoreDeprecations]
-    public function configure_rejects_whitespace_only_enum_base_path(): void
-    {
-        try {
-            OpenApiSpecLoader::configure(
-                basePath: '/path/to/specs',
-                enumBasePath: "  \n\t ",
-            );
-            $this->fail('expected InvalidArgumentException');
-        } catch (InvalidArgumentException $e) {
-            $this->assertStringContainsString('whitespace-only', $e->getMessage());
-        }
     }
 
     #[Test]

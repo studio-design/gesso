@@ -5,12 +5,10 @@ declare(strict_types=1);
 namespace Studio\Gesso\Tests\Unit\PHPUnit;
 
 use PHPUnit\Framework\AssertionFailedError;
-use PHPUnit\Framework\Attributes\IgnoreDeprecations;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Studio\Gesso\Exception\EnumBindingException;
 use Studio\Gesso\Exception\EnumBindingReason;
-use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\PHPUnit\AssertsNoEnumDrift;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\Color;
@@ -40,17 +38,15 @@ class AssertsNoEnumDriftTest extends TestCase
     protected function tearDown(): void
     {
         OpenApiSpecLoader::reset();
-        Deprecations::resetForTesting();
         parent::tearDown();
     }
 
     #[Test]
-    #[IgnoreDeprecations]
     public function clean_enum_increments_assertion_count_by_one(): void
     {
         $before = $this->numberOfAssertionsPerformed();
 
-        $this->assertNoEnumDrift([MatchingEnum::class]);
+        $this->assertNoEnumDrift([MatchingEnum::class], ['enum-drift/bindings']);
 
         // Exactly one assertion was credited — that is the whole point of
         // the trait. The follow-up assertSame() does NOT skew the delta
@@ -71,7 +67,6 @@ class AssertsNoEnumDriftTest extends TestCase
     }
 
     #[Test]
-    #[IgnoreDeprecations]
     public function clean_input_with_multiple_enums_still_credits_one_assertion(): void
     {
         // The trait's contract is "one logical assertion per call",
@@ -81,14 +76,13 @@ class AssertsNoEnumDriftTest extends TestCase
         // test change.
         $before = $this->numberOfAssertionsPerformed();
 
-        $this->assertNoEnumDrift([MatchingEnum::class, IntegerBackedEnum::class]);
+        $this->assertNoEnumDrift([MatchingEnum::class, IntegerBackedEnum::class], ['enum-drift/bindings']);
 
         $after = $this->numberOfAssertionsPerformed();
         $this->assertSame($before + 1, $after);
     }
 
     #[Test]
-    #[IgnoreDeprecations]
     public function two_consecutive_calls_each_credit_an_assertion(): void
     {
         // Fan-in counterpart to the multi-enum test: two separate calls
@@ -96,19 +90,18 @@ class AssertsNoEnumDriftTest extends TestCase
         // short-circuit on subsequent invocations would be caught.
         $before = $this->numberOfAssertionsPerformed();
 
-        $this->assertNoEnumDrift([MatchingEnum::class]);
-        $this->assertNoEnumDrift([IntegerBackedEnum::class]);
+        $this->assertNoEnumDrift([MatchingEnum::class], ['enum-drift/bindings']);
+        $this->assertNoEnumDrift([IntegerBackedEnum::class], ['enum-drift/bindings']);
 
         $after = $this->numberOfAssertionsPerformed();
         $this->assertSame($before + 2, $after);
     }
 
     #[Test]
-    #[IgnoreDeprecations]
     public function php_only_drift_fails_with_assertion_failed_error(): void
     {
         try {
-            $this->assertNoEnumDrift([PhpExtraEnum::class]);
+            $this->assertNoEnumDrift([PhpExtraEnum::class], ['enum-drift/bindings']);
             $this->fail('expected AssertionFailedError');
         } catch (AssertionFailedError $e) {
             $message = $e->getMessage();
@@ -120,11 +113,10 @@ class AssertsNoEnumDriftTest extends TestCase
     }
 
     #[Test]
-    #[IgnoreDeprecations]
     public function spec_only_drift_fails_with_assertion_failed_error(): void
     {
         try {
-            $this->assertNoEnumDrift([SpecExtraEnum::class]);
+            $this->assertNoEnumDrift([SpecExtraEnum::class], ['enum-drift/bindings']);
             $this->fail('expected AssertionFailedError');
         } catch (AssertionFailedError $e) {
             $message = $e->getMessage();
@@ -134,11 +126,10 @@ class AssertsNoEnumDriftTest extends TestCase
     }
 
     #[Test]
-    #[IgnoreDeprecations]
     public function mixed_input_reports_only_drifting_enums(): void
     {
         try {
-            $this->assertNoEnumDrift([MatchingEnum::class, PhpExtraEnum::class]);
+            $this->assertNoEnumDrift([MatchingEnum::class, PhpExtraEnum::class], ['enum-drift/bindings']);
             $this->fail('expected AssertionFailedError');
         } catch (AssertionFailedError $e) {
             $message = $e->getMessage();
@@ -158,7 +149,7 @@ class AssertsNoEnumDriftTest extends TestCase
         // EnumBindingException propagate preserves the structured $reason +
         // $enumFqcn properties that downstream tooling relies on.
         try {
-            $this->assertNoEnumDrift([NotAnEnum::class]);
+            $this->assertNoEnumDrift([NotAnEnum::class], ['enum-drift/bindings']);
             $this->fail('expected EnumBindingException');
         } catch (EnumBindingException $e) {
             $this->assertSame(EnumBindingReason::TargetIsNotEnum, $e->reason);
@@ -167,7 +158,6 @@ class AssertsNoEnumDriftTest extends TestCase
     }
 
     #[Test]
-    #[IgnoreDeprecations]
     public function failure_trace_strips_library_frames(): void
     {
         // The trait routes failures through StackTraceFilter so consumers
@@ -175,7 +165,7 @@ class AssertsNoEnumDriftTest extends TestCase
         // library's internals. Verify the trait's own file is not in the
         // filtered frames.
         try {
-            $this->assertNoEnumDrift([PhpExtraEnum::class]);
+            $this->assertNoEnumDrift([PhpExtraEnum::class], ['enum-drift/bindings']);
             $this->fail('expected AssertionFailedError');
         } catch (AssertionFailedError $e) {
             // Disambiguate from the inner $this->fail() sentinel: if a

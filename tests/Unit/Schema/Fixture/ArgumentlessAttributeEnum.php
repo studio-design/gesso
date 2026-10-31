@@ -6,10 +6,9 @@ namespace Studio\Gesso\Tests\Unit\Schema\Fixture;
 
 use Studio\Gesso\Attribute\BoundToOpenApiEnum;
 
-#[BoundToOpenApiEnum('enum-drift/yaml-spec-extra.yaml')]
-enum YamlSpecExtraEnum: string
+// @phpstan-ignore arguments.count (deliberately missing its argument)
+#[BoundToOpenApiEnum]
+enum ArgumentlessAttributeEnum: string
 {
     case Red = 'red';
-    case Green = 'green';
-    case Blue = 'blue';
 }

@@ -6,7 +6,7 @@ namespace Studio\Gesso\Tests\Integration\Schema\Fixture\AutoDiscovery\Clean;
 
 use Studio\Gesso\Attribute\BoundToOpenApiEnum;
 
-#[BoundToOpenApiEnum('enum-drift/_shared/components/schemas/enums/PetStatusEnum.json')]
+#[BoundToOpenApiEnum('PetStatusEnum')]
 enum AutoDiscoveryCleanEnum: string
 {
     case Available = 'available';

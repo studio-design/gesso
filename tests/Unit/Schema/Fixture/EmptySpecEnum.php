@@ -10,7 +10,7 @@ use Studio\Gesso\Attribute\BoundToOpenApiEnum;
  * Spec carries `enum: []` — the asserter should report all PHP cases as
  * php-only drift rather than treating an empty array as a clean match.
  */
-#[BoundToOpenApiEnum('enum-drift/empty-enum.json')]
+#[BoundToOpenApiEnum('Empty')]
 enum EmptySpecEnum: string
 {
     case A = 'a';

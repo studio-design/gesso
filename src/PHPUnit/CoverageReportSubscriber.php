@@ -923,12 +923,7 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
     private function restoreSpecLoaderConfigurationIfReset(): void
     {
         if ($this->loaderConfiguration !== null && OpenApiSpecLoader::exportConfiguration() === null) {
-            // Restore the enum root through the notice-free setter: the user's
-            // configure(enumBasePath:) call already noticed at boot.
-            ['enumBasePath' => $enumBasePath] = $configuration = $this->loaderConfiguration;
-            unset($configuration['enumBasePath']);
-            OpenApiSpecLoader::configure(...$configuration);
-            OpenApiSpecLoader::setEnumBasePath($enumBasePath);
+            OpenApiSpecLoader::configure(...$this->loaderConfiguration);
         }
     }
 

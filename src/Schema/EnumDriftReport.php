@@ -6,7 +6,7 @@ namespace Studio\Gesso\Schema;
 
 /**
  * Result of a single (PHP enum, OpenAPI enum) drift comparison. `specPath`
- * is the file path or the `#/components/schemas/Name` pointer the enum was
+ * is the `#/components/schemas/Name` pointer the enum was
  * compared against.
  *
  * `phpOnly` and `specOnly` are zero-indexed and sorted by

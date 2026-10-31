@@ -6,7 +6,7 @@ namespace Studio\Gesso\Tests\Unit\Schema\Fixture;
 
 use Studio\Gesso\Attribute\BoundToOpenApiEnum;
 
-#[BoundToOpenApiEnum('enum-drift/php-extra.json')]
+#[BoundToOpenApiEnum('PhpExtra')]
 enum PhpExtraEnum: string
 {
     case Red = 'red';

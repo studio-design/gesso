@@ -22,7 +22,7 @@ final class EnumDriftDetector
 {
     /**
      * @param list<int|string> $phpValues case values from `EnumClass::cases()`
-     * @param list<int|string> $specValues the `enum` array from the bound spec file
+     * @param list<int|string> $specValues the `enum` array of the bound component
      */
     public static function detect(
         string $enumFqcn,
