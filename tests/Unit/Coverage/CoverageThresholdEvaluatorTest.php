@@ -174,7 +174,7 @@ class CoverageThresholdEvaluatorTest extends TestCase
     public function treats_zero_total_as_passing(): void
     {
         // endpointTotal = 0 → vacuously meets any threshold (no endpoints to fail).
-        // The "no coverage recorded" edge case is handled upstream by hasAnyCoverage().
+        // The "no coverage recorded" edge case is handled upstream by hasAnyCoverageOn().
         $result = CoverageThresholdEvaluator::evaluate(
             results: [
                 'front' => self::counts(endpointFullyCovered: 0, endpointTotal: 0, responseCovered: 0, responseTotal: 0),

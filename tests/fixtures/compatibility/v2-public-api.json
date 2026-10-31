@@ -1432,27 +1432,6 @@
                 "attributes": [],
                 "parameters": []
             },
-            "hasAnyCoverage": {
-                "static": true,
-                "final": false,
-                "abstract": false,
-                "returns_reference": false,
-                "return_type": "bool",
-                "attributes": [],
-                "parameters": [
-                    {
-                        "name": "specName",
-                        "type": "string",
-                        "optional": false,
-                        "variadic": false,
-                        "by_reference": false,
-                        "default": {
-                            "unavailable": true
-                        },
-                        "attributes": []
-                    }
-                ]
-            },
             "hasAnyCoverageOn": {
                 "static": false,
                 "final": false,
@@ -8276,16 +8255,6 @@
                             "attributes": []
                         }
                     ]
-                },
-                "shouldSkipOpenApi": {
-                    "visibility": "private",
-                    "static": false,
-                    "final": false,
-                    "abstract": false,
-                    "returns_reference": false,
-                    "return_type": "bool",
-                    "attributes": [],
-                    "parameters": []
                 },
                 "skipResponseCode": {
                     "visibility": "public",
