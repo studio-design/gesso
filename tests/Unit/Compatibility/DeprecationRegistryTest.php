@@ -174,12 +174,13 @@ final class DeprecationRegistryTest extends TestCase
     }
 
     #[Test]
-    public function every_registry_entry_names_its_spelling_target_and_notice(): void
+    public function v3_removed_every_surface_v2_deprecated(): void
     {
         // The shape check itself lives in `registry()`, so that no test can
-        // read a malformed entry and pass. This one names the invariant and
-        // fails if the fixture is ever emptied out from under the others.
-        $this->assertNotSame([], $this->registry());
+        // read a malformed entry and pass. v3.0 removed every surface v2
+        // deprecated, so on this line the v2 registry is empty; a row here
+        // would be a v2 deprecation that 3.0 forgot to remove.
+        $this->assertSame([], $this->registry());
     }
 
     #[Test]
