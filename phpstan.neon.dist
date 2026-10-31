@@ -46,6 +46,10 @@ parameters:
         # analysing the fixture itself would require stubs that invalidate the
         # behavior being tested.
         - tests/fixtures/namespace-compatibility
+        # Fixture projects for `gesso config:migrate`: competitor test code
+        # and Laravel config files that `require` packages and helpers this
+        # repository does not install. The command only reads them as text.
+        - tests/fixtures/config-migrate
         # EnumScanner fixture dir holds intentionally-unused trait/abstract
         # files so the scanner can walk past them; PHPStan would otherwise
         # flag them as `trait.unused`.

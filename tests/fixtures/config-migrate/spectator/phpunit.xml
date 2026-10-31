@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit bootstrap="vendor/autoload.php">
+    <extensions>
+        <bootstrap class="Spectator\Coverage\SpectatorExtension">
+            <parameter name="min_coverage" value="80"/>
+            <parameter name="format" value="text"/>
+        </bootstrap>
+    </extensions>
+</phpunit>

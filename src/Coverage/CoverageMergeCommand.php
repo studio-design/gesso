@@ -119,26 +119,20 @@ final class CoverageMergeCommand
         writeStderr as private writeUnfilteredStderr;
     }
 
-    private const FORMATS = ['text', 'markdown', 'json', 'junit', 'html'];
-
-    /**
-     * The `gesso.php` settings, by their {@see ConfigurationBridge::phpunit()} name,
-     * that default a merge option of the same name. Grouped by value type so the
-     * option shape stays provable.
-     */
-    private const SHARED_STRINGS = [
-        'sidecar_dir', 'spec_base_path', 'output_file', 'junit_output', 'json_output', 'html_output',
-        'console_output', 'strict_required', 'strict_additional_properties',
-        'coverage_baseline_file', 'coverage_baseline_stale',
-    ];
-
-    private const SHARED_LISTS = ['specs', 'strip_prefixes'];
-
     /**
      * Issue #507: the v2 flags Gesso 3.0 removed, by option name, and the
      * spelling replacing each. Typing one is a usage error that names it.
      */
-    private const REMOVED_FLAGS = [
+    /**
+     * Flags that kept their name but whose bare `--x=<mode>` value Gesso 3.0
+     * removed, and the grouped spelling replacing it.
+     */
+    public const REMOVED_BARE_MODES = [
+        'strict_required' => '--strict-required="run=…,per_call=…"',
+        'strict_additional_properties' => '--strict-additional-properties="run=…,per_call=…"',
+    ];
+
+    public const REMOVED_FLAGS = [
         'specs' => '--spec-name',
         'strip_prefixes' => '--strip-prefix',
         'json_output' => '--report=json:<path>',
@@ -153,7 +147,20 @@ final class CoverageMergeCommand
         'coverage_baseline_file' => '--baseline="coverage=…"',
         'coverage_baseline_stale' => '--baseline-stale="coverage=…"',
     ];
+    private const FORMATS = ['text', 'markdown', 'json', 'junit', 'html'];
 
+    /**
+     * The `gesso.php` settings, by their {@see ConfigurationBridge::phpunit()} name,
+     * that default a merge option of the same name. Grouped by value type so the
+     * option shape stays provable.
+     */
+    private const SHARED_STRINGS = [
+        'sidecar_dir', 'spec_base_path', 'output_file', 'junit_output', 'json_output', 'html_output',
+        'console_output', 'strict_required', 'strict_additional_properties',
+        'coverage_baseline_file', 'coverage_baseline_stale',
+    ];
+
+    private const SHARED_LISTS = ['specs', 'strip_prefixes'];
     private const SHARED_PERCENTS = ['min_endpoint_coverage', 'min_response_coverage', 'min_sdk_exercise_coverage'];
 
     /** Set where a sidecar, report, or baseline file could not be read or written. */
@@ -536,7 +543,7 @@ final class CoverageMergeCommand
 
         // These two keep their name; the bare-mode value is the v2 spelling
         // Gesso 3.0 removed. Every occurrence is checked.
-        foreach (['strict_required', 'strict_additional_properties'] as $key) {
+        foreach (array_keys(self::REMOVED_BARE_MODES) as $key) {
             $values = $typed[$key] ?? [];
             if ($values === []) {
                 continue;

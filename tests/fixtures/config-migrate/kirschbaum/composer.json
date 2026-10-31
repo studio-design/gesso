@@ -1,0 +1,7 @@
+{
+    "name": "acme/kirschbaum-app",
+    "require-dev": {
+        "kirschbaum-development/laravel-openapi-validator": "^2.0",
+        "phpunit/phpunit": "^12.5"
+    }
+}

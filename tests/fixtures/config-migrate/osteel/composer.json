@@ -1,0 +1,7 @@
+{
+    "name": "acme/osteel-app",
+    "require-dev": {
+        "osteel/openapi-httpfoundation-testing": "^0.15",
+        "phpunit/phpunit": "^12.5"
+    }
+}

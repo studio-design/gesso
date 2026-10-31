@@ -22,7 +22,7 @@ use function sprintf;
 final class LaravelConfig
 {
     /** v2 flat key => its `gesso.php` replacement. */
-    private const REMOVED = [
+    public const REMOVED = [
         'spec_base_path' => 'spec.base_path',
         'default_spec' => 'spec.default',
         'specs' => 'spec.names',

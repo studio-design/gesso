@@ -1,0 +1,10 @@
+{
+    "name": "acme/clean",
+    "require-dev": {
+        "phpunit/phpunit": "^12.5",
+        "studio-design/gesso": "^3.0"
+    },
+    "scripts": {
+        "coverage": "vendor/bin/gesso coverage:merge --spec-name=front --report=json:build/coverage.json"
+    }
+}

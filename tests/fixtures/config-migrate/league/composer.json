@@ -1,0 +1,7 @@
+{
+    "name": "acme/league-app",
+    "require-dev": {
+        "league/openapi-psr7-validator": "^0.24",
+        "phpunit/phpunit": "^12.5"
+    }
+}
