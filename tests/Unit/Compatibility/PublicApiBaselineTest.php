@@ -26,6 +26,7 @@ use Studio\Gesso\Coverage\InvalidThresholdConfigurationException;
 use Studio\Gesso\Coverage\JsonCoverageRenderer;
 use Studio\Gesso\Coverage\JUnitCoverageRenderer;
 use Studio\Gesso\Coverage\MarkdownCoverageRenderer;
+use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\DecodedBody;
 use Studio\Gesso\Exception\EnumBindingReason;
 use Studio\Gesso\Exception\InvalidOpenApiSpecReason;
@@ -1950,6 +1951,10 @@ final class PublicApiBaselineTest extends TestCase
         foreach ([OpenApiFakeResponse::class, LaravelOpenApiHttpFake::class, SymfonyOpenApiHttpFake::class] as $fakeType) {
             $expected[$fakeType] = $actual[$fakeType];
         }
+
+        // v3.0: the static hasAnyCoverage() forwarder, deprecated in 2.7.0,
+        // is removed; hasAnyCoverageOn() on the instance replaces it.
+        unset($expected[OpenApiCoverageTracker::class]['methods']['hasAnyCoverage']);
 
         ksort($expected);
 

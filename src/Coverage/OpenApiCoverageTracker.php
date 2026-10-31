@@ -7,7 +7,6 @@ namespace Studio\Gesso\Coverage;
 use const E_USER_WARNING;
 
 use InvalidArgumentException;
-use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\Spec\OpenApiOperationResolver;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Stubs\StubGenerator;
@@ -313,26 +312,6 @@ final class OpenApiCoverageTracker
     }
 
     /**
-     * Returns true when any record (request or response) exists for the given
-     * spec.
-     *
-     * @deprecated since 2.7, removed in 3.0. Use
-     *             `OpenApiCoverageTracker::current()->hasAnyCoverageOn()`
-     *             instead; the PHPUnit extension and the merge CLI already do.
-     */
-    public static function hasAnyCoverage(string $specName): bool
-    {
-        Deprecations::notice(
-            id: 'coverage.tracker.has_any_coverage',
-            subject: 'OpenApiCoverageTracker::hasAnyCoverage()',
-            replacement: 'OpenApiCoverageTracker::current()->hasAnyCoverageOn()',
-            removedIn: '3.0',
-        );
-
-        return self::current()->hasAnyCoverageOn($specName);
-    }
-
-    /**
      * Diagnostic accessor: which `"METHOD path"` keys have any recorded
      * activity (request reached or any response observation), grouped by spec.
      * Intended for tests and CLI tooling that only need an "endpoint touched"
@@ -528,7 +507,8 @@ final class OpenApiCoverageTracker
     }
 
     /**
-     * Instance form of the deprecated {@see self::hasAnyCoverage()} (Issue #229).
+     * Returns true when any record (request or response) exists for the given
+     * spec (Issue #229).
      */
     public function hasAnyCoverageOn(string $specName): bool
     {

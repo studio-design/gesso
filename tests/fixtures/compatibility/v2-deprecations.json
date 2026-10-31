@@ -20,24 +20,6 @@
                 "removed_in": "3.0"
             }
         },
-        "trait.skip_open_api_resolver.should_skip_open_api": {
-            "spelling": "SkipOpenApiResolver::shouldSkipOpenApi()",
-            "v3_target": "$this->findSkipOpenApiAttribute() !== null",
-            "notice": {
-                "subject": "SkipOpenApiResolver::shouldSkipOpenApi()",
-                "replacement": "$this->findSkipOpenApiAttribute() !== null",
-                "removed_in": "3.0"
-            }
-        },
-        "coverage.tracker.has_any_coverage": {
-            "spelling": "hasAnyCoverage",
-            "v3_target": "OpenApiCoverageTracker::current()->hasAnyCoverageOn()",
-            "notice": {
-                "subject": "OpenApiCoverageTracker::hasAnyCoverage()",
-                "replacement": "OpenApiCoverageTracker::current()->hasAnyCoverageOn()",
-                "removed_in": "3.0"
-            }
-        },
         "phpunit.strict_required": {
             "spelling": "strict_required",
             "v3_target": "strict.required['run']",
