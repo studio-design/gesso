@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Validation\Support;
 
+use const JSON_INVALID_UTF8_SUBSTITUTE;
+use const JSON_PRESERVE_ZERO_FRACTION;
+use const JSON_UNESCAPED_SLASHES;
+use const JSON_UNESCAPED_UNICODE;
 use const PHP_INT_MAX;
 
 use InvalidArgumentException;
@@ -13,6 +17,7 @@ use Opis\JsonSchema\JsonPointer;
 use Opis\JsonSchema\Schema;
 use Opis\JsonSchema\Validator;
 use stdClass;
+use Studio\Gesso\Internal\CurlCommandFormatter;
 use Studio\Gesso\OpenApiVersion;
 use Studio\Gesso\SchemaContext;
 use Studio\Gesso\Spec\OpenApiSchemaConverter;
@@ -28,13 +33,18 @@ use function implode;
 use function in_array;
 use function is_array;
 use function is_object;
+use function is_scalar;
 use function is_string;
+use function json_encode;
 use function preg_match;
+use function preg_replace;
 use function property_exists;
 use function serialize;
 use function sprintf;
 
 /**
+ * @phpstan-type FormattedEntry array{message: string, keyword: string, schema_pointer: ?string, actual: ?string, expected: ?string}
+ *
  * @internal Not part of the package's public API. Do not use from user code.
  */
 final class SchemaValidatorRunner
@@ -52,6 +62,9 @@ final class SchemaValidatorRunner
      * cache atomically so Opis cannot retain objects we no longer own.
      */
     private const MAX_CANONICAL_SCHEMAS = 1024;
+
+    /** Longest `actual` / `expected` excerpt, in characters, before it is cut with `…`. */
+    private const MAX_EXCERPT = 80;
     private readonly Validator $opisValidator;
     private readonly ErrorFormatter $errorFormatter;
 
@@ -117,13 +130,14 @@ final class SchemaValidatorRunner
         // 6901 pointers (root = '') instead of opis's default, which renders
         // the root and the empty-string key identically as '/'. Grouping and
         // order are otherwise exactly what `validate()` has always produced.
-        /** @var array<string, list<array{message: string, keyword: string}>> $formatted */
+        /** @var array<string, list<FormattedEntry>> $formatted */
         $formatted = $this->errorFormatter->format(
             $error,
             true,
             fn(ValidationError $entryError, ?string $message = null): array => [
                 'message' => $this->errorFormatter->formatErrorMessage($entryError, $message),
                 'keyword' => $entryError->keyword(),
+                ...self::context($entryError),
             ],
             static fn(ValidationError $entryError): string => self::instancePointer($entryError->data()->fullPath()),
         );
@@ -131,7 +145,14 @@ final class SchemaValidatorRunner
         $violations = [];
         foreach (self::applyCascadeActions($formatted, $cascadeActions) as $path => $entries) {
             foreach ($entries as $entry) {
-                $violations[] = new SchemaViolation($path, $entry['keyword'], $entry['message']);
+                $violations[] = new SchemaViolation(
+                    $path,
+                    $entry['keyword'],
+                    $entry['message'],
+                    $entry['schema_pointer'],
+                    $entry['actual'],
+                    $entry['expected'],
+                );
             }
         }
 
@@ -162,10 +183,72 @@ final class SchemaValidatorRunner
         $errors = [];
         foreach ($this->validateStructured(ObjectConverter::convert($jsonSchema), ObjectConverter::convert($value)) as $violation) {
             $suffix = $violation->displayPath() === '/' ? '' : $violation->displayPath();
-            $errors[] = new NamedError($name, "[{$prefix}{$suffix}] {$violation->message}", $violation->instancePath, $violation->keyword);
+            // The value of a credential-like parameter or header is never echoed.
+            if ($violation->actual !== null && CurlCommandFormatter::isSensitiveName($name)) {
+                $violation = $violation->withActual(CurlCommandFormatter::REDACTED_PLACEHOLDER);
+            }
+            $errors[] = new NamedError($name, "[{$prefix}{$suffix}] {$violation->message}", $violation->instancePath, $violation->keyword, $violation);
         }
 
         return $errors;
+    }
+
+    /**
+     * Where in the validated schema the error was raised, and the failing and
+     * expected values as short JSON excerpts (v3 vision item A3).
+     *
+     * `schema_pointer` is an RFC 6901 pointer into the schema the validator
+     * ran — the operation's resolved schema, after `$ref` inlining and OpenAPI
+     * 3.0 conversion — ending at the failing keyword when that keyword is
+     * present there. `actual` is the JSON encoding of a scalar failing value;
+     * objects and arrays are left out (`null`), and a value under a
+     * credential-like property name or a `format: password` schema is
+     * replaced by `<redacted>`. `expected` is the JSON encoding of the
+     * keyword's value when that value is a scalar or a list of scalars; a
+     * subschema (`oneOf`, `items`, ...) is left out.
+     *
+     * @return array{schema_pointer: ?string, actual: ?string, expected: ?string}
+     */
+    private static function context(ValidationError $error): array
+    {
+        $keyword = $error->keyword();
+        $schema = $error->schema()->info()->data();
+        $declared = $schema instanceof stdClass && property_exists($schema, $keyword);
+        $segments = $error->schema()->info()->path();
+        if ($declared) {
+            $segments[] = $keyword;
+        }
+
+        $value = $error->data()->value();
+        $actual = null;
+        if ($value === null || is_scalar($value)) {
+            $sensitive = $schema instanceof stdClass && ($schema->format ?? null) === 'password';
+            foreach ($error->data()->fullPath() as $segment) {
+                $sensitive = $sensitive || (is_string($segment) && CurlCommandFormatter::isSensitiveName($segment));
+            }
+            $actual = $sensitive ? CurlCommandFormatter::REDACTED_PLACEHOLDER : self::excerpt($value);
+        }
+
+        $expected = null;
+        if ($declared) {
+            $constraint = $schema->{$keyword};
+            $scalarList = is_array($constraint) && array_filter($constraint, static fn(mixed $item): bool => $item !== null && !is_scalar($item)) === [];
+            if ($constraint === null || is_scalar($constraint) || $scalarList) {
+                $expected = self::excerpt($constraint);
+            }
+        }
+
+        return ['schema_pointer' => self::instancePointer($segments), 'actual' => $actual, 'expected' => $expected];
+    }
+
+    private static function excerpt(mixed $value): ?string
+    {
+        $encoded = json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE | JSON_PRESERVE_ZERO_FRACTION);
+        if ($encoded === false) {
+            return null;
+        }
+
+        return preg_replace('/^(.{' . self::MAX_EXCERPT . '}).+$/su', '$1…', $encoded) ?? $encoded;
     }
 
     /**
@@ -293,10 +376,10 @@ final class SchemaValidatorRunner
      * (no silent suppression of real violations). The property-name
      * comparison itself is fully structural.
      *
-     * @param array<string, list<array{message: string, keyword: string}>> $errors
+     * @param array<string, list<FormattedEntry>> $errors
      * @param array<string, list<string>> $actions
      *
-     * @return array<string, list<array{message: string, keyword: string}>>
+     * @return array<string, list<FormattedEntry>>
      */
     private static function applyCascadeActions(array $errors, array $actions): array
     {
@@ -326,11 +409,11 @@ final class SchemaValidatorRunner
                 }
 
                 $kept[] = [
+                    ...$entry,
                     'message' => sprintf(
                         'Additional object properties are not allowed: %s',
                         implode(', ', $real),
                     ),
-                    'keyword' => $entry['keyword'],
                 ];
             }
 
