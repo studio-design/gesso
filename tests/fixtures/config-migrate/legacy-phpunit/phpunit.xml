@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit bootstrap="vendor/autoload.php">
+    <php>
+        <env name="OPENAPI_VALIDATION_OUTPUT" value="json"/>
+    </php>
+    <extensions>
+        <bootstrap class="Studio\Gesso\PHPUnit\OpenApiCoverageExtension">
+            <parameter name="spec_base_path" value="openapi"/>
+            <parameter name="specs" value="front, admin"/>
+            <parameter name="strip_prefixes" value="/api"/>
+            <parameter name="enforce_discriminator" value="off"/>
+            <parameter name="max_errors" value="5"/>
+            <parameter name="skip_response_codes" value="5\d\d,429"/>
+            <parameter name="strict_required" value="warn"/>
+            <parameter name="min_endpoint_coverage" value="80"/>
+            <parameter name="json_output" value="build/coverage.json"/>
+            <parameter name="enum_spec_base_path" value="openapi"/>
+        </bootstrap>
+    </extensions>
+</phpunit>

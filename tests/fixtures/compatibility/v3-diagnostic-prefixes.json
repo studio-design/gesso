@@ -4,6 +4,7 @@
     },
     "[Gesso]": {
         "src/Baseline/CoverageBaselineEvaluator.php": 2,
+        "src/Cli/ConfigMigrateCommand.php": 6,
         "src/Cli/CoverageGateCommand.php": 2,
         "src/Cli/StubsCommand.php": 3,
         "src/Coverage/CoverageMergeCommand.php": 19,

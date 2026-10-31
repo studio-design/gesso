@@ -9,6 +9,7 @@ use Illuminate\Contracts\Foundation\CachesConfiguration;
 use Illuminate\Support\ServiceProvider;
 use LogicException;
 use Studio\Gesso\Config\GessoConfig;
+use Studio\Gesso\Laravel\Commands\GessoConfigMigrateCommand;
 use Studio\Gesso\Laravel\Commands\OpenApiRoutesCommand;
 use Studio\Gesso\Laravel\Commands\OpenApiStubsCommand;
 
@@ -42,8 +43,11 @@ class GessoServiceProvider extends ServiceProvider
         }
 
         // Before gesso.php is merged in, a present key is one the app set —
-        // a published v2 config/gesso.php, whose flat keys v3 removed.
-        LaravelConfig::rejectRemovedKeys();
+        // a published v2 config/gesso.php, whose flat keys v3 removed. The
+        // command that migrates that file must still be able to boot.
+        if (!$this->runningConfigMigrate()) {
+            LaravelConfig::rejectRemovedKeys();
+        }
 
         $path = $this->app->basePath(GessoConfig::FILENAME);
         $shared = is_file($path) ? GessoConfig::load($path) : GessoConfig::defaults();
@@ -61,7 +65,7 @@ class GessoServiceProvider extends ServiceProvider
         ], self::CONFIG_KEY);
 
         if ($this->app->runningInConsole()) {
-            $this->commands([OpenApiRoutesCommand::class, OpenApiStubsCommand::class]);
+            $this->commands([OpenApiRoutesCommand::class, OpenApiStubsCommand::class, GessoConfigMigrateCommand::class]);
         }
     }
 
@@ -80,5 +84,13 @@ class GessoServiceProvider extends ServiceProvider
         }
 
         return $base;
+    }
+
+    /** `php artisan gesso:config-migrate` — the console has no resolved command yet during register(). */
+    private function runningConfigMigrate(): bool
+    {
+        $argv = $_SERVER['argv'] ?? [];
+
+        return $this->app->runningInConsole() && is_array($argv) && ($argv[1] ?? null) === GessoConfigMigrateCommand::NAME;
     }
 }

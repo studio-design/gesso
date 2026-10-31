@@ -1,0 +1,12 @@
+{
+    "name": "acme/legacy-phpunit",
+    "require-dev": {
+        "phpunit/phpunit": "^11.5",
+        "studio-design/gesso": "^2.9"
+    },
+    "scripts": {
+        "coverage": "vendor/bin/gesso coverage:merge --specs=front --json-output=build/coverage.json --min-endpoint-coverage=80",
+        "stubs": "vendor/bin/gesso stubs --spec=openapi/front.json --output=tests/Contract",
+        "unrelated": "phpunit --output=ignored --specs=ignored"
+    }
+}

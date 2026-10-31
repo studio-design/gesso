@@ -56,6 +56,10 @@ final class StubsCommand
     use CliIo;
 
     public const JSON_SCHEMA_VERSION = 1;
+
+    /** The v2 flags Gesso 3.0 removed, by option name, and the spelling replacing each. */
+    public const REMOVED_FLAGS = ['output' => '--output-dir'];
+
     private const VALUE_OPTIONS = ['spec', 'coverage', 'spec_name', 'adapter', 'output_dir', 'namespace', 'base_class', 'request_prefix', 'format', 'output_file'];
 
     /** @param null|callable(string): void $stdoutWriter */
@@ -73,7 +77,7 @@ final class StubsCommand
     public static function parseArgv(array $argv): array
     {
         /** @var StubsOptions */
-        return ArgvParser::parse($argv, flags: ['dry_run'], values: self::VALUE_OPTIONS, removed: ['output' => '--output-dir']);
+        return ArgvParser::parse($argv, flags: ['dry_run'], values: self::VALUE_OPTIONS, removed: self::REMOVED_FLAGS);
     }
 
     public static function usage(string $invocation = 'gesso stubs'): string

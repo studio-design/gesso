@@ -3,6 +3,7 @@
 
 declare(strict_types=1);
 
+use Studio\Gesso\Cli\ConfigMigrateCommand;
 use Studio\Gesso\Cli\CoverageGateCommand;
 use Studio\Gesso\Cli\DoctorCommand;
 use Studio\Gesso\Cli\StubsCommand;
@@ -44,6 +45,7 @@ $usage = <<<'USAGE'
       coverage:merge   Combine parallel-worker coverage sidecars.
       coverage:gate    Fail when a spec change touches an uncovered operation.
       stubs            Write test stubs for the responses no test covers.
+      config:migrate   Move v2 or competitor validator settings to gesso.php.
 
     Global options:
       --version        Print the installed Gesso version and exit.
@@ -89,6 +91,11 @@ if ($commandName === 'coverage:gate') {
 if ($commandName === 'stubs') {
     $command = new StubsCommand(invocation: 'gesso stubs');
     exit($command->run(StubsCommand::parseArgv($argv)));
+}
+
+if ($commandName === 'config:migrate') {
+    $command = new ConfigMigrateCommand(invocation: 'gesso config:migrate');
+    exit($command->run(ConfigMigrateCommand::parseArgv($argv)));
 }
 
 fwrite(STDERR, "[Gesso] Unknown command: {$commandName}\n\n{$usage}");

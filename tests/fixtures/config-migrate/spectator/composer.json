@@ -1,0 +1,7 @@
+{
+    "name": "acme/spectator-app",
+    "require-dev": {
+        "hotmeteor/spectator": "^3.0",
+        "phpunit/phpunit": "^12.5"
+    }
+}

@@ -1,0 +1,8 @@
+name: ci
+on: [push]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: php artisan openapi:routes --format=json
+      - run: vendor/bin/gesso coverage:merge --strip-prefixes=/api

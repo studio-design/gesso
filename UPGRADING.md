@@ -26,8 +26,10 @@ mirrors `gesso.php`, so test overrides use the same paths, for example
 `config()->set('gesso.laravel.auto_assert', true)`.
 `php artisan vendor:publish --tag=gesso` now writes a starter root `gesso.php`.
 
-To migrate: run `vendor/bin/gesso doctor --spec=… --emit-config > gesso.php`
-(or move each value by hand using the table), delete the extension's
+To migrate: run `vendor/bin/gesso config:migrate --write`, which writes the
+`gesso.php` equivalent to your phpunit.xml parameters and `config/gesso.php`
+and lists every other edit (see [`docs/cli.md`](docs/cli.md#migrate-a-configuration-configmigrate)),
+or `vendor/bin/gesso doctor --spec=… --emit-config > gesso.php` (or move each value by hand using the table), delete the extension's
 `<parameter>` elements except `config`, delete `config/gesso.php`, rename
 `config('gesso.…')` lookups and overrides in your tests, and run
 `php artisan config:clear`. Values written as comma-separated phpunit.xml

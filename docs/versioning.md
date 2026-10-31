@@ -96,7 +96,8 @@ This library follows [Semantic Versioning 2.0](https://semver.org/). v1.0.0 is t
     `bin/gesso` entry point
   - v2.x: the `doctor`, `coverage:merge`, `coverage:gate`, and `stubs`
     subcommands of `bin/gesso`; the legacy standalone binaries are not shipped
-- The Laravel `gesso:routes` and `gesso:stubs` command surfaces (flags, exit codes, and versioned JSON output)
+  - v3.x: adds `config:migrate` (its flags, exit codes, and `schemaVersion` JSON)
+- The Laravel `gesso:routes`, `gesso:stubs`, and `gesso:config-migrate` command surfaces (flags, exit codes, and versioned JSON output)
 - The five environment variables Gesso owns — `GESSO_VALIDATION_FORMAT`,
   `GESSO_CONSOLE_OUTPUT`, `GESSO_BASELINE_GENERATE`, `GESSO_SIDECAR_TOKEN`, and
   `GESSO_RUN_ID` — and the values each accepts. `TEST_TOKEN` and `GITHUB_STEP_SUMMARY` are
@@ -191,7 +192,7 @@ written by `json_output` has its own `schema_version` contract documented in
 
 ## What's NOT covered by SemVer
 
-- Anything marked `@internal` — including the `Internal\` and `Validation\Support\` namespaces, the per-validator helpers under `Validation\Request\` / `Validation\Response\`, `Spec\OpenApiSchemaConverter` / `Spec\OpenApiPathMatcher` / `Spec\OpenApiRefResolver` / `Spec\OpenApiPathSuggester`, the PHPUnit `CoverageReportSubscriber`, `Cli\DoctorCommand`, `Cli\CoverageGateCommand`, `Cli\StubsCommand`, the `Stubs\` namespace, `Coverage\CoverageMergeCommand` (the `gesso doctor`, `gesso coverage:gate`, `gesso coverage:merge`, and `gesso stubs` CLI surfaces remain covered — these classes are their implementation details), and test seams (`*::resetWarningStateForTesting()`, `OpenApiSpecLoader::reset()`, `OpenApiCoverageTracker::reset()` / `exportState()` / `importState()`).
+- Anything marked `@internal` — including the `Internal\` and `Validation\Support\` namespaces, the per-validator helpers under `Validation\Request\` / `Validation\Response\`, `Spec\OpenApiSchemaConverter` / `Spec\OpenApiPathMatcher` / `Spec\OpenApiRefResolver` / `Spec\OpenApiPathSuggester`, the PHPUnit `CoverageReportSubscriber`, `Cli\DoctorCommand`, `Cli\CoverageGateCommand`, `Cli\StubsCommand`, `Cli\ConfigMigrateCommand`, `Config\ConfigMigrator`, the `Stubs\` namespace, `Coverage\CoverageMergeCommand` (the `gesso doctor`, `gesso coverage:gate`, `gesso coverage:merge`, `gesso stubs`, and `gesso config:migrate` CLI surfaces remain covered — these classes are their implementation details), and test seams (`*::resetWarningStateForTesting()`, `OpenApiSpecLoader::reset()`, `OpenApiCoverageTracker::reset()` / `exportState()` / `importState()`).
 - Validator error message wording (we may improve them; assert on presence/category, not on exact strings).
 - The text-mode assertion failure layout — the header line, the error list,
   and the trailing `Reproduce:` curl line (including its redaction details).

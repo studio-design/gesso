@@ -34,7 +34,7 @@ use function trim;
 final readonly class ExtensionParameters
 {
     /** v2 parameters with no `gesso.php` successor, and what to do instead. */
-    private const REMOVED_WITHOUT_SUCCESSOR = [
+    public const REMOVED_WITHOUT_SUCCESSOR = [
         'enum_spec_base_path' => 'delete it; enum bindings resolve against components.schemas of the configured specs',
     ];
 
