@@ -204,7 +204,7 @@ Add `--output-file=<path>` to write the report, in either format, to a file inst
 
 Additive changes — a new field such as `tool`, or a new `category` slug — keep `schemaVersion` at `1`. Removals, renames, and type changes bump it.
 
-Every issue has a stable `severity`, `category`, `spec`, `message`, and nullable `suggestion` field. Severities are:
+Every issue has a stable `severity`, `category`, `spec`, `message`, and nullable `suggestion` field, plus the [failure code](failure-codes.md) of its category in `code` (for example `GSO306` for `structure`) and that code's page in `docs_url`. The text report prints the code before the category: `ERROR [GSO306] [structure] openapi.json: …`. `gesso explain <code>` prints the same entry in the terminal. Severities are:
 
 - `error`: the contract cannot be loaded or enforced as configured;
 - `warning`: validation can proceed, but the package detected a compatibility limitation;

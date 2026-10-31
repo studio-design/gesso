@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Coverage;
 
+use Studio\Gesso\Internal\FailureCatalogue;
 use Studio\Gesso\PHPUnit\CoverageReportSubscriber;
 
 use function implode;
@@ -196,6 +197,6 @@ final class CoverageThresholdEvaluator
 
         return $line['ok']
             ? sprintf('%s coverage %s%% (>= %s%%, ok).', $label, $actual, $threshold)
-            : sprintf('%s coverage %s%% < threshold %s%%.', $label, $actual, $threshold);
+            : sprintf('%s %s coverage %s%% < threshold %s%%.', FailureCatalogue::tag('GSO402'), $label, $actual, $threshold);
     }
 }

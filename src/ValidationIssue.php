@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Studio\Gesso;
 
+use Studio\Gesso\Internal\FailureCatalogue;
+
 /**
  * One structured validation finding, carried alongside the flat error strings
  * on {@see OpenApiValidationResult}.
@@ -22,6 +24,9 @@ namespace Studio\Gesso;
  * request parameter (`request.parameter.*`), response header
  * (`response.header`), or security scheme (`request.security`) — and is null
  * for body issues and for errors not attributable to a single named object.
+ *
+ * {@see self::code()} derives the stable `GSO` failure code from `category`
+ * and `keyword`; see docs/failure-codes.md.
  */
 final readonly class ValidationIssue
 {
@@ -36,4 +41,14 @@ final readonly class ValidationIssue
         public ?string $contentType = null,
         public ?string $parameter = null,
     ) {}
+
+    /**
+     * The stable failure code (`GSO212`, ...) for this issue, or null for a
+     * category the catalogue does not know. Run `gesso explain <code>` or see
+     * docs/failure-codes.md for what it means and how to fix it.
+     */
+    public function code(): ?string
+    {
+        return FailureCatalogue::forIssue($this->category, $this->keyword);
+    }
 }

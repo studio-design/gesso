@@ -360,7 +360,7 @@ class CoverageGateCommandTest extends TestCase
         $this->assertStringContainsString('### Gesso spec patch coverage', $this->stdout);
         $this->assertStringContainsString('**1 changed response is not covered by any test.**', $this->stdout);
         $this->assertStringContainsString('| Operation | Change | Response | Coverage |', $this->stdout);
-        $this->assertStringContainsString('| `DELETE /pets/{id}` | added | `204 (no content)` | UNCOVERED |', $this->stdout);
+        $this->assertStringContainsString('| `DELETE /pets/{id}` | added | `204 (no content)` | UNCOVERED ([GSO401](https://studio-design.github.io/gesso/failure-codes#gso401)) |', $this->stdout);
         $this->assertStringContainsString('| `GET /legacy` | removed | — | — |', $this->stdout);
     }
 
@@ -474,9 +474,10 @@ class CoverageGateCommandTest extends TestCase
         $this->assertSame(1, $report['summary']['uncovered']);
         $this->assertSame(['endpoint', 'change', 'responses'], array_keys($report['operations'][0]));
         $this->assertSame(
-            ['status', 'content_type', 'change', 'state', 'covered'],
+            ['status', 'content_type', 'change', 'state', 'covered', 'code', 'docs_url'],
             array_keys($report['operations'][0]['responses'][0]),
         );
+        $this->assertSame('GSO401', $report['operations'][0]['responses'][0]['code']);
     }
 
     #[Test]

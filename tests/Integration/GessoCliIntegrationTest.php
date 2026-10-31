@@ -49,7 +49,7 @@ final class GessoCliIntegrationTest extends TestCase
     /** @return iterable<string, array{string}> */
     public static function provideEvery_subcommand_help_lists_the_shared_output_flags_and_exit_codesCases(): iterable
     {
-        foreach (['doctor', 'coverage:merge', 'coverage:gate', 'stubs'] as $command) {
+        foreach (['doctor', 'coverage:merge', 'coverage:gate', 'stubs', 'explain'] as $command) {
             yield $command => [$command];
         }
     }
