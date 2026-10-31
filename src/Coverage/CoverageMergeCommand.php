@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Coverage;
 
-use const E_USER_DEPRECATED;
-
 use Closure;
 use InvalidArgumentException;
 use RuntimeException;
@@ -36,7 +34,6 @@ use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 use function array_diff;
 use function array_filter;
 use function array_intersect;
-use function array_key_exists;
 use function array_keys;
 use function array_map;
 use function array_unique;
@@ -59,8 +56,6 @@ use function max;
 use function ord;
 use function preg_replace_callback;
 use function preg_split;
-use function restore_error_handler;
-use function set_error_handler;
 use function sprintf;
 use function str_contains;
 use function str_replace;
@@ -960,9 +955,6 @@ final class CoverageMergeCommand
                 } else {
                     $sidecarsWithoutBaseline++;
                 }
-                // Issue #505: announced only once every half of the legacy
-                // payload was accepted; a malformed one fails the merge alone.
-                $this->deprecateLegacySidecar($payload);
             } catch (InvalidArgumentException $e) {
                 $this->writeStderr(sprintf("[OpenAPI Coverage] FATAL: invalid sidecar payload: %s\n", $e->getMessage()));
 
@@ -1557,52 +1549,6 @@ final class CoverageMergeCommand
         }
 
         return true;
-    }
-
-    /** @param array<array-key, mixed> $payload */
-    private function deprecateLegacySidecar(array $payload): void
-    {
-        if (!array_key_exists('envelopeVersion', $payload)) {
-            $this->deprecationsToStderr(static fn() => Deprecations::notice(
-                id: 'coverage.sidecar.bare_state',
-                subject: 'Reading a coverage sidecar that holds a bare v1 coverage state (no envelopeVersion)',
-                replacement: 'envelopeVersion 10 (re-run the suite on this Gesso so its workers write fresh sidecars; Gesso 3.0 rejects the old ones)',
-                removedIn: '3.0',
-            ));
-        } elseif ($payload['envelopeVersion'] !== CoverageSidecarEnvelope::ENVELOPE_VERSION) {
-            $this->deprecationsToStderr(static fn() => Deprecations::notice(
-                id: 'coverage.sidecar.legacy_envelope',
-                subject: 'Reading a coverage sidecar with envelopeVersion 2-9 (written by Gesso 1.9-2.6)',
-                replacement: 'envelopeVersion 10 (re-run the suite on this Gesso so its workers write fresh sidecars; Gesso 3.0 rejects the old ones)',
-                removedIn: '3.0',
-            ));
-        }
-    }
-
-    /**
-     * Run `$emit` with `E_USER_DEPRECATED` written to stderr: a CLI process
-     * has no PHPUnit to collect it, and PHP's default handler prints it on
-     * stdout, into a `--format=json` report.
-     *
-     * @template T
-     *
-     * @param Closure(): T $emit
-     *
-     * @return T
-     */
-    private function deprecationsToStderr(Closure $emit): mixed
-    {
-        set_error_handler(function (int $severity, string $message): bool {
-            $this->writeStderr($message . "\n");
-
-            return true;
-        }, E_USER_DEPRECATED);
-
-        try {
-            return $emit();
-        } finally {
-            restore_error_handler();
-        }
     }
 
     private function writeCoverageDiagnostic(string $severity, string $detail): void

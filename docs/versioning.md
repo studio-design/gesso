@@ -125,16 +125,13 @@ The persisted payloads accepted by the released merge CLI are nevertheless a
 compatibility surface because workers and the merge step can run different
 installed versions during an upgrade.
 
-The v1.9 writer emits a sidecar envelope with `envelopeVersion: 2`, containing
-coverage state `version: 1` and strict-required state `version: 2`. The v1.9
-reader accepts that envelope and the legacy bare coverage state `version: 1`.
-It recognises `part-*.json` sidecars and `failed-*.json` failure markers.
-Since issue #596 the 2.x writer appends `.<run-id>` before `.json` when a run
-id is known (`part-<token>-<pid>.<run-id>.json`). Every 2.x reader still matches
-the same globs and treats a name without the suffix as "no run id", so the
-envelope version is unchanged and mixed fleets stay mergeable.
+The reader recognises `part-*.json` sidecars and `failed-*.json` failure
+markers. Since issue #596 the writer appends `.<run-id>` before `.json` when a
+run id is known (`part-<token>-<pid>.<run-id>.json`); the reader matches the
+same globs and treats a name without the suffix as "no run id".
 
-The current writer emits `envelopeVersion: 10`. `envelopeVersion` and
+The v3 wire floor is `envelopeVersion: 10`, first written by Gesso 2.7. The
+writer emits it and the 3.x reader accepts nothing else. `envelopeVersion` and
 `coverage` are required; every other key is optional, and its absence means
 the writer had no such tracker. A new tracker half is a new optional key, not
 a new envelope version.
@@ -148,17 +145,13 @@ a new envelope version.
 | `deprecations` | deprecation state `version: 1` |
 | `baseline` | violation-baseline document `baseline_version: 1` (generation runs only) |
 
-The 2.x reader also accepts the legacy envelopes 2–9 written by Gesso 1.9–2.6
-workers, and the legacy bare coverage state. In those envelopes the version
-number enumerated the halves: 3/5/7/9 carry `baseline` and their even
-sibling must not; 4–9 carry strict-additional-properties state, 6–9 SDK
-exercise state, and 8/9 deprecation state. Those rules still apply to legacy
-inputs, and a half that a legacy version does not carry reads as absent.
-Since 2.9.0 the merge raises a one-shot `[Gesso deprecation]` notice for each
-of the two legacy shapes it accepts, and its summary line counts the legacy
-sidecars it read. Gesso 3.0 reads only `envelopeVersion: 10` (#505); sidecars
-are per-run artifacts, so re-running the suite on the current release is the
-whole migration.
+Gesso 3.0 dropped the legacy inputs the 2.x reader still accepted (#505): the
+envelopes 2–9 written by Gesso 1.9–2.6 workers, and the bare coverage state
+`version: 1` with no `envelopeVersion`. The 2.9 merge announced both with a
+`[Gesso deprecation]` notice. The 3.x merge rejects them with an error that
+names the writing release, states that only `envelopeVersion` 10 is read, and
+asks for the same Gesso version in the worker and merge steps. Sidecars are per-run artifacts, so re-running the
+suite on the current release is the whole migration.
 
 Absence is reported, never treated as "this worker recorded none". The merge
 says its deprecation count is a lower bound when a sidecar has no deprecation
@@ -187,9 +180,10 @@ The compatibility rules are:
   v1.9 reader because it cannot represent nested pointer observations from
   `version: 2`.
 
-For the Gesso v2 migration, the v2 merge reader will retain the v1.9 inputs
-listed above. Any later major-version cutoff must be called out in that
-version's upgrade guide; it must not appear as an unversioned shape change.
+The v2 merge reader retained the v1.9 inputs, and Gesso 3.0 cut them off as
+described above, in its upgrade guide. Any later major-version cutoff must
+likewise be called out in that version's upgrade guide; it must not appear as
+an unversioned shape change.
 
 These rules apply to the worker-to-merge protocol only. The coverage report
 written by `json_output` has its own `schema_version` contract documented in
