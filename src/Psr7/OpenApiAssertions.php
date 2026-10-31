@@ -10,7 +10,6 @@ use Psr\Http\Message\ResponseInterface;
 use Studio\Gesso\Baseline\ViolationBaselineCollector;
 use Studio\Gesso\Baseline\ViolationBaselineEnforcer;
 use Studio\Gesso\Internal\CurlCommandFormatter;
-use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\Internal\FailureOutput;
 use Studio\Gesso\Internal\OpenApiAssertionCore;
 use Studio\Gesso\OpenApiRequestValidator;
@@ -283,38 +282,5 @@ trait OpenApiAssertions
             $body,
             $request->getHeaderLine('Content-Type') ?: null,
         );
-    }
-
-    /**
-     * @deprecated Use PHPUnit's `$this->fail()`. Kept because private members
-     *             of this public trait are frozen by the v2 compatibility
-     *             policy; nothing in Gesso calls it. Removed in Gesso 3.0.
-     */
-    private function failPsr7(string $message): never
-    {
-        Deprecations::notice(
-            id: 'trait.psr7_open_api_assertions.fail_psr7',
-            subject: 'The private trait helper failPsr7()',
-            replacement: '$this->fail() (PHPUnit)',
-            removedIn: '3.0',
-        );
-
-        CleanTraceAssert::fail($message);
-    }
-
-    /**
-     * @deprecated Use PHPUnit's `$this->assertTrue()`. Kept for the same
-     *             reason as {@see self::failPsr7()}. Removed in Gesso 3.0.
-     */
-    private function assertPsr7(bool $condition, string $message): void
-    {
-        Deprecations::notice(
-            id: 'trait.psr7_open_api_assertions.assert_psr7',
-            subject: 'The private trait helper assertPsr7()',
-            replacement: '$this->assertTrue() (PHPUnit)',
-            removedIn: '3.0',
-        );
-
-        CleanTraceAssert::assertTrue($condition, $message);
     }
 }

@@ -1,51 +1,5 @@
 {
     "$comment": "Registry of every surface deprecated in v2 for removal in a later major (issue #499). One entry per Deprecations::notice() id in src/, checked by tests/Unit/Compatibility/DeprecationRegistryTest.php. A major that removes a surface deletes its entry in the same change; a removal with no entry here never shipped a deprecation and violates docs/versioning.md.",
     "$fields": "`notice` is that call's three prose arguments copied verbatim and compared to src/ argument by argument, so a notice cannot be re-pointed, re-dated, or moved to another surface without this ledger showing it. `spelling` and `v3_target` are the same two facts in the form V3RenameRegistryTest can compare: the exact v2 name being deprecated, and the exact v3 name replacing it, both matching the entry of that name in v3-renames.json. Prose alone cannot carry that link — one sentence can mention two spellings at once, and then an id points at whichever of them a reader assumes.",
-    "deprecations": {
-        "trait.open_api_assertions.fail_open_api": {
-            "spelling": "failOpenApi()",
-            "v3_target": "$this->fail()",
-            "notice": {
-                "subject": "The private trait helper failOpenApi()",
-                "replacement": "$this->fail() (PHPUnit)",
-                "removed_in": "3.0"
-            }
-        },
-        "trait.open_api_assertions.assert_open_api": {
-            "spelling": "assertOpenApi()",
-            "v3_target": "$this->assertTrue()",
-            "notice": {
-                "subject": "The private trait helper assertOpenApi()",
-                "replacement": "$this->assertTrue() (PHPUnit)",
-                "removed_in": "3.0"
-            }
-        },
-        "trait.psr7_open_api_assertions.fail_psr7": {
-            "spelling": "failPsr7()",
-            "v3_target": "$this->fail()",
-            "notice": {
-                "subject": "The private trait helper failPsr7()",
-                "replacement": "$this->fail() (PHPUnit)",
-                "removed_in": "3.0"
-            }
-        },
-        "trait.psr7_open_api_assertions.assert_psr7": {
-            "spelling": "assertPsr7()",
-            "v3_target": "$this->assertTrue()",
-            "notice": {
-                "subject": "The private trait helper assertPsr7()",
-                "replacement": "$this->assertTrue() (PHPUnit)",
-                "removed_in": "3.0"
-            }
-        },
-        "trait.explores_open_api_endpoint.fail_explore": {
-            "spelling": "failExplore()",
-            "v3_target": "$this->fail()",
-            "notice": {
-                "subject": "The private trait helper failExplore()",
-                "replacement": "$this->fail() (PHPUnit)",
-                "removed_in": "3.0"
-            }
-        }
-    }
+    "deprecations": {}
 }

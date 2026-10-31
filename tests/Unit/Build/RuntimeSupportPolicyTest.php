@@ -19,12 +19,17 @@ final class RuntimeSupportPolicyTest extends TestCase
      * @throws JsonException
      */
     #[Test]
-    public function root_package_requires_the_v2_runtime_and_phpunit_lines(): void
+    public function root_package_requires_the_runtime_and_keeps_phpunit_a_dev_dependency(): void
     {
         $composer = self::composerJson(__DIR__ . '/../../../composer.json');
 
         $this->assertSame('^8.3', $composer['require']['php'] ?? null);
-        $this->assertSame('^12.0 || ^13.0', $composer['require']['phpunit/phpunit'] ?? null);
+        // v3.0 (#506): consumers declare the runner; the conflict still keeps
+        // an unsupported PHPUnit from being installed alongside Gesso.
+        $this->assertArrayNotHasKey('phpunit/phpunit', $composer['require']);
+        $this->assertSame('^12.0 || ^13.0', $composer['require-dev']['phpunit/phpunit'] ?? null);
+        $this->assertSame('<12.0 || >=14.0', $composer['conflict']['phpunit/phpunit'] ?? null);
+        $this->assertArrayHasKey('phpunit/phpunit', $composer['suggest']);
     }
 
     /**
@@ -62,6 +67,7 @@ final class RuntimeSupportPolicyTest extends TestCase
             $this->assertSame('^8.3', $composer['require']['php'] ?? null, $example);
             $this->assertSame('@dev', $composer['require']['studio-design/gesso'] ?? null, $example);
             $this->assertArrayNotHasKey('studio-design/openapi-contract-testing', $composer['require'], $example);
+            $this->assertSame('^12.0 || ^13.0', $composer['require']['phpunit/phpunit'] ?? null, $example);
         }
     }
 

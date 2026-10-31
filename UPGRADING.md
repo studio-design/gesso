@@ -195,7 +195,43 @@ already loaded, so search for `Gesso\Fuzz\ContractCheck` and
 
 ### PHPUnit dependency
 
-*Pending.*
+`phpunit/phpunit` moved from Gesso's `require` to `require-dev`
+([#506](https://github.com/studio-design/gesso/issues/506); announced in
+2.9.0), so installing Gesso no longer installs a test runner. Declare
+PHPUnit 12 or 13 in your own `require-dev` — a current 12.5+ or 13.x
+release. Gesso's `^12.0 || ^13.0` range is unchanged: PHPUnit 11 and Pest 3
+stay unsupported, and a Composer `conflict` keeps them from being installed
+alongside Gesso.
+
+```bash
+composer require --dev "phpunit/phpunit:^12.5 || ^13.0"
+```
+
+A Laravel 12 application still on PHPUnit 11 or Pest 3 must upgrade the
+runner first (for Pest, move to Pest 4):
+
+```bash
+composer require --dev "phpunit/phpunit:^12.5" --with-all-dependencies
+```
+
+Gesso now declares `ext-dom` (JUnit coverage report) and `ext-filter`, which
+it used directly but had received through PHPUnit. Calling a Gesso assertion
+without PHPUnit installed throws a `RuntimeException` naming the
+`composer require` command instead of a "Class not found" fatal.
+
+The private helpers composed into the assertion traits, deprecated in 2.9.0,
+are gone: `failOpenApi()` and `assertOpenApi()` (`ValidatesOpenApiSchema`,
+Symfony and PSR-7 `OpenApiAssertions`), `failPsr7()` and `assertPsr7()`
+(PSR-7 `OpenApiAssertions`), and `failExplore()` (`ExploresOpenApiEndpoint`).
+
+```php
+// Before (v2)
+$this->failOpenApi('message');
+$this->assertOpenApi($condition, 'message');
+// After (v3)
+$this->fail('message');
+$this->assertTrue($condition, 'message');
+```
 
 ### Deprecated helper methods
 

@@ -16,7 +16,6 @@ use Studio\Gesso\Fuzz\GeneratedResponseCases;
 use Studio\Gesso\Fuzz\OpenApiResponseSpecExploration;
 use Studio\Gesso\Fuzz\OpenApiSpecExploration;
 use Studio\Gesso\HttpMethod;
-use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\Laravel\ExploresOpenApiEndpoint;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 
@@ -101,7 +100,7 @@ class ExploresOpenApiEndpointTest extends TestCase
     }
 
     #[Test]
-    public function response_resolution_failure_routes_through_fail_explore(): void
+    public function response_resolution_failure_becomes_a_clean_assertion_failure(): void
     {
         $this->expectException(AssertionFailedError::class);
         $this->expectExceptionMessage('outcome=StatusNotDeclared');
@@ -199,7 +198,7 @@ class ExploresOpenApiEndpointTest extends TestCase
 
     #[Test]
     #[OpenApiSpec('does-not-exist')]
-    public function spec_loader_failure_routes_through_fail_explore(): void
+    public function spec_loader_failure_becomes_a_clean_assertion_failure(): void
     {
         // Without the broadened catch in ExploresOpenApiEndpoint, the spec
         // loader's RuntimeException would leak as a raw stack trace instead
@@ -212,40 +211,12 @@ class ExploresOpenApiEndpointTest extends TestCase
 
     #[Test]
     #[OpenApiSpec('does-not-exist')]
-    public function response_spec_loader_failure_routes_through_fail_explore(): void
+    public function response_spec_loader_failure_becomes_a_clean_assertion_failure(): void
     {
         $this->expectException(AssertionFailedError::class);
         $this->expectExceptionMessage('does-not-exist');
 
         $this->exploreResponseSchema('GET', '/v1/pets', 200);
-    }
-
-    #[Test]
-    public function fail_explore_is_deprecated_for_consumer_callers_only(): void
-    {
-        Deprecations::resetForTesting();
-
-        try {
-            // Gesso's own failure path no longer goes through failExplore().
-            $threw = false;
-
-            try {
-                $this->exploreEndpoint('POST', '/v1/does-not-exist', cases: 1);
-            } catch (AssertionFailedError) {
-                $threw = true;
-            }
-            $this->assertTrue($threw);
-            $this->assertSame([], Deprecations::counts());
-
-            try {
-                @$this->failExplore('boom');
-            } catch (AssertionFailedError $e) {
-                $this->assertSame('boom', $e->getMessage());
-            }
-            $this->assertSame(['trait.explores_open_api_endpoint.fail_explore' => 1], Deprecations::counts());
-        } finally {
-            Deprecations::resetForTesting();
-        }
     }
 }
 

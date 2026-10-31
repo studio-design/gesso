@@ -14,7 +14,6 @@ use Studio\Gesso\Fuzz\OpenApiResponseExplorer;
 use Studio\Gesso\Fuzz\OpenApiResponseSpecExploration;
 use Studio\Gesso\Fuzz\OpenApiSpecExploration;
 use Studio\Gesso\Fuzz\OpenApiSpecExplorer;
-use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\PHPUnit\CleanTraceAssert;
 
 /**
@@ -149,22 +148,5 @@ trait ExploresOpenApiEndpoint
         } catch (InvalidArgumentException|RuntimeException $e) {
             CleanTraceAssert::fail($e->getMessage());
         }
-    }
-
-    /**
-     * @deprecated Use PHPUnit's `$this->fail()`. Kept because private members
-     *             of this public trait are frozen by the v2 compatibility
-     *             policy; nothing in Gesso calls it. Removed in Gesso 3.0.
-     */
-    private function failExplore(string $message): never
-    {
-        Deprecations::notice(
-            id: 'trait.explores_open_api_endpoint.fail_explore',
-            subject: 'The private trait helper failExplore()',
-            replacement: '$this->fail() (PHPUnit)',
-            removedIn: '3.0',
-        );
-
-        CleanTraceAssert::fail($message);
     }
 }

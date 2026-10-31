@@ -207,7 +207,7 @@ trait ValidatesOpenApiSchema
         ?string $path = null,
     ): void {
         // Coerce the HTTP method BEFORE setting the explicit spec override.
-        // failOpenApi() throws AssertionFailedError, which a downstream test
+        // CleanTraceAssert::fail() throws AssertionFailedError, which a downstream test
         // can intentionally catch (`expect(static fn () => ...)->toThrow(...)`).
         // If the override were already set, the leak would carry into the
         // next assertion in the same test method — exactly the invariant
@@ -230,7 +230,7 @@ trait ValidatesOpenApiSchema
 
         // Same try/finally rationale as runOpenApiResponseAssertion above —
         // protects the override against an early throw in runRequestAssertion
-        // (e.g. failOpenApi from an empty spec name) that would otherwise
+        // (e.g. the failure for an empty spec name) that would otherwise
         // leak into the next assertion in the same test method.
         $this->withExplicitOpenApiSpec($spec);
 

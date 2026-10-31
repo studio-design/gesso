@@ -23,49 +23,13 @@ use function is_scalar;
  * Assertion plumbing shared verbatim by the Laravel, Symfony and PSR-7
  * assertion traits: clean-trace fail/assert, the baseline-aware result
  * assertion, and the HttpFoundation reproduce command the two
- * HttpFoundation adapters hand requests straight through to. Gesso's own
- * callers use {@see CleanTraceAssert} directly; the frozen private names
- * (docs/versioning.md) stay only as deprecated forwarders for consumer code.
+ * HttpFoundation adapters hand requests straight through to. Failures go
+ * through {@see CleanTraceAssert}.
  *
  * @internal Framework adapter implementation detail.
  */
 trait OpenApiAssertionCore
 {
-    /**
-     * @deprecated Use PHPUnit's `$this->fail()`. Kept because the method is
-     *             composed into the public adapter traits, whose private
-     *             members the v2 compatibility policy freezes; nothing in
-     *             Gesso calls it, so the notice reaches consumer code only.
-     *             Removed in Gesso 3.0.
-     */
-    private function failOpenApi(string $message): never
-    {
-        Deprecations::notice(
-            id: 'trait.open_api_assertions.fail_open_api',
-            subject: 'The private trait helper failOpenApi()',
-            replacement: '$this->fail() (PHPUnit)',
-            removedIn: '3.0',
-        );
-
-        CleanTraceAssert::fail($message);
-    }
-
-    /**
-     * @deprecated Use PHPUnit's `$this->assertTrue()`. Kept for the same
-     *             reason as {@see self::failOpenApi()}. Removed in Gesso 3.0.
-     */
-    private function assertOpenApi(bool $condition, string $message): void
-    {
-        Deprecations::notice(
-            id: 'trait.open_api_assertions.assert_open_api',
-            subject: 'The private trait helper assertOpenApi()',
-            replacement: '$this->assertTrue() (PHPUnit)',
-            removedIn: '3.0',
-        );
-
-        CleanTraceAssert::assertTrue($condition, $message);
-    }
-
     /** @internal Shared body; the adapters' frozen private names forward here. */
     private function httpFoundationReproduceCommand(Request $request): string
     {

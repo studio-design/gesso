@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Tests\Unit\Build;
 
+use const PHP_BINARY;
 use const T_NAME_FULLY_QUALIFIED;
 use const T_NAME_QUALIFIED;
 
@@ -14,7 +15,10 @@ use RecursiveIteratorIterator;
 use SplFileInfo;
 
 use function dirname;
+use function escapeshellarg;
+use function exec;
 use function file_get_contents;
+use function implode;
 use function in_array;
 use function is_array;
 use function ltrim;
@@ -24,8 +28,8 @@ use function token_get_all;
 
 /**
  * Pins the #506 boundary: PHPUnit's Assert is reached only through
- * PHPUnit\CleanTraceAssert, so moving phpunit/phpunit to require-dev in
- * v3.0 has exactly one caller to account for.
+ * PHPUnit\CleanTraceAssert, so with phpunit/phpunit in require-dev since
+ * v3.0 there is exactly one caller that has to fail clearly without it.
  */
 final class PhpUnitBoundaryTest extends TestCase
 {
@@ -47,6 +51,35 @@ final class PhpUnitBoundaryTest extends TestCase
             ['src/Internal/OpenApiAssertionCore.php', 'src/PHPUnit/CleanTraceAssert.php'],
             $this->filesReferencing('PHPUnit\Framework\AssertionFailedError'),
         );
+    }
+
+    #[Test]
+    public function clean_trace_assert_fails_clearly_when_phpunit_is_not_installed(): void
+    {
+        // A child process autoloading only src/, so PHPUnit's classes do not exist.
+        $script = <<<'PHP'
+            spl_autoload_register(static function (string $class): void {
+                $prefix = 'Studio\\Gesso\\';
+                if (str_starts_with($class, $prefix)) {
+                    require $GLOBALS['argv'][1] . '/' . str_replace('\\', '/', substr($class, strlen($prefix))) . '.php';
+                }
+            });
+            try {
+                Studio\Gesso\PHPUnit\CleanTraceAssert::fail('boom');
+            } catch (RuntimeException $e) {
+                echo $e->getMessage();
+            }
+            PHP;
+
+        exec(
+            escapeshellarg(PHP_BINARY) . ' -r ' . escapeshellarg($script)
+            . ' ' . escapeshellarg(dirname(__DIR__, 3) . '/src') . ' 2>&1',
+            $output,
+            $exitCode,
+        );
+
+        $this->assertSame(0, $exitCode, implode("\n", $output));
+        $this->assertStringContainsString('composer require --dev "phpunit/phpunit:^12.0 || ^13.0"', implode("\n", $output));
     }
 
     #[Test]
