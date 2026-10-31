@@ -55,7 +55,7 @@ use function unlink;
 class OpenApiCoverageExtensionTest extends TestCase
 {
     private const CLEAN_BINDINGS = "[OpenAPI Enum Drift] 1 bound (0 by name, 1 by attribute), 0 unbound.\n"
-        . "  Studio\\Gesso\\Tests\\Unit\\PHPUnit\\Fixture\\EnumDrift\\Clean\\CleanPetStatus  ->  enum-drift/_shared/components/schemas/enums/PetStatusEnum.json\n";
+        . "  Studio\\Gesso\\Tests\\Unit\\PHPUnit\\Fixture\\EnumDrift\\Clean\\CleanPetStatus  ->  #/components/schemas/PetStatusEnum\n";
 
     /** @var null|resource */
     private $stderrBuffer;
@@ -159,24 +159,6 @@ class OpenApiCoverageExtensionTest extends TestCase
         $extension->setupExtension(null, $parameters, null);
 
         $this->assertSame('', $this->readStderr());
-    }
-
-    #[Test]
-    public function bootstrap_leaves_enum_base_path_unset_when_parameter_omitted(): void
-    {
-        // Issue #170: enum_spec_base_path is opt-in. When the parameter is
-        // not present the loader must report null so EnumDriftAsserter
-        // falls back to spec_base_path — keeping pre-1.2.0 setups
-        // bit-for-bit identical.
-        $extension = new OpenApiCoverageExtension();
-        $parameters = FlatExtensionSettings::parameters([
-            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
-            'specs' => 'refs-valid',
-        ]);
-
-        $extension->setupExtension(null, $parameters, null);
-
-        $this->assertNull(OpenApiSpecLoader::getEnumBasePath());
     }
 
     #[Test]
@@ -381,7 +363,7 @@ class OpenApiCoverageExtensionTest extends TestCase
         $extension = new OpenApiCoverageExtension();
         $parameters = FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
-            'specs' => 'refs-valid',
+            'specs' => 'enum-drift/shared',
             'enum_drift_enabled' => 'true',
         ]);
 
@@ -397,13 +379,12 @@ class OpenApiCoverageExtensionTest extends TestCase
     }
 
     #[Test]
-    #[IgnoreDeprecations]
     public function bootstrap_fatals_on_drift_when_strict(): void
     {
         $extension = new OpenApiCoverageExtension();
         $parameters = FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
-            'specs' => 'refs-valid',
+            'specs' => 'enum-drift/shared',
             'enum_drift_enabled' => 'true',
             'enum_drift_scan_namespaces' => 'Studio\\Gesso\\Tests\\Unit\\PHPUnit\\Fixture\\EnumDrift\\Drifting\\',
         ]);
@@ -426,7 +407,7 @@ class OpenApiCoverageExtensionTest extends TestCase
         $extension = new OpenApiCoverageExtension();
         $parameters = FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
-            'specs' => 'refs-valid',
+            'specs' => 'enum-drift/shared',
             'enum_drift_enabled' => 'true',
             'enum_drift_scan_namespaces' => 'Studio\\Gesso\\Tests\\Unit\\PHPUnit\\Fixture\\EnumDrift\\Drifting\\',
             'enum_drift_fail_on_drift' => 'false',
@@ -454,13 +435,12 @@ class OpenApiCoverageExtensionTest extends TestCase
     }
 
     #[Test]
-    #[IgnoreDeprecations]
     public function bootstrap_succeeds_when_no_drift(): void
     {
         $extension = new OpenApiCoverageExtension();
         $parameters = FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
-            'specs' => 'refs-valid',
+            'specs' => 'enum-drift/shared',
             'enum_drift_enabled' => 'true',
             'enum_drift_scan_namespaces' => 'Studio\\Gesso\\Tests\\Unit\\PHPUnit\\Fixture\\EnumDrift\\Clean\\',
         ]);
@@ -482,7 +462,7 @@ class OpenApiCoverageExtensionTest extends TestCase
         $extension = new OpenApiCoverageExtension();
         $parameters = FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
-            'specs' => 'refs-valid',
+            'specs' => 'enum-drift/shared',
             'enum_drift_enabled' => 'true',
             'enum_drift_scan_namespaces' => 'Studio\\Gesso\\Tests\\Unit\\PHPUnit\\Fixture\\EnumDrift\\Clean\\',
         ]);
@@ -496,13 +476,12 @@ class OpenApiCoverageExtensionTest extends TestCase
     }
 
     #[Test]
-    #[IgnoreDeprecations]
     public function bootstrap_fatals_on_misconfigured_binding_even_when_lenient(): void
     {
         $extension = new OpenApiCoverageExtension();
         $parameters = FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
-            'specs' => 'refs-valid',
+            'specs' => 'enum-drift/shared',
             'enum_drift_enabled' => 'true',
             'enum_drift_scan_namespaces' => 'Studio\\Gesso\\Tests\\Unit\\PHPUnit\\Fixture\\EnumDrift\\Misconfigured\\',
             'enum_drift_fail_on_drift' => 'false',
@@ -512,19 +491,18 @@ class OpenApiCoverageExtensionTest extends TestCase
             $extension->setupExtension(null, $parameters, null);
             $this->fail('Expected EnumBindingException');
         } catch (EnumBindingException $e) {
-            $this->assertSame(EnumBindingReason::SpecFileNotFound, $e->reason);
+            $this->assertSame(EnumBindingReason::ComponentNotFound, $e->reason);
             $this->assertStringContainsString('[OpenAPI Enum Drift] FATAL', $this->readStderr());
         }
     }
 
     #[Test]
-    #[IgnoreDeprecations]
     public function bootstrap_parses_namespaces_csv_with_whitespace(): void
     {
         $extension = new OpenApiCoverageExtension();
         $parameters = FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
-            'specs' => 'refs-valid',
+            'specs' => 'enum-drift/shared',
             'enum_drift_enabled' => 'true',
             'enum_drift_scan_namespaces' =>
                 ' Studio\\Gesso\\Tests\\Unit\\PHPUnit\\Fixture\\EnumDrift\\Clean\\ '
@@ -571,7 +549,7 @@ class OpenApiCoverageExtensionTest extends TestCase
         $extension = new OpenApiCoverageExtension();
         $parameters = FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
-            'specs' => 'refs-valid',
+            'specs' => 'enum-drift/shared',
             'enum_drift_enabled' => 'true',
             'enum_drift_scan_namespaces' => 'Studio\\Gesso\\Tests\\Unit\\PHPUnit\\Fixture\\EnumDrift\\ByName\\',
         ]);
@@ -593,7 +571,7 @@ class OpenApiCoverageExtensionTest extends TestCase
         $extension = new OpenApiCoverageExtension();
         $parameters = FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
-            'specs' => 'refs-valid',
+            'specs' => 'enum-drift/shared',
             'enum_drift_enabled' => 'true',
             // Resolvable PSR-4 root that contains zero attributed enums.
             'enum_drift_scan_namespaces' =>
@@ -621,7 +599,6 @@ class OpenApiCoverageExtensionTest extends TestCase
     }
 
     #[Test]
-    #[IgnoreDeprecations]
     public function bootstrap_appends_fatal_block_to_step_summary_for_enum_drift(): void
     {
         $tmp = tempnam(sys_get_temp_dir(), 'openapi-enum-summary-');
@@ -633,7 +610,7 @@ class OpenApiCoverageExtensionTest extends TestCase
         $extension = new OpenApiCoverageExtension();
         $parameters = FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
-            'specs' => 'refs-valid',
+            'specs' => 'enum-drift/shared',
             'enum_drift_enabled' => 'true',
             'enum_drift_scan_namespaces' => 'Studio\\Gesso\\Tests\\Unit\\PHPUnit\\Fixture\\EnumDrift\\Drifting\\',
         ]);
@@ -664,7 +641,7 @@ class OpenApiCoverageExtensionTest extends TestCase
         $extension = new OpenApiCoverageExtension();
         $parameters = FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
-            'specs' => 'refs-valid',
+            'specs' => 'enum-drift/shared',
             'enum_drift_enabled' => 'true',
             'enum_drift_scan_namespaces' => 'Studio\\Gesso\\Tests\\Unit\\PHPUnit\\Fixture\\EnumDrift\\Drifting\\',
             'enum_drift_fail_on_drift' => 'true',
@@ -679,7 +656,6 @@ class OpenApiCoverageExtensionTest extends TestCase
     }
 
     #[Test]
-    #[IgnoreDeprecations]
     public function bootstrap_appends_warning_block_to_step_summary_for_lenient_drift(): void
     {
         $tmp = tempnam(sys_get_temp_dir(), 'openapi-enum-summary-');
@@ -691,7 +667,7 @@ class OpenApiCoverageExtensionTest extends TestCase
         $extension = new OpenApiCoverageExtension();
         $parameters = FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
-            'specs' => 'refs-valid',
+            'specs' => 'enum-drift/shared',
             'enum_drift_enabled' => 'true',
             'enum_drift_scan_namespaces' => 'Studio\\Gesso\\Tests\\Unit\\PHPUnit\\Fixture\\EnumDrift\\Drifting\\',
             'enum_drift_fail_on_drift' => 'false',
@@ -717,7 +693,7 @@ class OpenApiCoverageExtensionTest extends TestCase
         $extension = new OpenApiCoverageExtension();
         $parameters = FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
-            'specs' => 'refs-valid',
+            'specs' => 'enum-drift/shared',
             'enum_drift_enabled' => 'true',
             'enum_drift_scan_namespaces' => 'Some\\Nonexistent\\Namespace\\',
         ]);
@@ -742,7 +718,7 @@ class OpenApiCoverageExtensionTest extends TestCase
         $extension = new OpenApiCoverageExtension();
         $parameters = FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
-            'specs' => 'refs-valid',
+            'specs' => 'enum-drift/shared',
             'enum_drift_enabled' => 'true',
             'enum_drift_scan_namespaces' =>
                 'Studio\\Gesso\\Tests\\Unit\\PHPUnit\\Fixture\\EnumDrift\\Clean\\',
@@ -758,7 +734,6 @@ class OpenApiCoverageExtensionTest extends TestCase
     }
 
     #[Test]
-    #[IgnoreDeprecations]
     public function bootstrap_fatals_on_drift_when_fail_on_drift_omitted(): void
     {
         // Default for `enum_drift_fail_on_drift` is `true`. Pin the default
@@ -766,7 +741,7 @@ class OpenApiCoverageExtensionTest extends TestCase
         $extension = new OpenApiCoverageExtension();
         $parameters = FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
-            'specs' => 'refs-valid',
+            'specs' => 'enum-drift/shared',
             'enum_drift_enabled' => 'true',
             'enum_drift_scan_namespaces' => 'Studio\\Gesso\\Tests\\Unit\\PHPUnit\\Fixture\\EnumDrift\\Drifting\\',
             // enum_drift_fail_on_drift intentionally omitted

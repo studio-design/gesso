@@ -6,7 +6,7 @@ namespace Studio\Gesso\Tests\Unit\Internal\Fixture\EnumScanner;
 
 use Studio\Gesso\Attribute\BoundToOpenApiEnum;
 
-#[BoundToOpenApiEnum('fixture/clean.json')]
+#[BoundToOpenApiEnum('Clean')]
 enum CleanBoundEnum: string
 {
     case Alpha = 'alpha';

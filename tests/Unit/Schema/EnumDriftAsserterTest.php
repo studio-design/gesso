@@ -4,45 +4,34 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Tests\Unit\Schema;
 
-use const E_USER_DEPRECATED;
 use const E_USER_WARNING;
 
-use InvalidArgumentException;
+use ArgumentCountError;
 use PHPUnit\Framework\Attributes\DataProvider;
-use PHPUnit\Framework\Attributes\IgnoreDeprecations;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
-use Studio\Gesso\Attribute\BoundToOpenApiEnum;
 use Studio\Gesso\Exception\EnumBindingException;
 use Studio\Gesso\Exception\EnumBindingReason;
 use Studio\Gesso\Exception\EnumDriftException;
-use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\Internal\YamlAvailability;
 use Studio\Gesso\Schema\EnumDriftAsserter;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Tests\Unit\PHPUnit\Fixture\EnumDrift\ByName\Color as DriftingColor;
-use Studio\Gesso\Tests\Unit\Schema\Fixture\BothArgumentsEnum;
+use Studio\Gesso\Tests\Unit\Schema\Fixture\ArgumentlessAttributeEnum;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\Broken;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\Color;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\ComponentOverrideEnum;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\EmptyKeyed;
-use Studio\Gesso\Tests\Unit\Schema\Fixture\EmptyObjectFileEnum;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\EmptySpecEnum;
-use Studio\Gesso\Tests\Unit\Schema\Fixture\EnumKeyNotArrayEnum;
-use Studio\Gesso\Tests\Unit\Schema\Fixture\EscapingSpecEnum;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\Flags;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\IntegerBackedDriftEnum;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\IntegerBackedEnum;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\Keyed;
-use Studio\Gesso\Tests\Unit\Schema\Fixture\MalformedSpecEnum;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\MatchingEnum;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\MissingComponentEnum;
-use Studio\Gesso\Tests\Unit\Schema\Fixture\NoEnumKeySpecEnum;
-use Studio\Gesso\Tests\Unit\Schema\Fixture\NoExtensionSpecEnum;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\NonScalarSpecValueEnum;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\NotAnEnum;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\NumericKeyed;
-use Studio\Gesso\Tests\Unit\Schema\Fixture\NumericKeyedFileEnum;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\PaymentStatus;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\PhpExtraEnum;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\PureEnum;
@@ -50,22 +39,13 @@ use Studio\Gesso\Tests\Unit\Schema\Fixture\RefKeyed;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\SharedCode;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\ShippingMethodEnum;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\SpecExtraEnum;
-use Studio\Gesso\Tests\Unit\Schema\Fixture\SpecFileMissingEnum;
 use Studio\Gesso\Tests\Unit\Schema\Fixture\UnattributedEnum;
-use Studio\Gesso\Tests\Unit\Schema\Fixture\UppercaseYamlExtensionEnum;
-use Studio\Gesso\Tests\Unit\Schema\Fixture\YamlMalformedSpecEnum;
-use Studio\Gesso\Tests\Unit\Schema\Fixture\YamlMatchingEnum;
-use Studio\Gesso\Tests\Unit\Schema\Fixture\YamlScalarRootEnum;
-use Studio\Gesso\Tests\Unit\Schema\Fixture\YamlSpecExtraEnum;
-use Studio\Gesso\Tests\Unit\Schema\Fixture\YmlMatchingEnum;
 
-use function file_exists;
 use function file_put_contents;
 use function mkdir;
 use function restore_error_handler;
 use function rmdir;
 use function set_error_handler;
-use function symlink;
 use function sys_get_temp_dir;
 use function uniqid;
 use function unlink;
@@ -74,6 +54,7 @@ class EnumDriftAsserterTest extends TestCase
 {
     private const SPEC_BASE_PATH = __DIR__ . '/../../fixtures/specs';
     private const COMPONENT_SPECS = ['enum-drift/components'];
+    private const BINDING_SPECS = ['enum-drift/bindings'];
 
     protected function setUp(): void
     {
@@ -86,7 +67,6 @@ class EnumDriftAsserterTest extends TestCase
     {
         YamlAvailability::reset();
         OpenApiSpecLoader::reset();
-        Deprecations::resetForTesting();
         parent::tearDown();
     }
 
@@ -97,15 +77,6 @@ class EnumDriftAsserterTest extends TestCase
     {
         yield 'configured specs' => [self::COMPONENT_SPECS, 'enum-drift/components'];
         yield 'no specs' => [[], 'none configured'];
-    }
-
-    /**
-     * @return iterable<string, array{array{0?: string, 1?: string}}>
-     */
-    public static function provideAttribute_with_both_or_neither_argument_is_rejectedCases(): iterable
-    {
-        yield 'neither' => [[]];
-        yield 'both' => [['a.json', 'A']];
     }
 
     /**
@@ -123,53 +94,24 @@ class EnumDriftAsserterTest extends TestCase
         yield 'yaml empty mapping' => [EmptyKeyed::class, 'EmptyKeyed', ['enum-drift/components-yaml']];
     }
 
-    /**
-     * @return iterable<string, array{class-string}>
-     */
-    public static function provideBound_file_with_an_object_enum_throws_enum_key_not_arrayCases(): iterable
-    {
-        yield 'numeric-keyed object' => [NumericKeyedFileEnum::class];
-        yield 'empty object' => [EmptyObjectFileEnum::class];
-    }
-
     #[Test]
-    public function path_binding_emits_the_spec_path_deprecation_and_component_binding_does_not(): void
-    {
-        Deprecations::resetForTesting();
-        set_error_handler(static fn(): bool => true, E_USER_DEPRECATED);
-
-        try {
-            EnumDriftAsserter::detectAll([Color::class, ComponentOverrideEnum::class], self::COMPONENT_SPECS);
-            $this->assertSame([], Deprecations::counts());
-
-            EnumDriftAsserter::detectAll([MatchingEnum::class]);
-        } finally {
-            restore_error_handler();
-        }
-
-        $this->assertSame(['attribute.bound_to_open_api_enum.spec_path' => 1], Deprecations::counts());
-    }
-
-    #[Test]
-    #[IgnoreDeprecations]
     public function assert_no_drift_passes_for_matching_pair(): void
     {
-        EnumDriftAsserter::assertNoDrift([MatchingEnum::class]);
+        EnumDriftAsserter::assertNoDrift([MatchingEnum::class], specNames: self::BINDING_SPECS);
 
         // detectAll mirrors the same resolution path; verifying its report
         // confirms the matching path executed without throwing — a real
         // post-condition rather than `assertTrue(true)`.
-        $reports = EnumDriftAsserter::detectAll([MatchingEnum::class]);
+        $reports = EnumDriftAsserter::detectAll([MatchingEnum::class], specNames: self::BINDING_SPECS);
         $this->assertCount(1, $reports);
         $this->assertFalse($reports[0]->hasDrift());
     }
 
     #[Test]
-    #[IgnoreDeprecations]
     public function assert_no_drift_throws_when_php_has_extra_cases(): void
     {
         try {
-            EnumDriftAsserter::assertNoDrift([PhpExtraEnum::class]);
+            EnumDriftAsserter::assertNoDrift([PhpExtraEnum::class], specNames: self::BINDING_SPECS);
             $this->fail('expected EnumDriftException');
         } catch (EnumDriftException $e) {
             $this->assertCount(1, $e->reports);
@@ -181,11 +123,10 @@ class EnumDriftAsserterTest extends TestCase
     }
 
     #[Test]
-    #[IgnoreDeprecations]
     public function assert_no_drift_throws_when_spec_has_extra_values(): void
     {
         try {
-            EnumDriftAsserter::assertNoDrift([SpecExtraEnum::class]);
+            EnumDriftAsserter::assertNoDrift([SpecExtraEnum::class], specNames: self::BINDING_SPECS);
             $this->fail('expected EnumDriftException');
         } catch (EnumDriftException $e) {
             $this->assertCount(1, $e->reports);
@@ -197,14 +138,13 @@ class EnumDriftAsserterTest extends TestCase
     }
 
     #[Test]
-    #[IgnoreDeprecations]
     public function assert_no_drift_aggregates_multiple_drifting_enums(): void
     {
         try {
             EnumDriftAsserter::assertNoDrift([
                 PhpExtraEnum::class,
                 SpecExtraEnum::class,
-            ]);
+            ], specNames: self::BINDING_SPECS);
             $this->fail('expected EnumDriftException');
         } catch (EnumDriftException $e) {
             $this->assertCount(2, $e->reports);
@@ -217,7 +157,6 @@ class EnumDriftAsserterTest extends TestCase
     }
 
     #[Test]
-    #[IgnoreDeprecations]
     public function assert_no_drift_skips_clean_enums_in_aggregated_report(): void
     {
         // Mixed input: one clean + one drifting. Only the drifting one
@@ -227,7 +166,7 @@ class EnumDriftAsserterTest extends TestCase
             EnumDriftAsserter::assertNoDrift([
                 MatchingEnum::class,
                 PhpExtraEnum::class,
-            ]);
+            ], specNames: self::BINDING_SPECS);
             $this->fail('expected EnumDriftException');
         } catch (EnumDriftException $e) {
             $this->assertCount(1, $e->reports);
@@ -236,7 +175,6 @@ class EnumDriftAsserterTest extends TestCase
     }
 
     #[Test]
-    #[IgnoreDeprecations]
     public function detect_all_returns_clean_reports_too(): void
     {
         // detectAll() is the inspection seam — callers building UI / CI
@@ -244,7 +182,7 @@ class EnumDriftAsserterTest extends TestCase
         $reports = EnumDriftAsserter::detectAll([
             MatchingEnum::class,
             PhpExtraEnum::class,
-        ]);
+        ], specNames: self::BINDING_SPECS);
 
         $this->assertCount(2, $reports);
         $this->assertFalse($reports[0]->hasDrift());
@@ -255,7 +193,7 @@ class EnumDriftAsserterTest extends TestCase
     public function assert_no_drift_throws_binding_exception_for_unattributed_enum(): void
     {
         try {
-            EnumDriftAsserter::assertNoDrift([UnattributedEnum::class]);
+            EnumDriftAsserter::assertNoDrift([UnattributedEnum::class], specNames: self::BINDING_SPECS);
             $this->fail('expected EnumBindingException');
         } catch (EnumBindingException $e) {
             $this->assertSame(EnumBindingReason::AttributeMissing, $e->reason);
@@ -267,7 +205,7 @@ class EnumDriftAsserterTest extends TestCase
     public function assert_no_drift_throws_binding_exception_when_target_is_not_enum(): void
     {
         try {
-            EnumDriftAsserter::assertNoDrift([NotAnEnum::class]);
+            EnumDriftAsserter::assertNoDrift([NotAnEnum::class], specNames: self::BINDING_SPECS);
             $this->fail('expected EnumBindingException');
         } catch (EnumBindingException $e) {
             $this->assertSame(EnumBindingReason::TargetIsNotEnum, $e->reason);
@@ -279,86 +217,10 @@ class EnumDriftAsserterTest extends TestCase
     public function assert_no_drift_throws_binding_exception_when_class_does_not_exist(): void
     {
         try {
-            EnumDriftAsserter::assertNoDrift(['Studio\\NoSuch\\Enum']);
+            EnumDriftAsserter::assertNoDrift(['Studio\\NoSuch\\Enum'], specNames: self::BINDING_SPECS);
             $this->fail('expected EnumBindingException');
         } catch (EnumBindingException $e) {
             $this->assertSame(EnumBindingReason::TargetIsNotEnum, $e->reason);
-        }
-    }
-
-    #[Test]
-    #[IgnoreDeprecations]
-    public function assert_no_drift_throws_binding_exception_when_base_path_unconfigured(): void
-    {
-        OpenApiSpecLoader::reset();
-
-        try {
-            EnumDriftAsserter::assertNoDrift([MatchingEnum::class]);
-            $this->fail('expected EnumBindingException');
-        } catch (EnumBindingException $e) {
-            $this->assertSame(EnumBindingReason::BasePathNotConfigured, $e->reason);
-        }
-    }
-
-    #[Test]
-    #[IgnoreDeprecations]
-    public function assert_no_drift_throws_binding_exception_when_spec_file_missing(): void
-    {
-        try {
-            EnumDriftAsserter::assertNoDrift([SpecFileMissingEnum::class]);
-            $this->fail('expected EnumBindingException');
-        } catch (EnumBindingException $e) {
-            $this->assertSame(EnumBindingReason::SpecFileNotFound, $e->reason);
-            $this->assertSame('enum-drift/does-not-exist.json', $e->specPath);
-        }
-    }
-
-    #[Test]
-    #[IgnoreDeprecations]
-    public function assert_no_drift_throws_binding_exception_for_malformed_json(): void
-    {
-        try {
-            EnumDriftAsserter::assertNoDrift([MalformedSpecEnum::class]);
-            $this->fail('expected EnumBindingException');
-        } catch (EnumBindingException $e) {
-            $this->assertSame(EnumBindingReason::MalformedJson, $e->reason);
-        }
-    }
-
-    #[Test]
-    #[IgnoreDeprecations]
-    public function assert_no_drift_throws_binding_exception_when_enum_key_missing(): void
-    {
-        try {
-            EnumDriftAsserter::assertNoDrift([NoEnumKeySpecEnum::class]);
-            $this->fail('expected EnumBindingException');
-        } catch (EnumBindingException $e) {
-            $this->assertSame(EnumBindingReason::EnumKeyMissing, $e->reason);
-        }
-    }
-
-    #[Test]
-    #[IgnoreDeprecations]
-    public function assert_no_drift_throws_binding_exception_when_enum_key_not_array(): void
-    {
-        try {
-            EnumDriftAsserter::assertNoDrift([EnumKeyNotArrayEnum::class]);
-            $this->fail('expected EnumBindingException');
-        } catch (EnumBindingException $e) {
-            $this->assertSame(EnumBindingReason::EnumKeyNotArray, $e->reason);
-        }
-    }
-
-    #[Test]
-    #[DataProvider('provideBound_file_with_an_object_enum_throws_enum_key_not_arrayCases')]
-    #[IgnoreDeprecations]
-    public function bound_file_with_an_object_enum_throws_enum_key_not_array(string $fqcn): void
-    {
-        try {
-            EnumDriftAsserter::assertNoDrift([$fqcn]);
-            $this->fail('expected EnumBindingException');
-        } catch (EnumBindingException $e) {
-            $this->assertSame(EnumBindingReason::EnumKeyNotArray, $e->reason);
         }
     }
 
@@ -373,7 +235,7 @@ class EnumDriftAsserterTest extends TestCase
         }, E_USER_WARNING);
 
         try {
-            EnumDriftAsserter::assertNoDrift([PhpExtraEnum::class], failOnDrift: false);
+            EnumDriftAsserter::assertNoDrift([PhpExtraEnum::class], failOnDrift: false, specNames: self::BINDING_SPECS);
         } finally {
             restore_error_handler();
         }
@@ -394,7 +256,7 @@ class EnumDriftAsserterTest extends TestCase
         }, E_USER_WARNING);
 
         try {
-            EnumDriftAsserter::assertNoDrift([MatchingEnum::class], failOnDrift: false);
+            EnumDriftAsserter::assertNoDrift([MatchingEnum::class], failOnDrift: false, specNames: self::BINDING_SPECS);
         } finally {
             restore_error_handler();
         }
@@ -411,14 +273,13 @@ class EnumDriftAsserterTest extends TestCase
     }
 
     #[Test]
-    #[IgnoreDeprecations]
     public function diagnostic_message_contains_structured_block(): void
     {
         try {
             EnumDriftAsserter::assertNoDrift([
                 PhpExtraEnum::class,
                 SpecExtraEnum::class,
-            ]);
+            ], specNames: self::BINDING_SPECS);
             $this->fail('expected EnumDriftException');
         } catch (EnumDriftException $e) {
             $msg = $e->getMessage();
@@ -430,9 +291,9 @@ class EnumDriftAsserterTest extends TestCase
 
             // Per-enum body
             $this->assertStringContainsString(PhpExtraEnum::class, $msg);
-            $this->assertStringContainsString('enum-drift/php-extra.json', $msg);
+            $this->assertStringContainsString('#/components/schemas/PhpExtra', $msg);
             $this->assertStringContainsString(SpecExtraEnum::class, $msg);
-            $this->assertStringContainsString('enum-drift/spec-extra.json', $msg);
+            $this->assertStringContainsString('#/components/schemas/SpecExtra', $msg);
 
             // Footer
             $this->assertStringContainsString('Action:', $msg);
@@ -440,24 +301,22 @@ class EnumDriftAsserterTest extends TestCase
     }
 
     #[Test]
-    #[IgnoreDeprecations]
     public function assert_no_drift_passes_for_integer_backed_enum(): void
     {
-        EnumDriftAsserter::assertNoDrift([IntegerBackedEnum::class]);
+        EnumDriftAsserter::assertNoDrift([IntegerBackedEnum::class], specNames: self::BINDING_SPECS);
 
-        $reports = EnumDriftAsserter::detectAll([IntegerBackedEnum::class]);
+        $reports = EnumDriftAsserter::detectAll([IntegerBackedEnum::class], specNames: self::BINDING_SPECS);
         $this->assertFalse($reports[0]->hasDrift());
     }
 
     #[Test]
-    #[IgnoreDeprecations]
     public function strict_comparison_surfaces_string_vs_int_drift(): void
     {
         // Spec carries `[200, 201, "201"]` against a PHP enum of `200, 201`.
         // The string "201" must surface as spec-only drift even though
         // == comparison would equate it with the int 201.
         try {
-            EnumDriftAsserter::assertNoDrift([IntegerBackedDriftEnum::class]);
+            EnumDriftAsserter::assertNoDrift([IntegerBackedDriftEnum::class], specNames: self::BINDING_SPECS);
             $this->fail('expected EnumDriftException');
         } catch (EnumDriftException $e) {
             $this->assertSame(['201'], $e->reports[0]->specOnly);
@@ -466,11 +325,10 @@ class EnumDriftAsserterTest extends TestCase
     }
 
     #[Test]
-    #[IgnoreDeprecations]
     public function diagnostic_renders_int_values_unquoted(): void
     {
         try {
-            EnumDriftAsserter::assertNoDrift([IntegerBackedDriftEnum::class]);
+            EnumDriftAsserter::assertNoDrift([IntegerBackedDriftEnum::class], specNames: self::BINDING_SPECS);
             $this->fail('expected EnumDriftException');
         } catch (EnumDriftException $e) {
             // String values are quoted in the diagnostic; ints are not.
@@ -482,7 +340,7 @@ class EnumDriftAsserterTest extends TestCase
     public function pure_enum_throws_target_is_not_backed_enum(): void
     {
         try {
-            EnumDriftAsserter::assertNoDrift([PureEnum::class]);
+            EnumDriftAsserter::assertNoDrift([PureEnum::class], specNames: self::BINDING_SPECS);
             $this->fail('expected EnumBindingException');
         } catch (EnumBindingException $e) {
             $this->assertSame(EnumBindingReason::TargetIsNotBackedEnum, $e->reason);
@@ -491,11 +349,10 @@ class EnumDriftAsserterTest extends TestCase
     }
 
     #[Test]
-    #[IgnoreDeprecations]
     public function non_scalar_spec_enum_value_throws_enum_value_unsupported(): void
     {
         try {
-            EnumDriftAsserter::assertNoDrift([NonScalarSpecValueEnum::class]);
+            EnumDriftAsserter::assertNoDrift([NonScalarSpecValueEnum::class], specNames: self::BINDING_SPECS);
             $this->fail('expected EnumBindingException');
         } catch (EnumBindingException $e) {
             $this->assertSame(EnumBindingReason::EnumValueUnsupported, $e->reason);
@@ -505,378 +362,14 @@ class EnumDriftAsserterTest extends TestCase
     }
 
     #[Test]
-    #[IgnoreDeprecations]
     public function empty_spec_enum_array_reports_all_php_cases_as_drift(): void
     {
         try {
-            EnumDriftAsserter::assertNoDrift([EmptySpecEnum::class]);
+            EnumDriftAsserter::assertNoDrift([EmptySpecEnum::class], specNames: self::BINDING_SPECS);
             $this->fail('expected EnumDriftException');
         } catch (EnumDriftException $e) {
             $this->assertSame(['a', 'b'], $e->reports[0]->phpOnly);
             $this->assertSame([], $e->reports[0]->specOnly);
-        }
-    }
-
-    #[Test]
-    #[IgnoreDeprecations]
-    public function enum_base_path_resolves_attribute_paths_independently_of_spec_base_path(): void
-    {
-        // Issue #170: bundled-external layout. spec_base_path can point at
-        // an unrelated bundle root while #[BoundToOpenApiEnum] paths still
-        // resolve correctly under enum_spec_base_path.
-        OpenApiSpecLoader::reset();
-        OpenApiSpecLoader::configure(
-            basePath: sys_get_temp_dir(),
-            enumBasePath: self::SPEC_BASE_PATH,
-        );
-
-        EnumDriftAsserter::assertNoDrift([MatchingEnum::class]);
-
-        $reports = EnumDriftAsserter::detectAll([MatchingEnum::class]);
-        $this->assertCount(1, $reports);
-        $this->assertFalse($reports[0]->hasDrift());
-    }
-
-    #[Test]
-    #[IgnoreDeprecations]
-    public function enum_base_path_unset_falls_back_to_spec_base_path(): void
-    {
-        // Default setUp() configures only spec_base_path. Existing tests
-        // already imply the fallback works; this test pins the contract
-        // explicitly so a future loader refactor can't drift it silently.
-        $this->assertNull(OpenApiSpecLoader::getEnumBasePath());
-
-        EnumDriftAsserter::assertNoDrift([MatchingEnum::class]);
-    }
-
-    #[Test]
-    #[IgnoreDeprecations]
-    public function enum_base_path_equal_to_spec_base_path_is_a_no_op(): void
-    {
-        // Compare report objects field-by-field between the fallback branch
-        // (no enumBasePath) and the opt-in branch (enumBasePath = basePath).
-        // A subtle bug where the opt-in branch produced a different
-        // specPath / phpOnly / specOnly would slip through a "did it throw?"
-        // shaped test — this one fails it.
-        OpenApiSpecLoader::reset();
-        OpenApiSpecLoader::configure(basePath: self::SPEC_BASE_PATH);
-        $baseline = EnumDriftAsserter::detectAll([MatchingEnum::class, PhpExtraEnum::class]);
-
-        OpenApiSpecLoader::reset();
-        OpenApiSpecLoader::configure(
-            basePath: self::SPEC_BASE_PATH,
-            enumBasePath: self::SPEC_BASE_PATH,
-        );
-        $optIn = EnumDriftAsserter::detectAll([MatchingEnum::class, PhpExtraEnum::class]);
-
-        $this->assertCount(2, $optIn);
-        foreach ($optIn as $i => $report) {
-            $this->assertSame($baseline[$i]->enumFqcn, $report->enumFqcn);
-            $this->assertSame($baseline[$i]->specPath, $report->specPath);
-            $this->assertSame($baseline[$i]->phpOnly, $report->phpOnly);
-            $this->assertSame($baseline[$i]->specOnly, $report->specOnly);
-            $this->assertSame($baseline[$i]->hasDrift(), $report->hasDrift());
-        }
-    }
-
-    #[Test]
-    #[IgnoreDeprecations]
-    public function enum_base_path_with_trailing_slash_resolves_identically(): void
-    {
-        // OpenApiSpecLoader::configure() trims trailing slashes (covered at
-        // the loader unit level). End-to-end through the asserter pins that
-        // the trim survives the full resolution path — a future refactor
-        // that stops trimming and instead concatenates blindly would still
-        // pass the loader-level test alone.
-        OpenApiSpecLoader::reset();
-        OpenApiSpecLoader::configure(
-            basePath: self::SPEC_BASE_PATH,
-            enumBasePath: self::SPEC_BASE_PATH . '/',
-        );
-
-        EnumDriftAsserter::assertNoDrift([MatchingEnum::class]);
-
-        $reports = EnumDriftAsserter::detectAll([MatchingEnum::class]);
-        $this->assertFalse($reports[0]->hasDrift());
-        $this->assertSame('enum-drift/matching.json', $reports[0]->specPath);
-    }
-
-    #[Test]
-    #[IgnoreDeprecations]
-    public function enum_base_path_set_but_spec_file_missing_throws_spec_file_not_found(): void
-    {
-        // enum_spec_base_path resolves to a real directory, but the
-        // attribute path doesn't land on a file under it. Should surface
-        // the existing SpecFileNotFound reason — not the new
-        // EnumBasePathNotFound, which is reserved for the dir-itself-missing
-        // case.
-        $emptyDir = sys_get_temp_dir();
-        OpenApiSpecLoader::reset();
-        OpenApiSpecLoader::configure(
-            basePath: self::SPEC_BASE_PATH,
-            enumBasePath: $emptyDir,
-        );
-
-        try {
-            EnumDriftAsserter::assertNoDrift([MatchingEnum::class]);
-            $this->fail('expected EnumBindingException');
-        } catch (EnumBindingException $e) {
-            $this->assertSame(EnumBindingReason::SpecFileNotFound, $e->reason);
-            $this->assertSame('enum-drift/matching.json', $e->specPath);
-        }
-    }
-
-    #[Test]
-    #[IgnoreDeprecations]
-    public function enum_binding_cannot_escape_its_base_path_with_parent_traversal(): void
-    {
-        $scratchDir = sys_get_temp_dir() . '/gesso-enum-root-' . uniqid('', true);
-        $enumRoot = $scratchDir . '/enums';
-        $outside = $scratchDir . '/outside.json';
-        mkdir($scratchDir);
-        mkdir($enumRoot);
-
-        try {
-            OpenApiSpecLoader::configure(basePath: $enumRoot, enumBasePath: $enumRoot);
-
-            try {
-                EnumDriftAsserter::assertNoDrift([EscapingSpecEnum::class]);
-                $this->fail('expected EnumBindingException for missing outside target');
-            } catch (EnumBindingException $e) {
-                $this->assertSame(EnumBindingReason::SpecFileNotFound, $e->reason);
-                $this->assertStringNotContainsString($outside, $e->getMessage());
-            }
-
-            file_put_contents($outside, '{"enum":["red","green","blue"]}');
-
-            try {
-                EnumDriftAsserter::assertNoDrift([EscapingSpecEnum::class]);
-                $this->fail('expected EnumBindingException for existing outside target');
-            } catch (EnumBindingException $e) {
-                $this->assertSame(EnumBindingReason::SpecFileNotFound, $e->reason);
-                $this->assertStringNotContainsString($outside, $e->getMessage());
-            }
-        } finally {
-            if (file_exists($outside)) {
-                unlink($outside);
-            }
-            rmdir($enumRoot);
-            rmdir($scratchDir);
-        }
-    }
-
-    #[Test]
-    #[IgnoreDeprecations]
-    public function enum_binding_cannot_follow_a_symlink_outside_its_base_path(): void
-    {
-        $scratchDir = sys_get_temp_dir() . '/gesso-enum-link-' . uniqid('', true);
-        $enumRoot = $scratchDir . '/enums';
-        $enumDir = $enumRoot . '/enum-drift';
-        $outside = $scratchDir . '/outside.json';
-        $link = $enumDir . '/matching.json';
-        mkdir($scratchDir);
-        mkdir($enumRoot);
-        mkdir($enumDir);
-        file_put_contents($outside, '{"enum":["red","green","blue"]}');
-        if (!@symlink($outside, $link)) {
-            unlink($outside);
-            rmdir($enumDir);
-            rmdir($enumRoot);
-            rmdir($scratchDir);
-            $this->markTestSkipped('symlinks are unavailable on this platform');
-        }
-
-        try {
-            OpenApiSpecLoader::configure(basePath: $enumRoot, enumBasePath: $enumRoot);
-
-            try {
-                EnumDriftAsserter::assertNoDrift([MatchingEnum::class]);
-                $this->fail('expected EnumBindingException for symlink outside target');
-            } catch (EnumBindingException $e) {
-                $this->assertSame(EnumBindingReason::SpecFileNotFound, $e->reason);
-                $this->assertStringNotContainsString($outside, $e->getMessage());
-            }
-        } finally {
-            unlink($link);
-            unlink($outside);
-            rmdir($enumDir);
-            rmdir($enumRoot);
-            rmdir($scratchDir);
-        }
-    }
-
-    #[Test]
-    #[IgnoreDeprecations]
-    public function yaml_bound_file_passes_for_matching_pair(): void
-    {
-        EnumDriftAsserter::assertNoDrift([YamlMatchingEnum::class]);
-
-        $reports = EnumDriftAsserter::detectAll([YamlMatchingEnum::class]);
-        $this->assertCount(1, $reports);
-        $this->assertFalse($reports[0]->hasDrift());
-    }
-
-    #[Test]
-    #[IgnoreDeprecations]
-    public function yml_extension_is_parsed_as_yaml(): void
-    {
-        EnumDriftAsserter::assertNoDrift([YmlMatchingEnum::class]);
-
-        $reports = EnumDriftAsserter::detectAll([YmlMatchingEnum::class]);
-        $this->assertFalse($reports[0]->hasDrift());
-    }
-
-    #[Test]
-    #[IgnoreDeprecations]
-    public function uppercase_yaml_extension_is_parsed_as_yaml(): void
-    {
-        EnumDriftAsserter::assertNoDrift([UppercaseYamlExtensionEnum::class]);
-
-        $reports = EnumDriftAsserter::detectAll([UppercaseYamlExtensionEnum::class]);
-        $this->assertFalse($reports[0]->hasDrift());
-    }
-
-    #[Test]
-    #[IgnoreDeprecations]
-    public function yaml_bound_file_surfaces_spec_only_drift(): void
-    {
-        try {
-            EnumDriftAsserter::assertNoDrift([YamlSpecExtraEnum::class]);
-            $this->fail('expected EnumDriftException');
-        } catch (EnumDriftException $e) {
-            $this->assertSame([], $e->reports[0]->phpOnly);
-            $this->assertSame(['yellow'], $e->reports[0]->specOnly);
-        }
-    }
-
-    #[Test]
-    #[IgnoreDeprecations]
-    public function malformed_yaml_throws_binding_exception_with_malformed_yaml_reason(): void
-    {
-        try {
-            EnumDriftAsserter::assertNoDrift([YamlMalformedSpecEnum::class]);
-            $this->fail('expected EnumBindingException');
-        } catch (EnumBindingException $e) {
-            $this->assertSame(EnumBindingReason::MalformedYaml, $e->reason);
-            $this->assertSame('enum-drift/yaml-malformed.yaml', $e->specPath);
-        }
-    }
-
-    #[Test]
-    #[IgnoreDeprecations]
-    public function yaml_scalar_root_throws_non_mapping_root(): void
-    {
-        try {
-            EnumDriftAsserter::assertNoDrift([YamlScalarRootEnum::class]);
-            $this->fail('expected EnumBindingException');
-        } catch (EnumBindingException $e) {
-            $this->assertSame(EnumBindingReason::NonMappingRoot, $e->reason);
-        }
-    }
-
-    #[Test]
-    #[IgnoreDeprecations]
-    public function yaml_binding_without_symfony_yaml_throws_yaml_library_missing(): void
-    {
-        YamlAvailability::overrideForTesting(false);
-
-        try {
-            EnumDriftAsserter::assertNoDrift([YamlMatchingEnum::class]);
-            $this->fail('expected EnumBindingException');
-        } catch (EnumBindingException $e) {
-            $this->assertSame(EnumBindingReason::YamlLibraryMissing, $e->reason);
-            $this->assertStringContainsString('symfony/yaml', $e->getMessage());
-        } finally {
-            YamlAvailability::reset();
-        }
-    }
-
-    #[Test]
-    #[IgnoreDeprecations]
-    public function json_binding_still_resolves_when_symfony_yaml_is_absent(): void
-    {
-        // The optional dependency must stay optional for JSON-only projects:
-        // only bindings that actually point at a YAML file may demand it.
-        YamlAvailability::overrideForTesting(false);
-
-        try {
-            EnumDriftAsserter::assertNoDrift([MatchingEnum::class]);
-        } finally {
-            YamlAvailability::reset();
-        }
-
-        $reports = EnumDriftAsserter::detectAll([MatchingEnum::class]);
-        $this->assertFalse($reports[0]->hasDrift());
-    }
-
-    #[Test]
-    #[IgnoreDeprecations]
-    public function parser_follows_the_binding_path_extension_not_the_symlink_target(): void
-    {
-        // A within-root symlink is allowed, but the binding path's extension
-        // — not the realpath()-resolved target's — must pick the parser.
-        // Here matching.json links to a YAML-content .yaml file inside the
-        // root: the .json binding must keep the JSON parser and fail loudly
-        // instead of silently switching to YAML because of the link target.
-        $scratchDir = sys_get_temp_dir() . '/gesso-enum-alias-' . uniqid('', true);
-        $enumDir = $scratchDir . '/enum-drift';
-        $target = $enumDir . '/target.yaml';
-        $link = $enumDir . '/matching.json';
-        mkdir($scratchDir);
-        mkdir($enumDir);
-        file_put_contents($target, "type: string\nenum:\n  - red\n  - green\n  - blue\n");
-        if (!@symlink('target.yaml', $link)) {
-            unlink($target);
-            rmdir($enumDir);
-            rmdir($scratchDir);
-            $this->markTestSkipped('symlinks are unavailable on this platform');
-        }
-
-        try {
-            OpenApiSpecLoader::reset();
-            OpenApiSpecLoader::configure(basePath: $scratchDir, enumBasePath: $scratchDir);
-
-            try {
-                EnumDriftAsserter::assertNoDrift([MatchingEnum::class]);
-                $this->fail('expected EnumBindingException');
-            } catch (EnumBindingException $e) {
-                $this->assertSame(EnumBindingReason::MalformedJson, $e->reason);
-            }
-        } finally {
-            unlink($link);
-            unlink($target);
-            rmdir($enumDir);
-            rmdir($scratchDir);
-        }
-    }
-
-    #[Test]
-    #[IgnoreDeprecations]
-    public function extensionless_bound_file_is_still_parsed_as_json(): void
-    {
-        EnumDriftAsserter::assertNoDrift([NoExtensionSpecEnum::class]);
-
-        $reports = EnumDriftAsserter::detectAll([NoExtensionSpecEnum::class]);
-        $this->assertFalse($reports[0]->hasDrift());
-    }
-
-    #[Test]
-    #[IgnoreDeprecations]
-    public function enum_base_path_pointing_at_nonexistent_dir_throws_enum_base_path_not_found(): void
-    {
-        $missing = sys_get_temp_dir() . '/openapi-contract-testing-missing-' . uniqid();
-        OpenApiSpecLoader::reset();
-        OpenApiSpecLoader::configure(
-            basePath: self::SPEC_BASE_PATH,
-            enumBasePath: $missing,
-        );
-
-        try {
-            EnumDriftAsserter::assertNoDrift([MatchingEnum::class]);
-            $this->fail('expected EnumBindingException');
-        } catch (EnumBindingException $e) {
-            $this->assertSame(EnumBindingReason::EnumBasePathNotFound, $e->reason);
-            $this->assertStringContainsString($missing, $e->getMessage());
         }
     }
 
@@ -963,6 +456,15 @@ class EnumDriftAsserterTest extends TestCase
     }
 
     #[Test]
+    public function json_spec_bindings_need_no_symfony_yaml(): void
+    {
+        YamlAvailability::overrideForTesting(false);
+
+        $this->assertFalse(EnumDriftAsserter::detectAll([Color::class], self::COMPONENT_SPECS)[0]->hasDrift());
+        $this->assertSame(['black'], EnumDriftAsserter::detectAll([DriftingColor::class], self::COMPONENT_SPECS)[0]->phpOnly);
+    }
+
+    #[Test]
     public function name_matched_drift_is_reported_in_both_directions(): void
     {
         $reports = EnumDriftAsserter::detectAll([DriftingColor::class], self::COMPONENT_SPECS);
@@ -1031,12 +533,12 @@ class EnumDriftAsserterTest extends TestCase
     public function invalid_attribute_arguments_surface_as_a_binding_exception(): void
     {
         try {
-            EnumDriftAsserter::detectAll([BothArgumentsEnum::class], self::COMPONENT_SPECS);
+            EnumDriftAsserter::detectAll([ArgumentlessAttributeEnum::class], self::COMPONENT_SPECS);
             $this->fail('expected EnumBindingException');
         } catch (EnumBindingException $e) {
             $this->assertSame(EnumBindingReason::AttributeInvalid, $e->reason);
-            $this->assertSame(BothArgumentsEnum::class, $e->enumFqcn);
-            $this->assertInstanceOf(InvalidArgumentException::class, $e->getPrevious());
+            $this->assertSame(ArgumentlessAttributeEnum::class, $e->enumFqcn);
+            $this->assertInstanceOf(ArgumentCountError::class, $e->getPrevious());
         }
     }
 
@@ -1047,17 +549,5 @@ class EnumDriftAsserterTest extends TestCase
 
         $this->expectException(EnumDriftException::class);
         EnumDriftAsserter::assertNoDrift([DriftingColor::class], true, self::COMPONENT_SPECS);
-    }
-
-    /**
-     * @param array{0?: string, 1?: string} $arguments
-     */
-    #[Test]
-    #[DataProvider('provideAttribute_with_both_or_neither_argument_is_rejectedCases')]
-    public function attribute_with_both_or_neither_argument_is_rejected(array $arguments): void
-    {
-        $this->expectException(InvalidArgumentException::class);
-
-        new BoundToOpenApiEnum(...$arguments);
     }
 }

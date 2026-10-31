@@ -6,7 +6,7 @@ namespace Studio\Gesso\Tests\Unit\Schema\Fixture;
 
 use Studio\Gesso\Attribute\BoundToOpenApiEnum;
 
-#[BoundToOpenApiEnum('enum-drift/matching.json')]
+#[BoundToOpenApiEnum('Matching')]
 final class NotAnEnum
 {
     // Plain class with the BoundToOpenApiEnum attribute. The asserter must

@@ -1,0 +1,18 @@
+{
+    "openapi": "3.1.0",
+    "info": {
+        "title": "Enum drift bundle with shared enum sources",
+        "version": "1.0.0"
+    },
+    "paths": {},
+    "components": {
+        "schemas": {
+            "NotificationCodeEnum": {
+                "$ref": "./_shared/components/schemas/enums/NotificationCodeEnum.json"
+            },
+            "PetStatusEnum": {
+                "$ref": "./_shared/components/schemas/enums/PetStatusEnum.json"
+            }
+        }
+    }
+}

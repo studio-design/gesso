@@ -2,33 +2,6 @@
     "$comment": "Registry of every surface deprecated in v2 for removal in a later major (issue #499). One entry per Deprecations::notice() id in src/, checked by tests/Unit/Compatibility/DeprecationRegistryTest.php. A major that removes a surface deletes its entry in the same change; a removal with no entry here never shipped a deprecation and violates docs/versioning.md.",
     "$fields": "`notice` is that call's three prose arguments copied verbatim and compared to src/ argument by argument, so a notice cannot be re-pointed, re-dated, or moved to another surface without this ledger showing it. `spelling` and `v3_target` are the same two facts in the form V3RenameRegistryTest can compare: the exact v2 name being deprecated, and the exact v3 name replacing it, both matching the entry of that name in v3-renames.json. Prose alone cannot carry that link — one sentence can mention two spellings at once, and then an id points at whichever of them a reader assumes.",
     "deprecations": {
-        "exception.enum_binding_exception.for_binding": {
-            "spelling": "EnumBindingException::forBinding()",
-            "v3_target": "new EnumBindingException($reason, $message, $enumFqcn, $specPath, $previous)",
-            "notice": {
-                "subject": "EnumBindingException::forBinding()",
-                "replacement": "new EnumBindingException($reason, $message, $enumFqcn, $specPath, $previous)",
-                "removed_in": "3.0"
-            }
-        },
-        "spec.loader.configure.enum_base_path": {
-            "spelling": "OpenApiSpecLoader::configure(enumBasePath:)",
-            "v3_target": "OpenApiSpecLoader::configure() without enumBasePath",
-            "notice": {
-                "subject": "OpenApiSpecLoader::configure(enumBasePath:)",
-                "replacement": "OpenApiSpecLoader::configure() without enumBasePath (component-name enum bindings need no enum root)",
-                "removed_in": "3.0"
-            }
-        },
-        "attribute.bound_to_open_api_enum.spec_path": {
-            "spelling": "BoundToOpenApiEnum::$specPath",
-            "v3_target": "#[BoundToOpenApiEnum(component: 'Name')]",
-            "notice": {
-                "subject": "BoundToOpenApiEnum::$specPath (binding an enum to a spec file path)",
-                "replacement": "#[BoundToOpenApiEnum(component: 'Name')] (or no attribute when a components.schemas enum is named after the class)",
-                "removed_in": "3.0"
-            }
-        },
         "trait.open_api_assertions.fail_open_api": {
             "spelling": "failOpenApi()",
             "v3_target": "$this->fail()",

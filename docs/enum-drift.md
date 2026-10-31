@@ -8,8 +8,6 @@ Runtime contract validation only sees enum values your tests actually return. Tw
 `EnumDriftAsserter` closes both holes by comparing PHP enum case values against the spec's `enum:` array statically.
 
 - [Binding by component name](#binding-by-component-name)
-- [Legacy: file-path bindings](#legacy-file-path-bindings)
-  - [Bundled-external enum sources (`enumBasePath`)](#bundled-external-enum-sources-enumbasepath)
 - [`EnumDriftAsserter::assertNoDrift()`](#enumdriftasserterassertnodrift)
 - [`AssertsNoEnumDrift` — PHPUnit trait](#assertsnoenumdrift--phpunit-trait)
 - [`detectAll()` — inspection without throwing](#detectall--inspection-without-throwing)
@@ -42,18 +40,19 @@ enum NotificationCode: string
 
 - An `Enum` suffix on either side is ignored: `NotificationCodeEnum` matches `NotificationCode` and vice versa. An exact name wins over the suffixed one.
 - Every spec you pass (`spec.names` in `gesso.php`, or `specNames:` on the asserter) is searched. The documents come from `OpenApiSpecLoader::load()`, so `$ref`s are already resolved.
-- When the component is named differently from the class, bind it explicitly with `#[BoundToOpenApiEnum(component: 'Name')]`:
+- When the component is named differently from the class, bind it explicitly with `#[BoundToOpenApiEnum('Name')]` (the argument is named `component`):
 
   ```php
   use Studio\Gesso\Attribute\BoundToOpenApiEnum;
 
-  #[BoundToOpenApiEnum(component: 'NotificationCode')]
+  #[BoundToOpenApiEnum('NotificationCode')]
   enum PushNotificationKind: string { /* ... */ }
   ```
 
-- Passing both a path and `component:` (or neither) throws `EnumBindingException` with reason `AttributeInvalid`.
+- An attribute that cannot be instantiated (for example, one with no argument) throws `EnumBindingException` with reason `AttributeInvalid`.
+- Enum values are read only from the loaded specs. To keep enum values in separate source files, `$ref` them from `components.schemas`. Gesso 3.0 removed binding to a spec file path. See [the upgrade guide](migration/v3.md#enum-binding).
 - A matched component whose `enum` is not an array throws `EnumKeyNotArray`.
-- A `component:` that no configured spec defines with an `enum` array throws `EnumBindingException` with reason `ComponentNotFound`.
+- A component name that no configured spec defines with an `enum` array throws `EnumBindingException` with reason `ComponentNotFound`.
 - If two specs define the same component name with different `enum` values, an enum that binds to it throws `ComponentConflict`. Unmatched duplicates are ignored, because unrelated APIs may both define `Status`. The same set in a different order is not a conflict.
 - Auto-discovery skips backed enums that match no component and have no attribute. An explicit list passed to `assertNoDrift()` / `detectAll()` throws `AttributeMissing` for them instead.
 
@@ -61,65 +60,9 @@ Reports and diagnostics name the binding as a JSON pointer, e.g. `App\Enums\Noti
 
 Auto-discovery also checks any enum in the scanned namespaces whose name matches a spec component. Such an enum fails the bootstrap if its values have drifted from that component, even if you never meant to bind it.
 
-## Legacy: file-path bindings
-
-> **Deprecated — removed in 3.0.** A file-path binding emits a
-> `[Gesso deprecation]` notice. Use [component-name binding](#binding-by-component-name)
-> instead: delete the attribute when the component is named after the class,
-> or write `#[BoundToOpenApiEnum(component: 'Name')]`.
->
-> The `EnumBindingReason` cases only this path raises — `BasePathNotConfigured`,
-> `EnumBasePathNotFound`, `EnumSpecBasePathOrphaned`, `SpecFileNotFound`,
-> `MalformedJson`, `MalformedYaml`, `YamlLibraryMissing`, `NonMappingRoot`, and
-> `EnumKeyMissing` — are deprecated too and removed in 3.0. Referencing a case
-> raises no notice, so search your code for these names.
-
-```php
-use Studio\Gesso\Attribute\BoundToOpenApiEnum;
-
-#[BoundToOpenApiEnum('_shared/components/schemas/enums/NotificationCodeEnum.json')]
-enum NotificationCodeEnum: string
-{
-    case StudioPaymentOld = 'studioPaymentOld';
-    case StudioPaymentNew = 'studioPaymentNew';
-    // ...
-}
-```
-
-The path is resolved relative to the configured enum root (`OpenApiSpecLoader::getEnumBasePath()`), falling back to the spec root (`OpenApiSpecLoader::getBasePath()`) when the enum-specific root is unset. The bound file must contain an `enum:` array, e.g.:
-
-```json
-{
-  "type": "string",
-  "enum": ["studioPaymentOld", "studioPaymentNew"]
-}
-```
-
-Both JSON and YAML bound files are supported. The binding path's extension — as written in the attribute — picks the parser: `.yaml` / `.yml` (case-insensitive) decode as YAML — through the same optional `symfony/yaml` dependency the spec loader uses — and every other path, including extension-less ones, is parsed as JSON. Binding a YAML file without `symfony/yaml` installed throws `EnumBindingException` with reason `YamlLibraryMissing`.
-
-```php
-#[BoundToOpenApiEnum('components/schemas/GrantType.yaml')]
-enum GrantType: string { /* ... */ }
-```
-
-### Bundled-external enum sources (`enumBasePath`)
-
-> **Deprecated — removed in 3.0.** The `enum_spec_base_path` PHPUnit
-> parameter was removed in 3.0; a leftover one aborts the run. Component-name
-> bindings read the configured specs and need no enum root. Until the
-> file-path binding itself is removed, a bootstrap that still needs one can
-> call `OpenApiSpecLoader::configure(basePath: …, enumBasePath: …)`, which
-> emits a `[Gesso deprecation]` notice.
-
-The enum root is a filesystem trust boundary. Attribute paths may use nested
-directories, but a `..` segment, an absolute path, or a symlink whose
-canonical target escapes the base is rejected as `SpecFileNotFound`. If the
-configured directory does not exist, the asserter throws
-`EnumBindingException` with `EnumBindingReason::EnumBasePathNotFound`.
-
 ## `EnumDriftAsserter::assertNoDrift()`
 
-Call from any test (or from a dedicated drift-only test) to verify all bound enums match their spec enums. Pass the spec names to search for component bindings as `specNames:` (file-path bindings do not need them):
+Call from any test (or from a dedicated drift-only test) to verify all bound enums match their spec enums. Pass the spec names to search for component bindings as `specNames:`:
 
 ```php
 use Studio\Gesso\Schema\EnumDriftAsserter;
@@ -140,7 +83,7 @@ When drift is detected the asserter throws `EnumDriftException` with a structure
 ```
 [OpenAPI Enum Drift] FATAL: 1 enum binding(s) drift from spec.
 
-  App\Enums\NotificationCodeEnum  ->  _shared/components/schemas/enums/NotificationCodeEnum.json
+  App\Enums\NotificationCodeEnum  ->  #/components/schemas/NotificationCodeEnum
     PHP-only (1): "betaFeature"
     Spec-only (1): "deprecated"
 
@@ -189,7 +132,7 @@ class EnumDriftTest extends TestCase
 
 Failures throw `PHPUnit\Framework\AssertionFailedError` with the same `[OpenAPI Enum Drift] FATAL` block as the static asserter, routed through `Assert::fail()` so PHPUnit's diff-aware reporter picks it up. Stack frames inside this library are filtered out so the failure points at the consumer's test line.
 
-Misconfiguration (`EnumBindingException` — missing `#[BoundToOpenApiEnum]`, spec file not found, malformed JSON/YAML, etc.) is **not** wrapped — it bubbles unchanged so the structured `$reason`/`$enumFqcn`/`$specPath` properties stay accessible to downstream tooling.
+Misconfiguration (`EnumBindingException` — an enum that matches no component, an attribute naming an unknown component, a malformed `enum` array, etc.) is **not** wrapped — it bubbles unchanged so the structured `$reason`/`$enumFqcn`/`$specPath` properties stay accessible to downstream tooling.
 
 The static `EnumDriftAsserter::assertNoDrift()` is unchanged. Non-PHPUnit consumers (dedicated drift CI scripts that catch `EnumDriftException` directly) keep working as before.
 
@@ -206,11 +149,11 @@ foreach ($reports as $report) {
 
 Signature: `detectAll(array $enumFqcns, array $specNames = [], bool $skipUnbound = false)`. With `skipUnbound: true`, enums that have no attribute and match no component are left out of the result instead of throwing `AttributeMissing` (this is what auto-discovery does).
 
-Each `EnumDriftReport` carries `enumFqcn`, `specPath`, `phpOnly`, and `specOnly` as readonly properties. `specPath` is the bound file path, or the `#/components/schemas/Name` pointer of a component binding.
+Each `EnumDriftReport` carries `enumFqcn`, `specPath`, `phpOnly`, and `specOnly` as readonly properties. `specPath` is the `#/components/schemas/Name` pointer of the bound component.
 
 ## Misconfiguration vs drift
 
-`EnumBindingException` is thrown when the comparison cannot be performed at all — an enum with neither an attribute nor a matching component (`AttributeMissing`), a `component:` binding that no spec defines (`ComponentNotFound`), a component defined with different values in two specs (`ComponentConflict`), target is not a backed enum, spec file not found, malformed JSON/YAML, YAML binding without `symfony/yaml` installed, `enum` key missing or not an array, or an `enum` array entry is non-scalar (`null` / `bool` / nested arrays — backed PHP enums can only carry `string` or `int`). `$reason` carries an `EnumBindingReason` enum so you can branch programmatically. These errors fire regardless of `failOnDrift` — they are setup mistakes, not drift signals.
+`EnumBindingException` is thrown when the comparison cannot be performed at all — an enum with neither an attribute nor a matching component (`AttributeMissing`), an attribute naming a component that no spec defines (`ComponentNotFound`), a component defined with different values in two specs (`ComponentConflict`), target is not a backed enum, an `enum` that is not an array (`EnumKeyNotArray`), or an `enum` array entry is non-scalar (`null` / `bool` / nested arrays — backed PHP enums can only carry `string` or `int`). `$reason` carries an `EnumBindingReason` enum so you can branch programmatically. These errors fire regardless of `failOnDrift` — they are setup mistakes, not drift signals.
 
 ## Auto-discovery via the PHPUnit extension
 
@@ -266,7 +209,7 @@ A strict-mode (default) drift run then produces the same diagnostic block docume
 ```
 [OpenAPI Enum Drift] FATAL: 1 enum binding(s) drift from spec.
 
-  App\Enums\NotificationCodeEnum  ->  _shared/components/schemas/enums/NotificationCodeEnum.json
+  App\Enums\NotificationCodeEnum  ->  #/components/schemas/NotificationCodeEnum
     PHP-only (1): "betaFeature"
     Spec-only (1): "deprecated"
 
@@ -278,7 +221,7 @@ In `'fail_on_drift' => false` mode the body is identical except for the severity
 ```
 [OpenAPI Enum Drift] WARNING: 1 enum binding(s) drift from spec.
 
-  App\Enums\NotificationCodeEnum  ->  _shared/components/schemas/enums/NotificationCodeEnum.json
+  App\Enums\NotificationCodeEnum  ->  #/components/schemas/NotificationCodeEnum
     PHP-only (1): "betaFeature"
     Spec-only (1): "deprecated"
 
@@ -293,6 +236,5 @@ Under paratest or Pest `--parallel` the check runs once per run, in the process 
 
 ## Known limitations
 
-- **No `$ref` traversal on legacy bound files.** Component bindings read the loader's resolved document, so a `$ref`'d component enum resolves. File-path bindings do not resolve `$ref` inside the bound file; bind to the leaf file containing the literal `enum:` array.
 - **`oneOf` enum unions** (e.g., `code: oneOf: [CommonCode, AdminCode]`) are not yet auto-resolved. Bind each PHP enum to its leaf component directly.
 - **`x-enum-varnames` / `x-enum-descriptions`** are not validated. Only the `enum` value array is compared.

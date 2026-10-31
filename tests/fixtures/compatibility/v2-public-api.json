@@ -25,15 +25,7 @@
         "constants": [],
         "properties": {
             "component": {
-                "type": "?string",
-                "static": false,
-                "readonly": true,
-                "default": {
-                    "unavailable": true
-                }
-            },
-            "specPath": {
-                "type": "?string",
+                "type": "string",
                 "static": false,
                 "readonly": true,
                 "default": {
@@ -51,21 +43,14 @@
                 "attributes": [],
                 "parameters": [
                     {
-                        "name": "specPath",
-                        "type": "?string",
-                        "optional": true,
-                        "variadic": false,
-                        "by_reference": false,
-                        "default": null,
-                        "attributes": []
-                    },
-                    {
                         "name": "component",
-                        "type": "?string",
-                        "optional": true,
+                        "type": "string",
+                        "optional": false,
                         "variadic": false,
                         "by_reference": false,
-                        "default": null,
+                        "default": {
+                            "unavailable": true
+                        },
                         "attributes": []
                     }
                 ]
@@ -2065,67 +2050,6 @@
                     }
                 ]
             },
-            "forBinding": {
-                "static": true,
-                "final": false,
-                "abstract": false,
-                "returns_reference": false,
-                "return_type": "self",
-                "attributes": [],
-                "parameters": [
-                    {
-                        "name": "reason",
-                        "type": "Studio\\Gesso\\Exception\\EnumBindingReason",
-                        "optional": false,
-                        "variadic": false,
-                        "by_reference": false,
-                        "default": {
-                            "unavailable": true
-                        },
-                        "attributes": []
-                    },
-                    {
-                        "name": "message",
-                        "type": "string",
-                        "optional": false,
-                        "variadic": false,
-                        "by_reference": false,
-                        "default": {
-                            "unavailable": true
-                        },
-                        "attributes": []
-                    },
-                    {
-                        "name": "enumFqcn",
-                        "type": "string",
-                        "optional": false,
-                        "variadic": false,
-                        "by_reference": false,
-                        "default": {
-                            "unavailable": true
-                        },
-                        "attributes": []
-                    },
-                    {
-                        "name": "specPath",
-                        "type": "?string",
-                        "optional": true,
-                        "variadic": false,
-                        "by_reference": false,
-                        "default": null,
-                        "attributes": []
-                    },
-                    {
-                        "name": "previous",
-                        "type": "?Throwable",
-                        "optional": true,
-                        "variadic": false,
-                        "by_reference": false,
-                        "default": null,
-                        "attributes": []
-                    }
-                ]
-            },
             "forConfig": {
                 "static": true,
                 "final": false,
@@ -2229,15 +2153,6 @@
             "TargetIsNotBackedEnum": null,
             "ReflectionFailed": null,
             "AttributeMissing": null,
-            "BasePathNotConfigured": null,
-            "EnumBasePathNotFound": null,
-            "EnumSpecBasePathOrphaned": null,
-            "SpecFileNotFound": null,
-            "MalformedJson": null,
-            "MalformedYaml": null,
-            "YamlLibraryMissing": null,
-            "NonMappingRoot": null,
-            "EnumKeyMissing": null,
             "EnumKeyNotArray": null,
             "EnumValueUnsupported": null,
             "ScanNamespaceUnresolvable": null,
@@ -10665,15 +10580,6 @@
                         "attributes": []
                     },
                     {
-                        "name": "enumBasePath",
-                        "type": "?string",
-                        "optional": true,
-                        "variadic": false,
-                        "by_reference": false,
-                        "default": null,
-                        "attributes": []
-                    },
-                    {
                         "name": "allowedRemoteRefHosts",
                         "type": "array",
                         "optional": true,
@@ -10711,15 +10617,6 @@
                 "abstract": false,
                 "returns_reference": false,
                 "return_type": "string",
-                "attributes": [],
-                "parameters": []
-            },
-            "getEnumBasePath": {
-                "static": true,
-                "final": false,
-                "abstract": false,
-                "returns_reference": false,
-                "return_type": "?string",
                 "attributes": [],
                 "parameters": []
             },

@@ -6,7 +6,7 @@ namespace Studio\Gesso\Tests\Unit\Schema\Fixture;
 
 use Studio\Gesso\Attribute\BoundToOpenApiEnum;
 
-#[BoundToOpenApiEnum('enum-drift/integer-backed.json')]
+#[BoundToOpenApiEnum('IntegerBacked')]
 enum IntegerBackedEnum: int
 {
     case Ok = 200;

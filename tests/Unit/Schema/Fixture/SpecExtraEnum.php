@@ -6,7 +6,7 @@ namespace Studio\Gesso\Tests\Unit\Schema\Fixture;
 
 use Studio\Gesso\Attribute\BoundToOpenApiEnum;
 
-#[BoundToOpenApiEnum('enum-drift/spec-extra.json')]
+#[BoundToOpenApiEnum('SpecExtra')]
 enum SpecExtraEnum: string
 {
     case Red = 'red';

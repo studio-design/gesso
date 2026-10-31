@@ -14,7 +14,6 @@ use stdClass;
 use Studio\Gesso\Exception\InvalidOpenApiSpecException;
 use Studio\Gesso\Exception\InvalidOpenApiSpecReason;
 use Studio\Gesso\Exception\SpecFileNotFoundException;
-use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\Internal\HttpRefLoader;
 use Studio\Gesso\Internal\OpenApiDocumentShapeNormalizer;
 use Studio\Gesso\Internal\RemoteAuthorization;
@@ -55,14 +54,6 @@ final class OpenApiSpecLoader
     private const SEARCH_EXTENSIONS = ['json', 'yaml', 'yml'];
     private static ?string $basePath = null;
 
-    /**
-     * Optional secondary base path used exclusively for resolving
-     * `#[BoundToOpenApiEnum]` paths (issue #170). When `null`, those paths
-     * fall back to {@see $basePath} so existing single-root projects
-     * keep their previous behavior unchanged.
-     */
-    private static ?string $enumBasePath = null;
-
     /** @var string[] */
     private static array $stripPrefixes = [];
 
@@ -98,15 +89,6 @@ final class OpenApiSpecLoader
      * @param bool $allowRemoteRefs Opt-in for HTTP(S) `$ref` resolution. Defaults to false:
      *                              every external HTTP(S) ref throws `RemoteRefDisallowed` so a
      *                              spec can never silently reach the network during tests.
-     * @param null|string $enumBasePath Deprecated, removed in Gesso 3.0 (#508). Optional secondary
-     *                                  base path used only when resolving legacy file-path
-     *                                  `#[BoundToOpenApiEnum]` attribute paths (issue #170).
-     *                                  Lets projects keep `spec_base_path` pointed at a
-     *                                  bundled aggregate root (e.g. `openapi/bundled/`) while
-     *                                  individual enum JSONs live elsewhere (e.g.
-     *                                  `openapi/_shared/...`). When `null` the asserter falls
-     *                                  back to `$basePath`, keeping single-root setups
-     *                                  bit-for-bit identical to the pre-issue-#170 behavior.
      * @param list<string> $allowedRemoteRefHosts Exact hostnames or IP literals permitted when
      *                                            `$allowRemoteRefs` is true. Ports and URL paths
      *                                            are not accepted. Matching is case-insensitive.
@@ -130,7 +112,6 @@ final class OpenApiSpecLoader
         ?ClientInterface $httpClient = null,
         ?RequestFactoryInterface $requestFactory = null,
         bool $allowRemoteRefs = false,
-        ?string $enumBasePath = null,
         array $allowedRemoteRefHosts = [],
         int $maxRemoteRefBytes = self::DEFAULT_MAX_REMOTE_REF_BYTES,
         array $remoteSpecs = [],
@@ -188,17 +169,6 @@ final class OpenApiSpecLoader
         $allowedRemoteRefHosts = self::normalizeAllowedRemoteRefHosts($allowedRemoteRefHosts);
         $remoteSpecs = self::normalizeRemoteSpecs($remoteSpecs, $allowedRemoteRefHosts);
 
-        if ($enumBasePath !== null) {
-            Deprecations::notice(
-                id: 'spec.loader.configure.enum_base_path',
-                subject: 'OpenApiSpecLoader::configure(enumBasePath:)',
-                replacement: 'OpenApiSpecLoader::configure() without enumBasePath (component-name enum bindings need no enum root)',
-                removedIn: '3.0',
-            );
-        }
-        // Last validation before any state write: it may throw.
-        self::setEnumBasePath($enumBasePath);
-
         self::$basePath = self::normalizeConfiguredBasePath($basePath);
         self::$stripPrefixes = $stripPrefixes;
         self::$httpClient = $httpClient;
@@ -229,7 +199,6 @@ final class OpenApiSpecLoader
             'httpClient' => self::$httpClient,
             'requestFactory' => self::$requestFactory,
             'allowRemoteRefs' => self::$allowRemoteRefs,
-            'enumBasePath' => self::$enumBasePath,
             'allowedRemoteRefHosts' => self::$allowedRemoteRefHosts,
             'maxRemoteRefBytes' => self::$maxRemoteRefBytes,
             'remoteSpecs' => self::$remoteSpecs,
@@ -247,45 +216,6 @@ final class OpenApiSpecLoader
         }
 
         return self::$basePath;
-    }
-
-    /**
-     * @internal Used by the PHPUnit extension so the deprecated `configure(enumBasePath:)` path is the only one that notices.
-     */
-    public static function setEnumBasePath(?string $enumBasePath): void
-    {
-        if ($enumBasePath !== null && trim($enumBasePath) === '') {
-            // Empty / whitespace-only `enumBasePath` would otherwise survive
-            // rtrim() as the empty string and surface later as
-            // `EnumBasePathNotFound: Configured enum_spec_base_path is not a
-            // directory: ` — an unhelpful diagnostic that hides the real
-            // misconfiguration. Reject at the API surface instead. Pass
-            // `null` to intentionally disable the parameter.
-            throw new InvalidArgumentException(
-                'OpenApiSpecLoader::configure(): $enumBasePath is empty or whitespace-only. '
-                . 'Pass a valid directory path, or null to fall back to spec_base_path.',
-            );
-        }
-
-        self::$enumBasePath = $enumBasePath !== null ? self::normalizeConfiguredBasePath($enumBasePath) : null;
-    }
-
-    /**
-     * Secondary base path for legacy file-path `#[BoundToOpenApiEnum]`
-     * resolution (issue #170).
-     *
-     * Returns `null` when not configured — `EnumDriftAsserter` is expected
-     * to fall back to {@see getBasePath()} in that case.
-     *
-     * Emits no notice of its own: the only ways to make it non-null —
-     * `configure(enumBasePath:)` or the `enum_spec_base_path` parameter —
-     * already notice, and the asserter reads it on the legacy path.
-     *
-     * @deprecated Removed in Gesso 3.0 (#508): component-name enum bindings need no enum root.
-     */
-    public static function getEnumBasePath(): ?string
-    {
-        return self::$enumBasePath;
     }
 
     /** @return string[] */
@@ -422,7 +352,6 @@ final class OpenApiSpecLoader
     public static function reset(): void
     {
         self::$basePath = null;
-        self::$enumBasePath = null;
         self::$stripPrefixes = [];
         self::$cache = [];
         self::$objectEnums = [];

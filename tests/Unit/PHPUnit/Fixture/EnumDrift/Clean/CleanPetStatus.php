@@ -6,7 +6,7 @@ namespace Studio\Gesso\Tests\Unit\PHPUnit\Fixture\EnumDrift\Clean;
 
 use Studio\Gesso\Attribute\BoundToOpenApiEnum;
 
-#[BoundToOpenApiEnum('enum-drift/_shared/components/schemas/enums/PetStatusEnum.json')]
+#[BoundToOpenApiEnum('PetStatusEnum')]
 enum CleanPetStatus: string
 {
     case Available = 'available';

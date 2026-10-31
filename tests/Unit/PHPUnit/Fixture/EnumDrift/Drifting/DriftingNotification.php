@@ -6,7 +6,7 @@ namespace Studio\Gesso\Tests\Unit\PHPUnit\Fixture\EnumDrift\Drifting;
 
 use Studio\Gesso\Attribute\BoundToOpenApiEnum;
 
-#[BoundToOpenApiEnum('enum-drift/_shared/components/schemas/enums/NotificationCodeEnum.json')]
+#[BoundToOpenApiEnum('NotificationCodeEnum')]
 enum DriftingNotification: string
 {
     case StudioPaymentOld = 'studioPaymentOld';

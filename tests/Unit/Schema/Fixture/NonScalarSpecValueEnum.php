@@ -6,7 +6,7 @@ namespace Studio\Gesso\Tests\Unit\Schema\Fixture;
 
 use Studio\Gesso\Attribute\BoundToOpenApiEnum;
 
-#[BoundToOpenApiEnum('enum-drift/non-scalar-value.json')]
+#[BoundToOpenApiEnum('NonScalarValue')]
 enum NonScalarSpecValueEnum: string
 {
     case Red = 'red';

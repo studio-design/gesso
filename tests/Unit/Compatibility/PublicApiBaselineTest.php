@@ -28,6 +28,7 @@ use Studio\Gesso\Coverage\JUnitCoverageRenderer;
 use Studio\Gesso\Coverage\MarkdownCoverageRenderer;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\DecodedBody;
+use Studio\Gesso\Exception\EnumBindingException;
 use Studio\Gesso\Exception\EnumBindingReason;
 use Studio\Gesso\Exception\InvalidOpenApiSpecReason;
 use Studio\Gesso\Fuzz\ExploredCase;
@@ -73,8 +74,10 @@ use Studio\Gesso\ValidationIssue;
 use Studio\Gesso\ValidationOutput;
 use Studio\Gesso\ValidationOutputFormat;
 
+use function array_filter;
 use function array_keys;
 use function array_map;
+use function array_values;
 use function dirname;
 use function file_get_contents;
 use function json_decode;
@@ -1954,7 +1957,32 @@ final class PublicApiBaselineTest extends TestCase
 
         // v3.0: the static hasAnyCoverage() forwarder, deprecated in 2.7.0,
         // is removed; hasAnyCoverageOn() on the instance replaces it.
-        unset($expected[OpenApiCoverageTracker::class]['methods']['hasAnyCoverage']);
+        unset($expected[OpenApiCoverageTracker::class]['methods']['hasAnyCoverage'], $expected[BoundToOpenApiEnum::class]['properties']['specPath']);
+
+        // v3.0: enums bind by component name only (#508). The file-path
+        // binding, the enum root and forBinding() (deprecated in 2.7.0/2.8.0)
+        // are removed, with the reason cases only file-path bindings raised
+        // (deprecated in 2.9.0, #664).
+
+        $expected[BoundToOpenApiEnum::class]['properties']['component']['type'] = 'string';
+        $expected[BoundToOpenApiEnum::class]['methods']['__construct']['parameters'] = [[
+            'name' => 'component',
+            'type' => 'string',
+            'optional' => false,
+            'variadic' => false,
+            'by_reference' => false,
+            'default' => ['unavailable' => true],
+            'attributes' => [],
+        ]];
+        foreach (['BasePathNotConfigured', 'EnumBasePathNotFound', 'EnumSpecBasePathOrphaned', 'SpecFileNotFound', 'MalformedJson', 'MalformedYaml', 'YamlLibraryMissing', 'NonMappingRoot', 'EnumKeyMissing'] as $case) {
+            unset($expected[EnumBindingReason::class]['cases'][$case]);
+        }
+        unset($expected[EnumBindingException::class]['methods']['forBinding'], $expected[OpenApiSpecLoader::class]['methods']['getEnumBasePath']);
+
+        $expected[OpenApiSpecLoader::class]['methods']['configure']['parameters'] = array_values(array_filter(
+            $expected[OpenApiSpecLoader::class]['methods']['configure']['parameters'],
+            static fn(array $parameter): bool => $parameter['name'] !== 'enumBasePath',
+        ));
 
         ksort($expected);
 

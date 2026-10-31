@@ -6,7 +6,7 @@ namespace Studio\Gesso\Tests\Unit\Internal\Fixture\EnumScanner;
 
 use Studio\Gesso\Attribute\BoundToOpenApiEnum;
 
-#[BoundToOpenApiEnum('fixture/another.json')]
+#[BoundToOpenApiEnum('Another')]
 enum AnotherBoundEnum: int
 {
     case One = 1;

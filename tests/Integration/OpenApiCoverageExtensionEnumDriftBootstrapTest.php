@@ -184,9 +184,9 @@ class OpenApiCoverageExtensionEnumDriftBootstrapTest extends TestCase
      *
      * @return array{0: int, 1: string} [exit code, combined stderr+stdout]
      */
-    private function runPhpunit(array $extensionParameters, ?string $specBasePath = null, string $specs = 'refs-valid', array $env = []): array
+    private function runPhpunit(array $extensionParameters, ?string $specBasePath = null, string $specs = 'enum-drift/shared', array $env = []): array
     {
-        // Default: tests/fixtures/specs with refs-valid.
+        // Default: tests/fixtures/specs with enum-drift/shared.
         $specBasePath ??= $this->repoRoot . '/tests/fixtures/specs';
 
         $config = FlatExtensionSettings::nested(['spec_base_path' => $specBasePath, 'specs' => $specs, ...$extensionParameters]);
