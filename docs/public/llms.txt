@@ -38,6 +38,7 @@ Each `.md` link below is the raw Markdown of a documentation page. The same page
 
 ## Migration
 
+- [Prepare for Gesso 3.0](https://studio-design.github.io/gesso/migration/v3.md): removals in v3.0 and the v2.9 deprecation notices that announce each one.
 - [Prepare for Gesso 2.0](https://studio-design.github.io/gesso/migration/v2.md): staged path for the package rename and PHP namespace change.
 - [From other validators](https://studio-design.github.io/gesso/migration/from-other-validators.md): incremental migration from Spectator, league/openapi-psr7-validator, and osteel.
 
