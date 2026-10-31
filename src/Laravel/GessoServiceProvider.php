@@ -14,6 +14,7 @@ use Studio\Gesso\Laravel\Commands\OpenApiRoutesCommand;
 use Studio\Gesso\Laravel\Commands\OpenApiStubsCommand;
 
 use function array_is_list;
+use function in_array;
 use function is_array;
 use function is_file;
 
@@ -86,11 +87,11 @@ class GessoServiceProvider extends ServiceProvider
         return $base;
     }
 
-    /** `php artisan gesso:config-migrate` — the console has no resolved command yet during register(). */
+    /** `php artisan [options] gesso:config-migrate` — the console has no resolved command yet during register(). */
     private function runningConfigMigrate(): bool
     {
         $argv = $_SERVER['argv'] ?? [];
 
-        return $this->app->runningInConsole() && is_array($argv) && ($argv[1] ?? null) === GessoConfigMigrateCommand::NAME;
+        return $this->app->runningInConsole() && is_array($argv) && in_array(GessoConfigMigrateCommand::NAME, $argv, true);
     }
 }

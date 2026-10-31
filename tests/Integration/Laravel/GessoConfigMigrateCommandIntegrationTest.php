@@ -55,7 +55,7 @@ final class GessoConfigMigrateCommandIntegrationTest extends TestCase
     public function the_provider_boots_past_flat_keys_only_for_config_migrate(): void
     {
         config()->set('gesso', ['auto_assert' => true]);
-        $_SERVER['argv'] = ['artisan', 'gesso:config-migrate'];
+        $_SERVER['argv'] = ['artisan', '-v', 'gesso:config-migrate'];
 
         (new GessoServiceProvider($this->app))->register();
 
