@@ -456,7 +456,7 @@ final class FailureCatalogue
         ],
         'GSO406' => [
             'title' => 'No coverage was recorded',
-            'summary' => 'A coverage threshold or the coverage baseline is configured, but the run validated no response, so the gate cannot be evaluated.',
+            'summary' => 'The run validated no response, so no coverage gate can be evaluated. It fails the run when a strict coverage threshold or the coverage baseline is configured, and is a warning otherwise.',
             'causes' => ['The PHPUnit extension is not registered.', 'The workers wrote no sidecars, or the merge reads the wrong directory.', 'No test calls an assertion.'],
             'fix' => ['Register the extension and check `coverage.sidecar_dir`.'],
             'do_not' => 'Do not turn off `coverage.min_coverage.strict` to make this pass.',

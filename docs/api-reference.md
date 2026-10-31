@@ -91,6 +91,9 @@ adapter could not read or JSON-decode a body. Both stay `null` for
 structural and spec-malformation errors, including non-schema body errors
 such as a missing required body. Results built by code that predates the
 structured API derive issues with category `unknown`.
+`code()` returns the issue's stable [failure code](failure-codes.md)
+(`GSO212` for a `response.body` `type` violation), derived from `category`
+and `keyword`; `vendor/bin/gesso explain <code>` explains it.
 
 To hand the full result to machine consumers (CI ingestion, IDE annotations),
 render it as a versioned JSON document:
