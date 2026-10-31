@@ -191,10 +191,12 @@ report produced by `json_output`. The current writer emits
 optional keys whose absence means the worker had no such tracker. Only a
 baseline-generation run (`GESSO_BASELINE_GENERATE=1`) writes `baseline`.
 
-The merge reader also accepts the legacy envelopes 2–9 and the older bare
-coverage state `version: 1`, so HTTP coverage can still be combined while a
-worker fleet is being upgraded. Since 2.9.0 it writes a `[Gesso deprecation]`
-line when it does, because Gesso 3.0 reads only `envelopeVersion: 10`. A missing half is reported, not treated as
+The merge reader accepts `envelopeVersion: 10` only. A sidecar with any other
+envelope version, or a bare coverage state with no `envelopeVersion` (both
+written by Gesso 2.x and earlier), fails the merge with an error naming
+envelope 10. Sidecars are per-run artifacts: run the workers and the merge step
+on the same Gesso version, and re-run the suite after an upgrade instead of
+merging sidecars left by the old one. A missing half is reported, not treated as
 empty: a strict SDK exercise threshold requires every worker to carry SDK
 exercise state (warn-only mode reports the missing workers and evaluates the
 available observations), and `--baseline="violations=…"` requires every worker to carry

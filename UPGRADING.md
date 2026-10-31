@@ -112,7 +112,18 @@ A merge with several sink or threshold flags folds into one grouped flag:
 
 ### Coverage sidecars
 
-*Pending.*
+Gesso 3.0 merges only sidecars with `envelopeVersion: 10`, the envelope every
+worker has written since 2.7 (#505). The 2.x merge also read the legacy
+envelopes 2–9 (written by Gesso 1.9–2.6) and the bare coverage state with no
+`envelopeVersion`, with a `[Gesso deprecation]` notice since 2.9.0. The 3.0
+merge rejects them: `coverage:merge` fails with
+`[OpenAPI Coverage] FATAL: invalid sidecar payload: Unsupported sidecar envelope: got envelopeVersion 6, expected envelopeVersion 10. …`
+and exit `1`.
+
+To migrate, run the workers and `coverage:merge` on the same Gesso version, and
+re-run the suite after upgrading instead of merging sidecars an older version
+left behind (for example, artifacts restored from an earlier CI run). See
+[versioned sidecar compatibility](docs/versioning.md#versioned-sidecar-compatibility).
 
 ### Enum binding
 

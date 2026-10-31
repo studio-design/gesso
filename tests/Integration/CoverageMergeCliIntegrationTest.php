@@ -92,7 +92,7 @@ class CoverageMergeCliIntegrationTest extends TestCase
             'application/json',
             schemaValidated: true,
         );
-        CoverageSidecarWriter::write($this->sidecarDir, '1', OpenApiCoverageTracker::exportState());
+        CoverageSidecarWriter::write($this->sidecarDir, '1', self::coverageOnlySidecar(OpenApiCoverageTracker::exportState()));
 
         // Worker 2.
         OpenApiCoverageTracker::reset();
@@ -104,7 +104,7 @@ class CoverageMergeCliIntegrationTest extends TestCase
             'application/json',
             schemaValidated: true,
         );
-        CoverageSidecarWriter::write($this->sidecarDir, '2', OpenApiCoverageTracker::exportState());
+        CoverageSidecarWriter::write($this->sidecarDir, '2', self::coverageOnlySidecar(OpenApiCoverageTracker::exportState()));
 
         OpenApiCoverageTracker::reset();
         OpenApiSpecLoader::reset();
@@ -204,7 +204,7 @@ class CoverageMergeCliIntegrationTest extends TestCase
             'application/json',
             schemaValidated: true,
         );
-        CoverageSidecarWriter::write($this->sidecarDir, '1', OpenApiCoverageTracker::exportState());
+        CoverageSidecarWriter::write($this->sidecarDir, '1', self::coverageOnlySidecar(OpenApiCoverageTracker::exportState()));
 
         OpenApiCoverageTracker::reset();
         OpenApiSpecLoader::reset();
@@ -249,7 +249,7 @@ class CoverageMergeCliIntegrationTest extends TestCase
             'application/json',
             schemaValidated: true,
         );
-        CoverageSidecarWriter::write($this->sidecarDir, '1', OpenApiCoverageTracker::exportState());
+        CoverageSidecarWriter::write($this->sidecarDir, '1', self::coverageOnlySidecar(OpenApiCoverageTracker::exportState()));
         CoverageSidecarWriter::writeFailureMarker($this->sidecarDir, '2', 'simulated I/O failure');
 
         OpenApiCoverageTracker::reset();
@@ -289,6 +289,18 @@ class CoverageMergeCliIntegrationTest extends TestCase
         $this->assertSame(1, $exit, "stdout: {$stdout}\nstderr: {$stderr}");
         $this->assertStringContainsString('[OpenAPI Strict Required] FATAL', $stderr);
         $this->assertStringContainsString('PUT /signed-url', $stderr);
+    }
+
+    /**
+     * A v10 sidecar carrying only the required coverage half.
+     *
+     * @param array<string, mixed> $coverageState
+     *
+     * @return array<string, mixed>
+     */
+    private static function coverageOnlySidecar(array $coverageState): array
+    {
+        return ['envelopeVersion' => CoverageSidecarEnvelope::ENVELOPE_VERSION, 'coverage' => $coverageState];
     }
 
     private function writeStrictRequiredSidecar(string $token): void

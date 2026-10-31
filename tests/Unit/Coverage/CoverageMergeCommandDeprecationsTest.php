@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Tests\Unit\Coverage;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Studio\Gesso\Coverage\CoverageMergeCommand;
@@ -24,7 +25,6 @@ use function glob;
 use function is_dir;
 use function mkdir;
 use function rmdir;
-use function substr_count;
 use function sys_get_temp_dir;
 use function touch;
 use function uniqid;
@@ -79,6 +79,15 @@ final class CoverageMergeCommandDeprecationsTest extends TestCase
         parent::tearDown();
     }
 
+    /** @return iterable<string, array{array<string, mixed>}> */
+    public static function provideA_legacy_sidecar_fails_the_merge_without_a_deprecationCases(): iterable
+    {
+        $coverage = (new OpenApiCoverageTracker())->exportStateOn();
+
+        yield 'envelope 6' => [['envelopeVersion' => 6, 'coverage' => $coverage]];
+        yield 'bare v1 coverage state' => [$coverage];
+    }
+
     #[Test]
     public function counts_from_every_worker_are_summed_into_one_line(): void
     {
@@ -116,7 +125,7 @@ final class CoverageMergeCommandDeprecationsTest extends TestCase
         // indistinguishable from "that worker used none". Reporting silence
         // here would assert v3-readiness the merge cannot prove.
         $this->writeSidecar('1', []);
-        $this->writeLegacySidecar('2');
+        $this->writeSidecarWithoutDeprecations('2');
 
         $stderr = $this->merge();
 
@@ -136,7 +145,7 @@ final class CoverageMergeCommandDeprecationsTest extends TestCase
         $this->writeSidecar('1', [
             'phpunit.enum_spec_base_path' => ['count' => 4, 'removed_in' => '3.0'],
         ]);
-        $this->writeLegacySidecar('2');
+        $this->writeSidecarWithoutDeprecations('2');
 
         $stderr = $this->merge();
 
@@ -165,69 +174,21 @@ final class CoverageMergeCommandDeprecationsTest extends TestCase
         $this->assertStringContainsString('Unsupported deprecation state version: got 99', $stderr);
     }
 
+    /** @param array<string, mixed> $payload */
     #[Test]
-    public function a_legacy_envelope_is_announced_once_and_counted_per_sidecar(): void
+    #[DataProvider('provideA_legacy_sidecar_fails_the_merge_without_a_deprecationCases')]
+    public function a_legacy_sidecar_fails_the_merge_without_a_deprecation(array $payload): void
     {
-        // Issue #505: 3.0 reads only envelope 10, so a fleet still handing in
-        // envelopes 2-9 must not reach that release looking clean.
-        $this->writeLegacySidecar('1', 6);
-        $this->writeLegacySidecar('2', 6);
-
-        $stderr = '';
-        $stdout = '';
-        $exit = $this->command($stderr, $stdout)->run($this->options());
-
-        $this->assertSame(0, $exit);
-        $this->assertSame(1, substr_count(
-            $stderr,
-            '[Gesso deprecation] Reading a coverage sidecar with envelopeVersion 2-9',
-        ));
-        $this->assertStringContainsString('coverage.sidecar.legacy_envelope (2)', $stderr);
-        $this->assertStringNotContainsString('[Gesso deprecation]', $stdout);
-    }
-
-    #[Test]
-    public function a_bare_v1_sidecar_is_announced_only_once_it_validates(): void
-    {
-        $bare = (new OpenApiCoverageTracker())->exportStateOn();
-        CoverageSidecarWriter::write($this->sidecarDir, '1', $bare);
-
-        $stderr = $this->merge();
-
-        $this->assertStringContainsString(
-            '[Gesso deprecation] Reading a coverage sidecar that holds a bare v1 coverage state',
-            $stderr,
-        );
-        $this->assertSame(['coverage.sidecar.bare_state' => 1], Deprecations::counts());
-    }
-
-    #[Test]
-    public function a_malformed_bare_v1_sidecar_records_no_deprecation(): void
-    {
-        CoverageSidecarWriter::write($this->sidecarDir, '1', ['version' => 1, 'specs' => 'not-a-map']);
+        // Issue #505: 3.0 reads only envelope 10; the 2.9 notices are gone.
+        CoverageSidecarWriter::write($this->sidecarDir, '1', $payload);
 
         $stderr = '';
         $exit = $this->command($stderr)->run($this->options());
 
         $this->assertSame(1, $exit);
-        $this->assertStringContainsString('invalid sidecar payload', $stderr);
-        $this->assertSame([], Deprecations::counts());
-    }
-
-    #[Test]
-    public function a_legacy_envelope_with_a_malformed_tracker_half_records_no_deprecation(): void
-    {
-        CoverageSidecarWriter::write($this->sidecarDir, '1', [
-            'envelopeVersion' => 2,
-            'coverage' => ['version' => 1, 'specs' => 'not-a-map'],
-            'strictRequired' => null,
-        ]);
-
-        $stderr = '';
-        $exit = $this->command($stderr)->run($this->options());
-
-        $this->assertSame(1, $exit);
-        $this->assertStringContainsString('invalid sidecar payload', $stderr);
+        $this->assertStringContainsString('[OpenAPI Coverage] FATAL: invalid sidecar payload: Unsupported sidecar envelope', $stderr);
+        $this->assertStringContainsString('expected envelopeVersion 10', $stderr);
+        $this->assertStringNotContainsString('[Gesso deprecation]', $stderr);
         $this->assertSame([], Deprecations::counts());
     }
 
@@ -272,19 +233,11 @@ final class CoverageMergeCommandDeprecationsTest extends TestCase
         CoverageSidecarWriter::write($this->sidecarDir, $token, $this->envelope($entries));
     }
 
-    /**
-     * A sidecar without the deprecation half, as a worker predating the
-     * deprecation channel wrote it: v10 by default, or the real legacy v6 wire.
-     */
-    private function writeLegacySidecar(string $token, int $envelopeVersion = CoverageSidecarEnvelope::ENVELOPE_VERSION): void
+    /** A v10 sidecar without the deprecation half, as a writer with no deprecation tracker leaves it. */
+    private function writeSidecarWithoutDeprecations(string $token): void
     {
-        $envelope = CoverageSidecarEnvelope::build(
-            coverageState: (new OpenApiCoverageTracker())->exportStateOn(),
-            strictRequiredState: (new StrictRequiredTracker())->exportStateOn(),
-            strictAdditionalPropertiesState: (new StrictAdditionalPropertiesTracker())->exportStateOn(),
-            sdkExerciseState: (new SdkExerciseCoverageTracker())->exportStateOn(),
-        );
-        $envelope['envelopeVersion'] = $envelopeVersion;
+        $envelope = $this->envelope([]);
+        unset($envelope['deprecations']);
 
         CoverageSidecarWriter::write($this->sidecarDir, $token, $envelope);
     }

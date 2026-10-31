@@ -294,7 +294,7 @@ class CoverageMergeCommandTest extends TestCase
             'application/json',
             schemaValidated: true,
         );
-        CoverageSidecarWriter::write($this->sidecarDir, '1', OpenApiCoverageTracker::exportState());
+        CoverageSidecarWriter::write($this->sidecarDir, '1', self::coverageOnlySidecar(OpenApiCoverageTracker::exportState()));
 
         // Worker 2 covers POST /v1/pets 201.
         OpenApiCoverageTracker::reset();
@@ -306,7 +306,7 @@ class CoverageMergeCommandTest extends TestCase
             'application/json',
             schemaValidated: true,
         );
-        CoverageSidecarWriter::write($this->sidecarDir, '2', OpenApiCoverageTracker::exportState());
+        CoverageSidecarWriter::write($this->sidecarDir, '2', self::coverageOnlySidecar(OpenApiCoverageTracker::exportState()));
 
         $command = new CoverageMergeCommand(stdoutWriter: static fn(string $msg): null => null, stderrWriter: static fn(string $msg): null => null);
         $exit = $command->run([
@@ -339,7 +339,7 @@ class CoverageMergeCommandTest extends TestCase
             'application/json',
             schemaValidated: true,
         );
-        CoverageSidecarWriter::write($this->sidecarDir, '1', OpenApiCoverageTracker::exportState());
+        CoverageSidecarWriter::write($this->sidecarDir, '1', self::coverageOnlySidecar(OpenApiCoverageTracker::exportState()));
 
         $command = new CoverageMergeCommand(stdoutWriter: static fn(string $msg): null => null, stderrWriter: static fn(string $msg): null => null);
         $exit = $command->run([
@@ -369,7 +369,7 @@ class CoverageMergeCommandTest extends TestCase
             'application/json',
             schemaValidated: true,
         );
-        CoverageSidecarWriter::write($this->sidecarDir, '1', OpenApiCoverageTracker::exportState());
+        CoverageSidecarWriter::write($this->sidecarDir, '1', self::coverageOnlySidecar(OpenApiCoverageTracker::exportState()));
 
         $stderr = '';
         $sidecarDir = $this->sidecarDir;
@@ -411,7 +411,7 @@ class CoverageMergeCommandTest extends TestCase
             'application/json',
             schemaValidated: true,
         );
-        CoverageSidecarWriter::write($this->sidecarDir, '1', OpenApiCoverageTracker::exportState());
+        CoverageSidecarWriter::write($this->sidecarDir, '1', self::coverageOnlySidecar(OpenApiCoverageTracker::exportState()));
 
         $stepSummary = $this->sidecarDir . '/../step-summary.md';
         file_put_contents($stepSummary, '');
@@ -514,7 +514,7 @@ class CoverageMergeCommandTest extends TestCase
             'application/json',
             schemaValidated: true,
         );
-        CoverageSidecarWriter::write($this->sidecarDir, '1', OpenApiCoverageTracker::exportState());
+        CoverageSidecarWriter::write($this->sidecarDir, '1', self::coverageOnlySidecar(OpenApiCoverageTracker::exportState()));
         CoverageSidecarWriter::writeFailureMarker($this->sidecarDir, '2', 'simulated I/O failure');
 
         $stderr = '';
@@ -757,7 +757,7 @@ class CoverageMergeCommandTest extends TestCase
             'application/json',
             schemaValidated: true,
         );
-        CoverageSidecarWriter::write($this->sidecarDir, '1', OpenApiCoverageTracker::exportState());
+        CoverageSidecarWriter::write($this->sidecarDir, '1', self::coverageOnlySidecar(OpenApiCoverageTracker::exportState()));
 
         // /proc/0 is unwritable on Linux and nonexistent on macOS — file_put_contents fails closed.
         $unwritable = '/proc/0/forbidden/coverage.junit.xml';
@@ -794,7 +794,7 @@ class CoverageMergeCommandTest extends TestCase
             'application/json',
             schemaValidated: true,
         );
-        CoverageSidecarWriter::write($this->sidecarDir, '1', OpenApiCoverageTracker::exportState());
+        CoverageSidecarWriter::write($this->sidecarDir, '1', self::coverageOnlySidecar(OpenApiCoverageTracker::exportState()));
 
         $jsonPath = dirname($this->sidecarDir) . '/coverage.json';
 
@@ -830,7 +830,7 @@ class CoverageMergeCommandTest extends TestCase
             'application/json',
             schemaValidated: true,
         );
-        CoverageSidecarWriter::write($this->sidecarDir, '1', OpenApiCoverageTracker::exportState());
+        CoverageSidecarWriter::write($this->sidecarDir, '1', self::coverageOnlySidecar(OpenApiCoverageTracker::exportState()));
 
         $unwritable = '/proc/0/forbidden/coverage.json';
 
@@ -870,7 +870,7 @@ class CoverageMergeCommandTest extends TestCase
             'application/json',
             schemaValidated: true,
         );
-        CoverageSidecarWriter::write($this->sidecarDir, '1', OpenApiCoverageTracker::exportState());
+        CoverageSidecarWriter::write($this->sidecarDir, '1', self::coverageOnlySidecar(OpenApiCoverageTracker::exportState()));
 
         $base = dirname($this->sidecarDir);
         $mdPath = $base . '/coverage.md';
@@ -913,7 +913,7 @@ class CoverageMergeCommandTest extends TestCase
             'application/json',
             schemaValidated: true,
         );
-        CoverageSidecarWriter::write($this->sidecarDir, '1', OpenApiCoverageTracker::exportState());
+        CoverageSidecarWriter::write($this->sidecarDir, '1', self::coverageOnlySidecar(OpenApiCoverageTracker::exportState()));
 
         $htmlPath = dirname($this->sidecarDir) . '/coverage.html';
 
@@ -948,7 +948,7 @@ class CoverageMergeCommandTest extends TestCase
             'application/json',
             schemaValidated: true,
         );
-        CoverageSidecarWriter::write($this->sidecarDir, '1', OpenApiCoverageTracker::exportState());
+        CoverageSidecarWriter::write($this->sidecarDir, '1', self::coverageOnlySidecar(OpenApiCoverageTracker::exportState()));
 
         $unwritable = '/proc/0/forbidden/coverage.html';
 
@@ -984,7 +984,7 @@ class CoverageMergeCommandTest extends TestCase
             'application/json',
             schemaValidated: true,
         );
-        CoverageSidecarWriter::write($this->sidecarDir, '1', OpenApiCoverageTracker::exportState());
+        CoverageSidecarWriter::write($this->sidecarDir, '1', self::coverageOnlySidecar(OpenApiCoverageTracker::exportState()));
 
         $junitPath = dirname($this->sidecarDir) . '/coverage.junit.xml';
 
@@ -1033,7 +1033,7 @@ class CoverageMergeCommandTest extends TestCase
             'application/json',
             schemaValidated: true,
         );
-        CoverageSidecarWriter::write($this->sidecarDir, '1', OpenApiCoverageTracker::exportState());
+        CoverageSidecarWriter::write($this->sidecarDir, '1', self::coverageOnlySidecar(OpenApiCoverageTracker::exportState()));
 
         $command = new CoverageMergeCommand(stdoutWriter: static fn(string $msg): null => null, stderrWriter: static fn(string $msg): null => null);
         $exit = $command->run([
@@ -1201,7 +1201,7 @@ class CoverageMergeCommandTest extends TestCase
     {
         OpenApiCoverageTracker::recordResponse('petstore-3.0', 'GET', '/v1/pets', '200', 'application/json', schemaValidated: false, skipReason: self::HOSTILE);
         OpenApiCoverageTracker::recordResponse('petstore-3.0', 'GET', '/v1/pets', '299', 'application/' . self::HOSTILE, schemaValidated: true);
-        CoverageSidecarWriter::write($this->sidecarDir, '1', OpenApiCoverageTracker::exportState());
+        CoverageSidecarWriter::write($this->sidecarDir, '1', self::coverageOnlySidecar(OpenApiCoverageTracker::exportState()));
 
         $stdout = '';
         $command = new CoverageMergeCommand(
@@ -1231,7 +1231,7 @@ class CoverageMergeCommandTest extends TestCase
     public function format_json_on_stdout_escapes_del_and_c1_controls_but_decodes_unchanged(): void
     {
         OpenApiCoverageTracker::recordResponse('petstore-3.0', 'GET', '/v1/pets', '200', 'application/json', schemaValidated: false, skipReason: self::HOSTILE);
-        CoverageSidecarWriter::write($this->sidecarDir, '1', OpenApiCoverageTracker::exportState());
+        CoverageSidecarWriter::write($this->sidecarDir, '1', self::coverageOnlySidecar(OpenApiCoverageTracker::exportState()));
 
         $stdout = '';
         $command = new CoverageMergeCommand(
@@ -1261,14 +1261,14 @@ class CoverageMergeCommandTest extends TestCase
     #[Test]
     public function stderr_neutralises_terminal_controls_from_an_invalid_sidecar_payload(): void
     {
-        file_put_contents($this->sidecarDir . '/part-1-9999.json', (string) json_encode([
+        file_put_contents($this->sidecarDir . '/part-1-9999.json', (string) json_encode(self::coverageOnlySidecar([
             'version' => 1,
             'specs' => ['petstore-3.0' => ['GET /v1/pets' => [
                 'requestReached' => false,
                 'requestSkipReason' => null,
                 'responses' => ['200:application/json' => ['state' => "\e]0;pwned\x07", 'hits' => 1, 'skipReason' => null]],
             ]]],
-        ]));
+        ])));
 
         $stderr = '';
         $command = new CoverageMergeCommand(
@@ -1367,7 +1367,7 @@ class CoverageMergeCommandTest extends TestCase
             'application/json',
             schemaValidated: true,
         );
-        CoverageSidecarWriter::write($this->sidecarDir, '1', OpenApiCoverageTracker::exportState());
+        CoverageSidecarWriter::write($this->sidecarDir, '1', self::coverageOnlySidecar(OpenApiCoverageTracker::exportState()));
 
         $stderr = '';
         $command = new CoverageMergeCommand(
@@ -1405,7 +1405,7 @@ class CoverageMergeCommandTest extends TestCase
             'application/json',
             schemaValidated: true,
         );
-        CoverageSidecarWriter::write($this->sidecarDir, '1', OpenApiCoverageTracker::exportState());
+        CoverageSidecarWriter::write($this->sidecarDir, '1', self::coverageOnlySidecar(OpenApiCoverageTracker::exportState()));
 
         $stderr = '';
         $command = new CoverageMergeCommand(
@@ -1462,7 +1462,7 @@ class CoverageMergeCommandTest extends TestCase
         // Sidecars exist but recorded no coverage (e.g. workers ran zero
         // contract assertions). Same silent-pass risk as no-sidecars.
         OpenApiCoverageTracker::reset(); // empty state
-        CoverageSidecarWriter::write($this->sidecarDir, '1', OpenApiCoverageTracker::exportState());
+        CoverageSidecarWriter::write($this->sidecarDir, '1', self::coverageOnlySidecar(OpenApiCoverageTracker::exportState()));
 
         $stderr = '';
         $command = new CoverageMergeCommand(
@@ -1523,7 +1523,7 @@ class CoverageMergeCommandTest extends TestCase
             'application/json',
             schemaValidated: true,
         );
-        CoverageSidecarWriter::write($this->sidecarDir, '1', OpenApiCoverageTracker::exportState());
+        CoverageSidecarWriter::write($this->sidecarDir, '1', self::coverageOnlySidecar(OpenApiCoverageTracker::exportState()));
 
         $stderr = '';
         $command = new CoverageMergeCommand(
@@ -1560,7 +1560,7 @@ class CoverageMergeCommandTest extends TestCase
             'application/json',
             schemaValidated: true,
         );
-        CoverageSidecarWriter::write($this->sidecarDir, '1', OpenApiCoverageTracker::exportState());
+        CoverageSidecarWriter::write($this->sidecarDir, '1', self::coverageOnlySidecar(OpenApiCoverageTracker::exportState()));
 
         $stderr = '';
         $command = new CoverageMergeCommand(
@@ -1698,7 +1698,7 @@ class CoverageMergeCommandTest extends TestCase
         CoverageSidecarWriter::write(
             $this->sidecarDir,
             '2',
-            (new OpenApiCoverageTracker())->exportStateOn(),
+            self::coverageOnlySidecar((new OpenApiCoverageTracker())->exportStateOn()),
         );
         $stderr = '';
         $command = new CoverageMergeCommand(
@@ -1731,7 +1731,7 @@ class CoverageMergeCommandTest extends TestCase
         CoverageSidecarWriter::write(
             $this->sidecarDir,
             '2',
-            (new OpenApiCoverageTracker())->exportStateOn(),
+            self::coverageOnlySidecar((new OpenApiCoverageTracker())->exportStateOn()),
         );
         $stderr = '';
         $command = new CoverageMergeCommand(
@@ -1835,15 +1835,11 @@ class CoverageMergeCommandTest extends TestCase
     }
 
     #[Test]
-    public function v7_sdk_sidecar_remains_compatible_with_baseline_merge(): void
+    public function sdk_sidecar_with_a_baseline_half_merges_with_the_baseline(): void
     {
         $envelope = $this->sdkEnvelope([
             ['GET', '/pets', '200', 'application/json'],
         ]);
-        // Legacy v7 input written by a 2.4 worker: the 2.x merge keeps
-        // reading it (#505). build() emits no deprecations half here, so the
-        // restamped payload is a valid v7 shape.
-        $envelope['envelopeVersion'] = 7;
         $envelope['baseline'] = ViolationBaselineFile::toDocument(new ViolationBaseline());
         CoverageSidecarWriter::write($this->sidecarDir, '1', $envelope);
         $baselinePath = dirname($this->sidecarDir) . '/baseline.json';
@@ -1920,7 +1916,7 @@ class CoverageMergeCommandTest extends TestCase
             'application/json',
             schemaValidated: true,
         );
-        CoverageSidecarWriter::write($this->sidecarDir, '1', OpenApiCoverageTracker::exportState());
+        CoverageSidecarWriter::write($this->sidecarDir, '1', self::coverageOnlySidecar(OpenApiCoverageTracker::exportState()));
 
         $stderr = '';
         $command = new CoverageMergeCommand(
@@ -1958,7 +1954,7 @@ class CoverageMergeCommandTest extends TestCase
             'application/json',
             schemaValidated: true,
         );
-        CoverageSidecarWriter::write($this->sidecarDir, '1', OpenApiCoverageTracker::exportState());
+        CoverageSidecarWriter::write($this->sidecarDir, '1', self::coverageOnlySidecar(OpenApiCoverageTracker::exportState()));
 
         $stderr = '';
         $command = new CoverageMergeCommand(
@@ -1996,7 +1992,7 @@ class CoverageMergeCommandTest extends TestCase
             'application/json',
             schemaValidated: true,
         );
-        CoverageSidecarWriter::write($this->sidecarDir, '1', OpenApiCoverageTracker::exportState());
+        CoverageSidecarWriter::write($this->sidecarDir, '1', self::coverageOnlySidecar(OpenApiCoverageTracker::exportState()));
 
         $stderr = '';
         $command = new CoverageMergeCommand(
@@ -2030,7 +2026,7 @@ class CoverageMergeCommandTest extends TestCase
             'application/json',
             schemaValidated: true,
         );
-        CoverageSidecarWriter::write($this->sidecarDir, '1', OpenApiCoverageTracker::exportState());
+        CoverageSidecarWriter::write($this->sidecarDir, '1', self::coverageOnlySidecar(OpenApiCoverageTracker::exportState()));
 
         $stderr = '';
         $command = new CoverageMergeCommand(
@@ -2078,7 +2074,7 @@ class CoverageMergeCommandTest extends TestCase
             'application/json',
             schemaValidated: true,
         );
-        CoverageSidecarWriter::write($this->sidecarDir, '1', OpenApiCoverageTracker::exportState());
+        CoverageSidecarWriter::write($this->sidecarDir, '1', self::coverageOnlySidecar(OpenApiCoverageTracker::exportState()));
 
         // file_put_contents() === false when the parent dir does not exist
         // and isn't created. /proc/0 is unwritable on Linux; on macOS the
@@ -2241,8 +2237,8 @@ class CoverageMergeCommandTest extends TestCase
     public function strict_additional_properties_fail_rejects_a_mixed_old_worker_fleet(): void
     {
         $this->writeStrictAdditionalPropertiesWorkerSidecar('1', []);
-        $legacyCoverage = new OpenApiCoverageTracker();
-        $legacyCoverage->recordResponseOn(
+        $coverageOnly = new OpenApiCoverageTracker();
+        $coverageOnly->recordResponseOn(
             'strict-additional-properties',
             'GET',
             '/users',
@@ -2250,7 +2246,7 @@ class CoverageMergeCommandTest extends TestCase
             'application/json',
             schemaValidated: true,
         );
-        CoverageSidecarWriter::write($this->sidecarDir, '2', $legacyCoverage->exportStateOn());
+        CoverageSidecarWriter::write($this->sidecarDir, '2', self::coverageOnlySidecar($coverageOnly->exportStateOn()));
 
         $stderr = '';
         $command = new CoverageMergeCommand(
@@ -2511,7 +2507,7 @@ class CoverageMergeCommandTest extends TestCase
     public function fail_mode_exits_non_zero_when_no_worker_recorded_strict_observations(): void
     {
         // A CI that opted into --strict-required=fail must NOT silently pass
-        // when every worker contributed a legacy v1 sidecar (no strict
+        // when every worker contributed a coverage-only sidecar (no strict
         // observations). The gate cannot evaluate the contract, and that's
         // a fail-loud condition — symmetric with the threshold gate's
         // "no contract test coverage was recorded" guard at run() L296.
@@ -2523,7 +2519,7 @@ class CoverageMergeCommandTest extends TestCase
             'application/json',
             schemaValidated: true,
         );
-        CoverageSidecarWriter::write($this->sidecarDir, '1', OpenApiCoverageTracker::exportState());
+        CoverageSidecarWriter::write($this->sidecarDir, '1', self::coverageOnlySidecar(OpenApiCoverageTracker::exportState()));
         OpenApiCoverageTracker::reset();
 
         $stderr = '';
@@ -2563,7 +2559,7 @@ class CoverageMergeCommandTest extends TestCase
             'application/json',
             schemaValidated: true,
         );
-        CoverageSidecarWriter::write($this->sidecarDir, '1', OpenApiCoverageTracker::exportState());
+        CoverageSidecarWriter::write($this->sidecarDir, '1', self::coverageOnlySidecar(OpenApiCoverageTracker::exportState()));
         OpenApiCoverageTracker::reset();
 
         $stderr = '';
@@ -2590,7 +2586,7 @@ class CoverageMergeCommandTest extends TestCase
     #[Test]
     public function merge_tolerates_mixed_v1_and_v2_sidecars(): void
     {
-        // Worker A: legacy v1 (bare coverage payload, no strict_required).
+        // Worker A: coverage-only envelope (no strictRequired half).
         // Simulates a worker still on an older library version during an
         // upgrade window — coverage merges; strict_required half is absent.
         OpenApiCoverageTracker::recordResponse(
@@ -2601,7 +2597,7 @@ class CoverageMergeCommandTest extends TestCase
             'application/json',
             schemaValidated: true,
         );
-        CoverageSidecarWriter::write($this->sidecarDir, '1', OpenApiCoverageTracker::exportState());
+        CoverageSidecarWriter::write($this->sidecarDir, '1', self::coverageOnlySidecar(OpenApiCoverageTracker::exportState()));
         OpenApiCoverageTracker::reset();
 
         // Worker B: v2 envelope with drift-inducing observations.
@@ -2741,7 +2737,7 @@ class CoverageMergeCommandTest extends TestCase
             'application/json',
             schemaValidated: true,
         );
-        CoverageSidecarWriter::write($this->sidecarDir, '2', OpenApiCoverageTracker::exportState());
+        CoverageSidecarWriter::write($this->sidecarDir, '2', self::coverageOnlySidecar(OpenApiCoverageTracker::exportState()));
         OpenApiCoverageTracker::reset();
 
         $baselinePath = dirname($this->sidecarDir) . '/gesso-baseline.json';
@@ -3056,6 +3052,18 @@ class CoverageMergeCommandTest extends TestCase
     }
 
     /**
+     * A v10 sidecar carrying only the required coverage half.
+     *
+     * @param array<string, mixed> $coverageState
+     *
+     * @return array<string, mixed>
+     */
+    private static function coverageOnlySidecar(array $coverageState): array
+    {
+        return ['envelopeVersion' => CoverageSidecarEnvelope::ENVELOPE_VERSION, 'coverage' => $coverageState];
+    }
+
+    /**
      * Write a worker sidecar carrying an under-described drift observation:
      * a response that always returned `expires`/`signed_url`/`url` even
      * though the spec declares them optional.
@@ -3247,7 +3255,7 @@ class CoverageMergeCommandTest extends TestCase
             schemaValidated: true,
         );
 
-        return CoverageSidecarWriter::write($this->sidecarDir, $token, $tracker->exportStateOn(), $runId);
+        return CoverageSidecarWriter::write($this->sidecarDir, $token, self::coverageOnlySidecar($tracker->exportStateOn()), $runId);
     }
 
     /**
@@ -3260,7 +3268,7 @@ class CoverageMergeCommandTest extends TestCase
     private function mergeOneWorker(array $options): array
     {
         OpenApiCoverageTracker::recordResponse('petstore-3.0', 'GET', '/v1/pets', '200', 'application/json', schemaValidated: true);
-        CoverageSidecarWriter::write($this->sidecarDir, '1', OpenApiCoverageTracker::exportState());
+        CoverageSidecarWriter::write($this->sidecarDir, '1', self::coverageOnlySidecar(OpenApiCoverageTracker::exportState()));
 
         $stdout = '';
         $command = new CoverageMergeCommand(
@@ -3304,7 +3312,7 @@ class CoverageMergeCommandTest extends TestCase
     private function recordOneWorker(): void
     {
         OpenApiCoverageTracker::recordResponse('petstore-3.0', 'GET', '/v1/pets', '200', 'application/json', schemaValidated: true);
-        CoverageSidecarWriter::write($this->sidecarDir, '1', OpenApiCoverageTracker::exportState());
+        CoverageSidecarWriter::write($this->sidecarDir, '1', self::coverageOnlySidecar(OpenApiCoverageTracker::exportState()));
     }
 
     /** @return list<string> */

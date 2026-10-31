@@ -7,7 +7,6 @@ namespace Studio\Gesso\Tests\Unit\Coverage;
 use const DIRECTORY_SEPARATOR;
 
 use PHPUnit\Framework\Attributes\DataProvider;
-use PHPUnit\Framework\Attributes\IgnoreDeprecations;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
@@ -355,34 +354,6 @@ class CoverageSidecarTest extends TestCase
         $imported->importStateOn($parsed['strictAdditionalProperties']);
         $this->assertSame(1, $imported->evaluationsOn());
         $this->assertArrayHasKey('GET /v1/pets', $imported->getObservationsOn('petstore-3.0'));
-    }
-
-    #[Test]
-    #[IgnoreDeprecations]
-    public function reader_still_loads_legacy_v1_payloads(): void
-    {
-        // Worker on an older library version writes a bare v1 coverage
-        // payload (no envelopeVersion). The reader returns it verbatim;
-        // the envelope parser yields a null strictRequired half so the
-        // merge CLI can mix versioned sidecars during an upgrade window.
-        OpenApiCoverageTracker::recordResponse(
-            'petstore-3.0',
-            'GET',
-            '/v1/pets',
-            '200',
-            'application/json',
-            schemaValidated: true,
-        );
-        $legacyPayload = OpenApiCoverageTracker::exportState();
-
-        CoverageSidecarWriter::write($this->tmpDir, '1', $legacyPayload);
-
-        $loaded = CoverageSidecarReader::readDir($this->tmpDir);
-        $this->assertCount(1, $loaded);
-
-        $parsed = CoverageSidecarEnvelope::parse($loaded[0]);
-        $this->assertSame($legacyPayload, $parsed['coverage']);
-        $this->assertNull($parsed['strictRequired']);
     }
 
     #[Test]

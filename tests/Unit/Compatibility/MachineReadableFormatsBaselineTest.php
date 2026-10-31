@@ -10,7 +10,7 @@ use const JSON_UNESCAPED_SLASHES;
 use const JSON_UNESCAPED_UNICODE;
 
 use DateTimeImmutable;
-use PHPUnit\Framework\Attributes\IgnoreDeprecations;
+use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Studio\Gesso\Coverage\CoverageSidecarEnvelope;
@@ -19,7 +19,6 @@ use Studio\Gesso\Coverage\JsonCoverageRenderer;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\Coverage\ResponseCoverageState;
 use Studio\Gesso\Coverage\SdkExerciseCoverageTracker;
-use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\Validation\Strict\StrictAdditionalPropertiesTracker;
 use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 
@@ -29,20 +28,12 @@ use function json_decode;
 use function json_encode;
 
 /**
- * Consumer-style golden tests for the versioned payloads that must remain
- * readable while v1 workers and v2 merge/report tooling overlap.
+ * Consumer-style golden tests for the versioned machine-readable payloads.
  *
  * @phpstan-import-type CoverageResult from OpenApiCoverageTracker
  */
 final class MachineReadableFormatsBaselineTest extends TestCase
 {
-    protected function tearDown(): void
-    {
-        // The legacy-sidecar tests raise the #505 notice; its dedup state is per process.
-        Deprecations::resetForTesting();
-        parent::tearDown();
-    }
-
     #[Test]
     public function coverage_json_matches_the_v3_fixture(): void
     {
@@ -149,31 +140,10 @@ final class MachineReadableFormatsBaselineTest extends TestCase
     }
 
     #[Test]
-    #[IgnoreDeprecations]
-    public function v1_9_sidecar_fixture_is_consumable_by_the_reader_and_trackers(): void
+    public function v1_9_sidecar_fixture_and_its_bare_coverage_state_are_rejected(): void
     {
-        /** @var array<string, mixed> $fixture */
-        $fixture = json_decode(
-            $this->fixture('v1.9-coverage-sidecar-envelope.json'),
-            true,
-            flags: JSON_THROW_ON_ERROR,
-        );
-        $parsed = CoverageSidecarEnvelope::parse($fixture);
-
-        $coverage = new OpenApiCoverageTracker();
-        $coverage->importStateOn($parsed['coverage']);
-        $this->assertSame($fixture['coverage'], $coverage->exportStateOn());
-
-        $this->assertIsArray($parsed['strictRequired']);
-        $strictRequired = new StrictRequiredTracker();
-        $strictRequired->importStateOn($parsed['strictRequired']);
-        $this->assertSame($fixture['strictRequired'], $strictRequired->exportStateOn());
-    }
-
-    #[Test]
-    #[IgnoreDeprecations]
-    public function embedded_coverage_state_remains_accepted_as_a_legacy_bare_sidecar(): void
-    {
+        // Issue #505: the v3 wire floor is envelope 10. The 1.9 envelope and
+        // the bare coverage state it embeds were 2.x-only inputs.
         /** @var array{coverage: array<string, mixed>} $fixture */
         $fixture = json_decode(
             $this->fixture('v1.9-coverage-sidecar-envelope.json'),
@@ -181,10 +151,14 @@ final class MachineReadableFormatsBaselineTest extends TestCase
             flags: JSON_THROW_ON_ERROR,
         );
 
-        $parsed = CoverageSidecarEnvelope::parse($fixture['coverage']);
-
-        $this->assertSame($fixture['coverage'], $parsed['coverage']);
-        $this->assertNull($parsed['strictRequired']);
+        foreach ([$fixture, $fixture['coverage']] as $payload) {
+            try {
+                CoverageSidecarEnvelope::parse($payload);
+                $this->fail('expected the v1.9 sidecar to be rejected');
+            } catch (InvalidArgumentException $e) {
+                $this->assertStringContainsString('expected envelopeVersion 10', $e->getMessage());
+            }
+        }
     }
 
     /** @return array<string, mixed> */
