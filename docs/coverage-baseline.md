@@ -88,7 +88,7 @@ Every full run prints one summary line to stderr:
 An uncovered response that is **not** in the file fails the run and is named:
 
 ```text
-[Gesso] FATAL: 2 response(s) are not covered and are not listed in the coverage baseline:
+[Gesso] FATAL: [GSO403] 2 response(s) are not covered and are not listed in the coverage baseline:
   - [front] DELETE /v1/pets/{id} status=204 content-type=*
   - [front] GET /v1/pets status=500 content-type=application/json
   Action: cover them with a test, or accept them by regenerating the baseline with `GESSO_BASELINE_GENERATE=1 vendor/bin/phpunit`.
@@ -124,7 +124,7 @@ reported per `baseline_stale['coverage']`:
 | `off` | Entries that are covered now are not reported |
 
 ```text
-[Gesso] NOTE: 1 coverage baseline entry(ies) are covered now and can be removed from the baseline file:
+[Gesso] NOTE: [GSO404] 1 coverage baseline entry(ies) are covered now and can be removed from the baseline file:
   - [front] GET /v1/pets status=500 content-type=application/json
 ```
 

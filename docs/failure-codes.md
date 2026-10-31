@@ -820,7 +820,7 @@ Do not delete the failure markers or drop `--expect-sidecars` to make the merge 
 
 ### GSO406
 
-**No coverage was recorded.** A coverage threshold or the coverage baseline is configured, but the run validated no response, so the gate cannot be evaluated.
+**No coverage was recorded.** The run validated no response, so no coverage gate can be evaluated. It fails the run when a strict coverage threshold or the coverage baseline is configured, and is a warning otherwise.
 
 Emitted by the coverage threshold gate and the coverage baseline (PHPUnit extension and `gesso coverage:merge`).
 

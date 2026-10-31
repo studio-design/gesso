@@ -38,7 +38,7 @@ type that returned it, and the number of observations. Arrays use the same
 `[*]` pointer notation as `strict_required`:
 
 ```text
-[OpenAPI Strict Additional Properties] WARNING: 1 undocumented response property was observed.
+[OpenAPI Strict Additional Properties] WARNING: [GSO502] 1 undocumented response property was observed.
 
   - /items[*]/internal_score (internal_score) — spec 'front', GET /catalog, 200, application/json; observed in 3 response(s)
 ```

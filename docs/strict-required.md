@@ -72,8 +72,8 @@ Given the response schema:
 
 and an implementation that always returns all three fields, `strict_required = warn` produces:
 
-```
-[OpenAPI Strict Required] WARNING: 1 endpoint response(s) have always-present fields missing from `required`.
+```text
+[OpenAPI Strict Required] WARNING: [GSO501] 1 endpoint response(s) have always-present fields missing from `required`.
 
   PUT /publish/signed-url/{projectId}/snapshot/{snapshotId}  200  application/json:/
     Observed in 7 response(s); the following keys appeared every time but are not declared in `required`:
