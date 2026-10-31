@@ -10,6 +10,7 @@ use const JSON_UNESCAPED_SLASHES;
 use const JSON_UNESCAPED_UNICODE;
 
 use RuntimeException;
+use Studio\Gesso\Internal\FailureCatalogue;
 use Studio\Gesso\Internal\ToolVersion;
 
 use function json_encode;
@@ -54,7 +55,10 @@ final class JsonValidationResultRenderer
     {
         $issues = [];
         foreach ($result->issues() as $issue) {
+            $code = $issue->code();
             $issues[] = [
+                'code' => $code,
+                'docs_url' => $code === null ? null : FailureCatalogue::docsUrl($code),
                 'category' => $issue->category,
                 'message' => $issue->message,
                 'instance_path' => $issue->instancePath,

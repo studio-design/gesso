@@ -174,7 +174,7 @@ class CoverageBaselineEvaluatorTest extends TestCase
             'GESSO_BASELINE_GENERATE=1 vendor/bin/phpunit',
         );
 
-        $this->assertStringContainsString('[Gesso] FATAL: 2 response(s) are not covered', $message);
+        $this->assertStringContainsString('[Gesso] FATAL: [GSO403] 2 response(s) are not covered', $message);
         $this->assertStringContainsString("  - [front] DELETE /pets/{id} status=204 content-type=*\n", $message);
         $this->assertStringContainsString('  - [front] GET /pets status=500 content-type=application/json', $message);
         $this->assertStringContainsString('GESSO_BASELINE_GENERATE=1 vendor/bin/phpunit', $message);
@@ -187,11 +187,11 @@ class CoverageBaselineEvaluatorTest extends TestCase
         $stale = self::baselineOf([['front', 'GET', '/pets', '200', '*']])->sorted();
 
         $this->assertStringContainsString(
-            '[Gesso] NOTE: 1 coverage baseline entry(ies) are covered now',
+            '[Gesso] NOTE: [GSO404] 1 coverage baseline entry(ies) are covered now',
             CoverageBaselineEvaluator::renderStaleMessage($stale, false),
         );
         $this->assertStringContainsString(
-            '[Gesso] FATAL: 1 coverage baseline entry(ies) are covered now',
+            '[Gesso] FATAL: [GSO404] 1 coverage baseline entry(ies) are covered now',
             CoverageBaselineEvaluator::renderStaleMessage($stale, true),
         );
     }

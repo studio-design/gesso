@@ -18,6 +18,7 @@ use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\Internal\ArgvParser;
 use Studio\Gesso\Internal\CliDocuments;
 use Studio\Gesso\Internal\CliIo;
+use Studio\Gesso\Internal\FailureCatalogue;
 use Studio\Gesso\Internal\ToolVersion;
 use Studio\Gesso\Spec\OpenApiOperationResolver;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
@@ -64,7 +65,7 @@ use function usort;
  * the same tree reads as unchanged.
  *
  * @phpstan-type GateOptions array{base_spec?: string, spec?: string, coverage?: string, spec_name?: string, format?: string, output_file?: string, config?: string, help?: bool, invalid_options?: list<string>}
- * @phpstan-type GateResponse array{status: string, content_type: string, change: 'added'|'changed'|'removed', state: string, covered: bool}
+ * @phpstan-type GateResponse array{status: string, content_type: string, change: 'added'|'changed'|'removed', state: string, covered: bool, code: ?string, docs_url: ?string}
  * @phpstan-type GateOperation array{endpoint: string, change: 'added'|'changed'|'removed', responses: list<GateResponse>}
  * @phpstan-type IndexedResponse array{status: string, content_type: string, hash: string}
  * @phpstan-type IndexedOperation array{endpoint: string, shape: string, responses: array<string, IndexedResponse>}
@@ -77,6 +78,7 @@ final class CoverageGateCommand
 
     public const JSON_SCHEMA_VERSION = 1;
     public const EXIT_UNCOVERED_CHANGE = self::EXIT_FAILURE;
+    private const CODE_UNCOVERED = 'GSO401';
 
     /** @param null|callable(string): void $stdoutWriter */
     public function __construct(
@@ -462,12 +464,15 @@ final class CoverageGateCommand
                     continue;
                 }
                 $state = $states[$endpoint . "\x1f" . $key] ?? 'uncovered';
+                $covered = $state === 'validated';
                 $touched[] = [
                     'status' => $response['status'],
                     'content_type' => $response['content_type'],
                     'change' => $before === null ? 'added' : 'changed',
                     'state' => $state,
-                    'covered' => $state === 'validated',
+                    'covered' => $covered,
+                    'code' => $covered ? null : self::CODE_UNCOVERED,
+                    'docs_url' => $covered ? null : FailureCatalogue::docsUrl(self::CODE_UNCOVERED),
                 ];
             }
 
@@ -484,6 +489,8 @@ final class CoverageGateCommand
                     'change' => 'removed',
                     'state' => 'removed',
                     'covered' => true,
+                    'code' => null,
+                    'docs_url' => null,
                 ];
             }
 
@@ -609,7 +616,7 @@ final class CoverageGateCommand
                 $lines[] = sprintf(
                     '    %s    %s',
                     str_pad($this->describeResponse($response), $width),
-                    $this->describeState($response),
+                    $this->describeState($response) . ($response['code'] !== null ? ' ' . FailureCatalogue::tag($response['code']) : ''),
                 );
             }
         }
@@ -659,7 +666,7 @@ final class CoverageGateCommand
                     $operation['endpoint'],
                     $response['change'],
                     $this->describeResponse($response),
-                    $this->describeState($response),
+                    $this->describeState($response) . ($response['code'] !== null ? sprintf(' ([%s](%s))', $response['code'], (string) $response['docs_url']) : ''),
                 );
             }
         }

@@ -21,6 +21,7 @@ use Studio\Gesso\Internal\CliIo;
 use Studio\Gesso\Internal\CoverageReportWriter;
 use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\Internal\Diagnostics;
+use Studio\Gesso\Internal\FailureCatalogue;
 use Studio\Gesso\PHPUnit\ConsoleOutput;
 use Studio\Gesso\PHPUnit\CoverageReportSubscriber;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
@@ -796,7 +797,7 @@ final class CoverageMergeCommand
             }
             if ($failureMarkers !== []) {
                 $this->writeStderr(sprintf(
-                    "[OpenAPI Coverage] FATAL: %d worker(s) failed to write a sidecar; merge would under-count coverage. Markers in %s\n",
+                    '[OpenAPI Coverage] FATAL: ' . FailureCatalogue::tag('GSO405') . " %d worker(s) failed to write a sidecar; merge would under-count coverage. Markers in %s\n",
                     count($failureMarkers),
                     $sidecarDir,
                 ));
@@ -825,7 +826,7 @@ final class CoverageMergeCommand
         // and before cleanup so the surviving sidecars stay for a retry.
         if ($expectSidecars !== null && count($payloads) !== $expectSidecars) {
             $this->writeStderr(sprintf(
-                "[Gesso] FATAL: expected %d sidecar(s) in %s but found %d; the merged report would %s. Check for a cancelled or failed shard, or correct --expect-sidecars.\n",
+                '[Gesso] FATAL: ' . FailureCatalogue::tag('GSO405') . " expected %d sidecar(s) in %s but found %d; the merged report would %s. Check for a cancelled or failed shard, or correct --expect-sidecars.\n",
                 $expectSidecars,
                 $sidecarDir,
                 count($payloads),
@@ -874,7 +875,7 @@ final class CoverageMergeCommand
             // silently pass an opt-in CI gate (issue #135 review C2).
             if ($minStrict && ($minEndpointPct !== null || $minResponsePct !== null || $minSdkExercisePct !== null)) {
                 $this->writeStderr(sprintf(
-                    "[OpenAPI Coverage] FATAL: no contract test coverage was recorded; configured threshold cannot be evaluated. (no sidecars in %s)\n",
+                    '[OpenAPI Coverage] FATAL: ' . FailureCatalogue::tag('GSO406') . " no contract test coverage was recorded; configured threshold cannot be evaluated. (no sidecars in %s)\n",
                     $sidecarDir,
                 ));
 
@@ -1006,7 +1007,7 @@ final class CoverageMergeCommand
                 $sidecarsWithoutStrictAdditionalProperties,
             );
             $this->writeStderr(sprintf(
-                "[OpenAPI Coverage] %s: no contract test coverage was recorded; %s\n",
+                '[OpenAPI Coverage] %s: ' . FailureCatalogue::tag('GSO406') . " no contract test coverage was recorded; %s\n",
                 $strictGated ? 'FATAL' : 'WARNING',
                 $strictGated
                     ? 'configured threshold cannot be evaluated. (sidecars present but recorded no observations)'
@@ -1018,7 +1019,7 @@ final class CoverageMergeCommand
                 // lack of gaps — enforcing it would pass a run that validated
                 // nothing, generating it would write an empty baseline.
                 $this->writeStderr(
-                    "[Gesso] FATAL: no contract test coverage was recorded; the coverage baseline cannot be evaluated.\n",
+                    '[Gesso] FATAL: ' . FailureCatalogue::tag('GSO406') . " no contract test coverage was recorded; the coverage baseline cannot be evaluated.\n",
                 );
             }
 
@@ -1047,7 +1048,7 @@ final class CoverageMergeCommand
         if ($httpThresholdUnavailable) {
             $this->writeCoverageDiagnostic(
                 $minStrict ? 'FATAL' : 'WARNING',
-                'no contract test coverage was recorded; configured HTTP threshold cannot be evaluated.',
+                FailureCatalogue::tag('GSO406') . ' no contract test coverage was recorded; configured HTTP threshold cannot be evaluated.',
             );
         }
         $thresholdFailure = ($httpThresholdUnavailable && $minStrict) || $this->evaluateThresholdGate(
@@ -1245,7 +1246,7 @@ final class CoverageMergeCommand
     ): bool {
         if ($results === []) {
             $this->writeStderr(
-                "[Gesso] FATAL: no contract test coverage was recorded; the coverage baseline cannot be evaluated.\n",
+                '[Gesso] FATAL: ' . FailureCatalogue::tag('GSO406') . " no contract test coverage was recorded; the coverage baseline cannot be evaluated.\n",
             );
 
             return false;

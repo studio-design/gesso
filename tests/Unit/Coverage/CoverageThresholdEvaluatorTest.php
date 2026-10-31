@@ -254,7 +254,7 @@ class CoverageThresholdEvaluatorTest extends TestCase
 
         $lines = explode("\n", trim($result['message']));
         $this->assertCount(2, $lines);
-        $this->assertStringStartsWith('[OpenAPI Coverage] FAIL: endpoint coverage', $lines[0]);
+        $this->assertStringStartsWith('[OpenAPI Coverage] FAIL: [GSO402] endpoint coverage', $lines[0]);
         // Second line must start with whitespace whose length equals
         // "[OpenAPI Coverage] FAIL: " (25 chars), so "response" lands in the
         // same column as "endpoint".

@@ -11880,6 +11880,15 @@
                         "attributes": []
                     }
                 ]
+            },
+            "code": {
+                "static": false,
+                "final": false,
+                "abstract": false,
+                "returns_reference": false,
+                "return_type": "?string",
+                "attributes": [],
+                "parameters": []
             }
         }
     },

@@ -34,6 +34,16 @@ This library follows [Semantic Versioning 2.0](https://semver.org/). v1.0.0 is t
   but unusable credential); both are `null` for structural and
   spec-malformation errors. New `keyword` values may appear in minor
   releases. `message` remains explicitly outside the contract (see below).
+- The `GSO` failure codes listed in [failure-codes.md](failure-codes.md):
+  each code's meaning, which validator issue category and keyword, doctor
+  category, or gate verdict it identifies, the `ValidationIssue::code()`
+  method, the `code` / `docs_url` fields of the validation, doctor, and gate
+  JSON documents, and the `gesso explain` command (arguments, `--format`,
+  exit codes, JSON shape). A code is never reused or renumbered. Adding a
+  code is minor — including a more specific code for a `category` /
+  `keyword` pair that used to fall back to its category's code; changing a
+  code's meaning or removing it is major. The prose of an entry (causes,
+  fixes) is documentation and may improve in any release.
 - The validation JSON document rendered by `JsonValidationResultRenderer`
   (`schema_version` 1) — see
   [validation-json-schema.md](validation-json-schema.md) for the field-level
@@ -96,6 +106,7 @@ This library follows [Semantic Versioning 2.0](https://semver.org/). v1.0.0 is t
     `bin/gesso` entry point
   - v2.x: the `doctor`, `coverage:merge`, `coverage:gate`, and `stubs`
     subcommands of `bin/gesso`; the legacy standalone binaries are not shipped
+  - v3.x: adds the `explain` subcommand
 - The Laravel `gesso:routes` and `gesso:stubs` command surfaces (flags, exit codes, and versioned JSON output)
 - The five environment variables Gesso owns — `GESSO_VALIDATION_FORMAT`,
   `GESSO_CONSOLE_OUTPUT`, `GESSO_BASELINE_GENERATE`, `GESSO_SIDECAR_TOKEN`, and

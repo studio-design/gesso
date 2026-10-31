@@ -29,6 +29,7 @@ use Studio\Gesso\Exception\SpecFileNotFoundException;
 use Studio\Gesso\Internal\ArgvParser;
 use Studio\Gesso\Internal\CliDocuments;
 use Studio\Gesso\Internal\CliIo;
+use Studio\Gesso\Internal\FailureCatalogue;
 use Studio\Gesso\Internal\HttpRefLoader;
 use Studio\Gesso\Internal\SpecPath;
 use Studio\Gesso\Internal\ToolVersion;
@@ -91,7 +92,7 @@ use function var_export;
  * Pre-test compatibility diagnostics for one or more OpenAPI documents.
  *
  * @phpstan-type DoctorOptions array{specs?: list<string>, strip_prefixes?: list<string>, remote_ref_hosts?: list<string>, acknowledged_unvalidatable_schemes?: list<string>, remote_ref_max_bytes?: int|string, local_ref_root?: string, config_ref_root?: string, config_specs?: list<string>, config_escaping_names?: list<string>, config?: string, format?: string, output_file?: string, allow_remote_refs?: bool, phpunit_snippet?: bool, emit_config?: bool, help?: bool, invalid_options?: list<string>}
- * @phpstan-type DoctorIssue array{severity: 'error'|'warning'|'skipped', category: string, spec: ?string, message: string, suggestion: ?string}
+ * @phpstan-type DoctorIssue array{severity: 'error'|'warning'|'skipped', category: string, spec: ?string, message: string, suggestion: ?string, code: ?string, docs_url: ?string}
  * @phpstan-type SpecResult array{path: string, name: string, openapi: string, dialect: string, operations: int, responses: int}
  *
  * @internal The `gesso doctor` CLI surface is the supported API.
@@ -245,13 +246,13 @@ final class DoctorCommand
         $specResults = [];
         $issues = [];
         if ($allowRemoteRefs && $transport === null) {
-            $issues[] = [
-                'severity' => 'error',
-                'category' => 'dependency',
-                'spec' => null,
-                'message' => '--allow-remote-refs requires an installed PSR-18/PSR-17 implementation.',
-                'suggestion' => 'Install guzzlehttp/guzzle + guzzlehttp/psr7, or symfony/http-client.',
-            ];
+            $issues[] = $this->issue(
+                'error',
+                'dependency',
+                null,
+                '--allow-remote-refs requires an installed PSR-18/PSR-17 implementation.',
+                'Install guzzlehttp/guzzle + guzzlehttp/psr7, or symfony/http-client.',
+            );
         } else {
             foreach ($options['config_escaping_names'] ?? [] as $name) {
                 // The runtime loader rejects these names before touching the disk.
@@ -1093,7 +1094,14 @@ final class DoctorCommand
             $lines[] = sprintf('  OK %s (OpenAPI %s, %d operations, %d responses)', $spec['path'], $spec['openapi'], $spec['operations'], $spec['responses']);
         }
         foreach ($report['issues'] as $issue) {
-            $lines[] = sprintf('  %s [%s]%s %s', strtoupper($issue['severity']), $issue['category'], $issue['spec'] !== null ? ' ' . $issue['spec'] . ':' : '', $issue['message']);
+            $lines[] = sprintf(
+                '  %s %s[%s]%s %s',
+                strtoupper($issue['severity']),
+                $issue['code'] !== null ? FailureCatalogue::tag($issue['code']) . ' ' : '',
+                $issue['category'],
+                $issue['spec'] !== null ? ' ' . $issue['spec'] . ':' : '',
+                $issue['message'],
+            );
             if ($issue['suggestion'] !== null) {
                 $lines[] = '    Fix: ' . $issue['suggestion'];
             }
@@ -1246,7 +1254,10 @@ final class DoctorCommand
     /** @return DoctorIssue */
     private function issue(string $severity, string $category, ?string $spec, string $message, ?string $suggestion): array
     {
+        $code = FailureCatalogue::forDoctor($category);
+        $docs_url = $code === null ? null : FailureCatalogue::docsUrl($code);
+
         /** @var 'error'|'skipped'|'warning' $severity */
-        return compact('severity', 'category', 'spec', 'message', 'suggestion');
+        return compact('severity', 'category', 'spec', 'message', 'suggestion', 'code', 'docs_url');
     }
 }

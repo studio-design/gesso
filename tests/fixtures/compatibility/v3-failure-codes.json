@@ -1,0 +1,131 @@
+{
+    "_comment": "Frozen v3 failure-code inventory. Codes are never removed or renumbered and the pairs below never change code; FailureCatalogueTest checks containment, so new codes need no edit here.",
+    "codes": [
+        "GSO001",
+        "GSO101",
+        "GSO102",
+        "GSO103",
+        "GSO104",
+        "GSO105",
+        "GSO106",
+        "GSO107",
+        "GSO110",
+        "GSO111",
+        "GSO112",
+        "GSO113",
+        "GSO114",
+        "GSO115",
+        "GSO116",
+        "GSO201",
+        "GSO202",
+        "GSO203",
+        "GSO204",
+        "GSO205",
+        "GSO210",
+        "GSO211",
+        "GSO212",
+        "GSO213",
+        "GSO214",
+        "GSO215",
+        "GSO216",
+        "GSO301",
+        "GSO302",
+        "GSO303",
+        "GSO304",
+        "GSO305",
+        "GSO306",
+        "GSO307",
+        "GSO308",
+        "GSO309",
+        "GSO310",
+        "GSO311",
+        "GSO312",
+        "GSO313",
+        "GSO401",
+        "GSO402",
+        "GSO403",
+        "GSO404",
+        "GSO405",
+        "GSO406",
+        "GSO501",
+        "GSO502"
+    ],
+    "issues": {
+        "unknown": {
+            "": "GSO001"
+        },
+        "request.path_match": {
+            "": "GSO101"
+        },
+        "request.method": {
+            "": "GSO102"
+        },
+        "request.spec": {
+            "": "GSO103"
+        },
+        "request.parameter.path": {
+            "": "GSO104"
+        },
+        "request.parameter.query": {
+            "": "GSO105"
+        },
+        "request.parameter.header": {
+            "": "GSO106"
+        },
+        "request.security": {
+            "": "GSO107"
+        },
+        "request.body": {
+            "": "GSO110",
+            "required": "GSO111",
+            "type": "GSO112",
+            "additionalProperties": "GSO113",
+            "unevaluatedProperties": "GSO113",
+            "enum": "GSO114",
+            "const": "GSO114",
+            "format": "GSO115",
+            "parse": "GSO116"
+        },
+        "response.request_context": {
+            "": "GSO201"
+        },
+        "response.spec": {
+            "": "GSO202"
+        },
+        "response.status": {
+            "": "GSO203"
+        },
+        "response.header": {
+            "": "GSO204"
+        },
+        "response.content_type": {
+            "": "GSO205"
+        },
+        "response.body": {
+            "": "GSO210",
+            "required": "GSO211",
+            "type": "GSO212",
+            "additionalProperties": "GSO213",
+            "unevaluatedProperties": "GSO213",
+            "enum": "GSO214",
+            "const": "GSO214",
+            "format": "GSO215",
+            "parse": "GSO216"
+        }
+    },
+    "doctor": {
+        "io": "GSO301",
+        "parser": "GSO302",
+        "version": "GSO303",
+        "dialect": "GSO304",
+        "references": "GSO305",
+        "structure": "GSO306",
+        "keyword": "GSO307",
+        "feature": "GSO308",
+        "dependency": "GSO309",
+        "configuration": "GSO310",
+        "spec": "GSO311",
+        "compatibility": "GSO312",
+        "internal": "GSO313"
+    }
+}

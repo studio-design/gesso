@@ -62,6 +62,8 @@ class JsonValidationResultRendererTest extends TestCase
         $this->assertSame(
             [
                 [
+                    'code' => 'GSO112',
+                    'docs_url' => 'https://studio-design.github.io/gesso/failure-codes#gso112',
                     'category' => 'request.body',
                     'message' => '[/name] The data (integer) must match the type: string',
                     'instance_path' => '/name',
@@ -73,6 +75,8 @@ class JsonValidationResultRendererTest extends TestCase
                     'content_type' => 'application/json',
                 ],
                 [
+                    'code' => 'GSO105',
+                    'docs_url' => 'https://studio-design.github.io/gesso/failure-codes#gso105',
                     'category' => 'request.parameter.query',
                     'message' => 'query error',
                     'instance_path' => null,

@@ -5,6 +5,7 @@
     "[Gesso]": {
         "src/Baseline/CoverageBaselineEvaluator.php": 2,
         "src/Cli/CoverageGateCommand.php": 2,
+        "src/Cli/ExplainCommand.php": 1,
         "src/Cli/StubsCommand.php": 3,
         "src/Coverage/CoverageMergeCommand.php": 19,
         "src/Fuzz/SchemaDataGenerator.php": 1,

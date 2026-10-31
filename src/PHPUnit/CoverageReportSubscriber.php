@@ -25,6 +25,7 @@ use Studio\Gesso\Coverage\SdkExerciseCoverageTracker;
 use Studio\Gesso\Internal\CoverageReportWriter;
 use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\Internal\Diagnostics;
+use Studio\Gesso\Internal\FailureCatalogue;
 use Studio\Gesso\Internal\PartialRunDecision;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Validation\Strict\StrictAdditionalPropertiesAsserter;
@@ -466,7 +467,7 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
 
         $severity = $this->minCoverageStrict ? 'FATAL' : 'WARNING';
         $this->writeStderr(sprintf(
-            "[OpenAPI Coverage] %s: no contract test coverage was recorded; configured threshold cannot be evaluated.\n",
+            '[OpenAPI Coverage] %s: ' . FailureCatalogue::tag('GSO406') . " no contract test coverage was recorded; configured threshold cannot be evaluated.\n",
             $severity,
         ));
 
@@ -789,7 +790,7 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
             // uncovered set would be empty for lack of data, not for lack of
             // gaps, and the gate would pass a run that validated nothing.
             $this->writeStderr(
-                "[Gesso] FATAL: no contract test coverage was recorded; the coverage baseline gate cannot be evaluated.\n",
+                '[Gesso] FATAL: ' . FailureCatalogue::tag('GSO406') . " no contract test coverage was recorded; the coverage baseline gate cannot be evaluated.\n",
             );
             $this->exitNonZero();
 

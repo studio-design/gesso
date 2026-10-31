@@ -11,6 +11,7 @@ subcommands share. Each command's own page has its full option list.
 | `gesso coverage:merge` | Combine parallel-runner sidecars into one coverage report. | [Parallel runners](parallel.md) |
 | `gesso coverage:gate` | Fail when a spec change touches an operation that no test covers. | [Coverage gate](coverage-gate.md) |
 | `gesso stubs` | Write test stubs for the responses that no test covers. | [Stubs](stubs.md) |
+| `gesso explain` | Explain a failure code such as `GSO212`. | [Failure codes](failure-codes.md) |
 
 `gesso --help` lists the commands, and `gesso --version` prints the installed
 version. `--help` on a subcommand prints that command's usage, including its exit codes.
@@ -25,9 +26,10 @@ It also takes `--output-file` to write that report to a file instead of stdout.
 | `doctor` | `text`, `json` | `text` | the doctor report |
 | `coverage:gate` | `text`, `markdown`, `json` | `text` | the gate report |
 | `stubs` | `text`, `json` | `text` | the run summary (written, skipped, and not-stubbed files) |
+| `explain` | `text`, `json` | `text` | the explanation, or the list of codes |
 | `coverage:merge` | `text`, `markdown`, `json`, `junit`, `html` | `text`; `markdown` when `--output-file` is given | the primary report |
 
-These rules apply to all four:
+These rules apply to all five:
 
 - Without `--output-file`, the primary report goes to stdout. Its bytes are
   the same as the file would get.
@@ -72,7 +74,7 @@ sidecars, or when the sidecars hold no observations.
             "endpoint": "DELETE /pets/{id}",
             "change": "added",
             "responses": [
-                { "status": "204", "content_type": "*", "change": "added", "state": "uncovered", "covered": false }
+                { "status": "204", "content_type": "*", "change": "added", "state": "uncovered", "covered": false, "code": "GSO401", "docs_url": "https://studio-design.github.io/gesso/failure-codes#gso401" }
             ]
         }
     ]
@@ -80,7 +82,32 @@ sidecars, or when the sidecars hold no observations.
 ```
 
 `change` is `added`, `changed`, or `removed`. `state` is `validated`,
-`skipped`, `uncovered`, or `removed`.
+`skipped`, `uncovered`, or `removed`. A response that is not covered carries
+the failure code [`GSO401`](failure-codes.md#gso401) in `code` and its page in
+`docs_url`; both are `null` otherwise. The text report prints the code after
+the state, and the Markdown report links it.
+
+### explain JSON
+
+`gesso explain GSO212 --format=json` prints one entry. Without a code, the
+document has a `codes` list of the same entries instead.
+
+```json
+{
+    "schemaVersion": 1,
+    "tool": { "name": "studio-design/gesso", "version": "3.0.0" },
+    "code": "GSO212",
+    "title": "Response body value has the wrong type",
+    "summary": "A response body value has a JSON type the schema does not allow.",
+    "source": "Validator issue category `response.body` with keyword `type`.",
+    "causes": ["A value is `null` but the schema is not nullable."],
+    "fix": ["Implementation wrong: cast the value."],
+    "do_not": "Do not add `#[SkipOpenApi]`, ...",
+    "docs_url": "https://studio-design.github.io/gesso/failure-codes#gso212"
+}
+```
+
+An unknown code exits `2` and prints the closest known codes on stderr.
 
 ### stubs JSON
 
@@ -101,7 +128,7 @@ sidecars, or when the sidecars hold no observations.
 `written` and `skipped` hold the same paths that the text summary prints.
 `not_stubbed[].reason` is `unreachable`, `malformed`, or `unsupported`.
 
-In both documents, `tool` follows the same `unknown` rule as the
+In these documents, `tool` follows the same `unknown` rule as the
 [doctor](doctor.md#machine-readable-output) and
 [coverage](coverage-json-schema.md) JSON. Additive changes keep
 `schemaVersion` at `1`. Removals, renames and type changes increase it.
@@ -155,7 +182,7 @@ Gesso 3.0, `coverage:merge` ignored one with a warning.
 
 ## Exit codes
 
-All four commands use `0` for success, `1` for a "no" answer, and `2` for a
+All five commands use `0` for success, `1` for a "no" answer, and `2` for a
 usage error. What counts as `1` differs by command:
 
 | Command | `0` | `1` | `2` |
@@ -164,6 +191,7 @@ usage error. What counts as `1` differs by command:
 | `coverage:merge` | The merge completed. Warnings may be on stderr. | A gate failed (threshold, strict mode, baseline, or expected shard count), or a worker wrote a failure marker. | Invalid usage, or an I/O failure (see below). |
 | `coverage:gate` | Every changed operation is covered. | A changed operation has a response that no test validated. | Invalid usage, an unreadable spec or coverage file, or an unwritable `--output-file`. |
 | `stubs` | Stubs were written, or there was nothing left to stub. | Reserved; not returned. | Invalid usage, an unreadable input, or an output file that cannot be written. |
+| `explain` | The code was explained, or every code was listed. | Reserved; not returned. | An unknown code, invalid usage, or an unwritable `--output-file`. |
 
 An I/O failure of `coverage:merge` is a sidecar that cannot be read, a report
 or baseline file that cannot be written, a coverage baseline that cannot be

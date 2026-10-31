@@ -7,9 +7,11 @@ namespace Studio\Gesso\Internal;
 use Closure;
 use Studio\Gesso\JsonValidationResultRenderer;
 use Studio\Gesso\OpenApiValidationResult;
+use Studio\Gesso\ValidationIssue;
 use Studio\Gesso\ValidationOutput;
 use Studio\Gesso\ValidationOutputFormat;
 
+use function array_map;
 use function implode;
 
 /**
@@ -17,10 +19,10 @@ use function implode;
  * the process-wide {@see ValidationOutput} format so Laravel, Symfony, Pest,
  * and PSR-7 emit the same shape (issue #282, stage 3).
  *
- * Text mode reproduces the historical output byte-for-byte:
+ * Text mode prints one line per issue, led by its failure code:
  *
  *     {header}:
- *     {errorMessage()}
+ *     [GSO212] {message}
  *     Reproduce: {curl}
  *
  * Json mode keeps the one-line header for humans and replaces the rest with
@@ -52,14 +54,14 @@ final class FailureOutput
             return "{$header}:\n" . JsonValidationResultRenderer::render($result, $reproduceCommand());
         }
 
-        return "{$header}:\n{$result->errorMessage()}\nReproduce: {$reproduceCommand()}";
+        return "{$header}:\n" . implode("\n", self::taggedLines($result)) . "\nReproduce: {$reproduceCommand()}";
     }
 
     /**
      * Composes a failure message for an exchange-style assertion that
      * validated several results at once (PSR-7 request + response).
      *
-     * Text mode reproduces the historical merged shape: every error line
+     * Text mode keeps the merged shape: every tagged issue line
      * prefixed with its side label, one trailing `Reproduce:` line. Json mode
      * emits one labelled document per FAILING side — each block after a
      * `[{label}]` line parses standalone against the documented schema, and
@@ -97,11 +99,30 @@ final class FailureOutput
 
         $lines = [];
         foreach ($sides as $label => $result) {
-            foreach ($result->errors() as $error) {
-                $lines[] = "[{$label}] {$error}";
+            foreach (self::taggedLines($result) as $line) {
+                $lines[] = "[{$label}] {$line}";
             }
         }
 
         return "{$header}:\n" . implode("\n", $lines) . "\nReproduce: {$reproduceCommand()}";
+    }
+
+    /**
+     * One line per issue, led by its failure code (`[GSO212] [/name] ...`).
+     * `issues()` mirrors `errors()` one-to-one, so the messages themselves
+     * are unchanged.
+     *
+     * @return list<string>
+     */
+    private static function taggedLines(OpenApiValidationResult $result): array
+    {
+        return array_map(
+            static function (ValidationIssue $issue): string {
+                $code = $issue->code();
+
+                return $code === null ? $issue->message : FailureCatalogue::tag($code) . ' ' . $issue->message;
+            },
+            $result->issues(),
+        );
     }
 }

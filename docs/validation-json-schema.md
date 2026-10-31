@@ -92,6 +92,8 @@ Each entry serialises one `ValidationIssue` field-for-field (snake_case). The
 
 | Field | Type | Description |
 |-------|------|-------------|
+| `code` | `string \| null` | Stable [failure code](failure-codes.md) derived from `category` and `keyword` (`GSO212` for a `response.body` `type` violation). `gesso explain <code>` explains it. `null` only for a category the installed version does not know. |
+| `docs_url` | `string \| null` | Documentation page of `code`; `null` when `code` is. |
 | `category` | `string` | Stable slug naming the producing validator (`request.body`, `response.header`, …). Results built by code that predates the structured API derive `"unknown"`. |
 | `message` | `string` | Exact human-readable error text. **Not** a compatibility surface — assert on `category` and context instead. |
 | `instance_path` | `string \| null` | RFC 6901 JSON Pointer: `""` is the document root and `"/"` is the property whose name is the empty string. (The human-readable `message` prefix renders the root as `[/]` for historical reasons; `instance_path` is the unambiguous form.) Set on schema violations — for body issues it points into the validated body, for parameter / response-header issues into the named value; `null` for structural and spec-malformation errors. |
@@ -111,6 +113,9 @@ The document shape is covered by the [versioning policy](versioning.md):
 - Removing or renaming a field, changing a field's type, or changing the
   meaning of an existing value is a major change and bumps `schema_version`.
 - New `category` slugs and new `keyword` values may appear in minor releases.
+- New failure codes may appear in minor releases. A minor release may also
+  give a `category` / `keyword` pair that fell back to its category's generic
+  code a more specific code; an existing code never changes meaning.
 
 ## Security notes
 

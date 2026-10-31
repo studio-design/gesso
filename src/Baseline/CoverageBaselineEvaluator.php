@@ -7,6 +7,7 @@ namespace Studio\Gesso\Baseline;
 use Studio\Gesso\Coverage\CoverageThresholdEvaluator;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\Coverage\ResponseCoverageState;
+use Studio\Gesso\Internal\FailureCatalogue;
 
 use function array_filter;
 use function array_values;
@@ -115,7 +116,8 @@ final class CoverageBaselineEvaluator
     public static function renderRegressionMessage(array $regressions, string $generateHint): string
     {
         return sprintf(
-            "[Gesso] FATAL: %d response(s) are not covered and are not listed in the coverage baseline:\n%s\n  Action: cover them with a test, or accept them by regenerating the baseline with `%s`.\n",
+            "[Gesso] FATAL: %s %d response(s) are not covered and are not listed in the coverage baseline:\n%s\n  Action: cover them with a test, or accept them by regenerating the baseline with `%s`.\n",
+            FailureCatalogue::tag('GSO403'),
             count($regressions),
             self::renderListing($regressions),
             $generateHint,
@@ -128,8 +130,9 @@ final class CoverageBaselineEvaluator
     public static function renderStaleMessage(array $stale, bool $isFatal): string
     {
         return sprintf(
-            "[Gesso] %s: %d coverage baseline entry(ies) are covered now and can be removed from the baseline file:\n%s\n",
+            "[Gesso] %s: %s %d coverage baseline entry(ies) are covered now and can be removed from the baseline file:\n%s\n",
             $isFatal ? 'FATAL' : 'NOTE',
+            FailureCatalogue::tag('GSO404'),
             count($stale),
             self::renderListing($stale),
         );

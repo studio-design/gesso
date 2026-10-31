@@ -550,6 +550,16 @@ final class PublicApiBaselineTest extends TestCase
                         $issueOptionalParam('parameter'),
                     ],
                 ],
+                // v3 A1: the stable GSO failure code (minor addition).
+                'code' => [
+                    'static' => false,
+                    'final' => false,
+                    'abstract' => false,
+                    'returns_reference' => false,
+                    'return_type' => '?string',
+                    'attributes' => [],
+                    'parameters' => [],
+                ],
             ],
         ];
         // New public class in v2.x (#282 stage 2): versioned JSON output for

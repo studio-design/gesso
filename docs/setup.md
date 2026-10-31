@@ -430,10 +430,12 @@ one-line curl command that reproduces the validated request:
 
 ```text
 OpenAPI schema validation failed for POST /v1/pets (spec: front):
-[/name] The data (integer) must match the type: string
+[GSO112] [/name] The data (integer) must match the type: string
 Reproduce: curl -X POST 'https://api.example.test/v1/pets' -H 'Authorization: <redacted>' -H 'Content-Type: application/json' --data '{"name":42}'
 ```
 
+Each error line starts with its [failure code](failure-codes.md);
+`vendor/bin/gesso explain GSO112` says what it means and how to fix it.
 The PSR-7 exchange assertion prefixes each error line with its `[request]` /
 `[response]` side label and ends with one `Reproduce:` line for the whole
 exchange. In the JSON failure output mode the same command is carried in the

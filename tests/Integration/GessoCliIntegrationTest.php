@@ -49,7 +49,7 @@ final class GessoCliIntegrationTest extends TestCase
     /** @return iterable<string, array{string}> */
     public static function provideEvery_subcommand_help_lists_the_shared_output_flags_and_exit_codesCases(): iterable
     {
-        foreach (['doctor', 'coverage:merge', 'coverage:gate', 'stubs'] as $command) {
+        foreach (['doctor', 'coverage:merge', 'coverage:gate', 'stubs', 'explain'] as $command) {
             yield $command => [$command];
         }
     }
@@ -64,16 +64,19 @@ final class GessoCliIntegrationTest extends TestCase
         $this->assertSame(0, $exit);
         $this->assertSame('', $stderr);
         $this->assertSame(
-            file_get_contents($this->repoRoot . '/tests/fixtures/compatibility/v2-gesso-help.txt'),
+            file_get_contents($this->repoRoot . '/tests/fixtures/compatibility/v3-gesso-help.txt'),
             $stdout,
         );
-        // The global-options section is additive, so every v1.10 help line must
-        // survive it — containment against the frozen capture, not equality.
-        foreach (explode("\n", (string) file_get_contents($this->repoRoot . '/tests/fixtures/compatibility/v1.10-gesso-help.txt')) as $line) {
-            if (trim($line) === '') {
-                continue;
+        // New commands and the global-options section are additive, so every
+        // v1.10 and v2 help line must survive them — containment against the
+        // frozen captures, not equality.
+        foreach (['v1.10', 'v2'] as $major) {
+            foreach (explode("\n", (string) file_get_contents($this->repoRoot . "/tests/fixtures/compatibility/{$major}-gesso-help.txt")) as $line) {
+                if (trim($line) === '') {
+                    continue;
+                }
+                $this->assertStringContainsString($line, $stdout, "{$major} help line must be retained");
             }
-            $this->assertStringContainsString($line, $stdout, 'v1.10 help line must be retained');
         }
     }
 
@@ -223,7 +226,7 @@ final class GessoCliIntegrationTest extends TestCase
         $this->assertSame('', $stdout);
         $this->assertSame(
             '[Gesso] Unknown command: unknown' . "\n\n"
-                . file_get_contents($this->repoRoot . '/tests/fixtures/compatibility/v2-gesso-help.txt'),
+                . file_get_contents($this->repoRoot . '/tests/fixtures/compatibility/v3-gesso-help.txt'),
             $stderr,
         );
     }
