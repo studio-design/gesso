@@ -11,15 +11,16 @@ use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use PHPUnit\Runner\Extension\ExtensionFacade;
 use PHPUnit\Runner\Extension\Facade;
-use PHPUnit\Runner\Extension\ParameterCollection;
 use ReflectionClass;
 use Studio\Gesso\Baseline\ViolationBaseline;
 use Studio\Gesso\Baseline\ViolationBaselineEnforcer;
 use Studio\Gesso\Baseline\ViolationBaselineFile;
 use Studio\Gesso\Baseline\ViolationFingerprint;
 use Studio\Gesso\Internal\Deprecations;
+use Studio\Gesso\PHPUnit\ExtensionParameters;
 use Studio\Gesso\PHPUnit\OpenApiCoverageExtension;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
+use Studio\Gesso\Tests\Helpers\FlatExtensionSettings;
 
 use function class_exists;
 use function fclose;
@@ -178,9 +179,9 @@ final class OpenApiCoverageExtensionSealedFacadeTest extends TestCase
     /**
      * @param array<string, string> $parameters
      */
-    private function parameters(array $parameters): ParameterCollection
+    private function parameters(array $parameters): ExtensionParameters
     {
-        return ParameterCollection::fromArray([
+        return FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
             'specs' => 'petstore-3.0',
             ...$parameters,

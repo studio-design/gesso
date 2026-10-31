@@ -8,12 +8,12 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\IgnoreDeprecations;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
-use PHPUnit\Runner\Extension\ParameterCollection;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\Coverage\SdkExerciseCoverageTracker;
 use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\PHPUnit\OpenApiCoverageExtension;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
+use Studio\Gesso\Tests\Helpers\FlatExtensionSettings;
 use Studio\Gesso\Validation\Strict\StrictAdditionalPropertiesPerCallChecker;
 use Studio\Gesso\Validation\Strict\StrictAdditionalPropertiesTracker;
 use Studio\Gesso\Validation\Strict\StrictRequiredPerCallChecker;
@@ -95,7 +95,7 @@ final class OpenApiCoverageExtensionStrictRecordingTest extends TestCase
             putenv($env);
         }
 
-        (new OpenApiCoverageExtension())->setupExtension(null, ParameterCollection::fromArray([
+        (new OpenApiCoverageExtension())->setupExtension(null, FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
             'specs' => 'refs-valid',
             ...$parameters,

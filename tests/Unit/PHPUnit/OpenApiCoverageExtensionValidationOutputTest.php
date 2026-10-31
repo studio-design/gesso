@@ -7,19 +7,17 @@ namespace Studio\Gesso\Tests\Unit\PHPUnit;
 use PHPUnit\Framework\Attributes\IgnoreDeprecations;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
-use PHPUnit\Runner\Extension\ParameterCollection;
 use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\Internal\LegacyIdentity;
 use Studio\Gesso\PHPUnit\OpenApiCoverageExtension;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
+use Studio\Gesso\Tests\Helpers\FlatExtensionSettings;
 use Studio\Gesso\ValidationOutput;
 use Studio\Gesso\ValidationOutputFormat;
 
 use function fclose;
 use function fopen;
 use function putenv;
-use function rewind;
-use function stream_get_contents;
 
 #[IgnoreDeprecations]
 class OpenApiCoverageExtensionValidationOutputTest extends TestCase
@@ -81,29 +79,6 @@ class OpenApiCoverageExtensionValidationOutputTest extends TestCase
     }
 
     #[Test]
-    public function invalid_parameter_warns_and_keeps_the_text_default(): void
-    {
-        $this->setupExtension(['validation_output' => 'yaml']);
-
-        $this->assertSame(ValidationOutputFormat::Text, ValidationOutput::format());
-        $this->assertStringContainsString(
-            "Invalid validation_output parameter 'yaml'. Valid values: text, json. "
-            . 'Falling back to the configured format.',
-            $this->capturedStderr(),
-        );
-    }
-
-    #[Test]
-    public function invalid_parameter_keeps_a_previously_selected_format(): void
-    {
-        ValidationOutput::use(ValidationOutputFormat::Json);
-
-        $this->setupExtension(['validation_output' => 'yaml']);
-
-        $this->assertSame(ValidationOutputFormat::Json, ValidationOutput::format());
-    }
-
-    #[Test]
     public function environment_variable_still_wins_over_the_parameter(): void
     {
         putenv('GESSO_VALIDATION_FORMAT=text');
@@ -117,20 +92,10 @@ class OpenApiCoverageExtensionValidationOutputTest extends TestCase
     private function setupExtension(array $parameters): void
     {
         $extension = new OpenApiCoverageExtension();
-        $extension->setupExtension(null, ParameterCollection::fromArray([
+        $extension->setupExtension(null, FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
             'specs' => 'petstore-3.0',
             ...$parameters,
         ]), null);
-    }
-
-    private function capturedStderr(): string
-    {
-        if ($this->stderrBuffer === null) {
-            return '';
-        }
-        rewind($this->stderrBuffer);
-
-        return (string) stream_get_contents($this->stderrBuffer);
     }
 }

@@ -266,8 +266,7 @@ trait OpenApiAssertions
     /**
      * User-overridable default spec name, consulted by
      * {@see OpenApiSpecResolver} when no `#[OpenApiSpec]` attribute is present.
-     * Defaults to `spec.default` from gesso.php (or the `default_spec`
-     * extension parameter); override in a base test case to pin a spec
+     * Defaults to `spec.default` from gesso.php; override in a base test case to pin a spec
      * without an attribute on every class.
      */
     protected function openApiSpec(): string
@@ -288,7 +287,7 @@ trait OpenApiAssertions
     /**
      * Status-code patterns whose response bodies are not validated. Override
      * to pin a per-suite set; the default follows `skip_response_codes` from
-     * gesso.php / the extension parameter, else 5xx.
+     * gesso.php, else 5xx.
      *
      * @return string[]
      */

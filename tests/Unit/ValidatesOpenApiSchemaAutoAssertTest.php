@@ -33,7 +33,7 @@ class ValidatesOpenApiSchemaAutoAssertTest extends TestCase
         OpenApiSpecLoader::configure(__DIR__ . '/../fixtures/specs');
         OpenApiCoverageTracker::reset();
         $GLOBALS['__openapi_testing_config'] = [
-            'gesso.default_spec' => 'petstore-3.0',
+            'gesso.spec.default' => 'petstore-3.0',
         ];
     }
 
@@ -46,18 +46,9 @@ class ValidatesOpenApiSchemaAutoAssertTest extends TestCase
     }
 
     #[Test]
-    public function config_file_defaults_auto_assert_to_false(): void
-    {
-        $config = require __DIR__ . '/../../src/Laravel/config.php';
-
-        $this->assertArrayHasKey('auto_assert', $config);
-        $this->assertFalse($config['auto_assert']);
-    }
-
-    #[Test]
     public function auto_assert_true_validates_valid_response_without_error(): void
     {
-        $GLOBALS['__openapi_testing_config']['gesso.auto_assert'] = true;
+        $GLOBALS['__openapi_testing_config']['gesso.laravel.auto_assert'] = true;
 
         $body = (string) json_encode(
             ['data' => [['id' => 1, 'name' => 'Fido', 'tag' => null]]],
@@ -75,7 +66,7 @@ class ValidatesOpenApiSchemaAutoAssertTest extends TestCase
     #[Test]
     public function auto_assert_true_raises_assertion_error_for_invalid_response(): void
     {
-        $GLOBALS['__openapi_testing_config']['gesso.auto_assert'] = true;
+        $GLOBALS['__openapi_testing_config']['gesso.laravel.auto_assert'] = true;
 
         $body = (string) json_encode(['wrong_key' => 'value'], JSON_THROW_ON_ERROR);
         $response = $this->makeTestResponse($body, 200);
@@ -88,7 +79,7 @@ class ValidatesOpenApiSchemaAutoAssertTest extends TestCase
     #[Test]
     public function auto_assert_false_skips_validation_for_invalid_response(): void
     {
-        $GLOBALS['__openapi_testing_config']['gesso.auto_assert'] = false;
+        $GLOBALS['__openapi_testing_config']['gesso.laravel.auto_assert'] = false;
 
         $body = (string) json_encode(['wrong_key' => 'value'], JSON_THROW_ON_ERROR);
         $response = $this->makeTestResponse($body, 200);
@@ -116,7 +107,7 @@ class ValidatesOpenApiSchemaAutoAssertTest extends TestCase
     {
         // A user who mis-configures auto_assert (e.g. via env without cast)
         // should see a loud failure, not a silent skip.
-        $GLOBALS['__openapi_testing_config']['gesso.auto_assert'] = 'yolo';
+        $GLOBALS['__openapi_testing_config']['gesso.laravel.auto_assert'] = 'yolo';
 
         $body = (string) json_encode(
             ['data' => [['id' => 1, 'name' => 'Fido', 'tag' => null]]],
@@ -136,7 +127,7 @@ class ValidatesOpenApiSchemaAutoAssertTest extends TestCase
         // env('X') returns strings; "true" must be treated as truthy so that
         // `'auto_assert' => env('AUTO_ASSERT')` (the idiomatic Laravel
         // pattern) works without an explicit cast.
-        $GLOBALS['__openapi_testing_config']['gesso.auto_assert'] = 'true';
+        $GLOBALS['__openapi_testing_config']['gesso.laravel.auto_assert'] = 'true';
 
         $body = (string) json_encode(
             ['data' => [['id' => 1, 'name' => 'Fido', 'tag' => null]]],
@@ -169,7 +160,7 @@ class ValidatesOpenApiSchemaAutoAssertTest extends TestCase
     #[Test]
     public function manual_then_auto_assert_with_same_signature_is_idempotent(): void
     {
-        $GLOBALS['__openapi_testing_config']['gesso.auto_assert'] = true;
+        $GLOBALS['__openapi_testing_config']['gesso.laravel.auto_assert'] = true;
 
         $body = (string) json_encode(
             ['data' => [['id' => 1, 'name' => 'Fido', 'tag' => null]]],
@@ -191,7 +182,7 @@ class ValidatesOpenApiSchemaAutoAssertTest extends TestCase
         // After a successful auto-assert, a manual call with the matching
         // (method, path) signature must no-op — no second validator run,
         // no second coverage entry.
-        $GLOBALS['__openapi_testing_config']['gesso.auto_assert'] = true;
+        $GLOBALS['__openapi_testing_config']['gesso.laravel.auto_assert'] = true;
 
         $body = (string) json_encode(
             ['data' => [['id' => 1, 'name' => 'Fido', 'tag' => null]]],
@@ -232,7 +223,7 @@ class ValidatesOpenApiSchemaAutoAssertTest extends TestCase
         // through the full createTestResponse → maybeAutoAssert → validator
         // chain without raising AssertionFailedError, and the endpoint must
         // still be recorded as covered.
-        $GLOBALS['__openapi_testing_config']['gesso.auto_assert'] = true;
+        $GLOBALS['__openapi_testing_config']['gesso.laravel.auto_assert'] = true;
 
         $body = (string) json_encode(['error' => 'service unavailable'], JSON_THROW_ON_ERROR);
         $response = $this->makeTestResponse($body, 503);
@@ -250,8 +241,8 @@ class ValidatesOpenApiSchemaAutoAssertTest extends TestCase
         // Opting out of skip via config restores the "not defined" failure
         // under auto_assert — confirms the cache-key extension makes the
         // config change observable without a manual cache reset.
-        $GLOBALS['__openapi_testing_config']['gesso.auto_assert'] = true;
-        $GLOBALS['__openapi_testing_config']['gesso.skip_response_codes'] = [];
+        $GLOBALS['__openapi_testing_config']['gesso.laravel.auto_assert'] = true;
+        $GLOBALS['__openapi_testing_config']['gesso.validation.skip_response_codes'] = [];
 
         $body = (string) json_encode(['error' => 'service unavailable'], JSON_THROW_ON_ERROR);
         $response = $this->makeTestResponse($body, 503);

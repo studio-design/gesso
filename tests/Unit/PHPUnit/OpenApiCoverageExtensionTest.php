@@ -4,16 +4,12 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Tests\Unit\PHPUnit;
 
-use const E_USER_DEPRECATED;
 use const E_USER_WARNING;
 
 use PHPUnit\Framework\Attributes\IgnoreDeprecations;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
-use PHPUnit\Runner\Extension\ParameterCollection;
-use Studio\Gesso\Config\GessoConfig;
 use Studio\Gesso\Coverage\InvalidCoverageOutputPathException;
-use Studio\Gesso\Coverage\InvalidThresholdConfigurationException;
 use Studio\Gesso\Coverage\SdkExerciseCoverageTracker;
 use Studio\Gesso\Exception\EnumBindingException;
 use Studio\Gesso\Exception\EnumBindingReason;
@@ -23,9 +19,9 @@ use Studio\Gesso\Exception\InvalidOpenApiSpecReason;
 use Studio\Gesso\Exception\SpecFileNotFoundException;
 use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\Internal\EnumScanner;
-use Studio\Gesso\PHPUnit\InvalidStrictRequiredConfigurationException;
 use Studio\Gesso\PHPUnit\OpenApiCoverageExtension;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
+use Studio\Gesso\Tests\Helpers\FlatExtensionSettings;
 use Studio\Gesso\Validation\Request\AcknowledgedSecuritySchemes;
 use Studio\Gesso\Validation\Strict\StrictAdditionalPropertiesPerCallChecker;
 use Studio\Gesso\Validation\Strict\StrictAdditionalPropertiesTracker;
@@ -34,8 +30,6 @@ use Studio\Gesso\Validation\Strict\StrictRequiredPerCallMode;
 use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 use Studio\Gesso\Validation\Support\DiscriminatorEnforcement;
 
-use function array_filter;
-use function array_values;
 use function chmod;
 use function fclose;
 use function file_get_contents;
@@ -45,13 +39,11 @@ use function getcwd;
 use function getenv;
 use function is_writable;
 use function mkdir;
-use function preg_match;
 use function putenv;
 use function restore_error_handler;
 use function rewind;
 use function rmdir;
 use function set_error_handler;
-use function str_contains;
 use function stream_get_contents;
 use function substr_count;
 use function sys_get_temp_dir;
@@ -118,7 +110,7 @@ class OpenApiCoverageExtensionTest extends TestCase
     public function bootstrap_throws_invalid_spec_exception_when_ref_unresolvable(): void
     {
         $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
+        $parameters = FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
             'specs' => 'refs-unresolvable',
         ]);
@@ -137,7 +129,7 @@ class OpenApiCoverageExtensionTest extends TestCase
         // Boot must now hard-fail so the configuration error surfaces at the
         // moment of detection — not on someone else's PR after a merge.
         $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
+        $parameters = FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
             'specs' => 'does-not-exist',
         ]);
@@ -159,7 +151,7 @@ class OpenApiCoverageExtensionTest extends TestCase
     public function bootstrap_loads_cleanly_for_valid_spec(): void
     {
         $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
+        $parameters = FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
             'specs' => 'refs-valid',
         ]);
@@ -177,7 +169,7 @@ class OpenApiCoverageExtensionTest extends TestCase
         // falls back to spec_base_path — keeping pre-1.2.0 setups
         // bit-for-bit identical.
         $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
+        $parameters = FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
             'specs' => 'refs-valid',
         ]);
@@ -185,183 +177,6 @@ class OpenApiCoverageExtensionTest extends TestCase
         $extension->setupExtension(null, $parameters, null);
 
         $this->assertNull(OpenApiSpecLoader::getEnumBasePath());
-    }
-
-    #[Test]
-    #[IgnoreDeprecations]
-    public function bootstrap_passes_absolute_enum_spec_base_path_to_loader(): void
-    {
-        $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
-            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
-            'specs' => 'refs-valid',
-            'enum_spec_base_path' => '/absolute/path/to/openapi',
-        ]);
-
-        $extension->setupExtension(null, $parameters, null);
-
-        $this->assertSame('/absolute/path/to/openapi', OpenApiSpecLoader::getEnumBasePath());
-    }
-
-    #[Test]
-    public function enum_spec_base_path_emits_one_deprecation_notice(): void
-    {
-        $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
-            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
-            'specs' => 'refs-valid',
-            'enum_spec_base_path' => '/absolute/path/to/openapi',
-        ]);
-
-        $captured = [];
-        set_error_handler(static function (int $errno, string $message) use (&$captured): bool {
-            $captured[] = [$errno, $message];
-
-            return true;
-        });
-
-        try {
-            $extension->setupExtension(null, $parameters, null);
-        } finally {
-            restore_error_handler();
-        }
-
-        // `spec_base_path` and `specs` raise their own flat-key notices.
-        $captured = array_values(array_filter(
-            $captured,
-            static fn(array $entry): bool => str_contains($entry[1], 'enum_spec_base_path'),
-        ));
-        $this->assertCount(1, $captured);
-        $this->assertSame(E_USER_DEPRECATED, $captured[0][0]);
-        $this->assertStringStartsWith(Deprecations::PREFIX, $captured[0][1]);
-        $this->assertStringContainsString("'enum_spec_base_path'", $captured[0][1]);
-        // The loader's own configure(enumBasePath:) notice must not fire too.
-        $this->assertSame(
-            ['config.spec_base_path' => 1, 'config.specs' => 1, 'phpunit.enum_spec_base_path' => 1],
-            Deprecations::counts(),
-        );
-        $this->assertSame('/absolute/path/to/openapi', OpenApiSpecLoader::getEnumBasePath());
-    }
-
-    #[Test]
-    #[IgnoreDeprecations]
-    public function bootstrap_resolves_relative_enum_spec_base_path_against_cwd(): void
-    {
-        // Pin that the extension absolutises a relative `enum_spec_base_path`
-        // against `getcwd()`, mirroring `spec_base_path` / `output_file` /
-        // `sidecar_dir`. Without this the asserter would silently look in the
-        // wrong place when paratest workers run with a different cwd.
-        $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
-            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
-            'specs' => 'refs-valid',
-            'enum_spec_base_path' => 'relative/openapi',
-        ]);
-
-        $extension->setupExtension(null, $parameters, null);
-
-        $this->assertSame(getcwd() . '/relative/openapi', OpenApiSpecLoader::getEnumBasePath());
-    }
-
-    #[Test]
-    #[IgnoreDeprecations]
-    public function bootstrap_trims_whitespace_around_enum_spec_base_path(): void
-    {
-        // XML editors sometimes wrap parameter values in stray newlines or
-        // spaces. Without trim() those would silently flow as
-        // `getcwd()."/   /openapi"` and produce a confusing
-        // EnumBasePathNotFound diagnostic later.
-        $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
-            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
-            'specs' => 'refs-valid',
-            'enum_spec_base_path' => "  \n /absolute/path/to/openapi  \n",
-        ]);
-
-        $extension->setupExtension(null, $parameters, null);
-
-        $this->assertSame('/absolute/path/to/openapi', OpenApiSpecLoader::getEnumBasePath());
-    }
-
-    #[Test]
-    #[IgnoreDeprecations]
-    public function bootstrap_fatal_when_enum_spec_base_path_is_empty(): void
-    {
-        // <parameter name="enum_spec_base_path" value=""/> would otherwise
-        // flow as the empty string and silently coerce to getcwd(), masking
-        // the misconfiguration.
-        $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
-            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
-            'specs' => 'refs-valid',
-            'enum_spec_base_path' => '',
-        ]);
-
-        try {
-            $extension->setupExtension(null, $parameters, null);
-            $this->fail('expected EnumBindingException');
-        } catch (EnumBindingException $e) {
-            $this->assertSame(EnumBindingReason::EnumSpecBasePathOrphaned, $e->reason);
-            $this->assertNull($e->enumFqcn);
-            $this->assertNull($e->specPath);
-            $this->assertStringContainsString('empty', $e->getMessage());
-        }
-
-        $this->assertStringContainsString('FATAL', $this->readStderr());
-    }
-
-    #[Test]
-    #[IgnoreDeprecations]
-    public function bootstrap_fatal_when_enum_spec_base_path_set_without_spec_base_path(): void
-    {
-        // C1 from review: a typo in spec_base_path that leaves
-        // enum_spec_base_path orphaned must FATAL instead of silently
-        // dropping the parameter.
-        $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
-            'enum_spec_base_path' => '/some/path/openapi',
-        ]);
-
-        try {
-            $extension->setupExtension(null, $parameters, null);
-            $this->fail('expected EnumBindingException');
-        } catch (EnumBindingException $e) {
-            $this->assertSame(EnumBindingReason::EnumSpecBasePathOrphaned, $e->reason);
-            $this->assertStringContainsString('spec_base_path is not', $e->getMessage());
-        }
-
-        $this->assertStringContainsString('FATAL', $this->readStderr());
-    }
-
-    #[Test]
-    #[IgnoreDeprecations]
-    public function bootstrap_fatal_writes_block_to_github_step_summary_for_orphaned_enum_spec_base_path(): void
-    {
-        // FATAL diagnostics for spec misconfiguration already land in
-        // GITHUB_STEP_SUMMARY (issue #134); the new orphaned-parameter
-        // diagnostic must follow the same convention so reviewers see it
-        // in the PR summary, not buried in CI logs.
-        $tmp = tempnam(sys_get_temp_dir(), 'openapi-summary-');
-        if ($tmp === false) {
-            $this->fail('Could not create temp file for GITHUB_STEP_SUMMARY');
-        }
-        $this->githubSummaryTmp = $tmp;
-
-        $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
-            'enum_spec_base_path' => '/some/path/openapi',
-        ]);
-
-        try {
-            $extension->setupExtension(null, $parameters, $tmp);
-            $this->fail('expected EnumBindingException');
-        } catch (EnumBindingException) {
-            // Expected — block must still be written before re-throw.
-        }
-
-        $contents = (string) file_get_contents($tmp);
-        $this->assertStringContainsString('FATAL OpenAPI enum drift', $contents);
-        $this->assertStringContainsString('spec_base_path is not', $contents);
     }
 
     #[Test]
@@ -374,7 +189,7 @@ class OpenApiCoverageExtensionTest extends TestCase
         $this->githubSummaryTmp = $tmp;
 
         $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
+        $parameters = FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
             'specs' => 'refs-unresolvable',
         ]);
@@ -405,7 +220,7 @@ class OpenApiCoverageExtensionTest extends TestCase
         $this->githubSummaryTmp = $tmp;
 
         $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
+        $parameters = FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
             'specs' => 'does-not-exist',
         ]);
@@ -434,7 +249,7 @@ class OpenApiCoverageExtensionTest extends TestCase
         // is functionally the same silent-pass hole as the $ref case issue
         // #79 set out to close. Pin the fatal treatment so it cannot regress.
         $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
+        $parameters = FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
             'specs' => 'malformed-json',
         ]);
@@ -456,7 +271,7 @@ class OpenApiCoverageExtensionTest extends TestCase
         // previously bundled into the warn-and-continue bucket via the broad
         // RuntimeException catch. Treat as fatal so users see their mistake.
         $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
+        $parameters = FlatExtensionSettings::parameters([
             'specs' => 'refs-valid',
         ]);
 
@@ -478,7 +293,7 @@ class OpenApiCoverageExtensionTest extends TestCase
         // caught here. The `refs-valid,refs-unresolvable` test below covers
         // the same shape for the InvalidOpenApiSpecException branch.
         $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
+        $parameters = FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
             'specs' => 'refs-valid,does-not-exist',
         ]);
@@ -496,7 +311,7 @@ class OpenApiCoverageExtensionTest extends TestCase
         // `spec_base_path` resolution. Pre-PR, sidecar_dir was new and
         // its relative-path handling had no test coverage.
         $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
+        $parameters = FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
             'specs' => 'refs-valid',
             'sidecar_dir' => 'relative-sidecars',
@@ -511,150 +326,10 @@ class OpenApiCoverageExtensionTest extends TestCase
     }
 
     #[Test]
-    public function bootstrap_warns_on_out_of_range_min_endpoint_coverage_when_not_strict(): void
-    {
-        // Warn-only (default) tolerates misconfiguration: surface it but
-        // don't break a CI that hasn't opted into the gate yet.
-        $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
-            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
-            'specs' => 'refs-valid',
-            'min_endpoint_coverage' => '150',
-        ]);
-
-        $extension->setupExtension(null, $parameters, null);
-
-        $stderr = $this->readStderr();
-        $this->assertStringContainsString('WARNING', $stderr);
-        $this->assertStringContainsString('min_endpoint_coverage', $stderr);
-    }
-
-    #[Test]
-    public function bootstrap_warns_on_non_numeric_min_response_coverage_when_not_strict(): void
-    {
-        $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
-            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
-            'specs' => 'refs-valid',
-            'min_response_coverage' => 'eighty',
-        ]);
-
-        $extension->setupExtension(null, $parameters, null);
-
-        $stderr = $this->readStderr();
-        $this->assertStringContainsString('WARNING', $stderr);
-        $this->assertStringContainsString('min_response_coverage', $stderr);
-    }
-
-    #[Test]
-    public function bootstrap_warns_on_invalid_min_sdk_exercise_coverage_when_not_strict(): void
-    {
-        $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
-            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
-            'specs' => 'refs-valid',
-            'min_sdk_exercise_coverage' => '101',
-        ]);
-
-        $extension->setupExtension(null, $parameters, null);
-
-        $stderr = $this->readStderr();
-        $this->assertStringContainsString('WARNING', $stderr);
-        $this->assertStringContainsString('min_sdk_exercise_coverage', $stderr);
-    }
-
-    #[Test]
-    public function bootstrap_throws_on_out_of_range_threshold_when_strict(): void
-    {
-        // C1: strict=true must treat a typo'd threshold as a configuration
-        // error, not warn-and-skip. The exception is caught by bootstrap()
-        // and translated into exit(1) — symmetric with how stale `specs=`
-        // entries fail the run after issue #134.
-        $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
-            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
-            'specs' => 'refs-valid',
-            'min_endpoint_coverage' => '150',
-            'min_coverage_strict' => 'true',
-        ]);
-
-        $this->expectException(InvalidThresholdConfigurationException::class);
-
-        try {
-            $extension->setupExtension(null, $parameters, null);
-        } finally {
-            $this->assertStringContainsString('FATAL', $this->readStderr());
-            $this->assertStringContainsString('min_endpoint_coverage', $this->readStderr());
-        }
-    }
-
-    #[Test]
-    public function bootstrap_throws_on_non_numeric_threshold_when_strict(): void
-    {
-        $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
-            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
-            'specs' => 'refs-valid',
-            'min_response_coverage' => 'eighty',
-            'min_coverage_strict' => 'true',
-        ]);
-
-        $this->expectException(InvalidThresholdConfigurationException::class);
-
-        try {
-            $extension->setupExtension(null, $parameters, null);
-        } finally {
-            $this->assertStringContainsString('FATAL', $this->readStderr());
-        }
-    }
-
-    #[Test]
-    public function bootstrap_throws_on_invalid_sdk_threshold_when_strict(): void
-    {
-        $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
-            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
-            'specs' => 'refs-valid',
-            'min_sdk_exercise_coverage' => 'all',
-            'min_coverage_strict' => 'true',
-        ]);
-
-        $this->expectException(InvalidThresholdConfigurationException::class);
-
-        try {
-            $extension->setupExtension(null, $parameters, null);
-        } finally {
-            $this->assertStringContainsString('FATAL', $this->readStderr());
-            $this->assertStringContainsString('min_sdk_exercise_coverage', $this->readStderr());
-        }
-    }
-
-    #[Test]
-    public function bootstrap_treats_empty_strict_value_as_enabled(): void
-    {
-        // I1: `<parameter name="min_coverage_strict" />` (no value) was a
-        // contradiction — the docstring promised "set = strict on" but the
-        // code treated `''` as falsy. Pin the docstring's intent.
-        $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
-            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
-            'specs' => 'refs-valid',
-            'min_endpoint_coverage' => '150', // out of range
-            'min_coverage_strict' => '',      // shorthand for "true"
-        ]);
-
-        // Empty strict value must enable strict mode → C1 FATAL on the bad
-        // threshold below.
-        $this->expectException(InvalidThresholdConfigurationException::class);
-
-        $extension->setupExtension(null, $parameters, null);
-    }
-
-    #[Test]
     public function bootstrap_accepts_well_formed_threshold_parameters(): void
     {
         $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
+        $parameters = FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
             'specs' => 'refs-valid',
             'min_endpoint_coverage' => '80',
@@ -675,7 +350,7 @@ class OpenApiCoverageExtensionTest extends TestCase
         // even if a good spec ran first. A future early-return on "first
         // successful load" refactor would be caught here.
         $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
+        $parameters = FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
             'specs' => 'refs-valid,refs-unresolvable',
         ]);
@@ -690,7 +365,7 @@ class OpenApiCoverageExtensionTest extends TestCase
     public function bootstrap_skips_enum_drift_when_disabled(): void
     {
         $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
+        $parameters = FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
             'specs' => 'refs-valid',
         ]);
@@ -704,7 +379,7 @@ class OpenApiCoverageExtensionTest extends TestCase
     public function bootstrap_fatals_when_enum_drift_enabled_with_no_namespaces(): void
     {
         $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
+        $parameters = FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
             'specs' => 'refs-valid',
             'enum_drift_enabled' => 'true',
@@ -717,7 +392,7 @@ class OpenApiCoverageExtensionTest extends TestCase
             $this->assertSame(EnumBindingReason::NoNamespacesConfigured, $e->reason);
             $stderr = $this->readStderr();
             $this->assertStringContainsString('[OpenAPI Enum Drift] FATAL', $stderr);
-            $this->assertStringContainsString('enum_drift_scan_namespaces', $stderr);
+            $this->assertStringContainsString('enum_drift.scan_namespaces', $stderr);
         }
     }
 
@@ -726,7 +401,7 @@ class OpenApiCoverageExtensionTest extends TestCase
     public function bootstrap_fatals_on_drift_when_strict(): void
     {
         $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
+        $parameters = FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
             'specs' => 'refs-valid',
             'enum_drift_enabled' => 'true',
@@ -749,7 +424,7 @@ class OpenApiCoverageExtensionTest extends TestCase
     public function bootstrap_warns_on_drift_when_lenient(): void
     {
         $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
+        $parameters = FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
             'specs' => 'refs-valid',
             'enum_drift_enabled' => 'true',
@@ -783,7 +458,7 @@ class OpenApiCoverageExtensionTest extends TestCase
     public function bootstrap_succeeds_when_no_drift(): void
     {
         $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
+        $parameters = FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
             'specs' => 'refs-valid',
             'enum_drift_enabled' => 'true',
@@ -805,7 +480,7 @@ class OpenApiCoverageExtensionTest extends TestCase
         $this->githubSummaryTmp = $tmp;
 
         $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
+        $parameters = FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
             'specs' => 'refs-valid',
             'enum_drift_enabled' => 'true',
@@ -825,7 +500,7 @@ class OpenApiCoverageExtensionTest extends TestCase
     public function bootstrap_fatals_on_misconfigured_binding_even_when_lenient(): void
     {
         $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
+        $parameters = FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
             'specs' => 'refs-valid',
             'enum_drift_enabled' => 'true',
@@ -843,42 +518,11 @@ class OpenApiCoverageExtensionTest extends TestCase
     }
 
     #[Test]
-    public function bootstrap_treats_empty_enum_drift_enabled_as_enabled(): void
-    {
-        $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
-            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
-            'specs' => 'refs-valid',
-            'enum_drift_enabled' => '', // shorthand for true (parity with min_coverage_strict)
-        ]);
-
-        // Empty `enum_drift_enabled` enables the check, so the empty
-        // namespace list trips the FATAL guard.
-        try {
-            $extension->setupExtension(null, $parameters, null);
-            $this->fail('Expected EnumBindingException');
-        } catch (EnumBindingException $e) {
-            $this->assertSame(EnumBindingReason::NoNamespacesConfigured, $e->reason);
-        }
-
-        // The suggested gesso.php snippet must load as written.
-        $this->assertSame(1, preg_match('/`(\'enum_drift\' => [^`]+)`/', $this->readStderr(), $example));
-        $config = tempnam(sys_get_temp_dir(), 'gesso-enum-hint-') . '.php';
-        file_put_contents($config, "<?php\nreturn [{$example[1]}];\n");
-
-        try {
-            $this->assertSame(['App\\Enums\\'], GessoConfig::load($config)->strings('enum_drift.scan_namespaces'));
-        } finally {
-            unlink($config);
-        }
-    }
-
-    #[Test]
     #[IgnoreDeprecations]
     public function bootstrap_parses_namespaces_csv_with_whitespace(): void
     {
         $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
+        $parameters = FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
             'specs' => 'refs-valid',
             'enum_drift_enabled' => 'true',
@@ -897,7 +541,7 @@ class OpenApiCoverageExtensionTest extends TestCase
     public function bootstrap_detects_drift_in_enums_bound_by_component_name(): void
     {
         $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
+        $parameters = FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
             'specs' => 'enum-drift/components',
             'enum_drift_enabled' => 'true',
@@ -925,7 +569,7 @@ class OpenApiCoverageExtensionTest extends TestCase
     public function bootstrap_skips_unbound_enums_silently(): void
     {
         $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
+        $parameters = FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
             'specs' => 'refs-valid',
             'enum_drift_enabled' => 'true',
@@ -947,7 +591,7 @@ class OpenApiCoverageExtensionTest extends TestCase
         // The NOTE must surface to stderr so a typo is observable, but the
         // run must continue (codebases mid-migration have this state too).
         $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
+        $parameters = FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
             'specs' => 'refs-valid',
             'enum_drift_enabled' => 'true',
@@ -987,7 +631,7 @@ class OpenApiCoverageExtensionTest extends TestCase
         $this->githubSummaryTmp = $tmp;
 
         $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
+        $parameters = FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
             'specs' => 'refs-valid',
             'enum_drift_enabled' => 'true',
@@ -1018,7 +662,7 @@ class OpenApiCoverageExtensionTest extends TestCase
         putenv('TEST_TOKEN=2');
 
         $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
+        $parameters = FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
             'specs' => 'refs-valid',
             'enum_drift_enabled' => 'true',
@@ -1045,7 +689,7 @@ class OpenApiCoverageExtensionTest extends TestCase
         $this->githubSummaryTmp = $tmp;
 
         $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
+        $parameters = FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
             'specs' => 'refs-valid',
             'enum_drift_enabled' => 'true',
@@ -1071,7 +715,7 @@ class OpenApiCoverageExtensionTest extends TestCase
         $this->githubSummaryTmp = $tmp;
 
         $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
+        $parameters = FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
             'specs' => 'refs-valid',
             'enum_drift_enabled' => 'true',
@@ -1096,7 +740,7 @@ class OpenApiCoverageExtensionTest extends TestCase
         EnumScanner::forceLoaderUnavailableForTesting();
 
         $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
+        $parameters = FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
             'specs' => 'refs-valid',
             'enum_drift_enabled' => 'true',
@@ -1120,7 +764,7 @@ class OpenApiCoverageExtensionTest extends TestCase
         // Default for `enum_drift_fail_on_drift` is `true`. Pin the default
         // by simply omitting the parameter and asserting drift FATALs.
         $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
+        $parameters = FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
             'specs' => 'refs-valid',
             'enum_drift_enabled' => 'true',
@@ -1134,54 +778,6 @@ class OpenApiCoverageExtensionTest extends TestCase
     }
 
     #[Test]
-    public function bootstrap_fatal_when_junit_output_is_empty(): void
-    {
-        // <parameter name="junit_output" value=""/> would otherwise coerce to
-        // getcwd() and silently overwrite a directory listing as a file.
-        // Mirror the enum_spec_base_path policy: empty → FATAL.
-        $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
-            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
-            'specs' => 'refs-valid',
-            'junit_output' => '',
-        ]);
-
-        try {
-            $extension->setupExtension(null, $parameters, null);
-            $this->fail('expected InvalidCoverageOutputPathException');
-        } catch (InvalidCoverageOutputPathException $e) {
-            $this->assertSame('junit_output', $e->parameterName);
-            $this->assertStringContainsString('empty', $e->getMessage());
-        }
-
-        $this->assertStringContainsString('FATAL', $this->readStderr());
-    }
-
-    #[Test]
-    public function bootstrap_fatal_when_json_output_is_empty(): void
-    {
-        // Reuses resolveOutputPathParameter() helper validated for junit_output;
-        // pin the parameter name so a future helper rewrite that drops
-        // json_output wiring is caught.
-        $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
-            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
-            'specs' => 'refs-valid',
-            'json_output' => '',
-        ]);
-
-        try {
-            $extension->setupExtension(null, $parameters, null);
-            $this->fail('expected InvalidCoverageOutputPathException');
-        } catch (InvalidCoverageOutputPathException $e) {
-            $this->assertSame('json_output', $e->parameterName);
-            $this->assertStringContainsString('empty', $e->getMessage());
-        }
-
-        $this->assertStringContainsString('FATAL', $this->readStderr());
-    }
-
-    #[Test]
     public function bootstrap_fatal_when_junit_output_parent_dir_cannot_be_created(): void
     {
         // Surface the misconfiguration at bootstrap rather than as a runtime
@@ -1189,7 +785,7 @@ class OpenApiCoverageExtensionTest extends TestCase
         // exist on macOS and is unwritable on Linux, so the issue #448
         // auto-creation attempt fails closed either way.
         $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
+        $parameters = FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
             'specs' => 'refs-valid',
             'junit_output' => '/proc/0/nonexistent/coverage.junit.xml',
@@ -1207,37 +803,13 @@ class OpenApiCoverageExtensionTest extends TestCase
     }
 
     #[Test]
-    public function bootstrap_fatal_when_html_output_is_empty(): void
-    {
-        // Reuses resolveOutputPathParameter() helper validated for junit_output;
-        // pin the parameter name so a future helper rewrite that drops
-        // html_output wiring is caught.
-        $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
-            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
-            'specs' => 'refs-valid',
-            'html_output' => '',
-        ]);
-
-        try {
-            $extension->setupExtension(null, $parameters, null);
-            $this->fail('expected InvalidCoverageOutputPathException');
-        } catch (InvalidCoverageOutputPathException $e) {
-            $this->assertSame('html_output', $e->parameterName);
-            $this->assertStringContainsString('empty', $e->getMessage());
-        }
-
-        $this->assertStringContainsString('FATAL', $this->readStderr());
-    }
-
-    #[Test]
     public function bootstrap_fatal_when_html_output_parent_dir_cannot_be_created(): void
     {
         // Parity with the junit_output / json_output checks — the shared
         // resolveOutputPathParameter() helper should fail closed for
         // html_output too.
         $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
+        $parameters = FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
             'specs' => 'refs-valid',
             'html_output' => '/proc/0/nonexistent/coverage.html',
@@ -1262,7 +834,7 @@ class OpenApiCoverageExtensionTest extends TestCase
         // json_output too. Guards against a future change to the helper that
         // accidentally pins it to one parameter name.
         $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
+        $parameters = FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
             'specs' => 'refs-valid',
             'json_output' => '/proc/0/nonexistent/coverage.json',
@@ -1287,7 +859,7 @@ class OpenApiCoverageExtensionTest extends TestCase
         // bootstrap should mkdir it recursively instead of hard-failing.
         $base = sys_get_temp_dir() . '/gesso-448-' . uniqid();
         $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
+        $parameters = FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
             'specs' => 'refs-valid',
             'json_output' => $base . '/build/openapi-coverage.json',
@@ -1311,7 +883,7 @@ class OpenApiCoverageExtensionTest extends TestCase
         // should auto-create for junit_output too.
         $base = sys_get_temp_dir() . '/gesso-448-' . uniqid();
         $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
+        $parameters = FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
             'specs' => 'refs-valid',
             'junit_output' => $base . '/build/coverage.junit.xml',
@@ -1335,7 +907,7 @@ class OpenApiCoverageExtensionTest extends TestCase
         // should auto-create for html_output too.
         $base = sys_get_temp_dir() . '/gesso-448-' . uniqid();
         $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
+        $parameters = FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
             'specs' => 'refs-valid',
             'html_output' => $base . '/build/coverage.html',
@@ -1362,7 +934,7 @@ class OpenApiCoverageExtensionTest extends TestCase
         $this->assertNotFalse($file);
 
         $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
+        $parameters = FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
             'specs' => 'refs-valid',
             'json_output' => $file . '/openapi-coverage.json',
@@ -1374,7 +946,7 @@ class OpenApiCoverageExtensionTest extends TestCase
         } catch (InvalidCoverageOutputPathException $e) {
             $this->assertSame('json_output', $e->parameterName);
             $this->assertStringContainsString('could not be created', $e->getMessage());
-            $this->assertStringContainsString('point the parameter at a writable location', $e->getMessage());
+            $this->assertStringContainsString('point the setting at a writable location', $e->getMessage());
         } finally {
             @unlink($file);
         }
@@ -1395,7 +967,7 @@ class OpenApiCoverageExtensionTest extends TestCase
         }
 
         $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
+        $parameters = FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
             'specs' => 'refs-valid',
             'json_output' => $base . '/openapi-coverage.json',
@@ -1416,32 +988,12 @@ class OpenApiCoverageExtensionTest extends TestCase
     }
 
     #[Test]
-    public function strict_required_unknown_value_throws_invalid_config(): void
-    {
-        $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
-            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
-            'specs' => 'refs-valid',
-            'strict_required' => 'enforce',
-        ]);
-
-        try {
-            $extension->setupExtension(null, $parameters, null);
-            $this->fail('expected InvalidStrictRequiredConfigurationException');
-        } catch (InvalidStrictRequiredConfigurationException $e) {
-            $this->assertStringContainsString('strict_required=enforce', $e->getMessage());
-        }
-
-        $this->assertStringContainsString('[OpenAPI Strict Required] FATAL', $this->readStderr());
-    }
-
-    #[Test]
     public function strict_required_off_does_not_throw(): void
     {
         StrictRequiredTracker::reset();
 
         $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
+        $parameters = FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
             'specs' => 'refs-valid',
             'strict_required' => 'off',
@@ -1458,7 +1010,7 @@ class OpenApiCoverageExtensionTest extends TestCase
         StrictRequiredTracker::record('refs-valid', 'GET', '/leftover', '200', 'application/json', ['/' => ['stale']]);
 
         $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
+        $parameters = FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
             'specs' => 'refs-valid',
             'strict_required' => 'warn',
@@ -1482,7 +1034,7 @@ class OpenApiCoverageExtensionTest extends TestCase
 
         (new OpenApiCoverageExtension())->setupExtension(
             null,
-            ParameterCollection::fromArray([
+            FlatExtensionSettings::parameters([
                 'spec_base_path' => __DIR__ . '/../../fixtures/specs',
                 'specs' => 'refs-valid',
             ]),
@@ -1498,7 +1050,7 @@ class OpenApiCoverageExtensionTest extends TestCase
         StrictRequiredPerCallChecker::reset();
 
         $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
+        $parameters = FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
             'specs' => 'refs-valid',
             'strict_required_per_call' => 'warn',
@@ -1518,7 +1070,7 @@ class OpenApiCoverageExtensionTest extends TestCase
         StrictRequiredPerCallChecker::reset();
 
         $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
+        $parameters = FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
             'specs' => 'refs-valid',
         ]);
@@ -1537,7 +1089,7 @@ class OpenApiCoverageExtensionTest extends TestCase
         DiscriminatorEnforcement::reset();
 
         $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
+        $parameters = FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
             'specs' => 'refs-valid',
             'enforce_discriminator' => 'false',
@@ -1561,7 +1113,7 @@ class OpenApiCoverageExtensionTest extends TestCase
         DiscriminatorEnforcement::configure(false);
 
         $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
+        $parameters = FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
             'specs' => 'refs-valid',
         ]);
@@ -1577,17 +1129,15 @@ class OpenApiCoverageExtensionTest extends TestCase
     #[Test]
     public function acknowledged_unvalidatable_schemes_parameter_configures_registry_at_bootstrap(): void
     {
-        // Issue #445: comma-separated scheme names reach the process-global
-        // registry so non-Laravel suites can acknowledge unvalidatable
-        // schemes from phpunit.xml. Whitespace around names is trimmed and
-        // empty segments (trailing comma) are dropped.
+        // Issue #445: scheme names reach the process-global registry so
+        // non-Laravel suites can acknowledge unvalidatable schemes.
         AcknowledgedSecuritySchemes::reset();
 
         $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
+        $parameters = FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
             'specs' => 'refs-valid',
-            'acknowledged_unvalidatable_schemes' => 'ClientBasicAuth, LegacyOAuth,',
+            'acknowledged_unvalidatable_schemes' => ['ClientBasicAuth', 'LegacyOAuth'],
         ]);
 
         try {
@@ -1607,7 +1157,7 @@ class OpenApiCoverageExtensionTest extends TestCase
         AcknowledgedSecuritySchemes::configure(['Stale']);
 
         $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
+        $parameters = FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
             'specs' => 'refs-valid',
         ]);
@@ -1621,138 +1171,12 @@ class OpenApiCoverageExtensionTest extends TestCase
     }
 
     #[Test]
-    public function strict_required_per_call_unknown_value_throws_invalid_config(): void
-    {
-        StrictRequiredPerCallChecker::reset();
-
-        $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
-            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
-            'specs' => 'refs-valid',
-            'strict_required_per_call' => 'enforce',
-        ]);
-
-        try {
-            $extension->setupExtension(null, $parameters, null);
-            $this->fail('expected InvalidStrictRequiredConfigurationException');
-        } catch (InvalidStrictRequiredConfigurationException $e) {
-            $this->assertStringContainsString('strict_required_per_call=enforce', $e->getMessage());
-        } finally {
-            StrictRequiredPerCallChecker::reset();
-        }
-
-        $this->assertStringContainsString('[OpenAPI Strict Required per-call] FATAL', $this->readStderr());
-    }
-
-    #[Test]
-    public function strict_required_per_call_rejects_fail_value(): void
-    {
-        // Per-call is intentionally warn-only — the FATAL message must use
-        // the per-call prefix so users grepping for `[OpenAPI Strict
-        // Required per-call]` find it, and the accepted-list must NOT
-        // include `fail`.
-        StrictRequiredPerCallChecker::reset();
-
-        $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
-            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
-            'specs' => 'refs-valid',
-            'strict_required_per_call' => 'fail',
-        ]);
-
-        try {
-            $extension->setupExtension(null, $parameters, null);
-            $this->fail('expected InvalidStrictRequiredConfigurationException');
-        } catch (InvalidStrictRequiredConfigurationException $e) {
-            $this->assertStringContainsString('strict_required_per_call=fail', $e->getMessage());
-        } finally {
-            StrictRequiredPerCallChecker::reset();
-        }
-
-        $stderr = $this->readStderr();
-        $this->assertStringContainsString('[OpenAPI Strict Required per-call] FATAL', $stderr);
-        $this->assertStringContainsString('Accepted: off, warn', $stderr);
-    }
-
-    #[Test]
-    public function strict_required_per_call_invalid_value_appends_fatal_block_to_step_summary(): void
-    {
-        // Issue #228 review: a typoed strict_required_per_call must emit
-        // its FATAL block to GITHUB_STEP_SUMMARY just like every other
-        // bootstrap-level FATAL. Without this pin, a future refactor that
-        // drops the appendGithubStepSummaryStrictRequiredBlock() call would
-        // remove the most-visible CI signal for per-call misconfiguration —
-        // the failure would only surface in scrolling stderr logs.
-        StrictRequiredPerCallChecker::reset();
-        $tmp = tempnam(sys_get_temp_dir(), 'openapi-summary-');
-        if ($tmp === false) {
-            $this->fail('Could not create temp file for GITHUB_STEP_SUMMARY');
-        }
-        $this->githubSummaryTmp = $tmp;
-
-        $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
-            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
-            'specs' => 'refs-valid',
-            'strict_required_per_call' => 'enforce',
-        ]);
-
-        try {
-            $extension->setupExtension(null, $parameters, $tmp);
-            $this->fail('expected InvalidStrictRequiredConfigurationException');
-        } catch (InvalidStrictRequiredConfigurationException) {
-            // expected
-        } finally {
-            StrictRequiredPerCallChecker::reset();
-        }
-
-        $contents = (string) file_get_contents($tmp);
-        $this->assertStringContainsString('FATAL OpenAPI strict_required drift', $contents);
-        $this->assertStringContainsString('strict_required_per_call=enforce', $contents);
-    }
-
-    #[Test]
-    public function strict_required_per_call_fail_value_appends_fatal_block_to_step_summary(): void
-    {
-        // Parallel pin to the unknown-value case above — `fail` is the
-        // single most likely typo (users coming from the run-level docs
-        // assume it works) and the FATAL block must surface the design
-        // rationale on the GitHub side too.
-        StrictRequiredPerCallChecker::reset();
-        $tmp = tempnam(sys_get_temp_dir(), 'openapi-summary-');
-        if ($tmp === false) {
-            $this->fail('Could not create temp file for GITHUB_STEP_SUMMARY');
-        }
-        $this->githubSummaryTmp = $tmp;
-
-        $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
-            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
-            'specs' => 'refs-valid',
-            'strict_required_per_call' => 'fail',
-        ]);
-
-        try {
-            $extension->setupExtension(null, $parameters, $tmp);
-            $this->fail('expected InvalidStrictRequiredConfigurationException');
-        } catch (InvalidStrictRequiredConfigurationException) {
-            // expected
-        } finally {
-            StrictRequiredPerCallChecker::reset();
-        }
-
-        $contents = (string) file_get_contents($tmp);
-        $this->assertStringContainsString('FATAL OpenAPI strict_required drift', $contents);
-        $this->assertStringContainsString('strict_required_per_call=fail', $contents);
-    }
-
-    #[Test]
     public function strict_required_per_call_and_run_level_can_coexist(): void
     {
         StrictRequiredPerCallChecker::reset();
 
         $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
+        $parameters = FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
             'specs' => 'refs-valid',
             'strict_required' => 'warn',
@@ -1771,7 +1195,7 @@ class OpenApiCoverageExtensionTest extends TestCase
     public function strict_additional_properties_per_call_warn_configures_checker(): void
     {
         $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
+        $parameters = FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
             'specs' => 'refs-valid',
             'strict_additional_properties' => 'warn',
@@ -1782,38 +1206,6 @@ class OpenApiCoverageExtensionTest extends TestCase
 
         $this->assertTrue(StrictAdditionalPropertiesPerCallChecker::isEnabled());
         $this->assertSame(0, StrictAdditionalPropertiesTracker::current()->evaluationsOn());
-    }
-
-    #[Test]
-    public function strict_additional_properties_rejects_unknown_run_level_value(): void
-    {
-        $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
-            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
-            'specs' => 'refs-valid',
-            'strict_additional_properties' => 'enforce',
-        ]);
-
-        $this->expectException(InvalidStrictRequiredConfigurationException::class);
-        $this->expectExceptionMessage('strict_additional_properties=enforce');
-
-        $extension->setupExtension(null, $parameters, null);
-    }
-
-    #[Test]
-    public function strict_additional_properties_per_call_rejects_fail(): void
-    {
-        $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray([
-            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
-            'specs' => 'refs-valid',
-            'strict_additional_properties_per_call' => 'fail',
-        ]);
-
-        $this->expectException(InvalidStrictRequiredConfigurationException::class);
-        $this->expectExceptionMessage('strict_additional_properties_per_call=fail');
-
-        $extension->setupExtension(null, $parameters, null);
     }
 
     private function readStderr(): string

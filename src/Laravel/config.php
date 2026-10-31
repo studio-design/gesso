@@ -2,120 +2,39 @@
 
 declare(strict_types=1);
 
-use Studio\Gesso\OpenApiRequestValidator;
-use Studio\Gesso\OpenApiResponseValidator;
-
-// Package defaults for the v2 `gesso.*` config keys. Every key below is
-// deprecated (2.9.0) and removed in Gesso 3.0: a key set in a published
-// config/gesso.php emits a one-shot deprecation notice. Set these in the
-// root gesso.php instead (`spec`, `validation`, and `laravel` sections), then
-// delete config/gesso.php. See docs/configuration.md and
-// UPGRADING.md#deprecations.
+// Gesso configuration, published by `php artisan vendor:publish --tag=gesso`
+// to the application root as gesso.php. The PHPUnit extension, the Laravel
+// service provider, the Artisan commands and the CLI all read this one file.
+// Every key is optional: an omitted key keeps its documented default. Paths
+// resolve against this file's directory. Full key list: docs/configuration.md.
 return [
-    'default_spec' => '',
-
-    // Spec names `gesso:routes` compares when `--spec` is not passed. `--spec`
-    // replaces this list; when both are empty, `default_spec` is used.
-    'specs' => [],
-
-    // Directory containing named OpenAPI spec files used by Laravel Artisan
-    // commands. `--spec=front` resolves front.json/front.yaml/front.yml here.
-    'spec_base_path' => 'openapi',
-
-    // Prefixes removed from registered Laravel route URIs before comparing
-    // them with OpenAPI paths. Keep this aligned with the PHPUnit extension's
-    // `strip_prefixes` parameter so static parity and runtime validation agree
-    // — or move both to the root gesso.php so nothing needs aligning.
-    'strip_prefixes' => [],
-
-    // Documented operations implemented by another service in a gateway
-    // topology. Patterns use Laravel's `Str::is` wildcard matching. These
-    // operations remain visible in route-parity output under
-    // `external_operations`, but do not fail `--fail-on-unimplemented`.
-    // `excluded_route_names` is the registered-route counterpart: route-name
-    // patterns (`Str::is` wildcards) left out of the comparison, merged with
-    // any `--exclude-route` values.
-    'route_parity' => [
-        'external_operation_ids' => [],
-        'external_openapi_paths' => [],
-        'excluded_route_names' => [],
+    'spec' => [
+        // Directory containing the named spec files (front.json, front.yaml, …).
+        'base_path' => 'openapi',
+        // Spec used when no #[OpenApiSpec] attribute or openApiSpec() override picks one.
+        // 'default' => 'front',
+        // Specs PHPUnit loads and reports coverage for; also what gesso:routes compares.
+        // 'names' => ['front'],
+        // Request-path prefixes stripped before matching OpenAPI paths.
+        // 'strip_prefixes' => ['/api'],
     ],
 
-    // Maximum number of validation errors to report per response.
-    // 0 = unlimited (reports all errors).
-    'max_errors' => 20,
+    // 'validation' => [
+    //     'max_errors' => 20,
+    //     'enforce_discriminator' => true,
+    //     'skip_response_codes' => ['5\d\d'],
+    //     'skip_request_validation_response_codes' => ['422', '400'],
+    // ],
 
-    // When true (the default), a schema's `discriminator` + `mapping` is
-    // lowered into Draft-07 `if`/`then` conditionals so the discriminator
-    // value actually steers validation toward a single branch — a body that
-    // lies about its type (e.g. `kty: RSA` carrying EC-only fields) fails
-    // instead of passing the underlying oneOf/anyOf union. Set to false to
-    // restore the historical behaviour (discriminator stripped, mapping not
-    // enforced) for specs that rely on the loose union semantics. See
-    // docs/supported-features.md "Discriminator" for the full note.
-    'enforce_discriminator' => true,
-
-    // When true, every TestResponse produced by Laravel HTTP test helpers
-    // (get(), post(), etc.) is validated against the OpenAPI spec at creation
-    // time, without requiring an explicit assertResponseMatchesOpenApiSchema()
-    // call in each test. Defaults to false for backward compatibility.
-    'auto_assert' => false,
-
-    // When true, every Request dispatched by Laravel HTTP test helpers is
-    // validated against the OpenAPI spec (path / query / headers / body /
-    // security) alongside the response. Independent of `auto_assert` — either
-    // side can be enabled on its own. Defaults to false for backward
-    // compatibility.
-    'auto_validate_request' => false,
-
-    // When true (and `auto_validate_request` is on), endpoints whose spec
-    // security declares any inject-eligible scheme (http+bearer, apiKey in
-    // header / cookie / query) automatically receive a fixed dummy value in
-    // the validator's view when the test did not set one. The Symfony Request
-    // itself is not modified — this only prevents the security check from
-    // false-failing on tests that authenticate via actingAs() or middleware
-    // bypass. oauth2 / openIdConnect / mutualTLS / http-basic are
-    // silent-passed by the validator and therefore not auto-injected.
-    // Set to 'bearer' to inject only HTTP Bearer credentials.
-    // Defaults to false for backward compatibility.
-    'auto_inject_dummy_credentials' => false,
-
-    // Deprecated bearer-only predecessor of `auto_inject_dummy_credentials`.
-    // Same gating (auto_validate_request must also be on) and same view-only
-    // injection, but limited to endpoints whose spec security requires
-    // `http` + `bearer`. Bypassed when the superset key above is true.
-    // Enabling it emits an E_USER_DEPRECATED notice; removed in Gesso 3.0.
-    // Use `laravel.auto_inject_dummy_credentials = 'bearer'` in the root
-    // gesso.php instead; see UPGRADING.md#deprecations.
-    'auto_inject_dummy_bearer' => false,
-
-    // Security scheme names (components.securitySchemes keys) the suite
-    // acknowledges as unvalidatable. Schemes the validator cannot enforce
-    // (oauth2, openIdConnect, mutualTLS, http basic/digest) normally emit a
-    // one-shot E_USER_WARNING — which Laravel's test error handler turns into
-    // a test failure. Listing a scheme here suppresses the warning for that
-    // scheme only; every other unvalidatable scheme (including newly added
-    // ones) keeps warning. Listing a scheme that is absent from the spec, or
-    // one the validator CAN enforce, itself warns so the list cannot rot.
-    'acknowledged_unvalidatable_schemes' => [],
-
-    // Regex patterns (without delimiters or anchors) matched against the
-    // response status code. Matching codes short-circuit body validation and
-    // return a "skipped" result — the test is not failed, and the endpoint is
-    // still recorded as covered. The default skips every 5xx because specs
-    // typically do not document production error responses.
-    // Set to [] to disable and validate every status code against the spec.
-    'skip_response_codes' => OpenApiResponseValidator::DEFAULT_SKIP_RESPONSE_CODES,
-
-    // Regex patterns matched against the response status code that the
-    // current HTTP test produced. When `auto_validate_request: true` is on
-    // and the response status matches one of these patterns AND the spec
-    // documents that status for the operation, a request-validation failure
-    // is downgraded to "skipped" instead of failing the test. This rescues
-    // the dataProvider-driven "send invalid input → assert 422" pattern from
-    // false-failing under request validation while keeping spec gaps loud
-    // (an undocumented 4xx still fails — it's a real contract drift).
-    // Default `['422', '400']` aligns with the common documented client-error
-    // codes; set to [] to disable and keep request validation strict.
-    'skip_request_validation_response_codes' => OpenApiRequestValidator::DEFAULT_SKIP_REQUEST_VALIDATION_RESPONSE_CODES,
+    // 'laravel' => [
+    //     'auto_assert' => false,
+    //     'auto_validate_request' => false,
+    //     // false, true (Bearer and API keys), or 'bearer' (Bearer only).
+    //     'auto_inject_dummy_credentials' => false,
+    //     'route_parity' => [
+    //         'external_operation_ids' => [],
+    //         'external_openapi_paths' => [],
+    //         'excluded_route_names' => [],
+    //     ],
+    // ],
 ];

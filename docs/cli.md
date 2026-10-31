@@ -147,9 +147,7 @@ member without a value, is a usage error. `--strict-*` also accepts
 workers check per-call findings. The PHPUnit extension does not accept this
 `name=value` string: configure the workers with `strict.required` /
 `strict.additional_properties` (`run`, `per_call`) in
-[`gesso.php`](configuration.md), or with the deprecated individual parameters
-(`strict_required`, `strict_required_per_call`, and the
-`strict_additional_properties*` pair). `--baseline-stale` takes only `coverage`, because the
+[`gesso.php`](configuration.md). `--baseline-stale` takes only `coverage`, because the
 merge does not evaluate the staleness of the violation baseline.
 
 Every command rejects an argument it does not recognise with exit `2`. Before

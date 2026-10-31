@@ -19,7 +19,6 @@ use Studio\Gesso\Baseline\ViolationBaselineCollector;
 use Studio\Gesso\DecodedBody;
 use Studio\Gesso\HttpMethod;
 use Studio\Gesso\Internal\CurlCommandFormatter;
-use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\Internal\OpenApiAssertionCore;
 use Studio\Gesso\OpenApiRequestValidator;
 use Studio\Gesso\OpenApiResponseValidator;
@@ -62,7 +61,7 @@ trait ValidatesOpenApiSchema
     use ResolvesOpenApiSpec;
     use SkipOpenApiResolver;
 
-    // Fixed dummy token injected when auto_inject_dummy_bearer is enabled and
+    // Fixed dummy token injected when auto_inject_dummy_credentials is enabled and
     // the endpoint spec requires bearerAuth but the test did not set one.
     // A fixed string is sufficient because the value is never evaluated by
     // anything downstream — the inject only silences the spec's security
@@ -812,13 +811,9 @@ trait ValidatesOpenApiSchema
      * the request. Returns the list of inject targets the caller should write —
      * empty list means "leave everything as the test set it up".
      *
-     * `auto_inject_dummy_credentials` accepts true to inject bearer + every
-     * apiKey scheme (header / cookie / query), or 'bearer' to inject bearer
-     * only. `auto_inject_dummy_bearer` retains the legacy bearer-only mode.
-     *
-     * When both flags are true the credentials flag wins and the legacy flag
-     * is bypassed; setting only the legacy flag preserves its narrower
-     * bearer-only behavior exactly.
+     * `laravel.auto_inject_dummy_credentials` accepts true to inject bearer +
+     * every apiKey scheme (header / cookie / query), or 'bearer' to inject
+     * bearer only.
      *
      * Precondition: callers must already have gated on
      * `auto_validate_request` being on. Without that gate this method would
@@ -853,28 +848,9 @@ trait ValidatesOpenApiSchema
         array $cookies,
         array $queryParams,
     ): array {
-        $credentialsEnabled = $this->isAutoInjectDummyCredentialsEnabled();
-        $legacyBearerEnabled = $this->isAutoInjectDummyBearerEnabled();
+        $credentials = $this->autoInjectDummyCredentialsMode();
 
-        if ($legacyBearerEnabled) {
-            // Recorded even when the superset flag wins below: the deprecation
-            // is about the config key being set, and 3.0 deletes the key
-            // whether or not its code path was the one taken. The named
-            // replacement is the behaviour-equivalent 'bearer' value ADR 0005
-            // gives the superset key, not `=> true` — the boolean also
-            // injects apiKey schemes, which flips missing-apiKey failures into
-            // passes — spelled as the full v3 path because #501 nests
-            // Laravel-only keys under gesso.php's `laravel` section (see
-            // UPGRADING.md#deprecations for the v2 options).
-            Deprecations::notice(
-                id: 'laravel.config.auto_inject_dummy_bearer',
-                subject: "The Laravel config key 'auto_inject_dummy_bearer'",
-                replacement: "laravel.auto_inject_dummy_credentials = 'bearer' (in gesso.php)",
-                removedIn: '3.0',
-            );
-        }
-
-        if (!$credentialsEnabled && !$legacyBearerEnabled) {
+        if ($credentials === false) {
             return [];
         }
 
@@ -902,7 +878,7 @@ trait ValidatesOpenApiSchema
 
         $introspector = $this->getSecuritySchemeIntrospector();
 
-        if ($credentialsEnabled && config('gesso.auto_inject_dummy_credentials') !== 'bearer') {
+        if ($credentials === true) {
             $candidates = $introspector->injectableCredentialsFor($spec, $matchedOperation);
         } else {
             $candidates = $introspector->endpointAcceptsBearer($spec, $matchedOperation)
@@ -1014,7 +990,7 @@ trait ValidatesOpenApiSchema
      */
     private function applyDiscriminatorEnforcementConfig(): void
     {
-        DiscriminatorEnforcement::configure($this->resolveBoolConfig('enforce_discriminator', true));
+        DiscriminatorEnforcement::configure($this->resolveBoolConfig('validation.enforce_discriminator', true));
     }
 
     /**
@@ -1032,7 +1008,7 @@ trait ValidatesOpenApiSchema
     /** @return list<string> */
     private function resolveAcknowledgedUnvalidatableSchemes(): array
     {
-        return $this->resolveStringListConfig('acknowledged_unvalidatable_schemes', [], 'security scheme name');
+        return $this->resolveStringListConfig('validation.acknowledged_unvalidatable_schemes', [], 'security scheme name');
     }
 
     /**
@@ -1046,7 +1022,7 @@ trait ValidatesOpenApiSchema
      */
     private function resolveStringListConfig(string $key, array $default, string $what): array
     {
-        $raw = config('gesso.' . $key, $default);
+        $raw = LaravelConfig::get($key, $default);
 
         if (!is_array($raw)) {
             CleanTraceAssert::fail(sprintf(
@@ -1080,7 +1056,7 @@ trait ValidatesOpenApiSchema
 
     private function resolveMaxErrors(): int
     {
-        $maxErrors = config('gesso.max_errors', 20);
+        $maxErrors = LaravelConfig::get('validation.max_errors', 20);
 
         // A baseline generation run (issue #402) lifts the cap: a truncated
         // error list would drop violations from the generated baseline. The
@@ -1092,7 +1068,7 @@ trait ValidatesOpenApiSchema
     private function resolveSkipResponseCodes(): array
     {
         return $this->resolveStringListConfig(
-            'skip_response_codes',
+            'validation.skip_response_codes',
             OpenApiResponseValidator::DEFAULT_SKIP_RESPONSE_CODES,
             'regex pattern',
         );
@@ -1102,7 +1078,7 @@ trait ValidatesOpenApiSchema
     private function resolveSkipRequestValidationResponseCodes(): array
     {
         return $this->resolveStringListConfig(
-            'skip_request_validation_response_codes',
+            'validation.skip_request_validation_response_codes',
             OpenApiRequestValidator::DEFAULT_SKIP_REQUEST_VALIDATION_RESPONSE_CODES,
             'regex pattern',
         );
@@ -1174,23 +1150,22 @@ trait ValidatesOpenApiSchema
 
     private function isAutoAssertEnabled(): bool
     {
-        return $this->resolveBoolConfig('auto_assert');
+        return $this->resolveBoolConfig('laravel.auto_assert');
     }
 
     private function isAutoValidateRequestEnabled(): bool
     {
-        return $this->resolveBoolConfig('auto_validate_request');
+        return $this->resolveBoolConfig('laravel.auto_validate_request');
     }
 
-    private function isAutoInjectDummyBearerEnabled(): bool
+    /** `'bearer'` injects HTTP Bearer only; `true` every inject-eligible scheme. */
+    private function autoInjectDummyCredentialsMode(): bool|string
     {
-        return $this->resolveBoolConfig('auto_inject_dummy_bearer');
-    }
+        if (LaravelConfig::get('laravel.auto_inject_dummy_credentials') === 'bearer') {
+            return 'bearer';
+        }
 
-    private function isAutoInjectDummyCredentialsEnabled(): bool
-    {
-        return config('gesso.auto_inject_dummy_credentials') === 'bearer' ||
-            $this->resolveBoolConfig('auto_inject_dummy_credentials');
+        return $this->resolveBoolConfig('laravel.auto_inject_dummy_credentials');
     }
 
     /**
@@ -1206,7 +1181,7 @@ trait ValidatesOpenApiSchema
      */
     private function resolveBoolConfig(string $key, bool $default = false): bool
     {
-        $raw = config('gesso.' . $key, $default);
+        $raw = LaravelConfig::get($key, $default);
 
         if ($raw === true) {
             return true;

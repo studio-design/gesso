@@ -14,6 +14,7 @@ use Illuminate\Routing\Router;
 use InvalidArgumentException;
 use JsonException;
 use Studio\Gesso\Internal\LegacyIdentity;
+use Studio\Gesso\Laravel\LaravelConfig;
 use Studio\Gesso\Laravel\RouteParity\LaravelRouteParityAnalyzer;
 use Studio\Gesso\Laravel\RouteParity\RouteParityResult;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
@@ -89,15 +90,15 @@ final class OpenApiRoutesCommand extends Command
                     'domains' => $this->stringListOption('domain'),
                     'excluded_route_names' => $this->mergedExclusions(
                         'exclude-route',
-                        'gesso.route_parity.excluded_route_names',
+                        'laravel.route_parity.excluded_route_names',
                     ),
                     'excluded_operation_ids' => $this->mergedExclusions(
                         'exclude-operation',
-                        'gesso.route_parity.external_operation_ids',
+                        'laravel.route_parity.external_operation_ids',
                     ),
                     'excluded_openapi_paths' => $this->mergedExclusions(
                         'exclude-openapi-path',
-                        'gesso.route_parity.external_openapi_paths',
+                        'laravel.route_parity.external_openapi_paths',
                     ),
                 ],
             );
@@ -139,7 +140,7 @@ final class OpenApiRoutesCommand extends Command
     {
         $specs = $this->stringListOption('spec');
         if ($specs === []) {
-            $specs = array_values(array_unique($this->configStringList('gesso.specs')));
+            $specs = array_values(array_unique($this->configStringList('spec.names')));
         }
 
         return $specs !== [] ? $specs : [$this->configuredDefaultSpec()];
@@ -150,16 +151,16 @@ final class OpenApiRoutesCommand extends Command
     {
         $basePath = $this->configuredSpecBasePath($application);
 
-        $stripPrefixes = config('gesso.strip_prefixes', []);
+        $stripPrefixes = LaravelConfig::get('spec.strip_prefixes', []);
         if (!is_array($stripPrefixes)) {
-            throw new InvalidArgumentException('gesso.strip_prefixes must be an array of strings.');
+            throw new InvalidArgumentException('gesso.spec.strip_prefixes must be an array of strings.');
         }
 
         $normalizedPrefixes = [];
         foreach ($stripPrefixes as $prefix) {
             if (!is_string($prefix) || trim($prefix) === '') {
                 throw new InvalidArgumentException(
-                    'gesso.strip_prefixes must contain only non-empty strings.',
+                    'gesso.spec.strip_prefixes must contain only non-empty strings.',
                 );
             }
             $normalizedPrefixes[] = $prefix;
@@ -204,15 +205,15 @@ final class OpenApiRoutesCommand extends Command
     /** @return list<string> */
     private function configStringList(string $configKey): array
     {
-        $configured = config($configKey, []);
+        $configured = LaravelConfig::get($configKey, []);
         if (!is_array($configured)) {
-            throw new InvalidArgumentException("{$configKey} must be an array of strings.");
+            throw new InvalidArgumentException("gesso.{$configKey} must be an array of strings.");
         }
 
         $normalized = [];
         foreach ($configured as $entry) {
             if (!is_string($entry) || trim($entry) === '') {
-                throw new InvalidArgumentException("{$configKey} must contain only non-empty strings.");
+                throw new InvalidArgumentException("gesso.{$configKey} must contain only non-empty strings.");
             }
             $normalized[] = trim($entry);
         }

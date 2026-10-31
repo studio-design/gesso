@@ -7,16 +7,17 @@ namespace Studio\Gesso\Laravel\Commands;
 use Illuminate\Contracts\Foundation\Application;
 use InvalidArgumentException;
 use Studio\Gesso\Internal\SpecPath;
+use Studio\Gesso\Laravel\LaravelConfig;
 
 use function is_string;
 use function trim;
 
-/** @internal The `gesso.default_spec` / `gesso.spec_base_path` readers of the routes and stubs commands. */
+/** @internal The `spec.default` / `spec.base_path` readers of the routes and stubs commands. */
 trait ReadsSpecConfiguration
 {
     private function configuredDefaultSpec(): string
     {
-        $defaultSpec = config('gesso.default_spec');
+        $defaultSpec = LaravelConfig::get('spec.default');
         if (!is_string($defaultSpec) || trim($defaultSpec) === '') {
             throw new InvalidArgumentException('No OpenAPI spec selected. Pass --spec or set spec.default in gesso.php.');
         }
@@ -24,12 +25,15 @@ trait ReadsSpecConfiguration
         return trim($defaultSpec);
     }
 
-    /** Absolute paths (POSIX, UNC, drive letter) are used as-is; others resolve under the application. */
+    /**
+     * Absolute paths (POSIX, UNC, drive letter) are used as-is; others resolve
+     * under the application. Unset, it is the application's `openapi/`.
+     */
     private function configuredSpecBasePath(Application $application): string
     {
-        $basePath = config('gesso.spec_base_path');
+        $basePath = LaravelConfig::get('spec.base_path') ?? 'openapi';
         if (!is_string($basePath) || trim($basePath) === '') {
-            throw new InvalidArgumentException('gesso.spec_base_path must be a non-empty directory path.');
+            throw new InvalidArgumentException('gesso.spec.base_path must be a non-empty directory path.');
         }
         $basePath = trim($basePath);
 

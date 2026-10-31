@@ -29,7 +29,7 @@ class SpecPriorityMethodAttrTest extends TestCase
     {
         parent::setUp();
         $GLOBALS['__openapi_testing_config'] = [
-            'gesso.default_spec' => 'from-config',
+            'gesso.spec.default' => 'from-config',
         ];
     }
 

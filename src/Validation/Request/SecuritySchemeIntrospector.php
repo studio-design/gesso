@@ -29,10 +29,10 @@ use function is_string;
 final class SecuritySchemeIntrospector
 {
     /**
-     * Legacy bearer-only probe retained for `auto_inject_dummy_bearer`. The
-     * implementation delegates to {@see self::injectableCredentialsFor()} and
-     * filters the result to bearer entries — the legacy flag's narrower scope
-     * is enforced by the caller, not by reproducing the spec walk.
+     * Bearer-only probe for `laravel.auto_inject_dummy_credentials = 'bearer'`.
+     * The implementation delegates to {@see self::injectableCredentialsFor()}
+     * and filters the result to bearer entries — the narrower scope is
+     * enforced by the caller, not by reproducing the spec walk.
      *
      * Returns true even when bearer appears alongside other schemes in an
      * AND-entry (e.g. `bearer + apiKey`). Injecting bearer alone won't satisfy

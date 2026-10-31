@@ -42,9 +42,8 @@ return [
 ];
 ```
 
-The v2 `strict_required` / `strict_required_per_call` PHPUnit parameters still
-work but are deprecated (removed in 3.0); see
-[`UPGRADING.md`](https://github.com/studio-design/gesso/blob/main/UPGRADING.md#deprecations).
+The v2 `strict_required` / `strict_required_per_call` PHPUnit parameters were
+removed in 3.0; see [`UPGRADING.md`](https://github.com/studio-design/gesso/blob/main/UPGRADING.md#configuration).
 
 | Value | Behaviour |
 |---|---|
@@ -84,7 +83,6 @@ and an implementation that always returns all three fields, `strict_required = w
 
 Action: add these fields to the response schema's `required` array, or set `strict.required.run` to `off` if intentional.
 Configuration: gesso.php `'strict' => ['required' => ['run' => 'off'|'warn'|'fail']]`
-               (the phpunit.xml `strict_required` parameter is deprecated, removed in 3.0)
 ```
 
 The `application/json:/` suffix is the JSON-Pointer-like `schemaPointer` — `/` here is the response root. Nested drifts are reported the same way with the corresponding pointer; given the schema:

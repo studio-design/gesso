@@ -37,10 +37,10 @@ return [
 `front.yml`, relative to `gesso.php`. Because PHPUnit reads the same
 `spec.strip_prefixes`, static parity and runtime validation agree. The
 command applies the runtime matcher's first-match prefix and trailing-slash
-rules, so the static result matches request/response validation. The flat
-keys of a published `config/gesso.php` (`default_spec`, `specs`,
-`spec_base_path`, `strip_prefixes`, `route_parity`) still work but are
-deprecated since 2.9.0 and removed in 3.0.
+rules, so the static result matches request/response validation. The v2
+flat keys of a published `config/gesso.php` (`default_spec`, `specs`,
+`spec_base_path`, `strip_prefixes`, `route_parity`) were removed in 3.0 and
+fail at boot naming their `gesso.php` key.
 
 ## Usage
 

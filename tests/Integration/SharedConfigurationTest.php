@@ -62,19 +62,19 @@ final class SharedConfigurationTest extends TestCase
                     (new GessoServiceProvider($app))->register();
                     self::assertSame(__DIR__ . '/specs', OpenApiSpecLoader::getBasePath());
                     self::assertSame(['/api,v2'], OpenApiSpecLoader::getStripPrefixes());
-                    self::assertSame('/api,v2', $config->get('gesso.strip_prefixes')[0]);
-                    self::assertSame(__DIR__ . '/specs', $config->get('gesso.spec_base_path'));
-                    self::assertSame('api', $config->get('gesso.default_spec'));
-                    self::assertSame(['api'], $config->get('gesso.specs'));
+                    self::assertSame('/api,v2', $config->get('gesso.spec.strip_prefixes')[0]);
+                    self::assertSame(__DIR__ . '/specs', $config->get('gesso.spec.base_path'));
+                    self::assertSame('api', $config->get('gesso.spec.default'));
+                    self::assertSame(['api'], $config->get('gesso.spec.names'));
                     self::assertSame('api', ValidationPolicyDefaults::defaultSpec());
                     self::assertSame(7, ValidationPolicyDefaults::maxErrors());
-                    self::assertSame(7, $config->get('gesso.max_errors'));
+                    self::assertSame(7, $config->get('gesso.validation.max_errors'));
                     self::assertSame(['5[0-9]{2,2}'], ValidationPolicyDefaults::skipResponseCodes());
-                    self::assertSame(['5[0-9]{2,2}'], $config->get('gesso.skip_response_codes'));
+                    self::assertSame(['5[0-9]{2,2}'], $config->get('gesso.validation.skip_response_codes'));
                     self::assertSame([], ValidationPolicyDefaults::skipRequestValidationResponseCodes());
-                    self::assertSame([], $config->get('gesso.skip_request_validation_response_codes'));
+                    self::assertSame([], $config->get('gesso.validation.skip_request_validation_response_codes'));
                     self::assertFalse(DiscriminatorEnforcement::isEnabled());
-                    self::assertFalse($config->get('gesso.enforce_discriminator'));
+                    self::assertFalse($config->get('gesso.validation.enforce_discriminator'));
                     self::assertSame(ValidationOutputFormat::Json, ValidationOutput::format());
                 }
             }
@@ -97,7 +97,7 @@ final class SharedConfigurationTest extends TestCase
         yield 'exception' => ["<?php throw new RuntimeException('config failed');", 'config failed'];
     }
 
-    /** @return iterable<string, array{array<string, mixed>, null|string, list<string>}> */
+    /** @return iterable<string, array{array<string, mixed>, null, list<string>}> */
     public static function providePrefixes_without_shared_base_path_preserve_bootstrap_loader_settingsCases(): iterable
     {
         yield 'shared prefixes' => [['strip_prefixes' => ['/api']], null, ['/api']];
@@ -105,7 +105,6 @@ final class SharedConfigurationTest extends TestCase
         yield 'comma stays in prefix' => [['strip_prefixes' => ['/api,v2']], null, ['/api,v2']];
         yield 'explicit empty list clears bootstrap prefixes' => [['strip_prefixes' => []], null, []];
         yield 'omitted prefixes preserve bootstrap prefixes' => [[], null, ['/bootstrap']];
-        yield 'XML overrides shared prefixes' => [['strip_prefixes' => ['/api']], '/legacy', ['/legacy']];
     }
 
     /**
@@ -177,7 +176,7 @@ final class SharedConfigurationTest extends TestCase
                     $config = new Repository();
                     $app->instance('config', $config);
                     (new GessoServiceProvider($app))->register();
-                    self::assertSame(SHARED_PREFIXES, $config->get('gesso.strip_prefixes'));
+                    self::assertSame(SHARED_PREFIXES, $config->get('gesso.spec.strip_prefixes'));
                 }
             }
             PHP);
@@ -240,24 +239,23 @@ final class SharedConfigurationTest extends TestCase
     }
 
     #[Test]
-    public function legacy_laravel_values_win_and_arrays_are_replaced_whole(): void
+    public function application_values_win_and_arrays_are_replaced_whole(): void
     {
         $this->replace('ContractTest.php', '$config = new Repository();', <<<'PHP'
             $config = new Repository(['gesso' => [
-                'max_errors' => 3,
-                'skip_response_codes' => [],
-                'route_parity' => ['external_operation_ids' => ['local']],
+                'validation' => ['max_errors' => 3, 'skip_response_codes' => []],
+                'laravel' => ['route_parity' => ['external_operation_ids' => ['local']]],
             ]]);
             PHP);
-        $this->replace('ContractTest.php', "assertSame(7, \$config->get('gesso.max_errors'))", "assertSame(3, \$config->get('gesso.max_errors'))");
-        $this->replace('ContractTest.php', "assertSame(['5[0-9]{2,2}'], \$config->get('gesso.skip_response_codes'))", "assertSame([], \$config->get('gesso.skip_response_codes'))");
+        $this->replace('ContractTest.php', "assertSame(7, \$config->get('gesso.validation.max_errors'))", "assertSame(3, \$config->get('gesso.validation.max_errors'))");
+        $this->replace('ContractTest.php', "assertSame(['5[0-9]{2,2}'], \$config->get('gesso.validation.skip_response_codes'))", "assertSame([], \$config->get('gesso.validation.skip_response_codes'))");
         $this->replace('gesso.php', "'spec' =>", "'laravel' => ['auto_inject_dummy_credentials' => 'bearer', 'route_parity' => ['external_operation_ids' => ['root1', 'root2'], 'external_openapi_paths' => ['/external'], 'excluded_route_names' => ['root.*']]], 'spec' =>");
         $this->replace('ContractTest.php', '(new GessoServiceProvider($app))->register();', <<<'PHP'
             (new GessoServiceProvider($app))->register();
-            self::assertSame('bearer', $config->get('gesso.auto_inject_dummy_credentials'));
-            self::assertSame(['local'], $config->get('gesso.route_parity.external_operation_ids'));
-            self::assertSame(['/external'], $config->get('gesso.route_parity.external_openapi_paths'));
-            self::assertSame(['root.*'], $config->get('gesso.route_parity.excluded_route_names'));
+            self::assertSame('bearer', $config->get('gesso.laravel.auto_inject_dummy_credentials'));
+            self::assertSame(['local'], $config->get('gesso.laravel.route_parity.external_operation_ids'));
+            self::assertSame(['/external'], $config->get('gesso.laravel.route_parity.external_openapi_paths'));
+            self::assertSame(['root.*'], $config->get('gesso.laravel.route_parity.excluded_route_names'));
             PHP);
         $process = $this->runPhpunit($this->directory);
         $this->assertSame(0, $process->getExitCode(), $process->getOutput() . $process->getErrorOutput());
@@ -283,12 +281,22 @@ final class SharedConfigurationTest extends TestCase
     }
 
     #[Test]
-    public function explicit_v2_parameters_and_environment_keep_priority(): void
+    public function environment_keeps_priority_over_the_file(): void
+    {
+        $this->replace('ContractTest.php', 'ValidationOutputFormat::Json, ValidationOutput::format()', 'ValidationOutputFormat::Text, ValidationOutput::format()');
+        $process = $this->runPhpunit($this->directory, ['GESSO_VALIDATION_FORMAT' => 'text']);
+        $this->assertSame(0, $process->getExitCode(), $process->getOutput() . $process->getErrorOutput());
+    }
+
+    #[Test]
+    public function removed_v2_parameters_are_fatal_and_name_their_replacement(): void
     {
         $this->replace('phpunit.xml', '</bootstrap>', '<parameter name="max_errors" value="3"/><parameter name="validation_output" value="text"/></bootstrap>');
-        $this->replace('ContractTest.php', 'assertSame(7, ValidationPolicyDefaults::maxErrors())', 'assertSame(3, ValidationPolicyDefaults::maxErrors())');
-        $process = $this->runPhpunit($this->directory, ['GESSO_VALIDATION_FORMAT' => 'json']);
-        $this->assertSame(0, $process->getExitCode(), $process->getOutput() . $process->getErrorOutput());
+        $process = $this->runPhpunit($this->directory);
+        $output = $process->getOutput() . $process->getErrorOutput();
+        $this->assertSame(1, $process->getExitCode(), $output);
+        $this->assertStringContainsString("'max_errors' -> validation.max_errors", $output);
+        $this->assertStringContainsString("'validation_output' -> validation.format", $output);
     }
 
     #[Test]

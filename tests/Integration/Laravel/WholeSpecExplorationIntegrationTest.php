@@ -33,8 +33,8 @@ class WholeSpecExplorationIntegrationTest extends TestCase
         OpenApiSpecLoader::reset();
         OpenApiSpecLoader::configure(dirname(__DIR__, 2) . '/fixtures/specs');
         OpenApiCoverageTracker::reset();
-        config()->set('gesso.default_spec', 'whole-spec-exploration');
-        config()->set('gesso.auto_assert', true);
+        config()->set('gesso.spec.default', 'whole-spec-exploration');
+        config()->set('gesso.laravel.auto_assert', true);
     }
 
     protected function tearDown(): void
@@ -87,8 +87,8 @@ class WholeSpecExplorationIntegrationTest extends TestCase
     #[DataProvider('provideDocumented_raw_dispatch_preserves_generated_json_typesCases')]
     public function documented_raw_dispatch_preserves_generated_json_types(string $path): void
     {
-        config()->set('gesso.default_spec', 'generated-body-boundaries');
-        config()->set('gesso.auto_validate_request', true);
+        config()->set('gesso.spec.default', 'generated-body-boundaries');
+        config()->set('gesso.laravel.auto_validate_request', true);
 
         $this->exploreEndpoint('POST', $path, cases: 1, seed: 560)
             ->each(function (ExploredCase $case): void {
@@ -109,8 +109,8 @@ class WholeSpecExplorationIntegrationTest extends TestCase
     #[Test]
     public function array_only_json_helper_cannot_send_an_empty_object(): void
     {
-        config()->set('gesso.default_spec', 'body-boundaries');
-        config()->set('gesso.auto_validate_request', true);
+        config()->set('gesso.spec.default', 'body-boundaries');
+        config()->set('gesso.laravel.auto_validate_request', true);
         $this->expectException(AssertionFailedError::class);
         $this->postJson('/object', []);
     }

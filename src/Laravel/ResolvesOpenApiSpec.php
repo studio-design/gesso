@@ -25,7 +25,7 @@ trait ResolvesOpenApiSpec
 
     protected function openApiSpec(): string
     {
-        $spec = config('gesso.default_spec');
+        $spec = LaravelConfig::get('spec.default');
 
         if (!is_string($spec) || $spec === '') {
             return '';

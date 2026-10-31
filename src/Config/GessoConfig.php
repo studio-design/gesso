@@ -169,8 +169,8 @@ final class GessoConfig
             'auto_assert' => ['type' => 'bool', 'default' => false],
             'auto_validate_request' => ['type' => 'bool', 'default' => false],
             // `true` covers every inject-eligible scheme; `'bearer'` is the
-            // narrower behaviour the deprecated `auto_inject_dummy_bearer`
-            // key had (ADR 0005).
+            // narrower behaviour v2's removed `auto_inject_dummy_bearer` key
+            // had (ADR 0005).
             'auto_inject_dummy_credentials' => ['type' => 'bool_enum', 'values' => ['bearer'], 'default' => false],
             'route_parity' => [
                 'external_operation_ids' => ['type' => 'strings', 'default' => []],
@@ -358,6 +358,17 @@ final class GessoConfig
         $value = $this->typed($key, ['bool_enum']);
 
         return is_bool($value) || is_string($value) ? $value : throw self::corrupt($key);
+    }
+
+    /**
+     * Every setting, defaulted and resolved, in the nested shape of
+     * `gesso.php` itself — what Laravel's `gesso` config namespace holds.
+     *
+     * @return array<string, mixed>
+     */
+    public function toArray(): array
+    {
+        return $this->values;
     }
 
     /**

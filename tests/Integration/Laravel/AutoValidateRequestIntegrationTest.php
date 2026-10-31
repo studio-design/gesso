@@ -11,7 +11,6 @@ use Orchestra\Testbench\TestCase;
 use PHPUnit\Framework\AssertionFailedError;
 use PHPUnit\Framework\Attributes\Test;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
-use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\Laravel\GessoServiceProvider;
 use Studio\Gesso\Laravel\ValidatesOpenApiSchema;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
@@ -35,23 +34,20 @@ class AutoValidateRequestIntegrationTest extends TestCase
         OpenApiSpecLoader::reset();
         OpenApiSpecLoader::configure(dirname(__DIR__, 2) . '/fixtures/specs');
         OpenApiCoverageTracker::reset();
-        config()->set('gesso.default_spec', 'petstore-3.0');
+        config()->set('gesso.spec.default', 'petstore-3.0');
     }
 
     protected function tearDown(): void
     {
         OpenApiSpecLoader::reset();
         OpenApiCoverageTracker::reset();
-        // The auto_inject_dummy_bearer tests below exercise a deprecated key,
-        // which records into the process-wide deprecations channel.
-        Deprecations::resetForTesting();
         parent::tearDown();
     }
 
     #[Test]
     public function auto_validate_request_true_accepts_valid_post_body(): void
     {
-        config()->set('gesso.auto_validate_request', true);
+        config()->set('gesso.laravel.auto_validate_request', true);
 
         $response = $this->postJson('/v1/pets', ['name' => 'Buddy']);
         $response->assertCreated();
@@ -65,7 +61,7 @@ class AutoValidateRequestIntegrationTest extends TestCase
     {
         // Missing required `name` field — the canonical request-side drift.
         // Proves the hook survives the Laravel HTTP helper chain.
-        config()->set('gesso.auto_validate_request', true);
+        config()->set('gesso.laravel.auto_validate_request', true);
 
         $this->expectException(AssertionFailedError::class);
         $this->expectExceptionMessage('OpenAPI request validation failed');
@@ -78,7 +74,7 @@ class AutoValidateRequestIntegrationTest extends TestCase
     {
         // Issue #662: `patchJson($uri, [])` can only send `[]`; jsonRaw()
         // sends `{}` verbatim and still goes through auto-validation.
-        config()->set('gesso.auto_validate_request', true);
+        config()->set('gesso.laravel.auto_validate_request', true);
 
         $response = $this->jsonRaw('PATCH', '/v1/pets/42', '{}');
         $response->assertOk();
@@ -90,7 +86,7 @@ class AutoValidateRequestIntegrationTest extends TestCase
     #[Test]
     public function json_raw_empty_array_body_fails_an_object_schema(): void
     {
-        config()->set('gesso.auto_validate_request', true);
+        config()->set('gesso.laravel.auto_validate_request', true);
 
         $this->expectException(AssertionFailedError::class);
         $this->expectExceptionMessage('OpenAPI request validation failed');
@@ -117,7 +113,7 @@ class AutoValidateRequestIntegrationTest extends TestCase
     #[Test]
     public function auto_validate_request_false_does_not_validate_invalid_body(): void
     {
-        config()->set('gesso.auto_validate_request', false);
+        config()->set('gesso.laravel.auto_validate_request', false);
 
         $response = $this->postJson('/v1/pets', ['not_name' => 'x']);
         $response->assertCreated();
@@ -131,7 +127,7 @@ class AutoValidateRequestIntegrationTest extends TestCase
         // Fluent chain survives Laravel's dispatcher → createTestResponse
         // hook. Mirrors `without_validation_skips_next_http_call_only` for
         // the request side.
-        config()->set('gesso.auto_validate_request', true);
+        config()->set('gesso.laravel.auto_validate_request', true);
 
         $response = $this->withoutRequestValidation()->postJson('/v1/pets', ['not_name' => 'x']);
         $response->assertCreated();
@@ -142,7 +138,7 @@ class AutoValidateRequestIntegrationTest extends TestCase
     #[Test]
     public function without_request_validation_flag_resets_after_one_call_end_to_end(): void
     {
-        config()->set('gesso.auto_validate_request', true);
+        config()->set('gesso.laravel.auto_validate_request', true);
 
         $this->withoutRequestValidation()
             ->postJson('/v1/pets', ['not_name' => 'x'])
@@ -156,13 +152,13 @@ class AutoValidateRequestIntegrationTest extends TestCase
     }
 
     #[Test]
-    public function auto_inject_dummy_bearer_passes_bearer_endpoint_without_real_header(): void
+    public function bearer_credentials_mode_passes_bearer_endpoint_without_real_header(): void
     {
         // End-to-end for #69's second half: the test sets no Authorization,
-        // but `auto_inject_dummy_bearer=true` fills it in for the validator
+        // but `laravel.auto_inject_dummy_credentials = 'bearer'` fills it in for the validator
         // so security validation does not false-fail.
-        config()->set('gesso.auto_validate_request', true);
-        config()->set('gesso.auto_inject_dummy_bearer', true);
+        config()->set('gesso.laravel.auto_validate_request', true);
+        config()->set('gesso.laravel.auto_inject_dummy_credentials', 'bearer');
 
         $response = $this->get('/v1/secure/bearer');
         $response->assertOk();
@@ -176,7 +172,7 @@ class AutoValidateRequestIntegrationTest extends TestCase
     {
         // Default off: the test-author must set a real Authorization header
         // or opt into auto-inject. Confirms the feature is gated.
-        config()->set('gesso.auto_validate_request', true);
+        config()->set('gesso.laravel.auto_validate_request', true);
 
         $this->expectException(AssertionFailedError::class);
         $this->expectExceptionMessage('Authorization header is missing');
@@ -192,8 +188,8 @@ class AutoValidateRequestIntegrationTest extends TestCase
         // flag is consumed at the right boundary, (2) record coverage only
         // once per (spec,method,path) despite both hooks calling the tracker,
         // and (3) both validations must see a consistent request/response.
-        config()->set('gesso.auto_assert', true);
-        config()->set('gesso.auto_validate_request', true);
+        config()->set('gesso.laravel.auto_assert', true);
+        config()->set('gesso.laravel.auto_validate_request', true);
 
         $response = $this->postJson('/v1/pets', ['name' => 'Buddy']);
         $response->assertCreated();
@@ -212,8 +208,8 @@ class AutoValidateRequestIntegrationTest extends TestCase
         // assertion fires first (before the response hook runs), so the
         // surfaced error is the request one. Response drift on the same call
         // does not override this.
-        config()->set('gesso.auto_assert', true);
-        config()->set('gesso.auto_validate_request', true);
+        config()->set('gesso.laravel.auto_assert', true);
+        config()->set('gesso.laravel.auto_validate_request', true);
 
         $this->expectException(AssertionFailedError::class);
         $this->expectExceptionMessage('OpenAPI request validation failed');
@@ -224,8 +220,8 @@ class AutoValidateRequestIntegrationTest extends TestCase
     #[Test]
     public function required_multipart_body_accepts_an_uploaded_file(): void
     {
-        config()->set('gesso.auto_validate_request', true);
-        config()->set('gesso.default_spec', 'non-json-content-schema');
+        config()->set('gesso.laravel.auto_validate_request', true);
+        config()->set('gesso.spec.default', 'non-json-content-schema');
 
         $response = $this
             ->withHeader('Content-Type', 'multipart/form-data')
@@ -245,8 +241,8 @@ class AutoValidateRequestIntegrationTest extends TestCase
     #[Test]
     public function required_multipart_body_rejects_an_empty_request(): void
     {
-        config()->set('gesso.auto_validate_request', true);
-        config()->set('gesso.default_spec', 'non-json-content-schema');
+        config()->set('gesso.laravel.auto_validate_request', true);
+        config()->set('gesso.spec.default', 'non-json-content-schema');
 
         $this->expectException(AssertionFailedError::class);
         $this->expectExceptionMessage('Request body is empty');
@@ -259,8 +255,8 @@ class AutoValidateRequestIntegrationTest extends TestCase
     #[Test]
     public function required_multipart_body_ignores_parameters_added_by_the_controller(): void
     {
-        config()->set('gesso.auto_validate_request', true);
-        config()->set('gesso.default_spec', 'non-json-content-schema');
+        config()->set('gesso.laravel.auto_validate_request', true);
+        config()->set('gesso.spec.default', 'non-json-content-schema');
 
         $this->expectException(AssertionFailedError::class);
         $this->expectExceptionMessage('Request body is empty');
@@ -276,8 +272,8 @@ class AutoValidateRequestIntegrationTest extends TestCase
     #[Test]
     public function required_multipart_body_preserves_files_removed_by_the_controller(): void
     {
-        config()->set('gesso.auto_validate_request', true);
-        config()->set('gesso.default_spec', 'non-json-content-schema');
+        config()->set('gesso.laravel.auto_validate_request', true);
+        config()->set('gesso.spec.default', 'non-json-content-schema');
 
         $response = $this
             ->withHeaders([
@@ -294,8 +290,8 @@ class AutoValidateRequestIntegrationTest extends TestCase
     #[Test]
     public function required_form_body_accepts_parsed_parameters(): void
     {
-        config()->set('gesso.auto_validate_request', true);
-        config()->set('gesso.default_spec', 'non-json-content-schema');
+        config()->set('gesso.laravel.auto_validate_request', true);
+        config()->set('gesso.spec.default', 'non-json-content-schema');
 
         $response = $this
             ->withHeader('Content-Type', 'application/x-www-form-urlencoded')
@@ -310,8 +306,8 @@ class AutoValidateRequestIntegrationTest extends TestCase
         // Issue #405: form values arrive as strings and are coerced to the
         // declared type, so a non-numeric `age` is a real contract failure
         // instead of a skipped body.
-        config()->set('gesso.auto_validate_request', true);
-        config()->set('gesso.default_spec', 'non-json-content-schema');
+        config()->set('gesso.laravel.auto_validate_request', true);
+        config()->set('gesso.spec.default', 'non-json-content-schema');
 
         $this->expectException(AssertionFailedError::class);
         $this->expectExceptionMessage('/age');
@@ -324,8 +320,8 @@ class AutoValidateRequestIntegrationTest extends TestCase
     #[Test]
     public function form_body_records_coverage_without_a_skip_reason(): void
     {
-        config()->set('gesso.auto_validate_request', true);
-        config()->set('gesso.default_spec', 'non-json-content-schema');
+        config()->set('gesso.laravel.auto_validate_request', true);
+        config()->set('gesso.spec.default', 'non-json-content-schema');
 
         $this
             ->withHeader('Content-Type', 'application/x-www-form-urlencoded')
@@ -343,8 +339,8 @@ class AutoValidateRequestIntegrationTest extends TestCase
     #[Test]
     public function multipart_part_content_type_must_match_the_encoding_object(): void
     {
-        config()->set('gesso.auto_validate_request', true);
-        config()->set('gesso.default_spec', 'non-json-content-schema');
+        config()->set('gesso.laravel.auto_validate_request', true);
+        config()->set('gesso.spec.default', 'non-json-content-schema');
 
         $this->expectException(AssertionFailedError::class);
         $this->expectExceptionMessage('application/pdf');
@@ -361,8 +357,8 @@ class AutoValidateRequestIntegrationTest extends TestCase
     {
         // league/openapi-psr7-validator#234: the JSON part is decoded through
         // encoding.contentType before its subschema applies.
-        config()->set('gesso.auto_validate_request', true);
-        config()->set('gesso.default_spec', 'non-json-content-schema');
+        config()->set('gesso.laravel.auto_validate_request', true);
+        config()->set('gesso.spec.default', 'non-json-content-schema');
 
         $this
             ->withHeader('Content-Type', 'multipart/form-data')
@@ -390,8 +386,8 @@ class AutoValidateRequestIntegrationTest extends TestCase
         // value ["owner,admin", "member"] keeps its %2C-encoded comma
         // distinguishable from the literal delimiter commas because the raw
         // QUERY_STRING reaches the validator through the Laravel adapter.
-        config()->set('gesso.default_spec', 'psr7');
-        config()->set('gesso.auto_validate_request', true);
+        config()->set('gesso.spec.default', 'psr7');
+        config()->set('gesso.laravel.auto_validate_request', true);
 
         $response = $this->get('/filter?role=owner%2Cadmin,member');
         $response->assertNoContent();
@@ -403,8 +399,8 @@ class AutoValidateRequestIntegrationTest extends TestCase
     #[Test]
     public function auto_validate_request_reports_genuine_non_exploded_query_violations(): void
     {
-        config()->set('gesso.default_spec', 'psr7');
-        config()->set('gesso.auto_validate_request', true);
+        config()->set('gesso.spec.default', 'psr7');
+        config()->set('gesso.laravel.auto_validate_request', true);
 
         $this->expectException(AssertionFailedError::class);
         $this->expectExceptionMessage('query.role/1');

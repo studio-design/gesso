@@ -19,6 +19,7 @@ use function stream_get_contents;
 use function sys_get_temp_dir;
 use function tempnam;
 use function unlink;
+use function var_export;
 
 /**
  * Exercises the real `bootstrap()` -> `exit(1)` path by spawning a child
@@ -29,7 +30,9 @@ use function unlink;
 class OpenApiCoverageExtensionBootstrapTest extends TestCase
 {
     private string $repoRoot;
-    private ?string $configPath = null;
+
+    /** @var list<string> */
+    private array $tempFiles = [];
 
     protected function setUp(): void
     {
@@ -39,10 +42,10 @@ class OpenApiCoverageExtensionBootstrapTest extends TestCase
 
     protected function tearDown(): void
     {
-        if ($this->configPath !== null) {
-            @unlink($this->configPath);
-            $this->configPath = null;
+        foreach ($this->tempFiles as $file) {
+            @unlink($file);
         }
+        $this->tempFiles = [];
         parent::tearDown();
     }
 
@@ -102,6 +105,19 @@ class OpenApiCoverageExtensionBootstrapTest extends TestCase
     }
 
     #[Test]
+    public function phpunit_exits_non_zero_on_a_removed_v2_parameter_and_names_its_replacement(): void
+    {
+        [$exit, $output] = $this->runPhpunit(
+            'composition',
+            '--filter=DoesNotMatchAnyTest',
+            extraParameters: '<parameter name="strict_required" value="fail"/>',
+        );
+
+        $this->assertNotSame(0, $exit, $output);
+        $this->assertStringContainsString("'strict_required' -> strict.required.run", $output);
+    }
+
+    #[Test]
     public function default_testsuite_as_full_warns_when_no_default_configured(): void
     {
         // Issue #236: opting in without declaring `defaultTestSuite` makes
@@ -109,8 +125,8 @@ class OpenApiCoverageExtensionBootstrapTest extends TestCase
         // suppresses `strict_required` and coverage outputs, and the user
         // can't tell why their gate isn't firing. Bootstrap must surface
         // the misconfiguration. This also pins the configuration→bootstrap
-        // wiring: the WARN only fires if `default_testsuite_as_full=true`
-        // is read off the ParameterCollection AND `hasDefaultTestSuite()`
+        // wiring: the WARN only fires if `phpunit.default_testsuite_as_full`
+        // is read from gesso.php AND `hasDefaultTestSuite()`
         // is consulted on the Configuration in the same path.
         $output = $this->runPhpunitWithDefaultTestSuite(
             defaultTestSuite: null,
@@ -182,29 +198,32 @@ class OpenApiCoverageExtensionBootstrapTest extends TestCase
         string $specsParam,
         string $filterArg,
         string $extensionClass = 'Studio\\Gesso\\PHPUnit\\OpenApiCoverageExtension',
+        string $extraParameters = '',
     ): array {
         $xml = sprintf(
             '<?xml version="1.0" encoding="UTF-8"?>'
             . '<phpunit bootstrap="%s/vendor/autoload.php" cacheDirectory="%s/.phpunit.cache" colors="false">'
             . '<testsuites><testsuite name="Unit"><directory>%s/tests/Unit</directory></testsuite></testsuites>'
             . '<extensions><bootstrap class="%s">'
-            . '<parameter name="spec_base_path" value="%s/tests/fixtures/specs"/>'
-            . '<parameter name="specs" value="%s"/>'
+            . '%s%s'
             . '</bootstrap></extensions>'
             . '</phpunit>',
             $this->repoRoot,
             $this->repoRoot,
             $this->repoRoot,
             $extensionClass,
-            $this->repoRoot,
-            $specsParam,
+            $this->configParameter(['spec' => [
+                'base_path' => $this->repoRoot . '/tests/fixtures/specs',
+                'names' => [$specsParam],
+            ]]),
+            $extraParameters,
         );
 
         $tmp = tempnam(sys_get_temp_dir(), 'openapi-ext-integration-') ?: null;
         if ($tmp === null) {
             $this->fail('Could not create temp phpunit config');
         }
-        $this->configPath = $tmp;
+        $this->tempFiles[] = $tmp;
         file_put_contents($tmp, $xml);
 
         $cmd = sprintf(
@@ -254,13 +273,13 @@ class OpenApiCoverageExtensionBootstrapTest extends TestCase
             ? ''
             : sprintf(' defaultTestSuite="%s"', $defaultTestSuite);
 
-        $optInParam = $optInValue === null
-            ? ''
-            : sprintf('<parameter name="default_testsuite_as_full" value="%s"/>', $optInValue);
-
-        $outputFileParam = $outputFile === null
-            ? ''
-            : sprintf('<parameter name="output_file" value="%s"/>', $outputFile);
+        $config = ['spec' => ['base_path' => $this->repoRoot . '/tests/fixtures/specs', 'names' => ['composition']]];
+        if ($optInValue !== null) {
+            $config['phpunit'] = ['default_testsuite_as_full' => $optInValue];
+        }
+        if ($outputFile !== null) {
+            $config['coverage'] = ['report_output' => ['markdown' => $outputFile]];
+        }
 
         $xml = sprintf(
             '<?xml version="1.0" encoding="UTF-8"?>'
@@ -268,25 +287,21 @@ class OpenApiCoverageExtensionBootstrapTest extends TestCase
             . 'colors="false" failOnEmptyTestSuite="false"%s>'
             . '<testsuites><testsuite name="Unit"><file>%s/tests/Unit/Internal/PartialRunDecisionTest.php</file></testsuite></testsuites>'
             . '<extensions><bootstrap class="Studio\Gesso\PHPUnit\OpenApiCoverageExtension">'
-            . '<parameter name="spec_base_path" value="%s/tests/fixtures/specs"/>'
-            . '<parameter name="specs" value="composition"/>'
-            . '%s%s'
+            . '%s'
             . '</bootstrap></extensions>'
             . '</phpunit>',
             $this->repoRoot,
             $this->repoRoot,
             $defaultAttr,
             $this->repoRoot,
-            $this->repoRoot,
-            $optInParam,
-            $outputFileParam,
+            $this->configParameter($config),
         );
 
         $tmp = tempnam(sys_get_temp_dir(), 'openapi-ext-integration-') ?: null;
         if ($tmp === null) {
             $this->fail('Could not create temp phpunit config');
         }
-        $this->configPath = $tmp;
+        $this->tempFiles[] = $tmp;
         file_put_contents($tmp, $xml);
 
         $cmd = sprintf(
@@ -312,5 +327,23 @@ class OpenApiCoverageExtensionBootstrapTest extends TestCase
         proc_close($process);
 
         return $stdout . $stderr;
+    }
+
+    /**
+     * Write `$config` as a temporary gesso.php and return the extension's
+     * `config` parameter pointing at it.
+     *
+     * @param array<string, mixed> $config
+     */
+    private function configParameter(array $config): string
+    {
+        $tmp = tempnam(sys_get_temp_dir(), 'gesso-config-');
+        if ($tmp === false) {
+            $this->fail('Could not create temp gesso.php');
+        }
+        $this->tempFiles[] = $tmp;
+        file_put_contents($tmp, '<?php return ' . var_export($config, true) . ';');
+
+        return sprintf('<parameter name="config" value="%s"/>', $tmp);
     }
 }

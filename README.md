@@ -206,7 +206,7 @@ are covered in the [PSR-7 guide](docs/psr7.md).
 
 ### Laravel adapter
 
-Laravel reads the same root `gesso.php`; there is no `config/gesso.php` to publish. Add `spec.default` so assertions know which spec to use:
+Laravel reads the same root `gesso.php` (`php artisan vendor:publish --tag=gesso` writes a starter one); there is no `config/gesso.php`. Add `spec.default` so assertions know which spec to use:
 
 ```php
 'spec' => [

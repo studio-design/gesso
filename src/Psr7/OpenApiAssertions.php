@@ -160,8 +160,7 @@ trait OpenApiAssertions
 
     /**
      * User-overridable fallback when no #[OpenApiSpec] attribute is present.
-     * Defaults to `spec.default` from gesso.php (or the `default_spec`
-     * extension parameter).
+     * Defaults to `spec.default` from gesso.php.
      */
     protected function openApiSpec(): string
     {

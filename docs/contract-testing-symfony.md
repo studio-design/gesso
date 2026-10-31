@@ -126,7 +126,7 @@ The PHPUnit output ends with an `OpenAPI Contract Test Coverage` report: per spe
 
 Contract enforcement is the entry point. Three follow-ups matter for a real Symfony service:
 
-- **Coverage in CI.** Set `min_endpoint_coverage` / `min_response_coverage` on the PHPUnit extension so a PR that quietly stops testing an operation fails the build.
+- **Coverage in CI.** Set `coverage.min_coverage.endpoint` / `.response` in `gesso.php` so a PR that quietly stops testing an operation fails the build.
 - **Preflight your spec.** Run `vendor/bin/gesso doctor --spec=openapi/petstore.json --strip-prefix=/api` in CI. It reports whether Gesso can load and enforce the document — version and dialect, references, warned-about keywords, structurally valid operations — and exits non-zero when it can't.
 - **Schema-driven exploration.** Once the happy paths are green, generate request cases from the spec's schemas with `OpenApiSpecExplorer::explore()` and assert each dispatched response with the same validators the trait uses.
 

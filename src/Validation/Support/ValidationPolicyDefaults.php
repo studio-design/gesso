@@ -15,14 +15,14 @@ use Studio\Gesso\Spec\OpenApiSpecResolver;
  * `max_errors`, `skip_response_codes`,
  * `skip_request_validation_response_codes`, and `default_spec`.
  *
- * Configured by {@see OpenApiCoverageExtension} from the like-named
- * phpunit.xml extension parameters. Read by the
+ * Configured by {@see OpenApiCoverageExtension} from the matching
+ * `gesso.php` keys. Read by the
  * {@see OpenApiRequestValidator} / {@see OpenApiResponseValidator}
  * constructors when the caller omits the corresponding argument, and by
  * {@see OpenApiSpecResolver::openApiSpecFallback()}. An explicit constructor
  * argument always wins. The PSR-7 and Symfony trait hooks default to these
  * values (issue #563), so overriding a hook still pins a per-suite setting;
- * the Laravel adapter keeps reading `config('gesso.*')`.
+ * the Laravel adapter reads the same keys from `config('gesso.*')`.
  *
  * Static singleton mirroring {@see DiscriminatorEnforcement} so the
  * defaults reach the validators without giving them a second constructor.
@@ -46,7 +46,7 @@ final class ValidationPolicyDefaults
     /**
      * Overwrite all four defaults for this process. `null` means "not
      * configured": the matching reader falls back to the constructor default
-     * it stands in for, so an absent phpunit.xml parameter changes nothing.
+     * it stands in for, so an absent `gesso.php` key changes nothing.
      *
      * @param null|string[] $skipResponseCodes
      * @param null|string[] $skipRequestValidationResponseCodes

@@ -25,8 +25,8 @@ final class PetContractTest extends TestCase
     {
         // Per-test switch. To enable it for the whole suite, set
         // `laravel.auto_assert` / `laravel.auto_validate_request` in gesso.php.
-        config()->set('gesso.auto_assert', true);
-        config()->set('gesso.auto_validate_request', true);
+        config()->set('gesso.laravel.auto_assert', true);
+        config()->set('gesso.laravel.auto_validate_request', true);
 
         $this->getJson('/pets')->assertOk();
     }
