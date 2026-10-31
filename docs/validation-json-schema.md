@@ -98,6 +98,9 @@ Each entry serialises one `ValidationIssue` field-for-field (snake_case). The
 | `message` | `string` | Exact human-readable error text. **Not** a compatibility surface — assert on `category` and context instead. |
 | `instance_path` | `string \| null` | RFC 6901 JSON Pointer: `""` is the document root and `"/"` is the property whose name is the empty string. (The human-readable `message` prefix renders the root as `[/]` for historical reasons; `instance_path` is the unambiguous form.) Set on schema violations — for body issues it points into the validated body, for parameter / response-header issues into the named value; `null` for structural and spec-malformation errors. |
 | `keyword` | `string \| null` | JSON Schema keyword that failed (`type`, `required`, `enum`, …). Set on schema violations, and additionally as a synthetic violation kind: `"required"` when a required parameter / header / security credential is missing, `"format"` when a credential is present but unusable, `"parse"` when the PSR-7 adapter could not read or JSON-decode a body. `null` otherwise. |
+| `schema_pointer` | `string \| null` | RFC 6901 JSON Pointer into the schema the value was validated against, ending at the failing keyword: `"/properties/name/type"`. The schema is the operation's resolved schema for the body, parameter, or header — `$ref`s are already inlined, and OpenAPI 3.0 schemas are the converted form Gesso enforces (`nullable: true` reads as `type: [..., "null"]`). Combine it with `method`, `path`, `status_code`, and `content_type` to find the schema in the spec. Set on schema violations; `null` otherwise. |
+| `actual` | `string \| null` | JSON encoding of the failing value (`"42"`, `"\"maybe\""`, `"null"`), cut at 80 characters with `…`. `null` when the value is an object or an array, and on issues that are not schema violations. `"<redacted>"` when the value sits under a credential-like name (`password`, `token`, `secret`, `api_key`, …, the same rule as the reproduce command) or a `format: password` schema. |
+| `expected` | `string \| null` | JSON encoding of the failing keyword's value (`"\"string\""`, `"[\"id\",\"name\"]"`, `"8"`), cut the same way. `null` when that value is a subschema (`oneOf`, `items`, …) and on issues that are not schema violations. |
 | `parameter` | `string \| null` | Name of the spec object a non-body issue is about: the request parameter (`request.parameter.*`), response header (`response.header`), or security scheme (`request.security`). `null` for body issues and for errors not attributable to one named object (structural spec errors, error-boundary captures). |
 | `method` | `string \| null` | HTTP method of the validated operation. |
 | `path` | `string \| null` | Matched spec path template. |
@@ -125,5 +128,8 @@ The document shape is covered by the [versioning policy](versioning.md):
   so anything they embed (request/response fragments, absolute paths in test
   payloads or commands) passes through: treat the document with the same
   sensitivity as your test payloads and redact before rendering if needed.
+  `actual` redacts credential-like names and leaves objects and arrays out,
+  but a secret under an ordinary property name is printed like any other
+  scalar.
 - Invalid UTF-8 byte sequences inside messages are replaced with U+FFFD so the
   document always renders instead of masking the original validation failure.

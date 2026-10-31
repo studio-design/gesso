@@ -29,7 +29,7 @@ use function trim;
  */
 final class CurlCommandFormatter
 {
-    private const REDACTED_PLACEHOLDER = '<redacted>';
+    public const REDACTED_PLACEHOLDER = '<redacted>';
     private const SENSITIVE_HEADER_NAMES = [
         'authorization',
         'proxy-authorization',
@@ -84,6 +84,16 @@ final class CurlCommandFormatter
     }
 
     /**
+     * Whether a header, query, form, or body field name looks like it carries
+     * a credential. Shared with the schema-issue `actual` excerpt.
+     */
+    public static function isSensitiveName(string $name): bool
+    {
+        return in_array(strtolower($name), self::SENSITIVE_HEADER_NAMES, true) ||
+            preg_match(self::SENSITIVE_NAME_PATTERN, $name) === 1;
+    }
+
+    /**
      * URL userinfo (`user:pass@host`) commonly carries credentials. The match
      * runs to the last `@` of the authority, as parse_url() does, so a raw `@`
      * inside a password cannot leave its tail behind.
@@ -129,12 +139,6 @@ final class CurlCommandFormatter
         }
 
         return implode('&', $pairs);
-    }
-
-    private static function isSensitiveName(string $name): bool
-    {
-        return in_array(strtolower($name), self::SENSITIVE_HEADER_NAMES, true) ||
-            preg_match(self::SENSITIVE_NAME_PATTERN, $name) === 1;
     }
 
     private static function isJsonContentType(string $contentType): bool

@@ -17,7 +17,10 @@ namespace Studio\Gesso\Validation\Support;
  * rendering for the human-readable views. `keyword` is the JSON Schema
  * keyword that failed (`type`, `required`, …); it is null only for the
  * runner's defensive "no error detail" synthetic entry. `message` is the
- * human-readable prose without the pointer prefix.
+ * human-readable prose without the pointer prefix. `schemaPointer`, `actual`
+ * and `expected` locate the failing keyword in the validated schema and give
+ * short JSON excerpts of both values; see
+ * {@see SchemaValidatorRunner} (`context()`) for when each is null.
  *
  * @internal Not part of the package's public API. Do not use from user code.
  */
@@ -27,7 +30,15 @@ final readonly class SchemaViolation
         public string $instancePath,
         public ?string $keyword,
         public string $message,
+        public ?string $schemaPointer = null,
+        public ?string $actual = null,
+        public ?string $expected = null,
     ) {}
+
+    public function withActual(?string $actual): self
+    {
+        return new self($this->instancePath, $this->keyword, $this->message, $this->schemaPointer, $actual, $this->expected);
+    }
 
     /**
      * The pointer as historically rendered in the `[{pointer}] {message}`

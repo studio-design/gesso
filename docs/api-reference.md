@@ -94,6 +94,12 @@ structured API derive issues with category `unknown`.
 `code()` returns the issue's stable [failure code](failure-codes.md)
 (`GSO212` for a `response.body` `type` violation), derived from `category`
 and `keyword`; `vendor/bin/gesso explain <code>` explains it.
+Schema violations also carry `schemaPointer`, an RFC 6901 pointer into the
+resolved schema that ends at the failing keyword (`/properties/name/type`),
+and `actual` / `expected`, short JSON excerpts of the failing value and of
+that keyword's value. See
+[validation-json-schema.md](validation-json-schema.md#issue) for when each
+is `null` and how `actual` is redacted.
 
 To hand the full result to machine consumers (CI ingestion, IDE annotations),
 render it as a versioned JSON document:
