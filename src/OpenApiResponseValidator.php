@@ -342,15 +342,19 @@ final class OpenApiResponseValidator
         // failures) ship an empty list, so gate on the counts before pairing.
         $aligned = $bodyResult->violations !== [] && count($bodyResult->violations) === count($bodyResult->errors);
         foreach (array_values($bodyResult->errors) as $index => $message) {
+            $violation = $aligned ? $bodyResult->violations[$index] : null;
             $issues[] = new ValidationIssue(
                 'response.body',
                 $message,
-                instancePath: $aligned ? $bodyResult->violations[$index]->instancePath : null,
-                keyword: $aligned ? $bodyResult->violations[$index]->keyword : null,
+                instancePath: $violation?->instancePath,
+                keyword: $violation?->keyword,
                 method: $method,
                 path: $matchedPath,
                 statusCode: $statusCodeStr,
                 contentType: $bodyResult->matchedContentType,
+                schemaPointer: $violation?->schemaPointer,
+                actual: $violation?->actual,
+                expected: $violation?->expected,
             );
         }
         foreach ($headerErrors as $headerError) {
@@ -359,7 +363,19 @@ final class OpenApiResponseValidator
             // field for body issues. The header name rides along as
             // `parameter` so baseline fingerprints can tell two header
             // violations on one operation apart (#402).
-            $issues[] = new ValidationIssue('response.header', $headerError->message, instancePath: $headerError->instancePath, keyword: $headerError->keyword, method: $method, path: $matchedPath, statusCode: $statusCodeStr, parameter: $headerError->name);
+            $issues[] = new ValidationIssue(
+                'response.header',
+                $headerError->message,
+                instancePath: $headerError->instancePath,
+                keyword: $headerError->keyword,
+                method: $method,
+                path: $matchedPath,
+                statusCode: $statusCodeStr,
+                parameter: $headerError->name,
+                schemaPointer: $headerError->violation?->schemaPointer,
+                actual: $headerError->violation?->actual,
+                expected: $headerError->violation?->expected,
+            );
         }
         // The response arrived as a JSON media type the spec does not declare
         // for this status, so the body was checked against the first JSON key

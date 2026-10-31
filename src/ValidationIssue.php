@@ -25,6 +25,16 @@ use Studio\Gesso\Internal\FailureCatalogue;
  * (`response.header`), or security scheme (`request.security`) — and is null
  * for body issues and for errors not attributable to a single named object.
  *
+ * `schemaPointer`, `actual`, and `expected` are set on schema violations
+ * only: an RFC 6901 pointer into the schema the value was validated against
+ * (the operation's resolved schema for the body, parameter, or header, after
+ * `$ref` inlining), ending at the failing keyword, and short JSON excerpts of
+ * the failing value and of that keyword's value. `actual` is null for
+ * objects and arrays and `<redacted>` for credential-like names; `expected`
+ * is null when the keyword's value is a subschema. All three are null for
+ * structural, spec-malformation, and synthetic (`required` parameter,
+ * security) issues.
+ *
  * {@see self::code()} derives the stable `GSO` failure code from `category`
  * and `keyword`; see docs/failure-codes.md.
  */
@@ -40,6 +50,9 @@ final readonly class ValidationIssue
         public ?string $statusCode = null,
         public ?string $contentType = null,
         public ?string $parameter = null,
+        public ?string $schemaPointer = null,
+        public ?string $actual = null,
+        public ?string $expected = null,
     ) {}
 
     /**

@@ -283,6 +283,7 @@ final class OpenApiRequestValidator
             // list, so gate on the counts before pairing the two.
             $aligned = $violations !== [] && count($violations) === count($namedErrors);
             foreach ($namedErrors as $index => $namedError) {
+                $violation = $aligned ? $violations[$index] : $namedError->violation;
                 $issues[] = new ValidationIssue(
                     $category,
                     $namedError->message,
@@ -294,6 +295,9 @@ final class OpenApiRequestValidator
                     path: $matchedPath,
                     contentType: $issueContentType,
                     parameter: $namedError->name,
+                    schemaPointer: $violation?->schemaPointer,
+                    actual: $violation?->actual,
+                    expected: $violation?->expected,
                 );
             }
         }

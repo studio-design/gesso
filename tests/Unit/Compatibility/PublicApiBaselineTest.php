@@ -518,8 +518,11 @@ final class PublicApiBaselineTest extends TestCase
             'cases' => [],
             'constants' => [],
             'properties' => [
+                // v3 A3: schema-side pointer and value excerpts (minor addition).
+                'actual' => $issueNullableProperty(),
                 'category' => $issueStringProperty(),
                 'contentType' => $issueNullableProperty(),
+                'expected' => $issueNullableProperty(),
                 'instancePath' => $issueNullableProperty(),
                 'keyword' => $issueNullableProperty(),
                 'message' => $issueStringProperty(),
@@ -528,6 +531,7 @@ final class PublicApiBaselineTest extends TestCase
                 // scheme a non-body issue is about (minor addition).
                 'parameter' => $issueNullableProperty(),
                 'path' => $issueNullableProperty(),
+                'schemaPointer' => $issueNullableProperty(),
                 'statusCode' => $issueNullableProperty(),
             ],
             'methods' => [
@@ -548,6 +552,9 @@ final class PublicApiBaselineTest extends TestCase
                         $issueOptionalParam('statusCode'),
                         $issueOptionalParam('contentType'),
                         $issueOptionalParam('parameter'),
+                        $issueOptionalParam('schemaPointer'),
+                        $issueOptionalParam('actual'),
+                        $issueOptionalParam('expected'),
                     ],
                 ],
                 // v3 A1: the stable GSO failure code (minor addition).
