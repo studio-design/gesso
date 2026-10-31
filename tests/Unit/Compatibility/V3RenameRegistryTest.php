@@ -66,7 +66,7 @@ use function trim;
 final class V3RenameRegistryTest extends TestCase
 {
     private const ADR = '/docs/adr/0005-v3-configuration-and-cli-naming.md';
-    private const CHANNELS = ['deprecation', 'accepted-spelling', 'unchanged-spelling'];
+    private const CHANNELS = ['deprecation', 'removed', 'accepted-spelling', 'unchanged-spelling'];
 
     /**
      * The release that removes everything on the `deprecation` channel. ADR
@@ -319,6 +319,12 @@ final class V3RenameRegistryTest extends TestCase
                 );
 
                 continue;
+            }
+
+            // A removed spelling's notice was deleted with it, so nothing may
+            // still point at a registry entry that no longer exists.
+            if ($entry['channel'] === 'removed') {
+                $this->assertNull($entry['deprecation_id'], $spelling . ' was removed, so its notice is gone');
             }
 
             $this->assertSame(self::REMOVED_IN, $entry['removed_in'], sprintf(

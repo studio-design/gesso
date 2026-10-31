@@ -8,7 +8,6 @@ use Illuminate\Support\Facades\Artisan;
 use Orchestra\Testbench\TestCase;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
-use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\Internal\LegacyIdentity;
 use Studio\Gesso\Laravel\GessoServiceProvider;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
@@ -79,19 +78,11 @@ final class OpenApiStubsCommandIntegrationTest extends TestCase
     }
 
     #[Test]
-    public function the_v2_output_option_still_works_and_prints_its_deprecation(): void
+    public function the_removed_v2_output_option_is_rejected_naming_output_dir(): void
     {
-        Deprecations::resetForTesting();
-
-        try {
-            $this->assertSame(0, Artisan::call('gesso:stubs', ['--output' => $this->outputDir]));
-            $this->assertStringContainsString("The CLI flag '--output' is deprecated. Use --output-dir", Artisan::output());
-            $this->assertFileExists($this->outputDir . '/GetV1PetsTest.php');
-
-            $this->assertSame(2, Artisan::call('gesso:stubs', ['--output' => $this->outputDir, '--output-dir' => $this->outputDir]));
-        } finally {
-            Deprecations::resetForTesting();
-        }
+        $this->assertSame(2, Artisan::call('gesso:stubs', ['--output' => $this->outputDir]));
+        $this->assertStringContainsString('--output (removed in Gesso 3.0; use --output-dir)', Artisan::output());
+        $this->assertFileDoesNotExist($this->outputDir . '/GetV1PetsTest.php');
     }
 
     #[Test]

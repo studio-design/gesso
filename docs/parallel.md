@@ -89,12 +89,10 @@ default already does this.
 | Code | Meaning |
 |---|---|
 | `0` | Merge completed; warnings may have been written to stderr. |
-| `1` | A gate failed (threshold, strict, baseline, expected shard count), a sidecar could not be read, or a report could not be written. |
-| `2` | Command-line usage is invalid. |
+| `1` | A gate failed (threshold, strict, baseline, expected shard count). |
+| `2` | Command-line usage is invalid (including an unknown or removed flag), a sidecar or baseline file cannot be read, or a report or baseline file cannot be written. |
 
-Gesso 3.0 exits `2` instead of `1` when a sidecar, report, or baseline file
-cannot be read or written. Until then those failures print a
-`[Gesso deprecation]` line saying so; a CI step that only checks for a
+Gesso 2.x exited `1` for the I/O failures; a CI step that only checks for a
 non-zero exit needs no change.
 
 Shared conventions: [CLI reference](cli.md#exit-codes).
@@ -142,7 +140,7 @@ vendor/bin/gesso coverage:merge \
     --spec-base-path=openapi/bundled \
     --sidecar-dir=sidecars \
     --expect-sidecars=3 \
-    --strict-required=fail \
+    --strict-required="run=fail" \
     --min-coverage="response=80"
 ```
 

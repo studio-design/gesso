@@ -158,7 +158,7 @@ class CoverageReportSubscriberBaselineTest extends TestCase
         ob_get_clean();
 
         $this->assertFileDoesNotExist($baselinePath, 'workers must never write the baseline file themselves');
-        $this->assertStringContainsString('coverage:merge --baseline-file=', $stderr);
+        $this->assertStringContainsString('coverage:merge --baseline="violations=', $stderr);
         $this->assertStringContainsString($baselinePath, $stderr);
         $this->assertNull($exitCode, 'a staged parallel generation run must not exit non-zero');
 

@@ -355,7 +355,7 @@ class CoverageMergeCommandTest extends TestCase
     }
 
     #[Test]
-    public function exits_one_when_sidecar_directory_becomes_unsafe_before_cleanup(): void
+    public function exits_two_when_sidecar_directory_becomes_unsafe_before_cleanup(): void
     {
         if (DIRECTORY_SEPARATOR === '\\') {
             $this->markTestSkipped('POSIX permission bits are not portable to Windows');
@@ -394,7 +394,7 @@ class CoverageMergeCommandTest extends TestCase
             chmod($this->sidecarDir, 0o755);
         }
 
-        $this->assertSame(1, $exit);
+        $this->assertSame(2, $exit);
         $this->assertStringContainsString('FATAL', $stderr);
         $this->assertStringContainsString('failed to inspect sidecars for cleanup', $stderr);
         $this->assertCount(1, $this->sidecars());
@@ -438,7 +438,7 @@ class CoverageMergeCommandTest extends TestCase
     }
 
     #[Test]
-    public function exits_one_when_sidecar_payload_is_corrupt(): void
+    public function exits_two_when_sidecar_payload_is_corrupt(): void
     {
         // C1 fix: a malformed sidecar must produce exit 1 + FATAL stderr,
         // not exit 0 with a buried warning. Pre-fix, loadPayloads() caught
@@ -462,13 +462,13 @@ class CoverageMergeCommandTest extends TestCase
             'output_file' => $this->outputFile,
         ]);
 
-        $this->assertSame(1, $exit);
+        $this->assertSame(2, $exit);
         $this->assertStringContainsString('FATAL', $stderr);
         $this->assertStringContainsString('failed to decode', $stderr);
     }
 
     #[Test]
-    public function exits_one_when_sidecar_directory_is_not_private(): void
+    public function exits_two_when_sidecar_directory_is_not_private(): void
     {
         if (DIRECTORY_SEPARATOR === '\\') {
             $this->markTestSkipped('POSIX permission bits are not portable to Windows');
@@ -494,7 +494,7 @@ class CoverageMergeCommandTest extends TestCase
             chmod($this->sidecarDir, 0o755);
         }
 
-        $this->assertSame(1, $exit);
+        $this->assertSame(2, $exit);
         $this->assertStringContainsString('FATAL', $stderr);
         $this->assertStringContainsString('must not be writable by group or other users', $stderr);
     }
@@ -708,13 +708,13 @@ class CoverageMergeCommandTest extends TestCase
     {
         $opts = CoverageMergeCommand::parseArgv([
             '--spec-base-path=/tmp/spec',
-            '--specs=front,admin',
-            '--strip-prefixes=/api',
+            '--spec-name=front,admin',
+            '--strip-prefix=/api',
             '--sidecar-dir=/tmp/sidecars',
             '--output-file=/tmp/cov.md',
-            '--junit-output=/tmp/cov.junit.xml',
-            '--json-output=/tmp/cov.json',
-            '--html-output=/tmp/cov.html',
+            '--report=junit:/tmp/cov.junit.xml',
+            '--report=json:/tmp/cov.json',
+            '--report=html:/tmp/cov.html',
             '--format=json',
             '--no-cleanup',
         ]);
@@ -747,7 +747,7 @@ class CoverageMergeCommandTest extends TestCase
     }
 
     #[Test]
-    public function exits_one_when_junit_output_write_fails(): void
+    public function exits_two_when_junit_output_write_fails(): void
     {
         OpenApiCoverageTracker::recordResponse(
             'petstore-3.0',
@@ -778,7 +778,7 @@ class CoverageMergeCommandTest extends TestCase
             'cleanup' => true,
         ]);
 
-        $this->assertSame(1, $exit);
+        $this->assertSame(2, $exit);
         $this->assertStringContainsString('FATAL', $stderr);
         $this->assertStringContainsString('JUnit XML', $stderr);
     }
@@ -820,7 +820,7 @@ class CoverageMergeCommandTest extends TestCase
     }
 
     #[Test]
-    public function exits_one_when_json_output_write_fails(): void
+    public function exits_two_when_json_output_write_fails(): void
     {
         OpenApiCoverageTracker::recordResponse(
             'petstore-3.0',
@@ -850,7 +850,7 @@ class CoverageMergeCommandTest extends TestCase
             'cleanup' => true,
         ]);
 
-        $this->assertSame(1, $exit);
+        $this->assertSame(2, $exit);
         $this->assertStringContainsString('FATAL', $stderr);
         $this->assertStringContainsString('JSON', $stderr);
     }
@@ -938,7 +938,7 @@ class CoverageMergeCommandTest extends TestCase
     }
 
     #[Test]
-    public function exits_one_when_html_output_write_fails(): void
+    public function exits_two_when_html_output_write_fails(): void
     {
         OpenApiCoverageTracker::recordResponse(
             'petstore-3.0',
@@ -968,7 +968,7 @@ class CoverageMergeCommandTest extends TestCase
             'cleanup' => true,
         ]);
 
-        $this->assertSame(1, $exit);
+        $this->assertSame(2, $exit);
         $this->assertStringContainsString('FATAL', $stderr);
         $this->assertStringContainsString('HTML', $stderr);
     }
@@ -1345,7 +1345,7 @@ class CoverageMergeCommandTest extends TestCase
         // coverage recorded".
         $opts = CoverageMergeCommand::parseArgv([
             '--spec-base-path=' . __DIR__ . '/../../fixtures/specs',
-            '--specs=',
+            '--spec-name=',
         ]);
         // parseArgv strips empty entries, leaving 'specs' => []. run() must
         // not honour the empty list as "use no specs" — verified via the
@@ -1589,10 +1589,7 @@ class CoverageMergeCommandTest extends TestCase
     {
         $opts = CoverageMergeCommand::parseArgv([
             '--spec-base-path=/tmp/spec',
-            '--min-endpoint-coverage=80',
-            '--min-response-coverage=70.5',
-            '--min-sdk-exercise-coverage=100',
-            '--min-coverage-strict',
+            '--min-coverage=endpoint=80,response=70.5,sdk_exercise=100,strict',
         ]);
 
         $this->assertSame(80.0, $opts['min_endpoint_coverage']);
@@ -1604,13 +1601,13 @@ class CoverageMergeCommandTest extends TestCase
     #[Test]
     public function usage_documents_sdk_exercise_threshold(): void
     {
-        $this->assertStringContainsString('--min-sdk-exercise-coverage=<pct>', CoverageMergeCommand::usage());
+        $this->assertStringContainsString('sdk_exercise=<pct>', CoverageMergeCommand::usage());
     }
 
     #[Test]
     public function parse_argv_preserves_non_numeric_sdk_threshold_for_validation(): void
     {
-        $opts = CoverageMergeCommand::parseArgv(['--min-sdk-exercise-coverage=all']);
+        $opts = CoverageMergeCommand::parseArgv(['--min-coverage=sdk_exercise=all']);
 
         $this->assertSame('all', $opts['min_sdk_exercise_coverage']);
     }
@@ -1904,7 +1901,7 @@ class CoverageMergeCommandTest extends TestCase
         // must turn the gate into warn-only, not silently flip it on.
         $opts = CoverageMergeCommand::parseArgv([
             '--spec-base-path=/tmp/spec',
-            '--min-coverage-strict=false',
+            '--min-coverage=strict=false',
         ]);
 
         $this->assertFalse($opts['min_coverage_strict']);
@@ -2064,14 +2061,14 @@ class CoverageMergeCommandTest extends TestCase
         // dropped the value silently and the gate was disabled invisibly.
         $opts = CoverageMergeCommand::parseArgv([
             '--spec-base-path=/tmp/spec',
-            '--min-endpoint-coverage=eighty',
+            '--min-coverage=endpoint=eighty',
         ]);
 
         $this->assertSame('eighty', $opts['min_endpoint_coverage']);
     }
 
     #[Test]
-    public function exits_one_when_output_file_write_fails(): void
+    public function exits_two_when_output_file_write_fails(): void
     {
         OpenApiCoverageTracker::recordResponse(
             'petstore-3.0',
@@ -2105,7 +2102,7 @@ class CoverageMergeCommandTest extends TestCase
             'cleanup' => true,
         ]);
 
-        $this->assertSame(1, $exit);
+        $this->assertSame(2, $exit);
         $this->assertStringContainsString('Failed to write Markdown report', $stderr);
     }
 
@@ -2637,21 +2634,21 @@ class CoverageMergeCommandTest extends TestCase
     #[Test]
     public function parse_argv_accepts_strict_required_flag(): void
     {
-        $opts = CoverageMergeCommand::parseArgv(['--strict-required=warn']);
+        $opts = CoverageMergeCommand::parseArgv(['--strict-required=run=warn']);
         $this->assertSame('warn', $opts['strict_required'] ?? null);
     }
 
     #[Test]
     public function parse_argv_accepts_strict_additional_properties_flag(): void
     {
-        $options = CoverageMergeCommand::parseArgv(['--strict-additional-properties=fail']);
+        $options = CoverageMergeCommand::parseArgv(['--strict-additional-properties=run=fail']);
         $this->assertSame('fail', $options['strict_additional_properties'] ?? null);
     }
 
     #[Test]
     public function parse_argv_accepts_baseline_file_flag(): void
     {
-        $opts = CoverageMergeCommand::parseArgv(['--baseline-file=gesso-baseline.json']);
+        $opts = CoverageMergeCommand::parseArgv(['--baseline=violations=gesso-baseline.json']);
         $this->assertSame('gesso-baseline.json', $opts['baseline_file'] ?? null);
     }
 
@@ -2797,7 +2794,7 @@ class CoverageMergeCommandTest extends TestCase
         ]);
 
         $this->assertSame(1, $exit);
-        $this->assertStringContainsString('--baseline-file was not given', $stderr);
+        $this->assertStringContainsString('--baseline="violations=…" was not given', $stderr);
         $this->assertCount(1, $this->sidecars(), 'failure must preserve sidecars for a corrected retry');
     }
 
@@ -2849,7 +2846,7 @@ class CoverageMergeCommandTest extends TestCase
     }
 
     #[Test]
-    public function exits_one_when_merged_baseline_write_fails(): void
+    public function exits_two_when_merged_baseline_write_fails(): void
     {
         $this->writeBaselineWorkerSidecar('1', [
             $this->baselineFingerprint('GET', '/v1/pets', '/data/*/id'),
@@ -2877,7 +2874,7 @@ class CoverageMergeCommandTest extends TestCase
 
         @rmdir($baselinePath);
 
-        $this->assertSame(1, $exit);
+        $this->assertSame(2, $exit);
         $this->assertStringContainsString('[Gesso] FATAL', $stderr);
         $this->assertStringContainsString('Could not write baseline file', $stderr);
         $this->assertCount(1, $this->sidecars(), 'failure must preserve sidecars for a corrected retry');

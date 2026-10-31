@@ -12,7 +12,6 @@ use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use stdClass;
 use Studio\Gesso\Cli\StubsCommand;
-use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\OpenApiRequestValidator;
 use Studio\Gesso\OpenApiResponseValidator;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
@@ -204,37 +203,16 @@ class StubsCommandTest extends TestCase
     }
 
     #[Test]
-    public function the_v2_output_spelling_still_works_and_is_deprecated_once(): void
-    {
-        Deprecations::resetForTesting();
-        $spec = $this->writeSpec();
-
-        try {
-            $first = $this->command()->run(StubsCommand::parseArgv(['--spec=' . $spec, '--output=' . $this->workDir . '/out']));
-            $second = $this->command()->run(StubsCommand::parseArgv(['--spec=' . $spec, '--output=' . $this->workDir . '/out', '--dry-run']));
-
-            $this->assertSame([StubsCommand::EXIT_OK, StubsCommand::EXIT_OK], [$first, $second]);
-            $this->assertNotSame([], $this->generatedFiles());
-            $this->assertSame(1, substr_count($this->stderr, "[Gesso deprecation] The CLI flag '--output' is deprecated. Use --output-dir"));
-            $this->assertSame(['cli.stubs.output' => 2], Deprecations::counts());
-        } finally {
-            Deprecations::resetForTesting();
-        }
-    }
-
-    #[Test]
-    public function output_and_output_dir_together_are_a_usage_error(): void
+    public function the_removed_v2_output_spelling_is_a_usage_error_naming_output_dir(): void
     {
         $exit = $this->command()->run(StubsCommand::parseArgv([
             '--spec=' . $this->writeSpec(),
             '--output=' . $this->workDir . '/a',
-            '--output-dir=' . $this->workDir . '/b',
         ]));
 
         $this->assertSame(StubsCommand::EXIT_USAGE, $exit);
-        $this->assertStringContainsString('--output and --output-dir set the same option', $this->stderr);
+        $this->assertStringContainsString('Unknown argument(s): --output (removed in Gesso 3.0; use --output-dir)', $this->stderr);
         $this->assertDirectoryDoesNotExist($this->workDir . '/a');
-        $this->assertDirectoryDoesNotExist($this->workDir . '/b');
     }
 
     #[Test]
@@ -1611,7 +1589,7 @@ class StubsCommandTest extends TestCase
             foreach (StubRenderer::ADAPTERS as $adapter) {
                 $output = $this->workDir . '/' . $name . '-' . $adapter;
                 $this->assertSame(0, $this->command()->run(StubsCommand::parseArgv([
-                    '--spec=' . $spec, '--adapter=' . $adapter, '--output=' . $output,
+                    '--spec=' . $spec, '--adapter=' . $adapter, '--output-dir=' . $output,
                 ])), $this->stderr);
                 $files = array_values(array_filter(scandir($output) ?: [], static fn(string $file): bool => str_contains($file, '.php')));
                 $this->assertCount(1, $files);

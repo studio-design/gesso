@@ -1,0 +1,68 @@
+gesso coverage:merge — combine paratest worker sidecars into one coverage report.
+
+Usage:
+  gesso coverage:merge --spec-base-path=<path> [options]
+
+Options:
+  --spec-base-path=<path>       Path to bundled spec directory (required).
+  --spec-name=<name>            Spec name; repeatable or comma-separated. Defaults
+                                to "front".
+  --strip-prefix=<prefix>       Request-path prefix to strip; repeatable or
+                                comma-separated.
+  --sidecar-dir=<path>          Worker sidecar directory. Defaults to
+                                sys_get_temp_dir()/openapi-coverage-sidecars.
+  --format=<name>               text | markdown | json | junit | html. Rendering of the
+                                primary report: --output-file when given (default
+                                markdown), else stdout (default text).
+  --output-file=<path>          Markdown report output path.
+  --report=<format>:<path>      Also write a json | junit | html report to <path>;
+                                repeatable. JSON follows docs/coverage-json-schema.md;
+                                JUnit feeds CI test dashboards; HTML is
+                                self-contained.
+  --github-step-summary=<path>  Append Markdown report to this file (also
+                                consults GITHUB_STEP_SUMMARY env var).
+  --console-report=<mode>       default | all | uncovered_only.
+  --min-coverage="endpoint=<pct>,response=<pct>,sdk_exercise=<pct>,strict"
+                                Coverage thresholds (0-100): fully-covered
+                                endpoints, (method, path, status, content-type)
+                                responses, and response schemas exercised by an SDK
+                                decoder callback. A miss warns; with `strict` it
+                                exits non-zero. Name only the members you need.
+  --strict-required="run=<mode>"
+                                off | warn | fail. Aggregate worker observations
+                                and assert no schema under-description drift
+                                (Issue #224 / #226). Defaults to off. A per_call=
+                                member is accepted and left to the workers.
+  --strict-additional-properties="run=<mode>"
+                                off | warn | fail. Report response properties
+                                absent from schema declarations. Defaults to off.
+  --baseline="violations=<path>,coverage=<path>"
+                                violations: union the violation-baseline halves
+                                staged by a parallel `GESSO_BASELINE_GENERATE=1` run
+                                and write the merged baseline here (Issue #417).
+                                coverage: gate the merged coverage against a
+                                committed set of known-uncovered responses; with
+                                GESSO_BASELINE_GENERATE=1 set, the file is
+                                (re)written instead (Issue #481).
+  --baseline-stale="coverage=<mode>"
+                                off | note | fail. How coverage-baseline entries
+                                that are covered now are reported. Defaults to note.
+  --expect-sidecars=<n>         Fail unless exactly <n> sidecars are present. Use it
+                                when the shard count is known up front (a CI matrix):
+                                a cancelled or failed job writes no sidecar at all,
+                                and the merge would otherwise under-count silently
+                                (Issue #434).
+  --run-id=<id>                 Merge only the sidecars of this run (also consults
+                                GESSO_RUN_ID). Defaults to the run that wrote the
+                                newest sidecar; other runs' files are listed and left.
+  --no-cleanup                  Keep sidecar files after merge (default: cleanup).
+  --config=<path>               gesso.php to default the options above from
+                                (default: ./gesso.php when present). Explicit
+                                flags win; see docs/configuration.md.
+  --help                        Show this message.
+
+Exit codes:
+  0  Merge completed; warnings may have been written to stderr.
+  1  A gate failed (threshold, strict, baseline, expected shard count).
+  2  Command-line usage is invalid, a sidecar or baseline file cannot be
+     read, or a report or baseline file cannot be written.

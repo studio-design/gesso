@@ -15,7 +15,6 @@ use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\Internal\ArgvParser;
 use Studio\Gesso\Internal\CliDocuments;
 use Studio\Gesso\Internal\CliIo;
-use Studio\Gesso\Internal\LegacyCliFlags;
 use Studio\Gesso\Internal\ToolVersion;
 use Studio\Gesso\Stubs\StubGenerator;
 use Studio\Gesso\Stubs\StubRenderer;
@@ -48,7 +47,7 @@ use function strpbrk;
  *
  * @phpstan-import-type StubOperation from StubGenerator
  *
- * @phpstan-type StubsOptions array{spec?: string, coverage?: string, spec_name?: string, adapter?: string, output?: string, output_dir?: string, namespace?: string, base_class?: string, request_prefix?: string, format?: string, output_file?: string, dry_run?: bool, help?: bool, invalid_options?: list<string>}
+ * @phpstan-type StubsOptions array{spec?: string, coverage?: string, spec_name?: string, adapter?: string, output_dir?: string, namespace?: string, base_class?: string, request_prefix?: string, format?: string, output_file?: string, dry_run?: bool, help?: bool, invalid_options?: list<string>}
  *
  * @internal The `gesso stubs` CLI surface is the supported API.
  */
@@ -57,7 +56,7 @@ final class StubsCommand
     use CliIo;
 
     public const JSON_SCHEMA_VERSION = 1;
-    private const VALUE_OPTIONS = ['spec', 'coverage', 'spec_name', 'adapter', 'output', 'output_dir', 'namespace', 'base_class', 'request_prefix', 'format', 'output_file'];
+    private const VALUE_OPTIONS = ['spec', 'coverage', 'spec_name', 'adapter', 'output_dir', 'namespace', 'base_class', 'request_prefix', 'format', 'output_file'];
 
     /** @param null|callable(string): void $stdoutWriter */
     public function __construct(
@@ -74,7 +73,7 @@ final class StubsCommand
     public static function parseArgv(array $argv): array
     {
         /** @var StubsOptions */
-        return ArgvParser::parse($argv, flags: ['dry_run'], values: self::VALUE_OPTIONS);
+        return ArgvParser::parse($argv, flags: ['dry_run'], values: self::VALUE_OPTIONS, removed: ['output' => '--output-dir']);
     }
 
     public static function usage(string $invocation = 'gesso stubs'): string
@@ -100,8 +99,6 @@ final class StubsCommand
               --adapter=<name>     {$adapters} (default: phpunit).
               --output-dir=<dir>   Directory to write into. Defaults to the adapter's
                                    conventional location, e.g. tests/Contract.
-              --output=<dir>       Deprecated spelling of --output-dir; removed in
-                                   Gesso 3.0.
               --namespace=<ns>     Namespace for the generated classes. Defaults to the
                                    adapter's conventional namespace. Ignored by pest.
               --base-class=<fqcn>  Test class to extend, e.g. Tests\\TestCase.
@@ -119,6 +116,7 @@ final class StubsCommand
 
             Exit codes:
               0  Stubs were written, or there was nothing left to stub.
+              1  Reserved; not returned.
               2  Command-line usage is invalid, or a spec / coverage file cannot be
                  read, or an output file cannot be written.
 
@@ -140,12 +138,6 @@ final class StubsCommand
         }
         if (($options['spec'] ?? '') === '') {
             return $this->usageError('--spec is required.');
-        }
-        if (isset($options['output'])) {
-            if (isset($options['output_dir'])) {
-                return $this->usageError('--output and --output-dir set the same option; pass only --output-dir.');
-            }
-            LegacyCliFlags::deprecate(['--output'], $this->writeStderr(...));
         }
 
         $adapter = $options['adapter'] ?? 'phpunit';
@@ -197,7 +189,7 @@ final class StubsCommand
             $renderer->classNames($allPlans),
             $renderer,
         );
-        $outputDir = rtrim($options['output_dir'] ?? $options['output'] ?? StubRenderer::DEFAULT_OUTPUT_DIRS[$adapter], '/');
+        $outputDir = rtrim($options['output_dir'] ?? StubRenderer::DEFAULT_OUTPUT_DIRS[$adapter], '/');
         $dryRun = ($options['dry_run'] ?? false) === true;
 
         $written = [];

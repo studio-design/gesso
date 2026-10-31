@@ -78,8 +78,8 @@ class CoverageMergeCommandCoverageBaselineTest extends TestCase
     public function parse_argv_accepts_the_coverage_baseline_flags(): void
     {
         $opts = CoverageMergeCommand::parseArgv([
-            '--coverage-baseline-file=gesso-coverage-baseline.json',
-            '--coverage-baseline-stale=fail',
+            '--baseline=coverage=gesso-coverage-baseline.json',
+            '--baseline-stale=coverage=fail',
         ]);
 
         $this->assertSame('gesso-coverage-baseline.json', $opts['coverage_baseline_file'] ?? null);
@@ -246,8 +246,8 @@ class CoverageMergeCommandCoverageBaselineTest extends TestCase
         $stderr = '';
         $exit = $this->merge($stderr, $this->baselinePath);
 
-        $this->assertSame(1, $exit);
-        $this->assertStringContainsString('--coverage-baseline-file could not be loaded', $stderr);
+        $this->assertSame(2, $exit);
+        $this->assertStringContainsString('--baseline="coverage=…" could not be loaded', $stderr);
     }
 
     #[Test]
@@ -267,7 +267,7 @@ class CoverageMergeCommandCoverageBaselineTest extends TestCase
         $exit = $this->merge($stderr, staleMode: 'fail');
 
         $this->assertSame(2, $exit);
-        $this->assertStringContainsString('--coverage-baseline-stale is set but --coverage-baseline-file', $stderr);
+        $this->assertStringContainsString('--baseline-stale="coverage=…" is set but --baseline="coverage=…"', $stderr);
     }
 
     private function merge(

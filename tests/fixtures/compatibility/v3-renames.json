@@ -5,6 +5,7 @@
     "unstaged_count": 0,
     "$channels": {
         "deprecation": "The old spelling stops working in `removed_in`. Routed through Studio\\Gesso\\Internal\\Deprecations (E_USER_DEPRECATED); `deprecation_id` links to the matching v2-deprecations.json entry, and is null until the owning issue stages it.",
+        "removed": "A `deprecation` entry after the v3 PR that deletes the old spelling: its notice and its v2-deprecations.json entry are gone, so `deprecation_id` is null, and the spelling is rejected. Not counted as unstaged.",
         "accepted-spelling": "The old spelling keeps working through `removed_in`. Routed through Studio\\Gesso\\Internal\\LegacyIdentity's `[Gesso]` E_USER_WARNING channel instead, because a suite running failOnDeprecation must not fail for spelling a name that still works (docs/versioning.md#renamed-spellings-still-accepted).",
         "unchanged-spelling": "The spelling itself survives v3 unchanged. Listed because the ADR table names it, so the gate can account for every row; nothing is staged and nothing is counted."
     },
@@ -327,132 +328,132 @@
         "--json-output": {
             "surface": "cli-flag",
             "replacement": "--report=json:<path>",
-            "channel": "deprecation",
+            "channel": "removed",
             "removed_in": "3.0",
             "owner": "#507",
-            "deprecation_id": "cli.coverage_merge.json_output"
+            "deprecation_id": null
         },
         "--junit-output": {
             "surface": "cli-flag",
             "replacement": "--report=junit:<path>",
-            "channel": "deprecation",
+            "channel": "removed",
             "removed_in": "3.0",
             "owner": "#507",
-            "deprecation_id": "cli.coverage_merge.junit_output"
+            "deprecation_id": null
         },
         "--html-output": {
             "surface": "cli-flag",
             "replacement": "--report=html:<path>",
-            "channel": "deprecation",
+            "channel": "removed",
             "removed_in": "3.0",
             "owner": "#507",
-            "deprecation_id": "cli.coverage_merge.html_output"
+            "deprecation_id": null
         },
         "--console-output": {
             "surface": "cli-flag",
             "replacement": "--console-report",
-            "channel": "deprecation",
+            "channel": "removed",
             "removed_in": "3.0",
             "owner": "#507",
-            "deprecation_id": "cli.coverage_merge.console_output"
+            "deprecation_id": null
         },
         "--min-endpoint-coverage": {
             "surface": "cli-flag",
             "replacement": "--min-coverage=\"endpoint=…\"",
-            "channel": "deprecation",
+            "channel": "removed",
             "removed_in": "3.0",
             "owner": "#507",
-            "deprecation_id": "cli.coverage_merge.min_endpoint_coverage"
+            "deprecation_id": null
         },
         "--min-response-coverage": {
             "surface": "cli-flag",
             "replacement": "--min-coverage=\"response=…\"",
-            "channel": "deprecation",
+            "channel": "removed",
             "removed_in": "3.0",
             "owner": "#507",
-            "deprecation_id": "cli.coverage_merge.min_response_coverage"
+            "deprecation_id": null
         },
         "--min-sdk-exercise-coverage": {
             "surface": "cli-flag",
             "replacement": "--min-coverage=\"sdk_exercise=…\"",
-            "channel": "deprecation",
+            "channel": "removed",
             "removed_in": "3.0",
             "owner": "#507",
-            "deprecation_id": "cli.coverage_merge.min_sdk_exercise_coverage"
+            "deprecation_id": null
         },
         "--min-coverage-strict": {
             "surface": "cli-flag",
             "replacement": "--min-coverage=\"strict\"",
-            "channel": "deprecation",
+            "channel": "removed",
             "removed_in": "3.0",
             "owner": "#507",
-            "deprecation_id": "cli.coverage_merge.min_coverage_strict"
+            "deprecation_id": null
         },
         "--baseline-file": {
             "surface": "cli-flag",
             "replacement": "--baseline=\"violations=…\"",
-            "channel": "deprecation",
+            "channel": "removed",
             "removed_in": "3.0",
             "owner": "#507",
-            "deprecation_id": "cli.coverage_merge.baseline_file"
+            "deprecation_id": null
         },
         "--coverage-baseline-file": {
             "surface": "cli-flag",
             "replacement": "--baseline=\"coverage=…\"",
-            "channel": "deprecation",
+            "channel": "removed",
             "removed_in": "3.0",
             "owner": "#507",
-            "deprecation_id": "cli.coverage_merge.coverage_baseline_file"
+            "deprecation_id": null
         },
         "--coverage-baseline-stale": {
             "surface": "cli-flag",
             "replacement": "--baseline-stale=\"coverage=…\"",
-            "channel": "deprecation",
+            "channel": "removed",
             "removed_in": "3.0",
             "owner": "#507",
-            "deprecation_id": "cli.coverage_merge.coverage_baseline_stale"
+            "deprecation_id": null
         },
         "--strict-required": {
             "surface": "cli-flag",
             "replacement": "--strict-required=\"run=…,per_call=…\"",
-            "channel": "deprecation",
+            "channel": "removed",
             "removed_in": "3.0",
             "owner": "#507",
-            "deprecation_id": "cli.coverage_merge.strict_required",
+            "deprecation_id": null,
             "$comment": "The flag name survives; its bare value form does not. A consumer passing the v2 value needs the notice."
         },
         "--strict-additional-properties": {
             "surface": "cli-flag",
             "replacement": "--strict-additional-properties=\"run=…,per_call=…\"",
-            "channel": "deprecation",
+            "channel": "removed",
             "removed_in": "3.0",
             "owner": "#507",
-            "deprecation_id": "cli.coverage_merge.strict_additional_properties",
+            "deprecation_id": null,
             "$comment": "Same as --strict-required: the name survives, the bare value form does not."
         },
         "--specs": {
             "surface": "cli-flag",
             "replacement": "--spec-name",
-            "channel": "deprecation",
+            "channel": "removed",
             "removed_in": "3.0",
             "owner": "#507",
-            "deprecation_id": "cli.coverage_merge.specs"
+            "deprecation_id": null
         },
         "--strip-prefixes": {
             "surface": "cli-flag",
             "replacement": "--strip-prefix",
-            "channel": "deprecation",
+            "channel": "removed",
             "removed_in": "3.0",
             "owner": "#507",
-            "deprecation_id": "cli.coverage_merge.strip_prefixes"
+            "deprecation_id": null
         },
         "--output": {
             "surface": "cli-flag",
             "replacement": "--output-dir",
-            "channel": "deprecation",
+            "channel": "removed",
             "removed_in": "3.0",
             "owner": "#507",
-            "deprecation_id": "cli.stubs.output",
+            "deprecation_id": null,
             "$comment": "gesso stubs and the gesso:stubs Artisan command: it names a directory, so v3 spells it --output-dir."
         },
         "OPENAPI_VALIDATION_OUTPUT": {

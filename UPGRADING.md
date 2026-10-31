@@ -20,7 +20,34 @@ your suite with deprecations visible: every removal below emitted a
 
 ### CLI flags and exit codes
 
-*Pending.*
+Each removed spelling is now a usage error (exit `2`) whose message names the
+replacement, for example
+`Unknown argument(s): --specs (removed in Gesso 3.0; use --spec-name)`.
+
+| Command | Removed in 3.0 | Use instead |
+| --- | --- | --- |
+| `coverage:merge` | `--specs=<a,b>` | `--spec-name=<name>` (repeatable, comma-accepting) |
+| `coverage:merge` | `--strip-prefixes=<a,b>` | `--strip-prefix=<prefix>` (repeatable, comma-accepting) |
+| `coverage:merge` | `--json-output=<path>` | `--report=json:<path>` |
+| `coverage:merge` | `--junit-output=<path>` | `--report=junit:<path>` |
+| `coverage:merge` | `--html-output=<path>` | `--report=html:<path>` |
+| `coverage:merge` | `--console-output=<mode>` | `--console-report=<mode>` |
+| `coverage:merge` | `--min-endpoint-coverage=<pct>` | `--min-coverage="endpoint=<pct>"` |
+| `coverage:merge` | `--min-response-coverage=<pct>` | `--min-coverage="response=<pct>"` |
+| `coverage:merge` | `--min-sdk-exercise-coverage=<pct>` | `--min-coverage="sdk_exercise=<pct>"` |
+| `coverage:merge` | `--min-coverage-strict` | `--min-coverage="strict"` |
+| `coverage:merge` | `--baseline-file=<path>` | `--baseline="violations=<path>"` |
+| `coverage:merge` | `--coverage-baseline-file=<path>` | `--baseline="coverage=<path>"` |
+| `coverage:merge` | `--coverage-baseline-stale=<mode>` | `--baseline-stale="coverage=<mode>"` |
+| `coverage:merge` | `--strict-required=<mode>` | `--strict-required="run=<mode>"` |
+| `coverage:merge` | `--strict-additional-properties=<mode>` | `--strict-additional-properties="run=<mode>"` |
+| `stubs`, `gesso:stubs` | `--output=<dir>` | `--output-dir=<dir>` |
+| `coverage:merge` | exit `1` when a sidecar, report, or baseline file cannot be read or written | exit `2`; a check for any non-zero exit needs no change |
+| `coverage:merge` | an unknown argument ignored with a `[Gesso] WARNING` | rejected with exit `2`, as `doctor`, `coverage:gate`, and `stubs` already did |
+
+A merge with several sink or threshold flags folds into one grouped flag:
+`--min-endpoint-coverage=80 --min-coverage-strict` becomes
+`--min-coverage="endpoint=80,strict"`. See [`docs/cli.md`](docs/cli.md#removed-flags).
 
 ### Coverage sidecars
 
@@ -299,7 +326,7 @@ behavior under test.
 The old CLI flag spellings keep working until 3.0; each writes one
 `[Gesso deprecation]` line to stderr, and `coverage:merge` counts its own in
 the summary line. Passing an old and a new spelling of the same setting is a
-usage error. See [Renamed flags](docs/cli.md#renamed-flags).
+usage error. See [Removed flags](docs/cli.md#removed-flags).
 
 The PHPUnit parameters keep working, and an XML value still wins over
 `gesso.php`; move each one to its key in a root `gesso.php` (see

@@ -36,10 +36,12 @@ final class ArgvParser
      * @param list<string> $values kept as the raw string; a repeat overwrites
      * @param array<int|string, string> $lists comma-separated; blanks dropped, repeats accumulate. A string key is the
      *                                         flag spelling when it differs from the option name (`'spec' => 'specs'`)
+     * @param array<string, string> $removed v2 spellings Gesso 3.0 removed, by option name, and the flag replacing
+     *                                       each; typing one is an invalid option that names its replacement
      *
      * @return array<string, mixed>
      */
-    public static function parse(array $argv, array $flags = [], array $values = [], array $lists = []): array
+    public static function parse(array $argv, array $flags = [], array $values = [], array $lists = [], array $removed = []): array
     {
         $options = [];
         $listKeys = [];
@@ -71,12 +73,22 @@ final class ArgvParser
                 $options[$listKeys[$name]] = [...$options[$listKeys[$name]], ...self::csv($value)];
             } elseif (in_array($name, $values, true)) {
                 $options[$name] = $value;
+            } elseif (isset($removed[$name])) {
+                $options['invalid_options'][] = self::removed('--' . str_replace('_', '-', $name), $removed[$name]);
             } else {
                 $options['invalid_options'][] = '--' . str_replace('_', '-', $name);
             }
         }
 
         return $options;
+    }
+
+    /**
+     * How an invalid-options list names a v2 spelling Gesso 3.0 removed.
+     */
+    public static function removed(string $flag, string $replacement): string
+    {
+        return "{$flag} (removed in Gesso 3.0; use {$replacement})";
     }
 
     /**

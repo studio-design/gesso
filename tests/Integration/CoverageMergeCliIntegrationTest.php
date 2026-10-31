@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Tests\Integration;
 
-use const JSON_THROW_ON_ERROR;
-
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Studio\Gesso\Coverage\CoverageMergeCommand;
@@ -24,7 +22,6 @@ use function file_get_contents;
 use function file_put_contents;
 use function glob;
 use function is_resource;
-use function json_decode;
 use function mkdir;
 use function proc_close;
 use function proc_open;
@@ -33,7 +30,6 @@ use function rmdir;
 use function sprintf;
 use function str_replace;
 use function stream_get_contents;
-use function substr_count;
 use function sys_get_temp_dir;
 use function trim;
 use function uniqid;
@@ -115,7 +111,7 @@ class CoverageMergeCliIntegrationTest extends TestCase
 
         [$exit, $stdout, $stderr] = $this->runCli([
             '--spec-base-path=' . $this->repoRoot . '/tests/fixtures/specs',
-            '--specs=petstore-3.0',
+            '--spec-name=petstore-3.0',
             '--sidecar-dir=' . $this->sidecarDir,
             '--output-file=' . $this->outputFile,
         ]);
@@ -132,7 +128,7 @@ class CoverageMergeCliIntegrationTest extends TestCase
     {
         [$exit, , $stderr] = $this->runCli([
             '--spec-base-path=' . $this->repoRoot . '/tests/fixtures/specs',
-            '--specs=petstore-3.0',
+            '--spec-name=petstore-3.0',
             '--sidecar-dir=' . $this->sidecarDir,
         ]);
 
@@ -141,28 +137,21 @@ class CoverageMergeCliIntegrationTest extends TestCase
     }
 
     #[Test]
-    public function bin_writes_deprecations_and_unknown_flags_to_stderr_not_into_the_report(): void
+    public function bin_rejects_a_removed_v2_flag_and_names_its_replacement(): void
     {
-        OpenApiSpecLoader::configure($this->repoRoot . '/tests/fixtures/specs');
-        OpenApiCoverageTracker::recordResponse('petstore-3.0', 'GET', '/v1/pets', '200', 'application/json', schemaValidated: true);
-        CoverageSidecarWriter::write($this->sidecarDir, '1', OpenApiCoverageTracker::exportState());
-        OpenApiCoverageTracker::reset();
-        OpenApiSpecLoader::reset();
-
         [$exit, $stdout, $stderr] = $this->runCli([
             '--spec-base-path=' . $this->repoRoot . '/tests/fixtures/specs',
             '--specs=petstore-3.0',
             '--sidecar-dir=' . $this->sidecarDir,
-            '--format=json',
             '--min-endpont-coverage=90',
         ]);
 
-        $this->assertSame(0, $exit, $stderr);
-        $this->assertIsArray(json_decode($stdout, true, flags: JSON_THROW_ON_ERROR));
-        $this->assertSame(1, substr_count($stderr, "[Gesso deprecation] The CLI flag '--specs' is deprecated."));
-        $this->assertStringContainsString('[Gesso] WARNING: ignoring unknown argument --min-endpont-coverage', $stderr);
-        // The merge's own residual line counts the flag, so "no line" still means "ready for 3.0".
-        $this->assertStringContainsString('cli.coverage_merge.specs (1)', $stderr);
+        $this->assertSame(2, $exit);
+        $this->assertSame('', $stdout);
+        $this->assertStringContainsString(
+            '[Gesso] Unknown argument(s): --specs (removed in Gesso 3.0; use --spec-name), --min-endpont-coverage',
+            $stderr,
+        );
     }
 
     #[Test]
@@ -174,19 +163,15 @@ class CoverageMergeCliIntegrationTest extends TestCase
         $this->assertSame('', $stderr);
         // The bin shim must route --help to the canonical usage text …
         $this->assertSame(CoverageMergeCommand::usage(), $stdout);
-        // … and the v1.x CLI compatibility policy requires every v1.9 help
+        // … and the v3.x CLI compatibility policy requires every v3.0 help
         // line (flags, wording) to survive. New flags may be appended, so
         // this is containment, not equality, against the frozen capture.
-        $v19Help = str_replace(
-            'openapi-coverage-merge',
-            'gesso coverage:merge',
-            (string) file_get_contents($this->repoRoot . '/tests/fixtures/compatibility/v1.9-openapi-coverage-merge-help.txt'),
-        );
-        foreach (explode("\n", $v19Help) as $line) {
+        $v3Help = (string) file_get_contents($this->repoRoot . '/tests/fixtures/compatibility/v3-gesso-coverage-merge-help.txt');
+        foreach (explode("\n", $v3Help) as $line) {
             if (trim($line) === '') {
                 continue;
             }
-            $this->assertStringContainsString($line, $stdout, 'v1.9 help line must be retained');
+            $this->assertStringContainsString($line, $stdout, 'v3 help line must be retained');
         }
     }
 
@@ -226,7 +211,7 @@ class CoverageMergeCliIntegrationTest extends TestCase
 
         [$exit] = $this->runCli([
             '--spec-base-path=' . $this->repoRoot . '/tests/fixtures/specs',
-            '--specs=petstore-3.0',
+            '--spec-name=petstore-3.0',
             '--sidecar-dir=' . $this->sidecarDir,
             '--output-file=' . $this->outputFile,
             '--no-cleanup',
@@ -237,17 +222,17 @@ class CoverageMergeCliIntegrationTest extends TestCase
     }
 
     #[Test]
-    public function bin_exits_one_on_corrupt_sidecar(): void
+    public function bin_exits_two_on_corrupt_sidecar(): void
     {
         file_put_contents($this->sidecarDir . '/part-1-9999.json', '{not json');
 
         [$exit, , $stderr] = $this->runCli([
             '--spec-base-path=' . $this->repoRoot . '/tests/fixtures/specs',
-            '--specs=petstore-3.0',
+            '--spec-name=petstore-3.0',
             '--sidecar-dir=' . $this->sidecarDir,
         ]);
 
-        $this->assertSame(1, $exit);
+        $this->assertSame(2, $exit);
         $this->assertStringContainsString('FATAL', $stderr);
         $this->assertStringContainsString('failed to decode', $stderr);
     }
@@ -272,7 +257,7 @@ class CoverageMergeCliIntegrationTest extends TestCase
 
         [$exit, , $stderr] = $this->runCli([
             '--spec-base-path=' . $this->repoRoot . '/tests/fixtures/specs',
-            '--specs=petstore-3.0',
+            '--spec-name=petstore-3.0',
             '--sidecar-dir=' . $this->sidecarDir,
         ]);
 
@@ -295,10 +280,10 @@ class CoverageMergeCliIntegrationTest extends TestCase
 
         [$exit, $stdout, $stderr] = $this->runCli([
             '--spec-base-path=' . $this->repoRoot . '/tests/fixtures/specs',
-            '--specs=under-described',
+            '--spec-name=under-described',
             '--sidecar-dir=' . $this->sidecarDir,
             '--output-file=' . $this->outputFile,
-            '--strict-required=fail',
+            '--strict-required=run=fail',
         ]);
 
         $this->assertSame(1, $exit, "stdout: {$stdout}\nstderr: {$stderr}");

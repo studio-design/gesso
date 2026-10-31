@@ -35,12 +35,12 @@ These rules apply to all four:
   `Unsupported --format=<value>.`, then the usage text.
 - The parent directory of `--output-file` must already exist. Gesso does not
   create it, and the other report sinks work the same way.
-- On `doctor`, `coverage:gate` and `stubs`, an `--output-file` that cannot be
-  written is a usage error: exit `2`, the message
+- An `--output-file` that cannot be written exits `2`. On `doctor`,
+  `coverage:gate` and `stubs` the message is
   `Cannot write --output-file: <path>`, then the usage text. On
   `coverage:merge` the failure is reported as
-  `[OpenAPI Coverage] FATAL: Failed to write … report to …` and exits `1`, the
-  same as its other report files.
+  `[OpenAPI Coverage] FATAL: Failed to write … report to …`, the same as its
+  other report files.
 - `text` is the command's normal stdout rendering. On `coverage:merge` that
   is the console summary, and `--console-report` controls it.
 
@@ -120,15 +120,15 @@ path, is a usage error (exit `2`); an absent `./gesso.php` changes nothing.
 | `coverage:merge` | the `spec.*`, `coverage.*`, `strict.*.run`, `baseline.*` and `baseline_stale.coverage` options | [Parallel runners](parallel.md) |
 | `coverage:gate` | `--coverage` (from `coverage.report_output.json`) | [Coverage gate](coverage-gate.md) |
 
-## Renamed flags
+## Removed flags
 
-Gesso 3.0 renames some flags ([ADR 0005](adr/0005-v3-configuration-and-cli-naming.md)).
-The v3 spellings already work. The old spellings still work in v2. Each one
-writes a single `[Gesso deprecation]` line to stderr per run, and the merge's
-end-of-run deprecation summary counts it. Pass one spelling or the other:
-giving both for the same setting is a usage error (exit `2`).
+Gesso 3.0 removed the v2 spellings below ([ADR 0005](adr/0005-v3-configuration-and-cli-naming.md)).
+Gesso 2.9 accepted them with a `[Gesso deprecation]` line on stderr. Gesso 3.0
+rejects them as a usage error (exit `2`), and the message names the
+replacement, for example
+`Unknown argument(s): --specs (removed in Gesso 3.0; use --spec-name)`.
 
-| Command | v2 spelling (deprecated) | v3 spelling |
+| Command | Removed v2 spelling | v3 spelling |
 |---|---|---|
 | `coverage:merge` | `--specs=<a,b>` | `--spec-name=<name>`, repeatable or comma-separated |
 | `coverage:merge` | `--strip-prefixes=<a,b>` | `--strip-prefix=<prefix>`, repeatable or comma-separated |
@@ -152,10 +152,8 @@ workers check per-call findings. The PHPUnit extension does not accept this
 `strict_additional_properties*` pair). `--baseline-stale` takes only `coverage`, because the
 merge does not evaluate the staleness of the violation baseline.
 
-`coverage:merge` ignores an argument it does not recognise, and writes
-`[Gesso] WARNING: ignoring unknown argument <arg>; …` to stderr, without
-changing the exit code. Gesso 3.0 rejects it with exit `2`, as the other
-three commands already do.
+Every command rejects an argument it does not recognise with exit `2`. Before
+Gesso 3.0, `coverage:merge` ignored one with a warning.
 
 ## Exit codes
 
@@ -165,16 +163,13 @@ usage error. What counts as `1` differs by command:
 | Command | `0` | `1` | `2` |
 |---|---|---|---|
 | `doctor` | Every spec is compatible. Warnings may be present. | A spec cannot be loaded or enforced. | Invalid usage, or an unwritable `--output-file`. |
-| `coverage:merge` | The merge completed. Warnings may be on stderr. | A gate failed (threshold, strict mode, baseline, or expected shard count), a sidecar could not be read, or a report could not be written. | Invalid usage. |
+| `coverage:merge` | The merge completed. Warnings may be on stderr. | A gate failed (threshold, strict mode, baseline, or expected shard count), or a worker wrote a failure marker. | Invalid usage, or an I/O failure (see below). |
 | `coverage:gate` | Every changed operation is covered. | A changed operation has a response that no test validated. | Invalid usage, an unreadable spec or coverage file, or an unwritable `--output-file`. |
-| `stubs` | Stubs were written, or there was nothing left to stub. | — | Invalid usage, an unreadable input, or an output file that cannot be written. |
+| `stubs` | Stubs were written, or there was nothing left to stub. | Reserved; not returned. | Invalid usage, an unreadable input, or an output file that cannot be written. |
 
-Gesso 3.0 moves the I/O failures of `coverage:merge` from `1` to `2`, so all
-four commands handle them the same way. See
-[ADR 0005](adr/0005-v3-configuration-and-cli-naming.md). An I/O failure is a
-sidecar that cannot be read or decoded, a report or baseline file that cannot
-be written, a coverage baseline that cannot be loaded, or a sidecar directory
-that cannot be inspected for cleanup. In 2.x these still exit `1`, and the
-first one in a run writes a `[Gesso deprecation]` line to stderr naming the
-change. A failed gate, a worker failure marker, and a shard-count mismatch
-stay `1` in 3.0.
+An I/O failure of `coverage:merge` is a sidecar that cannot be read, a report
+or baseline file that cannot be written, a coverage baseline that cannot be
+loaded, or a sidecar directory that cannot be listed or inspected for cleanup.
+It exits `2`, as in the other commands, even when the failed step also feeds a
+gate. Gesso 2.x exited `1` for these. A failed gate, a worker failure marker,
+and a shard-count mismatch exit `1`.
