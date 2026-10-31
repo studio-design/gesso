@@ -301,6 +301,7 @@ export default defineConfig({
       {
         text: 'Migration',
         items: [
+          { text: 'Prepare for Gesso 3.0', link: '/migration/v3' },
           { text: 'Prepare for Gesso 2.0', link: '/migration/v2' },
           { text: 'From other validators', link: '/migration/from-other-validators' }
         ]

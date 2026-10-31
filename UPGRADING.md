@@ -7,6 +7,41 @@ full record.
 Sections are ordered newest-first. If you are jumping multiple minors,
 read each intermediate section in order — behavioural changes compose.
 
+## From v2.9.x to v3.0.0
+
+v3.0 removes the surfaces deprecated during v2. Upgrade to v2.9 first and run
+your suite with deprecations visible: every removal below emitted a
+`[Gesso deprecation]` notice there, except rows marked *static only*. See
+[`docs/migration/v3.md`](docs/migration/v3.md) for the step-by-step guide.
+
+### Configuration
+
+*Pending.*
+
+### CLI flags and exit codes
+
+*Pending.*
+
+### Coverage sidecars
+
+*Pending.*
+
+### Enum binding
+
+*Pending.*
+
+### Contract-check aliases
+
+*Pending.*
+
+### PHPUnit dependency
+
+*Pending.*
+
+### Deprecated helper methods
+
+*Pending.*
+
 ## Body-validation reliability (2.7.0)
 
 Adapters now preserve the distinction between top-level JSON `{}` and `[]`.
