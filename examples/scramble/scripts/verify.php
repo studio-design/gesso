@@ -124,8 +124,8 @@ try {
         echo json_encode($app->make('config')->get('gesso'), JSON_THROW_ON_ERROR);
         PHP);
     $cached = \json_decode(runScenario('cached-config', ['build/check-config.php']), true, flags: \JSON_THROW_ON_ERROR);
-    ensure($cached['spec_base_path'] === $workspace . '/openapi', 'Cached spec path must come from root gesso.php');
-    ensure($cached['strip_prefixes'] === ['/api'], 'Cached strip prefix must come from root gesso.php');
+    ensure($cached['spec']['base_path'] === $workspace . '/openapi', 'Cached spec path must come from root gesso.php');
+    ensure($cached['spec']['strip_prefixes'] === ['/api'], 'Cached strip prefix must come from root gesso.php');
     runScenario('config-clear', [...$artisan, 'config:clear']);
 } finally {
     \file_put_contents($workspace . '/gesso.php', $sharedConfig);
