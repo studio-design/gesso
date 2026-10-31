@@ -116,13 +116,18 @@ Gesso 3.0 merges only sidecars with `envelopeVersion: 10`, the envelope every
 worker has written since 2.7 (#505). The 2.x merge also read the legacy
 envelopes 2–9 (written by Gesso 1.9–2.6) and the bare coverage state with no
 `envelopeVersion`, with a `[Gesso deprecation]` notice since 2.9.0. The 3.0
-merge rejects them: `coverage:merge` fails with
-`[OpenAPI Coverage] FATAL: invalid sidecar payload: Unsupported sidecar envelope: got envelopeVersion 6, expected envelopeVersion 10. …`
-and exit `1`.
+merge rejects them, exiting `1` with a message that names the writing release
+and the fix:
 
-To migrate, run the workers and `coverage:merge` on the same Gesso version, and
-re-run the suite after upgrading instead of merging sidecars an older version
-left behind (for example, artifacts restored from an earlier CI run). See
+```text
+[OpenAPI Coverage] FATAL: invalid sidecar payload: Sidecar envelope version 6
+was written by a Gesso 1.9-2.6 worker; Gesso 3 reads envelopeVersion 10 only. …
+```
+
+To migrate, install the same Gesso version in the worker and merge steps,
+delete any sidecar directory a v2 run left behind (for example, artifacts
+restored from an earlier CI run), and re-run the parallel suite. Old sidecars
+cannot be converted. See
 [versioned sidecar compatibility](docs/versioning.md#versioned-sidecar-compatibility).
 
 ### Enum binding

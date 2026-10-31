@@ -186,8 +186,8 @@ final class CoverageMergeCommandDeprecationsTest extends TestCase
         $exit = $this->command($stderr)->run($this->options());
 
         $this->assertSame(1, $exit);
-        $this->assertStringContainsString('[OpenAPI Coverage] FATAL: invalid sidecar payload: Unsupported sidecar envelope', $stderr);
-        $this->assertStringContainsString('expected envelopeVersion 10', $stderr);
+        $this->assertStringContainsString('[OpenAPI Coverage] FATAL: invalid sidecar payload: ', $stderr);
+        $this->assertStringContainsString('Gesso 3 reads envelopeVersion 10 only.', $stderr);
         $this->assertStringNotContainsString('[Gesso deprecation]', $stderr);
         $this->assertSame([], Deprecations::counts());
     }

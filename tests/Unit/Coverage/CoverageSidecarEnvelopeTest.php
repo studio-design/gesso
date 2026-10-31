@@ -54,14 +54,15 @@ class CoverageSidecarEnvelopeTest extends TestCase
         for ($version = 2; $version <= 9; $version++) {
             yield 'legacy envelope ' . $version => [
                 ['envelopeVersion' => $version, 'coverage' => $coverage, 'strictRequired' => ['version' => 2, 'observations' => []]],
-                'got envelopeVersion ' . $version . ',',
+                'Sidecar envelope version ' . $version . ' was written by a Gesso 1.9-2.6 worker;',
             ];
         }
 
-        yield 'bare v1 coverage state' => [$coverage, 'got a bare v1 coverage state with no envelopeVersion,'];
-        yield 'newer envelope' => [['envelopeVersion' => 11, 'coverage' => $coverage], 'got envelopeVersion 11,'];
-        yield 'string envelope version' => [['envelopeVersion' => '10', 'coverage' => $coverage], 'got envelopeVersion string,'];
-        yield 'unrecognised shape' => [['foo' => 'bar'], 'got no envelopeVersion,'];
+        yield 'bare v1 coverage state' => [$coverage, 'This sidecar is a bare coverage state with no envelopeVersion, written by a Gesso 1.x worker;'];
+        yield 'newer envelope' => [['envelopeVersion' => 11, 'coverage' => $coverage], 'Sidecar envelope version 11 was written by a newer Gesso worker;'];
+        yield 'string envelope version' => [['envelopeVersion' => '10', 'coverage' => $coverage], 'Unsupported sidecar envelopeVersion of type string;'];
+        yield 'unrecognised shape' => [['foo' => 'bar'], 'Unrecognised sidecar payload with no envelopeVersion;'];
+        yield 'envelope 1' => [['envelopeVersion' => 1, 'coverage' => $coverage], 'Unsupported sidecar envelope version 1;'];
     }
 
     #[Test]
@@ -155,8 +156,9 @@ class CoverageSidecarEnvelopeTest extends TestCase
             $this->fail('expected the payload to be rejected');
         } catch (InvalidArgumentException $e) {
             $this->assertStringContainsString($found, $e->getMessage());
-            $this->assertStringContainsString('expected envelopeVersion 10', $e->getMessage());
-            $this->assertStringContainsString('same Gesso version as the merge step', $e->getMessage());
+            $this->assertStringContainsString('Gesso 3 reads envelopeVersion 10 only.', $e->getMessage());
+            $this->assertStringContainsString('install the same version in both', $e->getMessage());
+            $this->assertStringContainsString('Old sidecars cannot be converted.', $e->getMessage());
         }
     }
 }

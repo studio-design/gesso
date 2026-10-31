@@ -140,9 +140,11 @@ final class CoverageSidecarEnvelope
     {
         if (($payload['envelopeVersion'] ?? null) !== self::ENVELOPE_VERSION) {
             throw new InvalidArgumentException(sprintf(
-                'Unsupported sidecar envelope: got %s, expected envelopeVersion %d. '
-                . 'Regenerate the sidecars by re-running the suite with the same Gesso version as the merge step.',
-                self::describeVersion($payload),
+                '%s; Gesso 3 reads envelopeVersion %d only. The worker and merge steps are running '
+                . 'different Gesso versions: install the same version in both (check with '
+                . '`composer show studio-design/gesso`), delete the sidecar directory, and re-run the '
+                . 'parallel suite to regenerate the sidecars. Old sidecars cannot be converted.',
+                self::describeOrigin($payload),
                 self::ENVELOPE_VERSION,
             ));
         }
@@ -157,18 +159,30 @@ final class CoverageSidecarEnvelope
         ];
     }
 
-    /** @param array<string, mixed> $payload */
-    private static function describeVersion(array $payload): string
+    /**
+     * Name the writer behind a rejected payload: the operator's problem is a
+     * split fleet, not the envelope number.
+     *
+     * @param array<string, mixed> $payload
+     */
+    private static function describeOrigin(array $payload): string
     {
         if (!array_key_exists('envelopeVersion', $payload)) {
             return array_key_exists('version', $payload) && array_key_exists('specs', $payload)
-                ? 'a bare v1 coverage state with no envelopeVersion'
-                : 'no envelopeVersion';
+                ? 'This sidecar is a bare coverage state with no envelopeVersion, written by a Gesso 1.x worker'
+                : 'Unrecognised sidecar payload with no envelopeVersion';
         }
 
         $version = $payload['envelopeVersion'];
+        if (!is_int($version)) {
+            return sprintf('Unsupported sidecar envelopeVersion of type %s', get_debug_type($version));
+        }
 
-        return 'envelopeVersion ' . (is_int($version) ? (string) $version : get_debug_type($version));
+        return match (true) {
+            $version >= 2 && $version <= 9 => sprintf('Sidecar envelope version %d was written by a Gesso 1.9-2.6 worker', $version),
+            $version > self::ENVELOPE_VERSION => sprintf('Sidecar envelope version %d was written by a newer Gesso worker', $version),
+            default => sprintf('Unsupported sidecar envelope version %d', $version),
+        };
     }
 
     /**

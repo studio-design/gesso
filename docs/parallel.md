@@ -194,7 +194,7 @@ baseline-generation run (`GESSO_BASELINE_GENERATE=1`) writes `baseline`.
 The merge reader accepts `envelopeVersion: 10` only. A sidecar with any other
 envelope version, or a bare coverage state with no `envelopeVersion` (both
 written by Gesso 2.x and earlier), fails the merge with an error naming
-envelope 10. Sidecars are per-run artifacts: run the workers and the merge step
+the writing release and envelope 10. Sidecars are per-run artifacts: run the workers and the merge step
 on the same Gesso version, and re-run the suite after an upgrade instead of
 merging sidecars left by the old one. A missing half is reported, not treated as
 empty: a strict SDK exercise threshold requires every worker to carry SDK

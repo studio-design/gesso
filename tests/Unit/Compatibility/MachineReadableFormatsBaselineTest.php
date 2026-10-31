@@ -156,7 +156,7 @@ final class MachineReadableFormatsBaselineTest extends TestCase
                 CoverageSidecarEnvelope::parse($payload);
                 $this->fail('expected the v1.9 sidecar to be rejected');
             } catch (InvalidArgumentException $e) {
-                $this->assertStringContainsString('expected envelopeVersion 10', $e->getMessage());
+                $this->assertStringContainsString('Gesso 3 reads envelopeVersion 10 only.', $e->getMessage());
             }
         }
     }
