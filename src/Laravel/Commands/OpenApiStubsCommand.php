@@ -28,7 +28,7 @@ use function trim;
 
 /**
  * Artisan front end for {@see StubsCommand}: identical behaviour, but the spec
- * path comes from `gesso.spec_base_path` + `gesso.default_spec` so a Laravel
+ * path comes from `gesso.spec.base_path` + `gesso.spec.default` so a Laravel
  * user does not have to repeat what the published config already states.
  *
  * @internal Registered by GessoServiceProvider. Use the `gesso:stubs` Artisan
@@ -108,7 +108,7 @@ final class OpenApiStubsCommand extends Command
 
     /**
      * A `--spec` that looks like a path is used as-is; otherwise it is a spec
-     * name resolved against `gesso.spec_base_path`, the way every other
+     * name resolved against `gesso.spec.base_path`, the way every other
      * Laravel entry point resolves one.
      *
      * @return array{string, string}

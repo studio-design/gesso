@@ -22,6 +22,7 @@ use Studio\Gesso\Baseline\InvalidBaselineConfigurationException;
 use Studio\Gesso\Baseline\ViolationBaselineCollector;
 use Studio\Gesso\Baseline\ViolationBaselineEnforcer;
 use Studio\Gesso\Baseline\ViolationBaselineFile;
+use Studio\Gesso\Config\ConfigurationBridge;
 use Studio\Gesso\Config\InvalidGessoConfigurationException;
 use Studio\Gesso\Coverage\CoverageSidecarWriter;
 use Studio\Gesso\Coverage\CoverageThresholdEvaluator;
@@ -35,7 +36,6 @@ use Studio\Gesso\Exception\EnumDriftException;
 use Studio\Gesso\Exception\InvalidOpenApiSpecException;
 use Studio\Gesso\Exception\SpecFileNotFoundException;
 use Studio\Gesso\Internal\ArgvParser;
-use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\Internal\Diagnostics;
 use Studio\Gesso\Internal\EnumScanner;
 use Studio\Gesso\Internal\PartialRunDecision;
@@ -158,13 +158,6 @@ final class OpenApiCoverageExtension implements Extension
             $parameters = ExtensionParameters::load($parameters);
         }
 
-        // Issue #170: secondary base path used only for
-        // #[BoundToOpenApiEnum] resolution. Read independently of
-        // spec_base_path so that an orphaned `enum_spec_base_path`
-        // (e.g. a typo in the spec_base_path attribute) is detected as a
-        // misconfiguration instead of being silently dropped together.
-        $enumBasePath = self::resolveEnumSpecBasePathParameter($parameters, $githubSummaryPath);
-
         if ($parameters->has('spec_base_path')) {
             $basePath = $parameters->get('spec_base_path');
             if (!str_starts_with($basePath, '/')) {
@@ -177,9 +170,6 @@ final class OpenApiCoverageExtension implements Extension
             }
 
             OpenApiSpecLoader::configure($basePath, $stripPrefixes);
-            if ($enumBasePath !== null) {
-                OpenApiSpecLoader::setEnumBasePath($enumBasePath);
-            }
         } elseif ($parameters->has('strip_prefixes')) {
             OpenApiSpecLoader::setStripPrefixes($parameters->strings('strip_prefixes'));
         }
@@ -339,12 +329,12 @@ final class OpenApiCoverageExtension implements Extension
                 $baseline = ViolationBaselineFile::read($baselineFile);
             } catch (InvalidArgumentException $e) {
                 Diagnostics::stderr(
-                    "[Gesso] FATAL: baseline_file could not be loaded: {$e->getMessage()}\n"
+                    "[Gesso] FATAL: baseline.violations could not be loaded: {$e->getMessage()}\n"
                     . "  Action: generate it with `GESSO_BASELINE_GENERATE=1 vendor/bin/phpunit`, fix the path, or remove `baseline.violations` from gesso.php.\n",
                 );
 
                 throw new InvalidBaselineConfigurationException(
-                    'baseline_file could not be loaded: ' . $e->getMessage(),
+                    'baseline.violations could not be loaded: ' . $e->getMessage(),
                     previous: $e,
                 );
             }
@@ -640,12 +630,12 @@ final class OpenApiCoverageExtension implements Extension
             return CoverageBaselineFile::read($path);
         } catch (InvalidArgumentException $e) {
             Diagnostics::stderr(
-                "[Gesso] FATAL: coverage_baseline_file could not be loaded: {$e->getMessage()}\n"
+                "[Gesso] FATAL: baseline.coverage could not be loaded: {$e->getMessage()}\n"
                 . "  Action: generate it with `GESSO_BASELINE_GENERATE=1 vendor/bin/phpunit`, fix the path, or remove `baseline.coverage` from gesso.php.\n",
             );
 
             throw new InvalidBaselineConfigurationException(
-                'coverage_baseline_file could not be loaded: ' . $e->getMessage(),
+                'baseline.coverage could not be loaded: ' . $e->getMessage(),
                 previous: $e,
             );
         }
@@ -671,10 +661,10 @@ final class OpenApiCoverageExtension implements Extension
         if (!$hasBaselineFile) {
             $kind = $fileName === 'baseline_file' ? 'violations' : 'coverage';
             $reason = sprintf(
-                '%s is set but no `%s` baseline is configured. '
+                'baseline_stale.%s is set but no `baseline.%s` is configured. '
                 . 'Stale evaluation needs a baseline to compare against; set `baseline.%s` or remove `baseline_stale.%s` in gesso.php.',
-                $name,
-                $fileName,
+                $kind,
+                $kind,
                 $kind,
                 $kind,
             );
@@ -810,10 +800,10 @@ final class OpenApiCoverageExtension implements Extension
         if (!$configuration->hasDefaultTestSuite()) {
             if ($warnOnInertOptIn) {
                 Diagnostics::stderr(
-                    '[OpenAPI Coverage] WARNING: default_testsuite_as_full=true but phpunit.xml does not declare '
+                    '[OpenAPI Coverage] WARNING: phpunit.default_testsuite_as_full=true but phpunit.xml does not declare '
                     . 'a `defaultTestSuite` attribute on <phpunit>. The opt-in will be inert; partial-run '
                     . 'detection remains active. Either set `defaultTestSuite="..."` on <phpunit> or remove '
-                    . "`default_testsuite_as_full`.\n",
+                    . "`phpunit.default_testsuite_as_full` from gesso.php.\n",
                 );
             }
 
@@ -832,9 +822,9 @@ final class OpenApiCoverageExtension implements Extension
         if ($value === '') {
             if ($warnOnInertOptIn) {
                 Diagnostics::stderr(
-                    '[OpenAPI Coverage] WARNING: default_testsuite_as_full=true but phpunit.xml declares an '
+                    '[OpenAPI Coverage] WARNING: phpunit.default_testsuite_as_full=true but phpunit.xml declares an '
                     . 'empty `defaultTestSuite=""` attribute. The opt-in cannot match an empty default and '
-                    . "will be inert. Set a non-empty `defaultTestSuite` or remove `default_testsuite_as_full`.\n",
+                    . "will be inert. Set a non-empty `defaultTestSuite` or remove `phpunit.default_testsuite_as_full` from gesso.php.\n",
                 );
             }
 
@@ -842,70 +832,6 @@ final class OpenApiCoverageExtension implements Extension
         }
 
         return $value;
-    }
-
-    /**
-     * Read and validate the optional `enum_spec_base_path` parameter (issue
-     * #170). Returns the absolutised path or `null` when the parameter is
-     * absent (or set to whitespace-only, which is treated as absent so XML
-     * editing artefacts like a leading newline don't silently coerce the
-     * value to `getcwd()`).
-     *
-     * Detected misconfigurations are FATAL — a silent drop would defeat the
-     * fail-loud-on-misconfiguration policy this extension enforces:
-     *  - empty / whitespace value: rejected with a hint to remove the
-     *    parameter.
-     *  - set without `spec_base_path`: rejected because the loader's
-     *    `configure()` requires `spec_base_path` to be passed too, so an
-     *    orphaned `enum_spec_base_path` would never reach the loader.
-     */
-    private static function resolveEnumSpecBasePathParameter(
-        ExtensionParameters $parameters,
-        ?string $githubSummaryPath,
-    ): ?string {
-        if (!$parameters->has('enum_spec_base_path')) {
-            return null;
-        }
-
-        Deprecations::notice(
-            id: 'phpunit.enum_spec_base_path',
-            subject: "The PHPUnit config key 'enum_spec_base_path'",
-            replacement: 'none (delete the parameter: enum bindings resolve against components.schemas of the configured specs)',
-            removedIn: '3.0',
-        );
-
-        $raw = trim($parameters->get('enum_spec_base_path'));
-        if ($raw === '') {
-            $reason = 'enum_spec_base_path is set but empty. '
-                . 'Either provide a directory path or remove the parameter to fall back to spec_base_path.';
-            Diagnostics::stderr("[OpenAPI Enum Drift] FATAL: {$reason}\n");
-            Diagnostics::appendGithubStepSummaryEnumDriftBlock($githubSummaryPath, $reason, isFatal: true);
-
-            throw EnumBindingException::forConfig(
-                EnumBindingReason::EnumSpecBasePathOrphaned,
-                $reason,
-            );
-        }
-
-        if (!$parameters->has('spec_base_path')) {
-            $reason = 'enum_spec_base_path is set but spec_base_path is not. '
-                . 'enum_spec_base_path is a secondary root that complements spec_base_path; '
-                . 'the loader currently requires spec_base_path to be configured for any spec-name lookup. '
-                . "Set spec_base_path too, or remove enum_spec_base_path if you don't need it.";
-            Diagnostics::stderr("[OpenAPI Enum Drift] FATAL: {$reason}\n");
-            Diagnostics::appendGithubStepSummaryEnumDriftBlock($githubSummaryPath, $reason, isFatal: true);
-
-            throw EnumBindingException::forConfig(
-                EnumBindingReason::EnumSpecBasePathOrphaned,
-                $reason,
-            );
-        }
-
-        if (!str_starts_with($raw, '/')) {
-            $raw = getcwd() . '/' . $raw;
-        }
-
-        return $raw;
     }
 
     /**
@@ -965,16 +891,16 @@ final class OpenApiCoverageExtension implements Extension
         if (!is_dir($parentDir) && !@mkdir($parentDir, 0o777, true) && !is_dir($parentDir)) {
             $reason = sprintf(
                 '%s=%s: parent directory %s does not exist and could not be created. '
-                . 'Create it manually or point the parameter at a writable location.',
-                $name,
+                . 'Create it manually or point the setting at a writable location.',
+                ConfigurationBridge::PHPUNIT[$name][0],
                 $raw,
                 $parentDir,
             );
         } elseif (!is_writable($parentDir)) {
             $reason = sprintf(
                 '%s=%s: parent directory %s is not writable. '
-                . 'Fix its permissions or point the parameter at a writable location.',
-                $name,
+                . 'Fix its permissions or point the setting at a writable location.',
+                ConfigurationBridge::PHPUNIT[$name][0],
                 $raw,
                 $parentDir,
             );
@@ -1209,7 +1135,7 @@ final class OpenApiCoverageExtension implements Extension
         }
 
         if ($namespaces === []) {
-            $reason = 'enum_drift_enabled=true but enum_drift_scan_namespaces is empty.';
+            $reason = 'enum_drift.enabled is true but enum_drift.scan_namespaces is empty.';
             Diagnostics::stderr(
                 "[OpenAPI Enum Drift] FATAL: {$reason}\n"
                 . '  Action: provide one or more PSR-4 namespace prefixes '
@@ -1248,14 +1174,14 @@ final class OpenApiCoverageExtension implements Extension
 
         if ($reports === []) {
             // Common when a codebase has not bound any enum yet (must not
-            // fail) or when `enum_drift_scan_namespaces` is typo'd (the
+            // fail) or when `enum_drift.scan_namespaces` is typo'd (the
             // user wants to see it). A NOTE surfaces the typo without
             // breaking the first case.
             Diagnostics::stderr(
                 '[OpenAPI Enum Drift] NOTE: scan matched zero bound enums under '
                 . 'configured prefixes (' . implode(', ', $namespaces) . '): no #[BoundToOpenApiEnum] '
                 . 'and no components.schemas enum named after a class. '
-                . "Check enum_drift_scan_namespaces if you expected matches.\n",
+                . "Check enum_drift.scan_namespaces if you expected matches.\n",
             );
 
             return;

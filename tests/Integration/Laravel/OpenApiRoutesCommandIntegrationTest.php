@@ -33,13 +33,13 @@ final class OpenApiRoutesCommandIntegrationTest extends TestCase
         parent::setUp();
         OpenApiSpecLoader::reset();
         LegacyIdentity::resetForTesting();
-        config()->set('gesso.default_spec', 'route-parity');
-        config()->set('gesso.spec_base_path', dirname(__DIR__, 2) . '/fixtures/specs');
-        config()->set('gesso.strip_prefixes', ['/api']);
-        config()->set('gesso.route_parity.external_operation_ids', []);
-        config()->set('gesso.route_parity.external_openapi_paths', []);
-        config()->set('gesso.route_parity.excluded_route_names', []);
-        config()->set('gesso.specs', []);
+        config()->set('gesso.spec.default', 'route-parity');
+        config()->set('gesso.spec.base_path', dirname(__DIR__, 2) . '/fixtures/specs');
+        config()->set('gesso.spec.strip_prefixes', ['/api']);
+        config()->set('gesso.laravel.route_parity.external_operation_ids', []);
+        config()->set('gesso.laravel.route_parity.external_openapi_paths', []);
+        config()->set('gesso.laravel.route_parity.excluded_route_names', []);
+        config()->set('gesso.spec.names', []);
     }
 
     protected function tearDown(): void
@@ -213,8 +213,8 @@ final class OpenApiRoutesCommandIntegrationTest extends TestCase
     #[Test]
     public function documented_side_exclusions_are_loaded_from_config_and_merged_with_options(): void
     {
-        config()->set('gesso.route_parity.external_operation_ids', ['does-not-match']);
-        config()->set('gesso.route_parity.external_openapi_paths', ['/v1/miss*']);
+        config()->set('gesso.laravel.route_parity.external_operation_ids', ['does-not-match']);
+        config()->set('gesso.laravel.route_parity.external_openapi_paths', ['/v1/miss*']);
 
         $exitCode = Artisan::call('gesso:routes', [
             '--prefix' => 'api',
@@ -235,11 +235,11 @@ final class OpenApiRoutesCommandIntegrationTest extends TestCase
     #[Test]
     public function invalid_documented_side_exclusion_config_fails_loudly(): void
     {
-        config()->set('gesso.route_parity.external_operation_ids', 'forms.*');
+        config()->set('gesso.laravel.route_parity.external_operation_ids', 'forms.*');
 
         $this->assertSame(1, Artisan::call('gesso:routes'));
         $this->assertStringContainsString(
-            'gesso.route_parity.external_operation_ids must be an array of strings',
+            'gesso.laravel.route_parity.external_operation_ids must be an array of strings',
             Artisan::output(),
         );
     }
@@ -254,7 +254,7 @@ final class OpenApiRoutesCommandIntegrationTest extends TestCase
     #[DataProvider('provideAn_absolute_spec_base_path_is_used_verbatimCases')]
     public function an_absolute_spec_base_path_is_used_verbatim(string $basePath): void
     {
-        config()->set('gesso.spec_base_path', $basePath);
+        config()->set('gesso.spec.base_path', $basePath);
         $this->app->offsetUnset('path.base');
 
         $this->assertSame(1, Artisan::call('gesso:routes'));
@@ -266,7 +266,7 @@ final class OpenApiRoutesCommandIntegrationTest extends TestCase
     #[Test]
     public function a_relative_spec_base_path_is_resolved_under_the_application(): void
     {
-        config()->set('gesso.spec_base_path', 'openapi');
+        config()->set('gesso.spec.base_path', 'openapi');
         $this->app->offsetUnset('path.base');
 
         $this->assertSame(1, Artisan::call('gesso:routes'));
@@ -279,7 +279,7 @@ final class OpenApiRoutesCommandIntegrationTest extends TestCase
     #[Test]
     public function route_side_exclusions_are_loaded_from_config_and_merged_with_options(): void
     {
-        config()->set('gesso.route_parity.excluded_route_names', ['internal.*']);
+        config()->set('gesso.laravel.route_parity.excluded_route_names', ['internal.*']);
 
         $decoded = $this->routeParityJson(['--exclude-route' => ['undocumented']]);
 
@@ -289,7 +289,7 @@ final class OpenApiRoutesCommandIntegrationTest extends TestCase
     #[Test]
     public function configured_route_side_exclusions_apply_without_the_option(): void
     {
-        config()->set('gesso.route_parity.excluded_route_names', ['internal.*']);
+        config()->set('gesso.laravel.route_parity.excluded_route_names', ['internal.*']);
 
         $decoded = $this->routeParityJson([]);
 
@@ -300,8 +300,8 @@ final class OpenApiRoutesCommandIntegrationTest extends TestCase
     #[Test]
     public function the_spec_list_is_read_from_config_when_no_spec_option_is_passed(): void
     {
-        config()->set('gesso.specs', ['route-parity', 'route-parity-admin']);
-        config()->set('gesso.default_spec', 'does-not-exist');
+        config()->set('gesso.spec.names', ['route-parity', 'route-parity-admin']);
+        config()->set('gesso.spec.default', 'does-not-exist');
 
         $this->assertSame(['route-parity', 'route-parity-admin'], $this->routeParityJson([])['specs']);
     }
@@ -309,7 +309,7 @@ final class OpenApiRoutesCommandIntegrationTest extends TestCase
     #[Test]
     public function the_spec_option_replaces_the_configured_spec_list(): void
     {
-        config()->set('gesso.specs', ['route-parity', 'route-parity-admin']);
+        config()->set('gesso.spec.names', ['route-parity', 'route-parity-admin']);
 
         $this->assertSame(['route-parity'], $this->routeParityJson(['--spec' => ['route-parity']])['specs']);
     }
@@ -317,11 +317,11 @@ final class OpenApiRoutesCommandIntegrationTest extends TestCase
     #[Test]
     public function invalid_route_side_exclusion_config_fails_loudly(): void
     {
-        config()->set('gesso.route_parity.excluded_route_names', 'internal.*');
+        config()->set('gesso.laravel.route_parity.excluded_route_names', 'internal.*');
 
         $this->assertSame(1, Artisan::call('gesso:routes'));
         $this->assertStringContainsString(
-            'gesso.route_parity.excluded_route_names must be an array of strings',
+            'gesso.laravel.route_parity.excluded_route_names must be an array of strings',
             Artisan::output(),
         );
     }
@@ -329,10 +329,10 @@ final class OpenApiRoutesCommandIntegrationTest extends TestCase
     #[Test]
     public function invalid_specs_config_fails_loudly(): void
     {
-        config()->set('gesso.specs', 'front');
+        config()->set('gesso.spec.names', 'front');
 
         $this->assertSame(1, Artisan::call('gesso:routes'));
-        $this->assertStringContainsString('gesso.specs must be an array of strings', Artisan::output());
+        $this->assertStringContainsString('gesso.spec.names must be an array of strings', Artisan::output());
     }
 
     #[Test]

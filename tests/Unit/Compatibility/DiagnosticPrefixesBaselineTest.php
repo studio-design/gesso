@@ -36,9 +36,9 @@ use function token_get_all;
 final class DiagnosticPrefixesBaselineTest extends TestCase
 {
     #[Test]
-    public function diagnostic_prefixes_match_the_v2_inventory(): void
+    public function diagnostic_prefixes_match_the_v3_inventory(): void
     {
-        $fixture = $this->fixture('v2-diagnostic-prefixes.json');
+        $fixture = $this->fixture('v3-diagnostic-prefixes.json');
         $sources = $this->sourceFiles();
 
         // Discovery puts every prefix src/ emits into the accumulator, so one
@@ -78,30 +78,34 @@ final class DiagnosticPrefixesBaselineTest extends TestCase
         $this->assertSame($fixture, $actual);
     }
 
+    /**
+     * v3 may move an emission between channels (issue #524 moved
+     * `ConsoleOutput`'s warnings from `[OpenAPI Coverage]` to `[Gesso]`) but
+     * must not retire a channel: every identity-neutral prefix the frozen v2.9
+     * inventory records is still emitted somewhere under src/. The v1.9 → v2
+     * parity this replaced is a fact about the two frozen files now.
+     */
     #[Test]
-    public function identity_neutral_prefixes_retain_v1_9_parity(): void
+    public function identity_neutral_prefixes_retain_v2_parity(): void
     {
         $brandedPrefixes = ['[openapi-contract-testing]', '[Gesso]', '[Gesso deprecation]'];
-        $v1 = array_filter(
-            $this->fixture('v1.9-diagnostic-prefixes.json'),
-            static fn(string $prefix): bool => !in_array($prefix, $brandedPrefixes, true),
-            ARRAY_FILTER_USE_KEY,
-        );
         $v2 = array_filter(
             $this->fixture('v2-diagnostic-prefixes.json'),
             static fn(string $prefix): bool => !in_array($prefix, $brandedPrefixes, true),
             ARRAY_FILTER_USE_KEY,
         );
+        $v3 = array_filter(
+            $this->fixture('v3-diagnostic-prefixes.json'),
+            static fn(string $prefix): bool => !in_array($prefix, $brandedPrefixes, true),
+            ARRAY_FILTER_USE_KEY,
+        );
 
-        // Parity contract: every identity-neutral prefix v1.9 emitted is still
-        // emitted somewhere under src/. v2 may add prefixes (discovery forces
-        // each into the v2 fixture); where a literal lives is not pinned.
         $this->assertSame(
             [],
-            array_values(array_diff(array_keys($v1), array_keys($v2))),
-            'a v1.9 identity-neutral prefix disappeared from the v2 inventory',
+            array_values(array_diff(array_keys($v2), array_keys($v3))),
+            'a v2 identity-neutral prefix disappeared from the v3 inventory',
         );
-        foreach ($v2 as $prefix => $files) {
+        foreach ($v3 as $prefix => $files) {
             $this->assertNotSame([], $files, $prefix . ' is no longer emitted anywhere under src/.');
         }
     }

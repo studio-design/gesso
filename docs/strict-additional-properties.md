@@ -22,8 +22,7 @@ return [
 ```
 
 The v2 `strict_additional_properties` /
-`strict_additional_properties_per_call` PHPUnit parameters still work but are
-deprecated (removed in 3.0).
+`strict_additional_properties_per_call` PHPUnit parameters were removed in 3.0.
 
 | Value | Behaviour |
 |---|---|

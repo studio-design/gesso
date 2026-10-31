@@ -36,7 +36,7 @@ class AutoAssertIntegrationTest extends TestCase
         OpenApiSpecLoader::reset();
         OpenApiSpecLoader::configure(dirname(__DIR__, 2) . '/fixtures/specs');
         OpenApiCoverageTracker::reset();
-        config()->set('gesso.default_spec', 'petstore-3.0');
+        config()->set('gesso.spec.default', 'petstore-3.0');
     }
 
     protected function tearDown(): void
@@ -49,7 +49,7 @@ class AutoAssertIntegrationTest extends TestCase
     #[Test]
     public function auto_assert_true_validates_get_response(): void
     {
-        config()->set('gesso.auto_assert', true);
+        config()->set('gesso.laravel.auto_assert', true);
 
         $response = $this->get('/v1/pets');
         $response->assertOk();
@@ -62,8 +62,8 @@ class AutoAssertIntegrationTest extends TestCase
     #[Test]
     public function auto_assert_rejects_unsupported_openapi_version(): void
     {
-        config()->set('gesso.default_spec', 'unsupported-version');
-        config()->set('gesso.auto_assert', true);
+        config()->set('gesso.spec.default', 'unsupported-version');
+        config()->set('gesso.laravel.auto_assert', true);
 
         $this->expectException(InvalidOpenApiSpecException::class);
         $this->expectExceptionMessage("Unsupported OpenAPI version: '3.3.0' (string)");
@@ -77,7 +77,7 @@ class AutoAssertIntegrationTest extends TestCase
         // Pins POST specifically: the hook is verb-agnostic in theory, but a
         // regression that guards createTestResponse behind `method === 'GET'`
         // would otherwise go undetected.
-        config()->set('gesso.auto_assert', true);
+        config()->set('gesso.laravel.auto_assert', true);
 
         $response = $this->postJson('/v1/pets', ['name' => 'Buddy']);
         $response->assertCreated();
@@ -89,7 +89,7 @@ class AutoAssertIntegrationTest extends TestCase
     #[Test]
     public function auto_assert_true_raises_on_schema_mismatch(): void
     {
-        config()->set('gesso.auto_assert', true);
+        config()->set('gesso.laravel.auto_assert', true);
 
         $this->expectException(AssertionFailedError::class);
         $this->expectExceptionMessage('OpenAPI schema validation failed');
@@ -100,7 +100,7 @@ class AutoAssertIntegrationTest extends TestCase
     #[Test]
     public function auto_assert_false_does_not_validate(): void
     {
-        config()->set('gesso.auto_assert', false);
+        config()->set('gesso.laravel.auto_assert', false);
 
         $response = $this->get('/v1/pets?bad=1');
         $response->assertOk();
@@ -123,7 +123,7 @@ class AutoAssertIntegrationTest extends TestCase
         // Common user mistake: config value is a non-boolean-compatible value
         // (e.g. typo in a cast). The trait must surface this as a clear test
         // failure rather than silently treating it as "off".
-        config()->set('gesso.auto_assert', 'definitely-not-a-bool');
+        config()->set('gesso.laravel.auto_assert', 'definitely-not-a-bool');
 
         $this->expectException(AssertionFailedError::class);
         $this->expectExceptionMessage('auto_assert must be a boolean');
@@ -138,7 +138,7 @@ class AutoAssertIntegrationTest extends TestCase
         // would yield "true" (not boolean true). FILTER_VALIDATE_BOOLEAN
         // treats this as truthy, so the user isn't punished for common
         // env-var wiring.
-        config()->set('gesso.auto_assert', 'true');
+        config()->set('gesso.laravel.auto_assert', 'true');
 
         $response = $this->get('/v1/pets');
         $response->assertOk();
@@ -150,7 +150,7 @@ class AutoAssertIntegrationTest extends TestCase
     #[Test]
     public function explicit_assert_after_auto_assert_is_idempotent(): void
     {
-        config()->set('gesso.auto_assert', true);
+        config()->set('gesso.laravel.auto_assert', true);
 
         $response = $this->get('/v1/pets');
         $this->assertResponseMatchesOpenApiSchema($response);
@@ -166,7 +166,7 @@ class AutoAssertIntegrationTest extends TestCase
         // default_spec is set to petstore-3.0 in setUp, but this method is
         // decorated with #[OpenApiSpec('petstore-3.1')] — auto-assert must
         // respect the attribute and record coverage under 3.1, not 3.0.
-        config()->set('gesso.auto_assert', true);
+        config()->set('gesso.laravel.auto_assert', true);
 
         $response = $this->get('/v1/pets');
         $response->assertOk();
@@ -180,7 +180,7 @@ class AutoAssertIntegrationTest extends TestCase
     #[OpenApiSpec('openapi-3.2')]
     public function openapi_32_plain_operation_works_through_laravel_auto_assert(): void
     {
-        config()->set('gesso.auto_assert', true);
+        config()->set('gesso.laravel.auto_assert', true);
 
         $response = $this->get('/v1/pets');
         $response->assertOk();
@@ -197,7 +197,7 @@ class AutoAssertIntegrationTest extends TestCase
         // Would normally fail auto-assert because ?bad=1 returns {wrong_key:...}
         // which violates the spec. #[SkipOpenApi] must prevent that failure
         // AND stop coverage recording.
-        config()->set('gesso.auto_assert', true);
+        config()->set('gesso.laravel.auto_assert', true);
 
         $response = $this->get('/v1/pets?bad=1');
         $response->assertOk();
@@ -212,7 +212,7 @@ class AutoAssertIntegrationTest extends TestCase
         // Guard against a regression that only checks skip on GET. The hook
         // is verb-agnostic in theory, but a bug that validated POST bodies
         // before consulting skip would only be caught here.
-        config()->set('gesso.auto_assert', true);
+        config()->set('gesso.laravel.auto_assert', true);
 
         $response = $this->postJson('/v1/pets', ['name' => 'Buddy']);
         $response->assertCreated();
@@ -227,7 +227,7 @@ class AutoAssertIntegrationTest extends TestCase
         // withoutValidation() returns $this, then get() on the same instance
         // sees the flag. The /v1/pets?bad=1 route returns a spec-violating
         // body — auto-assert would otherwise fail.
-        config()->set('gesso.auto_assert', true);
+        config()->set('gesso.laravel.auto_assert', true);
 
         $response = $this->withoutValidation()->get('/v1/pets?bad=1');
         $response->assertOk();
@@ -242,7 +242,7 @@ class AutoAssertIntegrationTest extends TestCase
         // Core guarantee from issue #41. First call consumes the flag; the
         // second identical call must re-validate and fail. Without proper
         // reset, the second call would silently pass.
-        config()->set('gesso.auto_assert', true);
+        config()->set('gesso.laravel.auto_assert', true);
 
         $this->withoutValidation()->get('/v1/pets?bad=1')->assertOk();
 
@@ -255,7 +255,7 @@ class AutoAssertIntegrationTest extends TestCase
     #[Test]
     public function without_response_validation_skips_next_http_call(): void
     {
-        config()->set('gesso.auto_assert', true);
+        config()->set('gesso.laravel.auto_assert', true);
 
         $response = $this->withoutResponseValidation()->get('/v1/pets?bad=1');
         $response->assertOk();
@@ -270,7 +270,7 @@ class AutoAssertIntegrationTest extends TestCase
         // suppress the response-side validation that already runs today. The
         // /v1/pets?bad=1 body violates the spec, so auto-assert should still
         // fail.
-        config()->set('gesso.auto_assert', true);
+        config()->set('gesso.laravel.auto_assert', true);
 
         $this->expectException(AssertionFailedError::class);
         $this->expectExceptionMessage('OpenAPI schema validation failed');
@@ -288,8 +288,8 @@ class AutoAssertIntegrationTest extends TestCase
         // must suppress that. Unit tests exercise maybeAutoAssertOpenApiSchema
         // directly — only this test proves the flag reaches the trait from
         // the framework boundary.
-        config()->set('gesso.auto_assert', true);
-        config()->set('gesso.skip_response_codes', []);
+        config()->set('gesso.laravel.auto_assert', true);
+        config()->set('gesso.validation.skip_response_codes', []);
 
         $response = $this->skipResponseCode(503)->get('/v1/health');
         $response->assertStatus(503);
@@ -304,8 +304,8 @@ class AutoAssertIntegrationTest extends TestCase
         // Per-request semantics through the real framework path: first call
         // consumes the flag, second identical call must fail because no
         // config-level skip is in effect.
-        config()->set('gesso.auto_assert', true);
-        config()->set('gesso.skip_response_codes', []);
+        config()->set('gesso.laravel.auto_assert', true);
+        config()->set('gesso.validation.skip_response_codes', []);
 
         $this->skipResponseCode(503)->get('/v1/health')->assertStatus(503);
 

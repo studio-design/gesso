@@ -33,7 +33,7 @@ class PestLaravelTestCase extends TestCase
         OpenApiSpecLoader::reset();
         OpenApiSpecLoader::configure(dirname(__DIR__) . '/fixtures/specs');
         OpenApiCoverageTracker::reset();
-        config()->set('gesso.default_spec', 'petstore-3.0');
+        config()->set('gesso.spec.default', 'petstore-3.0');
     }
 
     protected function tearDown(): void

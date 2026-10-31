@@ -44,8 +44,8 @@ class ValidatesOpenApiSchemaAcknowledgedSchemesTest extends TestCase
         SecurityValidator::resetWarningStateForTesting();
         AcknowledgedSecuritySchemes::reset();
         $GLOBALS['__openapi_testing_config'] = [
-            'gesso.default_spec' => 'petstore-3.0',
-            'gesso.auto_validate_request' => true,
+            'gesso.spec.default' => 'petstore-3.0',
+            'gesso.laravel.auto_validate_request' => true,
         ];
     }
 
@@ -57,15 +57,6 @@ class ValidatesOpenApiSchemaAcknowledgedSchemesTest extends TestCase
         SecurityValidator::resetWarningStateForTesting();
         AcknowledgedSecuritySchemes::reset();
         parent::tearDown();
-    }
-
-    #[Test]
-    public function config_file_defaults_acknowledged_unvalidatable_schemes_to_empty_list(): void
-    {
-        $config = require __DIR__ . '/../../src/Laravel/config.php';
-
-        $this->assertArrayHasKey('acknowledged_unvalidatable_schemes', $config);
-        $this->assertSame([], $config['acknowledged_unvalidatable_schemes']);
     }
 
     #[Test]
@@ -82,7 +73,7 @@ class ValidatesOpenApiSchemaAcknowledgedSchemesTest extends TestCase
     #[Test]
     public function acknowledged_scheme_suppresses_the_silent_pass_warning(): void
     {
-        $GLOBALS['__openapi_testing_config']['gesso.acknowledged_unvalidatable_schemes'] = ['oauth2Flow'];
+        $GLOBALS['__openapi_testing_config']['gesso.validation.acknowledged_unvalidatable_schemes'] = ['oauth2Flow'];
 
         $warnings = $this->validateOauth2OnlyCapturingSecurityWarnings();
 
@@ -97,10 +88,10 @@ class ValidatesOpenApiSchemaAcknowledgedSchemesTest extends TestCase
     #[Test]
     public function non_array_config_value_fails_loudly(): void
     {
-        $GLOBALS['__openapi_testing_config']['gesso.acknowledged_unvalidatable_schemes'] = 'oauth2Flow';
+        $GLOBALS['__openapi_testing_config']['gesso.validation.acknowledged_unvalidatable_schemes'] = 'oauth2Flow';
 
         $this->expectException(AssertionFailedError::class);
-        $this->expectExceptionMessage('gesso.acknowledged_unvalidatable_schemes must be an array of security scheme names');
+        $this->expectExceptionMessage('gesso.validation.acknowledged_unvalidatable_schemes must be an array of security scheme names');
 
         $this->validateOauth2OnlyCapturingSecurityWarnings();
     }
@@ -108,10 +99,10 @@ class ValidatesOpenApiSchemaAcknowledgedSchemesTest extends TestCase
     #[Test]
     public function non_string_entry_fails_loudly(): void
     {
-        $GLOBALS['__openapi_testing_config']['gesso.acknowledged_unvalidatable_schemes'] = ['oauth2Flow', 42];
+        $GLOBALS['__openapi_testing_config']['gesso.validation.acknowledged_unvalidatable_schemes'] = ['oauth2Flow', 42];
 
         $this->expectException(AssertionFailedError::class);
-        $this->expectExceptionMessage('gesso.acknowledged_unvalidatable_schemes[1] must be a string security scheme name');
+        $this->expectExceptionMessage('gesso.validation.acknowledged_unvalidatable_schemes[1] must be a string security scheme name');
 
         $this->validateOauth2OnlyCapturingSecurityWarnings();
     }
@@ -119,10 +110,10 @@ class ValidatesOpenApiSchemaAcknowledgedSchemesTest extends TestCase
     #[Test]
     public function empty_string_entry_fails_loudly(): void
     {
-        $GLOBALS['__openapi_testing_config']['gesso.acknowledged_unvalidatable_schemes'] = [''];
+        $GLOBALS['__openapi_testing_config']['gesso.validation.acknowledged_unvalidatable_schemes'] = [''];
 
         $this->expectException(AssertionFailedError::class);
-        $this->expectExceptionMessage('gesso.acknowledged_unvalidatable_schemes[0] must not be an empty string');
+        $this->expectExceptionMessage('gesso.validation.acknowledged_unvalidatable_schemes[0] must not be an empty string');
 
         $this->validateOauth2OnlyCapturingSecurityWarnings();
     }

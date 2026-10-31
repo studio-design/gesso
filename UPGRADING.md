@@ -16,7 +16,68 @@ your suite with deprecations visible: every removal below emitted a
 
 ### Configuration
 
-*Pending.*
+Gesso 3.0 reads its settings only from the root `gesso.php` (#501, #502).
+The PHPUnit extension keeps one parameter, `config`; every other v2
+`<parameter>` aborts the run with `[Gesso] FATAL` and names its `gesso.php`
+key. Laravel no longer reads the flat keys of `config/gesso.php`: a flat key
+still set — in a published `config/gesso.php` or by `config()->set()` in a
+test — throws, naming its replacement. Laravel's `gesso` config namespace now
+mirrors `gesso.php`, so test overrides use the same paths, for example
+`config()->set('gesso.laravel.auto_assert', true)`.
+`php artisan vendor:publish --tag=gesso` now writes a starter root `gesso.php`.
+
+To migrate: run `vendor/bin/gesso doctor --spec=… --emit-config > gesso.php`
+(or move each value by hand using the table), delete the extension's
+`<parameter>` elements except `config`, delete `config/gesso.php`, rename
+`config('gesso.…')` lookups and overrides in your tests, and run
+`php artisan config:clear`. Values written as comma-separated phpunit.xml
+strings become PHP lists; booleans follow the one truth table in
+[`docs/configuration.md`](docs/configuration.md).
+
+| v2 spelling | phpunit.xml parameter | Laravel `gesso.` key | `gesso.php` key |
+| --- | --- | --- | --- |
+| `spec_base_path` | yes | yes | `spec.base_path` |
+| `default_spec` | yes | yes | `spec.default` |
+| `specs` | yes | yes | `spec.names` |
+| `strip_prefixes` | yes | yes | `spec.strip_prefixes` |
+| `validation_output` | yes | — | `validation.format` |
+| `max_errors` | yes | yes | `validation.max_errors` |
+| `enforce_discriminator` | yes | yes | `validation.enforce_discriminator` |
+| `acknowledged_unvalidatable_schemes` | yes | yes | `validation.acknowledged_unvalidatable_schemes` |
+| `skip_response_codes` | yes | yes | `validation.skip_response_codes` |
+| `skip_request_validation_response_codes` | yes | yes | `validation.skip_request_validation_response_codes` |
+| `strict_required` | yes | — | `strict.required['run']` |
+| `strict_required_per_call` | yes | — | `strict.required['per_call']` |
+| `strict_additional_properties` | yes | — | `strict.additional_properties['run']` |
+| `strict_additional_properties_per_call` | yes | — | `strict.additional_properties['per_call']` |
+| `min_endpoint_coverage` | yes | — | `coverage.min_coverage['endpoint']` |
+| `min_response_coverage` | yes | — | `coverage.min_coverage['response']` |
+| `min_sdk_exercise_coverage` | yes | — | `coverage.min_coverage['sdk_exercise']` |
+| `min_coverage_strict` | yes | — | `coverage.min_coverage['strict']` |
+| `output_file` | yes | — | `coverage.report_output['markdown']` |
+| `json_output` | yes | — | `coverage.report_output['json']` |
+| `junit_output` | yes | — | `coverage.report_output['junit']` |
+| `html_output` | yes | — | `coverage.report_output['html']` |
+| `console_output` | yes | — | `coverage.console_report` |
+| `sidecar_dir` | yes | — | `coverage.sidecar_dir` |
+| `baseline_file` | yes | — | `baseline['violations']` |
+| `coverage_baseline_file` | yes | — | `baseline['coverage']` |
+| `baseline_stale` | yes | — | `baseline_stale['violations']` |
+| `coverage_baseline_stale` | yes | — | `baseline_stale['coverage']` |
+| `enum_drift_enabled` | yes | — | `enum_drift.enabled` |
+| `enum_drift_scan_namespaces` | yes | — | `enum_drift.scan_namespaces` |
+| `enum_drift_fail_on_drift` | yes | — | `enum_drift.fail_on_drift` |
+| `default_testsuite_as_full` | yes | — | `phpunit.default_testsuite_as_full` |
+| `enum_spec_base_path` | yes | — | none — delete it; enum bindings resolve by component name |
+| `auto_assert` | — | yes | `laravel.auto_assert` |
+| `auto_validate_request` | — | yes | `laravel.auto_validate_request` |
+| `auto_inject_dummy_credentials` | — | yes | `laravel.auto_inject_dummy_credentials` |
+| `auto_inject_dummy_bearer` | — | yes | `laravel.auto_inject_dummy_credentials = 'bearer'` |
+| `route_parity.*` | — | yes | `laravel.route_parity.*` |
+
+The invalid-value warnings for `GESSO_CONSOLE_OUTPUT` and
+`coverage.console_report` now carry the `[Gesso]` prefix instead of
+`[OpenAPI Coverage]` (#524).
 
 ### CLI flags and exit codes
 

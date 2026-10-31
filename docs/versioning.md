@@ -60,12 +60,12 @@ This library follows [Semantic Versioning 2.0](https://semver.org/). v1.0.0 is t
   unusable), and adapter body-decode failures (unparseable JSON, unreadable
   stream) carry `keyword: parse` so they stay distinct from a genuinely empty
   body), the `GESSO_BASELINE_GENERATE` environment variable, and the
-  `baseline_file` / `baseline_stale` extension parameters (`baseline_stale`
-  values: `off` | `note` | `fail`, default `note`). The enforcement semantics
-  are part of the contract too: with `baseline_file` configured, a failing
+  `baseline.violations` / `baseline_stale.violations` `gesso.php` keys
+  (stale values: `off` | `note` | `fail`, default `note`). The enforcement semantics
+  are part of the contract too: with `baseline.violations` configured, a failing
   assertion is suppressed only when **every** one of its violations is
   baselined, and entries that no longer occur during a full run are reported
-  as stale per `baseline_stale`. Unknown `baseline_version` values are
+  as stale per `baseline_stale.violations`. Unknown `baseline_version` values are
   rejected.
 - The coverage baseline file (`coverage_baseline_version` 1): the
   `uncovered_responses` entry fields (`spec`, `method`, `path`, `status`,
@@ -74,12 +74,12 @@ This library follows [Semantic Versioning 2.0](https://semver.org/). v1.0.0 is t
   `status` is the spec response key and `content_type` is `*` for responses
   without a `content` block; fixed HTTP methods normalize to uppercase while
   OpenAPI 3.2 custom `additionalOperations` methods stay case-sensitive. The
-  `coverage_baseline_file` / `coverage_baseline_stale` extension parameters
-  (same values as `baseline_stale`), the matching
+  `baseline.coverage` / `baseline_stale.coverage` `gesso.php` keys
+  (same values as `baseline_stale.violations`), the matching
   `--baseline="coverage=…"` / `--baseline-stale="coverage=…"` merge flags, and
   the shared `GESSO_BASELINE_GENERATE` generation switch are covered too.
   The enforcement semantics are part of the contract: responses that were not
-  validated — including responses skipped by `skip_response_codes` — are
+  validated — including responses skipped by `validation.skip_response_codes` — are
   baselined, an uncovered response absent from the file fails the run, and
   entries that are covered now are reported per the stale mode. Unknown
   `coverage_baseline_version` values are rejected.
@@ -102,14 +102,20 @@ This library follows [Semantic Versioning 2.0](https://semver.org/). v1.0.0 is t
   `GESSO_RUN_ID` — and the values each accepts. `TEST_TOKEN` and `GITHUB_STEP_SUMMARY` are
   read but belong to paratest and GitHub Actions; they are not Gesso's to
   version.
-- The `OpenApiCoverageExtension` PHPUnit configuration parameters (`spec_base_path`, `strip_prefixes`, `specs`, `output_file`, `console_output`, `validation_output`, `baseline_file`, `coverage_baseline_file`, `strict_required`, `strict_additional_properties`, `strict_additional_properties_per_call`, …)
-- The shared `gesso.php` keys and their types, the PHPUnit `config` parameter,
-  and the Laravel `gesso` config keys documented in
-  [Shared configuration](configuration.md). The additive v2 bridge preserves
-  existing inputs and their precedence; their removal requires a major release
-  and the deprecation process below.
+- The `gesso.php` keys and their types, the `OpenApiCoverageExtension`
+  `config` parameter (its only phpunit.xml parameter since 3.0), and the
+  Laravel `gesso` config namespace, which mirrors the `gesso.php` key paths
+  (see [Configuration](configuration.md)). The v2 extension parameters and
+  flat Laravel keys were removed in 3.0 and fail loudly when still set.
 - The Laravel `ValidatesOpenApiSchema` trait's public methods
 - The category prefixes used in `E_USER_WARNING` messages (`[security]`, `[OpenAPI Schema]`, and the `[OpenAPI 3.2 ...]` categories) and in `E_USER_DEPRECATED` messages (`[Gesso deprecation]`). Adding a category is a minor change; renaming or removing one is major.
+  The STDERR channel prefixes (`[OpenAPI Coverage]`, `[OpenAPI Enum Drift]`,
+  …) are inventoried by `DiagnosticPrefixesBaselineTest`:
+  `v3-diagnostic-prefixes.json` is the living per-file inventory, and
+  `v2-diagnostic-prefixes.json` is frozen at 2.9. A major may move an
+  emission between channels (3.0 moved `ConsoleOutput`'s invalid-value
+  warnings to `[Gesso]`, issue #524) but no v2 identity-neutral channel may
+  disappear.
 
 ### Versioned sidecar compatibility
 

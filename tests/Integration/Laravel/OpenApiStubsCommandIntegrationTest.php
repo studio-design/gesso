@@ -32,8 +32,8 @@ final class OpenApiStubsCommandIntegrationTest extends TestCase
         parent::setUp();
         OpenApiSpecLoader::reset();
         LegacyIdentity::resetForTesting();
-        config()->set('gesso.default_spec', 'petstore-3.0');
-        config()->set('gesso.spec_base_path', dirname(__DIR__, 2) . '/fixtures/specs');
+        config()->set('gesso.spec.default', 'petstore-3.0');
+        config()->set('gesso.spec.base_path', dirname(__DIR__, 2) . '/fixtures/specs');
     }
 
     protected function tearDown(): void
@@ -93,7 +93,7 @@ final class OpenApiStubsCommandIntegrationTest extends TestCase
         $this->assertSame(0, $exitCode);
         $this->assertStringContainsString('GetV1PetsTest.php', Artisan::output());
 
-        // The Laravel adapter is the default, and gesso.default_spec supplies
+        // The Laravel adapter is the default, and gesso.spec.default supplies
         // the spec name the generated attribute names.
         $code = (string) file_get_contents($this->outputDir . '/GetV1PetsTest.php');
         $this->assertStringContainsString("#[OpenApiSpec('petstore-3.0')]", $code);
@@ -105,7 +105,7 @@ final class OpenApiStubsCommandIntegrationTest extends TestCase
     #[Test]
     public function explicit_request_prefix_is_forwarded_without_changing_the_spec_path(): void
     {
-        config()->set('gesso.strip_prefixes', ['/gateway', '/api']);
+        config()->set('gesso.spec.strip_prefixes', ['/gateway', '/api']);
         $this->assertSame(0, Artisan::call('gesso:stubs', [
             '--output-dir' => $this->outputDir, '--request-prefix' => '/api/',
         ]));
@@ -124,7 +124,7 @@ final class OpenApiStubsCommandIntegrationTest extends TestCase
     #[Test]
     public function request_prefix_is_not_inferred_from_strip_prefixes(): void
     {
-        config()->set('gesso.strip_prefixes', ['/api']);
+        config()->set('gesso.spec.strip_prefixes', ['/api']);
         $this->assertSame(0, Artisan::call('gesso:stubs', ['--output-dir' => $this->outputDir]));
         $code = (string) file_get_contents($this->outputDir . '/GetV1PetsTest.php');
         $this->assertStringContainsString("'/v1/pets'", $code);
@@ -163,7 +163,7 @@ final class OpenApiStubsCommandIntegrationTest extends TestCase
     #[Test]
     public function a_missing_spec_is_reported_rather_than_thrown(): void
     {
-        config()->set('gesso.default_spec', 'does-not-exist');
+        config()->set('gesso.spec.default', 'does-not-exist');
 
         $exitCode = Artisan::call('gesso:stubs', ['--output-dir' => $this->outputDir]);
 
@@ -181,7 +181,7 @@ final class OpenApiStubsCommandIntegrationTest extends TestCase
     #[DataProvider('provideAn_absolute_spec_base_path_is_used_verbatimCases')]
     public function an_absolute_spec_base_path_is_used_verbatim(string $basePath): void
     {
-        config()->set('gesso.spec_base_path', $basePath);
+        config()->set('gesso.spec.base_path', $basePath);
         $this->app->offsetUnset('path.base');
 
         $this->assertSame(2, Artisan::call('gesso:stubs', ['--output-dir' => $this->outputDir]));
@@ -193,7 +193,7 @@ final class OpenApiStubsCommandIntegrationTest extends TestCase
     #[Test]
     public function a_relative_spec_base_path_is_resolved_under_the_application(): void
     {
-        config()->set('gesso.spec_base_path', 'openapi');
+        config()->set('gesso.spec.base_path', 'openapi');
         $this->app->offsetUnset('path.base');
 
         $this->assertSame(2, Artisan::call('gesso:stubs', ['--output-dir' => $this->outputDir]));

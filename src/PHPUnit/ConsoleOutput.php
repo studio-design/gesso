@@ -23,9 +23,9 @@ enum ConsoleOutput: string
     case ACTIVE_ONLY = 'active_only';
 
     /**
-     * Resolve the console output mode from environment variable and/or phpunit.xml parameter.
+     * Resolve the console output mode from the environment variable and/or gesso.php's coverage.console_report.
      *
-     * Priority: environment variable > parameter > DEFAULT.
+     * Priority: environment variable > coverage.console_report > DEFAULT.
      */
     public static function resolve(?string $parameterValue): self
     {
@@ -35,7 +35,7 @@ enum ConsoleOutput: string
             $resolved = self::tryFrom(strtolower(trim($envValue)));
 
             if ($resolved === null) {
-                fwrite(STDERR, "[OpenAPI Coverage] WARNING: Invalid GESSO_CONSOLE_OUTPUT value '{$envValue}'. Valid values: default, all, uncovered_only, active_only. Falling back to 'default'.\n");
+                fwrite(STDERR, "[Gesso] WARNING: Invalid GESSO_CONSOLE_OUTPUT value '{$envValue}'. Valid values: default, all, uncovered_only, active_only. Falling back to 'default'.\n");
             }
 
             return $resolved ?? self::DEFAULT;
@@ -45,7 +45,7 @@ enum ConsoleOutput: string
             $resolved = self::tryFrom(strtolower(trim($parameterValue)));
 
             if ($resolved === null) {
-                fwrite(STDERR, "[OpenAPI Coverage] WARNING: Invalid console_output parameter '{$parameterValue}'. Valid values: default, all, uncovered_only, active_only. Falling back to 'default'.\n");
+                fwrite(STDERR, "[Gesso] WARNING: Invalid coverage.console_report value '{$parameterValue}'. Valid values: default, all, uncovered_only, active_only. Falling back to 'default'.\n");
             }
 
             return $resolved ?? self::DEFAULT;

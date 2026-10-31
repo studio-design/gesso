@@ -7,7 +7,6 @@ namespace Studio\Gesso\Tests\Unit\PHPUnit;
 use PHPUnit\Framework\Attributes\IgnoreDeprecations;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
-use PHPUnit\Runner\Extension\ParameterCollection;
 use Studio\Gesso\Baseline\InvalidBaselineConfigurationException;
 use Studio\Gesso\Baseline\ViolationBaseline;
 use Studio\Gesso\Baseline\ViolationBaselineCollector;
@@ -18,6 +17,7 @@ use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\Internal\LegacyIdentity;
 use Studio\Gesso\PHPUnit\OpenApiCoverageExtension;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
+use Studio\Gesso\Tests\Helpers\FlatExtensionSettings;
 
 use function fclose;
 use function file_put_contents;
@@ -249,21 +249,6 @@ class OpenApiCoverageExtensionBaselineTest extends TestCase
     }
 
     #[Test]
-    public function an_unknown_baseline_stale_value_is_fatal(): void
-    {
-        $path = $this->writeBaselineFixture();
-
-        try {
-            $this->setupExtension(['baseline_file' => $path, 'baseline_stale' => 'warn']);
-            $this->fail('Expected an InvalidBaselineConfigurationException.');
-        } catch (InvalidBaselineConfigurationException) {
-            $this->assertStringContainsString('[Gesso] FATAL', $this->capturedStderr());
-            $this->assertStringContainsString('baseline_stale', $this->capturedStderr());
-            $this->assertNull(ViolationBaselineEnforcer::current());
-        }
-    }
-
-    #[Test]
     public function baseline_stale_without_a_baseline_file_is_fatal(): void
     {
         try {
@@ -291,7 +276,7 @@ class OpenApiCoverageExtensionBaselineTest extends TestCase
     private function setupExtension(array $parameters): void
     {
         $extension = new OpenApiCoverageExtension();
-        $extension->setupExtension(null, ParameterCollection::fromArray([
+        $extension->setupExtension(null, FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
             'specs' => 'petstore-3.0',
             ...$parameters,

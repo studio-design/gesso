@@ -90,48 +90,43 @@ return [
 
 The extension reads `gesso.php` beside the selected PHPUnit XML file; the
 `config` parameter points it elsewhere. Each key is listed in
-[Shared configuration](configuration.md#settings-connected-in-this-release).
+[Shared configuration](configuration.md#settings).
 
-The v2 `<parameter>` spellings below keep working until 3.0 but are
-deprecated (†); the table remains as a reference for what each setting does.
+The extension's only phpunit.xml parameter is `config`. Since 3.0 any other
+`<parameter>` aborts the run naming its `gesso.php` key (see
+[`UPGRADING.md`](https://github.com/studio-design/gesso/blob/main/UPGRADING.md#configuration)).
+Relative paths in `gesso.php` resolve against that file's directory.
 
-| Parameter | Required | Default | Description |
+| Setting | Required | Default | Description |
 |---|---|---|---|
-| `config` | No | Beside the selected PHPUnit XML file | Path to shared `gesso.php`; see [discovery and relative paths](configuration.md#discovery-and-relative-paths) (2.7.0+) |
-| `spec_base_path` † | Yes* | — | Path to bundled spec directory (relative paths resolve from `getcwd()`) |
-| `strip_prefixes` † | No | `[]` | Comma-separated prefixes to strip from request paths (e.g., `/api`). Required even when the spec declares the same base path in `servers` — see [Server base paths are not stripped automatically](#server-base-paths-are-not-stripped-automatically) |
-| `specs` † | No | `front` | Comma-separated spec names for coverage tracking |
-| `output_file` † | No | — | File path to write Markdown coverage report (relative paths resolve from `getcwd()`). Skipped on partial runs — see [Partial test runs](ci.md#partial-test-runs-filter-testsuite-path-args) |
-| `junit_output` † | No | — | File path to write JUnit XML coverage report (for CI dashboards — GitLab CI, Jenkins, SonarQube, Bitrise). A missing parent directory is created automatically at bootstrap (applies to `json_output` / `html_output` too); an empty value, a failed creation, or an unwritable parent directory is FATAL at bootstrap. See [Coverage output formats](ci.md#coverage-output-formats) |
-| `json_output` † | No | — | File path to write machine-readable JSON coverage report (custom dashboards, analytics, scripted gating). Schema: [`coverage-json-schema.md`](coverage-json-schema.md) |
-| `html_output` † | No | — | File path to write self-contained HTML coverage report (PR comments, CI artifact preview, offline review). See [`coverage-html-output.md`](coverage-html-output.md) |
-| `console_output` † | No | `default` | Console output mode: `default`, `all`, `uncovered_only`, or `active_only` (overridden by `GESSO_CONSOLE_OUTPUT` env var) |
-| `validation_output` † | No | `text` | Validation failure output format for all framework adapters: `text` or `json` (overridden by `GESSO_VALIDATION_FORMAT` env var). See [Validation JSON schema](validation-json-schema.md#selecting-json-failure-output-in-adapters) |
-| `max_errors` † | No | `20` | Maximum validation errors reported per request/response, `0` = unlimited. Process-wide default for validators constructed without an explicit `maxErrors` argument (the [framework-agnostic usage](#framework-agnostic)); the PSR-7 and Symfony hook defaults follow it, Laravel reads `config('gesso.max_errors')`. See [Controlling the number of validation errors](#controlling-the-number-of-validation-errors) |
-| `skip_response_codes` † | No | `5\d\d` | Comma-separated status-code regex patterns whose responses skip body validation (patterns must not contain commas). An explicitly empty value (`value=""`) means no skip patterns — 5xx bodies are validated too, matching Laravel's `[]`. Same process-wide default rule as `max_errors` |
-| `skip_request_validation_response_codes` † | No | — | Comma-separated status-code regex patterns (e.g. `422,400`) enabling the documented-4xx request downgrade: an invalid request that yields a matching, spec-documented status is reported Skipped instead of Failure. Same process-wide default rule as `max_errors` |
-| `default_spec` † | No | — | Spec name used when neither an `#[OpenApiSpec]` attribute nor an `openApiSpec()` override supplies one, including by the PSR-7 and Symfony adapters. Laravel reads `config('gesso.default_spec')` |
-| `baseline_file` † | No | — | Violation baseline file path (relative paths resolve from `getcwd()`). Running the suite with `GESSO_BASELINE_GENERATE=1` records every contract violation instead of failing and writes the sorted, versioned baseline here at run end (refused on partial runs; parallel workers stage their fingerprints in sidecars for `gesso coverage:merge --baseline="violations=…"` to union — see [Generating under parallel runners](baseline.md#generating-under-parallel-runners)). On normal runs the file is loaded (missing or malformed file is FATAL) and failures whose every violation is baselined are suppressed — only **new** violations fail. See the [baseline adoption guide](baseline.md) |
-| `baseline_stale` † | No | `note` | How baseline entries that no longer occur during a full run are reported: `off` (not evaluated), `note` (listed as removable), or `fail` (listed and the run exits non-zero). Requires `baseline_file`; skipped on partial runs. See [Ratcheting down](baseline.md#ratcheting-down) |
-| `sidecar_dir` † | No | `sys_get_temp_dir()/openapi-coverage-sidecars` | Directory exporting processes drop their JSON sidecar into — paratest workers, or CI shards that set `GESSO_SIDECAR_TOKEN`. Used only when the state is merged afterwards; see [Parallel test runners](parallel.md) and [Sharded CI jobs](parallel.md#sharded-ci-jobs) |
-| `min_endpoint_coverage` † | No | — | Minimum fully covered endpoint percentage (`0`–`100`). See [Coverage threshold gate](coverage.md#coverage-threshold-gate) |
-| `min_response_coverage` † | No | — | Minimum validated response-row percentage (`0`–`100`) |
-| `min_sdk_exercise_coverage` † | No | — | Minimum eligible response-schema percentage attempted by SDK decoder callbacks (`0`–`100`) |
-| `min_coverage_strict` † | No | `false` | When true, any configured coverage-threshold miss exits non-zero; otherwise misses warn only |
-| `strict_additional_properties` † | No | `off` | Undocumented response-property gate: `off`, `warn`, or `fail`. See [`strict-additional-properties.md`](strict-additional-properties.md) |
-| `strict_additional_properties_per_call` † | No | `off` | Immediate undocumented response-property warning: `off` or `warn`. Pair with PHPUnit `failOnWarning="true"` for per-test failure. |
-| `default_testsuite_as_full` † | No | `false` | Opt-in. When `true` and PHPUnit's `includeTestSuites` resolves exactly to the configured `defaultTestSuite`, treat the run as full instead of partial (so `strict_required` and coverage outputs aren't suppressed). See [default_testsuite_as_full opt-in](ci.md#default_testsuite_as_full-opt-in) for trade-offs |
-| `enforce_discriminator` † | No | `true` | When `true` (default), `discriminator` + `mapping` is enforced via `if`/`then` lowering so a body that lies about its type fails. Set to `false` (or `0` / `no`) to strip `discriminator` without enforcing (no warning either). See [Schema features → discriminator](supported-features.md#schema-features) |
-| `acknowledged_unvalidatable_schemes` † | No | — | Comma-separated `components.securitySchemes` names acknowledged as unvalidatable. Suppresses the one-shot `[security]` silent-pass warning for exactly those schemes; every other unvalidatable scheme keeps warning. See [Acknowledging an unvalidatable security scheme](#acknowledging-an-unvalidatable-security-scheme) |
+| `config` (phpunit.xml parameter) | No | Beside the selected PHPUnit XML file | Path to shared `gesso.php`; see [discovery and relative paths](configuration.md#discovery-and-relative-paths) |
+| `spec.base_path` | Yes* | — | Path to bundled spec directory |
+| `spec.strip_prefixes` | No | `[]` | Prefixes to strip from request paths (e.g., `['/api']`). Required even when the spec declares the same base path in `servers` — see [Server base paths are not stripped automatically](#server-base-paths-are-not-stripped-automatically) |
+| `spec.names` | No | `['front']` | Spec names to load and track coverage for |
+| `spec.default` | No | — | Spec name used when neither an `#[OpenApiSpec]` attribute nor an `openApiSpec()` override supplies one, including by the PSR-7, Symfony, and Laravel adapters |
+| `coverage.report_output.markdown` | No | — | File path to write Markdown coverage report. Skipped on partial runs — see [Partial test runs](ci.md#partial-test-runs-filter-testsuite-path-args) |
+| `coverage.report_output.junit` | No | — | File path to write JUnit XML coverage report (for CI dashboards — GitLab CI, Jenkins, SonarQube, Bitrise). A missing parent directory is created automatically at bootstrap (applies to every report output); a failed creation or an unwritable parent directory is FATAL at bootstrap. See [Coverage output formats](ci.md#coverage-output-formats) |
+| `coverage.report_output.json` | No | — | File path to write machine-readable JSON coverage report (custom dashboards, analytics, scripted gating). Schema: [`coverage-json-schema.md`](coverage-json-schema.md) |
+| `coverage.report_output.html` | No | — | File path to write self-contained HTML coverage report (PR comments, CI artifact preview, offline review). See [`coverage-html-output.md`](coverage-html-output.md) |
+| `coverage.console_report` | No | `default` | Console output mode: `default`, `all`, `uncovered_only`, or `active_only` (overridden by `GESSO_CONSOLE_OUTPUT` env var) |
+| `validation.format` | No | `text` | Validation failure output format for all framework adapters: `text` or `json` (overridden by `GESSO_VALIDATION_FORMAT` env var). See [Validation JSON schema](validation-json-schema.md#selecting-json-failure-output-in-adapters) |
+| `validation.max_errors` | No | `20` | Maximum validation errors reported per request/response, `0` = unlimited. Process-wide default for validators constructed without an explicit `maxErrors` argument (the [framework-agnostic usage](#framework-agnostic)); the PSR-7, Symfony, and Laravel adapters follow it. See [Controlling the number of validation errors](#controlling-the-number-of-validation-errors) |
+| `validation.skip_response_codes` | No | `['5\d\d']` | Status-code regex patterns whose responses skip body validation. `[]` means no skip patterns — 5xx bodies are validated too. Same process-wide default rule as `validation.max_errors` |
+| `validation.skip_request_validation_response_codes` | No | `['422', '400']` | Status-code regex patterns enabling the documented-4xx request downgrade: an invalid request that yields a matching, spec-documented status is reported Skipped instead of Failure. Same process-wide default rule as `validation.max_errors` |
+| `baseline.violations` | No | — | Violation baseline file path. Running the suite with `GESSO_BASELINE_GENERATE=1` records every contract violation instead of failing and writes the sorted, versioned baseline here at run end (refused on partial runs; parallel workers stage their fingerprints in sidecars for `gesso coverage:merge --baseline="violations=…"` to union — see [Generating under parallel runners](baseline.md#generating-under-parallel-runners)). On normal runs the file is loaded (missing or malformed file is FATAL) and failures whose every violation is baselined are suppressed — only **new** violations fail. See the [baseline adoption guide](baseline.md) |
+| `baseline_stale.violations` | No | `note` | How baseline entries that no longer occur during a full run are reported: `off` (not evaluated), `note` (listed as removable), or `fail` (listed and the run exits non-zero). Requires `baseline.violations`; skipped on partial runs. See [Ratcheting down](baseline.md#ratcheting-down) |
+| `coverage.sidecar_dir` | No | `sys_get_temp_dir()/openapi-coverage-sidecars` | Directory exporting processes drop their JSON sidecar into — paratest workers, or CI shards that set `GESSO_SIDECAR_TOKEN`. Used only when the state is merged afterwards; see [Parallel test runners](parallel.md) and [Sharded CI jobs](parallel.md#sharded-ci-jobs) |
+| `coverage.min_coverage.endpoint` | No | — | Minimum fully covered endpoint percentage (`0`–`100`). See [Coverage threshold gate](coverage.md#coverage-threshold-gate) |
+| `coverage.min_coverage.response` | No | — | Minimum validated response-row percentage (`0`–`100`) |
+| `coverage.min_coverage.sdk_exercise` | No | — | Minimum eligible response-schema percentage attempted by SDK decoder callbacks (`0`–`100`) |
+| `coverage.min_coverage.strict` | No | `false` | When true, any configured coverage-threshold miss exits non-zero; otherwise misses warn only |
+| `strict.additional_properties.run` | No | `off` | Undocumented response-property gate: `off`, `warn`, or `fail`. See [`strict-additional-properties.md`](strict-additional-properties.md) |
+| `strict.additional_properties.per_call` | No | `off` | Immediate undocumented response-property warning: `off` or `warn`. Pair with PHPUnit `failOnWarning="true"` for per-test failure. |
+| `phpunit.default_testsuite_as_full` | No | `false` | Opt-in. When `true` and PHPUnit's `includeTestSuites` resolves exactly to the configured `defaultTestSuite`, treat the run as full instead of partial (so `strict_required` and coverage outputs aren't suppressed). See [default_testsuite_as_full opt-in](ci.md#default_testsuite_as_full-opt-in) for trade-offs |
+| `validation.enforce_discriminator` | No | `true` | When `true` (default), `discriminator` + `mapping` is enforced via `if`/`then` lowering so a body that lies about its type fails. Set to `false` to strip `discriminator` without enforcing (no warning either). See [Schema features → discriminator](supported-features.md#schema-features) |
+| `validation.acknowledged_unvalidatable_schemes` | No | `[]` | `components.securitySchemes` names acknowledged as unvalidatable. Suppresses the one-shot `[security]` silent-pass warning for exactly those schemes; every other unvalidatable scheme keeps warning. See [Acknowledging an unvalidatable security scheme](#acknowledging-an-unvalidatable-security-scheme) |
 
 *Not required if you call `OpenApiSpecLoader::configure()` manually.
-
-† Deprecated in favour of its `gesso.php` key (see
-[Shared configuration](configuration.md)) and removed in 3.0 — since 2.8.0
-for the strict, coverage-threshold, report-output, console, and baseline
-parameters, since 2.9.0 for the rest. The parameter
-still works and still wins over `gesso.php`; setting it emits a one-shot
-`[Gesso deprecation]` notice (see [Deprecations in `UPGRADING.md`](https://github.com/studio-design/gesso/blob/main/UPGRADING.md#deprecations)).
 
 ### Server base paths are not stripped automatically
 
@@ -192,12 +187,11 @@ return [
 ];
 ```
 
-The published `config/gesso.php` (`php artisan vendor:publish --tag=gesso`) is
-the deprecated v2 spelling of these settings: each key still works and still
-wins over `gesso.php`, but emits a `[Gesso deprecation]` notice and is removed
-in 3.0. Do not publish it for a new project; see [Shared
-configuration](configuration.md#compatibility-and-precedence) to migrate an
-existing one. See [Laravel route parity](laravel-route-parity.md) for filters,
+`php artisan vendor:publish --tag=gesso` writes a starter `gesso.php` to the
+application root. Since 3.0 Laravel no longer reads the flat keys of a v2
+`config/gesso.php`: one still present fails at boot naming its `gesso.php` key.
+In a test, override a setting under the same path, for example
+`config()->set('gesso.laravel.auto_assert', true)`. See [Laravel route parity](laravel-route-parity.md) for filters,
 JSON output, and CI exit codes.
 
 With `spec.default` set, use the trait — no per-class override needed:
@@ -427,7 +421,7 @@ plain PHPUnit, PSR-7, and Symfony suites the extension applies it as the
 process-wide default that
 validators constructed without an explicit `maxErrors` argument, and the
 adapters' `openApiMaxErrors()` hooks, pick up
-— see the [parameter table](#2-configure-the-phpunit-extension).
+— see the [settings table](#2-configure-the-phpunit-extension).
 
 ## Reproduction commands in failure output
 
@@ -736,7 +730,7 @@ Notes:
 - **Injected kinds**: `Authorization: Bearer test-token` for `http` + `bearer`, and a fixed `test-api-key` value for every `apiKey` scheme (header / cookie / query) the operation declares. `oauth2`, `openIdConnect`, `mutualTLS`, and non-bearer `http` schemes are silent-passed by the validator and therefore not injected.
 - **Never overrides non-empty user values**: if the test already set a non-empty value for the credential slot — an `Authorization` header in any case, the named cookie, or the named query / header parameter — the user's value wins, even when it is deliberately malformed. Empty-string values count as absent and are injected over, matching the validator's own missing-credential definition.
 - **Requires `auto_validate_request=true`** — the inject is a sub-feature of request validation. Setting the inject flag alone has no effect.
-- **Deprecated predecessor**: `auto_inject_dummy_bearer` (bearer-only) still works, but enabling it emits a one-shot `E_USER_DEPRECATED` notice and the key is removed in Gesso 3.0. Its exact bearer-only behavior is available as `laravel.auto_inject_dummy_credentials = 'bearer'` in the shared `gesso.php` (2.7.0+; not accepted in 2.6.0). `true` also injects `apiKey` schemes — see [Deprecations in `UPGRADING.md`](https://github.com/studio-design/gesso/blob/main/UPGRADING.md#deprecations) for the migration options. When both flags are set, `auto_inject_dummy_credentials` wins.
+- **Bearer only**: set `laravel.auto_inject_dummy_credentials = 'bearer'` to inject only HTTP Bearer credentials (the behavior of v2's removed `auto_inject_dummy_bearer` key); `true` also injects `apiKey` schemes.
 
 ## Acknowledging an unvalidatable security scheme
 

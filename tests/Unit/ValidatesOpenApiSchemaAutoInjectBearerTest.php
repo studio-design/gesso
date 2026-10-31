@@ -12,10 +12,8 @@ use PHPUnit\Framework\TestCase;
 use RuntimeException;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\HttpMethod;
-use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\Laravel\ValidatesOpenApiSchema;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
-use Studio\Gesso\Tests\Helpers\SwallowsGessoDeprecations;
 use Studio\Gesso\Validation\Request\SecurityValidator;
 use Symfony\Component\HttpFoundation\Request;
 
@@ -27,7 +25,8 @@ use function str_starts_with;
 require_once __DIR__ . '/../Helpers/LaravelConfigMock.php';
 
 /**
- * Covers the `auto_inject_dummy_bearer` branch of request validation. The
+ * Covers `laravel.auto_inject_dummy_credentials = 'bearer'`, the Bearer-only
+ * mode that replaced v2's `auto_inject_dummy_bearer` key. The
  * inject path is a spec-driven convenience for tests that authenticate via
  * actingAs() or middleware bypass and therefore never set a real
  * Authorization header — without the inject, every bearer-protected endpoint
@@ -35,7 +34,6 @@ require_once __DIR__ . '/../Helpers/LaravelConfigMock.php';
  */
 class ValidatesOpenApiSchemaAutoInjectBearerTest extends TestCase
 {
-    use SwallowsGessoDeprecations;
     use ValidatesOpenApiSchema;
 
     protected function setUp(): void
@@ -45,36 +43,19 @@ class ValidatesOpenApiSchemaAutoInjectBearerTest extends TestCase
         OpenApiSpecLoader::configure(__DIR__ . '/../fixtures/specs');
         OpenApiCoverageTracker::reset();
         SecurityValidator::resetWarningStateForTesting();
-        // Enabling the (deprecated) flag under test records into the
-        // process-wide deprecations channel; swallow the notice and reset the
-        // state so this file's focus stays on the inject behavior.
-        // ValidatesOpenApiSchemaAutoInjectDeprecationTest covers the notice.
-        Deprecations::resetForTesting();
-        $this->swallowGessoDeprecations();
         $GLOBALS['__openapi_testing_config'] = [
-            'gesso.default_spec' => 'petstore-3.0',
-            'gesso.auto_validate_request' => true,
+            'gesso.spec.default' => 'petstore-3.0',
+            'gesso.laravel.auto_validate_request' => true,
         ];
     }
 
     protected function tearDown(): void
     {
-        restore_error_handler();
         unset($GLOBALS['__openapi_testing_config']);
         OpenApiSpecLoader::reset();
         OpenApiCoverageTracker::reset();
         SecurityValidator::resetWarningStateForTesting();
-        Deprecations::resetForTesting();
         parent::tearDown();
-    }
-
-    #[Test]
-    public function config_file_defaults_auto_inject_dummy_bearer_to_false(): void
-    {
-        $config = require __DIR__ . '/../../src/Laravel/config.php';
-
-        $this->assertArrayHasKey('auto_inject_dummy_bearer', $config);
-        $this->assertFalse($config['auto_inject_dummy_bearer']);
     }
 
     #[Test]
@@ -83,7 +64,7 @@ class ValidatesOpenApiSchemaAutoInjectBearerTest extends TestCase
         // /v1/secure/bearer requires `bearerAuth`. With the inject flag on,
         // the validator's view of the request gets a dummy Bearer token even
         // though the Symfony Request has none — security check passes.
-        $GLOBALS['__openapi_testing_config']['gesso.auto_inject_dummy_bearer'] = true;
+        $GLOBALS['__openapi_testing_config']['gesso.laravel.auto_inject_dummy_credentials'] = 'bearer';
 
         $request = Request::create('/v1/secure/bearer', 'GET');
 
@@ -98,7 +79,7 @@ class ValidatesOpenApiSchemaAutoInjectBearerTest extends TestCase
     #[Test]
     public function inject_false_still_fails_bearer_endpoint_without_header(): void
     {
-        $GLOBALS['__openapi_testing_config']['gesso.auto_inject_dummy_bearer'] = false;
+        $GLOBALS['__openapi_testing_config']['gesso.laravel.auto_inject_dummy_credentials'] = false;
 
         $request = Request::create('/v1/secure/bearer', 'GET');
 
@@ -115,7 +96,7 @@ class ValidatesOpenApiSchemaAutoInjectBearerTest extends TestCase
         // to deliberately exercise a failure path), the inject must leave it
         // alone so the test's intent wins. Here we set an invalid value and
         // assert the validator sees it.
-        $GLOBALS['__openapi_testing_config']['gesso.auto_inject_dummy_bearer'] = true;
+        $GLOBALS['__openapi_testing_config']['gesso.laravel.auto_inject_dummy_credentials'] = 'bearer';
 
         $request = Request::create(
             '/v1/secure/bearer',
@@ -138,7 +119,7 @@ class ValidatesOpenApiSchemaAutoInjectBearerTest extends TestCase
         // Inject is bearer-only by design. An apiKey endpoint still fails
         // with the apiKey-specific message so the user is directed to the
         // right fix (set the api key), not a misleading "bearer missing".
-        $GLOBALS['__openapi_testing_config']['gesso.auto_inject_dummy_bearer'] = true;
+        $GLOBALS['__openapi_testing_config']['gesso.laravel.auto_inject_dummy_credentials'] = 'bearer';
 
         $request = Request::create('/v1/secure/apikey-header', 'GET');
 
@@ -156,7 +137,7 @@ class ValidatesOpenApiSchemaAutoInjectBearerTest extends TestCase
         // Validation must pass on its own (skipped). The silent-pass now
         // also fires a one-shot E_USER_WARNING; suppress locally because
         // SecurityValidatorTest covers warning contents.
-        $GLOBALS['__openapi_testing_config']['gesso.auto_inject_dummy_bearer'] = true;
+        $GLOBALS['__openapi_testing_config']['gesso.laravel.auto_inject_dummy_credentials'] = 'bearer';
 
         $request = Request::create('/v1/secure/oauth2-only', 'GET');
 
@@ -183,7 +164,7 @@ class ValidatesOpenApiSchemaAutoInjectBearerTest extends TestCase
         // /v1/secure/and requires bearer AND apiKey in a single entry.
         // Injecting bearer alone cannot satisfy the entry, but the surfaced
         // error narrows to the apiKey (the actionable one) rather than both.
-        $GLOBALS['__openapi_testing_config']['gesso.auto_inject_dummy_bearer'] = true;
+        $GLOBALS['__openapi_testing_config']['gesso.laravel.auto_inject_dummy_credentials'] = 'bearer';
 
         $request = Request::create('/v1/secure/and', 'GET');
 
@@ -203,8 +184,8 @@ class ValidatesOpenApiSchemaAutoInjectBearerTest extends TestCase
         // Inject is a sub-feature of request validation — with validation
         // off, the inject flag must not run the validator as a side effect.
         // Proves the feature flags compose independently.
-        $GLOBALS['__openapi_testing_config']['gesso.auto_validate_request'] = false;
-        $GLOBALS['__openapi_testing_config']['gesso.auto_inject_dummy_bearer'] = true;
+        $GLOBALS['__openapi_testing_config']['gesso.laravel.auto_validate_request'] = false;
+        $GLOBALS['__openapi_testing_config']['gesso.laravel.auto_inject_dummy_credentials'] = 'bearer';
 
         $request = Request::create('/v1/secure/bearer', 'GET');
 
@@ -219,12 +200,12 @@ class ValidatesOpenApiSchemaAutoInjectBearerTest extends TestCase
         // Same three-way coercion that auto_assert / auto_validate_request
         // use — wiring regression guard for the shared resolveBoolConfig()
         // helper. A typo'd env value must not silently disable the feature.
-        $GLOBALS['__openapi_testing_config']['gesso.auto_inject_dummy_bearer'] = 'yolo';
+        $GLOBALS['__openapi_testing_config']['gesso.laravel.auto_inject_dummy_credentials'] = 'yolo';
 
         $request = Request::create('/v1/secure/bearer', 'GET');
 
         $this->expectException(AssertionFailedError::class);
-        $this->expectExceptionMessage('auto_inject_dummy_bearer must be a boolean');
+        $this->expectExceptionMessage('auto_inject_dummy_credentials must be a boolean');
 
         $this->maybeAutoValidateOpenApiRequest($request, HttpMethod::GET, '/v1/secure/bearer');
     }
@@ -239,8 +220,8 @@ class ValidatesOpenApiSchemaAutoInjectBearerTest extends TestCase
         // the error — confirming "one failure, not a cascade" doctrine.
         // Uses a spec name with no corresponding file to trigger the real
         // RuntimeException path.
-        $GLOBALS['__openapi_testing_config']['gesso.default_spec'] = 'nonexistent-spec-name';
-        $GLOBALS['__openapi_testing_config']['gesso.auto_inject_dummy_bearer'] = true;
+        $GLOBALS['__openapi_testing_config']['gesso.spec.default'] = 'nonexistent-spec-name';
+        $GLOBALS['__openapi_testing_config']['gesso.laravel.auto_inject_dummy_credentials'] = 'bearer';
 
         $request = Request::create('/v1/secure/bearer', 'GET');
 
@@ -255,7 +236,7 @@ class ValidatesOpenApiSchemaAutoInjectBearerTest extends TestCase
         // Symfony's HeaderBag normalizes to lowercase. The inject must see
         // either case and not overwrite — regression guard for the
         // case-insensitive lookup used in shouldAutoInjectDummyBearer().
-        $GLOBALS['__openapi_testing_config']['gesso.auto_inject_dummy_bearer'] = true;
+        $GLOBALS['__openapi_testing_config']['gesso.laravel.auto_inject_dummy_credentials'] = 'bearer';
 
         $request = Request::create(
             '/v1/secure/bearer',

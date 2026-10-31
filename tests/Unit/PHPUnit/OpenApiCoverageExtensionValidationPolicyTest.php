@@ -7,12 +7,11 @@ namespace Studio\Gesso\Tests\Unit\PHPUnit;
 use PHPUnit\Framework\Attributes\IgnoreDeprecations;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
-use PHPUnit\Runner\Extension\ParameterCollection;
 use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\OpenApiResponseValidator;
-use Studio\Gesso\PHPUnit\InvalidValidationPolicyConfigurationException;
 use Studio\Gesso\PHPUnit\OpenApiCoverageExtension;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
+use Studio\Gesso\Tests\Helpers\FlatExtensionSettings;
 use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 use Studio\Gesso\Validation\Support\ValidationPolicyDefaults;
 
@@ -20,8 +19,6 @@ use function array_map;
 use function fclose;
 use function fopen;
 use function range;
-use function rewind;
-use function stream_get_contents;
 
 /**
  * Issue #502 (additive half): the `max_errors`, `skip_response_codes`,
@@ -95,30 +92,6 @@ class OpenApiCoverageExtensionValidationPolicyTest extends TestCase
     }
 
     #[Test]
-    public function max_errors_parameter_rejects_a_non_numeric_value(): void
-    {
-        try {
-            $this->bootstrap(['max_errors' => 'many']);
-            $this->fail('Expected InvalidValidationPolicyConfigurationException');
-        } catch (InvalidValidationPolicyConfigurationException $e) {
-            $this->assertStringContainsString('max_errors', $e->getMessage());
-            $this->assertStringContainsString("'many'", $e->getMessage());
-        }
-
-        $this->assertStringContainsString('FATAL', $this->readStderr());
-        $this->assertStringContainsString('max_errors', $this->readStderr());
-    }
-
-    #[Test]
-    public function max_errors_parameter_rejects_a_negative_value(): void
-    {
-        $this->expectException(InvalidValidationPolicyConfigurationException::class);
-        $this->expectExceptionMessage('max_errors');
-
-        $this->bootstrap(['max_errors' => '-1']);
-    }
-
-    #[Test]
     public function skip_response_codes_parameter_configures_the_process_default(): void
     {
         $this->bootstrap(['skip_response_codes' => '404, 5\d\d']);
@@ -135,38 +108,6 @@ class OpenApiCoverageExtensionValidationPolicyTest extends TestCase
         $this->bootstrap(['skip_response_codes' => '']);
 
         $this->assertSame([], ValidationPolicyDefaults::skipResponseCodes());
-    }
-
-    #[Test]
-    public function skip_response_codes_parameter_rejects_a_blank_entry(): void
-    {
-        try {
-            $this->bootstrap(['skip_response_codes' => '422,,404']);
-            $this->fail('Expected InvalidValidationPolicyConfigurationException');
-        } catch (InvalidValidationPolicyConfigurationException $e) {
-            $this->assertStringContainsString('skip_response_codes[1]', $e->getMessage());
-            $this->assertStringContainsString('must not be an empty string', $e->getMessage());
-        }
-
-        $this->assertStringContainsString('FATAL', $this->readStderr());
-    }
-
-    #[Test]
-    public function skip_response_codes_parameter_rejects_an_invalid_regex_at_bootstrap(): void
-    {
-        // Issue #502 review: a malformed pattern must FATAL at bootstrap,
-        // not surface later as a constructor error inside the first test
-        // that builds a validator.
-        try {
-            $this->bootstrap(['skip_response_codes' => '(unclosed']);
-            $this->fail('Expected InvalidValidationPolicyConfigurationException');
-        } catch (InvalidValidationPolicyConfigurationException $e) {
-            $this->assertStringContainsString('skip_response_codes[0]', $e->getMessage());
-            $this->assertStringContainsString('is not a valid regex pattern', $e->getMessage());
-            $this->assertStringContainsString('(unclosed', $e->getMessage());
-        }
-
-        $this->assertStringContainsString('FATAL', $this->readStderr());
     }
 
     #[Test]
@@ -213,21 +154,11 @@ class OpenApiCoverageExtensionValidationPolicyTest extends TestCase
     private function bootstrap(array $extra = [], string $specs = 'refs-valid'): void
     {
         $extension = new OpenApiCoverageExtension();
-        $parameters = ParameterCollection::fromArray($extra + [
+        $parameters = FlatExtensionSettings::parameters($extra + [
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
             'specs' => $specs,
         ]);
 
         $extension->setupExtension(null, $parameters, null);
-    }
-
-    private function readStderr(): string
-    {
-        if ($this->stderrBuffer === null) {
-            return '';
-        }
-        rewind($this->stderrBuffer);
-
-        return (string) stream_get_contents($this->stderrBuffer);
     }
 }

@@ -13,307 +13,307 @@
         "spec_base_path": {
             "surface": "config-key",
             "replacement": "spec.base_path",
-            "channel": "deprecation",
+            "channel": "removed",
             "removed_in": "3.0",
             "owner": "#501",
-            "deprecation_id": "config.spec_base_path"
+            "deprecation_id": null
         },
         "default_spec": {
             "surface": "config-key",
             "replacement": "spec.default",
-            "channel": "deprecation",
+            "channel": "removed",
             "removed_in": "3.0",
             "owner": "#501",
-            "deprecation_id": "config.default_spec"
+            "deprecation_id": null
         },
         "specs": {
             "surface": "config-key",
             "replacement": "spec.names",
-            "channel": "deprecation",
+            "channel": "removed",
             "removed_in": "3.0",
             "owner": "#501",
-            "deprecation_id": "config.specs"
+            "deprecation_id": null
         },
         "strip_prefixes": {
             "surface": "config-key",
             "replacement": "spec.strip_prefixes",
-            "channel": "deprecation",
+            "channel": "removed",
             "removed_in": "3.0",
             "owner": "#501",
-            "deprecation_id": "config.strip_prefixes"
+            "deprecation_id": null
         },
         "validation_output": {
             "surface": "config-key",
             "replacement": "validation.format",
-            "channel": "deprecation",
+            "channel": "removed",
             "removed_in": "3.0",
             "owner": "#501",
-            "deprecation_id": "phpunit.validation_output"
+            "deprecation_id": null
         },
         "max_errors": {
             "surface": "config-key",
             "replacement": "validation.max_errors",
-            "channel": "deprecation",
+            "channel": "removed",
             "removed_in": "3.0",
             "owner": "#501",
-            "deprecation_id": "config.max_errors"
+            "deprecation_id": null
         },
         "enforce_discriminator": {
             "surface": "config-key",
             "replacement": "validation.enforce_discriminator",
-            "channel": "deprecation",
+            "channel": "removed",
             "removed_in": "3.0",
             "owner": "#501",
-            "deprecation_id": "config.enforce_discriminator"
+            "deprecation_id": null
         },
         "acknowledged_unvalidatable_schemes": {
             "surface": "config-key",
             "replacement": "validation.acknowledged_unvalidatable_schemes",
-            "channel": "deprecation",
+            "channel": "removed",
             "removed_in": "3.0",
             "owner": "#501",
-            "deprecation_id": "config.acknowledged_unvalidatable_schemes"
+            "deprecation_id": null
         },
         "skip_response_codes": {
             "surface": "config-key",
             "replacement": "validation.skip_response_codes",
-            "channel": "deprecation",
+            "channel": "removed",
             "removed_in": "3.0",
             "owner": "#501",
-            "deprecation_id": "config.skip_response_codes"
+            "deprecation_id": null
         },
         "skip_request_validation_response_codes": {
             "surface": "config-key",
             "replacement": "validation.skip_request_validation_response_codes",
-            "channel": "deprecation",
+            "channel": "removed",
             "removed_in": "3.0",
             "owner": "#501",
-            "deprecation_id": "config.skip_request_validation_response_codes"
+            "deprecation_id": null
         },
         "strict_required": {
             "surface": "config-key",
             "replacement": "strict.required['run']",
-            "channel": "deprecation",
+            "channel": "removed",
             "removed_in": "3.0",
             "owner": "#502",
-            "deprecation_id": "phpunit.strict_required"
+            "deprecation_id": null
         },
         "strict_required_per_call": {
             "surface": "config-key",
             "replacement": "strict.required['per_call']",
-            "channel": "deprecation",
+            "channel": "removed",
             "removed_in": "3.0",
             "owner": "#502",
-            "deprecation_id": "phpunit.strict_required_per_call"
+            "deprecation_id": null
         },
         "strict_additional_properties": {
             "surface": "config-key",
             "replacement": "strict.additional_properties['run']",
-            "channel": "deprecation",
+            "channel": "removed",
             "removed_in": "3.0",
             "owner": "#502",
-            "deprecation_id": "phpunit.strict_additional_properties"
+            "deprecation_id": null
         },
         "strict_additional_properties_per_call": {
             "surface": "config-key",
             "replacement": "strict.additional_properties['per_call']",
-            "channel": "deprecation",
+            "channel": "removed",
             "removed_in": "3.0",
             "owner": "#502",
-            "deprecation_id": "phpunit.strict_additional_properties_per_call"
+            "deprecation_id": null
         },
         "min_endpoint_coverage": {
             "surface": "config-key",
             "replacement": "coverage.min_coverage['endpoint']",
-            "channel": "deprecation",
+            "channel": "removed",
             "removed_in": "3.0",
             "owner": "#502",
-            "deprecation_id": "phpunit.min_endpoint_coverage"
+            "deprecation_id": null
         },
         "min_response_coverage": {
             "surface": "config-key",
             "replacement": "coverage.min_coverage['response']",
-            "channel": "deprecation",
+            "channel": "removed",
             "removed_in": "3.0",
             "owner": "#502",
-            "deprecation_id": "phpunit.min_response_coverage"
+            "deprecation_id": null
         },
         "min_sdk_exercise_coverage": {
             "surface": "config-key",
             "replacement": "coverage.min_coverage['sdk_exercise']",
-            "channel": "deprecation",
+            "channel": "removed",
             "removed_in": "3.0",
             "owner": "#502",
-            "deprecation_id": "phpunit.min_sdk_exercise_coverage"
+            "deprecation_id": null
         },
         "min_coverage_strict": {
             "surface": "config-key",
             "replacement": "coverage.min_coverage['strict']",
-            "channel": "deprecation",
+            "channel": "removed",
             "removed_in": "3.0",
             "owner": "#502",
-            "deprecation_id": "phpunit.min_coverage_strict"
+            "deprecation_id": null
         },
         "output_file": {
             "surface": "config-key",
             "replacement": "coverage.report_output['markdown']",
-            "channel": "deprecation",
+            "channel": "removed",
             "removed_in": "3.0",
             "owner": "#502",
-            "deprecation_id": "phpunit.output_file"
+            "deprecation_id": null
         },
         "json_output": {
             "surface": "config-key",
             "replacement": "coverage.report_output['json']",
-            "channel": "deprecation",
+            "channel": "removed",
             "removed_in": "3.0",
             "owner": "#502",
-            "deprecation_id": "phpunit.json_output"
+            "deprecation_id": null
         },
         "junit_output": {
             "surface": "config-key",
             "replacement": "coverage.report_output['junit']",
-            "channel": "deprecation",
+            "channel": "removed",
             "removed_in": "3.0",
             "owner": "#502",
-            "deprecation_id": "phpunit.junit_output"
+            "deprecation_id": null
         },
         "html_output": {
             "surface": "config-key",
             "replacement": "coverage.report_output['html']",
-            "channel": "deprecation",
+            "channel": "removed",
             "removed_in": "3.0",
             "owner": "#502",
-            "deprecation_id": "phpunit.html_output"
+            "deprecation_id": null
         },
         "console_output": {
             "surface": "config-key",
             "replacement": "coverage.console_report",
-            "channel": "deprecation",
+            "channel": "removed",
             "removed_in": "3.0",
             "owner": "#502",
-            "deprecation_id": "phpunit.console_output"
+            "deprecation_id": null
         },
         "sidecar_dir": {
             "surface": "config-key",
             "replacement": "coverage.sidecar_dir",
-            "channel": "deprecation",
+            "channel": "removed",
             "removed_in": "3.0",
             "owner": "#501",
-            "deprecation_id": "phpunit.sidecar_dir"
+            "deprecation_id": null
         },
         "baseline_file": {
             "surface": "config-key",
             "replacement": "baseline['violations']",
-            "channel": "deprecation",
+            "channel": "removed",
             "removed_in": "3.0",
             "owner": "#502",
-            "deprecation_id": "phpunit.baseline_file"
+            "deprecation_id": null
         },
         "coverage_baseline_file": {
             "surface": "config-key",
             "replacement": "baseline['coverage']",
-            "channel": "deprecation",
+            "channel": "removed",
             "removed_in": "3.0",
             "owner": "#502",
-            "deprecation_id": "phpunit.coverage_baseline_file"
+            "deprecation_id": null
         },
         "baseline_stale": {
             "surface": "config-key",
             "replacement": "baseline_stale['violations']",
-            "channel": "deprecation",
+            "channel": "removed",
             "removed_in": "3.0",
             "owner": "#502",
-            "deprecation_id": "phpunit.baseline_stale",
+            "deprecation_id": null,
             "$comment": "The spelling survives but the accepted value does not: the scalar becomes ['violations' => …, 'coverage' => …]. A consumer whose scalar stops being accepted needs the same notice as one whose key was renamed."
         },
         "coverage_baseline_stale": {
             "surface": "config-key",
             "replacement": "baseline_stale['coverage']",
-            "channel": "deprecation",
+            "channel": "removed",
             "removed_in": "3.0",
             "owner": "#502",
-            "deprecation_id": "phpunit.coverage_baseline_stale"
+            "deprecation_id": null
         },
         "enum_drift_enabled": {
             "surface": "config-key",
             "replacement": "enum_drift.enabled",
-            "channel": "deprecation",
+            "channel": "removed",
             "removed_in": "3.0",
             "owner": "#501",
-            "deprecation_id": "phpunit.enum_drift_enabled"
+            "deprecation_id": null
         },
         "enum_drift_scan_namespaces": {
             "surface": "config-key",
             "replacement": "enum_drift.scan_namespaces",
-            "channel": "deprecation",
+            "channel": "removed",
             "removed_in": "3.0",
             "owner": "#501",
-            "deprecation_id": "phpunit.enum_drift_scan_namespaces"
+            "deprecation_id": null
         },
         "enum_drift_fail_on_drift": {
             "surface": "config-key",
             "replacement": "enum_drift.fail_on_drift",
-            "channel": "deprecation",
+            "channel": "removed",
             "removed_in": "3.0",
             "owner": "#501",
-            "deprecation_id": "phpunit.enum_drift_fail_on_drift"
+            "deprecation_id": null
         },
         "default_testsuite_as_full": {
             "surface": "config-key",
             "replacement": "phpunit.default_testsuite_as_full",
-            "channel": "deprecation",
+            "channel": "removed",
             "removed_in": "3.0",
             "owner": "#501",
-            "deprecation_id": "phpunit.default_testsuite_as_full"
+            "deprecation_id": null
         },
         "auto_assert": {
             "surface": "config-key",
             "replacement": "laravel.auto_assert",
-            "channel": "deprecation",
+            "channel": "removed",
             "removed_in": "3.0",
             "owner": "#501",
-            "deprecation_id": "laravel.config.auto_assert"
+            "deprecation_id": null
         },
         "auto_validate_request": {
             "surface": "config-key",
             "replacement": "laravel.auto_validate_request",
-            "channel": "deprecation",
+            "channel": "removed",
             "removed_in": "3.0",
             "owner": "#501",
-            "deprecation_id": "laravel.config.auto_validate_request"
+            "deprecation_id": null
         },
         "auto_inject_dummy_credentials": {
             "surface": "config-key",
             "replacement": "laravel.auto_inject_dummy_credentials",
-            "channel": "deprecation",
+            "channel": "removed",
             "removed_in": "3.0",
             "owner": "#501",
-            "deprecation_id": "laravel.config.auto_inject_dummy_credentials"
+            "deprecation_id": null
         },
         "auto_inject_dummy_bearer": {
             "surface": "config-key",
             "replacement": "laravel.auto_inject_dummy_credentials = 'bearer'",
-            "channel": "deprecation",
+            "channel": "removed",
             "removed_in": "3.0",
             "owner": "#501",
-            "deprecation_id": "laravel.config.auto_inject_dummy_bearer"
+            "deprecation_id": null
         },
         "route_parity": {
             "surface": "config-key",
             "replacement": "laravel.route_parity",
-            "channel": "deprecation",
+            "channel": "removed",
             "removed_in": "3.0",
             "owner": "#501",
-            "deprecation_id": "laravel.config.route_parity"
+            "deprecation_id": null
         },
         "enum_spec_base_path": {
             "surface": "config-key",
             "replacement": "none",
-            "channel": "deprecation",
+            "channel": "removed",
             "removed_in": "3.0",
             "owner": "#508",
-            "deprecation_id": "phpunit.enum_spec_base_path",
+            "deprecation_id": null,
             "$comment": "The second filesystem root is deleted; enum bindings resolve by spec component name (#508). Nothing replaces it, which is why `replacement` is the bare sentinel."
         },
         "--output-file": {

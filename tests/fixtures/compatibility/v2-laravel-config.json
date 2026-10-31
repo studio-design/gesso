@@ -1,25 +1,73 @@
 {
-    "default_spec": "",
-    "specs": [],
-    "spec_base_path": "openapi",
-    "strip_prefixes": [],
-    "route_parity": {
-        "external_operation_ids": [],
-        "external_openapi_paths": [],
-        "excluded_route_names": []
+    "spec": {
+        "base_path": null,
+        "default": null,
+        "names": [],
+        "strip_prefixes": []
     },
-    "max_errors": 20,
-    "enforce_discriminator": true,
-    "auto_assert": false,
-    "auto_validate_request": false,
-    "auto_inject_dummy_credentials": false,
-    "auto_inject_dummy_bearer": false,
-    "acknowledged_unvalidatable_schemes": [],
-    "skip_response_codes": [
-        "5\\d\\d"
-    ],
-    "skip_request_validation_response_codes": [
-        "422",
-        "400"
-    ]
+    "validation": {
+        "format": "text",
+        "max_errors": 20,
+        "enforce_discriminator": true,
+        "acknowledged_unvalidatable_schemes": [],
+        "skip_response_codes": [
+            "5\\d\\d"
+        ],
+        "skip_request_validation_response_codes": [
+            "422",
+            "400"
+        ]
+    },
+    "strict": {
+        "required": {
+            "run": "off",
+            "per_call": "off"
+        },
+        "additional_properties": {
+            "run": "off",
+            "per_call": "off"
+        }
+    },
+    "coverage": {
+        "min_coverage": {
+            "endpoint": null,
+            "response": null,
+            "sdk_exercise": null,
+            "strict": false
+        },
+        "report_output": {
+            "markdown": null,
+            "json": null,
+            "junit": null,
+            "html": null
+        },
+        "console_report": "default",
+        "sidecar_dir": null
+    },
+    "baseline": {
+        "violations": null,
+        "coverage": null
+    },
+    "baseline_stale": {
+        "violations": "note",
+        "coverage": "note"
+    },
+    "enum_drift": {
+        "enabled": false,
+        "scan_namespaces": [],
+        "fail_on_drift": true
+    },
+    "phpunit": {
+        "default_testsuite_as_full": false
+    },
+    "laravel": {
+        "auto_assert": false,
+        "auto_validate_request": false,
+        "auto_inject_dummy_credentials": false,
+        "route_parity": {
+            "external_operation_ids": [],
+            "external_openapi_paths": [],
+            "excluded_route_names": []
+        }
+    }
 }

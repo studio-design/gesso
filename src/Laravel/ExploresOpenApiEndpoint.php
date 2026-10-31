@@ -29,7 +29,7 @@ use Studio\Gesso\PHPUnit\CleanTraceAssert;
  *
  * Spec-name resolution mirrors {@see ValidatesOpenApiSchema}:
  * `#[OpenApiSpec]` method/class attribute → `openApiSpec()` override →
- * `config('gesso.default_spec')`.
+ * `config('gesso.spec.default')`.
  *
  * See README "Schema-driven request fuzzing" for usage examples; the
  * {@see ExploresOpenApiEndpointTest} suite pins the supported behaviour.

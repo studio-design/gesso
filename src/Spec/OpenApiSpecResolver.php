@@ -30,7 +30,7 @@ use Studio\Gesso\Validation\Support\ValidationPolicyDefaults;
  *      `openApiSpec()`; a host test class may override it to inject a
  *      class-specific spec without using the attribute.
  *   4. Adapter's ultimate default. For the Laravel adapter this is
- *      `config('gesso.default_spec')`, returned by the
+ *      `config('gesso.spec.default')`, returned by the
  *      trait's own `openApiSpec()` implementation when not overridden.
  *
  * Adapters that don't override `openApiSpecFallback()` collapse layers 3 and 4

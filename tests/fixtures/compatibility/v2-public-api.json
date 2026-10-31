@@ -7298,6 +7298,16 @@
                         }
                     ]
                 },
+                "autoInjectDummyCredentialsMode": {
+                    "visibility": "private",
+                    "static": false,
+                    "final": false,
+                    "abstract": false,
+                    "returns_reference": false,
+                    "return_type": "string|bool",
+                    "attributes": [],
+                    "parameters": []
+                },
                 "buildOneOffValidator": {
                     "visibility": "private",
                     "static": false,
@@ -7688,26 +7698,6 @@
                     ]
                 },
                 "isAutoAssertEnabled": {
-                    "visibility": "private",
-                    "static": false,
-                    "final": false,
-                    "abstract": false,
-                    "returns_reference": false,
-                    "return_type": "bool",
-                    "attributes": [],
-                    "parameters": []
-                },
-                "isAutoInjectDummyBearerEnabled": {
-                    "visibility": "private",
-                    "static": false,
-                    "final": false,
-                    "abstract": false,
-                    "returns_reference": false,
-                    "return_type": "bool",
-                    "attributes": [],
-                    "parameters": []
-                },
-                "isAutoInjectDummyCredentialsEnabled": {
                     "visibility": "private",
                     "static": false,
                     "final": false,

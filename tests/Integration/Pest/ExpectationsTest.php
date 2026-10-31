@@ -138,7 +138,7 @@ it('validates a matching request via toMatchOpenApiRequestSchema', function (): 
 });
 
 it('does not double-record coverage when explicit assert follows auto-assert', function (): void {
-    config()->set('gesso.auto_assert', true);
+    config()->set('gesso.laravel.auto_assert', true);
 
     $response = $this->get('/v1/pets');
 

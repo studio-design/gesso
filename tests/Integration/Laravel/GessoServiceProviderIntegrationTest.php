@@ -12,50 +12,32 @@ use Illuminate\Support\ServiceProvider;
 use LogicException;
 use Orchestra\Testbench\TestCase;
 use PHPUnit\Framework\Attributes\Test;
-use Studio\Gesso\Internal\Deprecations;
+use Studio\Gesso\Config\GessoConfig;
 use Studio\Gesso\Laravel\GessoServiceProvider;
+use Studio\Gesso\Laravel\LaravelConfig;
 
+use function base_path;
 use function config;
-use function config_path;
 use function dirname;
 use function file_get_contents;
 use function json_encode;
 
 final class GessoServiceProviderIntegrationTest extends TestCase
 {
-    protected function setUp(): void
-    {
-        parent::setUp();
-        Deprecations::resetForTesting();
-    }
-
-    protected function tearDown(): void
-    {
-        Deprecations::resetForTesting();
-        parent::tearDown();
-    }
-
     #[Test]
-    public function provider_merges_v2_defaults_under_the_gesso_key(): void
+    public function provider_merges_gesso_php_defaults_under_the_gesso_key(): void
     {
-        /** @var array<string, mixed> $configuration */
-        $configuration = require dirname(__DIR__, 3) . '/src/Laravel/config.php';
-        $expected = file_get_contents(
-            dirname(__DIR__, 2) . '/fixtures/compatibility/v2-laravel-config.json',
-        );
+        $this->provider()->register();
 
-        $this->assertIsString($expected);
+        // The `gesso` namespace has the shape of gesso.php itself, every key
+        // at its documented default when the application has no root file.
         $this->assertSame(
-            $expected,
+            file_get_contents(dirname(__DIR__, 2) . '/fixtures/compatibility/v2-laravel-config.json'),
             json_encode(
-                $configuration,
+                config('gesso'),
                 JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES,
             ) . "\n",
         );
-
-        $this->provider()->register();
-
-        $this->assertSame($configuration, config('gesso'));
         $this->assertNull(config('openapi-contract-testing'));
     }
 
@@ -63,54 +45,63 @@ final class GessoServiceProviderIntegrationTest extends TestCase
     public function provider_preserves_application_overrides_under_the_gesso_key(): void
     {
         config()->set('gesso', [
-            'default_spec' => 'application-spec',
-            'max_errors' => 7,
+            'spec' => ['default' => 'application-spec'],
+            'validation' => ['max_errors' => 7],
         ]);
 
         $this->provider()->register();
 
-        $this->assertSame('application-spec', config('gesso.default_spec'));
-        $this->assertSame(7, config('gesso.max_errors'));
-        $this->assertSame('openapi', config('gesso.spec_base_path'));
+        $this->assertSame('application-spec', config('gesso.spec.default'));
+        $this->assertSame(7, config('gesso.validation.max_errors'));
+        $this->assertFalse(config('gesso.laravel.auto_assert'));
     }
 
     #[Test]
-    public function provider_deprecates_each_flat_key_the_application_sets(): void
+    public function provider_rejects_every_removed_flat_key_with_its_replacement(): void
     {
+        // A published v2 config/gesso.php: v3 fails instead of ignoring it.
         config()->set('gesso', [
             'max_errors' => 7,
             'auto_assert' => true,
+            'auto_inject_dummy_bearer' => true,
             'route_parity' => ['excluded_route_names' => ['horizon.*']],
         ]);
 
-        $this->provider()->register();
-
-        $this->assertSame([
-            'config.max_errors' => 1,
-            'laravel.config.auto_assert' => 1,
-            'laravel.config.route_parity' => 1,
-        ], Deprecations::counts());
-        // The flat value keeps working.
-        $this->assertSame(7, config('gesso.max_errors'));
+        try {
+            $this->provider()->register();
+            $this->fail('Expected a LogicException.');
+        } catch (LogicException $e) {
+            $this->assertStringContainsString("'max_errors' -> validation.max_errors", $e->getMessage());
+            $this->assertStringContainsString("'auto_assert' -> laravel.auto_assert", $e->getMessage());
+            $this->assertStringContainsString(
+                "'auto_inject_dummy_bearer' -> laravel.auto_inject_dummy_credentials = 'bearer'",
+                $e->getMessage(),
+            );
+            $this->assertStringContainsString("'route_parity' -> laravel.route_parity", $e->getMessage());
+        }
     }
 
     #[Test]
-    public function provider_defaults_alone_raise_no_deprecation(): void
+    public function a_flat_key_set_at_test_time_fails_the_read(): void
     {
         $this->provider()->register();
+        config()->set('gesso.auto_assert', true);
 
-        $this->assertSame([], Deprecations::counts());
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessage("'auto_assert' -> laravel.auto_assert");
+
+        LaravelConfig::get('laravel.auto_assert');
     }
 
     #[Test]
-    public function provider_publishes_only_the_gesso_config_destination_and_tag(): void
+    public function provider_publishes_a_root_gesso_php_under_the_gesso_tag(): void
     {
         $source = dirname(__DIR__, 3) . '/src/Laravel/config.php';
 
         $this->provider()->boot();
 
         $this->assertSame(
-            [$source => config_path('gesso.php')],
+            [$source => base_path('gesso.php')],
             ServiceProvider::pathsToPublish(GessoServiceProvider::class, 'gesso'),
         );
         $this->assertSame(
@@ -120,6 +111,9 @@ final class GessoServiceProviderIntegrationTest extends TestCase
                 'openapi-contract-testing',
             ),
         );
+
+        // The published template is itself a valid gesso.php.
+        $this->assertSame('/app/openapi', GessoConfig::fromArray(require $source, '/app')->string('spec.base_path'));
     }
 
     #[Test]

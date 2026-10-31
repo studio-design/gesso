@@ -230,8 +230,7 @@ changing a sidecar shape or filename pattern.
 - **`strict_required` aggregates across workers.** Workers always export
   observations via the versioned sidecar envelope. The merge step decides
   whether to assert the gate: it defaults to `strict.required['run']` in
-  `gesso.php`, and an explicit `--strict-required` wins. The deprecated
-  `strict_required` phpunit.xml parameter does not reach the merge step. See [`strict-required.md`](strict-required.md#paratest).
+  `gesso.php`, and an explicit `--strict-required` wins. See [`strict-required.md`](strict-required.md#paratest).
 - **Enum drift is evaluated once, by the process that starts the run.**
   paratest bootstraps the extension in its master before spawning workers
   (Pest `--parallel` does the same in its orchestrator). That process runs

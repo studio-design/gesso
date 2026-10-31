@@ -7,7 +7,6 @@ namespace Studio\Gesso\Tests\Unit\PHPUnit;
 use PHPUnit\Framework\Attributes\IgnoreDeprecations;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
-use PHPUnit\Runner\Extension\ParameterCollection;
 use Studio\Gesso\Baseline\CoverageBaseline;
 use Studio\Gesso\Baseline\CoverageBaselineEntry;
 use Studio\Gesso\Baseline\CoverageBaselineFile;
@@ -16,6 +15,7 @@ use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\Internal\LegacyIdentity;
 use Studio\Gesso\PHPUnit\OpenApiCoverageExtension;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
+use Studio\Gesso\Tests\Helpers\FlatExtensionSettings;
 
 use function fclose;
 use function file_put_contents;
@@ -87,7 +87,7 @@ class OpenApiCoverageExtensionCoverageBaselineTest extends TestCase
             $this->fail('Expected an InvalidBaselineConfigurationException.');
         } catch (InvalidBaselineConfigurationException) {
             $this->assertStringContainsString('[Gesso] FATAL', $this->capturedStderr());
-            $this->assertStringContainsString('coverage_baseline_file could not be loaded', $this->capturedStderr());
+            $this->assertStringContainsString('baseline.coverage could not be loaded', $this->capturedStderr());
         }
     }
 
@@ -147,20 +147,6 @@ class OpenApiCoverageExtensionCoverageBaselineTest extends TestCase
     }
 
     #[Test]
-    public function an_unknown_coverage_baseline_stale_value_is_fatal(): void
-    {
-        try {
-            $this->setupExtension([
-                'coverage_baseline_file' => $this->writeFixture(),
-                'coverage_baseline_stale' => 'warn',
-            ]);
-            $this->fail('Expected an InvalidBaselineConfigurationException.');
-        } catch (InvalidBaselineConfigurationException) {
-            $this->assertStringContainsString('Unknown baseline_stale value', $this->capturedStderr());
-        }
-    }
-
-    #[Test]
     public function coverage_baseline_stale_without_its_file_is_fatal(): void
     {
         try {
@@ -168,8 +154,8 @@ class OpenApiCoverageExtensionCoverageBaselineTest extends TestCase
             $this->fail('Expected an InvalidBaselineConfigurationException.');
         } catch (InvalidBaselineConfigurationException) {
             $stderr = $this->capturedStderr();
-            $this->assertStringContainsString('coverage_baseline_stale is set', $stderr);
-            $this->assertStringContainsString('`coverage_baseline_file`', $stderr);
+            $this->assertStringContainsString('baseline_stale.coverage is set', $stderr);
+            $this->assertStringContainsString('`baseline.coverage`', $stderr);
         }
     }
 
@@ -183,9 +169,9 @@ class OpenApiCoverageExtensionCoverageBaselineTest extends TestCase
             $this->fail('Expected an InvalidBaselineConfigurationException.');
         } catch (InvalidBaselineConfigurationException) {
             $stderr = $this->capturedStderr();
-            $this->assertStringContainsString('baseline_stale is set', $stderr);
-            $this->assertStringContainsString('`baseline_file`', $stderr);
-            $this->assertStringNotContainsString('coverage_baseline_file', $stderr);
+            $this->assertStringContainsString('baseline_stale.violations is set', $stderr);
+            $this->assertStringContainsString('`baseline.violations`', $stderr);
+            $this->assertStringNotContainsString('baseline.coverage', $stderr);
         }
     }
 
@@ -204,7 +190,7 @@ class OpenApiCoverageExtensionCoverageBaselineTest extends TestCase
     private function setupExtension(array $parameters): void
     {
         $extension = new OpenApiCoverageExtension();
-        $extension->setupExtension(null, ParameterCollection::fromArray([
+        $extension->setupExtension(null, FlatExtensionSettings::parameters([
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
             'specs' => 'petstore-3.0',
             ...$parameters,
