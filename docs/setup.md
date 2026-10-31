@@ -25,9 +25,11 @@ of `bin/gesso` from a library checkout uses that checkout's dependencies.
 - [HTTP `$ref` resolution (opt-in)](#http-ref-resolution-opt-in)
 - [Remote spec sources (opt-in)](#remote-spec-sources-opt-in)
 
-Install Gesso and PHPUnit as development dependencies. Declare PHPUnit
-yourself: v3 moves it to Gesso's `require-dev`, so it will no longer arrive
-transitively.
+Install Gesso and PHPUnit 12 or 13 as development dependencies. Declare
+PHPUnit yourself: since v3 it is only in Gesso's `require-dev`, so it no
+longer arrives transitively. PHPUnit 11 and Pest 3 are not supported; see
+[Prepare for Gesso 3.0](migration/v3.md#phpunit-dependency) to upgrade a
+Laravel 12 application still on them.
 
 ```bash
 composer require --dev "studio-design/gesso:^2.0" phpunit/phpunit
