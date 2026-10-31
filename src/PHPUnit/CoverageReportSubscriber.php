@@ -87,7 +87,7 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
      *                                          collected fingerprints here at run end; partial runs refuse the write
      *                                          (an incomplete baseline would hide violations). Worker mode instead
      *                                          stages the fingerprints in the sidecar envelope for
-     *                                          `gesso coverage:merge --baseline-file` to union (issue #417).
+     *                                          `gesso coverage:merge --baseline="violations=…"` to union (issue #417).
      * @param null|TestRunCompletionTracer $baselineCompletionTracer Issue #402: registered by the extension for
      *                                                               enforcement runs. Unless it can prove every
      *                                                               planned test finished with no defects, stale
@@ -514,7 +514,7 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
         if ($collector !== null) {
             $baselineDocument = ViolationBaselineFile::toDocument($collector->baseline());
             $this->writeStderr(sprintf(
-                "[Gesso] baseline: %d violation(s) staged in this worker's sidecar. Run `gesso coverage:merge --baseline-file=%s` after the parallel run to write the merged baseline.\n",
+                "[Gesso] baseline: %d violation(s) staged in this worker's sidecar. Run `gesso coverage:merge --baseline=\"violations=%s\"` after the parallel run to write the merged baseline.\n",
                 $collector->baseline()->count(),
                 $this->baselineGeneratePath,
             ));

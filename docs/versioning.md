@@ -76,7 +76,7 @@ This library follows [Semantic Versioning 2.0](https://semver.org/). v1.0.0 is t
   OpenAPI 3.2 custom `additionalOperations` methods stay case-sensitive. The
   `coverage_baseline_file` / `coverage_baseline_stale` extension parameters
   (same values as `baseline_stale`), the matching
-  `--coverage-baseline-file` / `--coverage-baseline-stale` merge flags, and
+  `--baseline="coverage=…"` / `--baseline-stale="coverage=…"` merge flags, and
   the shared `GESSO_BASELINE_GENERATE` generation switch are covered too.
   The enforcement semantics are part of the contract: responses that were not
   validated — including responses skipped by `skip_response_codes` — are
@@ -156,7 +156,7 @@ whole migration.
 
 Absence is reported, never treated as "this worker recorded none". The merge
 says its deprecation count is a lower bound when a sidecar has no deprecation
-half; `coverage:merge --baseline-file` refuses to write a union when any
+half; `coverage:merge --baseline="violations=…"` refuses to write a union when any
 sidecar lacks the baseline half; a strict parallel SDK exercise threshold
 rejects any worker sidecar without the SDK half, while warn-only SDK gating
 reports the missing-worker count and evaluates the available observations.

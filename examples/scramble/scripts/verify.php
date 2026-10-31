@@ -173,7 +173,7 @@ runScenario('gate-uncovered', $gate, 1);
 // Follow the user's next step: generate the missing test for the app's mount.
 runScenario('stubs-cli', [
     'vendor/bin/gesso', 'stubs', '--spec=openapi/api.json', '--coverage=build/coverage.json',
-    '--adapter=laravel', '--request-prefix=/api', '--output=tests/Feature/Contract',
+    '--adapter=laravel', '--request-prefix=/api', '--output-dir=tests/Feature/Contract',
 ]);
 $stub = $workspace . '/tests/Feature/Contract/PostUsersTest.php';
 ensure(\is_file($stub), 'Expected a generated test for POST /users');
@@ -182,7 +182,7 @@ $generated = \file_get_contents($stub);
 // Bootstrap the copied app's class mappings for Artisan as well as PHPUnit.
 runScenario('stubs-artisan', [
     '-d', 'auto_prepend_file=scripts/scenario-bootstrap.php', 'artisan', 'gesso:stubs',
-    '--coverage=build/coverage.json', '--request-prefix=/api', '--output=build/artisan-stubs',
+    '--coverage=build/coverage.json', '--request-prefix=/api', '--output-dir=build/artisan-stubs',
 ]);
 ensure(
     $generated === \file_get_contents($workspace . '/build/artisan-stubs/PostUsersTest.php'),

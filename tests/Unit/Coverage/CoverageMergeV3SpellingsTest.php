@@ -4,32 +4,25 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Tests\Unit\Coverage;
 
-use const JSON_THROW_ON_ERROR;
-
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Studio\Gesso\Coverage\CoverageMergeCommand;
-use Studio\Gesso\Coverage\CoverageSidecarWriter;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 
-use function file_get_contents;
 use function glob;
-use function json_decode;
 use function mkdir;
 use function rmdir;
-use function str_replace;
-use function substr_count;
 use function sys_get_temp_dir;
 use function uniqid;
 use function unlink;
 
 /**
- * Issue #507, v2 half: every v3 `coverage:merge` spelling is accepted and
- * folds onto the same option as the v2 spelling it replaces, which keeps
- * working with one deprecation notice.
+ * Issue #507: every v3 `coverage:merge` spelling folds onto the merge's
+ * internal option, and every v2 spelling Gesso 3.0 removed is a usage error
+ * that names its replacement.
  */
 final class CoverageMergeV3SpellingsTest extends TestCase
 {
@@ -58,53 +51,61 @@ final class CoverageMergeV3SpellingsTest extends TestCase
         parent::tearDown();
     }
 
-    /** @return iterable<string, array{list<string>, list<string>, list<string>}> */
-    public static function provideThe_v3_spelling_parses_to_the_v2_optionCases(): iterable
+    /** @return iterable<string, array{list<string>, array<string, mixed>}> */
+    public static function provideThe_v3_spelling_parses_to_the_merge_optionCases(): iterable
     {
-        yield 'spec names' => [['--specs=a,b'], ['--spec-name=a', '--spec-name=b'], ['--specs']];
-        yield 'strip prefixes' => [['--strip-prefixes=/api,/v2'], ['--strip-prefix=/api,/v2'], ['--strip-prefixes']];
+        yield 'spec names' => [['--spec-name=a', '--spec-name=b'], ['specs' => ['a', 'b']]];
+        yield 'strip prefixes' => [['--strip-prefix=/api,/v2'], ['strip_prefixes' => ['/api', '/v2']]];
         yield 'report sinks' => [
-            ['--json-output=j.json', '--junit-output=u.xml', '--html-output=h.html'],
             ['--report=json:j.json', '--report=junit:u.xml', '--report=html:h.html'],
-            ['--json-output', '--junit-output', '--html-output'],
+            ['json_output' => 'j.json', 'junit_output' => 'u.xml', 'html_output' => 'h.html'],
         ];
-        yield 'console report' => [['--console-output=all'], ['--console-report=all'], ['--console-output']];
+        yield 'console report' => [['--console-report=all'], ['console_output' => 'all']];
         yield 'thresholds' => [
-            ['--min-endpoint-coverage=80', '--min-response-coverage=70', '--min-sdk-exercise-coverage=50', '--min-coverage-strict'],
             ['--min-coverage=endpoint=80,response=70,sdk_exercise=50,strict'],
-            ['--min-endpoint-coverage', '--min-response-coverage', '--min-sdk-exercise-coverage', '--min-coverage-strict'],
+            ['min_coverage_strict' => true, 'min_endpoint_coverage' => 80.0, 'min_response_coverage' => 70.0, 'min_sdk_exercise_coverage' => 50.0],
         ];
-        yield 'strict false' => [['--min-coverage-strict=false'], ['--min-coverage=strict=false'], ['--min-coverage-strict']];
-        yield 'baselines' => [
-            ['--baseline-file=v.json', '--coverage-baseline-file=c.json'],
-            ['--baseline=violations=v.json,coverage=c.json'],
-            ['--baseline-file', '--coverage-baseline-file'],
-        ];
-        yield 'baseline staleness' => [['--coverage-baseline-stale=fail'], ['--baseline-stale=coverage=fail'], ['--coverage-baseline-stale']];
+        yield 'strict false' => [['--min-coverage=strict=false'], ['min_coverage_strict' => false]];
+        yield 'baselines' => [['--baseline=violations=v.json,coverage=c.json'], ['baseline_file' => 'v.json', 'coverage_baseline_file' => 'c.json']];
+        yield 'baseline staleness' => [['--baseline-stale=coverage=fail'], ['coverage_baseline_stale' => 'fail']];
         yield 'paths with commas' => [
-            ['--json-output=build/a,b.json', '--coverage-baseline-file=c,d.json'],
             ['--report=json:build/a,b.json', '--baseline=coverage=c,d.json'],
-            ['--json-output', '--coverage-baseline-file'],
+            ['json_output' => 'build/a,b.json', 'coverage_baseline_file' => 'c,d.json'],
         ];
         yield 'grouped members across occurrences' => [
-            ['--baseline-file=v,1.json', '--coverage-baseline-file=c.json'],
             ['--baseline=violations=v,1.json', '--baseline=coverage=c.json'],
-            ['--baseline-file', '--coverage-baseline-file'],
+            ['baseline_file' => 'v,1.json', 'coverage_baseline_file' => 'c.json'],
         ];
         yield 'strict modes' => [
-            ['--strict-required=warn', '--strict-additional-properties=fail'],
             ['--strict-required=run=warn,per_call=off', '--strict-additional-properties=run=fail'],
-            ['--strict-required', '--strict-additional-properties'],
+            ['strict_required' => 'warn', 'strict_additional_properties' => 'fail'],
         ];
+    }
+
+    /** @return iterable<string, array{list<string>, string}> */
+    public static function provideA_removed_v2_spelling_is_a_usage_error_naming_its_replacementCases(): iterable
+    {
+        yield 'specs' => [['--specs=a'], '--specs (removed in Gesso 3.0; use --spec-name)'];
+        yield 'strip prefixes' => [['--strip-prefixes=/api'], '--strip-prefixes (removed in Gesso 3.0; use --strip-prefix)'];
+        yield 'json output' => [['--json-output=a.json'], '--json-output (removed in Gesso 3.0; use --report=json:<path>)'];
+        yield 'junit output' => [['--junit-output=a.xml'], '--junit-output (removed in Gesso 3.0; use --report=junit:<path>)'];
+        yield 'html output' => [['--html-output=a.html'], '--html-output (removed in Gesso 3.0; use --report=html:<path>)'];
+        yield 'console output' => [['--console-output=all'], '--console-output (removed in Gesso 3.0; use --console-report)'];
+        yield 'min endpoint' => [['--min-endpoint-coverage=80'], '--min-endpoint-coverage (removed in Gesso 3.0; use --min-coverage="endpoint=…")'];
+        yield 'min response' => [['--min-response-coverage=80'], '--min-response-coverage (removed in Gesso 3.0; use --min-coverage="response=…")'];
+        yield 'min sdk' => [['--min-sdk-exercise-coverage=80'], '--min-sdk-exercise-coverage (removed in Gesso 3.0; use --min-coverage="sdk_exercise=…")'];
+        yield 'min strict' => [['--min-coverage-strict'], '--min-coverage-strict (removed in Gesso 3.0; use --min-coverage="strict")'];
+        yield 'baseline file' => [['--baseline-file=v.json'], '--baseline-file (removed in Gesso 3.0; use --baseline="violations=…")'];
+        yield 'coverage baseline file' => [['--coverage-baseline-file=c.json'], '--coverage-baseline-file (removed in Gesso 3.0; use --baseline="coverage=…")'];
+        yield 'coverage baseline stale' => [['--coverage-baseline-stale=fail'], '--coverage-baseline-stale (removed in Gesso 3.0; use --baseline-stale="coverage=…")'];
+        yield 'bare strict required' => [['--strict-required=fail'], '--strict-required=fail (removed in Gesso 3.0; use --strict-required="run=fail")'];
+        yield 'bare strict additional properties' => [['--strict-additional-properties=warn'], '--strict-additional-properties=warn (removed in Gesso 3.0; use --strict-additional-properties="run=warn")'];
+        yield 'bare mode beside the v3 one' => [['--strict-additional-properties=run=off', '--strict-additional-properties=fail'], '--strict-additional-properties=fail (removed in Gesso 3.0;'];
     }
 
     /** @return iterable<string, array{list<string>, string}> */
     public static function provideA_conflicting_or_malformed_spelling_is_a_usage_errorCases(): iterable
     {
-        yield 'spec name twice over' => [['--specs=a', '--spec-name=b'], '--specs and --spec-name set the same option'];
-        yield 'report and its sink' => [['--json-output=a.json', '--report=json:b.json'], '--json-output and --report=json:<path> set the same option'];
-        yield 'strict both ways' => [['--min-coverage-strict', '--min-coverage=strict'], '--min-coverage-strict and --min-coverage="strict"'];
-        yield 'staleness both ways' => [['--coverage-baseline-stale=note', '--baseline-stale=coverage=fail'], 'set the same option'];
         yield 'unknown report format' => [['--report=xml:a.xml'], '--report=xml:a.xml must be'];
         yield 'report without a path' => [['--report=json'], '--report=json must be'];
         yield 'report twice' => [['--report=json:a.json', '--report=json:b.json'], 'names the json report twice'];
@@ -116,27 +117,36 @@ final class CoverageMergeV3SpellingsTest extends TestCase
         yield 'empty baseline' => [['--baseline= '], '--baseline has an empty member'];
         yield 'blank value' => [['--baseline=coverage='], 'needs a value for coverage'];
         yield 'blank strict mode' => [['--strict-additional-properties=run= '], 'needs a value for run'];
-        yield 'mixed strict spellings' => [['--strict-additional-properties=fail', '--strict-additional-properties=run=off'], 'set the same option'];
         yield 'bad per_call' => [['--strict-required=run=warn,per_call=fail'], 'per_call=fail is not one of off, warn'];
     }
 
     /**
-     * @param list<string> $v2
-     * @param list<string> $v3
-     * @param list<string> $deprecated
+     * @param list<string> $argv
+     * @param array<string, mixed> $expected
      */
     #[Test]
-    #[DataProvider('provideThe_v3_spelling_parses_to_the_v2_optionCases')]
-    public function the_v3_spelling_parses_to_the_v2_option(array $v2, array $v3, array $deprecated): void
+    #[DataProvider('provideThe_v3_spelling_parses_to_the_merge_optionCases')]
+    public function the_v3_spelling_parses_to_the_merge_option(array $argv, array $expected): void
     {
-        $old = CoverageMergeCommand::parseArgv($v2);
-        $new = CoverageMergeCommand::parseArgv($v3);
+        $options = CoverageMergeCommand::parseArgv($argv);
 
-        $this->assertSame($deprecated, $old['deprecated_flags'] ?? null);
-        $this->assertSame([], $new['deprecated_flags'] ?? null);
-        unset($old['deprecated_flags'], $new['deprecated_flags']);
-        $this->assertSame($old, $new);
-        $this->assertArrayNotHasKey('usage_error', $new);
+        $this->assertArrayNotHasKey('usage_error', $options);
+        $this->assertSame([], $options['invalid_options'] ?? null);
+        foreach ($expected as $key => $value) {
+            $this->assertSame($value, $options[$key] ?? null, $key);
+        }
+    }
+
+    /** @param list<string> $argv */
+    #[Test]
+    #[DataProvider('provideA_removed_v2_spelling_is_a_usage_error_naming_its_replacementCases')]
+    public function a_removed_v2_spelling_is_a_usage_error_naming_its_replacement(array $argv, string $message): void
+    {
+        [$exit, $stderr] = $this->merge([...$argv, '--spec-base-path=' . __DIR__ . '/../../fixtures/specs']);
+
+        $this->assertSame(CoverageMergeCommand::EXIT_USAGE, $exit);
+        $this->assertStringContainsString($message, $stderr);
+        $this->assertSame([], Deprecations::counts());
     }
 
     /** @param list<string> $argv */
@@ -151,51 +161,12 @@ final class CoverageMergeV3SpellingsTest extends TestCase
     }
 
     #[Test]
-    public function each_v2_spelling_is_announced_once_per_process(): void
-    {
-        $argv = ['--spec-base-path=' . __DIR__ . '/../../fixtures/specs', '--specs=petstore-3.0', '--console-output=all'];
-
-        [, $first] = $this->merge($argv);
-        [, $second] = $this->merge($argv);
-
-        $this->assertSame(1, substr_count($first . $second, "[Gesso deprecation] The CLI flag '--specs' is deprecated. Use --spec-name"));
-        $this->assertSame(1, substr_count($first . $second, "The CLI flag '--console-output' is deprecated. Use --console-report instead."));
-        $this->assertSame(['cli.coverage_merge.console_output' => 2, 'cli.coverage_merge.specs' => 2], Deprecations::counts());
-    }
-
-    #[Test]
-    public function an_unknown_argument_warns_and_keeps_the_exit_code(): void
+    public function an_unknown_argument_is_a_usage_error(): void
     {
         [$exit, $stderr] = $this->merge(['--spec-base-path=' . __DIR__ . '/../../fixtures/specs', '--min-endpont-coverage=90', 'stray']);
 
-        $this->assertSame(CoverageMergeCommand::EXIT_OK, $exit);
-        $this->assertStringContainsString('[Gesso] WARNING: ignoring unknown argument --min-endpont-coverage;', $stderr);
-        $this->assertStringContainsString('[Gesso] WARNING: ignoring unknown argument stray;', $stderr);
-    }
-
-    #[Test]
-    public function both_spellings_produce_the_same_reports(): void
-    {
-        OpenApiCoverageTracker::recordResponse('petstore-3.0', 'GET', '/v1/pets', '200', 'application/json', schemaValidated: true);
-        CoverageSidecarWriter::write($this->dir . '/sidecars', '1', OpenApiCoverageTracker::exportState());
-        OpenApiCoverageTracker::reset();
-
-        $reports = [];
-        foreach (['v2' => ['--specs=petstore-3.0', '--json-output=%s/v2.json', '--console-output=all', '--min-endpoint-coverage=10'], 'v3' => ['--spec-name=petstore-3.0', '--report=json:%s/v3.json', '--console-report=all', '--min-coverage=endpoint=10']] as $spelling => $flags) {
-            $argv = ['--spec-base-path=' . __DIR__ . '/../../fixtures/specs', '--no-cleanup', '--output-file=' . $this->dir . "/{$spelling}.md"];
-            foreach ($flags as $flag) {
-                $argv[] = str_replace('%s', $this->dir, $flag);
-            }
-            [$exit, $stderr] = $this->merge($argv);
-            $this->assertSame(CoverageMergeCommand::EXIT_OK, $exit, $stderr);
-
-            $json = json_decode((string) file_get_contents($this->dir . "/{$spelling}.json"), true, flags: JSON_THROW_ON_ERROR);
-            unset($json['generated_at']);
-            $reports[$spelling] = [(string) file_get_contents($this->dir . "/{$spelling}.md"), $json];
-        }
-
-        $this->assertNotSame('', $reports['v3'][0]);
-        $this->assertSame($reports['v2'], $reports['v3']);
+        $this->assertSame(CoverageMergeCommand::EXIT_USAGE, $exit);
+        $this->assertStringContainsString('[Gesso] Unknown argument(s): --min-endpont-coverage, stray', $stderr);
     }
 
     /**

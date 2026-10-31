@@ -23,7 +23,6 @@ use Studio\Gesso\Internal\CliIo;
 use Studio\Gesso\Internal\CoverageReportWriter;
 use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\Internal\Diagnostics;
-use Studio\Gesso\Internal\LegacyCliFlags;
 use Studio\Gesso\PHPUnit\ConsoleOutput;
 use Studio\Gesso\PHPUnit\CoverageReportSubscriber;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
@@ -110,7 +109,6 @@ use function unlink;
  *     run_id?: string,
  *     help?: bool,
  *     invalid_options?: list<string>,
- *     deprecated_flags?: list<string>,
  *     usage_error?: string,
  * }
  *
@@ -142,10 +140,10 @@ final class CoverageMergeCommand
     private const SHARED_LISTS = ['specs', 'strip_prefixes'];
 
     /**
-     * Issue #507: the v2 flags v3 renames, by option name, and the v3
-     * spelling each one is folded from. Typing one emits its deprecation.
+     * Issue #507: the v2 flags Gesso 3.0 removed, by option name, and the
+     * spelling replacing each. Typing one is a usage error that names it.
      */
-    private const RENAMED_FLAGS = [
+    private const REMOVED_FLAGS = [
         'specs' => '--spec-name',
         'strip_prefixes' => '--strip-prefix',
         'json_output' => '--report=json:<path>',
@@ -162,6 +160,9 @@ final class CoverageMergeCommand
     ];
 
     private const SHARED_PERCENTS = ['min_endpoint_coverage', 'min_response_coverage', 'min_sdk_exercise_coverage'];
+
+    /** Set where a sidecar, report, or baseline file could not be read or written. */
+    private bool $ioFailed = false;
 
     /**
      * @param null|callable(string): void $stderrWriter Optional sink for warnings; defaults to STDERR.
@@ -185,21 +186,18 @@ final class CoverageMergeCommand
     {
         $opts = ArgvParser::parse(
             $argv,
-            flags: ['cleanup', 'no_cleanup', 'min_coverage_strict'],
+            flags: ['cleanup', 'no_cleanup'],
             values: [
-                'sidecar_dir', 'spec_base_path', 'output_file', 'format', 'junit_output', 'json_output', 'html_output',
-                'github_step_summary', 'console_output', 'console_report', 'strict_required', 'strict_additional_properties',
-                'baseline_file', 'coverage_baseline_file', 'coverage_baseline_stale',
-                'min_endpoint_coverage', 'min_response_coverage', 'min_sdk_exercise_coverage', 'expect_sidecars',
-                'config', 'run_id',
+                'sidecar_dir', 'spec_base_path', 'output_file', 'format',
+                'github_step_summary', 'console_report', 'strict_required', 'strict_additional_properties',
+                'expect_sidecars', 'config', 'run_id',
             ],
-            lists: ['specs', 'strip_prefixes', 'spec_name', 'strip_prefix', 'report', 'min_coverage', 'baseline', 'baseline_stale'],
+            lists: ['spec_name' => 'specs', 'strip_prefix' => 'strip_prefixes', 'report', 'min_coverage', 'baseline', 'baseline_stale'],
+            removed: self::REMOVED_FLAGS,
         );
 
-        // Issue #507: the v3 spellings fold into the v2 option names, so
-        // run() and the gesso.php defaults see one set of keys. Which
-        // spelling was typed is read off argv, because a list option is
-        // always present in $opts. The grouped flags are read off argv too:
+        // Issue #507: the grouped flags fold into the internal option names
+        // run() and the gesso.php defaults share. They are read off argv:
         // ArgvParser keeps only the last scalar and splits lists on every
         // comma, which would lose a path containing one.
         $typed = [];
@@ -215,7 +213,7 @@ final class CoverageMergeCommand
         } catch (InvalidArgumentException $e) {
             $opts['usage_error'] = $e->getMessage();
         }
-        unset($opts['spec_name'], $opts['strip_prefix'], $opts['report'], $opts['console_report'], $opts['min_coverage'], $opts['baseline'], $opts['baseline_stale']);
+        unset($opts['report'], $opts['console_report'], $opts['min_coverage'], $opts['baseline'], $opts['baseline_stale']);
 
         if (isset($opts['no_cleanup'])) {
             $opts['cleanup'] = false;
@@ -224,7 +222,7 @@ final class CoverageMergeCommand
         // Cast numeric values up-front so phpstan can prove the 0..100 range
         // check in run(). Non-numeric values pass through as the raw string:
         // run()'s resolveThreshold is the single point of validation, so a
-        // typo'd `--min-endpoint-coverage=eighty` reaches the user as one
+        // typo'd `--min-coverage="endpoint=eighty"` reaches the user as one
         // WARNING/FATAL instead of being dropped silently (issue #135 review C3).
         foreach (['min_endpoint_coverage', 'min_response_coverage', 'min_sdk_exercise_coverage'] as $threshold) {
             if (isset($opts[$threshold]) && is_numeric($opts[$threshold])) {
@@ -307,50 +305,11 @@ final class CoverageMergeCommand
                                             flags win; see docs/configuration.md.
               --help                        Show this message.
 
-            Deprecated spellings (still accepted, removed in Gesso 3.0; see docs/cli.md):
-              --specs=<a,b>                 Comma-separated spec names. Defaults to "front".
-              --strip-prefixes=<a,b>        Comma-separated request-path prefixes to strip.
-              --junit-output=<path>         JUnit XML report output path (for CI dashboards
-                                            like GitLab CI test reports, Jenkins, SonarQube).
-              --json-output=<path>          JSON report output path (machine-readable; see
-                                            docs/coverage-json-schema.md for the schema).
-              --html-output=<path>          Self-contained HTML report output path (for PR
-                                            comments, CI artifact preview, offline review).
-              --console-output=<mode>       default | all | uncovered_only.
-              --min-endpoint-coverage=<pct> Fail-fast (with --min-coverage-strict) when fully-
-                                            covered-endpoint percent is below this value (0-100).
-              --min-response-coverage=<pct> Same, at (method, path, status, content-type) granularity.
-              --min-sdk-exercise-coverage=<pct>
-                                            Minimum eligible response schemas exercised by an
-                                            SDK decoder callback (0-100).
-              --min-coverage-strict[=BOOL]  Treat threshold misses as exit non-zero (default
-                                            warn-only).
-              --strict-required=<mode>      off | warn | fail. Aggregate worker observations
-                                            and assert no schema under-description drift
-                                            (Issue #224 / #226). Defaults to off.
-              --strict-additional-properties=<mode>
-                                            off | warn | fail. Report response properties
-                                            absent from schema declarations. Defaults to off.
-              --baseline-file=<path>        Union the violation-baseline halves staged by a
-                                            parallel `GESSO_BASELINE_GENERATE=1` run and
-                                            write the merged baseline here (Issue #417).
-              --coverage-baseline-file=<path>
-                                            Gate the merged coverage against a committed set of
-                                            known-uncovered responses: any uncovered response
-                                            missing from the file fails the merge by name
-                                            (Issue #481). With GESSO_BASELINE_GENERATE=1 set,
-                                            the file is (re)written instead of enforced.
-              --coverage-baseline-stale=<mode>
-                                            off | note | fail. How baseline entries that are
-                                            covered now are reported. Defaults to note.
-
-            An unknown argument is ignored with a warning; Gesso 3.0 rejects it (exit 2).
-
             Exit codes:
               0  Merge completed; warnings may have been written to stderr.
-              1  A gate failed (threshold, strict, baseline, expected shard count), a
-                 sidecar could not be read, or a report could not be written.
-              2  Command-line usage is invalid.
+              1  A gate failed (threshold, strict, baseline, expected shard count).
+              2  Command-line usage is invalid, a sidecar or baseline file cannot be
+                 read, or a report or baseline file cannot be written.
 
             USAGE;
     }
@@ -358,9 +317,308 @@ final class CoverageMergeCommand
     /**
      * @param MergeOptions $options
      *
-     * @return int `EXIT_OK`; `EXIT_USAGE` on misconfiguration; `EXIT_FAILURE` on a failed gate or I/O failure
+     * @return int `EXIT_OK`; `EXIT_FAILURE` on a failed gate; `EXIT_USAGE` on misconfiguration or an I/O failure
      */
     public function run(array $options): int
+    {
+        $this->ioFailed = false;
+        $exit = $this->merge($options);
+
+        // Issue #507: a sidecar, report, or baseline file that cannot be read
+        // or written exits 2, like every other command, even where the step
+        // that failed also feeds a gate.
+        return $this->ioFailed ? self::EXIT_USAGE : $exit;
+    }
+
+    /**
+     * Label and renderer for the primary report: `text` is the console rendering.
+     *
+     * @param 'html'|'json'|'junit'|'markdown'|'text' $format
+     *
+     * @return array{string, Closure(array<string, CoverageResult>, array<string, SdkExerciseCoverageResult>): string}
+     */
+    private static function primaryRenderer(string $format, ConsoleOutput $console): array
+    {
+        return $format === 'text'
+            ? ['console', static fn(array $r, array $s): string => ConsoleCoverageRenderer::render($r, $console, $s)]
+            : CoverageReportWriter::renderer($format);
+    }
+
+    /**
+     * Issue #596: split the directory into the selected run and the rest.
+     * The run is `$runId` when given, else the group that wrote the newest
+     * file; unscoped (pre-#596 or ext-posix-less) files form one group.
+     *
+     * @param list<string> $sidecars
+     * @param list<string> $markers
+     *
+     * @return array{list<string>, list<string>, list<string>, list<string>} the run's sidecars, its markers,
+     *                                                                       the ignored paths, their run ids
+     *
+     * @throws RuntimeException when two runs tie for newest and no run id was given
+     */
+    private static function scopeToRun(?string $runId, array $sidecars, array $markers): array
+    {
+        $groups = [];
+        foreach ([...$sidecars, ...$markers] as $path) {
+            $groups[CoverageSidecarReader::runIdOf($path) ?? ''][] = $path;
+        }
+        if ($runId === null) {
+            // ponytail: newest-group selection assumes runs share a directory
+            // one after another; concurrent runs in one directory must set
+            // GESSO_RUN_ID. filemtime() is whole seconds, so a tie fails closed.
+            $newest = array_map(
+                static fn(array $paths): int => max(array_map(static fn(string $path): int => (int) @filemtime($path), $paths)),
+                $groups,
+            );
+            arsort($newest);
+            $ids = array_keys($newest);
+            if (count($ids) > 1 && $newest[$ids[0]] === $newest[$ids[1]]) {
+                throw new RuntimeException(sprintf(
+                    'cannot tell which run is newest (run ids %s and %s wrote files in the same second); pass --run-id=<id> or set GESSO_RUN_ID',
+                    $ids[0] === '' ? '(none)' : (string) $ids[0],
+                    $ids[1] === '' ? '(none)' : (string) $ids[1],
+                ));
+            }
+            $runId = (string) ($ids[0] ?? '');
+        }
+
+        $inRun = static fn(string $path): bool => (CoverageSidecarReader::runIdOf($path) ?? '') === $runId;
+        $runSidecars = array_values(array_filter($sidecars, $inRun));
+        // An unscoped marker (a pre-#596 worker in a mixed fleet) cannot be
+        // attributed to any run, so it always counts: fail closed, as before.
+        $runMarkers = array_values(array_filter(
+            $markers,
+            static fn(string $path): bool => $inRun($path) || CoverageSidecarReader::runIdOf($path) === null,
+        ));
+        $ignored = array_values(array_diff([...$sidecars, ...$markers], $runSidecars, $runMarkers));
+
+        return [
+            $runSidecars,
+            $runMarkers,
+            $ignored,
+            array_values(array_unique(array_map(
+                static fn(string $path): string => CoverageSidecarReader::runIdOf($path) ?? '(none)',
+                $ignored,
+            ))),
+        ];
+    }
+
+    /** An option's absolutised path, or `null` when absent or empty. */
+    /**
+     * Fill the options the command line left unset from `gesso.php`. Paths are
+     * already absolute (resolved against the file's directory). Everything the
+     * bridge emits that the merge has no option for is ignored.
+     *
+     * @param MergeOptions $options
+     * @param array<string, bool|float|int|list<string>|string> $shared
+     *
+     * @return MergeOptions
+     */
+    private static function withSharedDefaults(array $options, array $shared): array
+    {
+        foreach (self::SHARED_STRINGS as $key) {
+            // `--format` picks the primary report and where it goes (stdout
+            // without `--output-file`); the file's Markdown path must not
+            // capture a primary report of another format.
+            if ($key === 'output_file' && isset($options['format'])) {
+                continue;
+            }
+            if (!isset($options[$key]) && is_string($shared[$key] ?? null)) {
+                $options[$key] = $shared[$key];
+            }
+        }
+        // ArgvParser materialises every list as `[]`, and `run()` already
+        // reads an empty list as "use the default".
+        foreach (self::SHARED_LISTS as $key) {
+            if (($options[$key] ?? []) === [] && is_array($shared[$key] ?? null)) {
+                $options[$key] = $shared[$key];
+            }
+        }
+        foreach (self::SHARED_PERCENTS as $key) {
+            $value = $shared[$key] ?? null;
+            if (!isset($options[$key]) && (is_int($value) || is_float($value))) {
+                $options[$key] = (float) $value;
+            }
+        }
+        // `--baseline="violations=…"` only ever writes the merged violation baseline, so the
+        // file's `baseline.violations` (an enforcement input for the workers)
+        // defaults it only on a generation run.
+        if (
+            !isset($options['baseline_file']) &&
+            is_string($shared['baseline_file'] ?? null) &&
+            BaselineFileFormat::generationRequested()
+        ) {
+            $options['baseline_file'] = $shared['baseline_file'];
+        }
+        if (!isset($options['min_coverage_strict']) && is_bool($shared['min_coverage_strict'] ?? null)) {
+            $options['min_coverage_strict'] = $shared['min_coverage_strict'];
+        }
+
+        return $options;
+    }
+
+    /**
+     * Sidecars are untrusted input, so their strings must not drive the
+     * reader's terminal: C0 controls other than TAB and LF, DEL, and C1
+     * controls become `?` — both UTF-8 encoded (U+0080-U+009F) and as the lone
+     * 0x80-0x9F bytes an 8-bit terminal reads as CSI/OSC. Byte-level (no `/u`),
+     * so invalid UTF-8 cannot void the filter; well-formed multibyte sequences
+     * are matched whole and kept, so their continuation bytes are not C1.
+     */
+    private static function terminalSafe(string $text): string
+    {
+        return preg_replace_callback(
+            '/\xC2[\x80-\x9F]'
+            . '|([\xC2-\xDF][\x80-\xBF]|\xE0[\xA0-\xBF][\x80-\xBF]|[\xE1-\xEC\xEE\xEF][\x80-\xBF]{2}'
+            . '|\xED[\x80-\x9F][\x80-\xBF]|\xF0[\x90-\xBF][\x80-\xBF]{2}|[\xF1-\xF3][\x80-\xBF]{3}'
+            . '|\xF4[\x80-\x8F][\x80-\xBF]{2})'
+            . '|[\x00-\x08\x0B-\x1F\x7F-\x9F]/',
+            static fn(array $m): string => ($m[1] ?? '') !== '' ? $m[1] : '?',
+            $text,
+        ) ?? $text;
+    }
+
+    /**
+     * `json_encode` already escapes C0 controls but leaves DEL and (under
+     * `JSON_UNESCAPED_UNICODE`) C1 controls raw. Those bytes can only occur
+     * inside string literals, so re-escaping them keeps the report
+     * decode-identical while keeping them off the terminal.
+     */
+    private static function escapeJsonControls(string $json): string
+    {
+        return preg_replace_callback(
+            '/\x7F|\xC2[\x80-\x9F]/',
+            static fn(array $m): string => sprintf('\\u%04x', $m[0] === "\x7F" ? 0x7F : ord($m[0][1])),
+            $json,
+        ) ?? $json;
+    }
+
+    /**
+     * Map the grouped v3 flags onto the internal option names.
+     *
+     * @param array<string, mixed> $opts
+     * @param array<string, list<string>> $typed every value each option was given on argv
+     *
+     * @return array<string, mixed>
+     *
+     * @throws InvalidArgumentException on a malformed value, or a bare `--strict-*=<mode>` removed in Gesso 3.0
+     */
+    private static function foldV3Spellings(array $opts, array $typed): array
+    {
+        /** @var array{console_report?: string, strict_required?: string, strict_additional_properties?: string} $opts */
+        $v3 = [];
+        if (isset($opts['console_report'])) {
+            $v3['console_output'] = $opts['console_report'];
+        }
+        // Repeatable, never comma-split: the path is everything after the
+        // first colon.
+        foreach ($typed['report'] ?? [] as $sink) {
+            [$format, $path] = explode(':', $sink, 2) + [1 => ''];
+            if (!in_array($format, ['json', 'junit', 'html'], true) || trim($path) === '') {
+                throw new InvalidArgumentException("--report={$sink} must be json:<path>, junit:<path> or html:<path>.");
+            }
+            if (isset($v3[$format . '_output'])) {
+                throw new InvalidArgumentException("--report names the {$format} report twice.");
+            }
+            $v3[$format . '_output'] = $path;
+        }
+        foreach (self::members('--min-coverage', $typed['min_coverage'] ?? [], ['endpoint', 'response', 'sdk_exercise', 'strict']) as $member => $value) {
+            if ($member === 'strict') {
+                $v3['min_coverage_strict'] = ArgvParser::bool($value);
+            } else {
+                $v3["min_{$member}_coverage"] = $value;
+            }
+        }
+        foreach (self::members('--baseline', $typed['baseline'] ?? [], ['violations', 'coverage'], paths: true) as $member => $value) {
+            $v3[$member === 'violations' ? 'baseline_file' : 'coverage_baseline_file'] = $value;
+        }
+        // The violation baseline's staleness is reported by the workers; the
+        // merge only ever evaluates the coverage baseline.
+        foreach (self::members('--baseline-stale', $typed['baseline_stale'] ?? [], ['coverage']) as $value) {
+            $v3['coverage_baseline_stale'] = $value;
+        }
+
+        // These two keep their name; the bare-mode value is the v2 spelling
+        // Gesso 3.0 removed. Every occurrence is checked.
+        foreach (['strict_required', 'strict_additional_properties'] as $key) {
+            $values = $typed[$key] ?? [];
+            if ($values === []) {
+                continue;
+            }
+            $flag = '--' . str_replace('_', '-', $key);
+            foreach ($values as $value) {
+                if (!str_contains($value, '=')) {
+                    throw new InvalidArgumentException(sprintf(
+                        'Unknown argument(s): %s',
+                        ArgvParser::removed("{$flag}={$value}", "{$flag}=\"run={$value}\""),
+                    ));
+                }
+            }
+            // `per_call` is checked by the PHPUnit extension inside each
+            // worker; it is accepted here so one string serves both.
+            $members = self::members($flag, $values, ['run', 'per_call']);
+            if (isset($members['per_call']) && !in_array($members['per_call'], ['off', 'warn'], true)) {
+                throw new InvalidArgumentException("{$flag} per_call={$members['per_call']} is not one of off, warn.");
+            }
+            unset($opts[$key]);
+            if (isset($members['run'])) {
+                $opts[$key] = $members['run'];
+            }
+        }
+
+        return [...$opts, ...$v3];
+    }
+
+    /**
+     * Split each occurrence of a v3 `name=value,name=value` flag into its
+     * members. In a path-valued flag a comma only separates members when a
+     * member name follows it, so a path may contain one; elsewhere every comma
+     * does, so a typo'd member is rejected rather than read into a value. Only `strict` may be written without a value,
+     * and no value may be blank: an unset shell variable must not quietly
+     * turn a gate off.
+     *
+     * @param list<string> $occurrences
+     * @param list<string> $allowed
+     *
+     * @return array<string, string>
+     */
+    private static function members(string $flag, array $occurrences, array $allowed, bool $paths = false): array
+    {
+        $separator = $paths ? '/,(?=\s*(?:' . implode('|', $allowed) . ')\s*(?:=|,|$))/' : '/,/';
+        $members = [];
+        foreach ($occurrences as $occurrence) {
+            foreach (preg_split($separator, $occurrence) ?: [] as $item) {
+                if (trim($item) === '') {
+                    throw new InvalidArgumentException("{$flag} has an empty member; name at least one of " . implode(', ', $allowed) . '.');
+                }
+                [$name, $value] = explode('=', $item, 2) + [1 => null];
+                $name = trim($name);
+                if (!in_array($name, $allowed, true)) {
+                    throw new InvalidArgumentException(sprintf('%s does not take "%s"; expected %s.', $flag, $name, implode(', ', $allowed)));
+                }
+                if (isset($members[$name])) {
+                    throw new InvalidArgumentException("{$flag} names {$name} twice.");
+                }
+                if ($value === null && $name === 'strict') {
+                    $value = 'true';
+                }
+                if ($value === null || trim($value) === '') {
+                    throw new InvalidArgumentException("{$flag} needs a value for {$name}, e.g. {$name}=….");
+                }
+                $members[$name] = trim($value);
+            }
+        }
+
+        return $members;
+    }
+
+    /**
+     * @param MergeOptions $options
+     *
+     * @phpstan-impure sets `$ioFailed`, which run() reads afterwards
+     */
+    private function merge(array $options): int
     {
         if (($options['help'] ?? false) === true) {
             $this->writeStdout(self::usage($this->invocation));
@@ -368,11 +626,11 @@ final class CoverageMergeCommand
             return self::EXIT_OK;
         }
 
-        LegacyCliFlags::deprecate($options['deprecated_flags'] ?? [], $this->writeStderr(...));
-        // Issue #507: rejected with exit 2 from Gesso 3.0. Until then a typo
-        // such as `--min-endpont-coverage` must at least not pass in silence.
-        foreach ($options['invalid_options'] ?? [] as $argument) {
-            $this->writeStderr("[Gesso] WARNING: ignoring unknown argument {$argument}; Gesso 3.0 rejects it with exit code 2.\n");
+        // Issue #507: a typo such as `--min-endpont-coverage` must not turn a
+        // gate off in silence, so an unknown argument is a usage error.
+        $invalid = $options['invalid_options'] ?? [];
+        if ($invalid !== []) {
+            return $this->usageError('Unknown argument(s): ' . implode(', ', $invalid));
         }
         if (isset($options['usage_error'])) {
             return $this->usageError($options['usage_error']);
@@ -392,7 +650,7 @@ final class CoverageMergeCommand
 
         $sidecarDir = $this->pathOption($options['sidecar_dir'] ?? null) ?? CoverageSidecarWriter::defaultDir();
 
-        // Empty `--specs=` is treated as "use default" rather than "use no
+        // Empty `--spec-name=` is treated as "use default" rather than "use no
         // specs". Otherwise a misconfigured CLI invocation would silently
         // exit with "no coverage recorded" instead of warning the user.
         $specs = isset($options['specs']) && $options['specs'] !== [] ? $options['specs'] : ['front'];
@@ -467,7 +725,7 @@ final class CoverageMergeCommand
 
         if ($coverageBaselineFile === null && isset($options['coverage_baseline_stale'])) {
             $this->writeStderr(
-                "[Gesso] FATAL: --coverage-baseline-stale is set but --coverage-baseline-file was not given; there is no baseline to evaluate staleness against.\n",
+                "[Gesso] FATAL: --baseline-stale=\"coverage=…\" is set but --baseline=\"coverage=…\" was not given; there is no baseline to evaluate staleness against.\n",
             );
 
             return self::EXIT_USAGE;
@@ -514,7 +772,7 @@ final class CoverageMergeCommand
             $allFailureMarkers = CoverageSidecarReader::listFailureMarkerPaths($sidecarDir);
         } catch (RuntimeException $e) {
             $this->writeStderr(sprintf("[OpenAPI Coverage] FATAL: %s\n", $e->getMessage()));
-            $this->deprecateIoFailureExitCode();
+            $this->ioFailed = true;
 
             return self::EXIT_FAILURE;
         }
@@ -554,7 +812,7 @@ final class CoverageMergeCommand
             $payloads = array_map(CoverageSidecarReader::read(...), $sidecarPaths);
         } catch (RuntimeException $e) {
             $this->writeStderr(sprintf("[OpenAPI Coverage] FATAL: %s\n", $e->getMessage()));
-            $this->deprecateIoFailureExitCode();
+            $this->ioFailed = true;
 
             return self::EXIT_FAILURE;
         }
@@ -590,7 +848,7 @@ final class CoverageMergeCommand
             // failure, so returning 0 without a file would hide all of them.
             if ($baselineFile !== null) {
                 $this->writeStderr(sprintf(
-                    "[Gesso] FATAL: --baseline-file requested but no sidecars were found in %s; no baseline was written. Run the parallel suite with GESSO_BASELINE_GENERATE=1 first.\n",
+                    "[Gesso] FATAL: --baseline=\"violations=…\" requested but no sidecars were found in %s; no baseline was written. Run the parallel suite with GESSO_BASELINE_GENERATE=1 first.\n",
                     $sidecarDir,
                 ));
 
@@ -599,7 +857,7 @@ final class CoverageMergeCommand
 
             if ($coverageBaselineFile !== null) {
                 $this->writeStderr(sprintf(
-                    "[Gesso] FATAL: --coverage-baseline-file was given but no sidecars were found in %s; the coverage baseline cannot be %s.\n",
+                    "[Gesso] FATAL: --baseline=\"coverage=…\" was given but no sidecars were found in %s; the coverage baseline cannot be %s.\n",
                     $sidecarDir,
                     $coverageBaselineGenerate ? 'generated' : 'evaluated',
                 ));
@@ -789,7 +1047,7 @@ final class CoverageMergeCommand
 
         $writeFailures = $writer->writeReports($results, $sdkResults, $outputFile, $junitOutput, $jsonOutput, $htmlOutput, [$label, $render]);
         if ($writeFailures > 0) {
-            $this->deprecateIoFailureExitCode();
+            $this->ioFailed = true;
         }
         $writer->appendGithubStepSummary($results, $sdkResults, $githubSummaryPath);
 
@@ -850,312 +1108,6 @@ final class CoverageMergeCommand
         return $gateFailure || $coverageBaselineFailure || $cleanupFailure
             ? self::EXIT_FAILURE
             : self::EXIT_OK;
-    }
-
-    /**
-     * Label and renderer for the primary report: `text` is the console rendering.
-     *
-     * @param 'html'|'json'|'junit'|'markdown'|'text' $format
-     *
-     * @return array{string, Closure(array<string, CoverageResult>, array<string, SdkExerciseCoverageResult>): string}
-     */
-    private static function primaryRenderer(string $format, ConsoleOutput $console): array
-    {
-        return $format === 'text'
-            ? ['console', static fn(array $r, array $s): string => ConsoleCoverageRenderer::render($r, $console, $s)]
-            : CoverageReportWriter::renderer($format);
-    }
-
-    /**
-     * Issue #596: split the directory into the selected run and the rest.
-     * The run is `$runId` when given, else the group that wrote the newest
-     * file; unscoped (pre-#596 or ext-posix-less) files form one group.
-     *
-     * @param list<string> $sidecars
-     * @param list<string> $markers
-     *
-     * @return array{list<string>, list<string>, list<string>, list<string>} the run's sidecars, its markers,
-     *                                                                       the ignored paths, their run ids
-     *
-     * @throws RuntimeException when two runs tie for newest and no run id was given
-     */
-    private static function scopeToRun(?string $runId, array $sidecars, array $markers): array
-    {
-        $groups = [];
-        foreach ([...$sidecars, ...$markers] as $path) {
-            $groups[CoverageSidecarReader::runIdOf($path) ?? ''][] = $path;
-        }
-        if ($runId === null) {
-            // ponytail: newest-group selection assumes runs share a directory
-            // one after another; concurrent runs in one directory must set
-            // GESSO_RUN_ID. filemtime() is whole seconds, so a tie fails closed.
-            $newest = array_map(
-                static fn(array $paths): int => max(array_map(static fn(string $path): int => (int) @filemtime($path), $paths)),
-                $groups,
-            );
-            arsort($newest);
-            $ids = array_keys($newest);
-            if (count($ids) > 1 && $newest[$ids[0]] === $newest[$ids[1]]) {
-                throw new RuntimeException(sprintf(
-                    'cannot tell which run is newest (run ids %s and %s wrote files in the same second); pass --run-id=<id> or set GESSO_RUN_ID',
-                    $ids[0] === '' ? '(none)' : (string) $ids[0],
-                    $ids[1] === '' ? '(none)' : (string) $ids[1],
-                ));
-            }
-            $runId = (string) ($ids[0] ?? '');
-        }
-
-        $inRun = static fn(string $path): bool => (CoverageSidecarReader::runIdOf($path) ?? '') === $runId;
-        $runSidecars = array_values(array_filter($sidecars, $inRun));
-        // An unscoped marker (a pre-#596 worker in a mixed fleet) cannot be
-        // attributed to any run, so it always counts: fail closed, as before.
-        $runMarkers = array_values(array_filter(
-            $markers,
-            static fn(string $path): bool => $inRun($path) || CoverageSidecarReader::runIdOf($path) === null,
-        ));
-        $ignored = array_values(array_diff([...$sidecars, ...$markers], $runSidecars, $runMarkers));
-
-        return [
-            $runSidecars,
-            $runMarkers,
-            $ignored,
-            array_values(array_unique(array_map(
-                static fn(string $path): string => CoverageSidecarReader::runIdOf($path) ?? '(none)',
-                $ignored,
-            ))),
-        ];
-    }
-
-    /** An option's absolutised path, or `null` when absent or empty. */
-    /**
-     * Fill the options the command line left unset from `gesso.php`. Paths are
-     * already absolute (resolved against the file's directory). Everything the
-     * bridge emits that the merge has no option for is ignored.
-     *
-     * @param MergeOptions $options
-     * @param array<string, bool|float|int|list<string>|string> $shared
-     *
-     * @return MergeOptions
-     */
-    private static function withSharedDefaults(array $options, array $shared): array
-    {
-        foreach (self::SHARED_STRINGS as $key) {
-            // `--format` picks the primary report and where it goes (stdout
-            // without `--output-file`); the file's Markdown path must not
-            // capture a primary report of another format.
-            if ($key === 'output_file' && isset($options['format'])) {
-                continue;
-            }
-            if (!isset($options[$key]) && is_string($shared[$key] ?? null)) {
-                $options[$key] = $shared[$key];
-            }
-        }
-        // ArgvParser materialises every list as `[]`, and `run()` already
-        // reads an empty list as "use the default".
-        foreach (self::SHARED_LISTS as $key) {
-            if (($options[$key] ?? []) === [] && is_array($shared[$key] ?? null)) {
-                $options[$key] = $shared[$key];
-            }
-        }
-        foreach (self::SHARED_PERCENTS as $key) {
-            $value = $shared[$key] ?? null;
-            if (!isset($options[$key]) && (is_int($value) || is_float($value))) {
-                $options[$key] = (float) $value;
-            }
-        }
-        // `--baseline-file` only ever writes the merged violation baseline, so the
-        // file's `baseline.violations` (an enforcement input for the workers)
-        // defaults it only on a generation run.
-        if (
-            !isset($options['baseline_file']) &&
-            is_string($shared['baseline_file'] ?? null) &&
-            BaselineFileFormat::generationRequested()
-        ) {
-            $options['baseline_file'] = $shared['baseline_file'];
-        }
-        if (!isset($options['min_coverage_strict']) && is_bool($shared['min_coverage_strict'] ?? null)) {
-            $options['min_coverage_strict'] = $shared['min_coverage_strict'];
-        }
-
-        return $options;
-    }
-
-    /**
-     * Sidecars are untrusted input, so their strings must not drive the
-     * reader's terminal: C0 controls other than TAB and LF, DEL, and C1
-     * controls become `?` — both UTF-8 encoded (U+0080-U+009F) and as the lone
-     * 0x80-0x9F bytes an 8-bit terminal reads as CSI/OSC. Byte-level (no `/u`),
-     * so invalid UTF-8 cannot void the filter; well-formed multibyte sequences
-     * are matched whole and kept, so their continuation bytes are not C1.
-     */
-    private static function terminalSafe(string $text): string
-    {
-        return preg_replace_callback(
-            '/\xC2[\x80-\x9F]'
-            . '|([\xC2-\xDF][\x80-\xBF]|\xE0[\xA0-\xBF][\x80-\xBF]|[\xE1-\xEC\xEE\xEF][\x80-\xBF]{2}'
-            . '|\xED[\x80-\x9F][\x80-\xBF]|\xF0[\x90-\xBF][\x80-\xBF]{2}|[\xF1-\xF3][\x80-\xBF]{3}'
-            . '|\xF4[\x80-\x8F][\x80-\xBF]{2})'
-            . '|[\x00-\x08\x0B-\x1F\x7F-\x9F]/',
-            static fn(array $m): string => ($m[1] ?? '') !== '' ? $m[1] : '?',
-            $text,
-        ) ?? $text;
-    }
-
-    /**
-     * `json_encode` already escapes C0 controls but leaves DEL and (under
-     * `JSON_UNESCAPED_UNICODE`) C1 controls raw. Those bytes can only occur
-     * inside string literals, so re-escaping them keeps the report
-     * decode-identical while keeping them off the terminal.
-     */
-    private static function escapeJsonControls(string $json): string
-    {
-        return preg_replace_callback(
-            '/\x7F|\xC2[\x80-\x9F]/',
-            static fn(array $m): string => sprintf('\\u%04x', $m[0] === "\x7F" ? 0x7F : ord($m[0][1])),
-            $json,
-        ) ?? $json;
-    }
-
-    /**
-     * Map the v3 spellings onto the v2 option names, and list the v2
-     * spellings that were typed so run() can deprecate them.
-     *
-     * @param array<string, mixed> $opts
-     * @param array<string, list<string>> $typed every value each option was given on argv
-     *
-     * @return array<string, mixed>
-     *
-     * @throws InvalidArgumentException on a malformed v3 value, or a v2 and a v3 spelling of the same option
-     */
-    private static function foldV3Spellings(array $opts, array $typed): array
-    {
-        /** @var array{spec_name: list<string>, strip_prefix: list<string>, console_report?: string, strict_required?: string, strict_additional_properties?: string} $opts */
-        $v3 = [];
-        if (isset($typed['spec_name'])) {
-            $v3['specs'] = $opts['spec_name'];
-        }
-        if (isset($typed['strip_prefix'])) {
-            $v3['strip_prefixes'] = $opts['strip_prefix'];
-        }
-        if (isset($opts['console_report'])) {
-            $v3['console_output'] = $opts['console_report'];
-        }
-        // Repeatable, never comma-split: the path is everything after the
-        // first colon.
-        foreach ($typed['report'] ?? [] as $sink) {
-            [$format, $path] = explode(':', $sink, 2) + [1 => ''];
-            if (!in_array($format, ['json', 'junit', 'html'], true) || trim($path) === '') {
-                throw new InvalidArgumentException("--report={$sink} must be json:<path>, junit:<path> or html:<path>.");
-            }
-            if (isset($v3[$format . '_output'])) {
-                throw new InvalidArgumentException("--report names the {$format} report twice.");
-            }
-            $v3[$format . '_output'] = $path;
-        }
-        foreach (self::members('--min-coverage', $typed['min_coverage'] ?? [], ['endpoint', 'response', 'sdk_exercise', 'strict']) as $member => $value) {
-            if ($member === 'strict') {
-                $v3['min_coverage_strict'] = ArgvParser::bool($value);
-            } else {
-                $v3["min_{$member}_coverage"] = $value;
-            }
-        }
-        foreach (self::members('--baseline', $typed['baseline'] ?? [], ['violations', 'coverage'], paths: true) as $member => $value) {
-            $v3[$member === 'violations' ? 'baseline_file' : 'coverage_baseline_file'] = $value;
-        }
-        // The violation baseline's staleness is reported by the workers; the
-        // merge only ever evaluates the coverage baseline.
-        foreach (self::members('--baseline-stale', $typed['baseline_stale'] ?? [], ['coverage']) as $value) {
-            $v3['coverage_baseline_stale'] = $value;
-        }
-
-        $deprecated = [];
-        foreach (self::RENAMED_FLAGS as $key => $replacement) {
-            if (!isset($typed[$key])) {
-                continue;
-            }
-            $flag = '--' . str_replace('_', '-', $key);
-            if (array_key_exists($key, $v3)) {
-                throw new InvalidArgumentException("{$flag} and {$replacement} set the same option; pass only {$replacement}.");
-            }
-            $deprecated[] = $flag;
-        }
-
-        // These two keep their name; the bare-mode value is the v2 spelling.
-        // Every occurrence is checked, so a v2 value and a v3 value cannot
-        // meet with the last one silently winning.
-        foreach (['strict_required', 'strict_additional_properties'] as $key) {
-            $values = $typed[$key] ?? [];
-            if ($values === []) {
-                continue;
-            }
-            $flag = '--' . str_replace('_', '-', $key);
-            $grammar = array_values(array_filter($values, static fn(string $value): bool => str_contains($value, '=')));
-            if ($grammar === []) {
-                $deprecated[] = $flag;
-
-                continue;
-            }
-            if (count($grammar) !== count($values)) {
-                throw new InvalidArgumentException("{$flag}=<mode> and {$flag}=\"run=…\" set the same option; pass only {$flag}=\"run=…\".");
-            }
-            // `per_call` is checked by the PHPUnit extension inside each
-            // worker; it is accepted here so one string serves both.
-            $members = self::members($flag, $grammar, ['run', 'per_call']);
-            if (isset($members['per_call']) && !in_array($members['per_call'], ['off', 'warn'], true)) {
-                throw new InvalidArgumentException("{$flag} per_call={$members['per_call']} is not one of off, warn.");
-            }
-            unset($opts[$key]);
-            if (isset($members['run'])) {
-                $opts[$key] = $members['run'];
-            }
-        }
-
-        $opts['deprecated_flags'] = $deprecated;
-
-        return [...$opts, ...$v3];
-    }
-
-    /**
-     * Split each occurrence of a v3 `name=value,name=value` flag into its
-     * members. In a path-valued flag a comma only separates members when a
-     * member name follows it, so a path may contain one; elsewhere every comma
-     * does, so a typo'd member is rejected rather than read into a value. Only `strict` may be written without a value,
-     * and no value may be blank: an unset shell variable must not quietly
-     * turn a gate off.
-     *
-     * @param list<string> $occurrences
-     * @param list<string> $allowed
-     *
-     * @return array<string, string>
-     */
-    private static function members(string $flag, array $occurrences, array $allowed, bool $paths = false): array
-    {
-        $separator = $paths ? '/,(?=\s*(?:' . implode('|', $allowed) . ')\s*(?:=|,|$))/' : '/,/';
-        $members = [];
-        foreach ($occurrences as $occurrence) {
-            foreach (preg_split($separator, $occurrence) ?: [] as $item) {
-                if (trim($item) === '') {
-                    throw new InvalidArgumentException("{$flag} has an empty member; name at least one of " . implode(', ', $allowed) . '.');
-                }
-                [$name, $value] = explode('=', $item, 2) + [1 => null];
-                $name = trim($name);
-                if (!in_array($name, $allowed, true)) {
-                    throw new InvalidArgumentException(sprintf('%s does not take "%s"; expected %s.', $flag, $name, implode(', ', $allowed)));
-                }
-                if (isset($members[$name])) {
-                    throw new InvalidArgumentException("{$flag} names {$name} twice.");
-                }
-                if ($value === null && $name === 'strict') {
-                    $value = 'true';
-                }
-                if ($value === null || trim($value) === '') {
-                    throw new InvalidArgumentException("{$flag} needs a value for {$name}, e.g. {$name}=….");
-                }
-                $members[$name] = trim($value);
-            }
-        }
-
-        return $members;
     }
 
     private function pathOption(?string $value): ?string
@@ -1223,9 +1175,9 @@ final class CoverageMergeCommand
      * sidecar cleanup so the staged data survives for a corrected retry.
      *
      * Fail-loud cases mirror the sequential generation contract:
-     *  - baseline data present but no `--baseline-file`: discarding it
+     *  - baseline data present but no `--baseline="violations=…"`: discarding it
      *    would silently hide the violations the workers demoted.
-     *  - `--baseline-file` given but some sidecar carries no baseline half
+     *  - `--baseline="violations=…"` given but some sidecar carries no baseline half
      *    (a non-generation or pre-#417 worker): the union would be a
      *    partial baseline — the exact incomplete-file hazard the
      *    sequential path refuses partial runs for.
@@ -1244,7 +1196,7 @@ final class CoverageMergeCommand
             }
 
             $this->writeStderr(sprintf(
-                "[Gesso] FATAL: %d of %d sidecar(s) carry violation-baseline data from an GESSO_BASELINE_GENERATE run, but --baseline-file was not given; discarding it would silently hide the demoted violations. Re-run the merge with --baseline-file=<path>.\n",
+                "[Gesso] FATAL: %d of %d sidecar(s) carry violation-baseline data from an GESSO_BASELINE_GENERATE run, but --baseline=\"violations=…\" was not given; discarding it would silently hide the demoted violations. Re-run the merge with --baseline=\"violations=<path>\".\n",
                 $sidecarsWithBaseline,
                 $sidecarCount,
             ));
@@ -1254,7 +1206,7 @@ final class CoverageMergeCommand
 
         if ($sidecarsWithoutBaseline > 0) {
             $this->writeStderr(sprintf(
-                "[Gesso] FATAL: --baseline-file requested but %d of %d sidecar(s) carry no baseline data; the union would be an incomplete baseline. Ensure every worker ran with GESSO_BASELINE_GENERATE=1 on a library version that stages baseline sidecars. No baseline was written.\n",
+                "[Gesso] FATAL: --baseline=\"violations=…\" requested but %d of %d sidecar(s) carry no baseline data; the union would be an incomplete baseline. Ensure every worker ran with GESSO_BASELINE_GENERATE=1 on a library version that stages baseline sidecars. No baseline was written.\n",
                 $sidecarsWithoutBaseline,
                 $sidecarCount,
             ));
@@ -1266,7 +1218,7 @@ final class CoverageMergeCommand
             ViolationBaselineFile::write($baselineFile, $merged);
         } catch (RuntimeException $e) {
             $this->writeStderr("[Gesso] FATAL: {$e->getMessage()}\n");
-            $this->deprecateIoFailureExitCode();
+            $this->ioFailed = true;
 
             return false;
         }
@@ -1314,7 +1266,7 @@ final class CoverageMergeCommand
                 CoverageBaselineFile::write($baselineFile, $collected);
             } catch (RuntimeException $e) {
                 $this->writeStderr("[Gesso] FATAL: {$e->getMessage()}\n");
-                $this->deprecateIoFailureExitCode();
+                $this->ioFailed = true;
 
                 return false;
             }
@@ -1332,9 +1284,9 @@ final class CoverageMergeCommand
             $baseline = CoverageBaselineFile::read($baselineFile);
         } catch (InvalidArgumentException $e) {
             $this->writeStderr(
-                "[Gesso] FATAL: --coverage-baseline-file could not be loaded: {$e->getMessage()}\n",
+                "[Gesso] FATAL: --baseline=\"coverage=…\" could not be loaded: {$e->getMessage()}\n",
             );
-            $this->deprecateIoFailureExitCode();
+            $this->ioFailed = true;
 
             return false;
         }
@@ -1432,7 +1384,7 @@ final class CoverageMergeCommand
             return false;
         }
 
-        // Fail-loud guard: when the user opted into --strict-required=fail
+        // Fail-loud guard: when the user opted into --strict-required="run=fail"
         // but no worker recorded any observation (e.g., a fleet still on the
         // pre-envelope library version, or a misconfigured paratest run),
         // the gate cannot evaluate the contract. Silent-pass here would
@@ -1440,7 +1392,7 @@ final class CoverageMergeCommand
         // the threshold gate's no-coverage FATAL in `run()`.
         if ($mode === StrictRequiredMode::Fail && $strictRequiredTracker->recordedSpecsOn() === []) {
             $this->writeStderr(
-                '[OpenAPI Strict Required] FATAL: --strict-required=fail requested but '
+                '[OpenAPI Strict Required] FATAL: --strict-required="run=fail" requested but '
                 . 'no worker recorded any strict_required observations; the gate cannot '
                 . "be evaluated. Run every worker on the same Gesso version as the merge step.\n",
             );
@@ -1588,7 +1540,7 @@ final class CoverageMergeCommand
                 'FATAL',
                 sprintf('failed to inspect sidecars for cleanup: %s', $e->getMessage()),
             );
-            $this->deprecateIoFailureExitCode();
+            $this->ioFailed = true;
 
             return false;
         }
@@ -1607,11 +1559,6 @@ final class CoverageMergeCommand
         return true;
     }
 
-    /**
-     * Issue #507: an I/O failure (a sidecar, report, or baseline file that
-     * cannot be read or written) exits 1 in 2.x and 2 from Gesso 3.0, so the
-     * exit-code contract matches the other commands.
-     */
     /** @param array<array-key, mixed> $payload */
     private function deprecateLegacySidecar(array $payload): void
     {
@@ -1632,20 +1579,10 @@ final class CoverageMergeCommand
         }
     }
 
-    private function deprecateIoFailureExitCode(): void
-    {
-        $this->deprecationsToStderr(static fn() => Deprecations::notice(
-            id: 'cli.coverage_merge.io_failure_exit_code',
-            subject: 'coverage:merge exiting with exit code 1 on an I/O failure',
-            replacement: 'exit code 2 (what Gesso 3.0 returns when a sidecar, report, or baseline file cannot be read or written; a check for any non-zero exit needs no change)',
-            removedIn: '3.0',
-        ));
-    }
-
     /**
      * Run `$emit` with `E_USER_DEPRECATED` written to stderr: a CLI process
      * has no PHPUnit to collect it, and PHP's default handler prints it on
-     * stdout, into a `--format=json` report (as in {@see LegacyCliFlags}).
+     * stdout, into a `--format=json` report.
      *
      * @template T
      *

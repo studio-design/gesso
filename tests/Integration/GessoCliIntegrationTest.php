@@ -152,19 +152,15 @@ final class GessoCliIntegrationTest extends TestCase
         // The subcommand must route --help to the canonical usage text under
         // the `gesso coverage:merge` invocation …
         $this->assertSame(CoverageMergeCommand::usage(), $helpStdout);
-        // … and every v1.9 help line must survive per the v1.x CLI
+        // … and every v3.0 help line must survive per the v3.x CLI
         // compatibility policy. New flags may be appended, so this is
         // containment, not equality, against the frozen capture.
-        $v19Help = str_replace(
-            'openapi-coverage-merge',
-            'gesso coverage:merge',
-            (string) file_get_contents($this->repoRoot . '/tests/fixtures/compatibility/v1.9-openapi-coverage-merge-help.txt'),
-        );
-        foreach (explode("\n", $v19Help) as $line) {
+        $v3Help = (string) file_get_contents($this->repoRoot . '/tests/fixtures/compatibility/v3-gesso-coverage-merge-help.txt');
+        foreach (explode("\n", $v3Help) as $line) {
             if (trim($line) === '') {
                 continue;
             }
-            $this->assertStringContainsString($line, $helpStdout, 'v1.9 help line must be retained');
+            $this->assertStringContainsString($line, $helpStdout, 'v3 help line must be retained');
         }
         $this->assertSame(2, $errorExit);
         $this->assertSame('', $errorStdout);

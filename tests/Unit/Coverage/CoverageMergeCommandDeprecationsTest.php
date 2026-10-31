@@ -251,9 +251,9 @@ final class CoverageMergeCommandDeprecationsTest extends TestCase
     }
 
     #[Test]
-    public function an_io_failure_announces_the_v3_exit_code_and_still_exits_1(): void
+    public function an_io_failure_exits_2_without_a_deprecation(): void
     {
-        // Issue #507: 3.0 exits 2 here, like the other commands.
+        // Issue #507: exits 2, like the other commands.
         $path = $this->sidecarDir . '/' . CoverageSidecarWriter::FILENAME_PREFIX . '1' . CoverageSidecarWriter::FILENAME_SUFFIX;
         file_put_contents($path, '{');
         chmod($path, 0o600);
@@ -261,12 +261,9 @@ final class CoverageMergeCommandDeprecationsTest extends TestCase
         $stderr = '';
         $exit = $this->command($stderr)->run($this->options());
 
-        $this->assertSame(1, $exit);
+        $this->assertSame(2, $exit);
         $this->assertStringContainsString('failed to decode sidecar', $stderr);
-        $this->assertStringContainsString(
-            '[Gesso deprecation] coverage:merge exiting with exit code 1 on an I/O failure is deprecated. Use exit code 2',
-            $stderr,
-        );
+        $this->assertSame([], Deprecations::counts());
     }
 
     /** @param array<string, array{count: int, removed_in: string}> $entries */

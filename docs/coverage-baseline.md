@@ -157,9 +157,10 @@ vendor/bin/gesso coverage:merge \
 ```
 
 The merge exits 1 when a response is newly uncovered, when no sidecars were
-found, when no coverage was recorded, or when the baseline file cannot be
-read; it exits 2 for usage errors (an unknown `--baseline-stale="coverage=…"`
-value, or that flag without `--baseline="coverage=…"`).
+found, or when no coverage was recorded. It exits 2 when the baseline file
+cannot be read or written, and for usage errors (an unknown
+`--baseline-stale="coverage=…"` value, or that flag without
+`--baseline="coverage=…"`).
 
 On any of those failures the sidecars are **kept** instead of cleaned up, as
 the violation baseline does. Every recovery re-runs the merge, not the suite:

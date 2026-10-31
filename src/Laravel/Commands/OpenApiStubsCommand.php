@@ -11,6 +11,7 @@ use Illuminate\Contracts\Foundation\Application;
 use InvalidArgumentException;
 use RuntimeException;
 use Studio\Gesso\Cli\StubsCommand;
+use Studio\Gesso\Internal\ArgvParser;
 use Studio\Gesso\Internal\LegacyIdentity;
 use Studio\Gesso\Stubs\StubRenderer;
 
@@ -44,7 +45,7 @@ final class OpenApiStubsCommand extends Command
         {--coverage= : Coverage JSON (schema_version 3); only uncovered responses are stubbed}
         {--adapter=laravel : Generated test idiom: phpunit, laravel, symfony or pest}
         {--output-dir= : Directory to write into; defaults to the conventional location for the adapter}
-        {--output= : Deprecated spelling of --output-dir; removed in Gesso 3.0}
+        {--output= : Removed in Gesso 3.0; use --output-dir}
         {--namespace= : Namespace for the generated classes}
         {--base-class= : Test class the generated classes extend}
         {--request-prefix= : Application mount path prepended to generated requests, e.g. /api}
@@ -75,13 +76,15 @@ final class OpenApiStubsCommand extends Command
         }
 
         $options = [
-            'invalid_options' => [],
+            // Kept in the signature so the removed spelling gets the usage
+            // error that names its replacement, not Symfony's generic one.
+            'invalid_options' => $this->option('output') === null ? [] : [ArgvParser::removed('--output', '--output-dir')],
             'spec' => $specPath,
             'spec_name' => $specName,
             'adapter' => $adapter,
             'dry_run' => (bool) $this->option('dry-run'),
         ];
-        foreach (['coverage', 'output', 'output-dir', 'namespace', 'base-class'] as $option) {
+        foreach (['coverage', 'output-dir', 'namespace', 'base-class'] as $option) {
             $value = $this->option($option);
             if (is_string($value) && trim($value) !== '') {
                 $options[str_replace('-', '_', $option)] = trim($value);
