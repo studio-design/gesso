@@ -10,6 +10,38 @@ the README for the full surface contract.
 
 ## Unreleased
 
+## [3.0.0-beta.1](https://github.com/studio-design/gesso/compare/v2.9.0...v3.0.0-beta.1) (2026-10-31)
+
+
+### ⚠ BREAKING CHANGES
+
+* **deps:** move phpunit/phpunit to require-dev ([#685](https://github.com/studio-design/gesso/issues/685))
+* **schema:** bind enums by component name only ([#683](https://github.com/studio-design/gesso/issues/683))
+* **coverage:** read only sidecar envelope 10 ([#682](https://github.com/studio-design/gesso/issues/682))
+* **config:** make gesso.php the only configuration entry point ([#680](https://github.com/studio-design/gesso/issues/680))
+* **cli:** unify coverage:merge and stubs flags and exit codes ([#679](https://github.com/studio-design/gesso/issues/679))
+* remove deprecated helper methods ([#678](https://github.com/studio-design/gesso/issues/678))
+* **contract:** remove the Fuzz contract-check aliases ([#677](https://github.com/studio-design/gesso/issues/677))
+
+### Features
+
+* **cli:** add config:migrate for legacy and competitor setups ([#686](https://github.com/studio-design/gesso/issues/686)) ([486de3e](https://github.com/studio-design/gesso/commit/486de3e77e42107515b3540c030f6c3fdb3526f2))
+* **cli:** unify coverage:merge and stubs flags and exit codes ([#679](https://github.com/studio-design/gesso/issues/679)) ([36b5ced](https://github.com/studio-design/gesso/commit/36b5cedc988122ef37cb013ed2ff0661c78f81b4))
+* **config:** make gesso.php the only configuration entry point ([#680](https://github.com/studio-design/gesso/issues/680)) ([d2cc93b](https://github.com/studio-design/gesso/commit/d2cc93bf8212c6ed26cde501105e70bdf5d350ff))
+
+
+### Code Refactoring
+
+* **contract:** remove the Fuzz contract-check aliases ([#677](https://github.com/studio-design/gesso/issues/677)) ([117769b](https://github.com/studio-design/gesso/commit/117769b87307f5d7c34b1e46c89a5154cd140b80))
+* **coverage:** read only sidecar envelope 10 ([#682](https://github.com/studio-design/gesso/issues/682)) ([cb43d1d](https://github.com/studio-design/gesso/commit/cb43d1d61a4d54eee9f637fb2acbeb7204cbe2ce))
+* remove deprecated helper methods ([#678](https://github.com/studio-design/gesso/issues/678)) ([106bf04](https://github.com/studio-design/gesso/commit/106bf042c1c49e7bd556a51ce86fac26ca79786d))
+* **schema:** bind enums by component name only ([#683](https://github.com/studio-design/gesso/issues/683)) ([62b2de2](https://github.com/studio-design/gesso/commit/62b2de2cbcaf9eb28b088ad5182fe63b3d77513d))
+
+
+### Build System
+
+* **deps:** move phpunit/phpunit to require-dev ([#685](https://github.com/studio-design/gesso/issues/685)) ([2c208e8](https://github.com/studio-design/gesso/commit/2c208e85382656000ef4dd8d19b17d2b54124efc))
+
 ## [2.9.0](https://github.com/studio-design/gesso/compare/v2.8.0...v2.9.0) (2026-10-30)
 
 
