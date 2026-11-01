@@ -7,12 +7,16 @@ namespace Studio\Gesso\Internal;
 use Closure;
 use Studio\Gesso\JsonValidationResultRenderer;
 use Studio\Gesso\OpenApiValidationResult;
+use Studio\Gesso\Validation\Support\ValidationPolicyDefaults;
 use Studio\Gesso\ValidationIssue;
 use Studio\Gesso\ValidationOutput;
 use Studio\Gesso\ValidationOutputFormat;
 
-use function array_map;
+use function array_slice;
+use function count;
+use function explode;
 use function implode;
+use function preg_replace;
 
 /**
  * Composes the assertion failure message every adapter raises, switching on
@@ -24,6 +28,18 @@ use function implode;
  *     {header}:
  *     [GSO212] {message}
  *     Reproduce: {curl}
+ *
+ * Agent mode (v3 vision item A2) packs every field an agent needs onto the
+ * issue line, so a wrapper that keeps the failure message verbatim (such as
+ * laravel/pao) still carries it; no pretty-printed JSON, no ANSI:
+ *
+ *     {header}:
+ *     [GSO212] response GET /v1/pets 200 application/json schema=/items/type actual=1 expected="string" {message}
+ *     Reproduce: {curl}
+ *     Explain: vendor/bin/gesso explain GSO212
+ *
+ * Text and agent mode print at most `validation.max_errors` issues per result
+ * and end the list with `... N more` instead of dropping the rest silently.
  *
  * Json mode keeps the one-line header for humans and replaces the rest with
  * the versioned document (the curl command moves into `reproduce_command`,
@@ -54,7 +70,7 @@ final class FailureOutput
             return "{$header}:\n" . JsonValidationResultRenderer::render($result, $reproduceCommand());
         }
 
-        return "{$header}:\n" . implode("\n", self::taggedLines($result)) . "\nReproduce: {$reproduceCommand()}";
+        return "{$header}:\n" . implode("\n", self::taggedLines($result)) . "\nReproduce: {$reproduceCommand()}" . self::explainHint([$result]);
     }
 
     /**
@@ -104,25 +120,92 @@ final class FailureOutput
             }
         }
 
-        return "{$header}:\n" . implode("\n", $lines) . "\nReproduce: {$reproduceCommand()}";
+        return "{$header}:\n" . implode("\n", $lines) . "\nReproduce: {$reproduceCommand()}" . self::explainHint($sides);
     }
 
     /**
      * One line per issue, led by its failure code (`[GSO212] [/name] ...`).
-     * `issues()` mirrors `errors()` one-to-one, so the messages themselves
-     * are unchanged.
+     * `issues()` mirrors `errors()` one-to-one, so text-mode messages are
+     * unchanged; agent mode adds the location and schema context. Lines past
+     * the `validation.max_errors` budget collapse into one `... N more` line.
      *
      * @return list<string>
      */
     private static function taggedLines(OpenApiValidationResult $result): array
     {
-        return array_map(
-            static function (ValidationIssue $issue): string {
-                $code = $issue->code();
+        $agent = ValidationOutput::format() === ValidationOutputFormat::Agent;
+        $issues = $result->issues();
+        $budget = ValidationPolicyDefaults::maxErrors();
+        $shown = $budget > 0 ? array_slice($issues, 0, $budget) : $issues;
 
-                return $code === null ? $issue->message : FailureCatalogue::tag($code) . ' ' . $issue->message;
-            },
-            $result->issues(),
-        );
+        $lines = [];
+        foreach ($shown as $issue) {
+            $code = $issue->code();
+            $parts = $code === null ? [] : [FailureCatalogue::tag($code)];
+            if ($agent) {
+                $parts = [...$parts, ...self::agentContext($issue)];
+            }
+            $parts[] = $agent ? self::oneLine($issue->message) : $issue->message;
+            $lines[] = implode(' ', $parts);
+        }
+
+        $omitted = count($issues) - count($shown);
+        if ($omitted > 0) {
+            $lines[] = "... {$omitted} more";
+        }
+
+        return $lines;
+    }
+
+    /**
+     * `request|response`, method, path, status, content type, then the
+     * schema pointer and value excerpts when the validator reported them.
+     *
+     * @return list<string>
+     */
+    private static function agentContext(ValidationIssue $issue): array
+    {
+        $parts = [explode('.', $issue->category, 2)[0]];
+        foreach ([$issue->method, $issue->path, $issue->statusCode, $issue->contentType] as $value) {
+            if ($value !== null && $value !== '') {
+                $parts[] = $value;
+            }
+        }
+        foreach (['schema' => $issue->schemaPointer, 'actual' => $issue->actual, 'expected' => $issue->expected] as $key => $value) {
+            if ($value !== null) {
+                $parts[] = $key . '=' . self::oneLine($value);
+            }
+        }
+
+        return $parts;
+    }
+
+    /** Collapse line breaks and tabs so one issue stays on one line. */
+    private static function oneLine(string $value): string
+    {
+        return preg_replace('/[\r\n\t]+/', ' ', $value) ?? $value;
+    }
+
+    /**
+     * Agent mode ends with one `Explain:` line naming the first failure code.
+     *
+     * @param array<array-key, OpenApiValidationResult> $results
+     */
+    private static function explainHint(array $results): string
+    {
+        if (ValidationOutput::format() !== ValidationOutputFormat::Agent) {
+            return '';
+        }
+
+        foreach ($results as $result) {
+            foreach ($result->issues() as $issue) {
+                $code = $issue->code();
+                if ($code !== null) {
+                    return "\nExplain: vendor/bin/gesso explain {$code}";
+                }
+            }
+        }
+
+        return '';
     }
 }

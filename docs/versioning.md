@@ -50,8 +50,9 @@ This library follows [Semantic Versioning 2.0](https://semver.org/). v1.0.0 is t
   rules (additions are minor, removals/renames/type changes are major and
   bump `schema_version`).
 - The validation failure output selection: the `ValidationOutputFormat` enum
-  (`text` | `json`), the `ValidationOutput` methods (`format()`, `use()`,
-  `reset()`), the `GESSO_VALIDATION_FORMAT` environment variable, and the
+  (`text` | `json` | `agent` | `auto`; `format()` never returns `auto`), the
+  `ValidationOutput` methods (`format()`, `use()`, `reset()`), the
+  `GESSO_VALIDATION_FORMAT` environment variable, and the
   json-mode failure shape (one header line followed by the versioned JSON
   document; for the PSR-7 exchange assertion, one `[request]` / `[response]`
   labelled document per failing side).

@@ -125,8 +125,9 @@ trait OpenApiAssertionCore
     }
 
     /**
-     * Raise the adapter's standard failure for an invalid result. Json mode
-     * must end with the parseable document, so it fails without PHPUnit's
+     * Raise the adapter's standard failure for an invalid result. Json and
+     * agent mode must end with the document or the `Explain:` hint (agent
+     * wrappers such as laravel/pao keep the message verbatim), so they fail without PHPUnit's
      * "Failed asserting that false is true." suffix; text mode keeps the
      * historical assertTrue() message byte-for-byte.
      *
@@ -173,7 +174,7 @@ trait OpenApiAssertionCore
 
         $message = FailureOutput::compose($header, $result, $reproduceCommand);
 
-        if (ValidationOutput::format() === ValidationOutputFormat::Json) {
+        if (ValidationOutput::format() !== ValidationOutputFormat::Text) {
             CleanTraceAssert::fail($message);
         }
 

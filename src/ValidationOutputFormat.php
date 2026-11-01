@@ -9,11 +9,16 @@ namespace Studio\Gesso;
  *
  * `Text` is the historical human-readable shape; `Json` prefixes the same
  * one-line header and then emits the versioned document produced by
- * {@see JsonValidationResultRenderer} (issue #282, stage 3). Selection is
- * resolved by {@see ValidationOutput::format()}.
+ * {@see JsonValidationResultRenderer} (issue #282, stage 3); `Agent` is the
+ * compact one-line-per-issue shape for AI coding agents. `Auto`, the
+ * default, is a selection rather than a shape: {@see ValidationOutput::format()}
+ * resolves it to `Agent` when a coding agent is detected and to `Text`
+ * otherwise, and never returns it.
  */
 enum ValidationOutputFormat: string
 {
     case Text = 'text';
     case Json = 'json';
+    case Agent = 'agent';
+    case Auto = 'auto';
 }

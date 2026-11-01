@@ -11675,7 +11675,9 @@
         "backing_type": "string",
         "cases": {
             "Text": "text",
-            "Json": "json"
+            "Json": "json",
+            "Agent": "agent",
+            "Auto": "auto"
         },
         "constants": [],
         "properties": {

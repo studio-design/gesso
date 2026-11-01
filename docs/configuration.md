@@ -136,7 +136,7 @@ require both Bearer and an API key.
 | `spec.default` | Fallback spec for assertions |
 | `spec.names` | Specs PHPUnit loads and reports coverage for; `gesso:routes` default |
 | `spec.strip_prefixes` | Request-path prefixes stripped before matching |
-| `validation.format` | `text` or `json` failure output |
+| `validation.format` | `auto` (default), `text`, `json`, or `agent` [failure output](setup.md#agent-failure-output) |
 | `validation.max_errors` | Errors reported per request/response (`0` = unlimited) |
 | `validation.enforce_discriminator` | Discriminator mapping enforcement |
 | `validation.acknowledged_unvalidatable_schemes` | Security schemes acknowledged as unvalidatable |
