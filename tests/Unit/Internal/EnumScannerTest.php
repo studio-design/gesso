@@ -55,6 +55,23 @@ final class EnumScannerTest extends TestCase
     }
 
     #[Test]
+    public function scan_reads_every_registered_composer_loader(): void
+    {
+        // A tool bundling its own vendor directory (Rector) prepends a
+        // Composer loader that knows none of the application's namespaces.
+        $foreign = new ClassLoader();
+        $foreign->register(true);
+
+        try {
+            $found = EnumScanner::scan([self::FIXTURE_NS]);
+        } finally {
+            $foreign->unregister();
+        }
+
+        $this->assertContains(CleanBoundEnum::class, $found);
+    }
+
+    #[Test]
     public function scan_returns_empty_list_when_only_pure_enums_and_classes_are_found(): void
     {
         $loader = new ClassLoader();
