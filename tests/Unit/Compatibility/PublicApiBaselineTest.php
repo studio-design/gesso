@@ -763,6 +763,10 @@ final class PublicApiBaselineTest extends TestCase
         $expected[ValidatesOpenApiSchema::class]['traits'] = [];
         // #662: additive raw-JSON request helper on the Laravel trait.
         $expected[ValidatesOpenApiSchema::class]['methods']['jsonRaw'] = $actual[ValidatesOpenApiSchema::class]['methods']['jsonRaw'];
+        // v3.0: additive negative-test expectations on the Laravel trait.
+        foreach (['expectInvalidRequest', 'expectInvalidResponse'] as $method) {
+            $expected[ValidatesOpenApiSchema::class]['methods'][$method] = $actual[ValidatesOpenApiSchema::class]['methods'][$method];
+        }
         ksort($expected[ValidatesOpenApiSchema::class]['methods']);
 
         // #444: response payload exploration adds three public types and one

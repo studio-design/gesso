@@ -6780,6 +6780,24 @@
         "constants": [],
         "properties": [],
         "methods": {
+            "expectInvalidRequest": {
+                "static": false,
+                "final": false,
+                "abstract": false,
+                "returns_reference": false,
+                "return_type": "static",
+                "attributes": [],
+                "parameters": []
+            },
+            "expectInvalidResponse": {
+                "static": false,
+                "final": false,
+                "abstract": false,
+                "returns_reference": false,
+                "return_type": "static",
+                "attributes": [],
+                "parameters": []
+            },
             "jsonRaw": {
                 "static": false,
                 "final": false,
@@ -6953,9 +6971,33 @@
                     "default": null,
                     "attributes": []
                 },
+                "expectInvalidNextRequest": {
+                    "visibility": "private",
+                    "type": "bool",
+                    "static": false,
+                    "readonly": false,
+                    "default": false,
+                    "attributes": []
+                },
+                "expectInvalidNextResponse": {
+                    "visibility": "private",
+                    "type": "bool",
+                    "static": false,
+                    "readonly": false,
+                    "default": false,
+                    "attributes": []
+                },
                 "explicitOpenApiSpec": {
                     "visibility": "private",
                     "type": "?string",
+                    "static": false,
+                    "readonly": false,
+                    "default": null,
+                    "attributes": []
+                },
+                "invalidExpectation": {
+                    "visibility": "private",
+                    "type": "array|false|null",
                     "static": false,
                     "readonly": false,
                     "default": null,
@@ -7022,6 +7064,39 @@
                     "return_type": "void",
                     "attributes": [],
                     "parameters": []
+                },
+                "assertInvalid": {
+                    "visibility": "private",
+                    "static": false,
+                    "final": false,
+                    "abstract": false,
+                    "returns_reference": false,
+                    "return_type": "void",
+                    "attributes": [],
+                    "parameters": [
+                        {
+                            "name": "side",
+                            "type": "string",
+                            "optional": false,
+                            "variadic": false,
+                            "by_reference": false,
+                            "default": {
+                                "unavailable": true
+                            },
+                            "attributes": []
+                        },
+                        {
+                            "name": "validate",
+                            "type": "Closure",
+                            "optional": false,
+                            "variadic": false,
+                            "by_reference": false,
+                            "default": {
+                                "unavailable": true
+                            },
+                            "attributes": []
+                        }
+                    ]
                 },
                 "assertLaravelOpenApiResult": {
                     "visibility": "private",
@@ -7272,6 +7347,26 @@
                     "abstract": false,
                     "returns_reference": false,
                     "return_type": "void",
+                    "attributes": [],
+                    "parameters": []
+                },
+                "expectInvalidRequest": {
+                    "visibility": "public",
+                    "static": false,
+                    "final": false,
+                    "abstract": false,
+                    "returns_reference": false,
+                    "return_type": "static",
+                    "attributes": [],
+                    "parameters": []
+                },
+                "expectInvalidResponse": {
+                    "visibility": "public",
+                    "static": false,
+                    "final": false,
+                    "abstract": false,
+                    "returns_reference": false,
+                    "return_type": "static",
                     "attributes": [],
                     "parameters": []
                 },

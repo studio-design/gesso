@@ -136,6 +136,16 @@ trait ValidatesOpenApiSchema
     /** @var string[] */
     private array $skipNextResponseCodes = [];
 
+    // Set by expectInvalidRequest() / expectInvalidResponse() and consumed on
+    // the next HTTP call, like the skip flags.
+    private bool $expectInvalidNextRequest = false;
+    private bool $expectInvalidNextResponse = false;
+
+    // While an expected-invalid side runs, assertLaravelOpenApiResult()
+    // records the result here instead of asserting it.
+    /** @var null|array{OpenApiValidationResult, string}|false */
+    private null|array|false $invalidExpectation = null;
+
     /**
      * No longer needed: validators are cached per test-case instance, so each
      * test method already builds them from its own config. Kept callable for
@@ -315,6 +325,31 @@ trait ValidatesOpenApiSchema
     }
 
     /**
+     * Asserts that the next HTTP call's request violates the spec, and fails
+     * the test when it matches. Runs whether or not `auto_validate_request`
+     * is on, and ignores `skip_request_validation_response_codes`, so a
+     * documented 4xx does not hide the violation.
+     */
+    public function expectInvalidRequest(): static
+    {
+        $this->expectInvalidNextRequest = true;
+
+        return $this;
+    }
+
+    /**
+     * Asserts that the next HTTP call's response violates the spec, and fails
+     * the test when it matches or is skipped. Runs whether or not
+     * `auto_assert` is on.
+     */
+    public function expectInvalidResponse(): static
+    {
+        $this->expectInvalidNextResponse = true;
+
+        return $this;
+    }
+
+    /**
      * Adds one or more response status codes to skip for the next auto-assert
      * HTTP call only. Merged with the config-level `skip_response_codes` set,
      * then consumed (reset) after one call — matching the per-request
@@ -455,6 +490,18 @@ trait ValidatesOpenApiSchema
         // boundary — see the analogous comment in maybeAutoAssertOpenApiSchema().
         $skipRequest = $this->skipNextRequestValidation;
         $this->skipNextRequestValidation = false;
+        $expectInvalid = $this->expectInvalidNextRequest;
+        $this->expectInvalidNextRequest = false;
+
+        if ($expectInvalid) {
+            $this->assertInvalid('request', function () use ($request, $method, $path): void {
+                if ($request !== null && $method !== null) {
+                    $this->runRequestAssertion($request, $method, $path, null);
+                }
+            });
+
+            return;
+        }
 
         if (!$this->isAutoValidateRequestEnabled()) {
             return;
@@ -490,9 +537,18 @@ trait ValidatesOpenApiSchema
         // into the next call after auto_assert flips on.
         $skipResponse = $this->skipNextResponseValidation;
         $extraSkipCodes = $this->skipNextResponseCodes;
+        $expectInvalid = $this->expectInvalidNextResponse;
         $this->skipNextRequestValidation = false;
         $this->skipNextResponseValidation = false;
         $this->skipNextResponseCodes = [];
+        $this->expectInvalidNextRequest = false;
+        $this->expectInvalidNextResponse = false;
+
+        if ($expectInvalid) {
+            $this->assertInvalid('response', fn() => $this->assertResponseMatchesOpenApiSchema($response, $method, $path, $extraSkipCodes));
+
+            return;
+        }
 
         if (!$this->isAutoAssertEnabled()) {
             return;
@@ -1145,7 +1201,43 @@ trait ValidatesOpenApiSchema
         Closure $reproduceCommand,
         ?string $recordExcludeCategory = null,
     ): void {
+        if ($this->invalidExpectation !== null) {
+            $this->invalidExpectation = [$result, "{$method} {$path} (spec: {$specName})"];
+
+            return;
+        }
         $this->assertOpenApiResult($result, $specName, $method, $path, $header, $reproduceCommand, $recordExcludeCategory);
+    }
+
+    /**
+     * Runs one side's validation and asserts that it failed.
+     *
+     * @param 'request'|'response' $side
+     */
+    private function assertInvalid(string $side, Closure $validate): void
+    {
+        $this->invalidExpectation = false;
+
+        try {
+            $validate();
+            $expectation = $this->invalidExpectation;
+        } finally {
+            $this->invalidExpectation = null;
+        }
+
+        if ($expectation === false) {
+            CleanTraceAssert::fail(sprintf('Expected the %s to violate the OpenAPI spec, but it was not validated.', $side));
+        }
+        [$result, $label] = $expectation;
+        if ($result->isValid()) {
+            CleanTraceAssert::fail(sprintf(
+                'Expected the %s of %s to violate the OpenAPI spec, but it %s.',
+                $side,
+                $label,
+                $result->isSkipped() ? 'was skipped: ' . $result->skipReason() : 'matched',
+            ));
+        }
+        CleanTraceAssert::assertTrue(true, '');
     }
 
     private function isAutoAssertEnabled(): bool
