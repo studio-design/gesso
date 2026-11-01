@@ -727,6 +727,25 @@ How to fix:
 
 Do not assume the spec is fine; the check did not complete.
 
+### GSO314
+
+**Example does not match its schema.** An `example` or `examples` value fails validation against the schema it illustrates. This is reported as a `warning`: the spec is enforceable, but the example drifted from it.
+
+`gesso doctor` issue category `example`.
+
+Common causes:
+
+- The schema changed and the example was not updated.
+- The example was written by hand and has a typo or a wrong type.
+- A YAML spec writes a date unquoted (`2024-01-01`): YAML 1.1 decodes it to an integer timestamp, so quote it.
+
+How to fix:
+
+- Example wrong: update it to a value the schema accepts.
+- Schema wrong: fix the schema, then re-run your tests.
+
+Do not delete the example only to silence doctor; generated docs, mocks, and SDKs read it.
+
 ## Coverage gates and merge (GSO4xx)
 
 ### GSO401

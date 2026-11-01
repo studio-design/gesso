@@ -6,7 +6,7 @@ It is not a replacement for a semantic or style linter such as Spectral or Redoc
 
 ## Scope
 
-`gesso doctor` is a preflight for a local OpenAPI file. It confirms Gesso can load and enforce the document — version and dialect, references, warned-about keywords, structurally valid operations — and exits non-zero when it can't. It does not fetch a deployed spec URL, and it does not compare the checked-in spec against what a running service returns. `--allow-remote-refs` only covers `$ref` targets from the local entry document.
+`gesso doctor` is a preflight for a local OpenAPI file. It confirms Gesso can load and enforce the document — version and dialect, references, warned-about keywords, structurally valid operations — and exits non-zero when it can't. It also warns about examples that drifted from their schema. It does not fetch a deployed spec URL, and it does not compare the checked-in spec against what a running service returns. `--allow-remote-refs` only covers `$ref` targets from the local entry document.
 
 ## Basic usage
 
@@ -52,6 +52,33 @@ a malformed node is a `structure` error instead. These issues never change the
 exit code.
 
 JSON and YAML are supported. YAML requires the optional `symfony/yaml` package, just like runtime validation.
+
+## Examples that do not match their schema
+
+Doctor validates every inline example against the schema it illustrates and
+reports each one the schema rejects as a `warning` in the `example` category
+([`GSO314`](failure-codes.md#gso314)). The spec stays enforceable, so the exit
+code does not change, but generated docs, mocks, and fakes that serve the
+example drifted from the contract. Checked:
+
+- `example` and every `examples.<name>.value` on Media Type, Parameter, and
+  Header objects;
+- `example` on Schema objects and, in OpenAPI 3.1/3.2, every entry of the
+  `examples` array, including nested property and composition schemas.
+
+Examples are checked with the runtime validation pipeline: the same schema
+conversion (`nullable`, the document's JSON Schema dialect, discriminator
+enforcement) and the same validator, so doctor and runtime agree on what a
+value is. A request body or parameter example is checked as a request, so a
+`readOnly` property in it is rejected; a response or header example is checked
+as a response. A Schema-level example describes both directions and may carry
+`readOnly` and `writeOnly` properties. `externalValue` is never fetched, and
+media types runtime validation does not evaluate (non-JSON, non-form) are not
+checked. An example reached through several `$ref`s is reported once, under
+`components` when it is defined there.
+
+In YAML, quote dates: YAML 1.1 decodes `example: 2024-01-01` to an integer
+timestamp, which a `type: string` schema rejects.
 
 ## Multiple specs
 
@@ -204,13 +231,13 @@ Add `--output-file=<path>` to write the report, in either format, to a file inst
 
 Additive changes — a new field such as `tool`, or a new `category` slug — keep `schema_version` at `2`. Removals, renames, and type changes bump it. Version `2` (3.0) renamed the v2 `schemaVersion` key to `schema_version`.
 
-Every issue has a stable `severity`, `category`, `spec`, `message`, and nullable `suggestion` field, plus the [failure code](failure-codes.md) of its category in `code` (for example `GSO306` for `structure`) and that code's page in `docs_url`. The text report prints the code before the category: `ERROR [GSO306] [structure] openapi.json: …`. `gesso explain <code>` prints the same entry in the terminal. Severities are:
+Every issue has a stable `severity`, `category`, `spec`, `message`, and nullable `suggestion` field, plus the [failure code](failure-codes.md) of its category in `code` (for example `GSO306` for `structure`) and that code's page in `docs_url`. An `example` issue also carries `pointer`, the RFC 6901 pointer to the example in the spec, and `schema_pointer`, the pointer to the failing keyword in the example's schema (after `$ref` inlining and conversion, as in [validation JSON](validation-json-schema.md)) or `null`. The text report prints the code before the category: `ERROR [GSO306] [structure] openapi.json: …`. `gesso explain <code>` prints the same entry in the terminal. Severities are:
 
 - `error`: the contract cannot be loaded or enforced as configured;
 - `warning`: validation can proceed, but the package detected a compatibility limitation;
 - `skipped`: a recognized contract feature is not currently enforced and needs a separate test.
 
-Categories currently emitted by schema version 1 are `io`, `parser`, `version`, `dialect`, `references`, `structure`, `keyword`, `feature`, `dependency`, `configuration`, `spec`, `compatibility`, and `internal`. Consumers should branch on `severity` and `category`, not the human-readable message.
+Categories currently emitted are `io`, `parser`, `version`, `dialect`, `references`, `structure`, `keyword`, `feature`, `dependency`, `configuration`, `spec`, `compatibility`, `internal`, and `example`. Consumers should branch on `severity` and `category`, not the human-readable message.
 
 ## Exit codes
 

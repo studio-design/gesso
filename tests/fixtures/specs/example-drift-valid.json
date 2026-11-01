@@ -1,0 +1,49 @@
+{
+    "openapi": "3.0.3",
+    "info": {"title": "Valid examples", "version": "1.0.0"},
+    "paths": {
+        "/pets": {
+            "post": {
+                "parameters": [
+                    {"name": "limit", "in": "query", "schema": {"type": "integer"}, "example": 5}
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {"$ref": "#/components/schemas/Pet"},
+                            "example": {"name": "Rex", "password": "secret"}
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "created",
+                        "headers": {"X-Rate-Limit": {"schema": {"type": "integer"}, "example": 10}},
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/Pet"},
+                                "examples": {"created": {"value": {"id": 1, "name": "Rex", "tag": null, "meta": {}}}}
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "components": {
+        "schemas": {
+            "Pet": {
+                "type": "object",
+                "required": ["name"],
+                "properties": {
+                    "id": {"type": "integer", "readOnly": true},
+                    "name": {"type": "string"},
+                    "password": {"type": "string", "writeOnly": true},
+                    "tag": {"type": "string", "nullable": true, "example": null},
+                    "meta": {"type": "object"}
+                },
+                "example": {"id": 1, "name": "Rex", "password": "secret", "tag": null}
+            }
+        }
+    }
+}

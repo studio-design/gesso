@@ -41,6 +41,7 @@
         "GSO311",
         "GSO312",
         "GSO313",
+        "GSO314",
         "GSO401",
         "GSO402",
         "GSO403",
@@ -126,6 +127,7 @@
         "configuration": "GSO310",
         "spec": "GSO311",
         "compatibility": "GSO312",
-        "internal": "GSO313"
+        "internal": "GSO313",
+        "example": "GSO314"
     }
 }

@@ -1,0 +1,38 @@
+{
+    "openapi": "3.1.0",
+    "info": {"title": "Example drift 3.1", "version": "1.0.0"},
+    "paths": {
+        "/pets": {
+            "get": {
+                "responses": {
+                    "200": {
+                        "description": "ok",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {"$ref": "#/components/schemas/Pet"},
+                                    "examples": [[{"id": 1, "name": "Rex"}], [{"id": "one", "name": "Rex"}]]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "components": {
+        "schemas": {
+            "Pet": {
+                "type": "object",
+                "required": ["id", "name"],
+                "properties": {
+                    "id": {"type": "integer"},
+                    "name": {"type": "string"},
+                    "tag": {"type": ["string", "null"], "examples": ["dog", null]}
+                },
+                "examples": [{"id": 1, "name": "Rex", "tag": null}]
+            }
+        }
+    }
+}
