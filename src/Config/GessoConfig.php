@@ -105,7 +105,7 @@ final class GessoConfig
             'strip_prefixes' => ['type' => 'strings', 'default' => []],
         ],
         'validation' => [
-            'format' => ['type' => 'enum', 'values' => ['text', 'json'], 'default' => 'text'],
+            'format' => ['type' => 'enum', 'values' => ['text', 'json', 'agent', 'auto'], 'default' => 'auto'],
             'max_errors' => ['type' => 'int', 'default' => 20],
             'enforce_discriminator' => ['type' => 'bool', 'default' => true],
             'acknowledged_unvalidatable_schemes' => ['type' => 'strings', 'default' => []],

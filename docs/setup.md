@@ -111,7 +111,7 @@ Relative paths in `gesso.php` resolve against that file's directory.
 | `coverage.report_output.json` | No | — | File path to write machine-readable JSON coverage report (custom dashboards, analytics, scripted gating). Schema: [`coverage-json-schema.md`](coverage-json-schema.md) |
 | `coverage.report_output.html` | No | — | File path to write self-contained HTML coverage report (PR comments, CI artifact preview, offline review). See [`coverage-html-output.md`](coverage-html-output.md) |
 | `coverage.console_report` | No | `default` | Console output mode: `default`, `all`, `uncovered_only`, or `active_only` (overridden by `GESSO_CONSOLE_OUTPUT` env var) |
-| `validation.format` | No | `text` | Validation failure output format for all framework adapters: `text` or `json` (overridden by `GESSO_VALIDATION_FORMAT` env var). See [Validation JSON schema](validation-json-schema.md#selecting-json-failure-output-in-adapters) |
+| `validation.format` | No | `auto` | Validation failure output format for all framework adapters: `auto`, `text`, `json`, or `agent` (overridden by `GESSO_VALIDATION_FORMAT` env var). `auto` is `agent` under a detected coding agent and `text` otherwise. See [Agent failure output](#agent-failure-output) and [Validation JSON schema](validation-json-schema.md#selecting-json-failure-output-in-adapters) |
 | `validation.max_errors` | No | `20` | Maximum validation errors reported per request/response, `0` = unlimited. Process-wide default for validators constructed without an explicit `maxErrors` argument (the [framework-agnostic usage](#framework-agnostic)); the PSR-7, Symfony, and Laravel adapters follow it. See [Controlling the number of validation errors](#controlling-the-number-of-validation-errors) |
 | `validation.skip_response_codes` | No | `['5\d\d']` | Status-code regex patterns whose responses skip body validation. `[]` means no skip patterns — 5xx bodies are validated too. Same process-wide default rule as `validation.max_errors` |
 | `validation.skip_request_validation_response_codes` | No | `['422', '400']` | Status-code regex patterns enabling the documented-4xx request downgrade: an invalid request that yields a matching, spec-documented status is reported Skipped instead of Failure. Same process-wide default rule as `validation.max_errors` |
@@ -443,6 +443,51 @@ The PSR-7 exchange assertion prefixes each error line with its `[request]` /
 exchange. In the JSON failure output mode the same command is carried in the
 document's `reproduce_command` field instead of a trailing line — see
 [validation-json-schema.md](validation-json-schema.md).
+
+The validator stops collecting inside one schema at `validation.max_errors`;
+that cut has no count, so raise `validation.max_errors` (or set it to `0`) to
+see everything.
+
+### Agent failure output
+
+`validation.format` defaults to `auto`: `text` normally, and the compact
+`agent` shape when the tests run under an AI coding agent. Outside an agent the
+output is the `text` shape above. An explicit `text` or `json`
+(in `gesso.php` or `GESSO_VALIDATION_FORMAT`) always wins; set `agent` to use
+the shape anywhere.
+
+An agent is detected by a non-empty value in one of these environment
+variables, the table [laravel/agent-detector](https://github.com/laravel/agent-detector)
+uses: `AI_AGENT`, `CLAUDECODE`, `CLAUDE_CODE`, `CURSOR_AGENT`,
+`CODEX_SANDBOX`, `CODEX_CI`, `CODEX_THREAD_ID`,
+`CODEX_SANDBOX_NETWORK_DISABLED`, `GEMINI_CLI`, `QWEN_CODE`, `COPILOT_CLI`,
+`COPILOT_MODEL`, `COPILOT_ALLOW_ALL`, `OPENCODE`, `OPENCODE_CLIENT`,
+`AMP_CURRENT_THREAD_ID`, `AUGMENT_AGENT`, `JUNIE_DATA`,
+`MATTERHORN_SESSION_ID`, `KIRO_AGENT_PATH`, `CLINE_ACTIVE`,
+`WINDSURF_CASCADE_TERMINAL`, `ANTIGRAVITY_AGENT`, `PI_CODING_AGENT`,
+`GROK_PLUGIN_ROOT`, `KIMI_PLUGIN_ROOT`, `GOOSE_TERMINAL`.
+
+The agent shape keeps one issue per line, with no ANSI and no pretty-printed
+JSON, so wrappers that keep the failure message verbatim (such as
+[laravel/pao](https://github.com/laravel/pao)) still carry it. Each line has
+the failure code, the side (`request` or `response`), method, path, status,
+content type, then `schema=` (the schema pointer), `actual=` and `expected=`
+when known, and the message. One `Reproduce:` line and one `Explain:` line
+follow, and PHPUnit's "Failed asserting that false is true." suffix is dropped:
+
+```text
+OpenAPI schema validation failed for GET /v1/pets (spec: front):
+[GSO212] response GET /v1/pets 200 application/json schema=/properties/data/items/properties/id/type actual="not-an-integer" expected="integer" [/data/0/id] The data (string) must match the type: integer
+Reproduce: curl -X GET 'https://api.example.test/v1/pets'
+Explain: vendor/bin/gesso explain GSO212
+```
+
+The PSR-7 exchange assertion prefixes each line with `[request]` or
+`[response]`, as in text mode. When an assertion reports more issues than
+`validation.max_errors`, the list stops at that many and ends with
+`... N more`. The
+agent line layout may gain fields in minor releases; parse the `json` format
+when you need a stable contract.
 
 Header and query values that look sensitive are redacted before the command
 is rendered:

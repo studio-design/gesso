@@ -168,7 +168,7 @@ final class GessoConfigTest extends TestCase
         $config = GessoConfig::load();
 
         $this->assertNull($config->sourcePath());
-        $this->assertSame('text', $config->string('validation.format'));
+        $this->assertSame('auto', $config->string('validation.format'));
         $this->assertSame(20, $config->int('validation.max_errors'));
         $this->assertTrue($config->bool('validation.enforce_discriminator'));
         $this->assertSame(['5\d\d'], $config->strings('validation.skip_response_codes'));

@@ -689,7 +689,7 @@ final class PublicApiBaselineTest extends TestCase
             'traits' => [],
             'attributes' => [],
             'backing_type' => 'string',
-            'cases' => ['Text' => 'text', 'Json' => 'json'],
+            'cases' => ['Text' => 'text', 'Json' => 'json', 'Agent' => 'agent', 'Auto' => 'auto'],
             'constants' => [],
             'properties' => [
                 'name' => [

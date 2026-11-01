@@ -98,6 +98,31 @@ class ValidatesOpenApiSchemaJsonOutputTest extends TestCase
     }
 
     #[Test]
+    public function agent_mode_renders_one_line_per_issue_and_ends_with_the_explain_hint(): void
+    {
+        ValidationOutput::use(ValidationOutputFormat::Agent);
+        $body = (string) json_encode(
+            ['data' => [['id' => 'not-an-integer', 'name' => 'Fido']]],
+            JSON_THROW_ON_ERROR,
+        );
+        $response = $this->makeTestResponse($body, 200);
+
+        try {
+            $this->assertResponseMatchesOpenApiSchema($response, HttpMethod::GET, '/v1/pets');
+            $this->fail('Expected the response assertion to fail.');
+        } catch (AssertionFailedError $e) {
+            $lines = explode("\n", $e->getMessage());
+
+            $this->assertSame('OpenAPI schema validation failed for GET /v1/pets (spec: petstore-3.0):', $lines[0]);
+            $this->assertStringStartsWith('[GSO212] response GET /v1/pets 200 application/json schema=', $lines[1]);
+            $this->assertStringContainsString(' actual="not-an-integer" ', $lines[1]);
+            $this->assertStringStartsWith('Reproduce: curl -X GET', $lines[2]);
+            $this->assertSame('Explain: vendor/bin/gesso explain GSO212', $lines[3]);
+            $this->assertCount(4, $lines);
+        }
+    }
+
+    #[Test]
     public function text_mode_failure_is_unchanged_by_default(): void
     {
         $body = (string) json_encode(['wrong_key' => 'value'], JSON_THROW_ON_ERROR);

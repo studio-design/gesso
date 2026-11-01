@@ -6,7 +6,7 @@
         "strip_prefixes": []
     },
     "validation": {
-        "format": "text",
+        "format": "auto",
         "max_errors": 20,
         "enforce_discriminator": true,
         "acknowledged_unvalidatable_schemes": [],

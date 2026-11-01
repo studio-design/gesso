@@ -237,7 +237,7 @@ final class OpenApiCoverageExtension implements Extension
                 // gesso-wide validation failure output, and the migration
                 // baseline pins identity-neutral prefix counts (ADR 0001) —
                 // new diagnostics go through the branded channel.
-                Diagnostics::stderr("[Gesso] WARNING: Invalid validation_output parameter '{$rawValidationOutput}'. Valid values: text, json. Falling back to the configured format.\n");
+                Diagnostics::stderr("[Gesso] WARNING: Invalid validation_output parameter '{$rawValidationOutput}'. Valid values: text, json, agent, auto. Falling back to the configured format.\n");
             } else {
                 ValidationOutput::use($validationOutput);
             }

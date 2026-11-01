@@ -149,8 +149,8 @@ trait OpenApiAssertions
             fn(): string => $this->psr7ReproduceCommand($request),
         );
 
-        // See OpenApiAssertionCore::assertOpenApiResult(): json mode must end with parseable documents.
-        if (ValidationOutput::format() === ValidationOutputFormat::Json) {
+        // See OpenApiAssertionCore::assertOpenApiResult(): json and agent mode end without PHPUnit's suffix.
+        if (ValidationOutput::format() !== ValidationOutputFormat::Text) {
             CleanTraceAssert::fail($message);
         }
 

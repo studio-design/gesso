@@ -27,7 +27,8 @@ Every framework adapter (Laravel, Symfony, Pest, PSR-7) can emit this document
 in its assertion failure message instead of the plain text shape. One
 process-wide switch selects the mode everywhere, resolved in priority order:
 
-1. the `GESSO_VALIDATION_FORMAT` environment variable (`text` | `json`);
+1. the `GESSO_VALIDATION_FORMAT` environment variable (`text` | `json` |
+   `agent` | `auto`);
 2. `ValidationOutput::use(ValidationOutputFormat::Json)` — call it from your
    test bootstrap, or set `validation.format` in the root `gesso.php` read
    by the PHPUnit extension, which calls it for you:
@@ -39,7 +40,8 @@ process-wide switch selects the mode everywhere, resolved in priority order:
    ];
    ```
 
-3. `text` (the default — failure output is unchanged unless you opt in).
+3. `auto` (the default): `text`, or the compact
+   [agent shape](setup.md#agent-failure-output) under a detected coding agent.
 
 An unrecognised value warns on STDERR and never changes the selection:
 resolution falls through to the next source (so an invalid `GESSO_VALIDATION_FORMAT`
