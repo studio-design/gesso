@@ -1575,6 +1575,39 @@ class DoctorCommandTest extends TestCase
     }
 
     #[Test]
+    public function a_copied_example_is_reported_everywhere_and_a_shared_one_once(): void
+    {
+        $bad = ['type' => 'object', 'properties' => ['n' => ['type' => 'integer']]];
+        $media = ['application/json' => ['schema' => $bad, 'example' => ['n' => 'x']]];
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 't', 'version' => '1'],
+            'paths' => [
+                '/a' => ['post' => ['requestBody' => ['content' => $media], 'responses' => ['204' => ['description' => 'ok']]]],
+                '/b' => ['post' => ['requestBody' => ['content' => $media], 'responses' => ['204' => ['description' => 'ok']]]],
+                '/c' => ['post' => ['requestBody' => ['$ref' => '#/components/requestBodies/Shared'], 'responses' => ['204' => ['description' => 'ok']]]],
+                '/d' => ['post' => ['requestBody' => ['$ref' => '#/components/requestBodies/Shared'], 'responses' => ['204' => ['description' => 'ok']]]],
+                '/e' => ['post' => ['requestBody' => ['content' => ['application/json' => [
+                    'schema' => ['$ref' => '#/components/schemas/N', 'minimum' => 0, 'example' => 'not-a-number'],
+                ]]], 'responses' => ['204' => ['description' => 'ok']]]],
+            ],
+            'components' => [
+                'requestBodies' => ['Shared' => ['content' => $media]],
+                'schemas' => ['N' => ['type' => 'integer']],
+            ],
+        ];
+        $report = $this->runJsonDoctor($this->writeSpec('copies.json', (string) json_encode($spec, JSON_THROW_ON_ERROR)), $exit);
+
+        $pointers = array_column(array_filter($report['issues'], static fn(array $issue): bool => $issue['category'] === 'example'), 'pointer');
+        $this->assertSame([
+            '/components/requestBodies/Shared/content/application~1json/example',
+            '/paths/~1a/post/requestBody/content/application~1json/example',
+            '/paths/~1b/post/requestBody/content/application~1json/example',
+            '/paths/~1e/post/requestBody/content/application~1json/schema/example',
+        ], $pointers);
+    }
+
+    #[Test]
     public function examples_that_match_their_schema_raise_no_issue(): void
     {
         // Includes a 3.0 `nullable` example, an empty-object example, and a

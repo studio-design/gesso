@@ -32,6 +32,7 @@ use Studio\Gesso\Internal\CliIo;
 use Studio\Gesso\Internal\ExampleScanner;
 use Studio\Gesso\Internal\FailureCatalogue;
 use Studio\Gesso\Internal\HttpRefLoader;
+use Studio\Gesso\Internal\SpecDocumentDecoder;
 use Studio\Gesso\Internal\SpecPath;
 use Studio\Gesso\Internal\ToolVersion;
 use Studio\Gesso\OpenApiVersion;
@@ -61,6 +62,7 @@ use function class_exists;
 use function compact;
 use function count;
 use function dirname;
+use function file_get_contents;
 use function filesize;
 use function filter_var;
 use function get_debug_type;
@@ -515,7 +517,7 @@ final class DoctorCommand
             $dialect = OpenApiSchemaDialect::fromSpec($spec, $version);
             [$operations, $responses] = $this->inspectStructure($spec, $version, $label, $issues);
             $this->walkForSchemas($spec, $version, $dialect, new DiscriminatorContext($spec, true), null);
-            $this->inspectExamples($spec, $version, $dialect, $label, $issues);
+            $this->inspectExamples($spec, $path, $extension, $version, $dialect, $label, $issues);
             $this->inspectSkippedFeatures($spec, $label, $acknowledgedSchemes, $issues);
             $this->inspectWebhooks($spec, $label, $issues);
 
@@ -802,9 +804,13 @@ final class DoctorCommand
      * @param array<string, mixed> $spec
      * @param list<DoctorIssue> $issues
      */
-    private function inspectExamples(array $spec, OpenApiVersion $version, string $dialect, string $label, array &$issues): void
+    private function inspectExamples(array $spec, string $path, string $extension, OpenApiVersion $version, string $dialect, string $label, array &$issues): void
     {
-        foreach (ExampleScanner::scan($spec, $version, $dialect, new DiscriminatorContext($spec, true)) as ['pointer' => $pointer, 'violation' => $violation]) {
+        // The undecoded-`$ref` document tells a shared definition from a copy;
+        // the loader already parsed the same file, so this cannot fail.
+        $content = (string) file_get_contents($path);
+        $raw = $extension === 'json' ? SpecDocumentDecoder::decodeJson($content, $path) : SpecDocumentDecoder::decodeYaml($content, $path);
+        foreach (ExampleScanner::scan($spec, $raw, $version, $dialect, new DiscriminatorContext($spec, true)) as ['pointer' => $pointer, 'violation' => $violation]) {
             $issue = $this->issue(
                 'warning',
                 'example',

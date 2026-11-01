@@ -74,8 +74,9 @@ value is. A request body or parameter example is checked as a request, so a
 as a response. A Schema-level example describes both directions and may carry
 `readOnly` and `writeOnly` properties. `externalValue` is never fetched, and
 media types runtime validation does not evaluate (non-JSON, non-form) are not
-checked. An example reached through several `$ref`s is reported once, under
-`components` when it is defined there.
+checked. An example shared through a `$ref` within the document is reported
+once, where it is defined; an example copied by hand is reported at every
+place it appears.
 
 In YAML, quote dates: YAML 1.1 decodes `example: 2024-01-01` to an integer
 timestamp, which a `type: string` schema rejects.

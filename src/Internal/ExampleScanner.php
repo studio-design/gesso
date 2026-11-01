@@ -23,6 +23,7 @@ use function array_key_exists;
 use function hash;
 use function in_array;
 use function is_array;
+use function is_string;
 use function serialize;
 use function str_replace;
 use function str_starts_with;
@@ -67,22 +68,25 @@ final class ExampleScanner
 
     /**
      * Every drifting example, keyed by its JSON pointer in the spec, with the
-     * first violation. `$ref` targets are inlined by the loader, so one
-     * example reached from several places is reported once, at `components`
-     * when it is defined there.
+     * first violation. The loader inlines `$ref` targets, so `$raw` (the same
+     * document before resolution) decides where an example is defined: a
+     * branch that is an internal `$ref` in `$raw` is reported at its target
+     * only, while a copied example is reported at every place it appears.
+     * Below an external-file `$ref` the raw shape is unknown, and an
+     * identical (side, schema, value) is reported once.
      *
      * @param array<string, mixed> $spec
+     * @param array<string, mixed> $raw
      *
      * @return list<array{pointer: string, violation: SchemaViolation}>
      */
-    public static function scan(array $spec, OpenApiVersion $version, string $dialect, DiscriminatorContext $discriminator): array
+    public static function scan(array $spec, array $raw, OpenApiVersion $version, string $dialect, DiscriminatorContext $discriminator): array
     {
         $scanner = new self($version, $dialect, $discriminator);
-        if (is_array($spec['components'] ?? null)) {
-            $scanner->walk(['components' => $spec['components']], '', null);
-        }
-        unset($spec['components']);
-        $scanner->walk($spec, '', null);
+        // Definitions first, so a report lists components before their users.
+        $scanner->walk(['components' => $spec['components'] ?? []], '', null, ['components' => $raw['components'] ?? []]);
+        unset($spec['components'], $raw['components']);
+        $scanner->walk($spec, '', null, $raw);
 
         return $scanner->drift;
     }
@@ -144,28 +148,70 @@ final class ExampleScanner
     }
 
     /**
+     * The raw counterpart of `$raw[$key]`: false when it is an internal
+     * `$ref` (reported at its target instead), null when unknown (below an
+     * external-file `$ref`). A schema node keeps its internal `$ref` so
+     * {@see self::walkSchema()} can still check `example` siblings.
+     *
+     * @param null|array<mixed> $raw
+     *
+     * @return null|array<mixed>|false
+     */
+    private static function rawChild(?array $raw, string $key, bool $schemaNode = false): null|array|false
+    {
+        if ($raw === null) {
+            return null;
+        }
+        $child = $raw[$key] ?? null;
+        if (!is_array($child)) {
+            return null;
+        }
+        $ref = $child['$ref'] ?? null;
+        if (!is_string($ref)) {
+            return $child;
+        }
+        if (!str_starts_with($ref, '#')) {
+            return null;
+        }
+
+        return $schemaNode ? $child : false;
+    }
+
+    /** @param array<mixed> $raw */
+    private static function isInternalRef(array $raw): bool
+    {
+        return is_string($raw['$ref'] ?? null) && str_starts_with($raw['$ref'], '#');
+    }
+
+    /**
      * Walk non-schema spec nodes. `$context` is the side of the exchange the
      * node describes, as runtime validation applies `readOnly` / `writeOnly`.
      *
      * @param array<mixed> $node
+     * @param null|array<mixed> $raw `$node` before `$ref` resolution; null when unknown
      */
-    private function walk(array $node, string $pointer, ?SchemaContext $context): void
+    private function walk(array $node, string $pointer, ?SchemaContext $context, ?array $raw): void
     {
         foreach ($node as $key => $value) {
             $key = (string) $key;
             if (!is_array($value) || in_array($key, ['example', 'examples', 'itemSchema'], true) || str_starts_with($key, 'x-')) {
                 continue;
             }
+            $rawChild = self::rawChild($raw, $key, $key === 'schema');
+            if ($rawChild === false) {
+                continue;
+            }
             $child = self::pointer($pointer, $key);
             if ($key === 'schema') {
-                $this->walkSchema($value, $child);
+                $this->walkSchema($value, $child, $rawChild);
 
                 continue;
             }
             if ($key === 'schemas' && $pointer === '/components') {
                 foreach ($value as $name => $schema) {
-                    if (is_array($schema)) {
-                        $this->walkSchema($schema, self::pointer($child, $name));
+                    $rawSchema = self::rawChild($rawChild, (string) $name, true);
+                    if (is_array($schema) && $rawSchema !== false) {
+                        $this->walkSchema($schema, self::pointer($child, $name), $rawSchema);
                     }
                 }
 
@@ -185,7 +231,7 @@ final class ExampleScanner
                 // Response and component headers; encoding headers stay on the request side.
                 'headers' => $context ?? SchemaContext::Response,
                 default => $context,
-            });
+            }, $rawChild);
         }
 
         // A Media Type, Parameter or Header object.
@@ -196,32 +242,43 @@ final class ExampleScanner
         /** @var array<string, mixed> $schema */
         $context ??= SchemaContext::Response;
         if (array_key_exists('example', $node)) {
-            $this->check($schema, $node['example'], self::pointer($pointer, 'example'), $context);
+            $this->check($schema, $node['example'], self::pointer($pointer, 'example'), $context, $raw === null);
         }
         if (is_array($node['examples'] ?? null)) {
             foreach ($node['examples'] as $name => $example) {
                 if (is_array($example) && array_key_exists('value', $example)) {
-                    $this->check($schema, $example['value'], self::pointer(self::pointer(self::pointer($pointer, 'examples'), $name), 'value'), $context);
+                    $this->check($schema, $example['value'], self::pointer(self::pointer(self::pointer($pointer, 'examples'), $name), 'value'), $context, $raw === null);
                 }
             }
         }
     }
 
-    /** @param array<mixed> $schema */
-    private function walkSchema(array $schema, string $pointer): void
+    /**
+     * @param array<mixed> $schema
+     * @param null|array<mixed> $raw `$schema` before `$ref` resolution; null when unknown
+     */
+    private function walkSchema(array $schema, string $pointer, ?array $raw): void
     {
         /** @var array<string, mixed> $schema */
-        if (array_key_exists('example', $schema)) {
-            $this->check($schema, $schema['example'], self::pointer($pointer, 'example'), null);
+        // A 3.1 `$ref` with an `example` sibling: the sibling is this node's
+        // own example; everything else belongs to the target.
+        $ownsExamples = $raw === null || !self::isInternalRef($raw) || array_key_exists('example', $raw) || array_key_exists('examples', $raw);
+        if ($ownsExamples && array_key_exists('example', $schema)) {
+            $this->check($schema, $schema['example'], self::pointer($pointer, 'example'), null, $raw === null);
         }
         // `examples` is a Schema keyword from OpenAPI 3.1 (JSON Schema 2020-12) only.
-        if ($this->version !== OpenApiVersion::V3_0 && is_array($schema['examples'] ?? null) && array_is_list($schema['examples'])) {
+        if ($ownsExamples && $this->version !== OpenApiVersion::V3_0 && is_array($schema['examples'] ?? null) && array_is_list($schema['examples'])) {
             foreach ($schema['examples'] as $index => $example) {
-                $this->check($schema, $example, self::pointer(self::pointer($pointer, 'examples'), $index), null);
+                $this->check($schema, $example, self::pointer(self::pointer($pointer, 'examples'), $index), null, $raw === null);
             }
         }
+        if ($raw !== null && self::isInternalRef($raw)) {
+            return;
+        }
         foreach (self::subschemas($schema) as [$keyword, $name, $child]) {
-            $this->walkSchema($child, $name === null ? self::pointer($pointer, $keyword) : self::pointer(self::pointer($pointer, $keyword), $name));
+            $rawContainer = $name === null ? $raw : self::rawChild($raw, $keyword);
+            $rawChild = is_array($rawContainer) ? self::rawChild($rawContainer, $name === null ? $keyword : (string) $name, true) : null;
+            $this->walkSchema($child, $name === null ? self::pointer($pointer, $keyword) : self::pointer(self::pointer($pointer, $keyword), $name), $rawChild === false ? null : $rawChild);
         }
     }
 
@@ -231,14 +288,17 @@ final class ExampleScanner
      * `writeOnly` properties are both allowed.
      *
      * @param array<string, mixed> $schema
+     * @param bool $dedupe below an external-file `$ref`, where copies and shared definitions look alike
      */
-    private function check(array $schema, mixed $value, string $pointer, ?SchemaContext $context): void
+    private function check(array $schema, mixed $value, string $pointer, ?SchemaContext $context, bool $dedupe): void
     {
-        $key = hash('xxh128', serialize([$context?->name, $schema, $value]));
-        if (isset($this->seen[$key])) {
-            return;
+        if ($dedupe) {
+            $key = hash('xxh128', serialize([$context?->name, $schema, $value]));
+            if (isset($this->seen[$key])) {
+                return;
+            }
+            $this->seen[$key] = true;
         }
-        $this->seen[$key] = true;
 
         $converted = OpenApiSchemaConverter::convert(
             $context === null ? self::withoutAccessMarkers($schema) : $schema,
