@@ -99,6 +99,38 @@ jobs:
       - name: Run Pest smoke tests
         run: composer test:pest
 
+  rector:
+    name: Rector sets (newest rector/rector ^2.7)
+    runs-on: ubuntu-latest
+    # The supported range is rector/rector ^2.7 (composer.json require-dev and
+    # suggest). The matrix above runs tests/Rector at whatever the exact
+    # phpstan/phpstan pin lets resolve, and its lowest-deps job at 2.7.0.
+    # Newer Rector releases raise their phpstan floor, so this job lifts the
+    # pin to install the newest Rector in range. PHPStan itself is not run
+    # here: its version differs from the pinned one on purpose.
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2
+        with:
+          php-version: '8.3'
+          coverage: none
+
+      - name: Install dependencies (newest Rector in range)
+        uses: ./.github/actions/composer-install
+        with:
+          args: require --dev rector/rector:^2.7 phpstan/phpstan:^2.3 --with-all-dependencies
+          cache-key: rector-newest
+
+      - name: Show the Rector version under test
+        run: vendor/bin/rector --version
+
+      - name: Run the Rector set tests
+        run: vendor/bin/phpunit --testsuite Rector
+
   pest-example:
     name: Pest plugin example
     runs-on: ubuntu-latest

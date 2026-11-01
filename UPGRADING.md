@@ -13,6 +13,15 @@ v3.0 removes the surfaces deprecated during v2. Upgrade to v2.9 first and run
 your suite with deprecations visible: every removal below emitted a
 `[Gesso deprecation]` notice there, except rows marked *static only*. See
 [`docs/migration/v3.md`](docs/migration/v3.md) for the step-by-step guide.
+Most of the PHP renames and removals below can be rewritten with the Rector
+set `Studio\Gesso\Rector\GessoSetList::V3` (needs `rector/rector` ^2.7):
+
+```bash
+vendor/bin/rector process tests --config vendor/studio-design/gesso/src/Rector/config/gesso-v3.php
+```
+
+See [`docs/migration/rector.md`](docs/migration/rector.md) for what it
+rewrites and what stays manual.
 
 ### Configuration
 

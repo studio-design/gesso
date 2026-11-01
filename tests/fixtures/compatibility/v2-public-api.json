@@ -10100,6 +10100,29 @@
             }
         }
     },
+    "Studio\\Gesso\\Rector\\GessoSetList": {
+        "kind": "class",
+        "final": true,
+        "abstract": false,
+        "readonly": false,
+        "instantiable": true,
+        "constructor": {
+            "kind": "implicit",
+            "visibility": "public"
+        },
+        "parent": null,
+        "interfaces": [],
+        "traits": [],
+        "attributes": [],
+        "backing_type": null,
+        "cases": [],
+        "constants": {
+            "KIRSCHBAUM_TO_GESSO": "src/Rector/config/kirschbaum-to-gesso.php",
+            "V3": "src/Rector/config/gesso-v3.php"
+        },
+        "properties": [],
+        "methods": []
+    },
     "Studio\\Gesso\\Schema\\EnumDriftAsserter": {
         "kind": "class",
         "final": true,

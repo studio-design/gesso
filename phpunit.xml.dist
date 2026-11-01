@@ -32,6 +32,15 @@
             -->
             <exclude>tests/Integration/Pest</exclude>
         </testsuite>
+        <!--
+            The src/Rector sets, run through Rector's own test case.
+            rector/rector is in require-dev, so the main matrix runs them
+            against the floor of the supported range; the CI `rector` job
+            runs `testsuite Rector` against the newest release.
+        -->
+        <testsuite name="Rector">
+            <directory>tests/Rector</directory>
+        </testsuite>
     </testsuites>
 
     <source>
