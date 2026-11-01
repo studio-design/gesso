@@ -444,10 +444,9 @@ exchange. In the JSON failure output mode the same command is carried in the
 document's `reproduce_command` field instead of a trailing line — see
 [validation-json-schema.md](validation-json-schema.md).
 
-When an assertion reports more issues than `validation.max_errors`, the list
-stops at that many and ends with `... N more`. The validator also stops
-collecting inside one schema at `max_errors`; that cut has no count, so raise
-`validation.max_errors` (or set it to `0`) to see everything.
+The validator stops collecting inside one schema at `validation.max_errors`;
+that cut has no count, so raise `validation.max_errors` (or set it to `0`) to
+see everything.
 
 ### Agent failure output
 
@@ -484,7 +483,9 @@ Explain: vendor/bin/gesso explain GSO212
 ```
 
 The PSR-7 exchange assertion prefixes each line with `[request]` or
-`[response]`, as in text mode. The `... N more` budget applies here too. The
+`[response]`, as in text mode. When an assertion reports more issues than
+`validation.max_errors`, the list stops at that many and ends with
+`... N more`. The
 agent line layout may gain fields in minor releases; parse the `json` format
 when you need a stable contract.
 

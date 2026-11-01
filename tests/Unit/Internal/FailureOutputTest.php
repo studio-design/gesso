@@ -155,14 +155,14 @@ class FailureOutputTest extends TestCase
     }
 
     #[Test]
-    public function text_mode_reports_how_many_issues_exceed_max_errors(): void
+    public function text_mode_renders_every_issue_the_validator_returned(): void
     {
         ValidationPolicyDefaults::configure(maxErrors: 2);
 
-        $message = FailureOutput::compose('Header', self::manyIssues(5), static fn(): string => 'curl');
+        $message = FailureOutput::compose('Header', self::manyIssues(3), static fn(): string => 'curl');
 
         $this->assertSame(
-            "Header:\n[GSO112] [/a0] bad\n[GSO112] [/a1] bad\n... 3 more\nReproduce: curl",
+            "Header:\n[GSO112] [/a0] bad\n[GSO112] [/a1] bad\n[GSO112] [/a2] bad\nReproduce: curl",
             $message,
         );
     }

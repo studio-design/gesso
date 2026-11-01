@@ -126,8 +126,11 @@ final class FailureOutput
     /**
      * One line per issue, led by its failure code (`[GSO212] [/name] ...`).
      * `issues()` mirrors `errors()` one-to-one, so text-mode messages are
-     * unchanged; agent mode adds the location and schema context. Lines past
-     * the `validation.max_errors` budget collapse into one `... N more` line.
+     * unchanged; agent mode adds the location and schema context, and lines
+     * past the `validation.max_errors` budget collapse into one `... N more`
+     * line. Text mode renders every issue the validator returned, because an
+     * adapter's own cap (Laravel config, `openApiMaxErrors()`) can exceed the
+     * process-wide budget.
      *
      * @return list<string>
      */
@@ -136,7 +139,7 @@ final class FailureOutput
         $agent = ValidationOutput::format() === ValidationOutputFormat::Agent;
         $issues = $result->issues();
         $budget = ValidationPolicyDefaults::maxErrors();
-        $shown = $budget > 0 ? array_slice($issues, 0, $budget) : $issues;
+        $shown = $agent && $budget > 0 ? array_slice($issues, 0, $budget) : $issues;
 
         $lines = [];
         foreach ($shown as $issue) {
