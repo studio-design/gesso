@@ -55,6 +55,7 @@ use Studio\Gesso\Pest\Expectations;
 use Studio\Gesso\PHPUnit\AssertsNoEnumDrift;
 use Studio\Gesso\PHPUnit\ConsoleOutput;
 use Studio\Gesso\PHPUnit\InvalidStrictRequiredConfigurationException;
+use Studio\Gesso\Rector\GessoSetList;
 use Studio\Gesso\Schema\EnumDriftAsserter;
 use Studio\Gesso\SchemaContext;
 use Studio\Gesso\SkipOpenApiResolver;
@@ -2000,6 +2001,14 @@ final class PublicApiBaselineTest extends TestCase
             $expected[OpenApiSpecLoader::class]['methods']['configure']['parameters'],
             static fn(array $parameter): bool => $parameter['name'] !== 'enumBasePath',
         ));
+
+        // v3.0: Rector sets for migrations (additive). The constants name set
+        // files, recorded relative to src/.
+        $expected[GessoSetList::class] = $actual[GessoSetList::class];
+        $this->assertSame(
+            ['KIRSCHBAUM_TO_GESSO' => 'src/Rector/config/kirschbaum-to-gesso.php', 'V3' => 'src/Rector/config/gesso-v3.php'],
+            $actual[GessoSetList::class]['constants'],
+        );
 
         ksort($expected);
 

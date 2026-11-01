@@ -37,6 +37,7 @@ use function interface_exists;
 use function is_array;
 use function is_object;
 use function is_scalar;
+use function is_string;
 use function ksort;
 use function ltrim;
 use function method_exists;
@@ -45,6 +46,7 @@ use function sort;
 use function str_contains;
 use function str_ends_with;
 use function str_replace;
+use function str_starts_with;
 use function strlen;
 use function substr;
 use function token_get_all;
@@ -88,7 +90,7 @@ final class PublicApiInventory
                 continue;
             }
 
-            $symbols[$symbol] = self::describe($reflection);
+            $symbols[$symbol] = self::describe($reflection, $root);
         }
 
         ksort($symbols);
@@ -101,7 +103,7 @@ final class PublicApiInventory
      *
      * @return array<string, mixed>
      */
-    private static function describe(ReflectionClass $reflection): array
+    private static function describe(ReflectionClass $reflection, string $sourceRoot): array
     {
         $parent = $reflection->getParentClass();
         $interfaces = $reflection->getInterfaceNames();
@@ -153,7 +155,12 @@ final class PublicApiInventory
                 continue;
             }
 
-            $constants[$constant->getName()] = self::normaliseValue($constant->getValue());
+            $value = $constant->getValue();
+            // A __DIR__-based path (GessoSetList) differs per checkout; record it relative to src/.
+            if (is_string($value) && str_starts_with($value, $sourceRoot . DIRECTORY_SEPARATOR)) {
+                $value = 'src' . str_replace(DIRECTORY_SEPARATOR, '/', substr($value, strlen($sourceRoot)));
+            }
+            $constants[$constant->getName()] = self::normaliseValue($value);
         }
         ksort($constants);
 

@@ -84,6 +84,13 @@ parameters:
         # #598 regression test needs a real runner facade on both shapes to
         # reach PHPUnit's sealed event facade; which errors fire depends on
         # the PHPUnit version installed (12 on PHP 8.3, 13 on newer PHP).
+        # The Rector set files are namespace-less config files (Rector's
+        # format) that register Gesso's @internal rule classes. They are the
+        # rules' only intended caller, so the internal-boundary rule does not
+        # apply to them.
+        -
+            identifier: classConstant.internalClass
+            path: src/Rector/config/*
         -
             identifiers:
                 - class.notFound

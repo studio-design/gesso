@@ -303,7 +303,8 @@ export default defineConfig({
         items: [
           { text: 'Prepare for Gesso 3.0', link: '/migration/v3' },
           { text: 'Prepare for Gesso 2.0', link: '/migration/v2' },
-          { text: 'From other validators', link: '/migration/from-other-validators' }
+          { text: 'From other validators', link: '/migration/from-other-validators' },
+          { text: 'Rewrite code with Rector', link: '/migration/rector' }
         ]
       },
       {

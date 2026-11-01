@@ -34,6 +34,6 @@ Keep the Symfony `Request` and `Response` values and switch to `Symfony\OpenApiA
 
 ## kirschbaum-development/laravel-openapi-validator
 
-Add `ValidatesOpenApiSchema` to the Laravel base test case and migrate explicit assertions first. If automatic validation is required, enable `auto_assert` and `auto_validate_request`, then use per-request opt-outs for intentionally out-of-contract tests. `config:migrate` proposes both settings as `true`, because this package validates every request and response, and translates `spec_path` to `spec.base_path` and `spec.default`.
+Add `ValidatesOpenApiSchema` to the Laravel base test case and migrate explicit assertions first. If automatic validation is required, enable `auto_assert` and `auto_validate_request`, then use per-request opt-outs for intentionally out-of-contract tests. `config:migrate` proposes both settings as `true`, because this package validates every request and response, and translates `spec_path` to `spec.base_path` and `spec.default`. To swap the trait in every test, run the [Rector set](rector.md#kirschbaum-developmentlaravel-openapi-validator); it also lists what has no 1:1 rewrite.
 
 See the [feature comparison](https://github.com/studio-design/gesso#why-this-library) for deliberately scoped, version-pinned differences. Do not remove the previous validator until the migrated suite reports the expected endpoint coverage.
