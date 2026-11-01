@@ -652,6 +652,22 @@ Notes:
 - No coverage is recorded for the skipped request.
 - Each method returns `$this`, so both `$this->withoutValidation()->get(...)` and the step-by-step form (`$this->withoutValidation(); $this->get(...);`) work.
 
+## Expect a contract violation with `expectInvalidRequest()`
+
+A negative test sends input the spec forbids on purpose. Declare that before the call, and the test asserts the violation instead of failing on it:
+
+```php
+$this->expectInvalidRequest()
+    ->postJson('/v1/pets', ['not_name' => 'x'])
+    ->assertUnprocessable();
+
+$this->expectInvalidResponse()->get('/v1/pets/legacy');
+```
+
+- The test fails when the request (or response) matches the spec, and, for `expectInvalidResponse()`, when its validation is skipped.
+- It runs whether or not `auto_validate_request` (or `auto_assert`) is on. `expectInvalidRequest()` ignores `skip_request_validation_response_codes`, so a documented 4xx does not hide the violation.
+- Like `withoutValidation()`, it covers exactly one HTTP call. The other side of that call is validated as usual.
+
 ## Per-request status-code skip with `skipResponseCode()`
 
 `withoutValidation()` is all-or-nothing for a request. When you only need to suppress a specific status code — e.g., a flaky `404` while a fixture is being repaired — `skipResponseCode()` adds a one-off skip on top of the config-level set:
