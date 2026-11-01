@@ -10105,10 +10105,10 @@
         "final": true,
         "abstract": false,
         "readonly": false,
-        "instantiable": true,
+        "instantiable": false,
         "constructor": {
-            "kind": "implicit",
-            "visibility": "public"
+            "kind": "declared",
+            "visibility": "private"
         },
         "parent": null,
         "interfaces": [],

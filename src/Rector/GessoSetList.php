@@ -19,4 +19,7 @@ final class GessoSetList
 
     /** kirschbaum-development/laravel-openapi-validator → Gesso's Laravel trait. */
     public const string KIRSCHBAUM_TO_GESSO = __DIR__ . '/config/kirschbaum-to-gesso.php';
+
+    /** Constants only — no instances. */
+    private function __construct() {}
 }
