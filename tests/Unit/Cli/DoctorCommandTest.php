@@ -1574,6 +1574,84 @@ class DoctorCommandTest extends TestCase
         $this->assertSame([], $report['issues']);
     }
 
+    #[Test]
+    public function a_copied_example_is_reported_everywhere_and_a_shared_one_once(): void
+    {
+        $bad = ['type' => 'object', 'properties' => ['n' => ['type' => 'integer']]];
+        $media = ['application/json' => ['schema' => $bad, 'example' => ['n' => 'x']]];
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 't', 'version' => '1'],
+            'paths' => [
+                '/a' => ['post' => ['requestBody' => ['content' => $media], 'responses' => ['204' => ['description' => 'ok']]]],
+                '/b' => ['post' => ['requestBody' => ['content' => $media], 'responses' => ['204' => ['description' => 'ok']]]],
+                '/c' => ['post' => ['requestBody' => ['$ref' => '#/components/requestBodies/Shared'], 'responses' => ['204' => ['description' => 'ok']]]],
+                '/d' => ['post' => ['requestBody' => ['$ref' => '#/components/requestBodies/Shared'], 'responses' => ['204' => ['description' => 'ok']]]],
+                '/e' => ['post' => ['requestBody' => ['content' => ['application/json' => [
+                    'schema' => ['$ref' => '#/components/schemas/N', 'minimum' => 0, 'example' => 'not-a-number'],
+                ]]], 'responses' => ['204' => ['description' => 'ok']]]],
+            ],
+            'components' => [
+                'requestBodies' => ['Shared' => ['content' => $media]],
+                'schemas' => ['N' => ['type' => 'integer']],
+            ],
+        ];
+        $report = $this->runJsonDoctor($this->writeSpec('copies.json', (string) json_encode($spec, JSON_THROW_ON_ERROR)), $exit);
+
+        $pointers = array_column(array_filter($report['issues'], static fn(array $issue): bool => $issue['category'] === 'example'), 'pointer');
+        $this->assertSame([
+            '/components/requestBodies/Shared/content/application~1json/example',
+            '/paths/~1a/post/requestBody/content/application~1json/example',
+            '/paths/~1b/post/requestBody/content/application~1json/example',
+            '/paths/~1e/post/requestBody/content/application~1json/schema/example',
+        ], $pointers);
+    }
+
+    #[Test]
+    public function examples_that_match_their_schema_raise_no_issue(): void
+    {
+        // Includes a 3.0 `nullable` example, an empty-object example, and a
+        // Schema-level example carrying both readOnly and writeOnly properties.
+        $report = $this->runJsonDoctor(__DIR__ . '/../../fixtures/specs/example-drift-valid.json', $exit);
+
+        $this->assertSame(DoctorCommand::EXIT_OK, $exit);
+        $this->assertSame([], $report['issues']);
+    }
+
+    #[Test]
+    public function examples_that_do_not_match_their_schema_are_warnings_with_their_pointer(): void
+    {
+        $report = $this->runJsonDoctor(__DIR__ . '/../../fixtures/specs/example-drift-3.0.json', $exit);
+
+        $this->assertSame(DoctorCommand::EXIT_OK, $exit);
+        $examples = array_values(array_filter($report['issues'], static fn(array $issue): bool => $issue['category'] === 'example'));
+        $this->assertSame([
+            '/components/schemas/Pet/properties/age/example' => '/minimum',
+            '/paths/~1pets~1{id}/parameters/0/example' => '/type',
+            '/paths/~1pets~1{id}/put/requestBody/content/application~1json/example' => '/properties',
+            '/paths/~1pets~1{id}/post/parameters/0/examples/tooBig/value' => '/maximum',
+            '/paths/~1pets~1{id}/post/requestBody/content/application~1json/example' => '/properties/name/type',
+            '/paths/~1pets~1{id}/post/responses/200/headers/X-Rate-Limit/example' => '/type',
+            '/paths/~1pets~1{id}/post/responses/200/content/application~1json/examples/missingName/value' => '/required',
+        ], array_column($examples, 'schema_pointer', 'pointer'));
+        foreach ($examples as $issue) {
+            $this->assertSame('warning', $issue['severity']);
+            $this->assertSame('GSO314', $issue['code']);
+        }
+    }
+
+    #[Test]
+    public function schema_examples_arrays_are_checked_on_openapi_3_1(): void
+    {
+        $report = $this->runJsonDoctor(__DIR__ . '/../../fixtures/specs/example-drift-3.1.json', $exit);
+
+        $this->assertSame(DoctorCommand::EXIT_OK, $exit);
+        $this->assertSame(
+            ['/paths/~1pets/get/responses/200/content/application~1json/schema/examples/1' => '/items/properties/id/type'],
+            array_column($report['issues'], 'schema_pointer', 'pointer'),
+        );
+    }
+
     /**
      * Write `$spec` as the `parity` spec, run the doctor, and assert it adds
      * only exit-0 `skipped/feature` issues whose first message names every

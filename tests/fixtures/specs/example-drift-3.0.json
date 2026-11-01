@@ -1,0 +1,87 @@
+{
+    "openapi": "3.0.3",
+    "info": {"title": "Example drift 3.0", "version": "1.0.0"},
+    "paths": {
+        "/pets/{id}": {
+            "parameters": [
+                {"name": "id", "in": "path", "required": true, "schema": {"type": "integer"}, "example": "abc"}
+            ],
+            "put": {
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {"$ref": "#/components/schemas/Pet"},
+                            "example": {"id": 1, "name": "Rex"}
+                        }
+                    }
+                },
+                "responses": {"204": {"description": "updated"}}
+            },
+            "post": {
+                "parameters": [
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "schema": {"type": "integer", "maximum": 10},
+                        "examples": {
+                            "ok": {"value": 5},
+                            "tooBig": {"value": 50},
+                            "remote": {"externalValue": "https://example.com/limit.json"}
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {"$ref": "#/components/schemas/NewPet"},
+                            "example": {"name": 42}
+                        },
+                        "application/xml": {
+                            "schema": {"type": "object"},
+                            "example": "<pet/>"
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "ok",
+                        "headers": {
+                            "X-Rate-Limit": {"schema": {"type": "integer"}, "example": "many"}
+                        },
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/Pet"},
+                                "examples": {
+                                    "valid": {"value": {"id": 1, "name": "Rex", "tag": null}},
+                                    "missingName": {"value": {"id": 1}}
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "components": {
+        "schemas": {
+            "Pet": {
+                "type": "object",
+                "required": ["id", "name"],
+                "properties": {
+                    "id": {"type": "integer", "readOnly": true, "example": 1},
+                    "name": {"type": "string", "example": "Rex"},
+                    "tag": {"type": "string", "nullable": true, "example": null},
+                    "age": {"type": "integer", "minimum": 0, "example": -1}
+                },
+                "example": {"id": 1, "name": "Rex", "tag": null}
+            },
+            "NewPet": {
+                "type": "object",
+                "required": ["name"],
+                "properties": {
+                    "name": {"type": "string"}
+                }
+            }
+        }
+    }
+}

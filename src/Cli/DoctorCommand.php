@@ -29,8 +29,10 @@ use Studio\Gesso\Exception\SpecFileNotFoundException;
 use Studio\Gesso\Internal\ArgvParser;
 use Studio\Gesso\Internal\CliDocuments;
 use Studio\Gesso\Internal\CliIo;
+use Studio\Gesso\Internal\ExampleScanner;
 use Studio\Gesso\Internal\FailureCatalogue;
 use Studio\Gesso\Internal\HttpRefLoader;
+use Studio\Gesso\Internal\SpecDocumentDecoder;
 use Studio\Gesso\Internal\SpecPath;
 use Studio\Gesso\Internal\ToolVersion;
 use Studio\Gesso\OpenApiVersion;
@@ -60,6 +62,7 @@ use function class_exists;
 use function compact;
 use function count;
 use function dirname;
+use function file_get_contents;
 use function filesize;
 use function filter_var;
 use function get_debug_type;
@@ -92,7 +95,7 @@ use function var_export;
  * Pre-test compatibility diagnostics for one or more OpenAPI documents.
  *
  * @phpstan-type DoctorOptions array{specs?: list<string>, strip_prefixes?: list<string>, remote_ref_hosts?: list<string>, acknowledged_unvalidatable_schemes?: list<string>, remote_ref_max_bytes?: int|string, local_ref_root?: string, config_ref_root?: string, config_specs?: list<string>, config_escaping_names?: list<string>, config?: string, format?: string, output_file?: string, allow_remote_refs?: bool, phpunit_snippet?: bool, emit_config?: bool, help?: bool, invalid_options?: list<string>}
- * @phpstan-type DoctorIssue array{severity: 'error'|'warning'|'skipped', category: string, spec: ?string, message: string, suggestion: ?string, code: ?string, docs_url: ?string}
+ * @phpstan-type DoctorIssue array{severity: 'error'|'warning'|'skipped', category: string, spec: ?string, message: string, suggestion: ?string, code: ?string, docs_url: ?string, pointer?: string, schema_pointer?: ?string}
  * @phpstan-type SpecResult array{path: string, name: string, openapi: string, dialect: string, operations: int, responses: int}
  *
  * @internal The `gesso doctor` CLI surface is the supported API.
@@ -514,6 +517,7 @@ final class DoctorCommand
             $dialect = OpenApiSchemaDialect::fromSpec($spec, $version);
             [$operations, $responses] = $this->inspectStructure($spec, $version, $label, $issues);
             $this->walkForSchemas($spec, $version, $dialect, new DiscriminatorContext($spec, true), null);
+            $this->inspectExamples($spec, $path, $extension, $version, $dialect, $label, $issues);
             $this->inspectSkippedFeatures($spec, $label, $acknowledgedSchemes, $issues);
             $this->inspectWebhooks($spec, $label, $issues);
 
@@ -790,6 +794,39 @@ final class DoctorCommand
                     'Keep a separate test for this body.',
                 );
             }
+        }
+    }
+
+    /**
+     * Example drift: an `example` / `examples` value its own schema rejects,
+     * checked with the runtime validation pipeline.
+     *
+     * @param array<string, mixed> $spec
+     * @param list<DoctorIssue> $issues
+     */
+    private function inspectExamples(array $spec, string $path, string $extension, OpenApiVersion $version, string $dialect, string $label, array &$issues): void
+    {
+        // The undecoded-`$ref` document tells a shared definition from a copy;
+        // the loader already parsed the same file, so this cannot fail.
+        $content = (string) file_get_contents($path);
+        $raw = $extension === 'json' ? SpecDocumentDecoder::decodeJson($content, $path) : SpecDocumentDecoder::decodeYaml($content, $path);
+        foreach (ExampleScanner::scan($spec, $raw, $version, $dialect, new DiscriminatorContext($spec, true)) as ['pointer' => $pointer, 'violation' => $violation]) {
+            $issue = $this->issue(
+                'warning',
+                'example',
+                $label,
+                sprintf(
+                    'Example `%s` does not match its schema: [%s] %s%s',
+                    $pointer,
+                    $violation->displayPath(),
+                    $violation->message,
+                    $violation->schemaPointer !== null ? sprintf(' (schema `%s`)', $violation->schemaPointer) : '',
+                ),
+                'Fix the example or the schema; runtime validation rejects the same value.',
+            );
+            $issue['pointer'] = $pointer;
+            $issue['schema_pointer'] = $violation->schemaPointer;
+            $issues[] = $issue;
         }
     }
 

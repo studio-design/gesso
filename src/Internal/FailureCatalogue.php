@@ -102,6 +102,7 @@ final class FailureCatalogue
         'spec' => 'GSO311',
         'compatibility' => 'GSO312',
         'internal' => 'GSO313',
+        'example' => 'GSO314',
     ];
 
     /** Where a code that is not an issue or doctor category is emitted. */
@@ -418,6 +419,13 @@ final class FailureCatalogue
             'causes' => ['A bug in Gesso.'],
             'fix' => ['Report it with the spec and the stack trace at <https://github.com/studio-design/gesso/issues>.'],
             'do_not' => 'Do not assume the spec is fine; the check did not complete.',
+        ],
+        'GSO314' => [
+            'title' => 'Example does not match its schema',
+            'summary' => 'An `example` or `examples` value fails validation against the schema it illustrates. This is reported as a `warning`: the spec is enforceable, but the example drifted from it.',
+            'causes' => ['The schema changed and the example was not updated.', 'The example was written by hand and has a typo or a wrong type.', 'A YAML spec writes a date unquoted (`2024-01-01`): YAML 1.1 decodes it to an integer timestamp, so quote it.'],
+            'fix' => ['Example wrong: update it to a value the schema accepts.', 'Schema wrong: fix the schema, then re-run your tests.'],
+            'do_not' => 'Do not delete the example only to silence doctor; generated docs, mocks, and SDKs read it.',
         ],
         'GSO401' => [
             'title' => 'Changed operation is not covered',
