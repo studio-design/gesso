@@ -312,6 +312,7 @@ export default defineConfig({
           { text: 'Setup', link: '/setup' },
           { text: 'Shared configuration', link: '/configuration' },
           { text: 'CLI reference', link: '/cli' },
+          { text: 'Failure codes', link: '/failure-codes' },
           { text: 'Coverage', link: '/coverage' },
           { text: 'Supported features', link: '/supported-features' },
           { text: 'Conformance', link: '/conformance' },

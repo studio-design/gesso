@@ -14,6 +14,8 @@
     "reproduce_command": "curl -X POST 'https://api.example.test/v1/pets?dryRun=maybe' -H 'Authorization: <redacted>' -H 'Content-Type: application/json' --data '{\"name\":42}'",
     "issues": [
         {
+            "code": "GSO105",
+            "docs_url": "https://studio-design.github.io/gesso/failure-codes#gso105",
             "category": "request.parameter.query",
             "message": "[query.dryRun] The data (string) must match the type: boolean",
             "instance_path": "",
@@ -25,6 +27,8 @@
             "content_type": null
         },
         {
+            "code": "GSO112",
+            "docs_url": "https://studio-design.github.io/gesso/failure-codes#gso112",
             "category": "request.body",
             "message": "[/name] The data (integer) must match the type: string",
             "instance_path": "/name",

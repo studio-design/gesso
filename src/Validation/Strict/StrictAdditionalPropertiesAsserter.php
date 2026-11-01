@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Validation\Strict;
 
+use Studio\Gesso\Internal\FailureCatalogue;
+
 use function array_map;
 use function count;
 use function explode;
@@ -72,8 +74,9 @@ final class StrictAdditionalPropertiesAsserter
     {
         $severity = $isFatal ? 'FATAL' : 'WARNING';
         $header = sprintf(
-            '[OpenAPI Strict Additional Properties] %s: %d undocumented response propert%s observed.',
+            '[OpenAPI Strict Additional Properties] %s: %s %d undocumented response propert%s observed.',
             $severity,
+            FailureCatalogue::tag('GSO502'),
             count($reports),
             count($reports) === 1 ? 'y was' : 'ies were',
         );

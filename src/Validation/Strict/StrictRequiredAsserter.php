@@ -9,6 +9,7 @@ use const E_USER_WARNING;
 use Studio\Gesso\Exception\InvalidOpenApiSpecException;
 use Studio\Gesso\Exception\SpecFileNotFoundException;
 use Studio\Gesso\Exception\StrictRequiredDriftException;
+use Studio\Gesso\Internal\FailureCatalogue;
 use Studio\Gesso\Schema\EnumDriftAsserter;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 
@@ -115,8 +116,9 @@ final class StrictRequiredAsserter
         $severity = $isFatal ? 'FATAL' : 'WARNING';
         $count = count($reports);
         $header = sprintf(
-            "[OpenAPI Strict Required] %s: %d endpoint response(s) have always-present fields missing from `required`.\n",
+            "[OpenAPI Strict Required] %s: %s %d endpoint response(s) have always-present fields missing from `required`.\n",
             $severity,
+            FailureCatalogue::tag('GSO501'),
             $count,
         );
 

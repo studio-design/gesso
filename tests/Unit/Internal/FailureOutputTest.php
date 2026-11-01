@@ -38,7 +38,7 @@ class FailureOutputTest extends TestCase
     }
 
     #[Test]
-    public function text_mode_matches_the_legacy_shape_byte_for_byte(): void
+    public function text_mode_leads_each_issue_line_with_its_failure_code(): void
     {
         $message = FailureOutput::compose(
             'OpenAPI request validation failed for POST /v1/pets (spec: front)',
@@ -48,7 +48,7 @@ class FailureOutputTest extends TestCase
 
         $this->assertSame(
             "OpenAPI request validation failed for POST /v1/pets (spec: front):\n"
-            . "[/name] The data (integer) must match the type: string\n"
+            . "[GSO112] [/name] The data (integer) must match the type: string\n"
             . "Reproduce: curl -X POST 'http://localhost/v1/pets'",
             $message,
         );

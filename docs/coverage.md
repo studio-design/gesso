@@ -160,10 +160,10 @@ return [
 
 Failure looks like:
 
-```
-[OpenAPI Coverage] FAIL: endpoint coverage 67.4% < threshold 80%.
+```text
+[OpenAPI Coverage] FAIL: [GSO402] endpoint coverage 67.4% < threshold 80%.
                          response coverage 71.2% (>= 60%, ok).
-                         SDK exercise coverage 83.3% < threshold 100%.
+                         [GSO402] SDK exercise coverage 83.3% < threshold 100%.
 ```
 
 Out-of-range or non-numeric values produce a `WARNING` to stderr and skip that gate (rather than silently treating the misconfiguration as `0%`).

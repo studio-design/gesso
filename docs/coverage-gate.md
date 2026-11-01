@@ -40,7 +40,7 @@ vendor/bin/gesso coverage:gate \
 [Gesso] 2 operations changed against the base spec:
 
   DELETE /pets/{id}
-    204 (no content)        UNCOVERED
+    204 (no content)        UNCOVERED [GSO401]
   PUT /pets/{id}
     200 application/json    covered
 

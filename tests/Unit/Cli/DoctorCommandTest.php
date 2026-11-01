@@ -218,6 +218,28 @@ class DoctorCommandTest extends TestCase
     }
 
     #[Test]
+    public function issues_carry_the_failure_code_of_their_category(): void
+    {
+        $malformed = $this->writeSpec('malformed.json', '{nope');
+
+        $json = '';
+        (new DoctorCommand(stdoutWriter: static function (string $message) use (&$json): void {
+            $json .= $message;
+        }))->run(['specs' => [$malformed], 'format' => 'json']);
+        $issue = json_decode($json, true, flags: JSON_THROW_ON_ERROR)['issues'][0];
+
+        $this->assertSame('GSO302', $issue['code']);
+        $this->assertSame('https://studio-design.github.io/gesso/failure-codes#gso302', $issue['docs_url']);
+
+        $text = '';
+        (new DoctorCommand(stdoutWriter: static function (string $message) use (&$text): void {
+            $text .= $message;
+        }))->run(['specs' => [$malformed]]);
+
+        $this->assertStringContainsString('ERROR [GSO302] [parser]', $text);
+    }
+
+    #[Test]
     public function resolves_http_refs_with_injected_psr_transport(): void
     {
         $url = 'https://example.com/pet.json';

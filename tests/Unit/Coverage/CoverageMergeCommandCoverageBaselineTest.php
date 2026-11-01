@@ -150,7 +150,7 @@ class CoverageMergeCommandCoverageBaselineTest extends TestCase
         $exit = $this->merge($stderr, $this->baselinePath);
 
         $this->assertSame(1, $exit);
-        $this->assertStringContainsString('[Gesso] FATAL: 1 response(s) are not covered', $stderr);
+        $this->assertStringContainsString('[Gesso] FATAL: [GSO403] 1 response(s) are not covered', $stderr);
         $this->assertStringContainsString(
             '  - [petstore-3.0] GET /v1/pets status=200 content-type=application/json',
             $stderr,
@@ -173,7 +173,7 @@ class CoverageMergeCommandCoverageBaselineTest extends TestCase
         $exit = $this->merge($stderr, $this->baselinePath);
 
         $this->assertSame(0, $exit);
-        $this->assertStringContainsString('[Gesso] NOTE: 1 coverage baseline entry(ies) are covered now', $stderr);
+        $this->assertStringContainsString('[Gesso] NOTE: [GSO404] 1 coverage baseline entry(ies) are covered now', $stderr);
     }
 
     #[Test]
@@ -191,7 +191,7 @@ class CoverageMergeCommandCoverageBaselineTest extends TestCase
         $exit = $this->merge($stderr, $this->baselinePath, 'fail');
 
         $this->assertSame(1, $exit);
-        $this->assertStringContainsString('[Gesso] FATAL: 1 coverage baseline entry(ies) are covered now', $stderr);
+        $this->assertStringContainsString('[Gesso] FATAL: [GSO404] 1 coverage baseline entry(ies) are covered now', $stderr);
     }
 
     #[Test]

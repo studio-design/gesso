@@ -175,7 +175,7 @@ class CoverageReportSubscriberCoverageBaselineTest extends TestCase
         $this->notify($this->subscriber($stderr, baseline: $baseline, exitCode: $exitCode));
 
         $this->assertSame(1, $exitCode);
-        $this->assertStringContainsString('[Gesso] FATAL: 1 response(s) are not covered', $stderr);
+        $this->assertStringContainsString('[Gesso] FATAL: [GSO403] 1 response(s) are not covered', $stderr);
         $this->assertStringContainsString(
             '  - [petstore-3.0] GET /v1/pets status=200 content-type=application/json',
             $stderr,
@@ -219,7 +219,7 @@ class CoverageReportSubscriberCoverageBaselineTest extends TestCase
 
         $this->assertNull($exitCode, 'note mode must not fail the run');
         $this->assertStringContainsString('1 covered now', $stderr);
-        $this->assertStringContainsString('[Gesso] NOTE: 1 coverage baseline entry(ies) are covered now', $stderr);
+        $this->assertStringContainsString('[Gesso] NOTE: [GSO404] 1 coverage baseline entry(ies) are covered now', $stderr);
         $this->assertStringContainsString(
             '  - [petstore-3.0] GET /v1/pets status=200 content-type=application/json',
             $stderr,
@@ -242,7 +242,7 @@ class CoverageReportSubscriberCoverageBaselineTest extends TestCase
         ));
 
         $this->assertSame(1, $exitCode);
-        $this->assertStringContainsString('[Gesso] FATAL: 1 coverage baseline entry(ies) are covered now', $stderr);
+        $this->assertStringContainsString('[Gesso] FATAL: [GSO404] 1 coverage baseline entry(ies) are covered now', $stderr);
     }
 
     #[Test]
@@ -320,7 +320,7 @@ class CoverageReportSubscriberCoverageBaselineTest extends TestCase
 
         $this->assertSame(1, $exitCode);
         $this->assertStringContainsString(
-            '[Gesso] FATAL: no contract test coverage was recorded; the coverage baseline gate cannot be evaluated.',
+            '[Gesso] FATAL: [GSO406] no contract test coverage was recorded; the coverage baseline gate cannot be evaluated.',
             $stderr,
         );
     }

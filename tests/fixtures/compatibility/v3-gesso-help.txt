@@ -9,6 +9,7 @@ Commands:
   coverage:gate    Fail when a spec change touches an uncovered operation.
   stubs            Write test stubs for the responses no test covers.
   config:migrate   Move v2 or competitor validator settings to gesso.php.
+  explain          Explain a failure code such as GSO212.
 
 Global options:
   --version        Print the installed Gesso version and exit.
