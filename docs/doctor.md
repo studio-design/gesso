@@ -183,7 +183,7 @@ Add `--output-file=<path>` to write the report, in either format, to a file inst
     "schema_version": 2,
     "tool": {
         "name": "studio-design/gesso",
-        "version": "2.4.0"
+        "version": "3.0.0"
     },
     "status": "ok",
     "summary": {

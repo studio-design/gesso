@@ -70,7 +70,7 @@ sidecars, or when the sidecars hold no observations.
 ```json
 {
     "schema_version": 2,
-    "tool": { "name": "studio-design/gesso", "version": "2.4.0" },
+    "tool": { "name": "studio-design/gesso", "version": "3.0.0" },
     "summary": { "operations": 1, "uncovered": 1 },
     "operations": [
         {
@@ -117,7 +117,7 @@ An unknown code exits `2` and prints the closest known codes on stderr.
 ```json
 {
     "schema_version": 2,
-    "tool": { "name": "studio-design/gesso", "version": "2.4.0" },
+    "tool": { "name": "studio-design/gesso", "version": "3.0.0" },
     "dry_run": false,
     "output_dir": "tests/Contract",
     "written": ["tests/Contract/GetPetsTest.php"],
