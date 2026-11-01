@@ -12,6 +12,7 @@ use Studio\Gesso\Spec\OpenApiSchemaConverter;
 use Studio\Gesso\Validation\Support\ObjectConverter;
 use Studio\Gesso\Validation\Support\SchemaValidatorRunner;
 use Studio\Gesso\Validation\Support\SchemaViolation;
+use Studio\Gesso\Validation\Support\ValidationPolicyDefaults;
 
 use function array_map;
 use function preg_match_all;
@@ -75,6 +76,34 @@ final class SchemaViolationContextTest extends TestCase
 
         $this->assertSame('/properties/name/type', $violation->schemaPointer);
         $this->assertSame('["string","null"]', $violation->expected);
+    }
+
+    #[Test]
+    public function redact_names_replaces_the_default_list_but_not_format_password(): void
+    {
+        ValidationPolicyDefaults::configureRedactNames(['ssn']);
+
+        try {
+            $password = $this->only(
+                ['type' => 'object', 'properties' => ['password' => ['type' => 'string', 'minLength' => 12]]],
+                ['password' => 'hunter2'],
+            );
+            $this->assertSame('"hunter2"', $password->actual);
+
+            $ssn = $this->only(
+                ['type' => 'object', 'properties' => ['user_ssn' => ['type' => 'string', 'minLength' => 12]]],
+                ['user_ssn' => '123'],
+            );
+            $this->assertSame('<redacted>', $ssn->actual);
+
+            $byFormat = $this->only(
+                ['type' => 'object', 'properties' => ['pin' => ['type' => 'string', 'format' => 'password', 'minLength' => 6]]],
+                ['pin' => '1234'],
+            );
+            $this->assertSame('<redacted>', $byFormat->actual);
+        } finally {
+            ValidationPolicyDefaults::reset();
+        }
     }
 
     #[Test]

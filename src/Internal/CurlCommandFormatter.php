@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Internal;
 
+use Studio\Gesso\Validation\Support\ValidationPolicyDefaults;
+
 use function count;
 use function escapeshellarg;
 use function explode;
@@ -15,6 +17,7 @@ use function preg_match;
 use function preg_replace;
 use function rawurldecode;
 use function sprintf;
+use function str_contains;
 use function str_ends_with;
 use function str_replace;
 use function strtolower;
@@ -30,15 +33,25 @@ use function trim;
 final class CurlCommandFormatter
 {
     public const REDACTED_PLACEHOLDER = '<redacted>';
-    private const SENSITIVE_HEADER_NAMES = [
+
+    /**
+     * Default for `validation.redact_names`: case-insensitive substrings of a
+     * header, query, form, or body field name.
+     */
+    public const DEFAULT_REDACT_NAMES = [
         'authorization',
-        'proxy-authorization',
         'cookie',
-        'php-auth-user',
-        'php-auth-pw',
-        'php-auth-digest',
+        'api_key',
+        'api-key',
+        'apikey',
+        'token',
+        'secret',
+        'password',
+        'passwd',
     ];
-    private const SENSITIVE_NAME_PATTERN = '/api[-_]?key|token|secret|passw(or)?d/i';
+
+    /** PHP server-var artifacts that always carry a decoded credential. */
+    private const ALWAYS_SENSITIVE_NAMES = ['php-auth-user', 'php-auth-pw', 'php-auth-digest'];
 
     /**
      * @param array<string, mixed> $headers header name → scalar value or list of values
@@ -84,13 +97,23 @@ final class CurlCommandFormatter
     }
 
     /**
-     * Whether a header, query, form, or body field name looks like it carries
-     * a credential. Shared with the schema-issue `actual` excerpt.
+     * Whether a header, query, form, or body field name contains one of the
+     * `validation.redact_names` substrings. Shared with the schema-issue
+     * `actual` excerpt.
      */
     public static function isSensitiveName(string $name): bool
     {
-        return in_array(strtolower($name), self::SENSITIVE_HEADER_NAMES, true) ||
-            preg_match(self::SENSITIVE_NAME_PATTERN, $name) === 1;
+        $name = strtolower($name);
+        if (in_array($name, self::ALWAYS_SENSITIVE_NAMES, true)) {
+            return true;
+        }
+        foreach (ValidationPolicyDefaults::redactNames() as $needle) {
+            if ($needle !== '' && str_contains($name, strtolower($needle))) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

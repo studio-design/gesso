@@ -56,15 +56,21 @@ final class ConfigurationBridge
         'default_testsuite_as_full' => ['phpunit.default_testsuite_as_full', 'bool'],
     ];
 
+    /** Settings added in v3, which have no v2 spelling to reuse as their name. */
+    public const PHPUNIT_V3 = [
+        'redact_names' => ['validation.redact_names', 'strings'],
+    ];
+
     /**
-     * The declared `gesso.php` settings, by their {@see self::PHPUNIT} name.
+     * The declared `gesso.php` settings, by their {@see self::PHPUNIT} or
+     * {@see self::PHPUNIT_V3} name.
      *
      * @return array<string, bool|float|int|list<string>|string>
      */
     public static function phpunit(GessoConfig $config): array
     {
         $values = [];
-        foreach (self::PHPUNIT as $name => [$key, $accessor]) {
+        foreach ([...self::PHPUNIT, ...self::PHPUNIT_V3] as $name => [$key, $accessor]) {
             if (!$config->has($key)) {
                 continue;
             }

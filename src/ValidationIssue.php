@@ -30,7 +30,8 @@ use Studio\Gesso\Internal\FailureCatalogue;
  * (the operation's resolved schema for the body, parameter, or header, after
  * `$ref` inlining), ending at the failing keyword, and short JSON excerpts of
  * the failing value and of that keyword's value. `actual` is null for
- * objects and arrays and `<redacted>` for credential-like names; `expected`
+ * objects and arrays and `<redacted>` for `validation.redact_names` matches
+ * and `format: password` values; `expected`
  * is null when the keyword's value is a subschema. All three are null for
  * structural, spec-malformation, and synthetic (`required` parameter,
  * security) issues.
