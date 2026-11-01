@@ -33,6 +33,7 @@ final class UserTest extends TestCase
     public function test_deletes_a_user(): void
     {
         $this->deleteJson('/v1/users/1')->assertValidResponse();
+        Spectator::reset();
     }
 
     public function test_rejects_bad_payload(): void

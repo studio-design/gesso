@@ -112,7 +112,7 @@ final class ConfigMigrator
             ['/->assertValidResponse\(\s*\)/', 'delete; laravel.auto_assert validates every response'],
             ['/->(?:assertInvalidRequest|assertInvalidResponse|assertErrorsContain|assertValidationMessage|dumpSpecErrors)\(/', 'rewrite by hand: call withoutRequestValidation() / withoutResponseValidation() and assert on the validator result issues()'],
             ['/\b(?:withPathPrefix|setPathPrefix)\(/', 'delete; set spec.strip_prefixes in gesso.php'],
-            ['/\bSpectator::reset\(/', 'replace with #[SkipOpenApi] or $this->withoutValidation()'],
+            ['/\bSpectator::reset\(/', 'delete; Gesso keeps no per-test spec state, so requests after it are validated too. Skip one with $this->withoutValidation()'],
             ['/->assertPathExists\(/', 'delete; compare routes and spec with php artisan gesso:routes'],
         ],
         'kirschbaum-development/laravel-openapi-validator' => [

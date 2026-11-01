@@ -28,7 +28,8 @@ use function in_array;
  * `laravel.auto_assert` and `laravel.auto_validate_request` validate every
  * exchange: assertValidRequest() and assertValidResponse() leave the call
  * chain, assertValidResponse($status) becomes assertStatus($status),
- * `Spectator::using()` statements are deleted, and a class that changed
+ * `Spectator::using()` and `Spectator::reset()` statements are deleted, and a
+ * class that changed
  * gets the trait.
  *
  * The assertions are TestResponse macros the type resolver cannot see, so
@@ -57,7 +58,7 @@ final class SpectatorAssertionRector extends AbstractRector
                 return NodeVisitor::DONT_TRAVERSE_CHILDREN;
             }
             if ($inner instanceof Expression) {
-                if ($inner->expr instanceof StaticCall && $this->isName($inner->expr->class, 'Spectator\Spectator') && $this->isName($inner->expr->name, 'using')) {
+                if ($inner->expr instanceof StaticCall && $this->isName($inner->expr->class, 'Spectator\Spectator') && $this->isNames($inner->expr->name, ['using', 'reset'])) {
                     $changed = true;
 
                     return NodeVisitor::REMOVE_NODE;

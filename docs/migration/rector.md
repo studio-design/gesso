@@ -121,6 +121,7 @@ set deletes; without them the migrated tests validate nothing.
 | `->assertValidResponse()` | deleted; `laravel.auto_assert` validates every response |
 | `->assertValidResponse($status)` | `->assertStatus($status)` |
 | `Spectator::using(...);` | deleted; `spec.default`, or `#[OpenApiSpec('name')]` when the tests use several specs |
+| `Spectator::reset();` | deleted; Gesso keeps no per-test spec state. Requests after a mid-test `reset()` are validated too |
 | a class that used any of these | adds `use ValidatesOpenApiSchema;` |
 
 A statement left with nothing but a variable, such as
@@ -135,7 +136,6 @@ Not rewritten, because the replacement needs a decision:
   `withoutRequestValidation()` or `withoutResponseValidation()` and assert on
   the validator result instead.
 - `assertPathExists()`: compare routes and spec with `php artisan gesso:routes`.
-- `Spectator::reset()`: use `#[SkipOpenApi]` or `$this->withoutValidation()`.
 - Pest test files: add the trait with `uses(ValidatesOpenApiSchema::class)`.
 
 `gesso config:migrate` lists every remaining call with its file and line.
