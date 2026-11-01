@@ -120,6 +120,8 @@ set deletes; without them the migrated tests validate nothing.
 | `->assertValidRequest()` | deleted; `laravel.auto_validate_request` validates every request |
 | `->assertValidResponse()` | deleted; `laravel.auto_assert` validates every response |
 | `->assertValidResponse($status)` | `->assertStatus($status)` |
+| `$this->getJson(...)->assertInvalidRequest()` | `$this->expectInvalidRequest()->getJson(...)` |
+| `$this->getJson(...)->assertInvalidResponse($status)` | `$this->expectInvalidResponse()->getJson(...)->assertStatus($status)` |
 | `Spectator::using(...);` | deleted; `spec.default`, or `#[OpenApiSpec('name')]` when the tests use several specs |
 | `Spectator::reset();` | deleted; Gesso keeps no per-test spec state. Requests after a mid-test `reset()` are validated too |
 | a class that used any of these | adds `use ValidatesOpenApiSchema;` |
@@ -131,10 +133,13 @@ when the receiver's type declares a method of that name itself.
 
 Not rewritten, because the replacement needs a decision:
 
-- `assertInvalidRequest()`, `assertInvalidResponse()`, `assertErrorsContain()`,
-  `assertValidationMessage()`, and `dumpSpecErrors()`: call
-  `withoutRequestValidation()` or `withoutResponseValidation()` and assert on
-  the validator result instead.
+- `assertInvalidRequest()` and `assertInvalidResponse()` on a variable, such as
+  `$response->assertInvalidRequest()`: the expectation must be declared before
+  the HTTP call, so move it there as
+  [`expectInvalidRequest()`](../setup.md#expect-a-contract-violation-with-expectinvalidrequest).
+- `assertErrorsContain()`, `assertValidationMessage()`, and `dumpSpecErrors()`:
+  call `withoutRequestValidation()` or `withoutResponseValidation()` and assert
+  on the validator result instead.
 - `assertPathExists()`: compare routes and spec with `php artisan gesso:routes`.
 - Pest test files: add the trait with `uses(ValidatesOpenApiSchema::class)`.
 

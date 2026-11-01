@@ -28,8 +28,11 @@ use function in_array;
  * `laravel.auto_assert` and `laravel.auto_validate_request` validate every
  * exchange: assertValidRequest() and assertValidResponse() leave the call
  * chain, assertValidResponse($status) becomes assertStatus($status),
- * `Spectator::using()` and `Spectator::reset()` statements are deleted, and a
- * class that changed gets the trait.
+ * assertInvalidRequest() and assertInvalidResponse() become
+ * expectInvalidRequest() and expectInvalidResponse() declared before the
+ * `$this->` call that starts the chain, `Spectator::using()` and
+ * `Spectator::reset()` statements are deleted, and a class that changed gets
+ * the trait.
  *
  * The assertions are TestResponse macros the type resolver cannot see, so
  * they match by name.
@@ -62,11 +65,7 @@ final class SpectatorAssertionRector extends AbstractRector
 
                     return NodeVisitor::REMOVE_NODE;
                 }
-                $expr = $inner->expr;
-                while (($unwrapped = $this->unwrap($expr)) !== null) {
-                    $expr = $unwrapped;
-                    $changed = true;
-                }
+                $expr = $this->unwrapAll($inner->expr, $changed);
                 if ($expr === $inner->expr) {
                     return null;
                 }
@@ -80,13 +79,9 @@ final class SpectatorAssertionRector extends AbstractRector
             if (!$inner instanceof MethodCall) {
                 return null;
             }
-            $expr = $this->unwrap($inner);
-            if ($expr === null) {
-                return null;
-            }
-            $changed = true;
+            $expr = $this->unwrapAll($inner, $changed);
 
-            return $expr;
+            return $expr === $inner ? null : $expr;
         });
         if (!$changed) {
             return null;
@@ -106,6 +101,17 @@ final class SpectatorAssertionRector extends AbstractRector
         return $node;
     }
 
+    /** The call without the Spectator assertions that end it. */
+    private function unwrapAll(Expr $expr, bool &$changed): Expr
+    {
+        while (($unwrapped = $this->unwrap($expr)) !== null) {
+            $expr = $unwrapped;
+            $changed = true;
+        }
+
+        return $expr;
+    }
+
     /**
      * The call without its outermost Spectator assertion, or null when it has
      * none. A receiver whose type declares the method is not a TestResponse
@@ -117,19 +123,40 @@ final class SpectatorAssertionRector extends AbstractRector
             return null;
         }
         $name = $expr->name->toString();
-        if (!in_array($name, ['assertValidRequest', 'assertValidResponse'], true)) {
+        if (!in_array($name, ['assertValidRequest', 'assertValidResponse', 'assertInvalidRequest', 'assertInvalidResponse'], true)) {
             return null;
         }
         $type = $this->getType($expr->var);
         if ($type->isObject()->yes() && !$this->isObjectType($expr->var, new ObjectType(self::TEST_RESPONSE)) && $type->hasMethod($name)->yes()) {
             return null;
         }
-        if ($name === 'assertValidResponse' && count($expr->args) === 1) {
+        if (in_array($name, ['assertInvalidRequest', 'assertInvalidResponse'], true)) {
+            $root = $this->chainRoot($expr);
+            if ($root === null || count($expr->args) > ($name === 'assertInvalidRequest' ? 0 : 1)) {
+                return null;
+            }
+            $root->var = new MethodCall($root->var, $name === 'assertInvalidRequest' ? 'expectInvalidRequest' : 'expectInvalidResponse');
+        }
+        if (in_array($name, ['assertValidResponse', 'assertInvalidResponse'], true) && count($expr->args) === 1) {
             $expr->name = new Identifier('assertStatus');
 
             return $expr;
         }
 
         return $expr->args === [] ? $expr->var : null;
+    }
+
+    /**
+     * The innermost call of a `$this->...` chain, before which an expectation
+     * can be declared, or null when the chain starts elsewhere.
+     */
+    private function chainRoot(MethodCall $expr): ?MethodCall
+    {
+        $root = $expr->var;
+        while ($root instanceof MethodCall && $root->var instanceof MethodCall) {
+            $root = $root->var;
+        }
+
+        return $root instanceof MethodCall && $root->var instanceof Variable && $root->var->name === 'this' ? $root : null;
     }
 }
