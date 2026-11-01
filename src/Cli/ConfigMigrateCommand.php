@@ -143,7 +143,7 @@ final class ConfigMigrateCommand
 
         if ($format === 'json') {
             $this->writeStdout(json_encode([
-                'schemaVersion' => self::JSON_SCHEMA_VERSION,
+                'schema_version' => self::JSON_SCHEMA_VERSION,
                 'tool' => ['name' => ToolVersion::PACKAGE, 'version' => ToolVersion::resolve()],
                 'clean' => $result['findings'] === [],
                 'config' => $proposal,

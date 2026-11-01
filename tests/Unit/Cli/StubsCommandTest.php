@@ -730,8 +730,8 @@ class StubsCommandTest extends TestCase
         $this->assertSame(StubsCommand::EXIT_OK, $exit);
         $report = json_decode($this->stdout, true, 512, JSON_THROW_ON_ERROR);
         $this->assertIsArray($report);
-        $this->assertSame(['schemaVersion', 'tool', 'dry_run', 'output_dir', 'written', 'skipped', 'not_stubbed'], array_keys($report));
-        $this->assertSame(StubsCommand::JSON_SCHEMA_VERSION, $report['schemaVersion']);
+        $this->assertSame(['schema_version', 'tool', 'dry_run', 'output_dir', 'written', 'skipped', 'not_stubbed'], array_keys($report));
+        $this->assertSame(StubsCommand::JSON_SCHEMA_VERSION, $report['schema_version']);
         $this->assertTrue($report['dry_run']);
         $this->assertSame([$this->workDir . '/out/GetPetsTest.php'], $report['written']);
         $this->assertSame([$this->workDir . '/out/GetThingsTest.php'], $report['skipped']);

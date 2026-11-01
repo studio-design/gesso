@@ -44,7 +44,7 @@ class DoctorCliIntegrationTest extends TestCase
 
         $this->assertSame(0, $exit, "stderr: {$stderr}\nstdout: {$stdout}");
         $report = json_decode($stdout, true, flags: JSON_THROW_ON_ERROR);
-        $this->assertSame(1, $report['schemaVersion']);
+        $this->assertSame(2, $report['schema_version']);
         $this->assertSame(2, $report['summary']['specs']);
         $this->assertGreaterThan(0, $report['summary']['operations']);
     }

@@ -76,7 +76,7 @@ final class CoverageGateCommand
 {
     use CliIo;
 
-    public const JSON_SCHEMA_VERSION = 1;
+    public const JSON_SCHEMA_VERSION = 2;
     public const EXIT_UNCOVERED_CHANGE = self::EXIT_FAILURE;
     private const CODE_UNCOVERED = 'GSO401';
 
@@ -574,7 +574,7 @@ final class CoverageGateCommand
     private function renderJson(array $operations, int $uncovered): string
     {
         return json_encode([
-            'schemaVersion' => self::JSON_SCHEMA_VERSION,
+            'schema_version' => self::JSON_SCHEMA_VERSION,
             'tool' => ['name' => ToolVersion::PACKAGE, 'version' => ToolVersion::resolve()],
             'summary' => ['operations' => count($operations), 'uncovered' => $uncovered],
             'operations' => $operations,

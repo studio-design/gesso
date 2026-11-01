@@ -106,7 +106,7 @@ This library follows [Semantic Versioning 2.0](https://semver.org/). v1.0.0 is t
     `bin/gesso` entry point
   - v2.x: the `doctor`, `coverage:merge`, `coverage:gate`, and `stubs`
     subcommands of `bin/gesso`; the legacy standalone binaries are not shipped
-  - v3.x: adds `config:migrate` (its flags, exit codes, and `schemaVersion` JSON)
+  - v3.x: adds `config:migrate` (its flags, exit codes, and `schema_version` JSON)
   - v3.x: adds the `explain` subcommand
 - The Laravel `gesso:routes`, `gesso:stubs`, and `gesso:config-migrate` command surfaces (flags, exit codes, and versioned JSON output)
 - The five environment variables Gesso owns — `GESSO_VALIDATION_FORMAT`,

@@ -224,7 +224,7 @@ final class ExplainCommand
     private function json(array $body): string
     {
         return json_encode([
-            'schemaVersion' => self::JSON_SCHEMA_VERSION,
+            'schema_version' => self::JSON_SCHEMA_VERSION,
             'tool' => ['name' => ToolVersion::PACKAGE, 'version' => ToolVersion::resolve()],
             ...$body,
         ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR) . "\n";
