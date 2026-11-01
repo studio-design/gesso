@@ -88,6 +88,15 @@ final class ConfigMigrateCliIntegrationTest extends TestCase
         ], ['competitor-package', 'competitor-usage'], '->validateResponseForOperation($method, $path, $response)'];
     }
 
+    #[Test]
+    public function kirschbaum_skip_response_code_calls_are_flagged_for_review(): void
+    {
+        [, , $stderr] = $this->migrate(self::FIXTURES . '/kirschbaum', []);
+
+        $this->assertStringContainsString("tests/Feature/PetTest.php:\n  13: \$this->skipResponseCode(404);", $stderr);
+        $this->assertStringContainsString('skips the code for the next request only', $stderr);
+    }
+
     /**
      * @param array<string, mixed> $config
      * @param list<string> $categories

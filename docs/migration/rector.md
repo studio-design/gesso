@@ -98,7 +98,7 @@ rewrite these, because Gesso has no 1:1 equivalent:
 | kirschbaum | Gesso | Why it is manual |
 | --- | --- | --- |
 | `protected $responseCodesToSkip = [...]` | `validation.skip_response_codes` in `gesso.php` | kirschbaum's property is per class; Gesso's setting is per suite, and the Laravel trait has no per-class hook. |
-| `skipResponseCode(...)` | same name | Same call, other semantics: kirschbaum keeps the codes for the rest of the test and matches them unanchored; Gesso applies them to the next request only and anchors them. |
+| `skipResponseCode(...)` | same name | Same call, other semantics: kirschbaum keeps the codes for the rest of the test and matches them unanchored; Gesso applies them to the next request only and anchors them. Run `vendor/bin/gesso config:migrate` before removing kirschbaum: it lists every call with its file and line, and `--check` fails CI until the package is gone. |
 | overriding `getAuthenticatedRequest()` | `laravel.auto_inject_dummy_credentials` | The override is code; Gesso's setting is config. |
 | overriding `getOpenApiSpecPath()`, `getSpecFileType()`, or `getOpenApiValidatorBuilder()` | `spec.base_path` and `spec.default` | Gesso reads the spec from config. Delete the override. |
 

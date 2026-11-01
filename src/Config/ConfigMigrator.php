@@ -121,6 +121,7 @@ final class ConfigMigrator
             ['/\$responseCodesToSkip\b/', 'move the codes to validation.skip_response_codes in gesso.php, or override openApiSkipResponseCodes()'],
             ['/\bgetAuthenticatedRequest\(/', "delete; set laravel.auto_inject_dummy_credentials to true or 'bearer'"],
             ['/\bgetOpenApiValidatorBuilder\(/', 'delete; the spec is configured in gesso.php'],
+            ['/->skipResponseCode\(/', 'review: Gesso skips the code for the next request only and matches the whole status, while kirschbaum skipped it for the rest of the test and matched it unanchored; call it before each request, or list the codes in validation.skip_response_codes'],
         ],
         'osteel/openapi-httpfoundation-testing' => [
             ['/Osteel\\\\OpenApi\\\\Testing\\\\/', 'replace with the Studio\Gesso\Symfony\OpenApiAssertions trait'],
