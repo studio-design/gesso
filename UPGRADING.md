@@ -555,7 +555,7 @@ reason.
 | `openapi:stubs` | `gesso:stubs` |
 
 `OPENAPI_VALIDATION_OUTPUT` becomes `GESSO_VALIDATION_FORMAT`, not
-`GESSO_VALIDATION_OUTPUT`: its values are formats (`text` | `json`), and v3
+`GESSO_VALIDATION_OUTPUT`: its values are formats (`text` | `json` | `agent` | `auto`), and v3
 renames the matching extension parameter to `validation.format` — see
 [ADR 0005](docs/adr/0005-v3-configuration-and-cli-naming.md). The
 `validation_output` and `console_output` **extension parameters** are untouched

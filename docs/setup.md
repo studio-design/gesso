@@ -453,7 +453,7 @@ collecting inside one schema at `max_errors`; that cut has no count, so raise
 
 `validation.format` defaults to `auto`: `text` normally, and the compact
 `agent` shape when the tests run under an AI coding agent. Outside an agent the
-output is the `text` shape above, unchanged. An explicit `text` or `json`
+output is the `text` shape above. An explicit `text` or `json`
 (in `gesso.php` or `GESSO_VALIDATION_FORMAT`) always wins; set `agent` to use
 the shape anywhere.
 
