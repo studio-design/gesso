@@ -10118,6 +10118,7 @@
         "cases": [],
         "constants": {
             "KIRSCHBAUM_TO_GESSO": "src/Rector/config/kirschbaum-to-gesso.php",
+            "SPECTATOR_TO_GESSO": "src/Rector/config/spectator-to-gesso.php",
             "V3": "src/Rector/config/gesso-v3.php"
         },
         "properties": [],

@@ -20,6 +20,9 @@ final class GessoSetList
     /** kirschbaum-development/laravel-openapi-validator → Gesso's Laravel trait. */
     public const string KIRSCHBAUM_TO_GESSO = __DIR__ . '/config/kirschbaum-to-gesso.php';
 
+    /** hotmeteor/spectator → Gesso's Laravel trait. */
+    public const string SPECTATOR_TO_GESSO = __DIR__ . '/config/spectator-to-gesso.php';
+
     /** Constants only — no instances. */
     private function __construct() {}
 }

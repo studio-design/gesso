@@ -513,9 +513,10 @@ final class ConfigMigrator
             };
             $this->scanUsages($package);
             if ($package === 'hotmeteor/spectator') {
-                $this->warnings[] = 'Spectator validated only after Spectator::using() and only routes in its middleware_groups; '
-                    . 'with laravel.auto_assert Gesso validates every exchange of a test using the trait. '
-                    . 'Turn auto_assert on after the explicit assertions pass, and record known failures with baseline.violations.';
+                $this->addLayer('spectator', ['laravel.auto_assert' => true, 'laravel.auto_validate_request' => true]);
+                $this->warnings[] = 'Spectator validated only the exchanges a test asserted, after Spectator::using() and only routes in its middleware_groups; '
+                    . 'the proposed laravel.auto_assert and laravel.auto_validate_request replace assertValidResponse() and assertValidRequest(), '
+                    . 'so Gesso validates every exchange of a test using the trait. Record known failures with baseline.violations.';
             }
         }
     }

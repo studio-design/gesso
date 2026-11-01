@@ -8,6 +8,7 @@ migration. Config keys and CLI flags are not PHP code: rewrite those with
 | --- | --- | --- |
 | Gesso v2 → v3 | `GessoSetList::V3` | the PHP renames and removals in [Prepare for Gesso 3.0](v3.md) |
 | kirschbaum → Gesso | `GessoSetList::KIRSCHBAUM_TO_GESSO` | `kirschbaum-development/laravel-openapi-validator`'s trait |
+| Spectator → Gesso | `GessoSetList::SPECTATOR_TO_GESSO` | `hotmeteor/spectator`'s assertions |
 
 The constants live in `Studio\Gesso\Rector\GessoSetList`. They and the files
 they name are stable for 3.x. What each set rewrites is best-effort: review
@@ -29,7 +30,8 @@ vendor/bin/rector process tests --config vendor/studio-design/gesso/src/Rector/c
 ```
 
 For the kirschbaum set, pass
-`vendor/studio-design/gesso/src/Rector/config/kirschbaum-to-gesso.php`.
+`vendor/studio-design/gesso/src/Rector/config/kirschbaum-to-gesso.php`; for
+the Spectator set, `vendor/studio-design/gesso/src/Rector/config/spectator-to-gesso.php`.
 
 Run with `--config` and Rector writes fully qualified names and leaves the
 old `use` import in place; the code runs, but the import is stale. To get
@@ -104,3 +106,38 @@ rewrite these, because Gesso has no 1:1 equivalent:
 
 See [kirschbaum-development/laravel-openapi-validator](from-other-validators.md#kirschbaum-developmentlaravel-openapi-validator)
 for the rest of the migration.
+
+## hotmeteor/spectator
+
+Run [`gesso config:migrate`](../cli.md#migrate-a-configuration-configmigrate)
+first, while the `Spectator::using()` calls are still there: it turns a single
+spec name into `spec.default` and proposes `laravel.auto_assert` and
+`laravel.auto_validate_request`. Those two settings replace the assertions the
+set deletes; without them the migrated tests validate nothing.
+
+| Spectator | Gesso |
+| --- | --- |
+| `->assertValidRequest()` | deleted; `laravel.auto_validate_request` validates every request |
+| `->assertValidResponse()` | deleted; `laravel.auto_assert` validates every response |
+| `->assertValidResponse($status)` | `->assertStatus($status)` |
+| `Spectator::using(...);` | deleted; `spec.default`, or `#[OpenApiSpec('name')]` when the tests use several specs |
+| a class that used any of these | adds `use ValidatesOpenApiSchema;` |
+
+A statement left with nothing but a variable, such as
+`$response->assertValidResponse();`, is deleted. The assertions are
+`TestResponse` macros, so the set matches them by name; it leaves a call alone
+when the receiver's type declares a method of that name itself.
+
+Not rewritten, because the replacement needs a decision:
+
+- `assertInvalidRequest()`, `assertInvalidResponse()`, `assertErrorsContain()`,
+  `assertValidationMessage()`, and `dumpSpecErrors()`: call
+  `withoutRequestValidation()` or `withoutResponseValidation()` and assert on
+  the validator result instead.
+- `assertPathExists()`: compare routes and spec with `php artisan gesso:routes`.
+- `Spectator::reset()`: use `#[SkipOpenApi]` or `$this->withoutValidation()`.
+- Pest test files: add the trait with `uses(ValidatesOpenApiSchema::class)`.
+
+`gesso config:migrate` lists every remaining call with its file and line.
+See [Spectator](from-other-validators.md#spectator) for the rest of the
+migration.
