@@ -29,8 +29,7 @@ use function in_array;
  * exchange: assertValidRequest() and assertValidResponse() leave the call
  * chain, assertValidResponse($status) becomes assertStatus($status),
  * `Spectator::using()` and `Spectator::reset()` statements are deleted, and a
- * class that changed
- * gets the trait.
+ * class that changed gets the trait.
  *
  * The assertions are TestResponse macros the type resolver cannot see, so
  * they match by name.
