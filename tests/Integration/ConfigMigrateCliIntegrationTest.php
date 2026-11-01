@@ -109,7 +109,7 @@ final class ConfigMigrateCliIntegrationTest extends TestCase
         [$jsonExit, $json] = $this->migrate(self::FIXTURES . '/' . $fixture, ['--format=json']);
         $document = json_decode($json, true, 512, JSON_THROW_ON_ERROR);
         $this->assertSame(0, $jsonExit);
-        $this->assertSame(ConfigMigrateCommand::JSON_SCHEMA_VERSION, $document['schemaVersion']);
+        $this->assertSame(ConfigMigrateCommand::JSON_SCHEMA_VERSION, $document['schema_version']);
         $this->assertFalse($document['clean']);
         $this->assertFalse($document['written']);
         $this->assertSame($stdout, $document['config']);

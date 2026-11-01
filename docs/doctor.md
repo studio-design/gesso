@@ -174,16 +174,16 @@ It writes to STDOUT, writes nothing to STDERR, and exits `0`. When Composer's `I
 
 ## Machine-readable output
 
-Use `--format=json` for CI and tooling. The top-level `schemaVersion` is currently `1` and will change if the machine-readable contract requires an incompatible revision.
+Use `--format=json` for CI and tooling. The top-level `schema_version` is currently `2` and will change if the machine-readable contract requires an incompatible revision.
 
 Add `--output-file=<path>` to write the report, in either format, to a file instead of stdout. The file gets the same bytes stdout would.
 
 ```json
 {
-    "schemaVersion": 1,
+    "schema_version": 2,
     "tool": {
         "name": "studio-design/gesso",
-        "version": "2.4.0"
+        "version": "3.0.0"
     },
     "status": "ok",
     "summary": {
@@ -202,7 +202,7 @@ Add `--output-file=<path>` to write the report, in either format, to a file inst
 
 `tool` is `{ "name": "studio-design/gesso", "version": "<composer version or 'unknown'>" }`, the same block the [coverage JSON](coverage-json-schema.md) and [validation JSON](validation-json-schema.md) documents carry. `"unknown"` is emitted when Composer's `InstalledVersions` metadata is unavailable; the field is always a string.
 
-Additive changes — a new field such as `tool`, or a new `category` slug — keep `schemaVersion` at `1`. Removals, renames, and type changes bump it.
+Additive changes — a new field such as `tool`, or a new `category` slug — keep `schema_version` at `2`. Removals, renames, and type changes bump it. Version `2` (3.0) renamed the v2 `schemaVersion` key to `schema_version`.
 
 Every issue has a stable `severity`, `category`, `spec`, `message`, and nullable `suggestion` field, plus the [failure code](failure-codes.md) of its category in `code` (for example `GSO306` for `structure`) and that code's page in `docs_url`. The text report prints the code before the category: `ERROR [GSO306] [structure] openapi.json: …`. `gesso explain <code>` prints the same entry in the terminal. Severities are:
 

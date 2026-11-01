@@ -101,7 +101,7 @@ final class DoctorCommand
 {
     use CliIo;
 
-    public const JSON_SCHEMA_VERSION = 1;
+    public const JSON_SCHEMA_VERSION = 2;
     public const EXIT_DIAGNOSTIC_FAILURE = self::EXIT_FAILURE;
     private const USAGE_PREFIX = '[OpenAPI Doctor]';
 
@@ -1049,7 +1049,7 @@ final class DoctorCommand
         }
 
         return [
-            'schemaVersion' => self::JSON_SCHEMA_VERSION,
+            'schema_version' => self::JSON_SCHEMA_VERSION,
             // Same shape and same `unknown` semantics as the `tool` block in
             // coverage JSON and validation JSON, so a consumer reading two
             // Gesso documents does not have to special-case this one.

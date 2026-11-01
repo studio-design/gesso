@@ -55,7 +55,7 @@ final class StubsCommand
 {
     use CliIo;
 
-    public const JSON_SCHEMA_VERSION = 1;
+    public const JSON_SCHEMA_VERSION = 2;
 
     /** The v2 flags Gesso 3.0 removed, by option name, and the spelling replacing each. */
     public const REMOVED_FLAGS = ['output' => '--output-dir'];
@@ -448,7 +448,7 @@ final class StubsCommand
     private function renderJson(array $written, array $skipped, array $rejected, string $outputDir, bool $dryRun): string
     {
         return json_encode([
-            'schemaVersion' => self::JSON_SCHEMA_VERSION,
+            'schema_version' => self::JSON_SCHEMA_VERSION,
             'tool' => ['name' => ToolVersion::PACKAGE, 'version' => ToolVersion::resolve()],
             'dry_run' => $dryRun,
             'output_dir' => $outputDir,

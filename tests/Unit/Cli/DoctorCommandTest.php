@@ -181,7 +181,7 @@ class DoctorCommandTest extends TestCase
 
         $this->assertSame(DoctorCommand::EXIT_OK, $exit);
         $report = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
-        $this->assertSame(DoctorCommand::JSON_SCHEMA_VERSION, $report['schemaVersion']);
+        $this->assertSame(DoctorCommand::JSON_SCHEMA_VERSION, $report['schema_version']);
         $this->assertSame('ok', $report['status']);
         $this->assertSame(2, $report['summary']['specs']);
         $this->assertSame(2, $report['summary']['operations']);

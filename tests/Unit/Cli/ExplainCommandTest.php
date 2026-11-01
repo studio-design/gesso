@@ -37,10 +37,10 @@ final class ExplainCommandTest extends TestCase
         $this->assertSame(ExplainCommand::EXIT_OK, $this->explain(['GSO401', '--format=json']));
 
         $document = json_decode($this->stdout, true, flags: JSON_THROW_ON_ERROR);
-        $this->assertSame(ExplainCommand::JSON_SCHEMA_VERSION, $document['schemaVersion']);
+        $this->assertSame(ExplainCommand::JSON_SCHEMA_VERSION, $document['schema_version']);
         $this->assertSame('GSO401', $document['code']);
         $this->assertSame(
-            ['schemaVersion', 'tool', 'code', 'title', 'summary', 'source', 'causes', 'fix', 'do_not', 'docs_url'],
+            ['schema_version', 'tool', 'code', 'title', 'summary', 'source', 'causes', 'fix', 'do_not', 'docs_url'],
             array_keys($document),
         );
         $this->assertSame(FailureCatalogue::docsUrl('GSO401'), $document['docs_url']);

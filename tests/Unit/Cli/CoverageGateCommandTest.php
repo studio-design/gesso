@@ -469,8 +469,8 @@ class CoverageGateCommandTest extends TestCase
 
         $report = json_decode($this->stdout, true, 512, JSON_THROW_ON_ERROR);
         $this->assertIsArray($report);
-        $this->assertSame(['schemaVersion', 'tool', 'summary', 'operations'], array_keys($report));
-        $this->assertSame(CoverageGateCommand::JSON_SCHEMA_VERSION, $report['schemaVersion']);
+        $this->assertSame(['schema_version', 'tool', 'summary', 'operations'], array_keys($report));
+        $this->assertSame(CoverageGateCommand::JSON_SCHEMA_VERSION, $report['schema_version']);
         $this->assertSame(1, $report['summary']['uncovered']);
         $this->assertSame(['endpoint', 'change', 'responses'], array_keys($report['operations'][0]));
         $this->assertSame(

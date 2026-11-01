@@ -121,7 +121,7 @@ the coverage document entirely counts as `UNCOVERED`.
 
 ## Machine-readable output
 
-`--format=json` prints one document with the keys `schemaVersion` (currently `1`), `tool`, `summary` (`operations`, `uncovered`), and `operations`. Each operation has `endpoint`, `change`, and `responses[]`, and each response has `status`, `content_type`, `change`, `state`, and `covered`. Additive changes keep `schemaVersion` at `1`; removals, renames, and type changes bump it. See the [CLI reference](cli.md#gate-json) for an example.
+`--format=json` prints one document with the keys `schema_version` (currently `2`), `tool`, `summary` (`operations`, `uncovered`), and `operations`. Each operation has `endpoint`, `change`, and `responses[]`, and each response has `status`, `content_type`, `change`, `state`, and `covered`. Additive changes keep `schema_version` at `2`; removals, renames, and type changes bump it. See the [CLI reference](cli.md#gate-json) for an example.
 
 ## Exit codes
 

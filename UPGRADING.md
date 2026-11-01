@@ -112,6 +112,19 @@ A merge with several sink or threshold flags folds into one grouped flag:
 `--min-endpoint-coverage=80 --min-coverage-strict` becomes
 `--min-coverage="endpoint=80,strict"`. See [`docs/cli.md`](docs/cli.md#removed-flags).
 
+### CLI JSON documents
+
+Every JSON document Gesso emits names its version `schema_version`, as the
+validation, coverage, and Laravel route-parity documents already did. The
+`--format=json` output of `doctor`, `coverage:gate`, and `stubs` (and
+`gesso:stubs`) renamed `schemaVersion` to `schema_version` and moved to
+version `2`. Their other fields are unchanged. The new `explain` and
+`config:migrate` documents start at `schema_version: 1`.
+
+To migrate, read `schema_version` instead of `schemaVersion` in scripts and
+CI steps that parse these documents, and accept `2` where they check the
+value, for example `jq -e '.schema_version == 2'`. See [the CLI reference](docs/cli.md#gate-json).
+
 ### Coverage sidecars
 
 Gesso 3.0 merges only sidecars with `envelopeVersion: 10`, the envelope every

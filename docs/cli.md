@@ -69,8 +69,8 @@ sidecars, or when the sidecars hold no observations.
 
 ```json
 {
-    "schemaVersion": 1,
-    "tool": { "name": "studio-design/gesso", "version": "2.4.0" },
+    "schema_version": 2,
+    "tool": { "name": "studio-design/gesso", "version": "3.0.0" },
     "summary": { "operations": 1, "uncovered": 1 },
     "operations": [
         {
@@ -97,7 +97,7 @@ document has a `codes` list of the same entries instead.
 
 ```json
 {
-    "schemaVersion": 1,
+    "schema_version": 1,
     "tool": { "name": "studio-design/gesso", "version": "3.0.0" },
     "code": "GSO212",
     "title": "Response body value has the wrong type",
@@ -116,8 +116,8 @@ An unknown code exits `2` and prints the closest known codes on stderr.
 
 ```json
 {
-    "schemaVersion": 1,
-    "tool": { "name": "studio-design/gesso", "version": "2.4.0" },
+    "schema_version": 2,
+    "tool": { "name": "studio-design/gesso", "version": "3.0.0" },
     "dry_run": false,
     "output_dir": "tests/Contract",
     "written": ["tests/Contract/GetPetsTest.php"],
@@ -133,8 +133,10 @@ An unknown code exits `2` and prints the closest known codes on stderr.
 
 In these documents, `tool` follows the same `unknown` rule as the
 [doctor](doctor.md#machine-readable-output) and
-[coverage](coverage-json-schema.md) JSON. Additive changes keep
-`schemaVersion` at `1`. Removals, renames and type changes increase it.
+[coverage](coverage-json-schema.md) JSON. Each document has its own
+`schema_version`: `2` for gate and stubs, `1` for explain and
+`config:migrate`. Additive changes keep it. Removals, renames and type
+changes increase it.
 
 ## Migrate a configuration: config:migrate
 
@@ -216,7 +218,7 @@ every other command, but skips that check for this one so it can run.
 
 ```json
 {
-    "schemaVersion": 1,
+    "schema_version": 1,
     "tool": { "name": "studio-design/gesso", "version": "3.0.0" },
     "clean": false,
     "config": "<?php\n\ndeclare(strict_types=1);\n…",
@@ -240,7 +242,7 @@ every other command, but skips that check for this one so it can run.
 `cli-flag`, `env-var`, `artisan-command`, `competitor-package`,
 `competitor-config`, `competitor-usage`, or `invalid-value` (a legacy value
 that `gesso.php` would reject). `line` is `null` when the finding is about a
-whole file. The same `schemaVersion` rules apply as for the documents above.
+whole file. The same `schema_version` rules apply as for the documents above.
 
 ## Defaults from gesso.php: --config
 

@@ -50,7 +50,7 @@ php artisan gesso:stubs --coverage=build/coverage.json
 | `--output-file=<path>` | stdout | Write the run summary there. This is the summary of what was written, not the stubs. |
 | `--request-prefix=<path>` | none | Prepend the application's mount path to generated Laravel, Symfony, or Pest requests, e.g. `/api`. Does not configure runtime path matching. |
 
-`--format=json` prints `schemaVersion` (currently `1`), `tool`, `dry_run`,
+`--format=json` prints `schema_version` (currently `2`), `tool`, `dry_run`,
 `output_dir`, `written`, `skipped`, and `not_stubbed` (each entry has a
 `reason` of `unreachable`, `malformed`, or `unsupported`, plus a `detail`). The
 stubs themselves are always separate files under `--output-dir`. See the
