@@ -112,7 +112,7 @@ final class ConfigMigrator
             ['/->assertValidResponse\(\s*\)/', 'delete; laravel.auto_assert validates every response'],
             ['/->(?:assertInvalidRequest|assertInvalidResponse|assertErrorsContain|assertValidationMessage|dumpSpecErrors)\(/', 'rewrite by hand: call withoutRequestValidation() / withoutResponseValidation() and assert on the validator result issues()'],
             ['/\b(?:withPathPrefix|setPathPrefix)\(/', 'delete; set spec.strip_prefixes in gesso.php'],
-            ['/\bSpectator::reset\(/', 'replace with #[SkipOpenApi] or $this->withoutValidation()'],
+            ['/\bSpectator::reset\(/', 'delete; Gesso keeps no per-test spec state, so requests after it are validated too. Skip one with $this->withoutValidation()'],
             ['/->assertPathExists\(/', 'delete; compare routes and spec with php artisan gesso:routes'],
         ],
         'kirschbaum-development/laravel-openapi-validator' => [
@@ -513,9 +513,10 @@ final class ConfigMigrator
             };
             $this->scanUsages($package);
             if ($package === 'hotmeteor/spectator') {
-                $this->warnings[] = 'Spectator validated only after Spectator::using() and only routes in its middleware_groups; '
-                    . 'with laravel.auto_assert Gesso validates every exchange of a test using the trait. '
-                    . 'Turn auto_assert on after the explicit assertions pass, and record known failures with baseline.violations.';
+                $this->addLayer('spectator', ['laravel.auto_assert' => true, 'laravel.auto_validate_request' => true]);
+                $this->warnings[] = 'Spectator validated only the exchanges a test asserted, after Spectator::using() and only routes in its middleware_groups; '
+                    . 'the proposed laravel.auto_assert and laravel.auto_validate_request replace assertValidResponse() and assertValidRequest(), '
+                    . 'so Gesso validates every exchange of a test using the trait. Record known failures with baseline.violations.';
             }
         }
     }

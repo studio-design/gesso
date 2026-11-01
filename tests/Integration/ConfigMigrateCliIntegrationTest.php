@@ -75,6 +75,7 @@ final class ConfigMigrateCliIntegrationTest extends TestCase
             'spec' => ['base_path' => 'specs', 'default' => 'api', 'strip_prefixes' => ['/v1']],
             'validation' => ['format' => 'json'],
             'coverage' => ['min_coverage' => ['endpoint' => 80]],
+            'laravel' => ['auto_assert' => true, 'auto_validate_request' => true],
         ], ['competitor-config', 'competitor-package', 'competitor-usage'], ConfigMigrator::GUIDE_URL . '#spectator'];
         yield 'kirschbaum' => ['kirschbaum', [
             'spec' => ['base_path' => 'openapi', 'default' => 'api'],

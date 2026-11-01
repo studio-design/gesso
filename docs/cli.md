@@ -194,7 +194,7 @@ under `tests/` and translates the settings it can map. See
 
 | Package | Translated into `gesso.php` |
 |---|---|
-| `hotmeteor/spectator` | `path_prefix` to `spec.strip_prefixes`, `sources.local.base_path` to `spec.base_path`, a single `Spectator::using()` name to `spec.default`, `error_format` to `validation.format`, and the `SpectatorExtension` `min_coverage` to `coverage.min_coverage.endpoint` |
+| `hotmeteor/spectator` | `path_prefix` to `spec.strip_prefixes`, `sources.local.base_path` to `spec.base_path`, a single `Spectator::using()` name to `spec.default`, `error_format` to `validation.format`, and the `SpectatorExtension` `min_coverage` to `coverage.min_coverage.endpoint`; `laravel.auto_assert` and `laravel.auto_validate_request` set to `true`, because they replace `assertValidResponse()` and `assertValidRequest()` |
 | `kirschbaum-development/laravel-openapi-validator` | `spec_path` to `spec.base_path` and `spec.default`; `laravel.auto_assert` and `laravel.auto_validate_request` set to `true`, because that package validates every request and response |
 | `osteel/openapi-httpfoundation-testing`, `league/openapi-psr7-validator` | a single literal `from{Yaml,Json}File()` path to `spec.base_path` and `spec.default` |
 
