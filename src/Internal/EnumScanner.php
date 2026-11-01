@@ -90,11 +90,11 @@ final class EnumScanner
             return self::$cache[$cacheKey];
         }
 
-        $loader = self::resolveLoader();
+        $loaders = self::resolveLoaders();
 
         $candidates = [];
         foreach ($normalized as $prefix) {
-            $candidates = [...$candidates, ...self::discoverCandidates($loader, $prefix)];
+            $candidates = [...$candidates, ...self::discoverCandidates($loaders, $prefix)];
         }
 
         $matches = array_values(array_filter(array_unique($candidates), self::isBackedEnum(...)));
@@ -147,7 +147,14 @@ final class EnumScanner
         return rtrim($stripped, '\\') . '\\';
     }
 
-    private static function resolveLoader(): ClassLoader
+    /**
+     * Every registered Composer ClassLoader, not only the first: a tool that
+     * bundles its own vendor directory (Rector, for one) prepends a second
+     * loader that knows none of the application's namespaces.
+     *
+     * @return non-empty-list<ClassLoader>
+     */
+    private static function resolveLoaders(): array
     {
         if (self::$forceUnavailable) {
             throw EnumBindingException::forScan(
@@ -157,16 +164,17 @@ final class EnumScanner
         }
 
         if (self::$loaderOverride !== null) {
-            return self::$loaderOverride;
+            return [self::$loaderOverride];
         }
 
-        $autoloadFns = spl_autoload_functions();
-        if ($autoloadFns !== false) {
-            foreach ($autoloadFns as $fn) {
-                if (is_array($fn) && $fn[0] instanceof ClassLoader) {
-                    return $fn[0];
-                }
+        $loaders = [];
+        foreach (spl_autoload_functions() as $fn) {
+            if (is_array($fn) && $fn[0] instanceof ClassLoader) {
+                $loaders[] = $fn[0];
             }
+        }
+        if ($loaders !== []) {
+            return $loaders;
         }
 
         throw EnumBindingException::forScan(
@@ -176,14 +184,18 @@ final class EnumScanner
     }
 
     /**
+     * @param non-empty-list<ClassLoader> $loaders
+     *
      * @return list<string>
      */
-    private static function discoverCandidates(ClassLoader $loader, string $prefix): array
+    private static function discoverCandidates(array $loaders, string $prefix): array
     {
-        $candidates = self::collectFromClassmap($loader, $prefix);
-        $candidates = [...$candidates, ...self::collectFromPsr4($loader, $prefix)];
+        $candidates = [];
+        foreach ($loaders as $loader) {
+            $candidates = [...$candidates, ...self::collectFromClassmap($loader, $prefix), ...self::collectFromPsr4($loader, $prefix)];
+        }
 
-        if ($candidates === [] && !self::prefixHasResolvableRoot($loader, $prefix)) {
+        if ($candidates === [] && array_filter($loaders, static fn(ClassLoader $loader): bool => self::prefixHasResolvableRoot($loader, $prefix)) === []) {
             throw EnumBindingException::forScan(
                 EnumBindingReason::ScanNamespaceUnresolvable,
                 sprintf(
