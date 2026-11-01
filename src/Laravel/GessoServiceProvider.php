@@ -12,8 +12,11 @@ use Studio\Gesso\Config\GessoConfig;
 use Studio\Gesso\Laravel\Commands\GessoConfigMigrateCommand;
 use Studio\Gesso\Laravel\Commands\OpenApiRoutesCommand;
 use Studio\Gesso\Laravel\Commands\OpenApiStubsCommand;
+use Studio\Gesso\Validation\Support\ValidationPolicyDefaults;
 
+use function array_filter;
 use function array_is_list;
+use function array_values;
 use function in_array;
 use function is_array;
 use function is_file;
@@ -61,6 +64,10 @@ class GessoServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        // Process-wide, like the PHPUnit extension's setting of the same key.
+        $redactNames = LaravelConfig::get('validation.redact_names');
+        ValidationPolicyDefaults::configureRedactNames(is_array($redactNames) ? array_values(array_filter($redactNames, 'is_string')) : null);
+
         $this->publishes([
             __DIR__ . '/config.php' => $this->app->basePath(GessoConfig::FILENAME),
         ], self::CONFIG_KEY);

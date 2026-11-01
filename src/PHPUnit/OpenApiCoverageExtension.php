@@ -497,6 +497,9 @@ final class OpenApiCoverageExtension implements Extension
             skipRequestValidationResponseCodes: $skipRequestValidationResponseCodes,
             defaultSpec: $defaultSpec,
         );
+        ValidationPolicyDefaults::configureRedactNames(
+            $parameters->has('redact_names') ? $parameters->strings('redact_names') : null,
+        );
 
         if ($facade === null) {
             return;

@@ -203,6 +203,10 @@ surface as `specs`; both are deleted by their existing rows. The Laravel v2 key
 count above becomes 14 (43 declarations, five duplicated pairs), so the 38
 distinct settings and 26 v3 keys are unchanged.
 
+Amendment, 2026-11-01: `validation.redact_names` is a new leaf with no v2
+spelling. It sets the field names whose values failure output redacts, which
+v2 hard-coded.
+
 `baseline` and `baseline_stale` are top-level keys rather than a `baseline`
 section with four leaves: under rule 1 the array must transcribe #502's two string
 keys, and grouping by baseline instead of by attribute would make the array and

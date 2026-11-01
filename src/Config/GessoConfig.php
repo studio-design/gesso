@@ -8,6 +8,7 @@ use const FILTER_NULL_ON_FAILURE;
 use const FILTER_VALIDATE_BOOLEAN;
 
 use InvalidArgumentException;
+use Studio\Gesso\Internal\CurlCommandFormatter;
 use Studio\Gesso\Internal\SpecPath;
 use Studio\Gesso\OpenApiRequestValidator;
 use Studio\Gesso\OpenApiResponseValidator;
@@ -108,6 +109,7 @@ final class GessoConfig
             'max_errors' => ['type' => 'int', 'default' => 20],
             'enforce_discriminator' => ['type' => 'bool', 'default' => true],
             'acknowledged_unvalidatable_schemes' => ['type' => 'strings', 'default' => []],
+            'redact_names' => ['type' => 'strings', 'default' => CurlCommandFormatter::DEFAULT_REDACT_NAMES],
             'skip_response_codes' => [
                 'type' => 'strings',
                 'items' => 'status_code_pattern',

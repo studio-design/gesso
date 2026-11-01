@@ -11367,6 +11367,14 @@
         "cases": [],
         "constants": [],
         "properties": {
+            "actual": {
+                "type": "?string",
+                "static": false,
+                "readonly": true,
+                "default": {
+                    "unavailable": true
+                }
+            },
             "category": {
                 "type": "string",
                 "static": false,
@@ -11376,6 +11384,14 @@
                 }
             },
             "contentType": {
+                "type": "?string",
+                "static": false,
+                "readonly": true,
+                "default": {
+                    "unavailable": true
+                }
+            },
+            "expected": {
                 "type": "?string",
                 "static": false,
                 "readonly": true,
@@ -11424,6 +11440,14 @@
                 }
             },
             "path": {
+                "type": "?string",
+                "static": false,
+                "readonly": true,
+                "default": {
+                    "unavailable": true
+                }
+            },
+            "schemaPointer": {
                 "type": "?string",
                 "static": false,
                 "readonly": true,
@@ -11527,6 +11551,33 @@
                     },
                     {
                         "name": "parameter",
+                        "type": "?string",
+                        "optional": true,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": null,
+                        "attributes": []
+                    },
+                    {
+                        "name": "schemaPointer",
+                        "type": "?string",
+                        "optional": true,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": null,
+                        "attributes": []
+                    },
+                    {
+                        "name": "actual",
+                        "type": "?string",
+                        "optional": true,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": null,
+                        "attributes": []
+                    },
+                    {
+                        "name": "expected",
                         "type": "?string",
                         "optional": true,
                         "variadic": false,

@@ -31,5 +31,6 @@ final readonly class NamedError
         public string $message,
         public ?string $instancePath = null,
         public ?string $keyword = null,
+        public ?SchemaViolation $violation = null,
     ) {}
 }

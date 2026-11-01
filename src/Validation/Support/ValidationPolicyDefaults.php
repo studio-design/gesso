@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Validation\Support;
 
+use Studio\Gesso\Internal\CurlCommandFormatter;
 use Studio\Gesso\OpenApiRequestValidator;
 use Studio\Gesso\OpenApiResponseValidator;
 use Studio\Gesso\PHPUnit\OpenApiCoverageExtension;
@@ -39,6 +40,9 @@ final class ValidationPolicyDefaults
     /** @var null|string[] */
     private static ?array $skipRequestValidationResponseCodes = null;
     private static ?string $defaultSpec = null;
+
+    /** @var null|string[] */
+    private static ?array $redactNames = null;
 
     /** Static-only utility — no instances. */
     private function __construct() {}
@@ -109,6 +113,29 @@ final class ValidationPolicyDefaults
     }
 
     /**
+     * `validation.redact_names`, kept apart from {@see self::configure()}
+     * because the Laravel provider sets it too. `null` restores the default.
+     *
+     * @param null|string[] $redactNames
+     *
+     * @internal
+     */
+    public static function configureRedactNames(?array $redactNames): void
+    {
+        self::$redactNames = $redactNames;
+    }
+
+    /**
+     * @return string[]
+     *
+     * @internal
+     */
+    public static function redactNames(): array
+    {
+        return self::$redactNames ?? CurlCommandFormatter::DEFAULT_REDACT_NAMES;
+    }
+
+    /**
      * Reset to unconfigured. Test seam mirroring
      * {@see DiscriminatorEnforcement::reset()}.
      *
@@ -117,5 +144,6 @@ final class ValidationPolicyDefaults
     public static function reset(): void
     {
         self::configure();
+        self::configureRedactNames(null);
     }
 }

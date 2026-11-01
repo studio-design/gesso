@@ -10,6 +10,17 @@
         "max_errors": 20,
         "enforce_discriminator": true,
         "acknowledged_unvalidatable_schemes": [],
+        "redact_names": [
+            "authorization",
+            "cookie",
+            "api_key",
+            "api-key",
+            "apikey",
+            "token",
+            "secret",
+            "password",
+            "passwd"
+        ],
         "skip_response_codes": [
             "5\\d\\d"
         ],

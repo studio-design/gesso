@@ -24,6 +24,7 @@ return [
     //     'enforce_discriminator' => true,
     //     'skip_response_codes' => ['5\d\d'],
     //     'skip_request_validation_response_codes' => ['422', '400'],
+    //     'redact_names' => ['authorization', 'cookie', 'api_key', 'token', 'secret', 'password'],
     // ],
 
     // 'laravel' => [

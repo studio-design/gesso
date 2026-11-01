@@ -142,6 +142,7 @@ require both Bearer and an API key.
 | `validation.acknowledged_unvalidatable_schemes` | Security schemes acknowledged as unvalidatable |
 | `validation.skip_response_codes` | Status patterns whose bodies are not validated |
 | `validation.skip_request_validation_response_codes` | Documented statuses that downgrade request failures |
+| `validation.redact_names` | [Field names whose values are redacted](#redacted-values) |
 | `strict.required.run` / `.per_call` | [Strict required](strict-required.md) gates |
 | `strict.additional_properties.run` / `.per_call` | [Strict additional properties](strict-additional-properties.md) gates |
 | `coverage.min_coverage.endpoint` / `.response` / `.sdk_exercise` / `.strict` | [Coverage thresholds](coverage.md#coverage-threshold-gate) |
@@ -171,3 +172,22 @@ PSR-7 and Symfony policy hooks (`openApiSpec()`, `openApiMaxErrors()`,
 default to `spec.default` and the `validation.*` values; an override still
 wins. Key names follow
 [ADR 0005](adr/0005-v3-configuration-and-cli-naming.md).
+
+## Redacted values
+
+Failure output replaces a value with `<redacted>` when its field name contains
+one of the `validation.redact_names` substrings (case-insensitive). This covers
+the curl reproduce command's headers, query and form fields, and the `actual`
+excerpt of a schema issue. The default is `authorization`, `cookie`, `api_key`,
+`api-key`, `apikey`, `token`, `secret`, `password`, and `passwd`.
+
+```php
+'validation' => [
+    // Replaces the default list: add your own names, or [] to turn it off.
+    'redact_names' => ['authorization', 'cookie', 'token', 'secret', 'password', 'ssn'],
+],
+```
+
+Three things are redacted regardless of this list: values of a schema with
+`format: password`, URL userinfo (`user:pass@`), and PHP's decoded
+`php-auth-*` server variables.

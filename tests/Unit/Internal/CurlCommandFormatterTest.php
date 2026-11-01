@@ -7,6 +7,7 @@ namespace Studio\Gesso\Tests\Unit\Internal;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Studio\Gesso\Internal\CurlCommandFormatter;
+use Studio\Gesso\Validation\Support\ValidationPolicyDefaults;
 
 use function str_contains;
 
@@ -37,6 +38,29 @@ final class CurlCommandFormatterTest extends TestCase
         $this->assertStringContainsString("-H 'Accept: application/json'", $command);
         $this->assertStringContainsString("-H 'X-Trace: abc'", $command);
         $this->assertStringContainsString("-H 'X-Trace: def'", $command);
+    }
+
+    #[Test]
+    public function test_redact_names_replaces_the_default_list(): void
+    {
+        ValidationPolicyDefaults::configureRedactNames([]);
+
+        try {
+            $command = CurlCommandFormatter::format(
+                'GET',
+                'https://user:pw@api.example.test/v1?token=t-1',
+                ['Authorization' => 'Bearer real-token', 'php-auth-pw' => 'hunter2'],
+                null,
+                null,
+            );
+        } finally {
+            ValidationPolicyDefaults::reset();
+        }
+
+        $this->assertSame(
+            "curl -X GET 'https://<redacted>@api.example.test/v1?token=t-1' -H 'Authorization: Bearer real-token' -H 'php-auth-pw: <redacted>'",
+            $command,
+        );
     }
 
     #[Test]
