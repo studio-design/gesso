@@ -35,7 +35,7 @@ final class PetContractTest extends TestCase
             '{"id":1,"name":"Fido"}',
         );
 
-        $this->assertPsr7ExchangeMatchesOpenApiSchema($request, $response);
+        $this->assertOpenApiExchange($request, $response);
     }
 
     #[Test]
@@ -61,7 +61,7 @@ final class PetContractTest extends TestCase
             })
             ->assertResponseUsing(function (mixed $exchange): void {
                 $this->assertIsArray($exchange);
-                $this->assertPsr7ExchangeMatchesOpenApiSchema($exchange[0], $exchange[1]);
+                $this->assertOpenApiExchange($exchange[0], $exchange[1]);
             })
             ->assertResponses();
 

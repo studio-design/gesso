@@ -129,7 +129,7 @@ class OpenApiHttpFakeIntegrationTest extends TestCase
         /** @var array{Request, Response} $pair */
         foreach ($recorded as $pair) {
             [$request, $response] = $pair;
-            $this->assertPsr7ExchangeMatchesOpenApiSchema($request->toPsrRequest(), $response->toPsrResponse());
+            $this->assertOpenApiExchange($request->toPsrRequest(), $response->toPsrResponse());
         }
     }
 }

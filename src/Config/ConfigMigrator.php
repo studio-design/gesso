@@ -127,7 +127,7 @@ final class ConfigMigrator
         'osteel/openapi-httpfoundation-testing' => [
             ['/Osteel\\\\OpenApi\\\\Testing\\\\/', 'replace with the Studio\Gesso\Symfony\OpenApiAssertions trait'],
             ['/\bValidatorBuilder::from(?:Yaml|Json)(?:File|String|Url)?\(/', 'delete; the spec is configured with spec.base_path / spec.default in gesso.php'],
-            ['/->(?:validate|get|post|put|patch|delete|head|options|trace)\([^,()]*(?:\(\))?[^,()]*,\s*[\'"]\//', 'replace with assertResponseMatchesOpenApiSchema($request, $response) or assertRequestMatchesOpenApiSchema($request); in a KernelBrowser test, assertClientMatchesOpenApiSchema($client)'],
+            ['/->(?:validate|get|post|put|patch|delete|head|options|trace)\([^,()]*(?:\(\))?[^,()]*,\s*[\'"]\//', 'replace with assertOpenApiResponse($response, $request) or assertOpenApiRequest($request); in a KernelBrowser test, assertOpenApiExchange($client)'],
             ['/\bValidationException\b/', 'delete the catch; a mismatch is a PHPUnit failure'],
         ],
         'league/openapi-psr7-validator' => [

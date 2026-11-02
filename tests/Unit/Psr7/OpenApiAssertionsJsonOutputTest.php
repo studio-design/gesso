@@ -54,7 +54,7 @@ final class OpenApiAssertionsJsonOutputTest extends TestCase
         $response = new Response(200, ['Content-Type' => 'application/json'], '"wrong"');
 
         try {
-            $this->assertPsr7ResponseMatchesOpenApiSchema($request, $response);
+            $this->assertOpenApiResponse($response, $request);
             $this->fail('Expected the PSR-7 assertion to fail.');
         } catch (AssertionFailedError $e) {
             [$header, $document] = explode("\n", $e->getMessage(), 2);
@@ -84,7 +84,7 @@ final class OpenApiAssertionsJsonOutputTest extends TestCase
         $response = new Response(200, ['Content-Type' => 'application/json'], '"wrong"');
 
         try {
-            $this->assertPsr7ResponseMatchesOpenApiSchema($request, $response);
+            $this->assertOpenApiResponse($response, $request);
             $this->fail('Expected the PSR-7 assertion to fail.');
         } catch (AssertionFailedError $e) {
             $this->assertStringContainsString('"schema_version": 1', $e->getMessage());
@@ -109,7 +109,7 @@ final class OpenApiAssertionsJsonOutputTest extends TestCase
         );
 
         try {
-            $this->assertPsr7ExchangeMatchesOpenApiSchema($request, $response);
+            $this->assertOpenApiExchange($request, $response);
             $this->fail('Expected the PSR-7 exchange assertion to fail.');
         } catch (AssertionFailedError $e) {
             $message = $e->getMessage();
@@ -147,7 +147,7 @@ final class OpenApiAssertionsJsonOutputTest extends TestCase
         $response = new Response(200, ['Content-Type' => 'application/json'], '"wrong"');
 
         try {
-            $this->assertPsr7ExchangeMatchesOpenApiSchema($request, $response);
+            $this->assertOpenApiExchange($request, $response);
             $this->fail('Expected the PSR-7 exchange assertion to fail.');
         } catch (AssertionFailedError $e) {
             $this->assertStringNotContainsString("[request]\n", $e->getMessage());
@@ -171,7 +171,7 @@ final class OpenApiAssertionsJsonOutputTest extends TestCase
         );
 
         try {
-            $this->assertPsr7ExchangeMatchesOpenApiSchema($request, $response);
+            $this->assertOpenApiExchange($request, $response);
             $this->fail('Expected the PSR-7 exchange assertion to fail.');
         } catch (AssertionFailedError $e) {
             $message = $e->getMessage();

@@ -55,12 +55,14 @@ use Studio\Gesso\Pest\Expectations;
 use Studio\Gesso\PHPUnit\AssertsNoEnumDrift;
 use Studio\Gesso\PHPUnit\ConsoleOutput;
 use Studio\Gesso\PHPUnit\InvalidStrictRequiredConfigurationException;
+use Studio\Gesso\Psr7\OpenApiAssertions as Psr7OpenApiAssertions;
 use Studio\Gesso\Rector\GessoSetList;
 use Studio\Gesso\Schema\EnumDriftAsserter;
 use Studio\Gesso\SchemaContext;
 use Studio\Gesso\SkipOpenApiResolver;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Spec\RemoteSpecSource;
+use Studio\Gesso\Symfony\OpenApiAssertions as SymfonyOpenApiAssertions;
 use Studio\Gesso\Symfony\OpenApiHttpFake as SymfonyOpenApiHttpFake;
 use Studio\Gesso\Tests\Helpers\PublicApiInventory;
 use Studio\Gesso\Tests\Unit\Compatibility\Fixture\PublicApiImplicitConstructorFixture;
@@ -2005,6 +2007,28 @@ final class PublicApiBaselineTest extends TestCase
             $expected[OpenApiSpecLoader::class]['methods']['configure']['parameters'],
             static fn(array $parameter): bool => $parameter['name'] !== 'enumBasePath',
         ));
+
+        // v3.0: the assertion methods of the Laravel, Symfony, and PSR-7
+        // traits are renamed (UPGRADING.md, "Assertion methods").
+        foreach ([
+            ValidatesOpenApiSchema::class => [[], ['assertOpenApiResponse']],
+            SymfonyOpenApiAssertions::class => [
+                ['assertResponseMatchesOpenApiSchema', 'assertRequestMatchesOpenApiSchema', 'assertClientMatchesOpenApiSchema'],
+                ['assertOpenApiResponse', 'assertOpenApiRequest', 'assertOpenApiExchange'],
+            ],
+            Psr7OpenApiAssertions::class => [
+                ['assertPsr7RequestMatchesOpenApiSchema', 'assertPsr7ResponseMatchesOpenApiSchema', 'assertPsr7ResponseForOperationMatchesOpenApiSchema', 'assertPsr7ExchangeMatchesOpenApiSchema'],
+                ['assertOpenApiResponse', 'assertOpenApiRequest', 'assertOpenApiExchange'],
+            ],
+        ] as $trait => [$removed, $added]) {
+            foreach ($removed as $method) {
+                unset($expected[$trait]['methods'][$method]);
+            }
+            foreach ($added as $method) {
+                $expected[$trait]['methods'][$method] = $actual[$trait]['methods'][$method];
+            }
+            ksort($expected[$trait]['methods']);
+        }
 
         // v3.0: Rector sets for migrations (additive). The constants name set
         // files, recorded relative to src/.

@@ -69,9 +69,13 @@ Run it on v2.9 or v3; a second run changes nothing.
 | `$this->failOpenApi()`, `failPsr7()`, `failExplore()` | `$this->fail()` |
 | `$this->assertOpenApi()`, `assertPsr7()` | `$this->assertTrue()` |
 | `$this->shouldSkipOpenApi()` | `$this->findSkipOpenApiAttribute() !== null` |
+| `assertResponseMatchesOpenApiSchema()` and the other v2 assertion names | `assertOpenApiResponse()`, `assertOpenApiRequest()`, `assertOpenApiExchange()`, response first; see [Assertion methods](v3.md#assertion-methods) |
 
 The private-helper rows apply only in a class that uses the Gesso trait that
 composed the helper, and not when the class declares a method of that name.
+The assertion rows apply to `$this->`, `self::`, and `static::` calls; a
+Laravel call is told from a Symfony one by its arguments (one argument, or a
+`null` or `HttpMethod` second).
 A positional sixth argument to `configure()` is removed only when it cannot
 be an array, because v3 has `allowedRemoteRefHosts` at that position. Remove
 an untyped variable there by hand.

@@ -18,7 +18,7 @@ use Symfony\Component\HttpKernel\HttpKernelBrowser;
 use Symfony\Component\HttpKernel\HttpKernelInterface;
 
 /**
- * Exercises {@see OpenApiAssertions::assertClientMatchesOpenApiSchema()}
+ * Exercises {@see OpenApiAssertions::assertOpenApiExchange()}
  * against a real {@see HttpKernelBrowser} round-trip. The kernel is a tiny
  * stand-in (no framework bundle / container) that echoes a fixed response,
  * so the test confirms the client wiring — `getRequest()` / `getResponse()`
@@ -52,7 +52,7 @@ final class OpenApiAssertionsClientTest extends TestCase
         );
         $client->request('GET', '/v1/pets');
 
-        $this->assertClientMatchesOpenApiSchema($client);
+        $this->assertOpenApiExchange($client);
 
         $covered = OpenApiCoverageTracker::getCovered();
         $this->assertArrayHasKey('petstore-3.0', $covered);
@@ -68,7 +68,7 @@ final class OpenApiAssertionsClientTest extends TestCase
         $this->expectException(AssertionFailedError::class);
         $this->expectExceptionMessage('OpenAPI schema validation failed for GET /v1/pets');
 
-        $this->assertClientMatchesOpenApiSchema($client);
+        $this->assertOpenApiExchange($client);
     }
 
     #[Test]
@@ -81,7 +81,7 @@ final class OpenApiAssertionsClientTest extends TestCase
         $this->expectException(AssertionFailedError::class);
         $this->expectExceptionMessage('Call $client->request(...) before asserting');
 
-        $this->assertClientMatchesOpenApiSchema($client);
+        $this->assertOpenApiExchange($client);
     }
 
     #[Test]
@@ -95,7 +95,7 @@ final class OpenApiAssertionsClientTest extends TestCase
         $this->expectException(AssertionFailedError::class);
         $this->expectExceptionMessage('OpenAPI request validation failed for POST /v1/pets');
 
-        $this->assertClientMatchesOpenApiSchema($client);
+        $this->assertOpenApiExchange($client);
     }
 
     #[Test]
@@ -106,7 +106,7 @@ final class OpenApiAssertionsClientTest extends TestCase
         $client = $this->clientReturning(new JsonResponse(['wrong_key' => 'value'], 409));
         $client->request('GET', '/v1/pets');
 
-        $this->assertClientMatchesOpenApiSchema($client, ['409']);
+        $this->assertOpenApiExchange($client, ['409']);
     }
 
     private function clientReturning(Response $response): HttpKernelBrowser

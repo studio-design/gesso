@@ -91,12 +91,12 @@ class ValidatesOpenApiSchemaSkipTest extends TestCase
         );
         $response = $this->makeTestResponse($body, 200);
 
-        $this->assertResponseMatchesOpenApiSchema($response, HttpMethod::GET, '/v1/pets');
+        $this->assertOpenApiResponse($response, HttpMethod::GET, '/v1/pets');
 
         // Warning was emitted once.
         $this->assertCount(1, $this->capturedWarnings);
         $this->assertStringContainsString('#[SkipOpenApi]', $this->capturedWarnings[0]);
-        $this->assertStringContainsString('assertResponseMatchesOpenApiSchema', $this->capturedWarnings[0]);
+        $this->assertStringContainsString('assertOpenApiResponse', $this->capturedWarnings[0]);
 
         // And validation actually ran — coverage was recorded despite the skip.
         $covered = OpenApiCoverageTracker::getCovered();
@@ -113,7 +113,7 @@ class ValidatesOpenApiSchemaSkipTest extends TestCase
         );
         $response = $this->makeTestResponse($body, 200);
 
-        $this->assertResponseMatchesOpenApiSchema($response, HttpMethod::GET, '/v1/pets');
+        $this->assertOpenApiResponse($response, HttpMethod::GET, '/v1/pets');
 
         $this->assertSame([], $this->capturedWarnings);
     }
@@ -128,7 +128,7 @@ class ValidatesOpenApiSchemaSkipTest extends TestCase
         );
         $response = $this->makeTestResponse($body, 200);
 
-        $this->assertResponseMatchesOpenApiSchema($response, HttpMethod::GET, '/v1/pets');
+        $this->assertOpenApiResponse($response, HttpMethod::GET, '/v1/pets');
 
         $this->assertCount(1, $this->capturedWarnings);
         // Formatted via var_export so the reason value is quoted verbatim.

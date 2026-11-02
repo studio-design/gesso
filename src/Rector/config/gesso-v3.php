@@ -9,6 +9,7 @@ use Rector\Transform\ValueObject\StaticCallToNew;
 use Studio\Gesso\Rector\Rule\HasAnyCoverageToCurrentTrackerRector;
 use Studio\Gesso\Rector\Rule\RemovedTraitHelperCallRector;
 use Studio\Gesso\Rector\Rule\RemoveEnumBasePathArgumentRector;
+use Studio\Gesso\Rector\Rule\RenamedAssertionRector;
 
 // Gesso v2 → v3: the PHP renames and removals in UPGRADING.md
 // ("From v2.9.x to v3.0.0"). Config keys and CLI flags are
@@ -31,4 +32,5 @@ return static function (RectorConfig $rectorConfig): void {
     $rectorConfig->rule(HasAnyCoverageToCurrentTrackerRector::class);
     $rectorConfig->rule(RemoveEnumBasePathArgumentRector::class);
     $rectorConfig->rule(RemovedTraitHelperCallRector::class);
+    $rectorConfig->rule(RenamedAssertionRector::class);
 };

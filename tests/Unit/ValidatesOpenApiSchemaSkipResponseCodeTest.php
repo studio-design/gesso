@@ -253,7 +253,7 @@ class ValidatesOpenApiSchemaSkipResponseCodeTest extends TestCase
     public function skip_response_code_does_not_affect_explicit_assert(): void
     {
         // Scope is auto-assert only — matches withoutValidation()'s existing
-        // convention. An explicit assertResponseMatchesOpenApiSchema() call
+        // convention. An explicit assertOpenApiResponse() call
         // must ignore the per-request skip flag, because explicit calls are
         // the user's direct intent.
         $response = $this->makeTestResponse('{}', 503);
@@ -261,7 +261,7 @@ class ValidatesOpenApiSchemaSkipResponseCodeTest extends TestCase
         $this->skipResponseCode(503);
 
         $this->expectException(AssertionFailedError::class);
-        $this->assertResponseMatchesOpenApiSchema($response, HttpMethod::GET, '/v1/pets');
+        $this->assertOpenApiResponse($response, HttpMethod::GET, '/v1/pets');
     }
 
     #[Test]
@@ -283,7 +283,7 @@ class ValidatesOpenApiSchemaSkipResponseCodeTest extends TestCase
         $this->skipResponseCode(503);
         // Explicit call on a spec-compliant 200 succeeds, but the pending flag
         // should trigger a warning and be consumed on the way out.
-        $this->assertResponseMatchesOpenApiSchema($okResponse, HttpMethod::GET, '/v1/pets');
+        $this->assertOpenApiResponse($okResponse, HttpMethod::GET, '/v1/pets');
 
         $this->assertCount(1, $this->capturedWarnings);
         $this->assertStringContainsString('skipResponseCode()', $this->capturedWarnings[0]);

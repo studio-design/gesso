@@ -67,7 +67,7 @@ use function var_export;
  *         $client = static::createClient();
  *         $client->request('GET', '/api/v1/pets');
  *
- *         $this->assertClientMatchesOpenApiSchema($client);
+ *         $this->assertOpenApiExchange($client);
  *     }
  * }
  * ```
@@ -88,9 +88,10 @@ trait OpenApiAssertions
     /**
      * Validate a Symfony `Response` against the OpenAPI spec.
      *
-     * The HTTP method and request path are read from the supplied `Request`
-     * (a `Response` carries neither). The endpoint is recorded as covered for
-     * any matched spec path, mirroring the Laravel adapter.
+     * The HTTP method and request path are read from `$request` (a `Response`
+     * carries neither), or from `$method` and `$path` (a request path, not a
+     * path template) when no request is given. The endpoint is recorded as
+     * covered for any matched spec path, mirroring the Laravel adapter.
      *
      * @param string[] $extraSkipResponseCodes additional status-code regex
      *                                         patterns (without delimiters or anchors) to skip body validation
@@ -99,11 +100,19 @@ trait OpenApiAssertions
      *                                         this call only; an empty array reuses the cached validator
      *                                         unchanged.
      */
-    public function assertResponseMatchesOpenApiSchema(
-        Request $request,
+    public function assertOpenApiResponse(
         Response $response,
+        ?Request $request = null,
         array $extraSkipResponseCodes = [],
+        ?string $method = null,
+        ?string $path = null,
     ): void {
+        if ($request === null) {
+            if ($method === null || $path === null) {
+                CleanTraceAssert::fail('assertOpenApiResponse() needs the request, or both method: and path:.');
+            }
+            $request = Request::create($path, $method);
+        }
         $method = $this->resolveSymfonyHttpMethod($request);
         $path = $request->getPathInfo();
         $specName = $this->resolveSymfonyOpenApiSpec();
@@ -170,10 +179,10 @@ trait OpenApiAssertions
      * skip-request pattern AND the spec documents that status for the
      * operation, a request-validation failure is downgraded to Skipped — the
      * documented-4xx escape hatch that lets "send invalid input → assert 422"
-     * tests keep passing. {@see self::assertClientMatchesOpenApiSchema()}
+     * tests keep passing. {@see self::assertOpenApiExchange()}
      * forwards the response status automatically.
      */
-    public function assertRequestMatchesOpenApiSchema(
+    public function assertOpenApiRequest(
         Request $request,
         ?int $responseStatusCode = null,
     ): void {
@@ -237,9 +246,9 @@ trait OpenApiAssertions
      * surfacing a raw framework exception.
      *
      * @param string[] $extraSkipResponseCodes forwarded to
-     *                                         {@see self::assertResponseMatchesOpenApiSchema()}
+     *                                         {@see self::assertOpenApiResponse()}
      */
-    public function assertClientMatchesOpenApiSchema(
+    public function assertOpenApiExchange(
         HttpKernelBrowser $client,
         array $extraSkipResponseCodes = [],
     ): void {
@@ -253,14 +262,14 @@ trait OpenApiAssertions
             $response = $client->getResponse();
         } catch (BadMethodCallException $e) {
             CleanTraceAssert::fail(
-                'assertClientMatchesOpenApiSchema() needs a completed request, but the test client '
+                'assertOpenApiExchange() needs a completed request, but the test client '
                 . 'has not made one yet. Call $client->request(...) before asserting. '
                 . '(' . $e->getMessage() . ')',
             );
         }
 
-        $this->assertRequestMatchesOpenApiSchema($request, $response->getStatusCode());
-        $this->assertResponseMatchesOpenApiSchema($request, $response, $extraSkipResponseCodes);
+        $this->assertOpenApiRequest($request, $response->getStatusCode());
+        $this->assertOpenApiResponse($response, $request, $extraSkipResponseCodes);
     }
 
     /**

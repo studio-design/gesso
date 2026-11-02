@@ -30,7 +30,7 @@ Keep the same PSR-7 messages and replace direct validator construction with `Ope
 
 ## osteel/openapi-httpfoundation-testing
 
-Keep the Symfony `Request` and `Response` values and switch to `Symfony\OpenApiAssertions`. Call `assertResponseMatchesOpenApiSchema()` or validate the last `KernelBrowser` exchange with `assertClientMatchesOpenApiSchema()`.
+Keep the Symfony `Request` and `Response` values and switch to `Symfony\OpenApiAssertions`. Call `assertOpenApiResponse()` or validate the last `KernelBrowser` exchange with `assertOpenApiExchange()`.
 
 ## kirschbaum-development/laravel-openapi-validator
 

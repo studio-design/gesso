@@ -214,7 +214,7 @@ final class SharedConfigurationTest extends TestCase
                     for ($i = 0; $i < 30; $i++) {
                         $body[] = ['id' => 'not-an-int'];
                     }
-                    $this->assertResponseMatchesOpenApiSchema(Request::create('/api,v2/pets', 'GET'), new JsonResponse($body));
+                    $this->assertOpenApiResponse(new JsonResponse($body), Request::create('/api,v2/pets', 'GET'));
                 }
             }
             PHP);

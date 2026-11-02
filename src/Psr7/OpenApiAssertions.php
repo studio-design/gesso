@@ -36,7 +36,7 @@ trait OpenApiAssertions
     private ?OpenApiPsr7Validator $cachedPsr7Validator = null;
     private ?string $cachedPsr7SpecName = null;
 
-    public function assertPsr7RequestMatchesOpenApiSchema(
+    public function assertOpenApiRequest(
         RequestInterface $request,
         ?int $responseStatusCode = null,
     ): void {
@@ -55,10 +55,34 @@ trait OpenApiAssertions
         );
     }
 
-    public function assertPsr7ResponseMatchesOpenApiSchema(
-        RequestInterface $request,
+    /**
+     * Validates the response against the operation of `$request`, or of
+     * `$method` and `$path` (a request path, not a path template) when no
+     * request is given.
+     */
+    public function assertOpenApiResponse(
         ResponseInterface $response,
+        ?RequestInterface $request = null,
+        ?string $method = null,
+        ?string $path = null,
     ): void {
+        if ($request === null) {
+            if ($method === null || $path === null) {
+                CleanTraceAssert::fail('assertOpenApiResponse() needs the request, or both method: and path:.');
+            }
+            $result = $this->psr7Validator()->validateResponseForOperation($method, $path, $response);
+
+            $this->assertPsr7Result(
+                $result,
+                $method,
+                $path,
+                sprintf('OpenAPI PSR-7 response validation failed for %s %s', $method, $path),
+                static fn(): string => CurlCommandFormatter::format($method, $path, [], null, null),
+            );
+
+            return;
+        }
+
         $result = $this->psr7Validator()->validateResponse($request, $response);
 
         $this->assertPsr7Result(
@@ -74,23 +98,7 @@ trait OpenApiAssertions
         );
     }
 
-    public function assertPsr7ResponseForOperationMatchesOpenApiSchema(
-        string $method,
-        string $requestPath,
-        ResponseInterface $response,
-    ): void {
-        $result = $this->psr7Validator()->validateResponseForOperation($method, $requestPath, $response);
-
-        $this->assertPsr7Result(
-            $result,
-            $method,
-            $requestPath,
-            sprintf('OpenAPI PSR-7 response validation failed for %s %s', $method, $requestPath),
-            static fn(): string => CurlCommandFormatter::format($method, $requestPath, [], null, null),
-        );
-    }
-
-    public function assertPsr7ExchangeMatchesOpenApiSchema(
+    public function assertOpenApiExchange(
         RequestInterface $request,
         ResponseInterface $response,
     ): void {
