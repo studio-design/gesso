@@ -103,9 +103,9 @@ trait OpenApiAssertions
     public function assertOpenApiResponse(
         Response $response,
         ?Request $request = null,
-        array $extraSkipResponseCodes = [],
         ?string $method = null,
         ?string $path = null,
+        array $extraSkipResponseCodes = [],
     ): void {
         if ($request === null) {
             if ($method === null || $path === null) {
@@ -269,7 +269,7 @@ trait OpenApiAssertions
         }
 
         $this->assertOpenApiRequest($request, $response->getStatusCode());
-        $this->assertOpenApiResponse($response, $request, $extraSkipResponseCodes);
+        $this->assertOpenApiResponse($response, $request, extraSkipResponseCodes: $extraSkipResponseCodes);
     }
 
     /**

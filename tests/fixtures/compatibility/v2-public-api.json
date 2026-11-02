@@ -10852,15 +10852,6 @@
                         "attributes": []
                     },
                     {
-                        "name": "extraSkipResponseCodes",
-                        "type": "array",
-                        "optional": true,
-                        "variadic": false,
-                        "by_reference": false,
-                        "default": [],
-                        "attributes": []
-                    },
-                    {
                         "name": "method",
                         "type": "?string",
                         "optional": true,
@@ -10876,6 +10867,15 @@
                         "variadic": false,
                         "by_reference": false,
                         "default": null,
+                        "attributes": []
+                    },
+                    {
+                        "name": "extraSkipResponseCodes",
+                        "type": "array",
+                        "optional": true,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": [],
                         "attributes": []
                     }
                 ]
@@ -11002,15 +11002,6 @@
                             "attributes": []
                         },
                         {
-                            "name": "extraSkipResponseCodes",
-                            "type": "array",
-                            "optional": true,
-                            "variadic": false,
-                            "by_reference": false,
-                            "default": [],
-                            "attributes": []
-                        },
-                        {
                             "name": "method",
                             "type": "?string",
                             "optional": true,
@@ -11026,6 +11017,15 @@
                             "variadic": false,
                             "by_reference": false,
                             "default": null,
+                            "attributes": []
+                        },
+                        {
+                            "name": "extraSkipResponseCodes",
+                            "type": "array",
+                            "optional": true,
+                            "variadic": false,
+                            "by_reference": false,
+                            "default": [],
                             "attributes": []
                         }
                     ]

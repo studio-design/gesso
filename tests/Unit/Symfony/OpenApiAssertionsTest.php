@@ -196,7 +196,7 @@ final class OpenApiAssertionsTest extends TestCase
         $request = Request::create('/v1/pets', 'POST');
         $response = new JsonResponse(['wrong_key' => 'value'], 409);
 
-        $this->assertOpenApiResponse($response, $request, ['409']);
+        $this->assertOpenApiResponse($response, $request, extraSkipResponseCodes: ['409']);
     }
 
     #[Test]
@@ -580,7 +580,7 @@ final class OpenApiAssertionsTest extends TestCase
         $this->assertOpenApiResponse(
             new JsonResponse(['wrong_key' => 'value'], 409),
             $request,
-            ['409'],
+            extraSkipResponseCodes: ['409'],
         );
 
         $this->expectException(AssertionFailedError::class);

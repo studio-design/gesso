@@ -13,6 +13,7 @@ use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
+use PHPStan\Type\ObjectType;
 use Rector\Rector\AbstractRector;
 use Studio\Gesso\Rector\GessoSetList;
 
@@ -55,7 +56,7 @@ final class RenamedAssertionRector extends AbstractRector
     private const array SYMFONY_RESPONSE = [
         'assertOpenApiResponse',
         ['request', 'response', 'extraSkipResponseCodes'],
-        ['response', 'request', 'extraSkipResponseCodes', 'method', 'path'],
+        ['response', 'request', 'method', 'path', 'extraSkipResponseCodes'],
     ];
 
     public function getNodeTypes(): array
@@ -120,7 +121,8 @@ final class RenamedAssertionRector extends AbstractRector
         $second = $args[1]->value;
 
         return $second instanceof ConstFetch && $this->isName($second, 'null') ||
-            $second instanceof ClassConstFetch && $this->isName($second->class, 'Studio\Gesso\HttpMethod');
+            $second instanceof ClassConstFetch && $this->isName($second->class, 'Studio\Gesso\HttpMethod') ||
+            $this->isObjectType($second, new ObjectType('Studio\Gesso\HttpMethod'));
     }
 
     /**

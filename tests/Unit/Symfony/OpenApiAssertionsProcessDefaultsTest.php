@@ -104,7 +104,7 @@ final class OpenApiAssertionsProcessDefaultsTest extends TestCase
         $this->assertOpenApiResponse(
             new JsonResponse(['wrong_key' => 'value']),
             Request::create('/v1/pets', 'GET'),
-            ['200'],
+            extraSkipResponseCodes: ['200'],
         );
 
         $this->assertArrayHasKey('GET /v1/pets', OpenApiCoverageTracker::getCovered()['petstore-3.0'] ?? []);

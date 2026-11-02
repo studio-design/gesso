@@ -12,6 +12,7 @@ final class AssertionsTest extends TestCase
         $this->assertResponseMatchesOpenApiSchema($response, HttpMethod::GET, '/pets');
         $this->assertResponseMatchesOpenApiSchema($response, null, '/pets');
         $this->assertResponseMatchesOpenApiSchema(response: $response, path: '/pets');
+        $this->assertResponseMatchesOpenApiSchema($response, \Studio\Gesso\HttpMethod::from($verb));
     }
 
     public function test_symfony(): void
@@ -55,12 +56,13 @@ final class AssertionsTest extends TestCase
         $this->assertOpenApiResponse($response, HttpMethod::GET, '/pets');
         $this->assertOpenApiResponse($response, null, '/pets');
         $this->assertOpenApiResponse(response: $response, path: '/pets');
+        $this->assertOpenApiResponse($response, \Studio\Gesso\HttpMethod::from($verb));
     }
 
     public function test_symfony(): void
     {
         $this->assertOpenApiResponse($response, $request);
-        self::assertOpenApiResponse($response, $request, ['404']);
+        self::assertOpenApiResponse($response, $request, extraSkipResponseCodes: ['404']);
         $this->assertOpenApiResponse($response, $request);
         $this->assertOpenApiRequest($request, 422);
         $this->assertOpenApiExchange($client);
