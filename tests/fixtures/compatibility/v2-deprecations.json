@@ -667,6 +667,78 @@
                 "replacement": "laravel.route_parity (in gesso.php)",
                 "removed_in": "3.0"
             }
+        },
+        "trait.psr7_open_api_assertions.assert_psr7_request_matches_open_api_schema": {
+            "spelling": "assertPsr7RequestMatchesOpenApiSchema()",
+            "v3_target": "assertOpenApiRequest($request)",
+            "notice": {
+                "subject": "assertPsr7RequestMatchesOpenApiSchema()",
+                "replacement": "assertOpenApiRequest($request)",
+                "removed_in": "3.0"
+            }
+        },
+        "trait.psr7_open_api_assertions.assert_psr7_response_matches_open_api_schema": {
+            "spelling": "assertPsr7ResponseMatchesOpenApiSchema()",
+            "v3_target": "assertOpenApiResponse($response, $request)",
+            "notice": {
+                "subject": "assertPsr7ResponseMatchesOpenApiSchema()",
+                "replacement": "assertOpenApiResponse($response, $request)",
+                "removed_in": "3.0"
+            }
+        },
+        "trait.psr7_open_api_assertions.assert_psr7_response_for_operation_matches_open_api_schema": {
+            "spelling": "assertPsr7ResponseForOperationMatchesOpenApiSchema()",
+            "v3_target": "assertOpenApiResponse($response, method: $method, path: $path)",
+            "notice": {
+                "subject": "assertPsr7ResponseForOperationMatchesOpenApiSchema()",
+                "replacement": "assertOpenApiResponse($response, method: $method, path: $path)",
+                "removed_in": "3.0"
+            }
+        },
+        "trait.psr7_open_api_assertions.assert_psr7_exchange_matches_open_api_schema": {
+            "spelling": "assertPsr7ExchangeMatchesOpenApiSchema()",
+            "v3_target": "assertOpenApiExchange($request, $response)",
+            "notice": {
+                "subject": "assertPsr7ExchangeMatchesOpenApiSchema()",
+                "replacement": "assertOpenApiExchange($request, $response)",
+                "removed_in": "3.0"
+            }
+        },
+        "trait.symfony_open_api_assertions.assert_response_matches_open_api_schema": {
+            "spelling": "assertResponseMatchesOpenApiSchema()",
+            "v3_target": "assertOpenApiResponse($response, $request)",
+            "notice": {
+                "subject": "Symfony assertResponseMatchesOpenApiSchema()",
+                "replacement": "assertOpenApiResponse($response, $request)",
+                "removed_in": "3.0"
+            }
+        },
+        "trait.symfony_open_api_assertions.assert_request_matches_open_api_schema": {
+            "spelling": "assertRequestMatchesOpenApiSchema()",
+            "v3_target": "assertOpenApiRequest($request)",
+            "notice": {
+                "subject": "assertRequestMatchesOpenApiSchema()",
+                "replacement": "assertOpenApiRequest($request)",
+                "removed_in": "3.0"
+            }
+        },
+        "trait.symfony_open_api_assertions.assert_client_matches_open_api_schema": {
+            "spelling": "assertClientMatchesOpenApiSchema()",
+            "v3_target": "assertOpenApiExchange($client)",
+            "notice": {
+                "subject": "assertClientMatchesOpenApiSchema()",
+                "replacement": "assertOpenApiExchange($client)",
+                "removed_in": "3.0"
+            }
+        },
+        "trait.validates_open_api_schema.assert_response_matches_open_api_schema": {
+            "spelling": "assertResponseMatchesOpenApiSchema()",
+            "v3_target": "assertOpenApiResponse($response)",
+            "notice": {
+                "subject": "Laravel assertResponseMatchesOpenApiSchema()",
+                "replacement": "assertOpenApiResponse($response)",
+                "removed_in": "3.0"
+            }
         }
     }
 }

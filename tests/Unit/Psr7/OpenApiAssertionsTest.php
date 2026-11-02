@@ -44,7 +44,7 @@ final class OpenApiAssertionsTest extends TestCase
             '{"id":42}',
         );
 
-        $this->assertPsr7ResponseForOperationMatchesOpenApiSchema('POST', '/widgets/42', $response);
+        $this->assertOpenApiResponse($response, method: 'POST', path: '/widgets/42');
     }
 
     #[Test]
@@ -54,7 +54,7 @@ final class OpenApiAssertionsTest extends TestCase
         $response = new Response(200, ['Content-Type' => 'application/json'], '"wrong"');
 
         try {
-            $this->assertPsr7ResponseMatchesOpenApiSchema($request, $response);
+            $this->assertOpenApiResponse($response, $request);
             $this->fail('Expected the PSR-7 assertion to fail.');
         } catch (AssertionFailedError $e) {
             $this->assertStringContainsString('GET /body/scalar', $e->getMessage());
@@ -73,7 +73,7 @@ final class OpenApiAssertionsTest extends TestCase
         $response = new Response(200, ['Content-Type' => 'application/json'], '"wrong"');
 
         try {
-            $this->assertPsr7ResponseMatchesOpenApiSchema($request, $response);
+            $this->assertOpenApiResponse($response, $request);
             $this->fail('Expected the PSR-7 assertion to fail.');
         } catch (AssertionFailedError $e) {
             $this->assertStringContainsString(
@@ -96,7 +96,7 @@ final class OpenApiAssertionsTest extends TestCase
         );
 
         try {
-            $this->assertPsr7RequestMatchesOpenApiSchema($request);
+            $this->assertOpenApiRequest($request);
             $this->fail('Expected the PSR-7 request assertion to fail.');
         } catch (AssertionFailedError $e) {
             $this->assertStringContainsString('Reproduce: curl -X POST', $e->getMessage());
@@ -110,7 +110,7 @@ final class OpenApiAssertionsTest extends TestCase
         $response = new Response(200, ['Content-Type' => 'application/json'], '"wrong"');
 
         try {
-            $this->assertPsr7ResponseForOperationMatchesOpenApiSchema('GET', '/body/scalar', $response);
+            $this->assertOpenApiResponse($response, method: 'GET', path: '/body/scalar');
             $this->fail('Expected the PSR-7 assertion to fail.');
         } catch (AssertionFailedError $e) {
             $this->assertStringContainsString("Reproduce: curl -X GET '/body/scalar'", $e->getMessage());
@@ -124,7 +124,7 @@ final class OpenApiAssertionsTest extends TestCase
         $request->getBody()->seek(3);
         $response = new Response(200, ['Content-Type' => 'application/json'], '5');
 
-        $this->assertPsr7ResponseMatchesOpenApiSchema($request, $response);
+        $this->assertOpenApiResponse($response, $request);
 
         $this->assertSame(3, $request->getBody()->tell());
     }
@@ -137,7 +137,7 @@ final class OpenApiAssertionsTest extends TestCase
         $response = new Response(200, ['Content-Type' => 'application/json'], '"wrong"');
 
         try {
-            $this->assertPsr7ResponseMatchesOpenApiSchema($request, $response);
+            $this->assertOpenApiResponse($response, $request);
             $this->fail('Expected the PSR-7 assertion to fail.');
         } catch (AssertionFailedError) {
             $this->assertSame(3, $request->getBody()->tell());
@@ -156,7 +156,7 @@ final class OpenApiAssertionsTest extends TestCase
         $response = new Response(200, ['Content-Type' => 'application/json'], '"wrong"');
 
         try {
-            $this->assertPsr7ResponseMatchesOpenApiSchema($request, $response);
+            $this->assertOpenApiResponse($response, $request);
             $this->fail('Expected the PSR-7 assertion to fail.');
         } catch (AssertionFailedError $e) {
             $this->assertStringContainsString('Reproduce: curl -X GET', $e->getMessage());
@@ -177,7 +177,7 @@ final class OpenApiAssertionsTest extends TestCase
         $response = new Response(200, ['Content-Type' => 'application/json'], '"wrong"');
 
         try {
-            $this->assertPsr7ResponseMatchesOpenApiSchema($request, $response);
+            $this->assertOpenApiResponse($response, $request);
             $this->fail('Expected the PSR-7 assertion to fail.');
         } catch (AssertionFailedError $e) {
             $this->assertSame(3, $request->getBody()->tell());

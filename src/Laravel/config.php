@@ -57,7 +57,7 @@ return [
 
     // When true, every TestResponse produced by Laravel HTTP test helpers
     // (get(), post(), etc.) is validated against the OpenAPI spec at creation
-    // time, without requiring an explicit assertResponseMatchesOpenApiSchema()
+    // time, without requiring an explicit assertOpenApiResponse()
     // call in each test. Defaults to false for backward compatibility.
     'auto_assert' => false,
 

@@ -109,7 +109,7 @@ final class UserContractTest extends TestCase
     {
         $response = $this->postJson('/api/users', []);
         $response->assertUnprocessable();
-        $this->assertResponseMatchesOpenApiSchema($response);
+        $this->assertOpenApiResponse($response);
     }
 }
 ```

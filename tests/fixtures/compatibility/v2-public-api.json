@@ -6908,6 +6908,45 @@
         "constants": [],
         "properties": [],
         "methods": {
+            "assertOpenApiResponse": {
+                "static": false,
+                "final": false,
+                "abstract": false,
+                "returns_reference": false,
+                "return_type": "void",
+                "attributes": [],
+                "parameters": [
+                    {
+                        "name": "response",
+                        "type": "Illuminate\\Testing\\TestResponse",
+                        "optional": false,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": {
+                            "unavailable": true
+                        },
+                        "attributes": []
+                    },
+                    {
+                        "name": "method",
+                        "type": "?Studio\\Gesso\\HttpMethod",
+                        "optional": true,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": null,
+                        "attributes": []
+                    },
+                    {
+                        "name": "path",
+                        "type": "?string",
+                        "optional": true,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": null,
+                        "attributes": []
+                    }
+                ]
+            },
             "jsonRaw": {
                 "static": false,
                 "final": false,
@@ -7266,6 +7305,46 @@
                             "default": {
                                 "unavailable": true
                             },
+                            "attributes": []
+                        }
+                    ]
+                },
+                "assertOpenApiResponse": {
+                    "visibility": "public",
+                    "static": false,
+                    "final": false,
+                    "abstract": false,
+                    "returns_reference": false,
+                    "return_type": "void",
+                    "attributes": [],
+                    "parameters": [
+                        {
+                            "name": "response",
+                            "type": "Illuminate\\Testing\\TestResponse",
+                            "optional": false,
+                            "variadic": false,
+                            "by_reference": false,
+                            "default": {
+                                "unavailable": true
+                            },
+                            "attributes": []
+                        },
+                        {
+                            "name": "method",
+                            "type": "?Studio\\Gesso\\HttpMethod",
+                            "optional": true,
+                            "variadic": false,
+                            "by_reference": false,
+                            "default": null,
+                            "attributes": []
+                        },
+                        {
+                            "name": "path",
+                            "type": "?string",
+                            "optional": true,
+                            "variadic": false,
+                            "by_reference": false,
+                            "default": null,
                             "attributes": []
                         }
                     ]
@@ -8327,6 +8406,55 @@
                             "default": {
                                 "unavailable": true
                             },
+                            "attributes": []
+                        }
+                    ]
+                },
+                "validateOpenApiResponse": {
+                    "visibility": "private",
+                    "static": false,
+                    "final": false,
+                    "abstract": false,
+                    "returns_reference": false,
+                    "return_type": "void",
+                    "attributes": [],
+                    "parameters": [
+                        {
+                            "name": "response",
+                            "type": "Illuminate\\Testing\\TestResponse",
+                            "optional": false,
+                            "variadic": false,
+                            "by_reference": false,
+                            "default": {
+                                "unavailable": true
+                            },
+                            "attributes": []
+                        },
+                        {
+                            "name": "method",
+                            "type": "?Studio\\Gesso\\HttpMethod",
+                            "optional": true,
+                            "variadic": false,
+                            "by_reference": false,
+                            "default": null,
+                            "attributes": []
+                        },
+                        {
+                            "name": "path",
+                            "type": "?string",
+                            "optional": true,
+                            "variadic": false,
+                            "by_reference": false,
+                            "default": null,
+                            "attributes": []
+                        },
+                        {
+                            "name": "extraSkipResponseCodes",
+                            "type": "array",
+                            "optional": true,
+                            "variadic": false,
+                            "by_reference": false,
+                            "default": [],
                             "attributes": []
                         }
                     ]
@@ -9442,6 +9570,116 @@
         "constants": [],
         "properties": [],
         "methods": {
+            "assertOpenApiExchange": {
+                "static": false,
+                "final": false,
+                "abstract": false,
+                "returns_reference": false,
+                "return_type": "void",
+                "attributes": [],
+                "parameters": [
+                    {
+                        "name": "request",
+                        "type": "Psr\\Http\\Message\\RequestInterface",
+                        "optional": false,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": {
+                            "unavailable": true
+                        },
+                        "attributes": []
+                    },
+                    {
+                        "name": "response",
+                        "type": "Psr\\Http\\Message\\ResponseInterface",
+                        "optional": false,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": {
+                            "unavailable": true
+                        },
+                        "attributes": []
+                    }
+                ]
+            },
+            "assertOpenApiRequest": {
+                "static": false,
+                "final": false,
+                "abstract": false,
+                "returns_reference": false,
+                "return_type": "void",
+                "attributes": [],
+                "parameters": [
+                    {
+                        "name": "request",
+                        "type": "Psr\\Http\\Message\\RequestInterface",
+                        "optional": false,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": {
+                            "unavailable": true
+                        },
+                        "attributes": []
+                    },
+                    {
+                        "name": "responseStatusCode",
+                        "type": "?int",
+                        "optional": true,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": null,
+                        "attributes": []
+                    }
+                ]
+            },
+            "assertOpenApiResponse": {
+                "static": false,
+                "final": false,
+                "abstract": false,
+                "returns_reference": false,
+                "return_type": "void",
+                "attributes": [],
+                "parameters": [
+                    {
+                        "name": "response",
+                        "type": "Psr\\Http\\Message\\ResponseInterface",
+                        "optional": false,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": {
+                            "unavailable": true
+                        },
+                        "attributes": []
+                    },
+                    {
+                        "name": "request",
+                        "type": "?Psr\\Http\\Message\\RequestInterface",
+                        "optional": true,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": null,
+                        "attributes": []
+                    },
+                    {
+                        "name": "method",
+                        "type": "?string",
+                        "optional": true,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": null,
+                        "attributes": []
+                    },
+                    {
+                        "name": "path",
+                        "type": "?string",
+                        "optional": true,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": null,
+                        "attributes": []
+                    }
+                ]
+            },
             "assertPsr7ExchangeMatchesOpenApiSchema": {
                 "static": false,
                 "final": false,
@@ -9638,6 +9876,119 @@
                             "default": {
                                 "unavailable": true
                             },
+                            "attributes": []
+                        }
+                    ]
+                },
+                "assertOpenApiExchange": {
+                    "visibility": "public",
+                    "static": false,
+                    "final": false,
+                    "abstract": false,
+                    "returns_reference": false,
+                    "return_type": "void",
+                    "attributes": [],
+                    "parameters": [
+                        {
+                            "name": "request",
+                            "type": "Psr\\Http\\Message\\RequestInterface",
+                            "optional": false,
+                            "variadic": false,
+                            "by_reference": false,
+                            "default": {
+                                "unavailable": true
+                            },
+                            "attributes": []
+                        },
+                        {
+                            "name": "response",
+                            "type": "Psr\\Http\\Message\\ResponseInterface",
+                            "optional": false,
+                            "variadic": false,
+                            "by_reference": false,
+                            "default": {
+                                "unavailable": true
+                            },
+                            "attributes": []
+                        }
+                    ]
+                },
+                "assertOpenApiRequest": {
+                    "visibility": "public",
+                    "static": false,
+                    "final": false,
+                    "abstract": false,
+                    "returns_reference": false,
+                    "return_type": "void",
+                    "attributes": [],
+                    "parameters": [
+                        {
+                            "name": "request",
+                            "type": "Psr\\Http\\Message\\RequestInterface",
+                            "optional": false,
+                            "variadic": false,
+                            "by_reference": false,
+                            "default": {
+                                "unavailable": true
+                            },
+                            "attributes": []
+                        },
+                        {
+                            "name": "responseStatusCode",
+                            "type": "?int",
+                            "optional": true,
+                            "variadic": false,
+                            "by_reference": false,
+                            "default": null,
+                            "attributes": []
+                        }
+                    ]
+                },
+                "assertOpenApiResponse": {
+                    "visibility": "public",
+                    "static": false,
+                    "final": false,
+                    "abstract": false,
+                    "returns_reference": false,
+                    "return_type": "void",
+                    "attributes": [],
+                    "parameters": [
+                        {
+                            "name": "response",
+                            "type": "Psr\\Http\\Message\\ResponseInterface",
+                            "optional": false,
+                            "variadic": false,
+                            "by_reference": false,
+                            "default": {
+                                "unavailable": true
+                            },
+                            "attributes": []
+                        },
+                        {
+                            "name": "request",
+                            "type": "?Psr\\Http\\Message\\RequestInterface",
+                            "optional": true,
+                            "variadic": false,
+                            "by_reference": false,
+                            "default": null,
+                            "attributes": []
+                        },
+                        {
+                            "name": "method",
+                            "type": "?string",
+                            "optional": true,
+                            "variadic": false,
+                            "by_reference": false,
+                            "default": null,
+                            "attributes": []
+                        },
+                        {
+                            "name": "path",
+                            "type": "?string",
+                            "optional": true,
+                            "variadic": false,
+                            "by_reference": false,
+                            "default": null,
                             "attributes": []
                         }
                     ]
@@ -10981,6 +11332,123 @@
                     }
                 ]
             },
+            "assertOpenApiExchange": {
+                "static": false,
+                "final": false,
+                "abstract": false,
+                "returns_reference": false,
+                "return_type": "void",
+                "attributes": [],
+                "parameters": [
+                    {
+                        "name": "client",
+                        "type": "Symfony\\Component\\HttpKernel\\HttpKernelBrowser",
+                        "optional": false,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": {
+                            "unavailable": true
+                        },
+                        "attributes": []
+                    },
+                    {
+                        "name": "extraSkipResponseCodes",
+                        "type": "array",
+                        "optional": true,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": [],
+                        "attributes": []
+                    }
+                ]
+            },
+            "assertOpenApiRequest": {
+                "static": false,
+                "final": false,
+                "abstract": false,
+                "returns_reference": false,
+                "return_type": "void",
+                "attributes": [],
+                "parameters": [
+                    {
+                        "name": "request",
+                        "type": "Symfony\\Component\\HttpFoundation\\Request",
+                        "optional": false,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": {
+                            "unavailable": true
+                        },
+                        "attributes": []
+                    },
+                    {
+                        "name": "responseStatusCode",
+                        "type": "?int",
+                        "optional": true,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": null,
+                        "attributes": []
+                    }
+                ]
+            },
+            "assertOpenApiResponse": {
+                "static": false,
+                "final": false,
+                "abstract": false,
+                "returns_reference": false,
+                "return_type": "void",
+                "attributes": [],
+                "parameters": [
+                    {
+                        "name": "response",
+                        "type": "Symfony\\Component\\HttpFoundation\\Response",
+                        "optional": false,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": {
+                            "unavailable": true
+                        },
+                        "attributes": []
+                    },
+                    {
+                        "name": "request",
+                        "type": "?Symfony\\Component\\HttpFoundation\\Request",
+                        "optional": true,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": null,
+                        "attributes": []
+                    },
+                    {
+                        "name": "method",
+                        "type": "?string",
+                        "optional": true,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": null,
+                        "attributes": []
+                    },
+                    {
+                        "name": "path",
+                        "type": "?string",
+                        "optional": true,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": null,
+                        "attributes": []
+                    },
+                    {
+                        "name": "extraSkipResponseCodes",
+                        "type": "array",
+                        "optional": true,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": [],
+                        "attributes": []
+                    }
+                ]
+            },
             "assertRequestMatchesOpenApiSchema": {
                 "static": false,
                 "final": false,
@@ -11142,6 +11610,126 @@
                             "default": {
                                 "unavailable": true
                             },
+                            "attributes": []
+                        }
+                    ]
+                },
+                "assertOpenApiExchange": {
+                    "visibility": "public",
+                    "static": false,
+                    "final": false,
+                    "abstract": false,
+                    "returns_reference": false,
+                    "return_type": "void",
+                    "attributes": [],
+                    "parameters": [
+                        {
+                            "name": "client",
+                            "type": "Symfony\\Component\\HttpKernel\\HttpKernelBrowser",
+                            "optional": false,
+                            "variadic": false,
+                            "by_reference": false,
+                            "default": {
+                                "unavailable": true
+                            },
+                            "attributes": []
+                        },
+                        {
+                            "name": "extraSkipResponseCodes",
+                            "type": "array",
+                            "optional": true,
+                            "variadic": false,
+                            "by_reference": false,
+                            "default": [],
+                            "attributes": []
+                        }
+                    ]
+                },
+                "assertOpenApiRequest": {
+                    "visibility": "public",
+                    "static": false,
+                    "final": false,
+                    "abstract": false,
+                    "returns_reference": false,
+                    "return_type": "void",
+                    "attributes": [],
+                    "parameters": [
+                        {
+                            "name": "request",
+                            "type": "Symfony\\Component\\HttpFoundation\\Request",
+                            "optional": false,
+                            "variadic": false,
+                            "by_reference": false,
+                            "default": {
+                                "unavailable": true
+                            },
+                            "attributes": []
+                        },
+                        {
+                            "name": "responseStatusCode",
+                            "type": "?int",
+                            "optional": true,
+                            "variadic": false,
+                            "by_reference": false,
+                            "default": null,
+                            "attributes": []
+                        }
+                    ]
+                },
+                "assertOpenApiResponse": {
+                    "visibility": "public",
+                    "static": false,
+                    "final": false,
+                    "abstract": false,
+                    "returns_reference": false,
+                    "return_type": "void",
+                    "attributes": [],
+                    "parameters": [
+                        {
+                            "name": "response",
+                            "type": "Symfony\\Component\\HttpFoundation\\Response",
+                            "optional": false,
+                            "variadic": false,
+                            "by_reference": false,
+                            "default": {
+                                "unavailable": true
+                            },
+                            "attributes": []
+                        },
+                        {
+                            "name": "request",
+                            "type": "?Symfony\\Component\\HttpFoundation\\Request",
+                            "optional": true,
+                            "variadic": false,
+                            "by_reference": false,
+                            "default": null,
+                            "attributes": []
+                        },
+                        {
+                            "name": "method",
+                            "type": "?string",
+                            "optional": true,
+                            "variadic": false,
+                            "by_reference": false,
+                            "default": null,
+                            "attributes": []
+                        },
+                        {
+                            "name": "path",
+                            "type": "?string",
+                            "optional": true,
+                            "variadic": false,
+                            "by_reference": false,
+                            "default": null,
+                            "attributes": []
+                        },
+                        {
+                            "name": "extraSkipResponseCodes",
+                            "type": "array",
+                            "optional": true,
+                            "variadic": false,
+                            "by_reference": false,
+                            "default": [],
                             "attributes": []
                         }
                     ]

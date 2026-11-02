@@ -48,7 +48,7 @@ class ValidatesOpenApiSchemaTest extends TestCase
     {
         $response = $this->makeTestResponse('', 204);
 
-        $this->assertResponseMatchesOpenApiSchema(
+        $this->assertOpenApiResponse(
             $response,
             HttpMethod::DELETE,
             '/v1/pets/123',
@@ -60,7 +60,7 @@ class ValidatesOpenApiSchemaTest extends TestCase
     {
         $response = $this->makeTestResponse('', 200);
 
-        $this->assertResponseMatchesOpenApiSchema(
+        $this->assertOpenApiResponse(
             $response,
             HttpMethod::GET,
             '/v1/health',
@@ -76,7 +76,7 @@ class ValidatesOpenApiSchemaTest extends TestCase
         );
         $response = $this->makeTestResponse($body, 200);
 
-        $this->assertResponseMatchesOpenApiSchema(
+        $this->assertOpenApiResponse(
             $response,
             HttpMethod::GET,
             '/v1/pets',
@@ -91,7 +91,7 @@ class ValidatesOpenApiSchemaTest extends TestCase
 
         $this->expectException(AssertionFailedError::class);
 
-        $this->assertResponseMatchesOpenApiSchema(
+        $this->assertOpenApiResponse(
             $response,
             HttpMethod::GET,
             '/v1/pets',
@@ -106,7 +106,7 @@ class ValidatesOpenApiSchemaTest extends TestCase
         $this->expectException(AssertionFailedError::class);
         $this->expectExceptionMessage('Response body is empty');
 
-        $this->assertResponseMatchesOpenApiSchema(
+        $this->assertOpenApiResponse(
             $response,
             HttpMethod::GET,
             '/v1/pets',
@@ -120,7 +120,7 @@ class ValidatesOpenApiSchemaTest extends TestCase
         $response = $this->makeTestResponse($body, 200);
 
         try {
-            $this->assertResponseMatchesOpenApiSchema($response, HttpMethod::GET, '/v1/pets');
+            $this->assertOpenApiResponse($response, HttpMethod::GET, '/v1/pets');
             $this->fail('Expected the response assertion to fail.');
         } catch (AssertionFailedError $e) {
             $this->assertStringContainsString("Reproduce: curl -X GET '/v1/pets'", $e->getMessage());
@@ -136,7 +136,7 @@ class ValidatesOpenApiSchemaTest extends TestCase
         $this->expectException(AssertionFailedError::class);
         $this->expectExceptionMessage('spec: petstore-3.0');
 
-        $this->assertResponseMatchesOpenApiSchema(
+        $this->assertOpenApiResponse(
             $response,
             HttpMethod::GET,
             '/v1/pets',
@@ -152,7 +152,7 @@ class ValidatesOpenApiSchemaTest extends TestCase
         );
         $response = $this->makeTestResponse($body, 200);
 
-        $this->assertResponseMatchesOpenApiSchema(
+        $this->assertOpenApiResponse(
             $response,
             HttpMethod::GET,
             '/v1/pets',
@@ -177,7 +177,7 @@ class ValidatesOpenApiSchemaTest extends TestCase
         $this->expectException(AssertionFailedError::class);
         $this->expectExceptionMessage('must match the type');
 
-        $this->assertResponseMatchesOpenApiSchema(
+        $this->assertOpenApiResponse(
             $response,
             HttpMethod::GET,
             '/v1/pets',
@@ -196,7 +196,7 @@ class ValidatesOpenApiSchemaTest extends TestCase
         $this->expectException(AssertionFailedError::class);
         $this->expectExceptionMessage('must match the type');
 
-        $this->assertResponseMatchesOpenApiSchema(
+        $this->assertOpenApiResponse(
             $response,
             HttpMethod::GET,
             '/v1/pets',
@@ -215,7 +215,7 @@ class ValidatesOpenApiSchemaTest extends TestCase
         $this->expectException(AssertionFailedError::class);
         $this->expectExceptionMessage('must match the type');
 
-        $this->assertResponseMatchesOpenApiSchema(
+        $this->assertOpenApiResponse(
             $response,
             HttpMethod::GET,
             '/v1/pets',
@@ -231,7 +231,7 @@ class ValidatesOpenApiSchemaTest extends TestCase
             ['Content-Type' => 'text/html'],
         );
 
-        $this->assertResponseMatchesOpenApiSchema(
+        $this->assertOpenApiResponse(
             $response,
             HttpMethod::DELETE,
             '/v1/pets/123',
@@ -250,7 +250,7 @@ class ValidatesOpenApiSchemaTest extends TestCase
         $this->expectException(AssertionFailedError::class);
         $this->expectExceptionMessage("Response Content-Type 'text/html' is not defined for");
 
-        $this->assertResponseMatchesOpenApiSchema(
+        $this->assertOpenApiResponse(
             $response,
             HttpMethod::GET,
             '/v1/pets',
@@ -266,7 +266,7 @@ class ValidatesOpenApiSchemaTest extends TestCase
         );
         $response = $this->makeTestResponse($body, 200, ['Content-Type' => 'application/json']);
 
-        $this->assertResponseMatchesOpenApiSchema(
+        $this->assertOpenApiResponse(
             $response,
             HttpMethod::GET,
             '/v1/pets',
@@ -282,7 +282,7 @@ class ValidatesOpenApiSchemaTest extends TestCase
         );
         $response = $this->makeTestResponse($body, 200, ['Content-Type' => 'application/json; charset=utf-8']);
 
-        $this->assertResponseMatchesOpenApiSchema(
+        $this->assertOpenApiResponse(
             $response,
             HttpMethod::GET,
             '/v1/pets',
@@ -298,7 +298,7 @@ class ValidatesOpenApiSchemaTest extends TestCase
         );
         $response = $this->makeTestResponse($body, 200, ['Content-Type' => 'application/vnd.api+json']);
 
-        $this->assertResponseMatchesOpenApiSchema(
+        $this->assertOpenApiResponse(
             $response,
             HttpMethod::GET,
             '/v1/pets',
@@ -326,7 +326,7 @@ class ValidatesOpenApiSchemaTest extends TestCase
             "Response Content-Type 'application/jsonsomethingweird' is not defined",
         );
 
-        $this->assertResponseMatchesOpenApiSchema(
+        $this->assertOpenApiResponse(
             $response,
             HttpMethod::GET,
             '/v1/pets',
@@ -342,7 +342,7 @@ class ValidatesOpenApiSchemaTest extends TestCase
         );
         $response = $this->makeTestResponse($body, 200);
 
-        $this->assertResponseMatchesOpenApiSchema(
+        $this->assertOpenApiResponse(
             $response,
             HttpMethod::GET,
             '/v1/pets',
@@ -355,7 +355,7 @@ class ValidatesOpenApiSchemaTest extends TestCase
         $body = (string) json_encode(['error' => 'Pet already exists'], JSON_THROW_ON_ERROR);
         $response = $this->makeTestResponse($body, 409, ['Content-Type' => 'application/json']);
 
-        $this->assertResponseMatchesOpenApiSchema(
+        $this->assertOpenApiResponse(
             $response,
             HttpMethod::POST,
             '/v1/pets',
@@ -371,7 +371,7 @@ class ValidatesOpenApiSchemaTest extends TestCase
             ['Content-Type' => 'text/html'],
         );
 
-        $this->assertResponseMatchesOpenApiSchema(
+        $this->assertOpenApiResponse(
             $response,
             HttpMethod::POST,
             '/v1/pets',
@@ -400,7 +400,7 @@ class ValidatesOpenApiSchemaTest extends TestCase
 
         $response = $this->makeTestResponse('{"reasoning":{}}', 200);
 
-        $this->assertResponseMatchesOpenApiSchema($response, HttpMethod::POST, '/echo');
+        $this->assertOpenApiResponse($response, HttpMethod::POST, '/echo');
     }
 
     #[Test]
@@ -424,7 +424,7 @@ class ValidatesOpenApiSchemaTest extends TestCase
         if (!$valid) {
             $this->expectException(AssertionFailedError::class);
         }
-        $this->assertResponseMatchesOpenApiSchema($response, HttpMethod::POST, $path);
+        $this->assertOpenApiResponse($response, HttpMethod::POST, $path);
     }
 
     #[Test]

@@ -94,7 +94,7 @@ trait ValidatesOpenApiSchema
 
     /**
      * Receives the warning emitted when a test marked #[SkipOpenApi] still
-     * calls assertResponseMatchesOpenApiSchema() explicitly. The explicit
+     * calls assertOpenApiResponse() explicitly. The explicit
      * assertion always runs regardless — this is an advisory nudge that the
      * two signals contradict each other.
      *
@@ -152,7 +152,7 @@ trait ValidatesOpenApiSchema
 
     /**
      * Public bridge for the Pest expectation `expect($response)->toMatchOpenApiResponseSchema()`.
-     * Forwards to the existing protected {@see self::assertResponseMatchesOpenApiSchema()}
+     * Forwards to {@see self::validateOpenApiResponse()}
      * so dedup, skip-codes merging, and coverage recording are shared verbatim
      * with PHPUnit usage. When `$spec` is non-null, pins this single assertion
      * to that spec via {@see OpenApiSpecResolver::withExplicitOpenApiSpec()}.
@@ -169,13 +169,13 @@ trait ValidatesOpenApiSchema
         array $extraSkipResponseCodes = [],
     ): void {
         if ($spec === null) {
-            $this->assertResponseMatchesOpenApiSchema($response, $method, $path, $extraSkipResponseCodes);
+            $this->validateOpenApiResponse($response, $method, $path, $extraSkipResponseCodes);
 
             return;
         }
 
         // try/finally guards against the override leaking into the next
-        // assertion if assertResponseMatchesOpenApiSchema throws BEFORE
+        // assertion if assertOpenApiResponse throws BEFORE
         // resolveOpenApiSpec consumes the override. The resolver also
         // self-clears on read, so the finally is a no-op on the success
         // path — it only matters when an early throw catches the override
@@ -183,7 +183,7 @@ trait ValidatesOpenApiSchema
         $this->withExplicitOpenApiSpec($spec);
 
         try {
-            $this->assertResponseMatchesOpenApiSchema($response, $method, $path, $extraSkipResponseCodes);
+            $this->validateOpenApiResponse($response, $method, $path, $extraSkipResponseCodes);
         } finally {
             $this->withExplicitOpenApiSpec(null);
         }
@@ -195,7 +195,7 @@ trait ValidatesOpenApiSchema
      * the user explicitly opted in by writing the expectation. The
      * `#[SkipOpenApi]` attribute is NOT consulted here — the request side has
      * no auto-vs-explicit advisory pattern to mirror (unlike the response
-     * side, where `assertResponseMatchesOpenApiSchema()` warns when both
+     * side, where `assertOpenApiResponse()` warns when both
      * signals are present), so silence on the explicit request bridge is
      * the deliberate behaviour, not a bug.
      *
@@ -277,7 +277,7 @@ trait ValidatesOpenApiSchema
      * are validated as usual.
      *
      * Scoped to auto-assert only — explicit calls to
-     * assertResponseMatchesOpenApiSchema() still run, matching the convention
+     * assertOpenApiResponse() still run, matching the convention
      * already established by #[SkipOpenApi].
      */
     public function withoutValidation(): static
@@ -328,7 +328,7 @@ trait ValidatesOpenApiSchema
      *   raw TypeError.
      *
      * Scoped to auto-assert only. Explicit calls to
-     * assertResponseMatchesOpenApiSchema() emit an advisory warning because
+     * assertOpenApiResponse() emit an advisory warning because
      * the per-request flag is silently ignored there.
      *
      * @param array<int|string>|int|string ...$codes
@@ -376,6 +376,18 @@ trait ValidatesOpenApiSchema
         }
 
         return $this;
+    }
+
+    /**
+     * Validates the response against the spec. Method and path default to
+     * the request Laravel dispatched.
+     */
+    public function assertOpenApiResponse(
+        TestResponse $response,
+        ?HttpMethod $method = null,
+        ?string $path = null,
+    ): void {
+        $this->validateOpenApiResponse($response, $method, $path);
     }
 
     /**
@@ -505,12 +517,73 @@ trait ValidatesOpenApiSchema
 
         // #[SkipOpenApi] opts the test out of auto-assert entirely — no
         // validation, no coverage recording. Explicit calls to
-        // assertResponseMatchesOpenApiSchema() still run but emit a warning.
+        // assertOpenApiResponse() still run but emit a warning.
         if ($this->findSkipOpenApiAttribute() !== null) {
             return;
         }
 
-        $this->assertResponseMatchesOpenApiSchema($response, $method, $path, $extraSkipCodes);
+        $this->validateOpenApiResponse($response, $method, $path, $extraSkipCodes);
+    }
+
+    /**
+     * @deprecated Use assertOpenApiResponse($response). Removed in Gesso 3.0.
+     *
+     * @param string[] $extraSkipResponseCodes
+     */
+    protected function assertResponseMatchesOpenApiSchema(
+        TestResponse $response,
+        ?HttpMethod $method = null,
+        ?string $path = null,
+        array $extraSkipResponseCodes = [],
+    ): void {
+        Deprecations::notice(
+            id: 'trait.validates_open_api_schema.assert_response_matches_open_api_schema',
+            subject: 'Laravel assertResponseMatchesOpenApiSchema()',
+            replacement: 'assertOpenApiResponse($response)',
+            removedIn: '3.0',
+        );
+
+        $this->validateOpenApiResponse($response, $method, $path, $extraSkipResponseCodes);
+    }
+
+    private static function isAlreadyValidated(TestResponse $response, string $signature): bool
+    {
+        return self::$validatedResponses !== null &&
+            isset(self::$validatedResponses[$response][$signature]);
+    }
+
+    private static function markValidated(TestResponse $response, string $signature): void
+    {
+        self::$validatedResponses ??= new WeakMap();
+        $signatures = self::$validatedResponses[$response] ?? [];
+        $signatures[$signature] = true;
+        self::$validatedResponses[$response] = $signatures;
+    }
+
+    private static function normalizeSkipCode(int|string $code): string
+    {
+        // Int codes are returned as a bare string so the existing
+        // OpenApiResponseValidator::compileSkipPatterns() pipeline wraps them
+        // in ^(?:...)$ for exact-match semantics. Strings are already regex.
+        return is_int($code) ? (string) $code : $code;
+    }
+
+    /**
+     * Treat a slot as populated only when it carries a non-empty string value,
+     * matching {@see Validation\Request\SecurityValidator::checkApiKeySatisfied()}'s
+     * "missing" definition.
+     *
+     * Symfony's HeaderBag exposes header values as `list<?string>` (array
+     * branch); CookieBag and ParameterBag (query) expose plain strings (scalar
+     * branch). The array branch peels the first element before applying the
+     * same string check so all three bag shapes converge on the same
+     * "absent vs populated" verdict.
+     */
+    private static function slotIsAlreadyPopulated(mixed $value): bool
+    {
+        $first = is_array($value) ? ($value[array_key_first($value) ?? ''] ?? null) : $value;
+
+        return is_string($first) && $first !== '';
     }
 
     /**
@@ -518,7 +591,7 @@ trait ValidatesOpenApiSchema
      *                                         this call only; populated by maybeAutoAssertOpenApiSchema().
      *                                         Empty for explicit user calls.
      */
-    protected function assertResponseMatchesOpenApiSchema(
+    private function validateOpenApiResponse(
         TestResponse $response,
         ?HttpMethod $method = null,
         ?string $path = null,
@@ -605,46 +678,6 @@ trait ValidatesOpenApiSchema
             fn(): string => $this->responseReproduceCommand($resolvedMethod, $resolvedPath),
             $decodeFailureDemoted ? 'response.body' : null,
         );
-    }
-
-    private static function isAlreadyValidated(TestResponse $response, string $signature): bool
-    {
-        return self::$validatedResponses !== null &&
-            isset(self::$validatedResponses[$response][$signature]);
-    }
-
-    private static function markValidated(TestResponse $response, string $signature): void
-    {
-        self::$validatedResponses ??= new WeakMap();
-        $signatures = self::$validatedResponses[$response] ?? [];
-        $signatures[$signature] = true;
-        self::$validatedResponses[$response] = $signatures;
-    }
-
-    private static function normalizeSkipCode(int|string $code): string
-    {
-        // Int codes are returned as a bare string so the existing
-        // OpenApiResponseValidator::compileSkipPatterns() pipeline wraps them
-        // in ^(?:...)$ for exact-match semantics. Strings are already regex.
-        return is_int($code) ? (string) $code : $code;
-    }
-
-    /**
-     * Treat a slot as populated only when it carries a non-empty string value,
-     * matching {@see Validation\Request\SecurityValidator::checkApiKeySatisfied()}'s
-     * "missing" definition.
-     *
-     * Symfony's HeaderBag exposes header values as `list<?string>` (array
-     * branch); CookieBag and ParameterBag (query) expose plain strings (scalar
-     * branch). The array branch peels the first element before applying the
-     * same string check so all three bag shapes converge on the same
-     * "absent vs populated" verdict.
-     */
-    private static function slotIsAlreadyPopulated(mixed $value): bool
-    {
-        $first = is_array($value) ? ($value[array_key_first($value) ?? ''] ?? null) : $value;
-
-        return is_string($first) && $first !== '';
     }
 
     /**
@@ -1112,7 +1145,7 @@ trait ValidatesOpenApiSchema
     {
         $reason = $attribute->reason;
         $message = sprintf(
-            '%s::%s is marked #[SkipOpenApi%s] but called assertResponseMatchesOpenApiSchema() explicitly. '
+            '%s::%s is marked #[SkipOpenApi%s] but called assertOpenApiResponse() explicitly. '
             . 'The assertion will run. Remove the attribute or the explicit call to clarify intent.',
             static::class,
             $this->name(), // @phpstan-ignore method.notFound
@@ -1125,7 +1158,7 @@ trait ValidatesOpenApiSchema
     private function emitSkipResponseCodeWarning(): void
     {
         $message = sprintf(
-            '%s::%s set skipResponseCode() before calling assertResponseMatchesOpenApiSchema() explicitly. '
+            '%s::%s set skipResponseCode() before calling assertOpenApiResponse() explicitly. '
             . 'Per-request skip codes apply only to auto-assert; the explicit assertion ignores them. '
             . 'Remove the skipResponseCode() call or rely on auto-assert to clarify intent.',
             static::class,

@@ -39,7 +39,7 @@ use Studio\Gesso\Validation\Support\ValidationPolicyDefaults;
  * Attribute layers return the attribute's raw `name` as-is. `#[OpenApiSpec('')]`
  * is still "set" and short-circuits resolution to the empty string — the
  * consumer treats that as an error with a helpful message (see
- * `ValidatesOpenApiSchema::assertResponseMatchesOpenApiSchema`).
+ * `ValidatesOpenApiSchema::assertOpenApiResponse`).
  */
 trait OpenApiSpecResolver
 {

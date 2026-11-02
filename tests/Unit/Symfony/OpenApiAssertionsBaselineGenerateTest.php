@@ -46,7 +46,7 @@ final class OpenApiAssertionsBaselineGenerateTest extends TestCase
         $request = Request::create('/v1/pets', 'GET');
         $response = new JsonResponse(['data' => [['id' => 'not-an-integer', 'name' => 'Fido']]]);
 
-        $this->assertResponseMatchesOpenApiSchema($request, $response);
+        $this->assertOpenApiResponse($response, $request);
 
         $this->assertTrue($this->collector->baseline()->contains(new ViolationFingerprint(
             'petstore-3.0',
@@ -65,7 +65,7 @@ final class OpenApiAssertionsBaselineGenerateTest extends TestCase
     {
         $request = Request::create('/v1/pets/search?limit=not-an-integer', 'GET');
 
-        $this->assertRequestMatchesOpenApiSchema($request);
+        $this->assertOpenApiRequest($request);
 
         $this->assertSame(1, $this->collector->baseline()->count());
         $this->assertTrue($this->collector->baseline()->contains(new ViolationFingerprint(
@@ -87,8 +87,8 @@ final class OpenApiAssertionsBaselineGenerateTest extends TestCase
         // A baselined "required but missing" violation on `limit` must not
         // absorb a future type-mismatch violation on the same parameter:
         // the failing keyword is part of the fingerprint identity.
-        $this->assertRequestMatchesOpenApiSchema(Request::create('/v1/pets/search', 'GET'));
-        $this->assertRequestMatchesOpenApiSchema(Request::create('/v1/pets/search?limit=not-an-integer', 'GET'));
+        $this->assertOpenApiRequest(Request::create('/v1/pets/search', 'GET'));
+        $this->assertOpenApiRequest(Request::create('/v1/pets/search?limit=not-an-integer', 'GET'));
 
         $this->assertSame(2, $this->collector->baseline()->count());
         $this->assertTrue($this->collector->baseline()->contains(new ViolationFingerprint(
@@ -129,7 +129,7 @@ final class OpenApiAssertionsBaselineGenerateTest extends TestCase
         $request = Request::create('/v1/pets', 'GET');
         $response = new JsonResponse(['data' => $data]);
 
-        $this->assertResponseMatchesOpenApiSchema($request, $response);
+        $this->assertOpenApiResponse($response, $request);
 
         $this->assertTrue($this->collector->baseline()->contains(new ViolationFingerprint(
             'petstore-3.0',
@@ -149,7 +149,7 @@ final class OpenApiAssertionsBaselineGenerateTest extends TestCase
         $request = Request::create('/v1/pets', 'GET');
         $response = new Response('{invalid', 200, ['Content-Type' => 'application/json']);
 
-        $this->assertResponseMatchesOpenApiSchema($request, $response);
+        $this->assertOpenApiResponse($response, $request);
 
         // Exactly the decode fingerprint: the "body is empty" violation the
         // validator reports against the absent placeholder is an artifact of
@@ -178,7 +178,7 @@ final class OpenApiAssertionsBaselineGenerateTest extends TestCase
         $request = Request::create('/v1/unknown', 'GET');
         $response = new Response('{invalid', 418, ['Content-Type' => 'application/json']);
 
-        $this->assertResponseMatchesOpenApiSchema($request, $response);
+        $this->assertOpenApiResponse($response, $request);
 
         $this->assertSame(2, $this->collector->baseline()->count());
         $this->assertTrue($this->collector->baseline()->contains(new ViolationFingerprint(
@@ -213,7 +213,7 @@ final class OpenApiAssertionsBaselineGenerateTest extends TestCase
             content: '{invalid',
         );
 
-        $this->assertRequestMatchesOpenApiSchema($request);
+        $this->assertOpenApiRequest($request);
 
         $this->assertSame(1, $this->collector->baseline()->count());
         $this->assertTrue($this->collector->baseline()->contains(new ViolationFingerprint(
@@ -234,7 +234,7 @@ final class OpenApiAssertionsBaselineGenerateTest extends TestCase
         $request = Request::create('/v1/pets', 'GET');
         $response = new JsonResponse(['data' => [['id' => 1, 'name' => 'Fido']]]);
 
-        $this->assertResponseMatchesOpenApiSchema($request, $response);
+        $this->assertOpenApiResponse($response, $request);
 
         $this->assertSame(0, $this->collector->baseline()->count());
     }

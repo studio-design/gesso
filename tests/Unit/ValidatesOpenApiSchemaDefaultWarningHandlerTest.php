@@ -79,7 +79,7 @@ class ValidatesOpenApiSchemaDefaultWarningHandlerTest extends TestCase
             );
             $response = $this->makeTestResponse($body, 200);
 
-            $this->assertResponseMatchesOpenApiSchema($response, HttpMethod::GET, '/v1/pets');
+            $this->assertOpenApiResponse($response, HttpMethod::GET, '/v1/pets');
         } finally {
             restore_error_handler();
         }

@@ -53,11 +53,13 @@ use Studio\Gesso\Pest\Expectations;
 use Studio\Gesso\PHPUnit\AssertsNoEnumDrift;
 use Studio\Gesso\PHPUnit\ConsoleOutput;
 use Studio\Gesso\PHPUnit\InvalidStrictRequiredConfigurationException;
+use Studio\Gesso\Psr7\OpenApiAssertions as Psr7OpenApiAssertions;
 use Studio\Gesso\Schema\EnumDriftAsserter;
 use Studio\Gesso\SchemaContext;
 use Studio\Gesso\SkipOpenApiResolver;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Spec\RemoteSpecSource;
+use Studio\Gesso\Symfony\OpenApiAssertions as SymfonyOpenApiAssertions;
 use Studio\Gesso\Symfony\OpenApiHttpFake as SymfonyOpenApiHttpFake;
 use Studio\Gesso\Tests\Helpers\PublicApiInventory;
 use Studio\Gesso\Tests\Unit\Compatibility\Fixture\PublicApiImplicitConstructorFixture;
@@ -741,6 +743,17 @@ final class PublicApiBaselineTest extends TestCase
         $expected[ValidatesOpenApiSchema::class]['traits'] = [];
         // #662: additive raw-JSON request helper on the Laravel trait.
         $expected[ValidatesOpenApiSchema::class]['methods']['jsonRaw'] = $actual[ValidatesOpenApiSchema::class]['methods']['jsonRaw'];
+        // 2.10.0: the v3 assertion names, additive; the v2 names are deprecated.
+        foreach ([
+            ValidatesOpenApiSchema::class => ['assertOpenApiResponse'],
+            SymfonyOpenApiAssertions::class => ['assertOpenApiResponse', 'assertOpenApiRequest', 'assertOpenApiExchange'],
+            Psr7OpenApiAssertions::class => ['assertOpenApiResponse', 'assertOpenApiRequest', 'assertOpenApiExchange'],
+        ] as $trait => $methods) {
+            foreach ($methods as $method) {
+                $expected[$trait]['methods'][$method] = $actual[$trait]['methods'][$method];
+            }
+            ksort($expected[$trait]['methods']);
+        }
         ksort($expected[ValidatesOpenApiSchema::class]['methods']);
 
         // #444: response payload exploration adds three public types and one

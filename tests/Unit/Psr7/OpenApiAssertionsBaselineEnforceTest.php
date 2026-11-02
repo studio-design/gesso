@@ -44,10 +44,10 @@ final class OpenApiAssertionsBaselineEnforceTest extends TestCase
         $response = new Response(200, ['Content-Type' => 'application/json'], '"wrong"');
 
         $enforcer = $this->generateBaselineFrom(
-            fn() => $this->assertPsr7ResponseMatchesOpenApiSchema($request, $response),
+            fn() => $this->assertOpenApiResponse($response, $request),
         );
 
-        $this->assertPsr7ResponseMatchesOpenApiSchema($request, $response);
+        $this->assertOpenApiResponse($response, $request);
 
         $this->assertSame($enforcer->baseline()->count(), $enforcer->hitCount());
         $this->assertSame([], $enforcer->staleEntries());
@@ -62,7 +62,7 @@ final class OpenApiAssertionsBaselineEnforceTest extends TestCase
         $response = new Response(200, ['Content-Type' => 'application/json'], '"wrong"');
 
         try {
-            $this->assertPsr7ResponseMatchesOpenApiSchema($request, $response);
+            $this->assertOpenApiResponse($response, $request);
             $this->fail('Expected the assertion to fail on the unbaselined violation.');
         } catch (AssertionFailedError $e) {
             $this->assertStringContainsString('OpenAPI PSR-7 response validation failed', $e->getMessage());
@@ -85,10 +85,10 @@ final class OpenApiAssertionsBaselineEnforceTest extends TestCase
         );
 
         $enforcer = $this->generateBaselineFrom(
-            fn() => $this->assertPsr7ExchangeMatchesOpenApiSchema($request, $response),
+            fn() => $this->assertOpenApiExchange($request, $response),
         );
 
-        $this->assertPsr7ExchangeMatchesOpenApiSchema($request, $response);
+        $this->assertOpenApiExchange($request, $response);
 
         $this->assertSame($enforcer->baseline()->count(), $enforcer->hitCount());
     }
@@ -115,7 +115,7 @@ final class OpenApiAssertionsBaselineEnforceTest extends TestCase
         );
 
         $enforcer = $this->generateBaselineFrom(
-            fn() => $this->assertPsr7ExchangeMatchesOpenApiSchema($validRequest, $failingResponse),
+            fn() => $this->assertOpenApiExchange($validRequest, $failingResponse),
         );
         $this->assertGreaterThan(0, $enforcer->baseline()->count());
 
@@ -130,7 +130,7 @@ final class OpenApiAssertionsBaselineEnforceTest extends TestCase
         );
 
         try {
-            $this->assertPsr7ExchangeMatchesOpenApiSchema($failingRequest, $failingResponse);
+            $this->assertOpenApiExchange($failingRequest, $failingResponse);
             $this->fail('Expected the exchange to fail on the unbaselined request side.');
         } catch (AssertionFailedError) {
             $this->assertSame($enforcer->baseline()->count(), $enforcer->hitCount());
@@ -144,11 +144,11 @@ final class OpenApiAssertionsBaselineEnforceTest extends TestCase
         $response = new Response(200, ['Content-Type' => 'application/json'], '{invalid');
 
         $enforcer = $this->generateBaselineFrom(
-            fn() => $this->assertPsr7ResponseMatchesOpenApiSchema($request, $response),
+            fn() => $this->assertOpenApiResponse($response, $request),
         );
         $this->assertSame(1, $enforcer->baseline()->count());
 
-        $this->assertPsr7ResponseMatchesOpenApiSchema($request, $response);
+        $this->assertOpenApiResponse($response, $request);
 
         $this->assertSame(1, $enforcer->hitCount());
         $this->assertSame([], $enforcer->staleEntries());
@@ -160,16 +160,16 @@ final class OpenApiAssertionsBaselineEnforceTest extends TestCase
         $request = new Request('GET', 'https://example.test/body/scalar');
 
         $this->generateBaselineFrom(
-            fn() => $this->assertPsr7ResponseMatchesOpenApiSchema(
-                $request,
+            fn() => $this->assertOpenApiResponse(
                 new Response(200, ['Content-Type' => 'application/json'], '{invalid'),
+                $request,
             ),
         );
 
         try {
-            $this->assertPsr7ResponseMatchesOpenApiSchema(
-                $request,
+            $this->assertOpenApiResponse(
                 new Response(200, ['Content-Type' => 'application/json'], ''),
+                $request,
             );
             $this->fail('Expected the genuinely empty body to fail as a new violation.');
         } catch (AssertionFailedError $e) {

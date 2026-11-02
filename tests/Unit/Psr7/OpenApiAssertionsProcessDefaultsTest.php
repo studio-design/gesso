@@ -50,9 +50,9 @@ final class OpenApiAssertionsProcessDefaultsTest extends TestCase
     {
         ValidationPolicyDefaults::configure(skipResponseCodes: ['200'], defaultSpec: 'petstore-3.0');
 
-        $this->assertPsr7ResponseMatchesOpenApiSchema(
-            new Request('GET', 'https://example.test/v1/pets'),
+        $this->assertOpenApiResponse(
             new Response(200, ['Content-Type' => 'application/json'], '{"wrong_key":"value"}'),
+            new Request('GET', 'https://example.test/v1/pets'),
         );
 
         $this->assertArrayHasKey('GET /v1/pets', OpenApiCoverageTracker::getCovered()['petstore-3.0'] ?? []);
@@ -68,9 +68,9 @@ final class OpenApiAssertionsProcessDefaultsTest extends TestCase
         }
 
         try {
-            $this->assertPsr7ResponseMatchesOpenApiSchema(
-                new Request('GET', 'https://example.test/v1/pets'),
+            $this->assertOpenApiResponse(
                 new Response(200, ['Content-Type' => 'application/json'], json_encode(['data' => $items], JSON_THROW_ON_ERROR)),
+                new Request('GET', 'https://example.test/v1/pets'),
             );
             $this->fail('Expected schema validation to fail.');
         } catch (AssertionFailedError $e) {
@@ -83,9 +83,9 @@ final class OpenApiAssertionsProcessDefaultsTest extends TestCase
     {
         ValidationPolicyDefaults::configure(defaultSpec: 'petstore-3.0');
 
-        $this->assertPsr7ResponseMatchesOpenApiSchema(
-            new Request('GET', 'https://example.test/v1/pets'),
+        $this->assertOpenApiResponse(
             new Response(200, ['Content-Type' => 'application/json'], '{"data":[]}'),
+            new Request('GET', 'https://example.test/v1/pets'),
         );
 
         $this->assertArrayHasKey('petstore-3.0', OpenApiCoverageTracker::getCovered());
@@ -97,7 +97,7 @@ final class OpenApiAssertionsProcessDefaultsTest extends TestCase
         $this->expectException(AssertionFailedError::class);
         $this->expectExceptionMessage('No OpenAPI spec is configured');
 
-        $this->assertPsr7RequestMatchesOpenApiSchema(new Request('GET', 'https://example.test/v1/pets'));
+        $this->assertOpenApiRequest(new Request('GET', 'https://example.test/v1/pets'));
     }
 
     #[Test]

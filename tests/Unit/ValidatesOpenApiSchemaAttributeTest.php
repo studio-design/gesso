@@ -47,7 +47,7 @@ class ValidatesOpenApiSchemaAttributeTest extends TestCase
         );
         $response = $this->makeTestResponse($body, 200);
 
-        $this->assertResponseMatchesOpenApiSchema(
+        $this->assertOpenApiResponse(
             $response,
             HttpMethod::GET,
             '/v1/pets',
@@ -64,7 +64,7 @@ class ValidatesOpenApiSchemaAttributeTest extends TestCase
         );
         $response = $this->makeTestResponse($body, 200);
 
-        $this->assertResponseMatchesOpenApiSchema(
+        $this->assertOpenApiResponse(
             $response,
             HttpMethod::GET,
             '/v1/pets',

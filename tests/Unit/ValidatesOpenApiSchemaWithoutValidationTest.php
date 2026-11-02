@@ -147,7 +147,7 @@ class ValidatesOpenApiSchemaWithoutValidationTest extends TestCase
     #[Test]
     public function without_validation_does_not_affect_explicit_assert(): void
     {
-        // Explicit assertResponseMatchesOpenApiSchema() is the user's direct
+        // Explicit assertOpenApiResponse() is the user's direct
         // intent. It must run regardless of the skip flag — matching
         // #[SkipOpenApi]'s convention. The flag is consumed only on the
         // HTTP-call boundary (maybeAutoAssertOpenApiSchema).
@@ -157,14 +157,14 @@ class ValidatesOpenApiSchemaWithoutValidationTest extends TestCase
         $this->withoutValidation();
 
         $this->expectException(AssertionFailedError::class);
-        $this->assertResponseMatchesOpenApiSchema($response, HttpMethod::GET, '/v1/pets');
+        $this->assertOpenApiResponse($response, HttpMethod::GET, '/v1/pets');
     }
 
     #[Test]
     public function explicit_assert_after_without_validation_skip_still_validates_and_records(): void
     {
         // The skip flag suppresses auto-assert (including markValidated), so
-        // a later explicit assertResponseMatchesOpenApiSchema() on the same
+        // a later explicit assertOpenApiResponse() on the same
         // TestResponse must run validation from scratch and record coverage.
         // Without this, the WeakMap idempotency check could mistakenly swallow
         // the explicit call if the auto-assert path had silently marked the
@@ -182,7 +182,7 @@ class ValidatesOpenApiSchemaWithoutValidationTest extends TestCase
         $this->assertArrayNotHasKey('petstore-3.0', OpenApiCoverageTracker::getCovered());
 
         // Explicit call runs validation and records coverage.
-        $this->assertResponseMatchesOpenApiSchema($response, HttpMethod::GET, '/v1/pets');
+        $this->assertOpenApiResponse($response, HttpMethod::GET, '/v1/pets');
 
         $covered = OpenApiCoverageTracker::getCovered();
         $this->assertArrayHasKey('petstore-3.0', $covered);

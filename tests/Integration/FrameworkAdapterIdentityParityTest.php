@@ -90,8 +90,8 @@ final class FrameworkAdapterIdentityParityTest extends TestCase
         $request = Request::create('/v1/pets', 'GET');
         $response = new JsonResponse(['data' => [['id' => 1, 'name' => 'Fido', 'tag' => null]]]);
 
-        $this->assertRequestMatchesOpenApiSchema($request);
-        $this->assertResponseMatchesOpenApiSchema($request, $response);
+        $this->assertOpenApiRequest($request);
+        $this->assertOpenApiResponse($response, $request);
 
         $this->assertSame($this->baseline['symfony'], [
             'assertions' => ['request' => 'passed', 'response' => 'passed'],

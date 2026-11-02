@@ -73,7 +73,7 @@ class PetsApiTest extends WebTestCase
 }
 ```
 
-The trait adds three assertion methods: `assertResponseMatchesOpenApiSchema($request, $response)` for responses, `assertRequestMatchesOpenApiSchema($request)` for requests, and `assertClientMatchesOpenApiSchema($client)`, which runs both against the last call made by a test client.
+The trait adds three assertion methods: `assertOpenApiResponse($response, $request)` for responses, `assertOpenApiRequest($request)` for requests, and `assertOpenApiExchange($client)`, which runs both against the last call made by a test client.
 
 ### 4. The assertion
 
@@ -86,7 +86,7 @@ public function test_get_pets_matches_spec(): void
     $client->request('GET', '/pets');
 
     $this->assertResponseIsSuccessful();
-    $this->assertClientMatchesOpenApiSchema($client);
+    $this->assertOpenApiExchange($client);
 }
 ```
 
@@ -103,8 +103,8 @@ $response = new Response(
     ['Content-Type' => 'application/json'],
 );
 
-$this->assertRequestMatchesOpenApiSchema($request, 200);
-$this->assertResponseMatchesOpenApiSchema($request, $response);
+$this->assertOpenApiRequest($request, 200);
+$this->assertOpenApiResponse($response, $request);
 ```
 
 Both forms record spec coverage.
@@ -142,7 +142,7 @@ Yes. Gesso loads a spec file; it does not care how the file was produced. OpenAP
 The parsed spec is cached and reused across assertions in the same test run. Validation cost per assertion scales with response body size and schema depth, not the total number of tests.
 
 **Does it validate requests too, or only responses?**
-Both, but with separate calls. `assertClientMatchesOpenApiSchema($client)` validates the outbound request and then the response of the last client call. `assertResponseMatchesOpenApiSchema($request, $response)` checks only the response — the `Request` is there to supply the method and path. Use `assertRequestMatchesOpenApiSchema($request)` for the request side of hand-built pairs.
+Both, but with separate calls. `assertOpenApiExchange($client)` validates the outbound request and then the response of the last client call. `assertOpenApiResponse($response, $request)` checks only the response — the `Request` is there to supply the method and path. Use `assertOpenApiRequest($request)` for the request side of hand-built pairs.
 
 **Which OpenAPI versions are supported?**
 3.0.x, 3.1.x, and 3.2.x. `oneOf`/`anyOf`/`allOf`/`not` are validated in every supported dialect, and `discriminator` mappings are enforced by default rather than treated as a hint. OpenAPI 3.1/3.2 keep native JSON Schema 2020-12 semantics — `const`, `prefixItems`, `unevaluatedProperties`/`unevaluatedItems`, `dependentSchemas`/`dependentRequired`, `$dynamicRef`/`$dynamicAnchor`. OpenAPI 3.0 runs through a Draft 07 compatibility pipeline, so those 2020-12-only keywords warn instead of being enforced there.

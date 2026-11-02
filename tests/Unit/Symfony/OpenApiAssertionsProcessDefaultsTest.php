@@ -52,7 +52,7 @@ final class OpenApiAssertionsProcessDefaultsTest extends TestCase
     {
         ValidationPolicyDefaults::configure(skipResponseCodes: ['200'], defaultSpec: 'petstore-3.0');
 
-        $this->assertResponseMatchesOpenApiSchema(Request::create('/v1/pets', 'GET'), new JsonResponse(['wrong_key' => 'value']));
+        $this->assertOpenApiResponse(new JsonResponse(['wrong_key' => 'value']), Request::create('/v1/pets', 'GET'));
 
         $this->assertArrayHasKey('GET /v1/pets', OpenApiCoverageTracker::getCovered()['petstore-3.0'] ?? []);
     }
@@ -67,7 +67,7 @@ final class OpenApiAssertionsProcessDefaultsTest extends TestCase
         }
 
         try {
-            $this->assertResponseMatchesOpenApiSchema(Request::create('/v1/pets', 'GET'), new JsonResponse(['data' => $items]));
+            $this->assertOpenApiResponse(new JsonResponse(['data' => $items]), Request::create('/v1/pets', 'GET'));
             $this->fail('Expected schema validation to fail.');
         } catch (AssertionFailedError $e) {
             $this->assertLessThan(10, substr_count($e->getMessage(), "\n"));
@@ -79,7 +79,7 @@ final class OpenApiAssertionsProcessDefaultsTest extends TestCase
     {
         ValidationPolicyDefaults::configure(defaultSpec: 'petstore-3.0');
 
-        $this->assertResponseMatchesOpenApiSchema(Request::create('/v1/pets', 'GET'), new JsonResponse(['data' => []]));
+        $this->assertOpenApiResponse(new JsonResponse(['data' => []]), Request::create('/v1/pets', 'GET'));
 
         $this->assertArrayHasKey('petstore-3.0', OpenApiCoverageTracker::getCovered());
     }
@@ -93,7 +93,7 @@ final class OpenApiAssertionsProcessDefaultsTest extends TestCase
         $this->expectException(AssertionFailedError::class);
         $this->expectExceptionMessage('spec: petstore-3.0');
 
-        $this->assertResponseMatchesOpenApiSchema(Request::create('/v1/pets', 'GET'), new JsonResponse(['wrong_key' => 'value']));
+        $this->assertOpenApiResponse(new JsonResponse(['wrong_key' => 'value']), Request::create('/v1/pets', 'GET'));
     }
 
     #[Test]
@@ -101,10 +101,10 @@ final class OpenApiAssertionsProcessDefaultsTest extends TestCase
     {
         ValidationPolicyDefaults::configure(skipResponseCodes: [], defaultSpec: 'petstore-3.0');
 
-        $this->assertResponseMatchesOpenApiSchema(
-            Request::create('/v1/pets', 'GET'),
+        $this->assertOpenApiResponse(
             new JsonResponse(['wrong_key' => 'value']),
-            ['200'],
+            Request::create('/v1/pets', 'GET'),
+            extraSkipResponseCodes: ['200'],
         );
 
         $this->assertArrayHasKey('GET /v1/pets', OpenApiCoverageTracker::getCovered()['petstore-3.0'] ?? []);

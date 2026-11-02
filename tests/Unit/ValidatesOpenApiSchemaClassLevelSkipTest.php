@@ -76,7 +76,7 @@ class ValidatesOpenApiSchemaClassLevelSkipTest extends TestCase
         );
         $response = $this->makeTestResponse($body, 200);
 
-        $this->assertResponseMatchesOpenApiSchema($response, HttpMethod::GET, '/v1/pets');
+        $this->assertOpenApiResponse($response, HttpMethod::GET, '/v1/pets');
 
         // Warning fires with the class-level reason (no method-level attribute overrides it).
         $this->assertCount(1, $this->capturedWarnings);

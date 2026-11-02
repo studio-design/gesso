@@ -61,7 +61,7 @@ final class OpenApiAssertionsBaselineEnforceTest extends TestCase
         $request = Request::create('/v1/pets', 'GET');
         $response = new JsonResponse(['data' => [['id' => 'not-an-integer', 'name' => 'Fido']]]);
 
-        $this->assertResponseMatchesOpenApiSchema($request, $response);
+        $this->assertOpenApiResponse($response, $request);
 
         $this->assertSame(1, $this->enforcer->hitCount());
         $this->assertSame([], $this->enforcer->staleEntries());
@@ -71,9 +71,9 @@ final class OpenApiAssertionsBaselineEnforceTest extends TestCase
     public function a_new_violation_fails_with_the_full_unmodified_message(): void
     {
         try {
-            $this->assertResponseMatchesOpenApiSchema(
-                Request::create('/v1/pets', 'GET'),
+            $this->assertOpenApiResponse(
                 new JsonResponse(['data' => [['id' => 'not-an-integer', 'name' => 'Fido']]]),
+                Request::create('/v1/pets', 'GET'),
             );
             $this->fail('Expected the assertion to fail on the unbaselined violation.');
         } catch (AssertionFailedError $e) {
@@ -99,7 +99,7 @@ final class OpenApiAssertionsBaselineEnforceTest extends TestCase
         $response = new JsonResponse(['data' => [['id' => 'not-an-integer', 'name' => 123]]]);
 
         try {
-            $this->assertResponseMatchesOpenApiSchema($request, $response);
+            $this->assertOpenApiResponse($response, $request);
             $this->fail('Expected the assertion to fail on the unbaselined /data/*/name violation.');
         } catch (AssertionFailedError) {
             // The baselined /data/*/id entry occurred, so it is not stale.
@@ -123,7 +123,7 @@ final class OpenApiAssertionsBaselineEnforceTest extends TestCase
             parameter: 'limit',
         ));
 
-        $this->assertRequestMatchesOpenApiSchema(Request::create('/v1/pets/search', 'GET'));
+        $this->assertOpenApiRequest(Request::create('/v1/pets/search', 'GET'));
 
         $this->assertSame(1, $this->enforcer->hitCount());
     }
@@ -147,7 +147,7 @@ final class OpenApiAssertionsBaselineEnforceTest extends TestCase
 
         $this->expectException(AssertionFailedError::class);
 
-        $this->assertRequestMatchesOpenApiSchema(Request::create('/v1/pets/search?limit=not-an-integer', 'GET'));
+        $this->assertOpenApiRequest(Request::create('/v1/pets/search?limit=not-an-integer', 'GET'));
     }
 
     #[Test]
@@ -171,7 +171,7 @@ final class OpenApiAssertionsBaselineEnforceTest extends TestCase
         $request = Request::create('/v1/pets', 'GET');
         $response = new Response('{invalid', 200, ['Content-Type' => 'application/json']);
 
-        $this->assertResponseMatchesOpenApiSchema($request, $response);
+        $this->assertOpenApiResponse($response, $request);
 
         $this->assertSame(1, $this->enforcer->hitCount());
     }
@@ -198,7 +198,7 @@ final class OpenApiAssertionsBaselineEnforceTest extends TestCase
 
         $this->expectException(AssertionFailedError::class);
 
-        $this->assertResponseMatchesOpenApiSchema($request, $response);
+        $this->assertOpenApiResponse($response, $request);
     }
 
     #[Test]
@@ -208,7 +208,7 @@ final class OpenApiAssertionsBaselineEnforceTest extends TestCase
         $response = new Response('{invalid', 200, ['Content-Type' => 'application/json']);
 
         try {
-            $this->assertResponseMatchesOpenApiSchema($request, $response);
+            $this->assertOpenApiResponse($response, $request);
             $this->fail('Expected the decode failure to surface.');
         } catch (AssertionFailedError $e) {
             $this->assertStringContainsString('could not be parsed as JSON', $e->getMessage());
@@ -233,7 +233,7 @@ final class OpenApiAssertionsBaselineEnforceTest extends TestCase
         $request = Request::create('/v1/pets', 'GET');
         $response = new JsonResponse(['data' => [['id' => 1, 'name' => 'Fido']]]);
 
-        $this->assertResponseMatchesOpenApiSchema($request, $response);
+        $this->assertOpenApiResponse($response, $request);
 
         $this->assertSame(0, $this->enforcer->hitCount());
         $this->assertSame([$stale], $this->enforcer->staleEntries());
