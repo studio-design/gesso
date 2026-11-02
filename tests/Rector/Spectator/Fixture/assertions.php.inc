@@ -94,8 +94,7 @@ final class UserTest extends TestCase
 
     public function test_rejects_bad_payload(): void
     {
-        $this->postJson('/v1/users', [])
-            ->assertInvalidRequest();
+        $this->expectInvalidRequest()->postJson('/v1/users', []);
     }
 
     public function test_typed_response(\Illuminate\Testing\TestResponse $response): void

@@ -90,6 +90,14 @@ final class ConfigMigrateCliIntegrationTest extends TestCase
     }
 
     #[Test]
+    public function spectator_invalid_assertions_point_to_the_expectations(): void
+    {
+        [, , $stderr] = $this->migrate(self::FIXTURES . '/spectator', []);
+
+        $this->assertStringContainsString("26: ->assertInvalidRequest()\n    -> replace with \$this->expectInvalidRequest()", $stderr);
+    }
+
+    #[Test]
     public function kirschbaum_skip_response_code_calls_are_flagged_for_review(): void
     {
         [, , $stderr] = $this->migrate(self::FIXTURES . '/kirschbaum', []);
