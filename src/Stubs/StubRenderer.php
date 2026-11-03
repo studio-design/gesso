@@ -829,7 +829,7 @@ final class StubRenderer
         return [
             '',
             sprintf('$response->assertStatus(%d);', (int) $tuple['status_code']),
-            '$this->assertResponseMatchesOpenApiSchema($response);',
+            '$this->assertOpenApiResponse($response);',
         ];
     }
 
@@ -898,7 +898,7 @@ final class StubRenderer
         $lines[] = '    ' . ($noContent ? '[]' : $this->literal(['Content-Type' => $tuple['wire_content_type']], 1)) . ',';
         $lines[] = ');';
         $lines[] = '';
-        $lines[] = '$this->assertResponseMatchesOpenApiSchema($request, $response);';
+        $lines[] = '$this->assertOpenApiResponse($response, $request);';
 
         return $lines;
     }

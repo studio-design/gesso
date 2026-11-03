@@ -53,7 +53,7 @@ class ValidatesOpenApiSchemaBaselineGenerateTest extends TestCase
         );
         $response = $this->makeTestResponse($body, 200);
 
-        $this->assertResponseMatchesOpenApiSchema($response, HttpMethod::GET, '/v1/pets');
+        $this->assertOpenApiResponse($response, HttpMethod::GET, '/v1/pets');
 
         $this->assertTrue($this->collector->baseline()->contains(new ViolationFingerprint(
             'petstore-3.0',
@@ -72,7 +72,7 @@ class ValidatesOpenApiSchemaBaselineGenerateTest extends TestCase
     {
         $response = $this->makeTestResponse('{invalid', 200);
 
-        $this->assertResponseMatchesOpenApiSchema($response, HttpMethod::GET, '/v1/pets');
+        $this->assertOpenApiResponse($response, HttpMethod::GET, '/v1/pets');
 
         // Exactly the decode fingerprint — the absent-placeholder "body is
         // empty" artifact must not enter the baseline (it would absorb a
@@ -98,7 +98,7 @@ class ValidatesOpenApiSchemaBaselineGenerateTest extends TestCase
         // body-decode fingerprint, mirroring the PSR-7 adapter.
         $response = $this->makeTestResponse('{invalid', 418);
 
-        $this->assertResponseMatchesOpenApiSchema($response, HttpMethod::GET, '/v1/unknown');
+        $this->assertOpenApiResponse($response, HttpMethod::GET, '/v1/unknown');
 
         $this->assertSame(2, $this->collector->baseline()->count());
         $this->assertTrue($this->collector->baseline()->contains(new ViolationFingerprint(
@@ -132,7 +132,7 @@ class ValidatesOpenApiSchemaBaselineGenerateTest extends TestCase
         );
         $response = $this->makeTestResponse($body, 200);
 
-        $this->assertResponseMatchesOpenApiSchema($response, HttpMethod::GET, '/v1/pets');
+        $this->assertOpenApiResponse($response, HttpMethod::GET, '/v1/pets');
 
         $this->assertSame(0, $this->collector->baseline()->count());
     }

@@ -213,7 +213,7 @@ class GetPetsTest extends TestCase
     {
         $response = $this->get('/api/v1/pets');
         $response->assertOk();
-        $this->assertResponseMatchesOpenApiSchema($response);
+        $this->assertOpenApiResponse($response);
     }
 }
 ```
@@ -323,7 +323,7 @@ final class PetsTest extends WebTestCase
         $client->request('GET', '/api/v1/pets');
 
         // Validates both the request and the response of the last client call.
-        $this->assertClientMatchesOpenApiSchema($client);
+        $this->assertOpenApiExchange($client);
     }
 }
 ```
@@ -332,10 +332,10 @@ You can also pass HttpFoundation objects directly — useful when you are not dr
 
 ```php
 // Response only (the Request supplies the HTTP method and path):
-$this->assertResponseMatchesOpenApiSchema($request, $response);
+$this->assertOpenApiResponse($response, $request);
 
 // Request only (optionally pass the response status for the documented-4xx downgrade):
-$this->assertRequestMatchesOpenApiSchema($request, $response->getStatusCode());
+$this->assertOpenApiRequest($request, $response->getStatusCode());
 ```
 
 Spec resolution uses the same `#[OpenApiSpec]` attribute / `openApiSpec()` chain as the framework-agnostic usage below. Without either, set `spec.default` in `gesso.php`; the attribute and an `openApiSpec()` override still win. The `validation.max_errors` and skip-code hooks follow the same shared settings unless overridden. Spec files are still discovered through the [PHPUnit extension](#2-configure-the-phpunit-extension) (`spec.base_path`) or a direct `OpenApiSpecLoader::configure()` call.
@@ -511,7 +511,7 @@ Notes:
 
 ## Auto-assert every response
 
-Forgetting `$this->assertResponseMatchesOpenApiSchema($response)` in a test means the contract is silently unchecked. Enable `laravel.auto_assert` to validate every response produced by Laravel's HTTP helpers automatically — just include the trait:
+Forgetting `$this->assertOpenApiResponse($response)` in a test means the contract is silently unchecked. Enable `laravel.auto_assert` to validate every response produced by Laravel's HTTP helpers automatically — just include the trait:
 
 ```php
 // gesso.php
@@ -540,7 +540,7 @@ Notes:
 
 - Defaults to `false` so existing test suites keep their explicit-assert behavior.
 - Auto-assert hooks into `MakesHttpRequests::createTestResponse()`. Responses you construct manually (outside `$this->get()`, `$this->post()`, etc.) are not touched.
-- Idempotency is keyed on the `(spec, method, path)` tuple. Calling `assertResponseMatchesOpenApiSchema($response)` after auto-assert with the matching signature is a no-op. Calling it with a different `method`/`path` — or a different `#[OpenApiSpec]` — runs validation again.
+- Idempotency is keyed on the `(spec, method, path)` tuple. Calling `assertOpenApiResponse($response)` after auto-assert with the matching signature is a no-op. Calling it with a different `method`/`path` — or a different `#[OpenApiSpec]` — runs validation again.
 - When auto-assert fails, the exception is thrown from inside `$this->get(...)`, so any chained assertion on the same line (`$this->get(...)->assertOk()`) will not run. This is usually what you want — the schema failure takes precedence over status-code checks.
 - `auto_assert` accepts boolean-compatible values (`true`/`false`/`"1"`/`"0"`/`"true"`/`"false"`) so an environment-driven value works. Unrecognized values fail the test loudly with a clear message, not silently.
 - Streamed responses (`StreamedResponse`, binary downloads) cause `getContent()` to return `false`, which fails auto-assert with a clear message. If you enable `auto_assert` on tests that exercise streams, scope the config change per-test or fall back to explicit manual asserts.
@@ -569,9 +569,9 @@ The attribute can also be applied at the class level to skip every method in tha
 
 Notes:
 
-- `#[SkipOpenApi]` suppresses **auto-assert only**. Explicit calls to `assertResponseMatchesOpenApiSchema()` still run — the assertion is the user's direct intent.
-- When auto-assert is skipped and no explicit assertion is made, no coverage is recorded for that request (the endpoint is treated as uncovered in the report). If you call `assertResponseMatchesOpenApiSchema()` explicitly on a skipped test, validation runs and coverage is recorded as usual.
-- If a test is marked `#[SkipOpenApi]` and still calls `assertResponseMatchesOpenApiSchema()` explicitly, an advisory warning is written to `STDERR` and a user deprecation is raised to flag the contradictory intent. The assertion is not suppressed — fix the cause by removing either the attribute or the explicit call.
+- `#[SkipOpenApi]` suppresses **auto-assert only**. Explicit calls to `assertOpenApiResponse()` still run — the assertion is the user's direct intent.
+- When auto-assert is skipped and no explicit assertion is made, no coverage is recorded for that request (the endpoint is treated as uncovered in the report). If you call `assertOpenApiResponse()` explicitly on a skipped test, validation runs and coverage is recorded as usual.
+- If a test is marked `#[SkipOpenApi]` and still calls `assertOpenApiResponse()` explicitly, an advisory warning is written to `STDERR` and a user deprecation is raised to flag the contradictory intent. The assertion is not suppressed — fix the cause by removing either the attribute or the explicit call.
 - The attribute is resolved via reflection on the direct class only; a class-level `#[SkipOpenApi]` on an abstract parent is **not** inherited by subclasses. Apply the attribute on each concrete test class (or per method) instead.
 
 ## Per-request skip with `withoutValidation()`
@@ -605,7 +605,7 @@ Three scopes are available:
 Notes:
 
 - The flag applies to **exactly one HTTP call**. It is consumed on the next `$this->get()` / `$this->post()` / etc., then automatically resets — a second consecutive call validates normally.
-- Scoped to auto-assert only, like `#[SkipOpenApi]`. An explicit `assertResponseMatchesOpenApiSchema()` call still runs regardless of the flag.
+- Scoped to auto-assert only, like `#[SkipOpenApi]`. An explicit `assertOpenApiResponse()` call still runs regardless of the flag.
 - No coverage is recorded for the skipped request.
 - Each method returns `$this`, so both `$this->withoutValidation()->get(...)` and the step-by-step form (`$this->withoutValidation(); $this->get(...);`) work.
 
@@ -639,7 +639,7 @@ Notes:
 
 - **Merged** with `skip_response_codes` from config — per-request codes ADD to the config set rather than replacing it. With the default config, `skipResponseCode(404)` skips both `404` and every `5xx`.
 - **One HTTP call**: same consumption model as `withoutValidation()`. The codes are consumed on the next auto-assert attempt and reset, so the next call falls back to the config-level set.
-- **Auto-assert only**. Explicit `assertResponseMatchesOpenApiSchema()` calls ignore per-request codes — explicit calls are the user's direct intent.
+- **Auto-assert only**. Explicit `assertOpenApiResponse()` calls ignore per-request codes — explicit calls are the user's direct intent.
 - **Chainable**: returns `$this`. Multiple chained calls accumulate (`$this->skipResponseCode(404)->skipResponseCode(503)` registers both).
 
 ## Raw JSON request bodies with `jsonRaw()`

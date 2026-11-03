@@ -18,7 +18,7 @@ final class PetContractTest extends TestCase
         $response = $this->getJson('/pets');
 
         $response->assertOk();
-        $this->assertResponseMatchesOpenApiSchema($response);
+        $this->assertOpenApiResponse($response);
     }
 
     public function test_automatic_request_and_response_validation(): void

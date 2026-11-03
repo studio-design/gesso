@@ -37,7 +37,7 @@ Add `ValidatesOpenApiSchema` to your base test case, then assert a normal Larave
 ```php
 $response = $this->getJson('/pets');
 $response->assertOk();
-$this->assertResponseMatchesOpenApiSchema($response);
+$this->assertOpenApiResponse($response);
 ```
 
 The complete [`examples/laravel`](https://github.com/studio-design/gesso/tree/main/examples/laravel) fixture installs and runs in CI:

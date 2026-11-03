@@ -230,7 +230,7 @@ class GetPetsTest extends TestCase
     {
         $response = $this->get('/api/v1/pets');
         $response->assertOk();
-        $this->assertResponseMatchesOpenApiSchema($response);
+        $this->assertOpenApiResponse($response);
     }
 }
 ```

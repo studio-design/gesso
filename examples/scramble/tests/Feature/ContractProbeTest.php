@@ -21,14 +21,14 @@ final class ContractProbeTest extends TestCase
             'email' => 'probe@example.test',
         ]);
         $response->assertCreated();
-        $this->assertResponseMatchesOpenApiSchema($response);
+        $this->assertOpenApiResponse($response);
     }
 
     public function test_validation_error_matches_generated_contract(): void
     {
         $response = $this->postJson('/api/users', []);
         $response->assertUnprocessable();
-        $this->assertResponseMatchesOpenApiSchema($response);
+        $this->assertOpenApiResponse($response);
     }
 
     public function test_factory_backed_user_matches_generated_contract(): void
@@ -36,7 +36,7 @@ final class ContractProbeTest extends TestCase
         $user = User::factory()->create();
         $response = $this->getJson('/api/users/' . $user->id);
         $response->assertOk();
-        $this->assertResponseMatchesOpenApiSchema($response);
+        $this->assertOpenApiResponse($response);
     }
 
     public function test_authenticated_profile_matches_generated_contract(): void
@@ -44,20 +44,20 @@ final class ContractProbeTest extends TestCase
         $this->actingAs(User::factory()->create());
         $response = $this->getJson('/api/profile');
         $response->assertOk();
-        $this->assertResponseMatchesOpenApiSchema($response);
+        $this->assertOpenApiResponse($response);
     }
 
     public function test_unauthenticated_profile_matches_generated_contract(): void
     {
         $response = $this->getJson('/api/profile');
         $response->assertUnauthorized();
-        $this->assertResponseMatchesOpenApiSchema($response);
+        $this->assertOpenApiResponse($response);
     }
 
     public function test_missing_user_matches_generated_contract(): void
     {
         $response = $this->getJson('/api/users/999999');
         $response->assertNotFound();
-        $this->assertResponseMatchesOpenApiSchema($response);
+        $this->assertOpenApiResponse($response);
     }
 }

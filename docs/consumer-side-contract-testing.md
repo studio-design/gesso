@@ -101,7 +101,7 @@ final class PaymentServiceTest extends TestCase
         $this->app->make(PaymentService::class)->charge('cus_123', 2000);
 
         foreach (Http::recorded() as [$request, $response]) {
-            $this->assertPsr7ExchangeMatchesOpenApiSchema($request->toPsrRequest(), $response->toPsrResponse());
+            $this->assertOpenApiExchange($request->toPsrRequest(), $response->toPsrResponse());
         }
     }
 }
@@ -110,10 +110,10 @@ final class PaymentServiceTest extends TestCase
 To check a single stub before any request is sent, name the operation:
 
 ```php
-$this->assertPsr7ResponseForOperationMatchesOpenApiSchema(
-    'GET',
-    '/v1/charges/{id}',
+$this->assertOpenApiResponse(
     Http::response(['id' => 'ch_1'])->wait(),
+    method: 'GET',
+    path: '/v1/charges/ch_1',
 );
 ```
 

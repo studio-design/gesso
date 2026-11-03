@@ -196,6 +196,14 @@ nothing there.
 | 2.9.0 | `auto_validate_request` (Laravel config key) | `laravel.auto_validate_request` in `gesso.php` | 3.0 |
 | 2.9.0 | `auto_inject_dummy_credentials` (Laravel config key) | `laravel.auto_inject_dummy_credentials` in `gesso.php` | 3.0 |
 | 2.9.0 | `route_parity` (Laravel config key) | `laravel.route_parity` in `gesso.php` | 3.0 |
+| 2.10.0 | Laravel `assertResponseMatchesOpenApiSchema($response, ...)` (protected) | `assertOpenApiResponse($response, ...)` | 3.0 |
+| 2.10.0 | Symfony `assertResponseMatchesOpenApiSchema($request, $response, ...)` | `assertOpenApiResponse($response, $request, ...)` | 3.0 |
+| 2.10.0 | Symfony `assertRequestMatchesOpenApiSchema()` | `assertOpenApiRequest()` | 3.0 |
+| 2.10.0 | Symfony `assertClientMatchesOpenApiSchema()` | `assertOpenApiExchange()` | 3.0 |
+| 2.10.0 | PSR-7 `assertPsr7RequestMatchesOpenApiSchema()` | `assertOpenApiRequest()` | 3.0 |
+| 2.10.0 | PSR-7 `assertPsr7ResponseMatchesOpenApiSchema($request, $response)` | `assertOpenApiResponse($response, $request)` | 3.0 |
+| 2.10.0 | PSR-7 `assertPsr7ResponseForOperationMatchesOpenApiSchema($method, $path, $response)` | `assertOpenApiResponse($response, method: $method, path: $path)` | 3.0 |
+| 2.10.0 | PSR-7 `assertPsr7ExchangeMatchesOpenApiSchema()` | `assertOpenApiExchange()` | 3.0 |
 
 Enum drift bindings: a backed enum now matches the `components.schemas` entry
 named after its class (an `Enum` suffix on either side is ignored) in the

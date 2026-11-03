@@ -93,10 +93,10 @@ final class PrivateHelperDeprecationTest extends TestCase
     public function gesso_own_failures_do_not_notice(): void
     {
         try {
-            $this->assertPsr7ResponseForOperationMatchesOpenApiSchema(
-                'POST',
-                '/widgets/42',
+            $this->assertOpenApiResponse(
                 new Response(201, ['Content-Type' => 'application/json', 'X-Trace' => 'trace-1'], '{"id":"not-an-int"}'),
+                method: 'POST',
+                path: '/widgets/42',
             );
             $this->fail('expected the contract assertion to fail');
         } catch (AssertionFailedError $e) {

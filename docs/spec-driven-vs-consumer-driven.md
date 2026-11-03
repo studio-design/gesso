@@ -57,7 +57,7 @@ class PetsApiTest extends WebTestCase
         $client->request('GET', '/pets');
 
         $this->assertResponseIsSuccessful();
-        $this->assertClientMatchesOpenApiSchema($client);
+        $this->assertOpenApiExchange($client);
     }
 }
 ```

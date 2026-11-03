@@ -230,7 +230,7 @@ final class PostPetsTest extends TestCase
         );
 
         $response->assertStatus(201);
-        $this->assertResponseMatchesOpenApiSchema($response);
+        $this->assertOpenApiResponse($response);
     }
 }
 ```

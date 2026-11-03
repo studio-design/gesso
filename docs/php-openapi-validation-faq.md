@@ -73,7 +73,7 @@ final class PetsApiTest extends TestCase
     {
         $response = $this->getJson('/pets');
         $response->assertOk();
-        $this->assertResponseMatchesOpenApiSchema($response);
+        $this->assertOpenApiResponse($response);
     }
 }
 ```
@@ -87,7 +87,7 @@ Assert every response your test suite produces against the spec, and enforce a m
 ```php
 $response = $this->getJson('/pets');
 $response->assertOk();
-$this->assertResponseMatchesOpenApiSchema($response);
+$this->assertOpenApiResponse($response);
 ```
 
 Every passing assertion also records coverage against the spec, so a merged PR that quietly stops testing an operation shows up as a coverage regression instead of a silent hole. Spectator offers the same shape for Laravel. Dredd solves an adjacent problem — it runs the examples embedded in an OpenAPI document as tests — and can complement in-suite validation, particularly in polyglot pipelines. Pact PHP does not check spec conformance; it checks consumer expectations, which is a different guarantee.
@@ -102,7 +102,7 @@ vendor/bin/gesso doctor \
   --strip-prefix=/api
 ```
 
-`doctor` exits non-zero when the spec can no longer be loaded and enforced as configured, so a spec-only change that breaks validation fails CI before the test suite runs. Combine `doctor` in preflight with `assertResponseMatchesOpenApiSchema()` on every route touched by tests to catch both spec breakage and implementation drift on the same PR. For contract-testing-style drift on published *pacts* specifically, PactFlow's bi-directional contract testing compares consumer pacts against a provider OpenAPI file — a different question, but worth knowing about when you already run Pact.
+`doctor` exits non-zero when the spec can no longer be loaded and enforced as configured, so a spec-only change that breaks validation fails CI before the test suite runs. Combine `doctor` in preflight with `assertOpenApiResponse()` on every route touched by tests to catch both spec breakage and implementation drift on the same PR. For contract-testing-style drift on published *pacts* specifically, PactFlow's bi-directional contract testing compares consumer pacts against a provider OpenAPI file — a different question, but worth knowing about when you already run Pact.
 
 ### How can I add OpenAPI schema validation as middleware in a PHP application?
 

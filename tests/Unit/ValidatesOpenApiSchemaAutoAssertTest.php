@@ -158,8 +158,8 @@ class ValidatesOpenApiSchemaAutoAssertTest extends TestCase
         );
         $response = $this->makeTestResponse($body, 200);
 
-        $this->assertResponseMatchesOpenApiSchema($response, HttpMethod::GET, '/v1/pets');
-        $this->assertResponseMatchesOpenApiSchema($response, HttpMethod::GET, '/v1/pets');
+        $this->assertOpenApiResponse($response, HttpMethod::GET, '/v1/pets');
+        $this->assertOpenApiResponse($response, HttpMethod::GET, '/v1/pets');
 
         $covered = OpenApiCoverageTracker::getCovered();
         $this->assertArrayHasKey('petstore-3.0', $covered);
@@ -177,7 +177,7 @@ class ValidatesOpenApiSchemaAutoAssertTest extends TestCase
         );
         $response = $this->makeTestResponse($body, 200);
 
-        $this->assertResponseMatchesOpenApiSchema($response, HttpMethod::GET, '/v1/pets');
+        $this->assertOpenApiResponse($response, HttpMethod::GET, '/v1/pets');
         $countBefore = count(OpenApiCoverageTracker::getCovered()['petstore-3.0'] ?? []);
 
         $this->maybeAutoAssertOpenApiSchema($response, HttpMethod::GET, '/v1/pets');
@@ -200,7 +200,7 @@ class ValidatesOpenApiSchemaAutoAssertTest extends TestCase
         $response = $this->makeTestResponse($body, 200);
 
         $this->maybeAutoAssertOpenApiSchema($response, HttpMethod::GET, '/v1/pets');
-        $this->assertResponseMatchesOpenApiSchema($response, HttpMethod::GET, '/v1/pets');
+        $this->assertOpenApiResponse($response, HttpMethod::GET, '/v1/pets');
 
         $this->assertCount(1, OpenApiCoverageTracker::getCovered()['petstore-3.0'] ?? []);
     }
@@ -218,10 +218,10 @@ class ValidatesOpenApiSchemaAutoAssertTest extends TestCase
         // the tuple-keyed fix, this second call was silently skipped.
         $response = $this->makeTestResponse('', 204);
 
-        $this->assertResponseMatchesOpenApiSchema($response, HttpMethod::DELETE, '/v1/pets/123');
+        $this->assertOpenApiResponse($response, HttpMethod::DELETE, '/v1/pets/123');
 
         $this->expectException(AssertionFailedError::class);
-        $this->assertResponseMatchesOpenApiSchema($response, HttpMethod::GET, '/v1/pets');
+        $this->assertOpenApiResponse($response, HttpMethod::GET, '/v1/pets');
     }
 
     #[Test]
