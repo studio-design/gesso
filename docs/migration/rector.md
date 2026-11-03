@@ -9,6 +9,7 @@ migration. Config keys and CLI flags are not PHP code: rewrite those with
 | Gesso v2 → v3 | `GessoSetList::V3` | the PHP renames and removals in [Prepare for Gesso 3.0](v3.md) |
 | kirschbaum → Gesso | `GessoSetList::KIRSCHBAUM_TO_GESSO` | `kirschbaum-development/laravel-openapi-validator`'s trait |
 | Spectator → Gesso | `GessoSetList::SPECTATOR_TO_GESSO` | `hotmeteor/spectator`'s assertions |
+| osteel → Gesso | `GessoSetList::OSTEEL_TO_GESSO` | `osteel/openapi-httpfoundation-testing`'s validator calls |
 
 The constants live in `Studio\Gesso\Rector\GessoSetList`. They and the files
 they name are stable for 3.x. What each set rewrites is best-effort: review
@@ -31,7 +32,8 @@ vendor/bin/rector process tests --config vendor/studio-design/gesso/src/Rector/c
 
 For the kirschbaum set, pass
 `vendor/studio-design/gesso/src/Rector/config/kirschbaum-to-gesso.php`; for
-the Spectator set, `vendor/studio-design/gesso/src/Rector/config/spectator-to-gesso.php`.
+the Spectator set, `vendor/studio-design/gesso/src/Rector/config/spectator-to-gesso.php`;
+for the osteel set, `vendor/studio-design/gesso/src/Rector/config/osteel-to-gesso.php`.
 
 Run with `--config` and Rector writes fully qualified names and leaves the
 old `use` import in place; the code runs, but the import is stale. To get
@@ -150,3 +152,38 @@ Not rewritten, because the replacement needs a decision:
 `gesso config:migrate` lists every remaining call with its file and line.
 See [Spectator](from-other-validators.md#spectator) for the rest of the
 migration.
+
+## osteel/openapi-httpfoundation-testing
+
+Run [`gesso config:migrate`](../cli.md#migrate-a-configuration-configmigrate)
+first and name the spec in `gesso.php`; the set does not carry over the file
+passed to `ValidatorBuilder`.
+
+The set rewrites a call on a value typed as osteel's `ValidatorInterface` or
+`Validator`, by the static type of the message it validates:
+
+| osteel | Gesso |
+| --- | --- |
+| `$validator->validate($response, '/users/{id}', 'get')` | `$this->assertOpenApiResponse($response, method: 'get', path: '/users/{id}')` |
+| `$validator->post($response, '/users')` and the other method shortcuts | `$this->assertOpenApiResponse($response, method: 'POST', path: '/users')` |
+| `$validator->post($request, '/users')` | `$this->assertOpenApiRequest($request)`; Gesso finds the operation from the request |
+| `$this->assertTrue($validator->...)` | the assertion alone |
+| `expectException(ValidationException::class)` | `expectException(AssertionFailedError::class)` |
+| a class that used any of these | adds Gesso's Symfony trait for HttpFoundation messages, or the PSR-7 trait for PSR-7 messages |
+
+Not rewritten, because the replacement needs a decision:
+
+- `ValidatorBuilder::from...()->getValidator()` and the property or variable
+  that holds the validator: delete them once nothing calls them.
+- A call whose result is used, such as `$valid = $validator->get(...)` or a
+  `try`/`catch (ValidationException)`: Gesso's assertions return nothing and
+  fail the test instead.
+- A message or validator whose type Rector cannot see, such as an untyped
+  property: add the type, then run the set again.
+- A class with both HttpFoundation and PSR-7 messages, whose two Gesso traits
+  cannot be combined, and a class that already has `assertOpenApiResponse()`
+  from elsewhere, such as Gesso's Laravel trait.
+
+`gesso config:migrate` lists every remaining call with its file and line.
+See [osteel/openapi-httpfoundation-testing](from-other-validators.md#osteelopenapi-httpfoundation-testing)
+for the rest of the migration.

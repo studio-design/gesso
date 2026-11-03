@@ -23,6 +23,9 @@ final class GessoSetList
     /** hotmeteor/spectator → Gesso's Laravel trait. */
     public const string SPECTATOR_TO_GESSO = __DIR__ . '/config/spectator-to-gesso.php';
 
+    /** osteel/openapi-httpfoundation-testing → Gesso's Symfony or PSR-7 trait. */
+    public const string OSTEEL_TO_GESSO = __DIR__ . '/config/osteel-to-gesso.php';
+
     /** Constants only — no instances. */
     private function __construct() {}
 }
