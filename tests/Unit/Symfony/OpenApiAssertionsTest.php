@@ -53,7 +53,27 @@ final class OpenApiAssertionsTest extends TestCase
         $request = Request::create('/v1/pets', 'GET');
         $response = new JsonResponse(['data' => [['id' => 1, 'name' => 'Fido', 'tag' => null]]]);
 
-        $this->assertResponseMatchesOpenApiSchema($request, $response);
+        $this->assertOpenApiResponse($response, $request);
+    }
+
+    #[Test]
+    public function a_response_validates_against_a_method_and_path_without_a_request(): void
+    {
+        $this->assertOpenApiResponse(new JsonResponse(['data' => [['id' => 1, 'name' => 'Fido', 'tag' => null]]]), method: 'GET', path: '/v1/pets');
+
+        $this->expectException(AssertionFailedError::class);
+        $this->expectExceptionMessage('OpenAPI schema validation failed for GET /v1/pets');
+
+        $this->assertOpenApiResponse(new JsonResponse(['wrong_key' => 'value']), method: 'GET', path: '/v1/pets');
+    }
+
+    #[Test]
+    public function a_response_without_a_request_or_method_and_path_fails(): void
+    {
+        $this->expectException(AssertionFailedError::class);
+        $this->expectExceptionMessage('assertOpenApiResponse() needs the request, or both method: and path:.');
+
+        $this->assertOpenApiResponse(new JsonResponse([]), method: 'GET');
     }
 
     #[Test]
@@ -68,11 +88,11 @@ final class OpenApiAssertionsTest extends TestCase
         };
         $client = new HttpKernelBrowser($kernel);
         $client->request('POST', '/object', server: ['CONTENT_TYPE' => 'application/json'], content: '{}');
-        $this->assertClientMatchesOpenApiSchema($client);
+        $this->assertOpenApiExchange($client);
 
         $client->jsonRequest('POST', '/object', []);
         $this->expectException(AssertionFailedError::class);
-        $this->assertClientMatchesOpenApiSchema($client);
+        $this->assertOpenApiExchange($client);
     }
 
     #[Test]
@@ -84,7 +104,7 @@ final class OpenApiAssertionsTest extends TestCase
         if (!$valid) {
             $this->expectException(AssertionFailedError::class);
         }
-        $this->assertRequestMatchesOpenApiSchema($request);
+        $this->assertOpenApiRequest($request);
     }
 
     #[Test]
@@ -97,7 +117,7 @@ final class OpenApiAssertionsTest extends TestCase
         if (!$valid) {
             $this->expectException(AssertionFailedError::class);
         }
-        $this->assertResponseMatchesOpenApiSchema($request, $response);
+        $this->assertOpenApiResponse($response, $request);
     }
 
     #[Test]
@@ -109,7 +129,7 @@ final class OpenApiAssertionsTest extends TestCase
         if (!$valid) {
             $this->expectException(AssertionFailedError::class);
         }
-        $this->assertRequestMatchesOpenApiSchema($request);
+        $this->assertOpenApiRequest($request);
     }
 
     #[Test]
@@ -119,7 +139,7 @@ final class OpenApiAssertionsTest extends TestCase
         $request = Request::create('/v1/pets', 'GET');
         $response = new JsonResponse(['data' => [['id' => 1, 'name' => 'Fido']]]);
 
-        $this->assertResponseMatchesOpenApiSchema($request, $response);
+        $this->assertOpenApiResponse($response, $request);
 
         $covered = OpenApiCoverageTracker::getCovered();
         $this->assertArrayHasKey('GET /v1/pets', $covered['openapi-3.2'] ?? []);
@@ -135,7 +155,7 @@ final class OpenApiAssertionsTest extends TestCase
         $this->expectException(InvalidOpenApiSpecException::class);
         $this->expectExceptionMessage("Unsupported OpenAPI version: '3.3.0' (string)");
 
-        $this->assertResponseMatchesOpenApiSchema($request, $response);
+        $this->assertOpenApiResponse($response, $request);
     }
 
     #[Test]
@@ -147,7 +167,7 @@ final class OpenApiAssertionsTest extends TestCase
         $this->expectException(AssertionFailedError::class);
         $this->expectExceptionMessage('spec: petstore-3.0');
 
-        $this->assertResponseMatchesOpenApiSchema($request, $response);
+        $this->assertOpenApiResponse($response, $request);
     }
 
     #[Test]
@@ -156,7 +176,7 @@ final class OpenApiAssertionsTest extends TestCase
         $request = Request::create('/v1/pets/123', 'DELETE');
         $response = new Response('', 204);
 
-        $this->assertResponseMatchesOpenApiSchema($request, $response);
+        $this->assertOpenApiResponse($response, $request);
     }
 
     #[Test]
@@ -167,7 +187,7 @@ final class OpenApiAssertionsTest extends TestCase
 
         // 5xx matches the default skip pattern: body validation is skipped and
         // the result stays valid even though the body is off-schema.
-        $this->assertResponseMatchesOpenApiSchema($request, $response);
+        $this->assertOpenApiResponse($response, $request);
     }
 
     #[Test]
@@ -176,7 +196,7 @@ final class OpenApiAssertionsTest extends TestCase
         $request = Request::create('/v1/pets', 'POST');
         $response = new JsonResponse(['wrong_key' => 'value'], 409);
 
-        $this->assertResponseMatchesOpenApiSchema($request, $response, ['409']);
+        $this->assertOpenApiResponse($response, $request, extraSkipResponseCodes: ['409']);
     }
 
     #[Test]
@@ -185,7 +205,7 @@ final class OpenApiAssertionsTest extends TestCase
         $request = Request::create('/v1/pets', 'GET');
         $response = new JsonResponse(['data' => [['id' => 1, 'name' => 'Fido']]]);
 
-        $this->assertResponseMatchesOpenApiSchema($request, $response);
+        $this->assertOpenApiResponse($response, $request);
 
         $covered = OpenApiCoverageTracker::getCovered();
         $this->assertArrayHasKey('petstore-3.0', $covered);
@@ -197,7 +217,7 @@ final class OpenApiAssertionsTest extends TestCase
     {
         $request = Request::create('/v1/pets', 'GET');
 
-        $this->assertRequestMatchesOpenApiSchema($request);
+        $this->assertOpenApiRequest($request);
     }
 
     #[Test]
@@ -209,7 +229,7 @@ final class OpenApiAssertionsTest extends TestCase
         // stays distinguishable from the literal delimiter commas.
         $request = Request::create('/filter?role=owner%2Cadmin,member', 'GET');
 
-        $this->assertRequestMatchesOpenApiSchema($request);
+        $this->assertOpenApiRequest($request);
     }
 
     #[Test]
@@ -227,7 +247,7 @@ final class OpenApiAssertionsTest extends TestCase
             ['CONTENT_TYPE' => 'application/x-www-form-urlencoded'],
         );
 
-        $this->assertRequestMatchesOpenApiSchema($valid);
+        $this->assertOpenApiRequest($valid);
 
         $invalid = Request::create(
             '/form-required',
@@ -241,7 +261,7 @@ final class OpenApiAssertionsTest extends TestCase
         $this->expectException(AssertionFailedError::class);
         $this->expectExceptionMessage('/age');
 
-        $this->assertRequestMatchesOpenApiSchema($invalid);
+        $this->assertOpenApiRequest($invalid);
     }
 
     #[Test]
@@ -263,7 +283,7 @@ final class OpenApiAssertionsTest extends TestCase
         $this->expectException(AssertionFailedError::class);
         $this->expectExceptionMessage('avatar');
 
-        $this->assertRequestMatchesOpenApiSchema($request);
+        $this->assertOpenApiRequest($request);
     }
 
     #[Test]
@@ -284,7 +304,7 @@ final class OpenApiAssertionsTest extends TestCase
             ['CONTENT_TYPE' => 'multipart/form-data'],
         );
 
-        $this->assertRequestMatchesOpenApiSchema($request);
+        $this->assertOpenApiRequest($request);
     }
 
     #[Test]
@@ -303,7 +323,7 @@ final class OpenApiAssertionsTest extends TestCase
         $this->expectException(AssertionFailedError::class);
         $this->expectExceptionMessage('OpenAPI request validation failed for POST /v1/pets');
 
-        $this->assertRequestMatchesOpenApiSchema($request);
+        $this->assertOpenApiRequest($request);
     }
 
     #[Test]
@@ -320,7 +340,7 @@ final class OpenApiAssertionsTest extends TestCase
         );
 
         try {
-            $this->assertRequestMatchesOpenApiSchema($request);
+            $this->assertOpenApiRequest($request);
             $this->fail('Expected the request assertion to fail.');
         } catch (AssertionFailedError $e) {
             $this->assertStringContainsString('Reproduce: curl -X POST', $e->getMessage());
@@ -344,7 +364,7 @@ final class OpenApiAssertionsTest extends TestCase
         );
 
         try {
-            $this->assertRequestMatchesOpenApiSchema($request);
+            $this->assertOpenApiRequest($request);
             $this->fail('Expected the request assertion to fail.');
         } catch (AssertionFailedError $e) {
             $this->assertStringContainsString("-H 'authorization: <redacted>'", $e->getMessage());
@@ -360,7 +380,7 @@ final class OpenApiAssertionsTest extends TestCase
         $response = new JsonResponse(['unexpected' => 'shape']);
 
         try {
-            $this->assertResponseMatchesOpenApiSchema($request, $response);
+            $this->assertOpenApiResponse($response, $request);
             $this->fail('Expected the response assertion to fail.');
         } catch (AssertionFailedError $e) {
             $this->assertStringContainsString('Reproduce: curl -X GET', $e->getMessage());
@@ -384,7 +404,7 @@ final class OpenApiAssertionsTest extends TestCase
         );
 
         try {
-            $this->assertRequestMatchesOpenApiSchema($request);
+            $this->assertOpenApiRequest($request);
             $this->fail('Expected the request assertion to fail.');
         } catch (AssertionFailedError $e) {
             $this->assertStringContainsString("-H 'cookie: <redacted>'", $e->getMessage());
@@ -401,7 +421,7 @@ final class OpenApiAssertionsTest extends TestCase
         $this->expectException(AssertionFailedError::class);
         $this->expectExceptionMessage('unsupported HTTP method');
 
-        $this->assertResponseMatchesOpenApiSchema($request, $response);
+        $this->assertOpenApiResponse($response, $request);
     }
 
     #[Test]
@@ -409,7 +429,7 @@ final class OpenApiAssertionsTest extends TestCase
     {
         $request = Request::create('/v1/pets', 'GET');
 
-        $this->assertRequestMatchesOpenApiSchema($request);
+        $this->assertOpenApiRequest($request);
 
         $covered = OpenApiCoverageTracker::getCovered();
         $this->assertArrayHasKey('petstore-3.0', $covered);
@@ -427,7 +447,7 @@ final class OpenApiAssertionsTest extends TestCase
         $this->expectException(AssertionFailedError::class);
         $this->expectExceptionMessage('requires buffered responses');
 
-        $this->assertResponseMatchesOpenApiSchema($request, $response);
+        $this->assertOpenApiResponse($response, $request);
     }
 
     #[Test]
@@ -439,7 +459,7 @@ final class OpenApiAssertionsTest extends TestCase
         $this->expectException(AssertionFailedError::class);
         $this->expectExceptionMessage('Response body could not be parsed as JSON');
 
-        $this->assertResponseMatchesOpenApiSchema($request, $response);
+        $this->assertOpenApiResponse($response, $request);
     }
 
     #[Test]
@@ -453,7 +473,7 @@ final class OpenApiAssertionsTest extends TestCase
         $this->expectException(AssertionFailedError::class);
         $this->expectExceptionMessage('no Content-Type header was present on the request');
 
-        $this->assertRequestMatchesOpenApiSchema($request);
+        $this->assertOpenApiRequest($request);
     }
 
     #[Test]
@@ -470,7 +490,7 @@ final class OpenApiAssertionsTest extends TestCase
         $this->expectException(AssertionFailedError::class);
         $this->expectExceptionMessage('must match the type');
 
-        $this->assertResponseMatchesOpenApiSchema($request, $response);
+        $this->assertOpenApiResponse($response, $request);
     }
 
     #[Test]
@@ -486,7 +506,7 @@ final class OpenApiAssertionsTest extends TestCase
         $this->expectException(AssertionFailedError::class);
         $this->expectExceptionMessage('must match the type');
 
-        $this->assertResponseMatchesOpenApiSchema($request, $response);
+        $this->assertOpenApiResponse($response, $request);
     }
 
     #[Test]
@@ -503,7 +523,7 @@ final class OpenApiAssertionsTest extends TestCase
         $this->expectException(AssertionFailedError::class);
         $this->expectExceptionMessage('must match the type');
 
-        $this->assertRequestMatchesOpenApiSchema($request);
+        $this->assertOpenApiRequest($request);
     }
 
     #[Test]
@@ -512,7 +532,7 @@ final class OpenApiAssertionsTest extends TestCase
         $request = Request::create('/v1/pets/123', 'DELETE');
         $response = new Response('<html><body>done</body></html>', 204, ['Content-Type' => 'text/html']);
 
-        $this->assertResponseMatchesOpenApiSchema($request, $response);
+        $this->assertOpenApiResponse($response, $request);
     }
 
     #[Test]
@@ -537,7 +557,7 @@ final class OpenApiAssertionsTest extends TestCase
             "Response Content-Type 'application/jsonsomethingweird' is not defined",
         );
 
-        $this->assertResponseMatchesOpenApiSchema($request, $response);
+        $this->assertOpenApiResponse($response, $request);
     }
 
     #[Test]
@@ -547,7 +567,7 @@ final class OpenApiAssertionsTest extends TestCase
         $response = new JsonResponse(['data' => [['id' => 1, 'name' => 'Fido']]]);
         $response->headers->set('Content-Type', 'application/json; charset=utf-8');
 
-        $this->assertResponseMatchesOpenApiSchema($request, $response);
+        $this->assertOpenApiResponse($response, $request);
     }
 
     #[Test]
@@ -557,16 +577,16 @@ final class OpenApiAssertionsTest extends TestCase
 
         // The per-call ['409'] skip uses a one-off validator and must not
         // pollute the cached validator used by the next call.
-        $this->assertResponseMatchesOpenApiSchema(
-            $request,
+        $this->assertOpenApiResponse(
             new JsonResponse(['wrong_key' => 'value'], 409),
-            ['409'],
+            $request,
+            extraSkipResponseCodes: ['409'],
         );
 
         $this->expectException(AssertionFailedError::class);
-        $this->assertResponseMatchesOpenApiSchema(
-            $request,
+        $this->assertOpenApiResponse(
             new JsonResponse(['wrong_key' => 'value'], 409),
+            $request,
         );
     }
 
@@ -578,7 +598,7 @@ final class OpenApiAssertionsTest extends TestCase
         // validation, but a documented 422 response downgrades it to skipped.
         $request = Request::create('/exact-422', 'POST', [], [], [], ['CONTENT_TYPE' => 'application/json'], '{}');
 
-        $this->assertRequestMatchesOpenApiSchema($request, 422);
+        $this->assertOpenApiRequest($request, 422);
     }
 
     #[Test]
@@ -592,7 +612,7 @@ final class OpenApiAssertionsTest extends TestCase
         $this->expectException(AssertionFailedError::class);
         $this->expectExceptionMessage('OpenAPI request validation failed for POST /no-4xx');
 
-        $this->assertRequestMatchesOpenApiSchema($request, 422);
+        $this->assertOpenApiRequest($request, 422);
     }
 
     #[Test]
@@ -603,7 +623,7 @@ final class OpenApiAssertionsTest extends TestCase
         $request = Request::create('/exact-422', 'POST', [], [], [], ['CONTENT_TYPE' => 'application/json'], '{}');
 
         $this->expectException(AssertionFailedError::class);
-        $this->assertRequestMatchesOpenApiSchema($request, 200);
+        $this->assertOpenApiRequest($request, 200);
     }
 
     #[Test]
@@ -623,11 +643,11 @@ final class OpenApiAssertionsTest extends TestCase
             '{"reasoning":{}}',
         );
 
-        $this->assertRequestMatchesOpenApiSchema($request);
+        $this->assertOpenApiRequest($request);
 
         $response = new Response('{"reasoning":{}}', 200, ['Content-Type' => 'application/json']);
 
-        $this->assertResponseMatchesOpenApiSchema($request, $response);
+        $this->assertOpenApiResponse($response, $request);
     }
 
     #[Test]
@@ -638,11 +658,11 @@ final class OpenApiAssertionsTest extends TestCase
         $request = Request::create('/form-response', 'GET');
         $headers = ['Content-Type' => 'application/x-www-form-urlencoded'];
 
-        $this->assertResponseMatchesOpenApiSchema($request, new Response('token=abc', 200, $headers));
+        $this->assertOpenApiResponse(new Response('token=abc', 200, $headers), $request);
 
         $this->expectException(AssertionFailedError::class);
         $this->expectExceptionMessage('/expires_in');
 
-        $this->assertResponseMatchesOpenApiSchema($request, new Response('token=abc&expires_in=soon', 200, $headers));
+        $this->assertOpenApiResponse(new Response('token=abc&expires_in=soon', 200, $headers), $request);
     }
 }

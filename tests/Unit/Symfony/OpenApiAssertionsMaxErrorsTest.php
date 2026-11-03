@@ -58,7 +58,7 @@ final class OpenApiAssertionsMaxErrorsTest extends TestCase
         $caught = null;
 
         try {
-            $this->assertResponseMatchesOpenApiSchema($request, $response);
+            $this->assertOpenApiResponse($response, $request);
         } catch (AssertionFailedError $e) {
             $caught = $e;
         }

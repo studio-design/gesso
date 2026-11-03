@@ -203,7 +203,7 @@ it('round-trips lowercase HTTP method strings via strtoupper', function (): void
 
 it('fails loudly when spec: is an empty string', function (): void {
     // Layer-0 explicit override accepts the empty string as a valid value
-    // (it short-circuits resolution to ''), then assertResponseMatchesOpenApiSchema
+    // (it short-circuits resolution to ''), then assertOpenApiResponse
     // surfaces the standard "openApiSpec() must return a non-empty spec name"
     // error from the trait. Real footgun for users null-coalescing optional
     // config; pin the current behaviour so a future change doesn't silently

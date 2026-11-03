@@ -55,7 +55,7 @@ final class OpenApiAssertionsJsonOutputTest extends TestCase
         $response = new JsonResponse(['data' => [['id' => 'not-an-integer', 'name' => 'Fido']]]);
 
         try {
-            $this->assertResponseMatchesOpenApiSchema($request, $response);
+            $this->assertOpenApiResponse($response, $request);
             $this->fail('Expected the Symfony assertion to fail.');
         } catch (AssertionFailedError $e) {
             [$header, $document] = explode("\n", $e->getMessage(), 2);
@@ -81,7 +81,7 @@ final class OpenApiAssertionsJsonOutputTest extends TestCase
         $request = Request::create('/v1/pets/search?limit=not-an-integer', 'GET');
 
         try {
-            $this->assertRequestMatchesOpenApiSchema($request);
+            $this->assertOpenApiRequest($request);
             $this->fail('Expected the Symfony request assertion to fail.');
         } catch (AssertionFailedError $e) {
             [$header, $document] = explode("\n", $e->getMessage(), 2);
@@ -105,7 +105,7 @@ final class OpenApiAssertionsJsonOutputTest extends TestCase
         $response = new JsonResponse(['data' => [['id' => 'not-an-integer', 'name' => 'Fido']]]);
 
         try {
-            $this->assertResponseMatchesOpenApiSchema($request, $response);
+            $this->assertOpenApiResponse($response, $request);
             $this->fail('Expected the Symfony assertion to fail.');
         } catch (AssertionFailedError $e) {
             $this->assertStringContainsString('Reproduce: curl -X GET', $e->getMessage());

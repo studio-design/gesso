@@ -50,14 +50,14 @@ class PetsApiTest extends TestCase
             'Content-Type' => 'application/json',
         ]);
 
-        $this->assertResponseMatchesOpenApiSchema($request, $response);
+        $this->assertOpenApiResponse($response, $request);
     }
 }
 ```
 
-The trait adds three assertions: `assertResponseMatchesOpenApiSchema($request, $response)`,
-`assertRequestMatchesOpenApiSchema($request)`, and
-`assertClientMatchesOpenApiSchema($client)`, which runs both against the last
+The trait adds three assertions: `assertOpenApiResponse($response, $request)`,
+`assertOpenApiRequest($request)`, and
+`assertOpenApiExchange($client)`, which runs both against the last
 client call.
 
 Run the CI-tested [`examples/symfony`](https://github.com/studio-design/gesso/tree/main/examples/symfony) fixture:
@@ -66,4 +66,4 @@ Run the CI-tested [`examples/symfony`](https://github.com/studio-design/gesso/tr
 composer test
 ```
 
-For a full application, call `assertClientMatchesOpenApiSchema($client)` after `KernelBrowser::request()`. Both forms record coverage.
+For a full application, call `assertOpenApiExchange($client)` after `KernelBrowser::request()`. Both forms record coverage.

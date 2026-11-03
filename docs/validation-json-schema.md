@@ -60,7 +60,7 @@ OpenAPI schema validation failed for GET /v1/pets (spec: front):
 ```
 
 Everything after the first line parses as JSON. The one exception is the PSR-7
-exchange assertion (`assertPsr7ExchangeMatchesOpenApiSchema()`), which
+exchange assertion (`assertOpenApiExchange()`), which
 validates two results at once: it emits one `[request]` / `[response]` label
 line plus document per *failing* side, each block parseable on its own and all
 blocks sharing the same `reproduce_command`.

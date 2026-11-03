@@ -59,7 +59,7 @@ expect($response)->toMatchOpenApiResponseSchema(skipResponseCodes: ['503']);
 expect($response)->toMatchOpenApiResponseSchema(method: 'GET', path: '/api/v1/pets');
 ```
 
-The `spec:` override is single-shot: the next assertion in the same test method falls back to attribute / config resolution. Coverage recording, WeakMap dedup, and the `#[SkipOpenApi]` advisory warning all behave the same as the PHPUnit `assertResponseMatchesOpenApiSchema()` flow.
+The `spec:` override is single-shot: the next assertion in the same test method falls back to attribute / config resolution. Coverage recording, WeakMap dedup, and the `#[SkipOpenApi]` advisory warning all behave the same as the PHPUnit `assertOpenApiResponse()` flow.
 
 ## `expect(...)->toMatchOpenApiRequestSchema()`
 
@@ -73,7 +73,7 @@ it('accepts a documented request body shape', function () {
 });
 ```
 
-The same `spec: / method: / path:` keyword arguments are accepted. The request bridge always runs (it bypasses the `auto_validate_request` config gate and `#[SkipOpenApi]`) because the explicit expectation reads as the user's direct intent. The response side warns when `#[SkipOpenApi]` and an explicit `assertResponseMatchesOpenApiSchema()` collide; the request side has no auto-vs-explicit advisory pattern to mirror, so silence on `expect($request)->toMatchOpenApiRequestSchema()` is the deliberate behaviour.
+The same `spec: / method: / path:` keyword arguments are accepted. The request bridge always runs (it bypasses the `auto_validate_request` config gate and `#[SkipOpenApi]`) because the explicit expectation reads as the user's direct intent. The response side warns when `#[SkipOpenApi]` and an explicit `assertOpenApiResponse()` collide; the request side has no auto-vs-explicit advisory pattern to mirror, so silence on `expect($request)->toMatchOpenApiRequestSchema()` is the deliberate behaviour.
 
 ## Constraints (v2)
 

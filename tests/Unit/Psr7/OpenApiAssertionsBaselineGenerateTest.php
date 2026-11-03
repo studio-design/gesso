@@ -48,7 +48,7 @@ final class OpenApiAssertionsBaselineGenerateTest extends TestCase
         $request = new Request('GET', 'https://example.test/body/scalar');
         $response = new Response(200, ['Content-Type' => 'application/json'], '"wrong"');
 
-        $this->assertPsr7ResponseMatchesOpenApiSchema($request, $response);
+        $this->assertOpenApiResponse($response, $request);
 
         $entries = $this->collector->baseline()->sorted();
         $this->assertCount(1, $entries);
@@ -73,7 +73,7 @@ final class OpenApiAssertionsBaselineGenerateTest extends TestCase
             '{"id":"not-an-integer"}',
         );
 
-        $this->assertPsr7ExchangeMatchesOpenApiSchema($request, $response);
+        $this->assertOpenApiExchange($request, $response);
 
         $categories = array_map(
             static fn(ViolationFingerprint $fingerprint): string => $fingerprint->category,
@@ -90,7 +90,7 @@ final class OpenApiAssertionsBaselineGenerateTest extends TestCase
         $request = new Request('GET', 'https://example.test/body/scalar');
         $response = new Response(200, ['Content-Type' => 'application/json'], '{invalid');
 
-        $this->assertPsr7ResponseMatchesOpenApiSchema($request, $response);
+        $this->assertOpenApiResponse($response, $request);
 
         // Exactly the adapter's parse fingerprint — the validator ran against
         // the undecodable raw body, so its schema verdicts are artifacts of
@@ -112,7 +112,7 @@ final class OpenApiAssertionsBaselineGenerateTest extends TestCase
             new NoSeekStream(Utils::streamFor('123')),
         );
 
-        $this->assertPsr7ResponseMatchesOpenApiSchema($request, $response);
+        $this->assertOpenApiResponse($response, $request);
 
         // The validator saw the absent placeholder, so its "body is empty"
         // verdict is an artifact; only the parse fingerprint remains.
@@ -128,7 +128,7 @@ final class OpenApiAssertionsBaselineGenerateTest extends TestCase
         $request = new Request('GET', 'https://example.test/body/scalar');
         $response = new Response(200, ['Content-Type' => 'application/json'], '');
 
-        $this->assertPsr7ResponseMatchesOpenApiSchema($request, $response);
+        $this->assertOpenApiResponse($response, $request);
 
         $entries = $this->collector->baseline()->sorted();
         $this->assertCount(1, $entries);
@@ -150,7 +150,7 @@ final class OpenApiAssertionsBaselineGenerateTest extends TestCase
         );
         $response = new Response(201);
 
-        $this->assertPsr7ExchangeMatchesOpenApiSchema($request, $response);
+        $this->assertOpenApiExchange($request, $response);
 
         $entries = $this->collector->baseline()->sorted();
         $this->assertCount(1, $entries);
@@ -164,7 +164,7 @@ final class OpenApiAssertionsBaselineGenerateTest extends TestCase
         $request = new Request('GET', 'https://example.test/body/scalar');
         $response = new Response(200, ['Content-Type' => 'application/json'], '123');
 
-        $this->assertPsr7ExchangeMatchesOpenApiSchema($request, $response);
+        $this->assertOpenApiExchange($request, $response);
 
         $this->assertSame(0, $this->collector->baseline()->count());
     }

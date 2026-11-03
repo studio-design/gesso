@@ -9,9 +9,9 @@ read each intermediate section in order — behavioural changes compose.
 
 ## From v2.9.x to v3.0.0
 
-v3.0 removes the surfaces deprecated during v2. Upgrade to v2.9 first and run
-your suite with deprecations visible: every removal below emitted a
-`[Gesso deprecation]` notice there, except rows marked *static only*. See
+v3.0 removes the surfaces deprecated during v2. Upgrade to the latest v2.x
+first and run your suite with deprecations visible: every removal below
+emitted a `[Gesso deprecation]` notice there, except rows marked *static only*. See
 [`docs/migration/v3.md`](docs/migration/v3.md) for the step-by-step guide.
 Most of the PHP renames and removals below can be rewritten with the Rector
 set `Studio\Gesso\Rector\GessoSetList::V3` (needs `rector/rector` ^2.7):
@@ -195,6 +195,34 @@ returns. To keep per-enum source files, `$ref` them from `components.schemas`.
 A file path left in the attribute is read as a component name and fails as
 `ComponentNotFound`. The attribute with no argument fails as `AttributeInvalid`.
 See [enum drift detection](docs/enum-drift.md#binding-by-component-name).
+
+### Assertion methods
+
+The assertion methods of the Laravel, Symfony, and PSR-7 traits share three
+names: `assertOpenApiResponse()`, `assertOpenApiRequest()`, and
+`assertOpenApiExchange()` (deprecated in 2.10.0, which already has the new
+names). The response comes first; the request is optional.
+
+| v2 | v3 |
+| --- | --- |
+| Laravel `assertResponseMatchesOpenApiSchema($response, ...)` | `assertOpenApiResponse($response, ...)`, now public |
+| Symfony `assertResponseMatchesOpenApiSchema($request, $response, ...)` | `assertOpenApiResponse($response, $request, ...)` |
+| Symfony `assertRequestMatchesOpenApiSchema($request, ...)` | `assertOpenApiRequest($request, ...)` |
+| Symfony `assertClientMatchesOpenApiSchema($client, ...)` | `assertOpenApiExchange($client, ...)` |
+| PSR-7 `assertPsr7RequestMatchesOpenApiSchema($request, ...)` | `assertOpenApiRequest($request, ...)` |
+| PSR-7 `assertPsr7ResponseMatchesOpenApiSchema($request, $response)` | `assertOpenApiResponse($response, $request)` |
+| PSR-7 `assertPsr7ResponseForOperationMatchesOpenApiSchema($method, $path, $response)` | `assertOpenApiResponse($response, method: $method, path: $path)` |
+| PSR-7 `assertPsr7ExchangeMatchesOpenApiSchema($request, $response)` | `assertOpenApiExchange($request, $response)` |
+
+The Symfony `assertOpenApiResponse()` also takes `method:` and `path:` instead
+of a request.
+
+```php
+// Before (v2)
+$this->assertResponseMatchesOpenApiSchema($request, $response);
+// After (v3)
+$this->assertOpenApiResponse($response, $request);
+```
 
 ### Contract-check aliases
 

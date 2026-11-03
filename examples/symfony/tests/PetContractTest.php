@@ -24,7 +24,7 @@ final class PetContractTest extends TestCase
             'Content-Type' => 'application/json',
         ]);
 
-        $this->assertRequestMatchesOpenApiSchema($request, 200);
-        $this->assertResponseMatchesOpenApiSchema($request, $response);
+        $this->assertOpenApiRequest($request, 200);
+        $this->assertOpenApiResponse($response, $request);
     }
 }

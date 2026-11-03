@@ -46,7 +46,7 @@ final class OpenApiAssertionsMissingSpecTest extends TestCase
         $this->expectException(AssertionFailedError::class);
         $this->expectExceptionMessage('No OpenAPI spec is configured');
 
-        $this->assertResponseMatchesOpenApiSchema($request, $response);
+        $this->assertOpenApiResponse($response, $request);
     }
 
     #[Test]
@@ -57,6 +57,6 @@ final class OpenApiAssertionsMissingSpecTest extends TestCase
         $this->expectException(AssertionFailedError::class);
         $this->expectExceptionMessage('No OpenAPI spec is configured');
 
-        $this->assertRequestMatchesOpenApiSchema($request);
+        $this->assertOpenApiRequest($request);
     }
 }

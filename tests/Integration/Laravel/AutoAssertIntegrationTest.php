@@ -153,7 +153,7 @@ class AutoAssertIntegrationTest extends TestCase
         config()->set('gesso.laravel.auto_assert', true);
 
         $response = $this->get('/v1/pets');
-        $this->assertResponseMatchesOpenApiSchema($response);
+        $this->assertOpenApiResponse($response);
 
         $covered = OpenApiCoverageTracker::getCovered();
         $this->assertCount(1, $covered['petstore-3.0'] ?? []);

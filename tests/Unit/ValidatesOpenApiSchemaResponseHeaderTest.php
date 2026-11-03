@@ -49,7 +49,7 @@ class ValidatesOpenApiSchemaResponseHeaderTest extends TestCase
             'X-RateLimit-Remaining' => '42',
         ]);
 
-        $this->assertResponseMatchesOpenApiSchema($response, HttpMethod::POST, '/pets');
+        $this->assertOpenApiResponse($response, HttpMethod::POST, '/pets');
     }
 
     #[Test]
@@ -61,7 +61,7 @@ class ValidatesOpenApiSchemaResponseHeaderTest extends TestCase
         ]);
 
         try {
-            $this->assertResponseMatchesOpenApiSchema($response, HttpMethod::POST, '/pets');
+            $this->assertOpenApiResponse($response, HttpMethod::POST, '/pets');
             $this->fail('expected AssertionFailedError');
         } catch (AssertionFailedError $e) {
             $this->assertStringContainsString('[response-header.Location]', $e->getMessage());
@@ -80,7 +80,7 @@ class ValidatesOpenApiSchemaResponseHeaderTest extends TestCase
         ]);
 
         try {
-            $this->assertResponseMatchesOpenApiSchema($response, HttpMethod::POST, '/pets');
+            $this->assertOpenApiResponse($response, HttpMethod::POST, '/pets');
             $this->fail('expected AssertionFailedError');
         } catch (AssertionFailedError $e) {
             $this->assertStringContainsString('[response-header.X-RateLimit-Remaining]', $e->getMessage());
@@ -101,7 +101,7 @@ class ValidatesOpenApiSchemaResponseHeaderTest extends TestCase
         ]);
 
         try {
-            $this->assertResponseMatchesOpenApiSchema($response, HttpMethod::POST, '/pets');
+            $this->assertOpenApiResponse($response, HttpMethod::POST, '/pets');
             $this->fail('expected AssertionFailedError');
         } catch (AssertionFailedError $e) {
             $message = $e->getMessage();

@@ -64,7 +64,7 @@ class ValidatesOpenApiSchemaStackTraceTest extends TestCase
         $response = $this->makeTestResponse($body, 200);
 
         try {
-            $this->assertResponseMatchesOpenApiSchema(
+            $this->assertOpenApiResponse(
                 $response,
                 HttpMethod::GET,
                 '/v1/pets',
@@ -110,7 +110,7 @@ class ValidatesOpenApiSchemaStackTraceTest extends TestCase
         $response = $this->makeTestResponse($body, 200);
 
         try {
-            $this->assertResponseMatchesOpenApiSchema(
+            $this->assertOpenApiResponse(
                 $response,
                 HttpMethod::GET,
                 '/v1/pets',

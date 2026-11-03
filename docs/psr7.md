@@ -73,7 +73,7 @@ final class CreatePetTest extends TestCase
     {
         [$request, $response] = $this->callApplication();
 
-        $this->assertPsr7ExchangeMatchesOpenApiSchema($request, $response);
+        $this->assertOpenApiExchange($request, $response);
     }
 }
 ```
@@ -88,9 +88,9 @@ Request-only, response-only, and explicit-operation assertions are also
 available:
 
 ```php
-$this->assertPsr7RequestMatchesOpenApiSchema($request, $response->getStatusCode());
-$this->assertPsr7ResponseMatchesOpenApiSchema($request, $response);
-$this->assertPsr7ResponseForOperationMatchesOpenApiSchema('POST', '/v1/pets', $response);
+$this->assertOpenApiRequest($request, $response->getStatusCode());
+$this->assertOpenApiResponse($response, $request);
+$this->assertOpenApiResponse($response, method: 'POST', path: '/v1/pets');
 ```
 
 The explicit-operation assertion also checks hand-written HTTP client fakes

@@ -83,7 +83,7 @@ final class ConfigMigrateCliIntegrationTest extends TestCase
         ], ['competitor-config', 'competitor-package', 'competitor-usage'], 'replace with use ValidatesOpenApiSchema;'];
         yield 'osteel' => ['osteel', [
             'spec' => ['base_path' => 'openapi', 'default' => 'api'],
-        ], ['competitor-package', 'competitor-usage'], 'assertClientMatchesOpenApiSchema($client)'];
+        ], ['competitor-package', 'competitor-usage'], 'assertOpenApiExchange($client)'];
         yield 'league' => ['league', [
             'spec' => ['base_path' => 'openapi', 'default' => 'front'],
         ], ['competitor-package', 'competitor-usage'], '->validateResponseForOperation($method, $path, $response)'];

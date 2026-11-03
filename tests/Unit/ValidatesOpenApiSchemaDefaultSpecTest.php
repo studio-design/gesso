@@ -82,7 +82,7 @@ class ValidatesOpenApiSchemaDefaultSpecTest extends TestCase
             . 'in gesso.php.',
         );
 
-        $this->assertResponseMatchesOpenApiSchema(
+        $this->assertOpenApiResponse(
             $response,
             HttpMethod::GET,
             '/v1/pets',
@@ -100,7 +100,7 @@ class ValidatesOpenApiSchemaDefaultSpecTest extends TestCase
         );
         $response = $this->makeTestResponse($body, 200);
 
-        $this->assertResponseMatchesOpenApiSchema(
+        $this->assertOpenApiResponse(
             $response,
             HttpMethod::GET,
             '/v1/pets',
@@ -124,7 +124,7 @@ class ValidatesOpenApiSchemaDefaultSpecTest extends TestCase
         $response = $this->makeTestResponse($body, 200);
 
         try {
-            $this->assertResponseMatchesOpenApiSchema(
+            $this->assertOpenApiResponse(
                 $response,
                 HttpMethod::GET,
                 '/v1/pets',
@@ -152,7 +152,7 @@ class ValidatesOpenApiSchemaDefaultSpecTest extends TestCase
         $response = $this->makeTestResponse($body, 200);
 
         try {
-            $this->assertResponseMatchesOpenApiSchema(
+            $this->assertOpenApiResponse(
                 $response,
                 HttpMethod::GET,
                 '/v1/pets',
@@ -178,7 +178,7 @@ class ValidatesOpenApiSchemaDefaultSpecTest extends TestCase
         $response = $this->makeTestResponse($body, 200);
 
         try {
-            $this->assertResponseMatchesOpenApiSchema(
+            $this->assertOpenApiResponse(
                 $response,
                 HttpMethod::GET,
                 '/v1/pets',
@@ -223,7 +223,7 @@ class ValidatesOpenApiSchemaDefaultSpecTest extends TestCase
         $body = (string) json_encode(['error' => 'service unavailable'], JSON_THROW_ON_ERROR);
         $response = $this->makeTestResponse($body, 503);
 
-        $this->assertResponseMatchesOpenApiSchema(
+        $this->assertOpenApiResponse(
             $response,
             HttpMethod::GET,
             '/v1/pets',
@@ -250,7 +250,7 @@ class ValidatesOpenApiSchemaDefaultSpecTest extends TestCase
         $response = $this->makeTestResponse($body, 503);
 
         try {
-            $this->assertResponseMatchesOpenApiSchema(
+            $this->assertOpenApiResponse(
                 $response,
                 HttpMethod::GET,
                 '/v1/pets',
@@ -270,7 +270,7 @@ class ValidatesOpenApiSchemaDefaultSpecTest extends TestCase
 
         $response = $this->makeTestResponse('{}', 404);
 
-        $this->assertResponseMatchesOpenApiSchema(
+        $this->assertOpenApiResponse(
             $response,
             HttpMethod::GET,
             '/v1/pets',
@@ -288,7 +288,7 @@ class ValidatesOpenApiSchemaDefaultSpecTest extends TestCase
         $this->expectException(AssertionFailedError::class);
         $this->expectExceptionMessage('gesso.validation.skip_response_codes must be an array');
 
-        $this->assertResponseMatchesOpenApiSchema(
+        $this->assertOpenApiResponse(
             $response,
             HttpMethod::GET,
             '/v1/pets',
@@ -308,7 +308,7 @@ class ValidatesOpenApiSchemaDefaultSpecTest extends TestCase
         $this->expectException(AssertionFailedError::class);
         $this->expectExceptionMessage('gesso.validation.skip_response_codes[0] must be a string regex pattern');
 
-        $this->assertResponseMatchesOpenApiSchema(
+        $this->assertOpenApiResponse(
             $response,
             HttpMethod::GET,
             '/v1/pets',
@@ -328,7 +328,7 @@ class ValidatesOpenApiSchemaDefaultSpecTest extends TestCase
         $this->expectException(AssertionFailedError::class);
         $this->expectExceptionMessage('gesso.validation.skip_response_codes[0] must not be an empty string');
 
-        $this->assertResponseMatchesOpenApiSchema(
+        $this->assertOpenApiResponse(
             $response,
             HttpMethod::GET,
             '/v1/pets',
@@ -343,7 +343,7 @@ class ValidatesOpenApiSchemaDefaultSpecTest extends TestCase
         );
 
         try {
-            $testCase->assertResponseMatchesOpenApiSchema(
+            $testCase->assertOpenApiResponse(
                 $this->makeTestResponse($body, 200),
                 HttpMethod::GET,
                 '/v1/pets',

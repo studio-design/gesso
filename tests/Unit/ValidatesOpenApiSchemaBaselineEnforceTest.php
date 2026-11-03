@@ -67,7 +67,7 @@ class ValidatesOpenApiSchemaBaselineEnforceTest extends TestCase
             JSON_THROW_ON_ERROR,
         );
 
-        $this->assertResponseMatchesOpenApiSchema($this->makeTestResponse($body, 200), HttpMethod::GET, '/v1/pets');
+        $this->assertOpenApiResponse($this->makeTestResponse($body, 200), HttpMethod::GET, '/v1/pets');
 
         $this->assertSame(1, $this->enforcer->hitCount());
         $this->assertSame([], $this->enforcer->staleEntries());
@@ -82,7 +82,7 @@ class ValidatesOpenApiSchemaBaselineEnforceTest extends TestCase
         );
 
         try {
-            $this->assertResponseMatchesOpenApiSchema($this->makeTestResponse($body, 200), HttpMethod::GET, '/v1/pets');
+            $this->assertOpenApiResponse($this->makeTestResponse($body, 200), HttpMethod::GET, '/v1/pets');
             $this->fail('Expected the assertion to fail on the unbaselined violation.');
         } catch (AssertionFailedError $e) {
             $this->assertStringContainsString('OpenAPI schema validation failed for GET /v1/pets', $e->getMessage());
@@ -103,7 +103,7 @@ class ValidatesOpenApiSchemaBaselineEnforceTest extends TestCase
             'parse',
         ));
 
-        $this->assertResponseMatchesOpenApiSchema($this->makeTestResponse('{invalid', 200), HttpMethod::GET, '/v1/pets');
+        $this->assertOpenApiResponse($this->makeTestResponse('{invalid', 200), HttpMethod::GET, '/v1/pets');
 
         $this->assertSame(1, $this->enforcer->hitCount());
     }
@@ -124,14 +124,14 @@ class ValidatesOpenApiSchemaBaselineEnforceTest extends TestCase
 
         $this->expectException(AssertionFailedError::class);
 
-        $this->assertResponseMatchesOpenApiSchema($this->makeTestResponse('{invalid', 418), HttpMethod::GET, '/v1/unknown');
+        $this->assertOpenApiResponse($this->makeTestResponse('{invalid', 418), HttpMethod::GET, '/v1/unknown');
     }
 
     #[Test]
     public function an_unbaselined_decode_failure_raises_the_original_decode_error(): void
     {
         try {
-            $this->assertResponseMatchesOpenApiSchema($this->makeTestResponse('{invalid', 200), HttpMethod::GET, '/v1/pets');
+            $this->assertOpenApiResponse($this->makeTestResponse('{invalid', 200), HttpMethod::GET, '/v1/pets');
             $this->fail('Expected the decode failure to surface.');
         } catch (AssertionFailedError $e) {
             $this->assertStringContainsString('could not be parsed as JSON', $e->getMessage());
@@ -158,7 +158,7 @@ class ValidatesOpenApiSchemaBaselineEnforceTest extends TestCase
             JSON_THROW_ON_ERROR,
         );
 
-        $this->assertResponseMatchesOpenApiSchema($this->makeTestResponse($body, 200), HttpMethod::GET, '/v1/pets');
+        $this->assertOpenApiResponse($this->makeTestResponse($body, 200), HttpMethod::GET, '/v1/pets');
 
         $this->assertSame(0, $this->enforcer->hitCount());
         $this->assertSame([$stale], $this->enforcer->staleEntries());

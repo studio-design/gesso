@@ -60,7 +60,7 @@ class ValidatesOpenApiSchemaJsonOutputTest extends TestCase
         $response = $this->makeTestResponse($body, 200);
 
         try {
-            $this->assertResponseMatchesOpenApiSchema($response, HttpMethod::GET, '/v1/pets');
+            $this->assertOpenApiResponse($response, HttpMethod::GET, '/v1/pets');
             $this->fail('Expected the response assertion to fail.');
         } catch (AssertionFailedError $e) {
             [$header, $document] = explode("\n", $e->getMessage(), 2);
@@ -88,7 +88,7 @@ class ValidatesOpenApiSchemaJsonOutputTest extends TestCase
         $response = $this->makeTestResponse($body, 200);
 
         try {
-            $this->assertResponseMatchesOpenApiSchema($response, HttpMethod::GET, '/v1/pets');
+            $this->assertOpenApiResponse($response, HttpMethod::GET, '/v1/pets');
             $this->fail('Expected the response assertion to fail.');
         } catch (AssertionFailedError $e) {
             $this->assertStringContainsString('"schema_version": 1', $e->getMessage());
@@ -108,7 +108,7 @@ class ValidatesOpenApiSchemaJsonOutputTest extends TestCase
         $response = $this->makeTestResponse($body, 200);
 
         try {
-            $this->assertResponseMatchesOpenApiSchema($response, HttpMethod::GET, '/v1/pets');
+            $this->assertOpenApiResponse($response, HttpMethod::GET, '/v1/pets');
             $this->fail('Expected the response assertion to fail.');
         } catch (AssertionFailedError $e) {
             $lines = explode("\n", $e->getMessage());
@@ -129,7 +129,7 @@ class ValidatesOpenApiSchemaJsonOutputTest extends TestCase
         $response = $this->makeTestResponse($body, 200);
 
         try {
-            $this->assertResponseMatchesOpenApiSchema($response, HttpMethod::GET, '/v1/pets');
+            $this->assertOpenApiResponse($response, HttpMethod::GET, '/v1/pets');
             $this->fail('Expected the response assertion to fail.');
         } catch (AssertionFailedError $e) {
             $this->assertStringContainsString("Reproduce: curl -X GET '/v1/pets'", $e->getMessage());
