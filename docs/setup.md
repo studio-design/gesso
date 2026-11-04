@@ -8,7 +8,7 @@ of `bin/gesso` from a library checkout uses that checkout's dependencies.
 
 - [1. Provide your OpenAPI spec](#1-provide-your-openapi-spec)
 - [2. Configure the PHPUnit extension](#2-configure-the-phpunit-extension)
-  - [Server base paths are not stripped automatically](#server-base-paths-are-not-stripped-automatically)
+  - [Server base paths](#server-base-paths)
 - [3. Use in tests](#3-use-in-tests)
   - [With Laravel (recommended)](#with-laravel-recommended)
   - [Framework-agnostic](#framework-agnostic)
@@ -103,7 +103,7 @@ Relative paths in `gesso.php` resolve against that file's directory.
 |---|---|---|---|
 | `config` (phpunit.xml parameter) | No | Beside the selected PHPUnit XML file | Path to shared `gesso.php`; see [discovery and relative paths](configuration.md#discovery-and-relative-paths) |
 | `spec.base_path` | Yes* | — | Path to bundled spec directory |
-| `spec.strip_prefixes` | No | `[]` | Prefixes to strip from request paths (e.g., `['/api']`). Required even when the spec declares the same base path in `servers` — see [Server base paths are not stripped automatically](#server-base-paths-are-not-stripped-automatically) |
+| `spec.strip_prefixes` | No | `[]` | Prefixes to strip from request paths (e.g., `['/api']`). Not needed for a base path the spec declares in `servers`; setting it turns those off — see [Server base paths](#server-base-paths) |
 | `spec.names` | No | `['front']` | Spec names to load and track coverage for |
 | `spec.default` | No | — | Spec name used when neither an `#[OpenApiSpec]` attribute nor an `openApiSpec()` override supplies one, including by the PSR-7, Symfony, and Laravel adapters |
 | `coverage.report_output.markdown` | No | — | File path to write Markdown coverage report. Skipped on partial runs — see [Partial test runs](ci.md#partial-test-runs-filter-testsuite-path-args) |
@@ -130,34 +130,35 @@ Relative paths in `gesso.php` resolve against that file's directory.
 
 *Not required if you call `OpenApiSpecLoader::configure()` manually.
 
-### Server base paths are not stripped automatically
+### Server base paths
 
-`servers[].url` **does not participate in request-path matching.** A spec that
-declares `servers: [{ url: "/api" }]` alongside a `/pets` path still needs
-`spec.strip_prefixes` set to `['/api']` for a request to `/api/pets` to match.
+A request path matches the base paths the spec's `servers` declare. With
+`servers: [{ url: "https://api.example.com/api" }]` and a `/pets` path, a
+request to `/api/pets` matches `/pets`, and coverage records `GET /pets`:
 
-The two values look interchangeable and are not: `servers[].url` says where the
-published API is served, while `spec.strip_prefixes` says where the application under
-test mounts its routes. They diverge whenever a gateway terminates the prefix,
-the test harness boots the app at the root, or the spec's `servers` carries a
-hostname and no path. `servers` is also overridable per path item and per
-operation, and reading an override requires having already matched the path.
-A templated `url` resolves through its required variable `default`s, which say
-what is served absent an alternate value — not what your test deployment uses.
-[ADR 0006](adr/0006-server-base-paths-and-request-path-matching.md) records the
-full reasoning.
+- The path as written is tried first, so an app booted at the root, or behind
+  a gateway that removed the prefix, still matches `/pets`.
+- Every `servers` entry counts, at the root, on a path item, or on an
+  operation. A base path matches a path only when the path's servers declare
+  it: an operation's `servers` replace its path item's, which replace the
+  root's.
+- A templated `url` takes its variables' `default`s. A `url` with only a host,
+  or the path `/`, declares no base path.
+- When two base paths reach different spec paths, neither matches, and the
+  failure names both.
 
-A failed match names the prefix when the spec declares one that would have
-worked, so the value to configure is in the failure output rather than left to
-be derived:
+Setting `spec.strip_prefixes` turns server base paths off: only the listed
+prefixes are removed. A failed match then names the base path to add:
 
 ```text
 No matching path found in 'petstore' spec for GET /api/pets
-  servers[0].url declares base path '/api'; '/pets' matches after removing it.
-  Gesso does not strip server base paths automatically — add '/api' to spec.strip_prefixes in gesso.php.
+  the spec's servers declare base path '/api'; /pets matches after removing it.
+  Server base paths are not applied while spec.strip_prefixes is set — add '/api' to it in gesso.php.
   closest spec paths:
     - GET /pets
 ```
+
+[ADR 0008](adr/0008-server-base-paths-in-path-matching.md) records the rules.
 
 ## 3. Use in tests
 

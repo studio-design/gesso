@@ -27,6 +27,7 @@ use Studio\Gesso\PHPUnit\CleanTraceAssert;
 use Studio\Gesso\SkipOpenApiResolver;
 use Studio\Gesso\Spec\OpenApiOperationResolver;
 use Studio\Gesso\Spec\OpenApiPathMatcher;
+use Studio\Gesso\Spec\OpenApiServerBasePaths;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Symfony\HttpFoundationBody;
 use Studio\Gesso\Validation\Request\AcknowledgedSecuritySchemes;
@@ -939,7 +940,7 @@ trait ValidatesOpenApiSchema
             return [];
         }
 
-        $matchedOperation = $this->findOperationForRequest($paths, $method, $path);
+        $matchedOperation = $this->findOperationForRequest($paths, $method, $path, OpenApiServerBasePaths::fromSpec($spec));
         if ($matchedOperation === null) {
             return [];
         }
@@ -989,10 +990,11 @@ trait ValidatesOpenApiSchema
      * validator's behavior via OpenApiSpecLoader.
      *
      * @param array<string, mixed> $paths
+     * @param array<string, list<string>> $serverBasePaths
      *
      * @return null|array<string, mixed>
      */
-    private function findOperationForRequest(array $paths, string $method, string $path): ?array
+    private function findOperationForRequest(array $paths, string $method, string $path, array $serverBasePaths): ?array
     {
         $specPaths = [];
         foreach ($paths as $specPath => $_definition) {
@@ -1004,6 +1006,7 @@ trait ValidatesOpenApiSchema
         $matcher = new OpenApiPathMatcher(
             $specPaths,
             OpenApiSpecLoader::getStripPrefixes(),
+            $serverBasePaths,
         );
         $matched = $matcher->match($path);
         if ($matched === null) {

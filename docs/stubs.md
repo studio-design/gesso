@@ -80,9 +80,9 @@ php artisan gesso:stubs --coverage=build/coverage.json --request-prefix=/api
 The generated test calls `/api/users`; its class name, spec attribute, and
 coverage identity still refer to the original operation. Path parameter values
 and query strings are retained. For example, `/users/7?q=alice` becomes
-`/api/users/7?q=alice`. Configure `strip_prefixes=/api` on the PHPUnit extension
-separately so the runtime validator matches that request to `/users`; see
-[server base paths](setup.md#server-base-paths-are-not-stripped-automatically).
+`/api/users/7?q=alice`. The runtime validator matches that request to `/users`
+when the spec's `servers` declare `/api`; otherwise set `spec.strip_prefixes`
+to `['/api']` in `gesso.php`. See [server base paths](setup.md#server-base-paths).
 
 The prefix is an absolute URI path, not a URL: `/api` and `/api/v1` are accepted;
 hosts, query strings, fragments, and unencoded whitespace are rejected. Encode

@@ -8,6 +8,7 @@ use Illuminate\Routing\Route;
 use Illuminate\Support\Str;
 use Studio\Gesso\Spec\OpenApiOperationResolver;
 use Studio\Gesso\Spec\OpenApiPathMatcher;
+use Studio\Gesso\Spec\OpenApiServerBasePaths;
 use Studio\Gesso\Validation\Support\MalformedSpecNode;
 
 use function array_keys;
@@ -36,7 +37,7 @@ use function trim;
  * @internal Not part of the package's public API.
  *
  * @phpstan-type Filters array{prefix?: ?string, middleware?: list<string>, domains?: list<string>, excluded_route_names?: list<string>, excluded_operation_ids?: list<string>, excluded_openapi_paths?: list<string>}
- * @phpstan-type Operation array{spec: string, method: string, openapi_path: string, normalized_path: string, operation_id: ?string}
+ * @phpstan-type Operation array{spec: string, method: string, openapi_path: string, normalized_path: string, prefixed_paths: list<string>, operation_id: ?string}
  * @phpstan-type RegisteredRoute array{method: string, route_uri: string, normalized_path: string, route_name: ?string, domain: ?string}
  */
 final class LaravelRouteParityAnalyzer
@@ -120,6 +121,15 @@ final class LaravelRouteParityAnalyzer
                 if ($route['method'] === $operation['method'] &&
                     $route['normalized_path'] === $operation['normalized_path']) {
                     $candidateIndexes[] = $index;
+                }
+            }
+            // Server base paths apply only while no prefix is configured,
+            // and only to a route that matches nothing as written (ADR 0008).
+            if ($candidateIndexes === [] && $stripPrefixes === []) {
+                foreach ($operations as $index => $operation) {
+                    if ($route['method'] === $operation['method'] && in_array($route['normalized_path'], $operation['prefixed_paths'], true)) {
+                        $candidateIndexes[] = $index;
+                    }
                 }
             }
 
@@ -245,6 +255,12 @@ final class LaravelRouteParityAnalyzer
 
         foreach ($specs as $specName => $spec) {
             $paths = is_array($spec['paths'] ?? null) ? $spec['paths'] : [];
+            $prefixedPaths = [];
+            foreach (OpenApiServerBasePaths::fromSpec($spec) as $basePath => $templates) {
+                foreach ($templates as $template) {
+                    $prefixedPaths[$template][] = $this->normalizeTemplate($basePath . $template);
+                }
+            }
             foreach ($paths as $path => $pathItem) {
                 if (!is_string($path) || MalformedSpecNode::isMalformed($pathItem)) {
                     continue;
@@ -261,6 +277,7 @@ final class LaravelRouteParityAnalyzer
                         'method' => $method,
                         'openapi_path' => $path,
                         'normalized_path' => $this->normalizeTemplate($path),
+                        'prefixed_paths' => $prefixedPaths[$path] ?? [],
                         'operation_id' => is_string($declared['operation']['operationId'] ?? null)
                             ? $declared['operation']['operationId']
                             : null,

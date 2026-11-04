@@ -7584,6 +7584,17 @@
                                 "unavailable": true
                             },
                             "attributes": []
+                        },
+                        {
+                            "name": "serverBasePaths",
+                            "type": "array",
+                            "optional": false,
+                            "variadic": false,
+                            "by_reference": false,
+                            "default": {
+                                "unavailable": true
+                            },
+                            "attributes": []
                         }
                     ]
                 },

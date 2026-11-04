@@ -1,6 +1,6 @@
 # ADR 0006: Server base paths and request-path matching
 
-- Status: Accepted
+- Status: Accepted; sections 1 and 4 superseded by [ADR 0008](0008-server-base-paths-in-path-matching.md) (2026-11-05)
 - Date: 2026-08-07
 - Issue: [#514](https://github.com/studio-design/gesso/issues/514)
 - Related: [#501](https://github.com/studio-design/gesso/issues/501),

@@ -45,13 +45,13 @@ Validator issue category `request.path_match`.
 Common causes:
 
 - The endpoint is new and not documented yet.
-- A base path or version prefix (`/api`, `/v1`) is in the request but not in the spec paths.
+- A base path or version prefix (`/api`, `/v1`) is in the request but in neither the spec paths nor its `servers`.
 - A trailing slash or a typo differs between the route and the spec.
 
 How to fix:
 
 - Spec wrong: add the path to `paths`.
-- Prefix mismatch: set `spec.strip_prefixes` in `gesso.php`.
+- Prefix mismatch: declare the base path in the spec's `servers`, or set `spec.strip_prefixes` in `gesso.php`.
 - Test wrong: fix the URL the test calls. The failure lists the closest spec paths.
 
 Do not skip the test with `#[SkipOpenApi]`; an undocumented endpoint is the drift contract testing exists to catch.
@@ -308,7 +308,7 @@ Common causes:
 How to fix:
 
 - Spec wrong: add the path or operation.
-- Prefix mismatch: set `spec.strip_prefixes`.
+- Prefix mismatch: declare the base path in `servers`, or set `spec.strip_prefixes`.
 - Test wrong: call the documented path.
 
 Do not skip the test with `#[SkipOpenApi]`; an undocumented endpoint is real drift.
