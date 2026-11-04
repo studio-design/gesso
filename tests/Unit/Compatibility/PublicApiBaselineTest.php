@@ -2034,7 +2034,7 @@ final class PublicApiBaselineTest extends TestCase
         // files, recorded relative to src/.
         $expected[GessoSetList::class] = $actual[GessoSetList::class];
         $this->assertSame(
-            ['KIRSCHBAUM_TO_GESSO' => 'src/Rector/config/kirschbaum-to-gesso.php', 'SPECTATOR_TO_GESSO' => 'src/Rector/config/spectator-to-gesso.php', 'V3' => 'src/Rector/config/gesso-v3.php'],
+            ['KIRSCHBAUM_TO_GESSO' => 'src/Rector/config/kirschbaum-to-gesso.php', 'OSTEEL_TO_GESSO' => 'src/Rector/config/osteel-to-gesso.php', 'SPECTATOR_TO_GESSO' => 'src/Rector/config/spectator-to-gesso.php', 'V3' => 'src/Rector/config/gesso-v3.php'],
             $actual[GessoSetList::class]['constants'],
         );
 

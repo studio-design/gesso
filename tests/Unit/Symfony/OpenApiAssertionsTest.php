@@ -68,6 +68,15 @@ final class OpenApiAssertionsTest extends TestCase
     }
 
     #[Test]
+    public function a_response_validates_against_a_lowercase_method_and_a_path_template(): void
+    {
+        $this->expectException(AssertionFailedError::class);
+        $this->expectExceptionMessage('OpenAPI schema validation failed for GET /v1/pets/{petId}');
+
+        $this->assertOpenApiResponse(new JsonResponse(['wrong_key' => 'value']), method: 'get', path: '/v1/pets/{petId}');
+    }
+
+    #[Test]
     public function a_response_without_a_request_or_method_and_path_fails(): void
     {
         $this->expectException(AssertionFailedError::class);

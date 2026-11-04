@@ -16,6 +16,8 @@ use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\Psr7\OpenApiAssertions;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 
+use function array_keys;
+
 final class OpenApiAssertionsTest extends TestCase
 {
     use OpenApiAssertions;
@@ -54,6 +56,9 @@ final class OpenApiAssertionsTest extends TestCase
         );
 
         $this->assertOpenApiResponse($response, method: 'POST', path: '/widgets/42');
+        $this->assertOpenApiResponse($response, method: 'post', path: '/widgets/{id}');
+
+        $this->assertSame(['POST /widgets/{id}'], array_keys(OpenApiCoverageTracker::getCovered()['psr7'] ?? []));
     }
 
     #[Test]
