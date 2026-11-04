@@ -23,3 +23,6 @@ phpstan.neon
 # Claude Code local state
 /.claude/settings.local.json
 /.claude/scheduled_tasks.lock
+
+# Rector test case: per-fixture-directory lock files (rector/rector 2.8+)
+.fixture.lock
