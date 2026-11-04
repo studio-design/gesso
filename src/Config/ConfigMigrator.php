@@ -132,7 +132,7 @@ final class ConfigMigrator
         ],
         'league/openapi-psr7-validator' => [
             ['/League\\\\OpenAPIValidation\\\\/', 'replace with Studio\Gesso\Psr7\OpenApiPsr7Validator or the Studio\Gesso\Psr7\OpenApiAssertions trait'],
-            ['/->getResponseValidator\(\)\s*->validate\(\s*new\s+OperationAddress\(/', 'replace with ->validateResponseForOperation($method, $path, $response)'],
+            ['/->getResponseValidator\(\)\s*->validate\(\s*new\s+OperationAddress\(/', 'replace with $this->assertOpenApiResponse($response, method: ..., path: ...), or ->validateResponseForOperation($method, $path, $response) without the trait; GessoSetList::LEAGUE_TO_GESSO rewrites calls on typed validators'],
             ['/\(new\s+ValidatorBuilder\)|new\s+ValidatorBuilder\(\)/', 'delete; the spec is configured in gesso.php'],
             ['/\b(?:setCache|overrideCacheKey)\(/', 'delete; Gesso caches loaded specs itself'],
             ['/\bValidationFailed\b|\bInvalid(?:Body|Cookies|Headers|Parameter|Path|QueryArgs|Security)\b/', 'replace the catch with $result->isValid() / $result->issues() (a Skipped result is not a failure)'],

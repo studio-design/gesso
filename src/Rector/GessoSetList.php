@@ -26,6 +26,9 @@ final class GessoSetList
     /** osteel/openapi-httpfoundation-testing → Gesso's Symfony or PSR-7 trait. */
     public const string OSTEEL_TO_GESSO = __DIR__ . '/config/osteel-to-gesso.php';
 
+    /** league/openapi-psr7-validator → Gesso's PSR-7 trait. */
+    public const string LEAGUE_TO_GESSO = __DIR__ . '/config/league-to-gesso.php';
+
     /** Constants only — no instances. */
     private function __construct() {}
 }

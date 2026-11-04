@@ -26,7 +26,7 @@ Replace Spectator assertions with `ValidatesOpenApiSchema` and its `auto_assert`
 
 ## league/openapi-psr7-validator
 
-Keep the same PSR-7 messages and replace direct validator construction with `OpenApiPsr7Validator` or the `OpenApiAssertions` trait. The adapter adds PHPUnit failures and coverage reporting around the exchange.
+Keep the same PSR-7 messages and replace direct validator construction with `OpenApiPsr7Validator` or the `OpenApiAssertions` trait. The adapter adds PHPUnit failures and coverage reporting around the exchange. The [Rector set](rector.md#leagueopenapi-psr7-validator) turns `validate()` calls into `assertOpenApiRequest()` and `assertOpenApiResponse()`, removes the `try`/`catch` that only fails the test, and adds the trait.
 
 ## osteel/openapi-httpfoundation-testing
 
