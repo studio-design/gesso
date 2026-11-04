@@ -169,10 +169,11 @@ The path may be the spec template or a concrete path. See the
 
 ## Limits
 
-- `strip_prefixes` applies to every spec in the process
-  ([ADR 0006](adr/0006-server-base-paths-and-request-path-matching.md)), so an
-  external spec whose `servers[].url` carries a base path matches only when
-  your requests use the paths as written in its `paths`.
+- `strip_prefixes` applies to every spec in the process, and setting it turns
+  off the base paths every spec's `servers` declare
+  ([ADR 0008](adr/0008-server-base-paths-in-path-matching.md)). An external
+  spec whose `servers[].url` carries a base path then matches only when your
+  requests use the paths as written in its `paths`.
 - A generated empty object is encoded as `[]`; an `{}` in a spec example stays
   `{}`.
 - The fake does not re-validate its own response. A spec example that

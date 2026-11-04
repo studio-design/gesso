@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-11-05
-- Issue: none; owner decision 4 in [the v3 vision](../research/2026-11-01-v3-vision.md#owner-decisions-2026-11-01)
+- Issue: none; owner decision 4 in [the v3 vision](https://github.com/studio-design/gesso/blob/main/docs/research/2026-11-01-v3-vision.md#owner-decisions-2026-11-01)
 - Related: [ADR 0006](0006-server-base-paths-and-request-path-matching.md),
   [ADR 0007](0007-v3-scope-and-release-window.md)
 - Supersedes: ADR 0006 sections 1 and 4

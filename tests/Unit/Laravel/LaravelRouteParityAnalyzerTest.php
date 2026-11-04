@@ -44,6 +44,11 @@ final class LaravelRouteParityAnalyzerTest extends TestCase
 
         $configured = (new LaravelRouteParityAnalyzer())->analyze(['front' => $spec], $routes, ['/gateway']);
         $this->assertSame([], $configured->matched);
+
+        $spec['paths']['/v2/pets/{petId}']['head'] = [];
+        $withHead = (new LaravelRouteParityAnalyzer())->analyze(['front' => $spec], [new Route(['GET', 'HEAD'], 'api/v2/pets/{pet}', static fn() => null)]);
+        $this->assertSame(['GET', 'HEAD'], array_column($withHead->matched, 'method'));
+        $this->assertSame([], $withHead->documentedButNotRegistered);
     }
 
     #[Test]

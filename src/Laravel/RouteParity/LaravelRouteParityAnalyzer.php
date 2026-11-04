@@ -96,7 +96,7 @@ final class LaravelRouteParityAnalyzer
 
                 foreach ($this->expandOptionalUri($route->uri()) as $uri) {
                     $normalizedPath = $this->normalizeRoutePath($uri, $stripPrefixes);
-                    if ($method === 'HEAD' && $hasGet && !$this->hasOperation($operations, 'HEAD', $normalizedPath)) {
+                    if ($method === 'HEAD' && $hasGet && !$this->hasOperation($operations, 'HEAD', $normalizedPath, $stripPrefixes === [])) {
                         continue;
                     }
 
@@ -368,10 +368,11 @@ final class LaravelRouteParityAnalyzer
     }
 
     /** @param list<Operation> $operations */
-    private function hasOperation(array $operations, string $method, string $normalizedPath): bool
+    private function hasOperation(array $operations, string $method, string $normalizedPath, bool $serverBasePaths): bool
     {
         foreach ($operations as $operation) {
-            if ($operation['method'] === $method && $operation['normalized_path'] === $normalizedPath) {
+            if ($operation['method'] === $method && ($operation['normalized_path'] === $normalizedPath ||
+                $serverBasePaths && in_array($normalizedPath, $operation['prefixed_paths'], true))) {
                 return true;
             }
         }
