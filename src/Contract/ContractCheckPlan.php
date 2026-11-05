@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Studio\Gesso\Contract;
 
 use InvalidArgumentException;
+use Psr\Http\Message\MessageInterface;
 use RuntimeException;
 use stdClass;
 use Studio\Gesso\Fuzz\ExploredCase;
@@ -39,6 +40,7 @@ use function is_array;
 use function is_callable;
 use function is_int;
 use function is_object;
+use function is_string;
 use function sprintf;
 use function strtolower;
 
@@ -58,6 +60,9 @@ final class ContractCheckPlan
      * "does the API reject a credential it cannot have issued?".
      */
     private const INVALID_CREDENTIAL = 'gesso-invalid-credential';
+
+    /** Invalid requests per operation for `negative_data_rejection`, each breaking one schema keyword. */
+    private const NEGATIVE_CASES_PER_OPERATION = 5;
 
     /** @var list<ContractCheck> */
     private array $checks = [];
@@ -226,17 +231,25 @@ final class ContractCheckPlan
                     ContractCheck::IgnoredAuth => $this->buildIgnoredAuthProbes($check, $path, $spec, $matching, $derivedSeed, $skips),
                     ContractCheck::MissingRequiredHeader => $this->buildMissingRequiredHeaderProbes($check, $path, $matching, $derivedSeed, $skips, $probedPathSet, $dispatchedProbes),
                     ContractCheck::UnsupportedMethod => $this->buildUnsupportedMethodProbes($check, $path, $pathItem, $matching, $derivedSeed, $skips, $paths),
+                    ContractCheck::NegativeDataRejection => $this->buildNegativeDataProbes($check, $path, $matching, $derivedSeed, $skips, $probedPathSet, $dispatchedProbes),
+                    ContractCheck::PositiveDataAcceptance => $this->buildPositiveDataProbes($check, $path, $matching, $derivedSeed, $skips),
                 };
 
                 [$expected, $expectedClasses] = $this->expectationFor($check);
                 foreach ($probes as $probe) {
                     $probedPathSet[$path] = true;
 
-                    $actualStatus = $this->dispatchProbe($check, $probe, $derivedSeed);
+                    [$actualStatus, $response] = $this->dispatchProbe($check, $probe, $derivedSeed);
                     $dispatchedProbes++;
 
+                    $reason = null;
                     if (in_array($actualStatus, $expected, true) || in_array(intdiv($actualStatus, 100), $expectedClasses, true)) {
-                        continue;
+                        // RFC 9110 §15.5.6: a 405 MUST carry an Allow header.
+                        // Only a response object can show its headers.
+                        if ($check !== ContractCheck::UnsupportedMethod || $actualStatus !== 405 || self::allowHeaderOf($response) !== '') {
+                            continue;
+                        }
+                        $reason = '405 without the Allow header RFC 9110 requires, listing the methods the path supports';
                     }
                     $failures[] = new ContractCheckFailure(
                         $check,
@@ -248,6 +261,7 @@ final class ContractCheckPlan
                         $probe->case,
                         $expectedClasses,
                         $probe->mutation,
+                        $reason,
                     );
                 }
             }
@@ -484,6 +498,25 @@ final class ContractCheckPlan
         ));
     }
 
+    /**
+     * The `Allow` header of a dispatched response, '' when it has none, or
+     * null when the dispatcher returned only a status code.
+     */
+    private static function allowHeaderOf(mixed $response): ?string
+    {
+        if ($response instanceof MessageInterface) {
+            return $response->getHeaderLine('Allow');
+        }
+        $headers = is_object($response) && isset($response->headers) ? $response->headers : null;
+        if (is_object($headers) && is_callable([$headers, 'get'])) {
+            $allow = $headers->get('Allow');
+
+            return is_string($allow) ? $allow : '';
+        }
+
+        return null;
+    }
+
     private function derivedSeed(ContractCheck $check, string $path): int
     {
         return crc32(implode("\0", [$this->specName, $check->value, $path, (string) $this->seed])) & 0x7fffffff;
@@ -655,25 +688,7 @@ final class ContractCheckPlan
                 continue;
             }
 
-            // The control and each omission probe are separate dispatches
-            // against the same resource, so on a state-changing method the
-            // control's own effect can answer the probes: a duplicate create is
-            // a 409, an already-deleted resource is a 404, and both sit inside
-            // the 4xx class this check accepts.
-            //
-            // Nothing observable from here distinguishes an isolated dispatcher
-            // from a leaky one. Repeating the control does not: an idempotent
-            // create answers 201 twice and still leaves the row behind, so the
-            // next probe collides with it. So the default is to skip, and the
-            // only way in is the caller stating the contract on the dispatcher
-            // that has to honour it.
-            if (!self::isSafeMethod($operation->method) && !$this->stateIsolated) {
-                $skips[] = new ContractCheckSkip($check, $path, $operation->method, sprintf(
-                    "%s changes state, and each probe is a separate dispatch: without state isolation the control's own side effect answers the omission probes (a duplicate-create 409 or an already-deleted 404 is a 4xx too) instead of header enforcement. Register the dispatcher with dispatchIsolatedUsing() once every dispatch really is isolated, or excludeMethods(['%s']).",
-                    $operation->method,
-                    $operation->method,
-                ));
-
+            if ($this->skipsStateChange($check, $path, $operation, 'omission probes', 'header enforcement', $skips)) {
                 continue;
             }
 
@@ -682,30 +697,7 @@ final class ContractCheckPlan
             // and that skip would be noise for an operation this check has no
             // work for anyway.
             $case = $this->validCaseFor($check, $path, $operation, $derivedSeed, $skips);
-            if ($case === null) {
-                continue;
-            }
-
-            $probedPathSet[$path] = true;
-            $controlStatus = $this->dispatchProbe($check, new ContractCheckProbe(
-                $case,
-                $operation,
-                $operation->operationId,
-                'control: unmutated valid request',
-            ), $derivedSeed);
-            $dispatchedProbes++;
-
-            // Only a 2xx proves the request reached the handler. A 3xx does
-            // not: an unauthenticated non-JSON request in Laravel is answered
-            // with a 302 to the login page, and the omission probes would then
-            // be compared against a redirect that has nothing to do with
-            // header enforcement.
-            if ($controlStatus < 200 || $controlStatus >= 300) {
-                $skips[] = new ContractCheckSkip($check, $path, $operation->method, sprintf(
-                    'The unmutated valid request answered %d rather than a 2xx, so it is not known to have reached the handler whose header enforcement this check tests; every omission probe would have been scored against an unrelated response. Configure setUpUsing()/authenticateUsing() so the valid request succeeds.',
-                    $controlStatus,
-                ));
-
+            if ($case === null || !$this->controlSucceeds($check, $path, $operation, $case, $derivedSeed, 'header enforcement', 'omission probe', $skips, $probedPathSet, $dispatchedProbes)) {
                 continue;
             }
 
@@ -727,6 +719,163 @@ final class ContractCheckPlan
                     $operation->operationId,
                     sprintf("omitted required header '%s'", $name),
                 );
+            }
+        }
+
+        return $probes;
+    }
+
+    /**
+     * Skip a state-changing operation unless the dispatcher is isolated.
+     *
+     * The control and each probe are separate dispatches against the same
+     * resource, so on a state-changing method the control's own effect can
+     * answer the probes: a duplicate create is a 409, an already-deleted
+     * resource is a 404, and both sit inside the 4xx class these checks
+     * accept.
+     *
+     * Nothing observable from here distinguishes an isolated dispatcher from
+     * a leaky one. Repeating the control does not: an idempotent create
+     * answers 201 twice and still leaves the row behind, so the next probe
+     * collides with it. So the default is to skip, and the only way in is the
+     * caller stating the contract on the dispatcher that has to honour it.
+     *
+     * @param list<ContractCheckSkip> $skips
+     */
+    private function skipsStateChange(ContractCheck $check, string $path, ExploredOperation $operation, string $probes, string $enforcement, array &$skips): bool
+    {
+        if (self::isSafeMethod($operation->method) || $this->stateIsolated) {
+            return false;
+        }
+        $skips[] = new ContractCheckSkip($check, $path, $operation->method, sprintf(
+            "%s changes state, and each probe is a separate dispatch: without state isolation the control's own side effect answers the %s (a duplicate-create 409 or an already-deleted 404 is a 4xx too) instead of %s. Register the dispatcher with dispatchIsolatedUsing() once every dispatch really is isolated, or excludeMethods(['%s']).",
+            $operation->method,
+            $probes,
+            $enforcement,
+            $operation->method,
+        ));
+
+        return true;
+    }
+
+    /**
+     * Dispatch the unmutated valid case as a control and require a 2xx.
+     *
+     * Accepting any 4xx from a probe is only meaningful once the unmutated
+     * request is known to reach the handler — otherwise an operation that
+     * enforces nothing still "passes" because the request was rejected for an
+     * unrelated reason (no credentials configured, a missing fixture, a 404,
+     * a redirect to a login page). A 3xx does not qualify: an unauthenticated
+     * non-JSON request in Laravel is answered with a 302 to the login page.
+     *
+     * @param list<ContractCheckSkip> $skips
+     * @param array<string, true> $probedPathSet
+     */
+    private function controlSucceeds(
+        ContractCheck $check,
+        string $path,
+        ExploredOperation $operation,
+        ExploredCase $case,
+        int $derivedSeed,
+        string $enforcement,
+        string $probe,
+        array &$skips,
+        array &$probedPathSet,
+        int &$dispatchedProbes,
+    ): bool {
+        $probedPathSet[$path] = true;
+        [$controlStatus] = $this->dispatchProbe($check, new ContractCheckProbe(
+            $case,
+            $operation,
+            $operation->operationId,
+            'control: unmutated valid request',
+        ), $derivedSeed);
+        $dispatchedProbes++;
+
+        if ($controlStatus >= 200 && $controlStatus < 300) {
+            return true;
+        }
+        $skips[] = new ContractCheckSkip($check, $path, $operation->method, sprintf(
+            'The unmutated valid request answered %d rather than a 2xx, so it is not known to have reached the handler whose %s this check tests; every %s would have been scored against an unrelated response. Configure setUpUsing()/authenticateUsing() so the valid request succeeds.',
+            $controlStatus,
+            $enforcement,
+            $probe,
+        ));
+
+        return false;
+    }
+
+    /**
+     * Requests that each break one schema keyword of an otherwise valid case,
+     * gated behind a 2xx control like `missing_required_header`, so a 4xx
+     * means the input was rejected rather than the request.
+     *
+     * @param non-empty-list<array{ExploredOperation, array<string, mixed>}> $matching
+     * @param list<ContractCheckSkip> $skips
+     * @param array<string, true> $probedPathSet
+     *
+     * @return list<ContractCheckProbe>
+     */
+    private function buildNegativeDataProbes(
+        ContractCheck $check,
+        string $path,
+        array $matching,
+        int $derivedSeed,
+        array &$skips,
+        array &$probedPathSet,
+        int &$dispatchedProbes,
+    ): array {
+        $probes = [];
+        foreach ($matching as [$operation, $_rawOperation]) {
+            if (!$this->supportsExplorerMethod($check, $path, $operation, $skips) ||
+                $this->skipsStateChange($check, $path, $operation, 'invalid-data probes', 'input validation', $skips)) {
+                continue;
+            }
+
+            try {
+                $invalid = OpenApiEndpointExplorer::exploreInvalid($this->specName, $operation->method, $operation->path, [4], self::NEGATIVE_CASES_PER_OPERATION, $derivedSeed)->cases;
+            } catch (InvalidArgumentException $e) {
+                $skips[] = new ContractCheckSkip($check, $path, $operation->method, $e->getMessage());
+
+                continue;
+            } catch (Throwable $e) {
+                throw new RuntimeException($this->generationFailureMessage($check, $operation, $derivedSeed, $e), 0, $e);
+            }
+            $case = $this->validCaseFor($check, $path, $operation, $derivedSeed, $skips);
+            if ($case === null || !$this->controlSucceeds($check, $path, $operation, $case, $derivedSeed, 'input validation', 'invalid-data probe', $skips, $probedPathSet, $dispatchedProbes)) {
+                continue;
+            }
+            foreach ($invalid as $invalidCase) {
+                $probes[] = new ContractCheckProbe(
+                    $invalidCase,
+                    $operation,
+                    $operation->operationId,
+                    sprintf('invalid %s: %s', $invalidCase->targetPointer ?? 'input', $invalidCase->targetKeyword ?? 'schema'),
+                );
+            }
+        }
+
+        return $probes;
+    }
+
+    /**
+     * One valid request per operation, which must not be rejected.
+     *
+     * @param non-empty-list<array{ExploredOperation, array<string, mixed>}> $matching
+     * @param list<ContractCheckSkip> $skips
+     *
+     * @return list<ContractCheckProbe>
+     */
+    private function buildPositiveDataProbes(ContractCheck $check, string $path, array $matching, int $derivedSeed, array &$skips): array
+    {
+        $probes = [];
+        foreach ($matching as [$operation, $_rawOperation]) {
+            if (!$this->supportsExplorerMethod($check, $path, $operation, $skips)) {
+                continue;
+            }
+            $case = $this->validCaseFor($check, $path, $operation, $derivedSeed, $skips);
+            if ($case !== null) {
+                $probes[] = new ContractCheckProbe($case, $operation, $operation->operationId, 'valid request');
             }
         }
 
@@ -1008,17 +1157,18 @@ final class ContractCheckPlan
         );
     }
 
-    private function dispatchProbe(ContractCheck $check, ContractCheckProbe $probe, int $derivedSeed): int
+    /** @return array{int, mixed} the status and what the dispatcher returned */
+    private function dispatchProbe(ContractCheck $check, ContractCheckProbe $probe, int $derivedSeed): array
     {
         $case = $probe->case;
 
         // Probes that exist to prove authentication is enforced must not be
         // handed credentials by the plan's own hook.
-        return $this->runWithOperationHooks($probe->operation, $probe->authenticate, function () use ($check, $case, $derivedSeed): int {
+        return $this->runWithOperationHooks($probe->operation, $probe->authenticate, function () use ($check, $case, $derivedSeed): array {
             try {
                 $response = ($this->dispatch)($case);
 
-                return self::statusOf($response);
+                return [self::statusOf($response), $response];
             } catch (Throwable $e) {
                 throw new RuntimeException(sprintf(
                     "Contract check dispatch failed.\nCheck: %s\nSpec: %s\nMethod/path: %s %s\nGlobal seed: %d\nDerived seed: %d\nCurl: %s",

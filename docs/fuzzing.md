@@ -418,9 +418,10 @@ deliberately classification-preserving; it never equates every failure.
 
 Schema validation cannot see protocol-level contract holes — an ignored
 `security` requirement, a `required: true` header nobody checks, an
-undocumented method that answers 200. The opt-in `ignored_auth`,
-`missing_required_header`, and `unsupported_method` checks probe those
-directly and live in `Studio\Gesso\Contract\`. See
+undocumented method that answers 200, invalid input that is accepted, valid
+input that is rejected. The opt-in `ignored_auth`, `missing_required_header`,
+`unsupported_method`, `negative_data_rejection`, and `positive_data_acceptance`
+checks probe those directly and live in `Studio\Gesso\Contract\`. See
 [named contract checks](contract-checks.md).
 
 ## Remaining gaps

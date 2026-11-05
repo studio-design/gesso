@@ -821,6 +821,8 @@ final class PublicApiBaselineTest extends TestCase
                 'IgnoredAuth' => 'ignored_auth',
                 'MissingRequiredHeader' => 'missing_required_header',
                 'UnsupportedMethod' => 'unsupported_method',
+                'NegativeDataRejection' => 'negative_data_rejection',
+                'PositiveDataAcceptance' => 'positive_data_acceptance',
             ],
             'constants' => [],
             'properties' => [
@@ -1004,6 +1006,14 @@ final class PublicApiBaselineTest extends TestCase
                         'unavailable' => true,
                     ],
                 ],
+                'reason' => [
+                    'type' => '?string',
+                    'static' => false,
+                    'readonly' => true,
+                    'default' => [
+                        'unavailable' => true,
+                    ],
+                ],
             ],
             'methods' => [
                 '__construct' => [
@@ -1102,6 +1112,15 @@ final class PublicApiBaselineTest extends TestCase
                         ],
                         [
                             'name' => 'mutation',
+                            'type' => '?string',
+                            'optional' => true,
+                            'variadic' => false,
+                            'by_reference' => false,
+                            'default' => null,
+                            'attributes' => [],
+                        ],
+                        [
+                            'name' => 'reason',
                             'type' => '?string',
                             'optional' => true,
                             'variadic' => false,

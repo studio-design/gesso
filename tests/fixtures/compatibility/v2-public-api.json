@@ -189,7 +189,9 @@
         "cases": {
             "IgnoredAuth": "ignored_auth",
             "MissingRequiredHeader": "missing_required_header",
-            "UnsupportedMethod": "unsupported_method"
+            "UnsupportedMethod": "unsupported_method",
+            "NegativeDataRejection": "negative_data_rejection",
+            "PositiveDataAcceptance": "positive_data_acceptance"
         },
         "constants": [],
         "properties": {
@@ -371,6 +373,14 @@
                 "default": {
                     "unavailable": true
                 }
+            },
+            "reason": {
+                "type": "?string",
+                "static": false,
+                "readonly": true,
+                "default": {
+                    "unavailable": true
+                }
             }
         },
         "methods": {
@@ -470,6 +480,15 @@
                     },
                     {
                         "name": "mutation",
+                        "type": "?string",
+                        "optional": true,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": null,
+                        "attributes": []
+                    },
+                    {
+                        "name": "reason",
                         "type": "?string",
                         "optional": true,
                         "variadic": false,
