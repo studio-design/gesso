@@ -20,6 +20,8 @@ class ContractCheckSummaryTest extends TestCase
     {
         $this->assertSame('unsupported_method', ContractCheck::UnsupportedMethod->value);
         $this->assertSame([405], ContractCheck::UnsupportedMethod->defaultExpectedStatuses());
+        $this->assertSame('negative_data_rejection', ContractCheck::NegativeDataRejection->value);
+        $this->assertSame('positive_data_acceptance', ContractCheck::PositiveDataAcceptance->value);
     }
 
     #[Test]

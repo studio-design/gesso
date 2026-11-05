@@ -38,19 +38,23 @@ final readonly class ContractCheckFailure
         public array $expectedStatusClasses = [],
         /** Human-readable description of the mutation the probe dispatched. */
         public ?string $mutation = null,
+        /**
+         * Why an expected status still failed, such as a 405 without the
+         * `Allow` header RFC 9110 requires; null when the status was wrong.
+         */
+        public ?string $reason = null,
     ) {}
 
     public function describe(): string
     {
         return sprintf(
-            "%s: %s %s%s%s — expected %s, got %d\n  Curl: %s",
+            "%s: %s %s%s%s — %s\n  Curl: %s",
             $this->check->value,
             $this->method,
             $this->path,
             $this->operationId !== null ? ' (' . $this->operationId . ')' : '',
             $this->mutation !== null ? ' [' . $this->mutation . ']' : '',
-            $this->describeExpected(),
-            $this->actualStatus,
+            $this->reason ?? sprintf('expected %s, got %d', $this->describeExpected(), $this->actualStatus),
             $this->case->curlSnippet(),
         );
     }

@@ -243,6 +243,13 @@ already configures the prefix behaves as before. A test that expected the
 path-not-found failure must set `spec.strip_prefixes` or call a path the spec
 does not document.
 
+### 405 responses need an `Allow` header
+
+The `unsupported_method` contract check now fails a 405 that has no `Allow`
+header, as RFC 9110 requires, when the dispatcher returns a response object. A
+dispatcher that returns only the status code is checked as before. Laravel and
+Symfony set the header on their own 405 responses.
+
 ### Contract-check aliases
 
 The `Studio\Gesso\Fuzz\` aliases of the named contract checks are gone
