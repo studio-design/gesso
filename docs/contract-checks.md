@@ -21,6 +21,8 @@ $summary = OpenApiContractChecks::run('petstore', seed: 7)
         ContractCheck::IgnoredAuth,
         ContractCheck::MissingRequiredHeader,
         ContractCheck::UnsupportedMethod,
+        ContractCheck::NegativeDataRejection,
+        ContractCheck::PositiveDataAcceptance,
     ])
     ->dispatchUsing(fn (ExploredCase $case): int => $this->send($case)->getStatusCode())
     ->report();
@@ -32,7 +34,9 @@ self::assertSame([], $summary->failures, $summary->describeFailures());
 |---|---|---|
 | `ignored_auth` | per operation with an effective `security` requirement: the valid request with no credentials, then again with credentials the API cannot have issued | `401`, `403` |
 | `missing_required_header` | per `required: true` header parameter: the valid request with that one header omitted, gated behind a 2xx control request; state-changing methods need `dispatchIsolatedUsing()` | any `4xx` |
-| `unsupported_method` | one deterministically chosen undocumented method per documented path | `405` |
+| `unsupported_method` | one deterministically chosen undocumented method per documented path | `405`, with an `Allow` header |
+| `negative_data_rejection` | per operation: five requests that each break one schema keyword of the valid request, gated behind a 2xx control request; state-changing methods need `dispatchIsolatedUsing()` | any `4xx` |
+| `positive_data_acceptance` | per operation: the valid request | any `2xx` or `3xx`, `401`, `403`, `404`, `409`, `429` |
 
 `dispatchUsing()` may return an `int` status, a PSR-7 response, or any object
 exposing `getStatusCode(): int` (Symfony `Response`, Laravel `TestResponse`).
@@ -184,10 +188,45 @@ explorable method is documented, where every remaining candidate collides
 with another template, or where no documented operation's path parameters
 can be generated, appear in `$summary->skips` with a reason.
 
+A 405 also has to carry the `Allow` header listing the methods the path
+supports (RFC 9110 §15.5.6); without it the probe fails with that reason. The
+header is read when `dispatchUsing()` returns a PSR-7 response or an object
+with Symfony-style `headers` (Symfony `Response`, Laravel `TestResponse`); a
+dispatcher that returns only the status is checked on the status alone.
+
 Two caveats: `HEAD`/`OPTIONS`/`TRACE` are outside the explorer's method set
 and are not probed, and a probe response cannot pass normal response
 validation (its method is undocumented by definition) — disable Laravel's
 `auto_assert` in contract-check tests or dispatch outside the trait's helpers.
+
+### `negative_data_rejection`
+
+Five requests per operation, each the valid request with one schema keyword
+broken: a body property of the wrong type, a string below its `minLength`, a
+missing required query parameter, and so on — the generator of
+[negative exploration](fuzzing.md#negative-cases-and-reduction). The failure
+names the broken location and keyword, as in `[invalid body/name: minLength]`.
+An operation with nothing to break (no body or parameters with constraints) is
+skipped with a reason.
+
+Like `missing_required_header`, the probes are scored only after the unmutated
+valid request answers a 2xx, so a 4xx means the input was rejected rather than
+the request, and state-changing methods are skipped unless the dispatcher was
+registered with `dispatchIsolatedUsing()`. Unlike Schemathesis, a 5xx is not
+accepted: a server error on invalid input is a failure here. A rejected probe's
+4xx is usually undocumented for the operation, so the [`unsupported_method`](#unsupported_method)
+caveat applies here too: disable Laravel's `auto_assert` in
+contract-check tests or dispatch outside the trait's helpers.
+
+### `positive_data_acceptance`
+
+One valid request per operation, which the API must not reject. Besides a
+2xx or 3xx, the default accepts the answers a valid request still gets for
+reasons the schema does not cover: `401` and `403` (credentials), `404` (a
+generated identifier that does not exist), `409` (a conflict), and `429` (rate
+limiting). Use `setUpUsing()` / `authenticateUsing()` to turn those into a 2xx
+where the suite can, or `expectedStatusClasses(ContractCheck::PositiveDataAcceptance, [2])`
+to require one. Unlike Schemathesis, a 5xx is a failure.
 
 ### Reading the results
 
@@ -211,10 +250,10 @@ Check names match [Schemathesis][schemathesis-checks] so cross-tool
 documentation and CI dashboards line up, and the probes match its behavior:
 `ignored_auth` sends two extra requests per operation (no credentials, then
 invalid ones), `unsupported_method` expects 405, and
-`missing_required_header` expects a client error. Two deliberate differences:
-Gesso accepts 403 alongside 401 for `ignored_auth` (many PHP frameworks answer
-an unauthenticated request with 403), and it does not assert the RFC 9110
-`Allow` header on a 405 — only the status. The rest of the Schemathesis check
+`missing_required_header` expects a client error. Deliberate differences: Gesso accepts 403 alongside 401 for `ignored_auth`
+(many PHP frameworks answer an unauthenticated request with 403), and neither
+`negative_data_rejection` nor `positive_data_acceptance` accepts a 5xx. The
+`Allow` header on a 405 is asserted, as in Schemathesis. The rest of the Schemathesis check
 catalog (`use_after_free`, `ensure_resource_availability`,
 `max_response_time`, and the response-conformance family) is out of scope here;
 response conformance is what `OpenApiResponseValidator` and the coverage
