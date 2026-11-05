@@ -1,0 +1,21 @@
+{
+    "openapi": "3.1.0",
+    "info": { "title": "Server base paths", "version": "1.0.0" },
+    "servers": [{ "url": "https://api.example.com/api" }],
+    "paths": {
+        "/pets": {
+            "get": {
+                "responses": {
+                    "200": {
+                        "description": "ok",
+                        "content": { "application/json": { "schema": { "type": "array" } } }
+                    }
+                }
+            }
+        },
+        "/admin/stats": {
+            "servers": [{ "url": "/internal" }],
+            "get": { "responses": { "200": { "description": "ok" } } }
+        }
+    }
+}

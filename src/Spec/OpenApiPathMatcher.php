@@ -15,6 +15,7 @@ use function in_array;
 use function preg_match;
 use function preg_quote;
 use function preg_split;
+use function reset;
 use function rtrim;
 use function sprintf;
 use function str_contains;
@@ -57,10 +58,14 @@ final class OpenApiPathMatcher
     /**
      * @param string[] $specPaths
      * @param string[] $stripPrefixes Prefixes to strip from request paths before matching (e.g., ['/api'])
+     * @param array<string, list<string>> $serverBasePaths base path => the templates it serves, longest first
+     *                                                     ({@see OpenApiServerBasePaths::fromSpec()}); tried when the
+     *                                                     request path matches nothing and no prefix is configured
      */
     public function __construct(
         array $specPaths,
         private readonly array $stripPrefixes = [],
+        private readonly array $serverBasePaths = [],
     ) {
         $compiled = [];
         $literalPaths = [];
@@ -331,7 +336,53 @@ final class OpenApiPathMatcher
      */
     public function matchWithVariables(string $requestPath): ?array
     {
-        return $this->lookup($this->normalizeRequestPath($requestPath)['path']);
+        $match = $this->lookup($this->normalizeRequestPath($requestPath)['path']);
+        if ($match !== null || !$this->appliesServerBasePaths()) {
+            return $match;
+        }
+
+        $served = [];
+        foreach ($this->serverBasePathCandidates($requestPath) as $candidate) {
+            if ($candidate['served']) {
+                $served[$candidate['match']['path']] ??= $candidate['match'];
+            }
+        }
+
+        return count($served) === 1 ? reset($served) : null;
+    }
+
+    /**
+     * Whether server base paths take part in matching: only while no
+     * `strip_prefixes` is configured, which overrides them (ADR 0008).
+     */
+    public function appliesServerBasePaths(): bool
+    {
+        return $this->stripPrefixes === [] && $this->serverBasePaths !== [];
+    }
+
+    /**
+     * Each server base path the raw request path starts with, segment by
+     * segment, whose removal leaves a path that matches a template, and
+     * whether that template is served under it. The rest of an exactly
+     * matching path is the root path `/`.
+     *
+     * @return list<array{prefix: string, match: array{path: string, variables: array<string, string>}, served: bool}>
+     */
+    public function serverBasePathCandidates(string $requestPath): array
+    {
+        $candidates = [];
+        foreach ($this->serverBasePaths as $prefix => $templates) {
+            $rest = substr($requestPath, strlen($prefix));
+            if (!str_starts_with($requestPath, $prefix) || $rest !== '' && !str_starts_with($rest, '/')) {
+                continue;
+            }
+            $match = $this->lookup(self::trimTrailingSlash($rest === '' ? '/' : $rest));
+            if ($match !== null) {
+                $candidates[] = ['prefix' => $prefix, 'match' => $match, 'served' => in_array($match['path'], $templates, true)];
+            }
+        }
+
+        return $candidates;
     }
 
     /**

@@ -34,6 +34,24 @@ final class LaravelRouteParityAnalyzerTest extends TestCase
     }
 
     #[Test]
+    public function matches_a_route_under_a_server_base_path_without_strip_prefixes(): void
+    {
+        $spec = ['openapi' => '3.2.0', 'servers' => [['url' => '/api']], 'paths' => ['/v2/pets/{petId}' => ['get' => []]]];
+        $routes = [new Route(['GET'], 'api/v2/pets/{pet}', static fn() => null)];
+
+        $result = (new LaravelRouteParityAnalyzer())->analyze(['front' => $spec], $routes);
+        $this->assertSame(['/v2/pets/{petId}'], array_column($result->matched, 'openapi_path'));
+
+        $configured = (new LaravelRouteParityAnalyzer())->analyze(['front' => $spec], $routes, ['/gateway']);
+        $this->assertSame([], $configured->matched);
+
+        $spec['paths']['/v2/pets/{petId}']['head'] = [];
+        $withHead = (new LaravelRouteParityAnalyzer())->analyze(['front' => $spec], [new Route(['GET', 'HEAD'], 'api/v2/pets/{pet}', static fn() => null)]);
+        $this->assertSame(['GET', 'HEAD'], array_column($withHead->matched, 'method'));
+        $this->assertSame([], $withHead->documentedButNotRegistered);
+    }
+
+    #[Test]
     public function implicit_head_matches_an_explicit_openapi_head_operation(): void
     {
         $route = new Route(['GET'], 'pets', static fn() => null);

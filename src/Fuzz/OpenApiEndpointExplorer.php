@@ -16,6 +16,7 @@ use Studio\Gesso\Spec\OpenApiOperationResolver;
 use Studio\Gesso\Spec\OpenApiPathMatcher;
 use Studio\Gesso\Spec\OpenApiSchemaConverter;
 use Studio\Gesso\Spec\OpenApiSchemaDialect;
+use Studio\Gesso\Spec\OpenApiServerBasePaths;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Validation\Request\ParameterCollector;
 use Studio\Gesso\Validation\Request\RequestBodyValidator;
@@ -421,7 +422,7 @@ final class OpenApiEndpointExplorer
         /** @var array<string, mixed> $paths */
         $paths = is_array($spec['paths'] ?? null) ? $spec['paths'] : [];
 
-        $matchedPath = self::resolveMatchedPath($paths, $path);
+        $matchedPath = self::resolveMatchedPath($paths, $path, OpenApiServerBasePaths::fromSpec($spec));
         if ($matchedPath === null) {
             throw new InvalidArgumentException(sprintf(
                 "Path '%s' is not declared in OpenAPI spec '%s'.",
@@ -527,8 +528,9 @@ final class OpenApiEndpointExplorer
      * happens to use placeholder-shaped segments is still selectable.
      *
      * @param array<string, mixed> $paths
+     * @param array<string, list<string>> $serverBasePaths
      */
-    private static function resolveMatchedPath(array $paths, string $path): ?string
+    private static function resolveMatchedPath(array $paths, string $path, array $serverBasePaths): ?string
     {
         if (isset($paths[$path]) && is_array($paths[$path])) {
             return $path;
@@ -541,7 +543,7 @@ final class OpenApiEndpointExplorer
             }
         }
 
-        $matcher = new OpenApiPathMatcher($specPaths, OpenApiSpecLoader::getStripPrefixes());
+        $matcher = new OpenApiPathMatcher($specPaths, OpenApiSpecLoader::getStripPrefixes(), $serverBasePaths);
 
         return $matcher->match($path);
     }

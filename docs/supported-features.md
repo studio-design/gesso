@@ -120,7 +120,7 @@ multi-step chains checked for `use_after_free` and
 See [Follow response links](fuzzing.md#follow-response-links).
 
 ## Spec features not consulted
-Webhooks (3.1+), Callbacks, Server URL templating (`servers` with `variables` — never used to match a request path, read only to explain a failed match; see [Server base paths are not stripped automatically](setup.md#server-base-paths-are-not-stripped-automatically)), Examples (`example` / `examples`, including 3.2 `dataValue` / `serializedValue` — not used for fuzzing or validation), 3.2 tag hierarchy (`summary` / `parent` / `kind`), `externalDocs`, and vendor extensions (`x-*` keys, ignored harmlessly). OAuth2 device authorization and other OAuth/OpenID schemes remain on the existing `[security]` warning path.
+Webhooks (3.1+), Callbacks, Server URL templating (`servers` with `variables`; their base paths take part in request-path matching, with each variable's `default` — see [Server base paths](setup.md#server-base-paths)), Examples (`example` / `examples`, including 3.2 `dataValue` / `serializedValue` — not used for fuzzing or validation), 3.2 tag hierarchy (`summary` / `parent` / `kind`), `externalDocs`, and vendor extensions (`x-*` keys, ignored harmlessly). OAuth2 device authorization and other OAuth/OpenID schemes remain on the existing `[security]` warning path.
 
 ## Diagnostic channels (`E_USER_WARNING` and `E_USER_DEPRECATED`)
 

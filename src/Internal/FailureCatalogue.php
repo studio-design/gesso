@@ -133,12 +133,12 @@ final class FailureCatalogue
             'summary' => 'No path template in the spec matches the request path, so the request cannot be validated.',
             'causes' => [
                 'The endpoint is new and not documented yet.',
-                'A base path or version prefix (`/api`, `/v1`) is in the request but not in the spec paths.',
+                'A base path or version prefix (`/api`, `/v1`) is in the request but in neither the spec paths nor its `servers`.',
                 'A trailing slash or a typo differs between the route and the spec.',
             ],
             'fix' => [
                 'Spec wrong: add the path to `paths`.',
-                'Prefix mismatch: set `spec.strip_prefixes` in `gesso.php`.',
+                'Prefix mismatch: declare the base path in the spec\'s `servers`, or set `spec.strip_prefixes` in `gesso.php`.',
                 'Test wrong: fix the URL the test calls. The failure lists the closest spec paths.',
             ],
             'do_not' => 'Do not skip the test with `#[SkipOpenApi]`; an undocumented endpoint is the drift contract testing exists to catch.',
@@ -242,7 +242,7 @@ final class FailureCatalogue
             'title' => 'Response request context is not in the spec',
             'summary' => 'The path or method of the request that produced this response is not in the spec, so the response has no operation to check against.',
             'causes' => ['The endpoint is undocumented.', 'A path prefix is not stripped (`spec.strip_prefixes`).'],
-            'fix' => ['Spec wrong: add the path or operation.', 'Prefix mismatch: set `spec.strip_prefixes`.', 'Test wrong: call the documented path.'],
+            'fix' => ['Spec wrong: add the path or operation.', 'Prefix mismatch: declare the base path in `servers`, or set `spec.strip_prefixes`.', 'Test wrong: call the documented path.'],
             'do_not' => 'Do not skip the test with `#[SkipOpenApi]`; an undocumented endpoint is real drift.',
         ],
         'GSO202' => [

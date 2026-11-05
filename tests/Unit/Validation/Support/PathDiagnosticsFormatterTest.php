@@ -7,14 +7,16 @@ namespace Studio\Gesso\Tests\Unit\Validation\Support;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Studio\Gesso\Spec\OpenApiPathMatcher;
+use Studio\Gesso\Spec\OpenApiServerBasePaths;
 use Studio\Gesso\Validation\Support\PathDiagnosticsFormatter;
 
+use function array_keys;
 use function implode;
 
 /**
- * The server-base-path hint pinned by ADR 0006: `servers[].url` never
- * participates in matching, so a failed match has to name the prefix the spec
- * already declared instead of leaving the reader to derive it.
+ * The server base path callouts of ADR 0008. While `strip_prefixes` is set,
+ * base paths are not applied, so a failed match names the one to add; while
+ * it is unset, a failed match says why each base path was rejected.
  */
 class PathDiagnosticsFormatterTest extends TestCase
 {
@@ -24,11 +26,11 @@ class PathDiagnosticsFormatterTest extends TestCase
         $message = $this->pathNotFound('/api/pets', [['url' => '/api']]);
 
         $this->assertStringContainsString(
-            "servers[0].url declares base path '/api'; '/pets' matches after removing it.",
+            "the spec's servers declare base path '/api'; /pets matches after removing it.",
             $message,
         );
         $this->assertStringContainsString(
-            "Gesso does not strip server base paths automatically — add '/api' to spec.strip_prefixes in gesso.php.",
+            "Server base paths are not applied while spec.strip_prefixes is set — add '/api' to it in gesso.php.",
             $message,
         );
     }
@@ -39,13 +41,13 @@ class PathDiagnosticsFormatterTest extends TestCase
         $message = $this->pathNotFound('/v1/pets', [['url' => 'https://api.example.com/v1/']]);
 
         $this->assertStringContainsString(
-            "servers[0].url declares base path '/v1'; '/pets' matches after removing it.",
+            "the spec's servers declare base path '/v1'; /pets matches after removing it.",
             $message,
         );
     }
 
     #[Test]
-    public function reports_the_first_declared_server_whose_removal_matches(): void
+    public function reports_the_server_whose_removal_matches(): void
     {
         $message = $this->pathNotFound('/v2/pets', [
             ['url' => '/v1'],
@@ -53,7 +55,7 @@ class PathDiagnosticsFormatterTest extends TestCase
             ['url' => '/v2'],
         ]);
 
-        $this->assertStringContainsString("servers[2].url declares base path '/v2'", $message);
+        $this->assertStringContainsString("declare base path '/v2'", $message);
     }
 
     #[Test]
@@ -61,7 +63,7 @@ class PathDiagnosticsFormatterTest extends TestCase
     {
         $message = $this->pathNotFound('/api/unknown', [['url' => '/api']]);
 
-        $this->assertStringNotContainsString('declares base path', $message);
+        $this->assertStringNotContainsString('declare base path', $message);
         $this->assertStringContainsString('closest spec paths:', $message);
     }
 
@@ -70,7 +72,7 @@ class PathDiagnosticsFormatterTest extends TestCase
     {
         $message = $this->pathNotFound('/api/pets', [['url' => 'https://api.example.com']]);
 
-        $this->assertStringNotContainsString('declares base path', $message);
+        $this->assertStringNotContainsString('declare base path', $message);
     }
 
     /**
@@ -85,7 +87,7 @@ class PathDiagnosticsFormatterTest extends TestCase
         $message = $this->pathNotFound('/api/', [['url' => '/api']], ['/']);
 
         $this->assertStringContainsString(
-            "servers[0].url declares base path '/api'; '/' matches after removing it.",
+            "the spec's servers declare base path '/api'; / matches after removing it.",
             $message,
         );
     }
@@ -95,7 +97,7 @@ class PathDiagnosticsFormatterTest extends TestCase
     {
         $message = $this->pathNotFound('/api', [['url' => '/api']], ['/']);
 
-        $this->assertStringNotContainsString('declares base path', $message);
+        $this->assertStringNotContainsString('declare base path', $message);
     }
 
     /**
@@ -115,7 +117,7 @@ class PathDiagnosticsFormatterTest extends TestCase
         ]]);
 
         $this->assertStringContainsString(
-            "servers[0].url declares base path '/api/v1'; '/pets' matches after removing it.",
+            "the spec's servers declare base path '/api/v1'; /pets matches after removing it.",
             $message,
         );
     }
@@ -128,7 +130,7 @@ class PathDiagnosticsFormatterTest extends TestCase
             'variables' => ['env' => ['default' => 'staging']],
         ]]);
 
-        $this->assertStringContainsString("servers[0].url declares base path '/v1'", $message);
+        $this->assertStringContainsString("declare base path '/v1'", $message);
     }
 
     /**
@@ -140,18 +142,18 @@ class PathDiagnosticsFormatterTest extends TestCase
     public function stays_silent_when_a_server_variable_has_no_usable_default(): void
     {
         $this->assertStringNotContainsString(
-            'declares base path',
+            'declare base path',
             $this->pathNotFound('/api/pets', [['url' => 'https://example.com/{basePath}']]),
         );
         $this->assertStringNotContainsString(
-            'declares base path',
+            'declare base path',
             $this->pathNotFound('/api/pets', [[
                 'url' => '/{basePath}',
                 'variables' => ['basePath' => ['enum' => ['api']]],
             ]]),
         );
         $this->assertStringNotContainsString(
-            'declares base path',
+            'declare base path',
             $this->pathNotFound('/api/pets', [[
                 'url' => '/{basePath}',
                 'variables' => ['other' => ['default' => 'api']],
@@ -173,7 +175,7 @@ class PathDiagnosticsFormatterTest extends TestCase
             stripPrefixes: ['/v1'],
         );
 
-        $this->assertStringNotContainsString('declares base path', $message);
+        $this->assertStringNotContainsString('declare base path', $message);
 
         // Silence is the correct answer: adding '/api' cannot work in either
         // order, because only one prefix is ever removed.
@@ -200,7 +202,7 @@ class PathDiagnosticsFormatterTest extends TestCase
         );
 
         $this->assertStringContainsString("searched as: pi/pets (after stripping prefix '/a')", $message);
-        $this->assertStringNotContainsString('declares base path', $message);
+        $this->assertStringNotContainsString('declare base path', $message);
     }
 
     #[Test]
@@ -212,7 +214,7 @@ class PathDiagnosticsFormatterTest extends TestCase
             stripPrefixes: ['/gateway'],
         );
 
-        $this->assertStringContainsString("servers[0].url declares base path '/api'", $message);
+        $this->assertStringContainsString("declare base path '/api'", $message);
 
         // And the advice works: nothing configured matches the raw path, so the
         // appended prefix is the one that wins.
@@ -223,14 +225,39 @@ class PathDiagnosticsFormatterTest extends TestCase
     }
 
     #[Test]
+    public function says_when_the_matched_path_does_not_declare_the_base_path(): void
+    {
+        $message = $this->format('/api/pets', [
+            'servers' => [['url' => '/api']],
+            'paths' => ['/pets' => ['servers' => [['url' => '/other']], 'get' => []]],
+        ]);
+
+        $this->assertStringContainsString("/pets matches after removing server base path '/api', but the servers of /pets do not declare it.", $message);
+    }
+
+    #[Test]
+    public function names_both_paths_when_two_base_paths_match_different_paths(): void
+    {
+        $message = $this->format('/api/v1/pets', [
+            'servers' => [['url' => '/api'], ['url' => '/api/v1']],
+            'paths' => ['/pets' => ['get' => []], '/v1/pets' => ['get' => []]],
+        ]);
+
+        $this->assertStringContainsString(
+            "server base paths match more than one spec path: '/api/v1' → /pets, '/api' → /v1/pets. Set spec.strip_prefixes to choose one.",
+            $message,
+        );
+    }
+
+    #[Test]
     public function tolerates_servers_that_are_not_a_list_of_objects_with_urls(): void
     {
         $this->assertStringNotContainsString(
-            'declares base path',
+            'declare base path',
             $this->pathNotFound('/api/pets', 'https://api.example.com/api'),
         );
         $this->assertStringNotContainsString(
-            'declares base path',
+            'declare base path',
             $this->pathNotFound('/api/pets', [['description' => 'no url'], 'not-an-object', ['url' => 42]]),
         );
     }
@@ -244,19 +271,31 @@ class PathDiagnosticsFormatterTest extends TestCase
         string $requestPath,
         array|string $servers,
         array $specPaths = ['/pets'],
-        array $stripPrefixes = [],
+        array $stripPrefixes = ['/gateway'],
     ): string {
         $paths = [];
         foreach ($specPaths as $specPath) {
             $paths[$specPath] = ['get' => ['responses' => ['200' => ['description' => 'ok']]]];
         }
 
+        return $this->format($requestPath, ['servers' => $servers, 'paths' => $paths], $stripPrefixes);
+    }
+
+    /**
+     * @param array<string, mixed> $spec
+     * @param list<string> $stripPrefixes
+     */
+    private function format(string $requestPath, array $spec, array $stripPrefixes = []): string
+    {
+        /** @var list<string> $specPaths */
+        $specPaths = array_keys($spec['paths']);
+
         return PathDiagnosticsFormatter::pathNotFound(
             'petstore',
             'get',
             $requestPath,
-            new OpenApiPathMatcher($specPaths, $stripPrefixes),
-            ['servers' => $servers, 'paths' => $paths],
+            new OpenApiPathMatcher($specPaths, $stripPrefixes, OpenApiServerBasePaths::fromSpec($spec)),
+            $spec,
         );
     }
 }
