@@ -11,7 +11,9 @@ require \dirname(__DIR__) . '/vendor/autoload.php';
 // What exploring an operation costs: the first call on it, and a call on an
 // operation explored before, then what a sweep over the whole spec retains
 // (issue #726). The digest covers every case of the seeded sweep, so two
-// revisions that print the same digest generated the same cases.
+// revisions that print the same digest generated the same cases. The spec has
+// no `date`, `time` or `date-time` property: faker draws those up to the
+// current time, so the digest would differ from one run to the next.
 $resources = isset($argv[1]) ? \max(1, (int) $argv[1]) : 100;
 $cases = isset($argv[2]) ? \max(1, (int) $argv[2]) : 30;
 $rounds = 5;
@@ -22,12 +24,12 @@ $paths = [];
 for ($i = 0; $i < $resources; $i++) {
     $schemas["Resource{$i}"] = [
         'type' => 'object',
-        'required' => ['id', "name{$i}", 'status', 'createdOn'],
+        'required' => ['id', "name{$i}", 'status', 'reference'],
         'properties' => [
             'id' => ['type' => 'integer', 'minimum' => 1],
             "name{$i}" => ['type' => 'string', 'minLength' => 1, 'maxLength' => 120],
             'status' => ['type' => 'string', 'enum' => ['draft', 'active', 'archived']],
-            'createdOn' => ['type' => 'string', 'format' => 'date'],
+            'reference' => ['type' => 'string', 'format' => 'uuid'],
             'email' => ['type' => 'string', 'format' => 'email', 'nullable' => true],
             'score' => ['type' => 'number', 'minimum' => 0, 'maximum' => 100],
             'tags' => ['type' => 'array', 'items' => ['type' => 'string'], 'maxItems' => 20],
@@ -45,7 +47,7 @@ for ($i = 0; $i < $resources; $i++) {
             'parameters' => [
                 ['name' => 'limit', 'in' => 'query', 'schema' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 100]],
                 ['name' => 'offset', 'in' => 'query', 'schema' => ['type' => 'integer', 'minimum' => 0]],
-                ['name' => "sort{$i}", 'in' => 'query', 'schema' => ['type' => 'string', 'enum' => ['id', 'name', 'createdOn']]],
+                ['name' => "sort{$i}", 'in' => 'query', 'schema' => ['type' => 'string', 'enum' => ['id', 'name', 'reference']]],
                 ['name' => 'q', 'in' => 'query', 'schema' => ['type' => 'string', 'minLength' => 2, 'maxLength' => 40]],
             ],
             'responses' => $ok,
