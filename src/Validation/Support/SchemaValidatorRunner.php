@@ -78,8 +78,9 @@ final class SchemaValidatorRunner
 
     /**
      * Most schema locations remembered at once; over it, the oldest is
-     * forgotten and takes the hash path again. An entry is two short strings,
-     * and a full {@see self::$shared} holds fewer schemas than this.
+     * forgotten and takes the fingerprint path again. A full
+     * {@see self::$shared} holds fewer schemas than this, and a full map
+     * retains about 0.9 MB (`docs/benchmarks/schema-location-cache.md`).
      */
     private const MAX_LOCATIONS = 4096;
 
@@ -103,7 +104,7 @@ final class SchemaValidatorRunner
      * and the fingerprint, which together cost more than the lookup they feed
      * (issue #724). Several locations may share one entry.
      *
-     * @var array<string, string> "<resolved maxErrors>:<location>" => key of self::$shared, oldest first
+     * @var array<string, string> "<resolved maxErrors>:<xxh128 of the location>" => key of self::$shared, oldest first
      */
     private static array $locations = [];
 
@@ -168,7 +169,8 @@ final class SchemaValidatorRunner
      */
     public function validateAt(?string $location, Closure $schema, mixed $data): array
     {
-        $location = $location === null ? null : $this->maxErrors . ':' . $location;
+        // Hashed only to keep the map small: a location runs to a few hundred bytes.
+        $location = $location === null ? null : $this->maxErrors . ':' . hash('xxh128', $location);
         $key = $location === null ? null : self::$locations[$location] ?? null;
         $entry = $key === null ? null : self::$shared[$key] ?? null;
         $jsonSchema = null;
