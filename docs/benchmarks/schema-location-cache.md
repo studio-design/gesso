@@ -39,6 +39,8 @@ schemas a batch cycles over do not fit in the budget of the parsed-schema
 cache (see [the shared parsed-schema cache benchmark](shared-schema-cache.md)),
 so most calls of the two cycling rows find their schema dropped, convert and
 parse it again, and gain next to nothing. Parsing is what those rows pay for.
+After the pass over every schema of that spec, 3,600 locations are remembered
+and 790 schemas are still parsed.
 
 ## Retained memory
 
