@@ -14,16 +14,21 @@ use InvalidArgumentException;
 use Opis\JsonSchema\Errors\ErrorFormatter;
 use Opis\JsonSchema\Errors\ValidationError;
 use Opis\JsonSchema\JsonPointer;
+use Opis\JsonSchema\Parsers\SchemaParser;
+use Opis\JsonSchema\Resolvers\SchemaResolver;
 use Opis\JsonSchema\Schema;
+use Opis\JsonSchema\SchemaLoader;
 use Opis\JsonSchema\Validator;
 use stdClass;
 use Studio\Gesso\Internal\CurlCommandFormatter;
 use Studio\Gesso\OpenApiVersion;
 use Studio\Gesso\SchemaContext;
 use Studio\Gesso\Spec\OpenApiSchemaConverter;
+use Studio\Gesso\Spec\OpenApiSpecLoader;
 
 use function array_filter;
 use function array_key_exists;
+use function array_key_first;
 use function array_keys;
 use function array_values;
 use function count;
@@ -41,6 +46,7 @@ use function preg_replace;
 use function property_exists;
 use function serialize;
 use function sprintf;
+use function strlen;
 
 /**
  * @phpstan-type FormattedEntry array{message: string, keyword: string, schema_pointer: ?string, actual: ?string, expected: ?string}
@@ -50,26 +56,43 @@ use function sprintf;
 final class SchemaValidatorRunner
 {
     /**
-     * Bound the canonical schema set retained by this runner. Opis keeps every
-     * parsed schema object in a SplObjectStorage cache, so accepting a fresh
-     * but equivalent stdClass on every validation grows memory linearly with
-     * the number of assertions. Reusing one canonical object per schema lets
-     * Opis reuse its parsed representation instead.
+     * Budget for the schemas the process keeps parsed, across every runner:
+     * the summed `serialize()` length of the converted schemas, plus
+     * {@see self::SHARED_ENTRY_BYTES} for each.
      *
-     * A runner is normally shared by one request or response validator. 1,024
-     * entries covers large multi-spec suites while keeping dynamically-created
-     * schema workloads bounded. Reaching the limit clears both sides of the
-     * cache atomically so Opis cannot retain objects we no longer own.
+     * Validators live per test-case instance, so a cache on the runner made
+     * every test parse again each schema it touched (issue #723). A parsed
+     * schema stays in memory for as long as it is cached, though, and what it
+     * retains follows its serialized length rather than the number of
+     * schemas: up to 28 times the bytes charged here in the measurements of
+     * `docs/benchmarks/shared-schema-cache.md`, which puts a full cache at
+     * about 14 MB. Over budget, the least recently used schemas are dropped
+     * one at a time and parsed again when they come back; a single schema
+     * larger than the budget is still kept while it is the latest one.
      */
-    private const MAX_CANONICAL_SCHEMAS = 1024;
+    private const MAX_SHARED_BYTES = 512 * 1024;
+
+    /** Charged per cached schema on top of its length: a tiny schema still retains about 3.5 KB. */
+    private const SHARED_ENTRY_BYTES = 128;
 
     /** Longest `actual` / `expected` excerpt, in characters, before it is cut with `…`. */
     private const MAX_EXCERPT = 80;
-    private readonly Validator $opisValidator;
-    private readonly ErrorFormatter $errorFormatter;
 
-    /** @var array<string, object> SHA-256 of the serialized converted schema => canonical schema object */
-    private array $canonicalSchemas = [];
+    /**
+     * Each entry owns an opis validator that has loaded exactly one schema.
+     * Opis can only empty a loader as a whole, and a loader resolves schemas
+     * by `$id`: one loader for all schemas could neither drop a single entry
+     * nor tell apart two schemas that declare the same `$id`.
+     *
+     * @var array<string, array{Validator, object, int}> "<resolved maxErrors>:<SHA-256 of the serialized converted schema>" => [validator, canonical schema object, bytes charged], least recently used first
+     */
+    private static array $shared = [];
+    private static int $sharedBytes = 0;
+
+    /** Stateless, and the costly part of building an opis validator, so every loader shares it. */
+    private static ?SchemaParser $parser = null;
+    private readonly int $maxErrors;
+    private readonly ErrorFormatter $errorFormatter;
 
     public function __construct(int $maxErrors)
     {
@@ -79,17 +102,19 @@ final class SchemaValidatorRunner
             );
         }
 
-        $resolvedMaxErrors = $maxErrors === 0 ? PHP_INT_MAX : $maxErrors;
-        $this->opisValidator = new Validator(
-            max_errors: $resolvedMaxErrors,
-            stop_at_first_error: $resolvedMaxErrors === 1,
-        );
-        // Converted schemas always carry an explicit `$schema`: Draft 07 for
-        // OAS 3.0 and the selected native dialect for OAS 3.1/3.2. Keep the
-        // internal runner's bare-schema fallback at Draft 07 for compatibility
-        // with callers and tests that exercise it directly.
-        $this->opisValidator->parser()->setDefaultDraftVersion('07');
+        $this->maxErrors = $maxErrors === 0 ? PHP_INT_MAX : $maxErrors;
         $this->errorFormatter = new ErrorFormatter();
+    }
+
+    /**
+     * Forget every parsed schema. {@see OpenApiSpecLoader} calls this wherever
+     * it drops its cached specs, so a parsed schema never outlives the spec it
+     * came from.
+     */
+    public static function clearShared(): void
+    {
+        self::$shared = [];
+        self::$sharedBytes = 0;
     }
 
     /**
@@ -105,8 +130,31 @@ final class SchemaValidatorRunner
      */
     public function validateStructured(mixed $jsonSchema, mixed $data): array
     {
-        $jsonSchema = $this->canonicalSchema($jsonSchema);
-        $result = $this->opisValidator->validate($data, $jsonSchema);
+        // Callers convert the schema to a fresh object graph on every call,
+        // and opis caches a parsed schema by object identity. The content
+        // fingerprint maps equivalent graphs back to the one already parsed.
+        // Boolean schemas are not objects and are never kept.
+        $serialized = is_object($jsonSchema) ? serialize($jsonSchema) : null;
+        $key = $serialized === null ? null : $this->maxErrors . ':' . hash('sha256', $serialized);
+        $entry = $key === null ? null : self::$shared[$key] ?? null;
+        [$validator, $jsonSchema] = $entry ?? [$this->newValidator(), $jsonSchema];
+        $result = $validator->validate($data, $jsonSchema);
+
+        if ($key !== null) {
+            // Only after opis accepted the schema, so one it refuses to load
+            // is refused again on the next call. Re-appending keeps the map
+            // ordered least recently used first.
+            unset(self::$shared[$key]);
+            self::$shared[$key] = $entry ?? [$validator, $jsonSchema, strlen($serialized) + self::SHARED_ENTRY_BYTES];
+            if ($entry === null) {
+                self::$sharedBytes += self::$shared[$key][2];
+                while (self::$sharedBytes > self::MAX_SHARED_BYTES && count(self::$shared) > 1) {
+                    $oldest = array_key_first(self::$shared);
+                    self::$sharedBytes -= self::$shared[$oldest][2];
+                    unset(self::$shared[$oldest]);
+                }
+            }
+        }
 
         if ($result->isValid()) {
             return [];
@@ -427,34 +475,21 @@ final class SchemaValidatorRunner
         return $errors;
     }
 
-    /**
-     * Return the stable object identity Opis uses for its parsed-schema cache.
-     *
-     * Callers intentionally convert PHP schema arrays to stdClass before
-     * every validation. Object equality is not enough for Opis: its loader is
-     * keyed by identity, so equivalent fresh objects are parsed and retained
-     * independently. A content fingerprint maps them back to one canonical
-     * object without changing validation semantics. Boolean schemas bypass
-     * the cache because Opis does not retain them by object identity.
-     */
-    private function canonicalSchema(mixed $schema): mixed
+    private function newValidator(): Validator
     {
-        if (!is_object($schema)) {
-            return $schema;
+        if (self::$parser === null) {
+            self::$parser = new SchemaParser();
+            // Converted schemas always carry an explicit `$schema`: Draft 07
+            // for OAS 3.0 and the selected native dialect for OAS 3.1/3.2.
+            // Keep the internal runner's bare-schema fallback at Draft 07 for
+            // compatibility with callers and tests that exercise it directly.
+            self::$parser->setDefaultDraftVersion('07');
         }
 
-        $fingerprint = hash('sha256', serialize($schema));
-        if (isset($this->canonicalSchemas[$fingerprint])) {
-            return $this->canonicalSchemas[$fingerprint];
-        }
-
-        if (count($this->canonicalSchemas) >= self::MAX_CANONICAL_SCHEMAS) {
-            $this->canonicalSchemas = [];
-            $this->opisValidator->loader()->clearCache();
-        }
-
-        $this->canonicalSchemas[$fingerprint] = $schema;
-
-        return $schema;
+        return new Validator(
+            new SchemaLoader(self::$parser, new SchemaResolver(), true),
+            $this->maxErrors,
+            $this->maxErrors === 1,
+        );
     }
 }
