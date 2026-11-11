@@ -146,7 +146,8 @@ same globs and treats a name without the suffix as "no run id".
 The v3 wire floor is `envelopeVersion: 10`, first written by Gesso 2.7. The
 writer emits it and the 3.x reader accepts nothing else. `envelopeVersion` and
 `coverage` are required; every other key is optional, and its absence means
-the writer had no such tracker. A new tracker half is a new optional key, not
+the writer had no such tracker or, for the two strict halves, did not record
+(#725). A new tracker half is a new optional key, not
 a new envelope version.
 
 | Key | Inner version owned by |
@@ -172,9 +173,10 @@ half; `coverage:merge --baseline="violations=…"` refuses to write a union when
 sidecar lacks the baseline half; a strict parallel SDK exercise threshold
 rejects any worker sidecar without the SDK half, while warn-only SDK gating
 reports the missing-worker count and evaluates the available observations.
-`--strict-additional-properties=fail` fails loudly when any worker lacks that
-state, or when no worker exported an evaluation, instead of treating an
-incomplete/old-fleet merge as clean. Unknown envelope versions and unknown
+`--strict-required` and `--strict-additional-properties` name how many
+sidecars lack that half: `fail` exits non-zero, as it does when no worker
+exported an observation, and `warn` evaluates the workers that recorded
+instead of treating an incomplete merge as clean. Unknown envelope versions and unknown
 inner coverage, strict, baseline, or SDK tracker versions are rejected; they
 are never guessed or partially imported.
 

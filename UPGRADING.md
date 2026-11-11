@@ -154,6 +154,14 @@ restored from an earlier CI run), and re-run the parallel suite. Old sidecars
 cannot be converted. See
 [versioned sidecar compatibility](docs/versioning.md#versioned-sidecar-compatibility).
 
+A parallel worker no longer records strict observations when its own
+`strict.required` / `strict.additional_properties` settings are all `off`
+(#725); in 2.x every worker recorded them for the merge step. If you enable a
+strict gate only through `coverage:merge --strict-required=…` or
+`--strict-additional-properties=…`, also set `strict.<check>['run']` in the
+`gesso.php` the workers load. Until then the merge reports the workers that
+did not record: `fail` exits `1`, `warn` prints a WARNING.
+
 ### Enum binding
 
 Enums bind to the spec by component name only

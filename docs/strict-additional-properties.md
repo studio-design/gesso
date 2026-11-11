@@ -143,9 +143,10 @@ invariant fields to `required`, and set `additionalProperties: false`.
 
 ## Parallel test runners
 
-Workers always export strict additional-properties evaluations and findings in
-the coverage sidecar. Evaluate the merged gate after paratest or Pest parallel
-runs:
+A worker records strict additional-properties evaluations and findings, and
+exports them in the coverage sidecar, when its own
+`strict.additional_properties['run']` or `['per_call']` in `gesso.php` is not
+`off`. Evaluate the merged gate after paratest or Pest parallel runs:
 
 ```bash
 vendor/bin/gesso coverage:merge \
@@ -158,10 +159,13 @@ Fail mode exits non-zero when no worker sidecars exist because the gate cannot
 be evaluated. When sidecars do exist, the strict gate is evaluated independently
 of whether the requested `--spec-name` values produce any coverage-report rows.
 
-The `gesso.php` setting controls sequential PHPUnit. The merge CLI flag
-controls the merged parallel gate, so changing warn/fail does not require
-rerunning workers.
+The `gesso.php` setting controls sequential PHPUnit, whether a worker
+records, and the merge's default mode. The merge CLI flag overrides the mode,
+so changing warn/fail does not require rerunning workers.
 
-In a sequential run (no `TEST_TOKEN` or `GESSO_SIDECAR_TOKEN`) with both
-`strict_additional_properties` and `strict_additional_properties_per_call` off,
-the extension skips the inspection and records nothing.
+With both `strict.additional_properties['run']` and `['per_call']` off, the
+extension skips the inspection and records nothing, in a worker as in a
+sequential run, and the worker's sidecar carries no strict
+additional-properties half. A gate requested only through the merge flag then
+cannot be evaluated: `fail` exits `1` and `warn` prints a WARNING, each with
+the number of workers that did not record.

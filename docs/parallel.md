@@ -188,7 +188,9 @@ Sidecars are a versioned worker-to-merge protocol, separate from the coverage
 report produced by `json_output`. The current writer emits
 `envelopeVersion: 10`: `coverage` is required, and `strictRequired`,
 `strictAdditionalProperties`, `sdkExercise`, `deprecations` and `baseline` are
-optional keys whose absence means the worker had no such tracker. Only a
+optional keys whose absence means the worker had no such tracker, or, for the
+two strict halves, that the worker did not record (its own `strict.*` settings
+were all `off`). Only a
 baseline-generation run (`GESSO_BASELINE_GENERATE=1`) writes `baseline`.
 
 The merge reader accepts `envelopeVersion: 10` only. A sidecar with any other
@@ -229,10 +231,16 @@ changing a sidecar shape or filename pattern.
   system before loading extensions in its parallel orchestrator, so the
   extension prints one `[Gesso] NOTE` there and registers nothing in that
   process; it runs no tests, and the workers report as usual.
-- **`strict_required` aggregates across workers.** Workers always export
-  observations via the versioned sidecar envelope. The merge step decides
-  whether to assert the gate: it defaults to `strict.required['run']` in
-  `gesso.php`, and an explicit `--strict-required` wins. See [`strict-required.md`](strict-required.md#paratest).
+- **`strict_required` and `strict_additional_properties` aggregate across
+  workers.** A worker records observations, and exports them in the sidecar
+  envelope, when its own `strict.<check>['run']` or `['per_call']` in
+  `gesso.php` is not `off`; otherwise it skips the per-response work and
+  leaves that half out. The merge step asserts the gate: it defaults to
+  `strict.<check>['run']` in the same `gesso.php`, and an explicit
+  `--strict-required` / `--strict-additional-properties` wins. A gate
+  requested only through the merge flag finds no observations, so `fail`
+  exits `1` and `warn` prints a WARNING, each naming how many workers did not
+  record. See [`strict-required.md`](strict-required.md#paratest).
 - **Enum drift is evaluated once, by the process that starts the run.**
   paratest bootstraps the extension in its master before spawning workers
   (Pest `--parallel` does the same in its orchestrator). That process runs

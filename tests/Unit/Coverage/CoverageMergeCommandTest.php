@@ -121,6 +121,17 @@ class CoverageMergeCommandTest extends TestCase
         yield 'console beside --output-file' => [['console_output' => 'all'], true, $neutralised];
     }
 
+    /**
+     * @return iterable<string, array{array{strict_required?: string, strict_additional_properties?: string}, int, string}>
+     */
+    public static function provideA_strict_gate_reports_workers_that_did_not_recordCases(): iterable
+    {
+        yield 'strict_required warn' => [['strict_required' => 'warn'], 0, '[OpenAPI Strict Required] WARNING: 1 of 2 worker sidecar(s)'];
+        yield 'strict_required fail' => [['strict_required' => 'fail'], 1, '[OpenAPI Strict Required] FATAL: 1 of 2 worker sidecar(s)'];
+        yield 'strict_additional_properties warn' => [['strict_additional_properties' => 'warn'], 0, '[OpenAPI Strict Additional Properties] WARNING: 1 of 2 worker sidecar(s)'];
+        yield 'strict_additional_properties fail' => [['strict_additional_properties' => 'fail'], 1, '[OpenAPI Strict Additional Properties] FATAL: 1 of 2 worker sidecar(s)'];
+    }
+
     #[Test]
     public function stale_sidecars_from_an_earlier_run_are_ignored_with_a_note(): void
     {
@@ -2233,9 +2244,20 @@ class CoverageMergeCommandTest extends TestCase
         $this->assertStringContainsString('/trace_id', $stderr);
     }
 
+    /**
+     * Issue #725: a worker whose own `strict.*` setting is off leaves the half
+     * out of its sidecar. Worker 1 recorded both halves and found nothing, so
+     * only the missing worker can produce the message or the exit code.
+     *
+     * @param array{strict_required?: string, strict_additional_properties?: string} $gate
+     */
     #[Test]
-    public function strict_additional_properties_fail_rejects_a_mixed_old_worker_fleet(): void
-    {
+    #[DataProvider('provideA_strict_gate_reports_workers_that_did_not_recordCases')]
+    public function a_strict_gate_reports_workers_that_did_not_record(
+        array $gate,
+        int $expectedExit,
+        string $expectedMessage,
+    ): void {
         $this->writeStrictAdditionalPropertiesWorkerSidecar('1', []);
         $coverageOnly = new OpenApiCoverageTracker();
         $coverageOnly->recordResponseOn(
@@ -2259,12 +2281,12 @@ class CoverageMergeCommandTest extends TestCase
             'sidecar_dir' => $this->sidecarDir,
             'spec_base_path' => __DIR__ . '/../../fixtures/specs',
             'specs' => ['strict-additional-properties'],
-            'strict_additional_properties' => 'fail',
+            ...$gate,
             'cleanup' => true,
         ]);
 
-        $this->assertSame(1, $exit);
-        $this->assertStringContainsString('1 worker sidecar(s) have no strict additional-properties state', $stderr);
+        $this->assertSame($expectedExit, $exit, $stderr);
+        $this->assertStringContainsString($expectedMessage, $stderr);
     }
 
     #[Test]
@@ -2507,10 +2529,10 @@ class CoverageMergeCommandTest extends TestCase
     public function fail_mode_exits_non_zero_when_no_worker_recorded_strict_observations(): void
     {
         // A CI that opted into --strict-required=fail must NOT silently pass
-        // when every worker contributed a coverage-only sidecar (no strict
-        // observations). The gate cannot evaluate the contract, and that's
-        // a fail-loud condition — symmetric with the threshold gate's
-        // "no contract test coverage was recorded" guard at run() L296.
+        // when every worker recorded but none saw a response to observe.
+        // The gate cannot evaluate the contract, and that's a fail-loud
+        // condition — symmetric with the threshold gate's "no contract test
+        // coverage was recorded" guard at run() L296.
         OpenApiCoverageTracker::recordResponse(
             'under-described',
             'PUT',
@@ -2519,7 +2541,10 @@ class CoverageMergeCommandTest extends TestCase
             'application/json',
             schemaValidated: true,
         );
-        CoverageSidecarWriter::write($this->sidecarDir, '1', self::coverageOnlySidecar(OpenApiCoverageTracker::exportState()));
+        CoverageSidecarWriter::write($this->sidecarDir, '1', CoverageSidecarEnvelope::build(
+            OpenApiCoverageTracker::exportState(),
+            (new StrictRequiredTracker())->exportStateOn(),
+        ));
         OpenApiCoverageTracker::reset();
 
         $stderr = '';
@@ -2545,12 +2570,10 @@ class CoverageMergeCommandTest extends TestCase
     }
 
     #[Test]
-    public function warn_mode_passes_silently_when_no_worker_recorded_strict_observations(): void
+    public function warn_mode_passes_with_a_warning_when_no_worker_recorded_strict_observations(): void
     {
-        // Symmetric design: warn mode tolerates "no observations" because
-        // the user explicitly opted out of fail-fast. The mixed v1/v2
-        // upgrade window relies on this — flipping to warn first lets users
-        // roll out v2 workers gradually before turning the gate to fail.
+        // Warn mode tolerates "no observations" because the user opted out
+        // of fail-fast, but says the gate saw no worker (issue #725).
         OpenApiCoverageTracker::recordResponse(
             'under-described',
             'PUT',
@@ -2581,6 +2604,8 @@ class CoverageMergeCommandTest extends TestCase
 
         $this->assertSame(0, $exit);
         $this->assertStringNotContainsString('[OpenAPI Strict Required] FATAL', $stderr);
+        $this->assertStringContainsString('[OpenAPI Strict Required] WARNING: 1 of 1 worker sidecar(s)', $stderr);
+        $this->assertStringContainsString('cannot be evaluated', $stderr);
     }
 
     #[Test]

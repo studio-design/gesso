@@ -919,6 +919,7 @@ final class CoverageMergeCommand
         SdkExerciseCoverageTracker::setCurrent($sdkExerciseCoverageTracker);
         $mergedBaseline = new ViolationBaseline();
         $sidecarsWithoutBaseline = 0;
+        $sidecarsWithoutStrictRequired = 0;
         $sidecarsWithoutStrictAdditionalProperties = 0;
         $sidecarsWithoutSdkExercise = 0;
         $sidecarsWithoutDeprecations = 0;
@@ -929,6 +930,8 @@ final class CoverageMergeCommand
                 $coverageTracker->importStateOn($parsed['coverage']);
                 if ($parsed['strictRequired'] !== null) {
                     $strictRequiredTracker->importStateOn($parsed['strictRequired']);
+                } else {
+                    $sidecarsWithoutStrictRequired++;
                 }
                 if ($parsed['strictAdditionalProperties'] !== null) {
                     $strictAdditionalPropertiesTracker->importStateOn($parsed['strictAdditionalProperties']);
@@ -1004,6 +1007,7 @@ final class CoverageMergeCommand
                 $githubSummaryPath,
                 $strictAdditionalPropertiesTracker,
                 $sidecarsWithoutStrictAdditionalProperties,
+                count($payloads),
             );
             $this->writeStderr(sprintf(
                 '[OpenAPI Coverage] %s: ' . FailureCatalogue::tag('GSO406') . " no contract test coverage was recorded; %s\n",
@@ -1062,12 +1066,19 @@ final class CoverageMergeCommand
         // Issue #226: aggregate strict_required across workers and run the
         // gate after the report is rendered so a fatal drift doesn't suppress
         // the coverage output users rely on for triage.
-        $strictFailure = $this->evaluateStrictRequiredGate($strictRequiredMode, $githubSummaryPath, $strictRequiredTracker);
+        $strictFailure = $this->evaluateStrictRequiredGate(
+            $strictRequiredMode,
+            $githubSummaryPath,
+            $strictRequiredTracker,
+            $sidecarsWithoutStrictRequired,
+            count($payloads),
+        );
         $strictAdditionalPropertiesFailure = $this->evaluateStrictAdditionalPropertiesGate(
             $strictAdditionalPropertiesMode,
             $githubSummaryPath,
             $strictAdditionalPropertiesTracker,
             $sidecarsWithoutStrictAdditionalProperties,
+            count($payloads),
         );
 
         $coverageBaselineFailure = $coverageBaselineFile !== null && !$this->handleCoverageBaseline(
@@ -1371,9 +1382,20 @@ final class CoverageMergeCommand
         StrictRequiredMode $mode,
         ?string $githubSummaryPath,
         StrictRequiredTracker $strictRequiredTracker,
+        int $sidecarsWithoutTracker,
+        int $sidecarCount,
     ): bool {
         if ($mode === StrictRequiredMode::Off) {
             return false;
+        }
+        if ($this->reportNonRecordingWorkers(
+            '[OpenAPI Strict Required]',
+            'strict.required',
+            $mode === StrictRequiredMode::Fail,
+            $sidecarsWithoutTracker,
+            $sidecarCount,
+        )) {
+            return true;
         }
 
         // Fail-loud guard: when the user opted into --strict-required="run=fail"
@@ -1422,22 +1444,59 @@ final class CoverageMergeCommand
         return $isFatal;
     }
 
+    /**
+     * Issue #725: a worker records strict observations only when its own
+     * `strict.*` setting is on, and leaves the half out of its sidecar
+     * otherwise. Say so when a gate was asked for here, instead of evaluating
+     * part of the run as if it were all of it. Returns `true` when the gate
+     * must fail.
+     */
+    private function reportNonRecordingWorkers(
+        string $prefix,
+        string $configKey,
+        bool $isFatal,
+        int $sidecarsWithoutTracker,
+        int $sidecarCount,
+    ): bool {
+        if ($sidecarsWithoutTracker === 0) {
+            return false;
+        }
+
+        $this->writeStderr(sprintf(
+            '%s %s: %d of %d worker sidecar(s) carry no observations for this gate, so %s. '
+            . "A worker records them only when its own `%s` setting is not `off`: set `%s['run']` in the gesso.php "
+            . "the workers load, and run every worker on the same Gesso version as the merge step.\n",
+            $prefix,
+            $isFatal ? 'FATAL' : 'WARNING',
+            $sidecarsWithoutTracker,
+            $sidecarCount,
+            $isFatal || $sidecarsWithoutTracker === $sidecarCount
+                ? 'it cannot be evaluated'
+                : 'it covers only the workers that recorded',
+            $configKey,
+            $configKey,
+        ));
+
+        return $isFatal;
+    }
+
     private function evaluateStrictAdditionalPropertiesGate(
         StrictAdditionalPropertiesMode $mode,
         ?string $githubSummaryPath,
         StrictAdditionalPropertiesTracker $tracker,
         int $sidecarsWithoutTracker,
+        int $sidecarCount,
     ): bool {
         if ($mode === StrictAdditionalPropertiesMode::Off) {
             return false;
         }
-        if ($mode === StrictAdditionalPropertiesMode::Fail && $sidecarsWithoutTracker > 0) {
-            $this->writeStderr(sprintf(
-                '[OpenAPI Strict Additional Properties] FATAL: %d worker sidecar(s) have no strict additional-properties state; '
-                . "the merged gate would be incomplete. Run every worker on the same Gesso version as the merge step.\n",
-                $sidecarsWithoutTracker,
-            ));
-
+        if ($this->reportNonRecordingWorkers(
+            '[OpenAPI Strict Additional Properties]',
+            'strict.additional_properties',
+            $mode === StrictAdditionalPropertiesMode::Fail,
+            $sidecarsWithoutTracker,
+            $sidecarCount,
+        )) {
             return true;
         }
         if ($mode === StrictAdditionalPropertiesMode::Fail && $tracker->evaluationsOn() === 0) {

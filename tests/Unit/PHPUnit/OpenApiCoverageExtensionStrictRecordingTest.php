@@ -25,8 +25,8 @@ use function getenv;
 use function putenv;
 
 /**
- * The extension stops the strict trackers only when nothing can read them:
- * both modes off and no sidecar export for `gesso coverage:merge`.
+ * The extension stops a strict tracker when both of its modes are off, in a
+ * parallel worker as much as in a sequential run (issue #725).
  */
 #[IgnoreDeprecations]
 final class OpenApiCoverageExtensionStrictRecordingTest extends TestCase
@@ -76,8 +76,10 @@ final class OpenApiCoverageExtensionStrictRecordingTest extends TestCase
         yield 'per-call strict_required' => [['strict_required_per_call' => 'warn'], null, true, false];
         yield 'run-level strict_additional_properties' => [['strict_additional_properties' => 'fail'], null, false, true];
         yield 'per-call strict_additional_properties' => [['strict_additional_properties_per_call' => 'warn'], null, false, true];
-        yield 'paratest worker' => [[], 'TEST_TOKEN=3', true, true];
-        yield 'CI shard' => [[], 'GESSO_SIDECAR_TOKEN=Feature', true, true];
+        yield 'paratest worker, all off' => [[], 'TEST_TOKEN=3', false, false];
+        yield 'CI shard, all off' => [[], 'GESSO_SIDECAR_TOKEN=Feature', false, false];
+        yield 'paratest worker, run-level strict_required' => [['strict_required' => 'fail'], 'TEST_TOKEN=3', true, false];
+        yield 'CI shard, per-call strict_additional_properties' => [['strict_additional_properties_per_call' => 'warn'], 'GESSO_SIDECAR_TOKEN=Feature', false, true];
     }
 
     /**
