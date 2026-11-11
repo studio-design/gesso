@@ -69,7 +69,7 @@
         "src/Validation/Strict/StrictRequiredPerCallChecker.php": 4
     },
     "[OpenAPI Strict Required]": {
-        "src/Coverage/CoverageMergeCommand.php": 3,
+        "src/Coverage/CoverageMergeCommand.php": 4,
         "src/Internal/Diagnostics.php": 1,
         "src/OpenApiResponseValidator.php": 1,
         "src/PHPUnit/CoverageReportSubscriber.php": 3,

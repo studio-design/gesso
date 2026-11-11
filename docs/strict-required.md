@@ -47,7 +47,7 @@ removed in 3.0; see [`UPGRADING.md`](https://github.com/studio-design/gesso/blob
 
 | Value | Behaviour |
 |---|---|
-| `off` (default) | Observations are still recorded (the cost is `O(top-level keys)` per response), but no report is rendered. Existing test suites see no change. |
+| `off` (default) | No report is rendered. With `per_call` also `off`, the body walk is skipped and nothing is recorded. |
 | `warn` | A diagnostic block is written to STDERR and `$GITHUB_STEP_SUMMARY`. The run exits zero. Use this when adopting the gate — surface the gaps, then triage them at your own pace. |
 | `fail` | Same diagnostic, plus `exit(1)`. Use this once your spec is clean to prevent regressions. |
 
@@ -212,7 +212,7 @@ A future release may add an opt-out attribute (e.g. `#[StrictRequiredPerCallIgno
 
 ## Paratest
 
-Paratest / Pest `--parallel` is supported. Each worker exports its observations via the versioned coverage sidecar envelope. Pass `--strict-required=<mode>` to the merge CLI to evaluate the gate after the workers complete:
+Paratest / Pest `--parallel` is supported. Set `strict.required['run']` in `gesso.php`: each worker then records its observations and exports them via the versioned coverage sidecar envelope, and the merge CLI evaluates the gate after the workers complete. `--strict-required=<mode>` on the merge overrides the mode:
 
 ```bash
 vendor/bin/gesso coverage:merge \
@@ -222,9 +222,9 @@ vendor/bin/gesso coverage:merge \
   --strict-required="run=fail"
 ```
 
-`--strict-required="run=<mode>"` accepts `off` (default), `warn` (emit diagnostic, exit 0), and `fail` (emit diagnostic, exit 1). Workers always export observations, and the merge step decides whether to assert. The merge reads `strict.required['run']` from `gesso.php` (`./gesso.php`, or the file named by `--config`) as its default, and an explicit `--strict-required` wins over it, so `'run' => 'fail'` in the shared file enables the gate without a CLI flag. The v2 `strict_required` phpunit.xml parameter does not reach the merge. Flipping the mode is a single-knob CI change either way, without per-worker reruns.
+`--strict-required="run=<mode>"` accepts `off` (default), `warn` (emit diagnostic, exit 0), and `fail` (emit diagnostic, exit 1). The merge reads `strict.required['run']` from `gesso.php` (`./gesso.php`, or the file named by `--config`) as its default, and an explicit `--strict-required` wins over it, so `'run' => 'fail'` in the shared file enables the gate without a CLI flag. The v2 `strict_required` phpunit.xml parameter does not reach the merge.
 
-In a sequential run (no `TEST_TOKEN` or `GESSO_SIDECAR_TOKEN`) with both `strict_required` and `strict_required_per_call` off, the extension skips the body walk and records nothing.
+A worker records only when its own `strict.required['run']` or `['per_call']` is not `off`. With both off it skips the body walk, as a sequential run does, and its sidecar carries no strict-required half. The merge flag can therefore switch between `warn` and `fail` without rerunning workers, but it cannot turn the gate on for workers that ran with it off: `--strict-required="run=fail"` then exits `1` and `run=warn` prints a WARNING, each with the number of workers that did not record.
 
 The diagnostic block is rendered after the coverage report (Markdown, JUnit, JSON, HTML, GITHUB_STEP_SUMMARY) so a fatal drift does not suppress the coverage output that helps triage the failure.
 

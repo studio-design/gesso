@@ -93,14 +93,14 @@ final class CoverageSidecarEnvelope
      * @param null|array<string, mixed> $deprecationsState
      *
      * @phpstan-param CoverageStatePayload $coverageState
-     * @phpstan-param StrictRequiredStatePayload $strictRequiredState
+     * @phpstan-param null|StrictRequiredStatePayload $strictRequiredState
      * @phpstan-param null|StrictAdditionalPropertiesState $strictAdditionalPropertiesState
      *
      * @return SidecarEnvelopePayload
      */
     public static function build(
         array $coverageState,
-        array $strictRequiredState,
+        ?array $strictRequiredState,
         ?array $baselineDocument = null,
         ?array $strictAdditionalPropertiesState = null,
         ?array $sdkExerciseState = null,
@@ -109,10 +109,10 @@ final class CoverageSidecarEnvelope
         $payload = [
             'envelopeVersion' => self::ENVELOPE_VERSION,
             'coverage' => $coverageState,
-            'strictRequired' => $strictRequiredState,
         ];
 
         foreach ([
+            'strictRequired' => $strictRequiredState,
             'strictAdditionalProperties' => $strictAdditionalPropertiesState,
             'sdkExercise' => $sdkExerciseState,
             'deprecations' => $deprecationsState,

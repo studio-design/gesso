@@ -10,6 +10,7 @@ use PHPUnit\Event\TestRunner\ExecutionFinished;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use ReflectionClass;
+use Studio\Gesso\Coverage\CoverageMergeCommand;
 use Studio\Gesso\Coverage\CoverageSidecarEnvelope;
 use Studio\Gesso\Coverage\CoverageSidecarReader;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
@@ -18,6 +19,7 @@ use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\PHPUnit\ConsoleOutput;
 use Studio\Gesso\PHPUnit\CoverageReportSubscriber;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
+use Studio\Gesso\Validation\Strict\StrictAdditionalPropertiesTracker;
 use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 use Throwable;
 
@@ -307,6 +309,57 @@ class CoverageReportSubscriberWorkerModeTest extends TestCase
             $loaded[0]['sdkExercise']['observations']['petstore-3.0'],
             'sidecar must serialize the injected SDK exercise tracker, not ::current()',
         );
+    }
+
+    #[Test]
+    public function a_worker_that_did_not_record_leaves_the_strict_halves_out_and_still_merges(): void
+    {
+        // Issue #725: an empty half would read as "recorded, saw nothing",
+        // so the merge could not tell which workers a strict gate covers.
+        $coverageTracker = new OpenApiCoverageTracker();
+        $coverageTracker->recordResponseOn('petstore-3.0', 'POST', '/v1/pets', '201', 'application/json', schemaValidated: true);
+        $strictRequiredTracker = new StrictRequiredTracker();
+        $strictRequiredTracker->setRecording(false);
+        $strictAdditionalPropertiesTracker = new StrictAdditionalPropertiesTracker();
+        $strictAdditionalPropertiesTracker->setRecording(false);
+
+        putenv('TEST_TOKEN=4');
+
+        (new CoverageReportSubscriber(
+            specs: ['petstore-3.0'],
+            outputFile: null,
+            consoleOutput: ConsoleOutput::DEFAULT,
+            githubSummaryPath: null,
+            coverageTracker: $coverageTracker,
+            strictRequiredTracker: $strictRequiredTracker,
+            sidecarDir: $this->tmpDir,
+            strictAdditionalPropertiesTracker: $strictAdditionalPropertiesTracker,
+        ))->notify($this->fakeExecutionFinished());
+
+        $loaded = CoverageSidecarReader::readDir($this->tmpDir);
+        $this->assertCount(1, $loaded);
+        $this->assertArrayNotHasKey('strictRequired', $loaded[0]);
+        $this->assertArrayNotHasKey('strictAdditionalProperties', $loaded[0]);
+
+        $stdout = '';
+        $stderr = '';
+        $exit = (new CoverageMergeCommand(
+            stdoutWriter: static function (string $message) use (&$stdout): void {
+                $stdout .= $message;
+            },
+            stderrWriter: static function (string $message) use (&$stderr): void {
+                $stderr .= $message;
+            },
+        ))->run([
+            'sidecar_dir' => $this->tmpDir,
+            'spec_base_path' => __DIR__ . '/../../fixtures/specs',
+            'specs' => ['petstore-3.0'],
+            'cleanup' => true,
+        ]);
+
+        $this->assertSame(0, $exit, $stderr);
+        $this->assertStringContainsString('POST /v1/pets', $stdout);
+        $this->assertStringNotContainsString('Strict', $stderr);
     }
 
     #[Test]

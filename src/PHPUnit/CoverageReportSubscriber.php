@@ -521,11 +521,10 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
             ));
         }
 
-        // Sidecar envelope carries coverage and strict_required observations
-        // so the merge CLI can aggregate the gate across all paratest
-        // workers. The strict_required half is always exported, independent
-        // of the worker's `strict_required` mode — the merge CLI decides
-        // whether to assert (Issue #226).
+        // Sidecar envelope carries coverage and the strict observations so
+        // the merge CLI can aggregate the gates across all paratest workers
+        // (Issue #226). A tracker that did not record leaves its half out:
+        // an empty half would read as "recorded, saw nothing" (Issue #725).
         //
         // Issue #499: the deprecation half travels the same way. A worker
         // returns before the end-of-run report, so without this the residual
@@ -533,9 +532,13 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
         // exactly the "ready for the next major" signal.
         $envelope = CoverageSidecarEnvelope::build(
             coverageState: $this->coverageTracker->exportStateOn(),
-            strictRequiredState: $this->strictRequiredTracker->exportStateOn(),
+            strictRequiredState: $this->strictRequiredTracker->isRecording()
+                ? $this->strictRequiredTracker->exportStateOn()
+                : null,
             baselineDocument: $baselineDocument,
-            strictAdditionalPropertiesState: $this->strictAdditionalPropertiesTracker->exportStateOn(),
+            strictAdditionalPropertiesState: $this->strictAdditionalPropertiesTracker->isRecording()
+                ? $this->strictAdditionalPropertiesTracker->exportStateOn()
+                : null,
             sdkExerciseState: $this->sdkExerciseCoverageTracker->exportStateOn(),
             deprecationsState: Deprecations::exportState(),
         );
