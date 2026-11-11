@@ -302,13 +302,118 @@ class SchemaValidatorRunnerTest extends TestCase
     #[DataProvider('provideDropping_the_cached_specs_empties_the_shared_schemasCases')]
     public function dropping_the_cached_specs_empties_the_shared_schemas(callable $drop): void
     {
-        $this->assertSame([], self::groupedErrors(new SchemaValidatorRunner(20), ObjectConverter::convert(['type' => 'integer']), 1));
+        $this->assertSame([], (new SchemaValidatorRunner(20))->validateAt('here', static fn(): mixed => ObjectConverter::convert(['type' => 'integer']), 1));
         $this->assertCount(1, self::sharedSchemas());
+        $this->assertCount(1, self::locations());
 
         $drop();
 
         $this->assertSame([], self::sharedSchemas());
+        $this->assertSame([], self::locations());
         $this->assertSame(0, (new ReflectionProperty(SchemaValidatorRunner::class, 'sharedBytes'))->getValue());
+    }
+
+    #[Test]
+    public function a_remembered_location_does_not_build_its_schema_again(): void
+    {
+        $built = 0;
+        $schema = static function () use (&$built): mixed {
+            $built++;
+
+            return ObjectConverter::convert(['type' => 'integer']);
+        };
+
+        // Two runners, as two test cases build them.
+        $this->assertSame([], (new SchemaValidatorRunner(20))->validateAt('here', $schema, 1));
+        $this->assertCount(1, (new SchemaValidatorRunner(20))->validateAt('here', $schema, 'not an integer'));
+        $this->assertSame(1, $built);
+        $this->assertCount(1, self::sharedSchemas());
+
+        // Another place holding the same schema builds it once, and shares
+        // the parsed entry rather than adding one.
+        $this->assertSame([], (new SchemaValidatorRunner(20))->validateAt('elsewhere', $schema, 2));
+        $this->assertSame([], (new SchemaValidatorRunner(20))->validateAt('elsewhere', $schema, 3));
+        $this->assertSame(2, $built);
+        $this->assertCount(1, self::sharedSchemas());
+
+        // A runner with another cap keeps its own validator, so it cannot
+        // take the entry the location points to.
+        $this->assertSame([], (new SchemaValidatorRunner(1))->validateAt('here', $schema, 4));
+        $this->assertSame(3, $built);
+        $this->assertCount(2, self::sharedSchemas());
+    }
+
+    #[Test]
+    public function a_location_whose_schema_was_dropped_builds_it_again(): void
+    {
+        $budget = (new ReflectionClassConstant(SchemaValidatorRunner::class, 'MAX_SHARED_BYTES'))->getValue();
+        $this->assertIsInt($budget);
+        $runner = new SchemaValidatorRunner(20);
+        $built = [];
+        // Three of these fit in the budget, four do not.
+        $validate = static function (string $name, mixed $data) use ($runner, $budget, &$built): array {
+            return $runner->validateAt($name, static function () use ($name, $budget, &$built): mixed {
+                $built[] = $name;
+
+                return ObjectConverter::convert(['const' => $name, 'description' => str_repeat('x', intdiv($budget, 4))]);
+            }, $data);
+        };
+
+        foreach (['a', 'b', 'c', 'd', 'a', 'a'] as $name) {
+            $this->assertSame([], $validate($name, $name));
+        }
+
+        $this->assertSame(['a', 'b', 'c', 'd', 'a'], $built, 'Only the dropped schema is built a second time.');
+        $this->assertCount(1, $validate('a', 'b'));
+    }
+
+    #[Test]
+    public function a_schema_opis_refuses_to_load_is_not_remembered_by_location(): void
+    {
+        $runner = new SchemaValidatorRunner(20);
+        $duplicate = ['$id' => 'https://example.test/schemas/duplicate', 'type' => 'string'];
+        $built = 0;
+
+        for ($call = 1; $call <= 2; $call++) {
+            try {
+                $runner->validateAt('here', static function () use ($duplicate, &$built): mixed {
+                    $built++;
+
+                    return ObjectConverter::convert(['type' => 'object', 'properties' => ['a' => $duplicate, 'b' => $duplicate]]);
+                }, ObjectConverter::convert(['a' => 'x']));
+                $this->fail("Call {$call} accepted a schema that declares one \$id twice.");
+            } catch (DuplicateSchemaIdException) {
+                $this->assertSame($call, $built);
+            }
+        }
+    }
+
+    #[Test]
+    public function the_oldest_location_is_forgotten_once_too_many_are_remembered(): void
+    {
+        $limit = (new ReflectionClassConstant(SchemaValidatorRunner::class, 'MAX_LOCATIONS'))->getValue();
+        $this->assertIsInt($limit);
+        $runner = new SchemaValidatorRunner(20);
+        $built = [];
+        $validate = static function (int $place) use ($runner, &$built): void {
+            $runner->validateAt("place {$place}", static function () use ($place, &$built): mixed {
+                $built[] = $place;
+
+                return ObjectConverter::convert(['type' => 'integer']);
+            }, 1);
+        };
+
+        for ($place = 0; $place <= $limit; $place++) {
+            $validate($place);
+        }
+        $this->assertCount($limit, self::locations());
+
+        $built = [];
+        $validate($limit);
+        $validate(1);
+        $validate(0);
+        $this->assertSame([0], $built, 'Only the oldest location is forgotten.');
+        $this->assertCount($limit, self::locations());
     }
 
     #[Test]
@@ -1535,6 +1640,15 @@ class SchemaValidatorRunnerTest extends TestCase
         $this->assertNotNull($rewritten);
         $this->assertSame('additionalProperties', $rewritten->keyword);
         $this->assertSame('Additional object properties are not allowed: extra', $rewritten->message);
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private static function locations(): array
+    {
+        /** @var array<string, string> */
+        return (new ReflectionProperty(SchemaValidatorRunner::class, 'locations'))->getValue();
     }
 
     /**

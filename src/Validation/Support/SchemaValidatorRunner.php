@@ -10,6 +10,7 @@ use const JSON_UNESCAPED_SLASHES;
 use const JSON_UNESCAPED_UNICODE;
 use const PHP_INT_MAX;
 
+use Closure;
 use InvalidArgumentException;
 use Opis\JsonSchema\Errors\ErrorFormatter;
 use Opis\JsonSchema\Errors\ValidationError;
@@ -75,6 +76,14 @@ final class SchemaValidatorRunner
     /** Charged per cached schema on top of its length: a tiny schema still retains about 3.5 KB. */
     private const SHARED_ENTRY_BYTES = 128;
 
+    /**
+     * Most schema locations remembered at once; over it, the oldest is
+     * forgotten and takes the fingerprint path again. A full
+     * {@see self::$shared} holds fewer schemas than this, and a full map
+     * retains about 0.9 MB (`docs/benchmarks/schema-location-cache.md`).
+     */
+    private const MAX_LOCATIONS = 4096;
+
     /** Longest `actual` / `expected` excerpt, in characters, before it is cut with `…`. */
     private const MAX_EXCERPT = 80;
 
@@ -88,6 +97,16 @@ final class SchemaValidatorRunner
      */
     private static array $shared = [];
     private static int $sharedBytes = 0;
+
+    /**
+     * Where in a loaded spec a schema sits, to the entry that holds it
+     * converted and parsed: a hit skips the conversion, the object conversion
+     * and the fingerprint, which together cost more than the lookup they feed
+     * (issue #724). Several locations may share one entry.
+     *
+     * @var array<string, string> "<resolved maxErrors>:<xxh128 of the location>" => key of self::$shared, oldest first
+     */
+    private static array $locations = [];
 
     /** Stateless, and the costly part of building an opis validator, so every loader shares it. */
     private static ?SchemaParser $parser = null;
@@ -115,6 +134,7 @@ final class SchemaValidatorRunner
     {
         self::$shared = [];
         self::$sharedBytes = 0;
+        self::$locations = [];
     }
 
     /**
@@ -130,13 +150,45 @@ final class SchemaValidatorRunner
      */
     public function validateStructured(mixed $jsonSchema, mixed $data): array
     {
-        // Callers convert the schema to a fresh object graph on every call,
-        // and opis caches a parsed schema by object identity. The content
-        // fingerprint maps equivalent graphs back to the one already parsed.
-        // Boolean schemas are not objects and are never kept.
-        $serialized = is_object($jsonSchema) ? serialize($jsonSchema) : null;
-        $key = $serialized === null ? null : $this->maxErrors . ':' . hash('sha256', $serialized);
+        return $this->validateAt(null, static fn(): mixed => $jsonSchema, $data);
+    }
+
+    /**
+     * {@see self::validateStructured()} for a schema that sits at a known
+     * place in a spec {@see OpenApiSpecLoader} has cached. `$schema` builds
+     * the converted schema object and only runs when `$location` is not
+     * remembered, so a repeat validation neither converts nor fingerprints.
+     *
+     * `$location` must determine the result of `$schema`: the spec name, the
+     * place in it, and every argument the conversion takes. `null` keeps the
+     * fingerprint path.
+     *
+     * @param Closure(): mixed $schema
+     *
+     * @return list<SchemaViolation>
+     */
+    public function validateAt(?string $location, Closure $schema, mixed $data): array
+    {
+        // Hashed only to keep the map small: a location runs to a few hundred bytes.
+        $location = $location === null ? null : $this->maxErrors . ':' . hash('xxh128', $location);
+        $key = $location === null ? null : self::$locations[$location] ?? null;
         $entry = $key === null ? null : self::$shared[$key] ?? null;
+        $jsonSchema = null;
+        $serialized = '';
+        if ($entry === null) {
+            // Callers convert the schema to a fresh object graph on every
+            // call, and opis caches a parsed schema by object identity. The
+            // content fingerprint maps equivalent graphs back to the one
+            // already parsed. Boolean schemas are not objects and are never
+            // kept.
+            $jsonSchema = $schema();
+            $key = null;
+            if (is_object($jsonSchema)) {
+                $serialized = serialize($jsonSchema);
+                $key = $this->maxErrors . ':' . hash('sha256', $serialized);
+                $entry = self::$shared[$key] ?? null;
+            }
+        }
         [$validator, $jsonSchema] = $entry ?? [$this->newValidator(), $jsonSchema];
         $result = $validator->validate($data, $jsonSchema);
 
@@ -153,6 +205,12 @@ final class SchemaValidatorRunner
                     self::$sharedBytes -= self::$shared[$oldest][2];
                     unset(self::$shared[$oldest]);
                 }
+            }
+            if ($location !== null && !isset(self::$locations[$location])) {
+                if (count(self::$locations) >= self::MAX_LOCATIONS) {
+                    unset(self::$locations[array_key_first(self::$locations)]);
+                }
+                self::$locations[$location] = $key;
             }
         }
 
@@ -213,6 +271,11 @@ final class SchemaValidatorRunner
      * (`$prefix` is the bracket label, e.g. `query.limit`; the violation's
      * display path is appended to it unless the violation sits at the root).
      *
+     * `$scope` names the spec object that owns `$prefix` (an operation, or one
+     * of its responses) in a spec {@see OpenApiSpecLoader} has cached, and
+     * lets the schema be remembered by location ({@see self::validateAt()}).
+     * Pass it only when `$schema` was read from that cached spec.
+     *
      * @param array<string, mixed> $schema
      *
      * @return list<NamedError>
@@ -225,11 +288,16 @@ final class SchemaValidatorRunner
         OpenApiVersion $version,
         SchemaContext $context,
         ?string $jsonSchemaDialect = null,
+        ?string $scope = null,
     ): array {
-        $jsonSchema = OpenApiSchemaConverter::convert($schema, $version, $context, null, $jsonSchemaDialect);
+        $violations = $this->validateAt(
+            $scope === null ? null : serialize([$scope, $prefix, $version, $context, $jsonSchemaDialect]),
+            static fn(): mixed => ObjectConverter::convert(OpenApiSchemaConverter::convert($schema, $version, $context, null, $jsonSchemaDialect)),
+            ObjectConverter::convert($value),
+        );
 
         $errors = [];
-        foreach ($this->validateStructured(ObjectConverter::convert($jsonSchema), ObjectConverter::convert($value)) as $violation) {
+        foreach ($violations as $violation) {
             $suffix = $violation->displayPath() === '/' ? '' : $violation->displayPath();
             // The value of a credential-like parameter or header is never echoed.
             if ($violation->actual !== null && CurlCommandFormatter::isSensitiveName($name)) {

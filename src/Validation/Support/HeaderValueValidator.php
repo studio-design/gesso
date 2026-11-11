@@ -47,6 +47,7 @@ final class HeaderValueValidator
     /**
      * @param mixed $rawValue the header value as looked up from the normalized header map (`null` when absent)
      * @param array<string, mixed> $schema
+     * @param null|string $scope see {@see SchemaValidatorRunner::validateNamed()}
      *
      * @return list<NamedError>
      */
@@ -57,6 +58,7 @@ final class HeaderValueValidator
         array $schema,
         OpenApiVersion $version,
         ?string $jsonSchemaDialect = null,
+        ?string $scope = null,
     ): array {
         $label = "{$this->prefix}.{$name}";
 
@@ -107,6 +109,6 @@ final class HeaderValueValidator
 
         $coerced = TypeCoercer::coercePrimitive($rawValue, $schema);
 
-        return $this->runner->validateNamed($name, $label, $schema, $coerced, $version, $this->context, $jsonSchemaDialect);
+        return $this->runner->validateNamed($name, $label, $schema, $coerced, $version, $this->context, $jsonSchemaDialect, $scope);
     }
 }

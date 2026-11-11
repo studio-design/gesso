@@ -45,6 +45,7 @@ final class HeaderParameterValidator
      *
      * @param list<array<string, mixed>> $parameters pre-collected merged parameters
      * @param array<array-key, mixed> $headers caller-supplied request headers
+     * @param null|string $scope names the operation in a loader-cached spec; see {@see SchemaValidatorRunner::validateNamed()}
      *
      * @return list<NamedError>
      */
@@ -55,6 +56,7 @@ final class HeaderParameterValidator
         array $headers,
         OpenApiVersion $version,
         ?string $jsonSchemaDialect = null,
+        ?string $scope = null,
     ): array {
         $errors = [];
         $normalizedHeaders = HeaderNormalizer::normalize($headers);
@@ -85,7 +87,7 @@ final class HeaderParameterValidator
             /** @var array<string, mixed> $schema */
             $schema = $param['schema'];
 
-            $errors = [...$errors, ...$this->values->validate($name, $normalizedHeaders[$lowerName] ?? null, $required, $schema, $version, $jsonSchemaDialect)];
+            $errors = [...$errors, ...$this->values->validate($name, $normalizedHeaders[$lowerName] ?? null, $required, $schema, $version, $jsonSchemaDialect, $scope)];
         }
 
         return $errors;

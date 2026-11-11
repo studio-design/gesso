@@ -56,6 +56,7 @@ final class QueryParameterValidator
      * @param list<array<string, mixed>> $parameters pre-collected merged parameters (path + operation level)
      * @param array<string, mixed> $queryParams
      * @param null|string $rawQueryString the request's percent-encoded query string, when the caller has access to it; lets non-exploded styles split before decoding ({@see QueryStyleDeserializer})
+     * @param null|string $scope names the operation in a loader-cached spec; see {@see SchemaValidatorRunner::validateNamed()}
      *
      * @return list<NamedError>
      */
@@ -67,6 +68,7 @@ final class QueryParameterValidator
         OpenApiVersion $version,
         ?string $jsonSchemaDialect = null,
         ?string $rawQueryString = null,
+        ?string $scope = null,
     ): array {
         $errors = [];
         $rawValues = $rawQueryString === null ? [] : QueryStyleDeserializer::parseRawValues($rawQueryString);
@@ -119,7 +121,7 @@ final class QueryParameterValidator
 
             $deserialized = QueryStyleDeserializer::deserialize($queryParams[$name], $param, $schema, $rawValue);
             $coerced = TypeCoercer::coerceQuery($deserialized, $schema);
-            $errors = [...$errors, ...$this->runner->validateNamed($name, "query.{$name}", $schema, $coerced, $version, SchemaContext::Request, $jsonSchemaDialect)];
+            $errors = [...$errors, ...$this->runner->validateNamed($name, "query.{$name}", $schema, $coerced, $version, SchemaContext::Request, $jsonSchemaDialect, $scope)];
         }
 
         return $errors;

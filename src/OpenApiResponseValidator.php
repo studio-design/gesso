@@ -33,6 +33,7 @@ use function array_values;
 use function count;
 use function get_debug_type;
 use function is_array;
+use function serialize;
 use function sprintf;
 use function strtoupper;
 
@@ -281,6 +282,7 @@ final class OpenApiResponseValidator
             $specName,
             $method,
             $matchedPath,
+            $statusKey,
             $responseSpec,
             $responseHeaders,
             $version,
@@ -695,6 +697,9 @@ final class OpenApiResponseValidator
                 $statusCode,
                 $resolution,
                 $responseBody,
+                // The resolution came from the loader's cached spec, so its
+                // schema can be remembered by where it sits (issue #724).
+                serialize([$specName, $method, $matchedPath]),
             );
         } catch (RuntimeException $e) {
             return new ResponseBodyValidationResult(
@@ -714,6 +719,7 @@ final class OpenApiResponseValidator
         string $specName,
         string $method,
         string $matchedPath,
+        string $statusKey,
         array $responseSpec,
         ?array $responseHeaders,
         OpenApiVersion $version,
@@ -757,7 +763,7 @@ final class OpenApiResponseValidator
             $specName,
             $method,
             $matchedPath,
-            fn(): array => $this->headerValidator->validate($headersSpec, $responseHeaders, $version, $jsonSchemaDialect),
+            fn(): array => $this->headerValidator->validate($headersSpec, $responseHeaders, $version, $jsonSchemaDialect, serialize([$specName, $method, $matchedPath, $statusKey])),
         );
     }
 }
