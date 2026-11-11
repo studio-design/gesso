@@ -79,9 +79,10 @@ distinct schemas of this kind leave 1,833 cached and 6.0 MB held.
 
 `exploreInvalid()` checks each valid case against the body schema and against
 one variant of it per mutation target, and goes through those variants again
-for every case. The variants are the size of the schema, so what one call
-needs grows with the square of the body: 66 schemas and 80 KiB of JSON for 20
-properties, 104 and 249 KiB for 40, 107 and 507 KiB for 80. Once that exceeds
+for every case. The variants are the size of the schema, and their number
+levels off at about a hundred, so past that point what one call needs grows in
+step with the body: 66 schemas and 80 KiB of JSON for 20 properties, 104 and
+249 KiB for 40, 107 and 507 KiB for 80. Once that exceeds
 the budget, a pass over the variants always asks for the one dropped longest
 ago, and most checks parse again.
 
