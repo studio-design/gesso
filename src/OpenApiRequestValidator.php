@@ -31,6 +31,7 @@ use Studio\Gesso\Validation\Support\ValidatorErrorBoundary;
 use function array_map;
 use function count;
 use function is_array;
+use function serialize;
 use function sprintf;
 
 final class OpenApiRequestValidator
@@ -252,12 +253,15 @@ final class OpenApiRequestValidator
         // Carry the resolved root + enforce gate so the body validator can
         // lower `discriminator.mapping` into enforceable conditionals (#262).
         $discriminatorContext = new DiscriminatorContext($spec, DiscriminatorEnforcement::isEnabled());
+        // The operation came from the loader's cached spec, so its schemas
+        // can be remembered by where they sit in it (issue #724).
+        $scope = serialize([$specName, $method, $matchedPath]);
         // A failed transport decode provides no value to validate. The adapter
         // supplies its parse issue after aggregation; still collect siblings,
         // and do not downgrade them on the strength of a documented 4xx.
         $bodyResult = $bodyDecodeFailed
             ? new RequestBodyValidationResult([], matchedContentType: self::thrownBodyContentType($operation, $contentType), bodyReadFailed: true)
-            : $this->validateBody($specName, $method, $matchedPath, $operation, $body, $contentType, $version, $discriminatorContext, $jsonSchemaDialect, $bodyPresence);
+            : $this->validateBody($specName, $method, $matchedPath, $operation, $body, $contentType, $version, $discriminatorContext, $jsonSchemaDialect, $bodyPresence, $scope);
 
         // Category tags mirror the sub-validator that produced each message so
         // issues() can expose a structured view without touching the
@@ -269,9 +273,9 @@ final class OpenApiRequestValidator
         // apart without relying on message wording.
         $issueGroups = [
             ['request.spec', self::withoutNames($collected->specErrors), null, []],
-            ['request.parameter.path', ValidatorErrorBoundary::safelyNamed('path', $specName, $method, $matchedPath, fn(): array => $this->pathValidator->validate($method, $matchedPath, $collected->parameters, $pathVariables, $version, $jsonSchemaDialect)), null, []],
-            ['request.parameter.query', ValidatorErrorBoundary::safelyNamed('query', $specName, $method, $matchedPath, fn(): array => $this->queryValidator->validate($method, $matchedPath, $collected->parameters, $queryParams, $version, $jsonSchemaDialect, $rawQueryString)), null, []],
-            ['request.parameter.header', ValidatorErrorBoundary::safelyNamed('header', $specName, $method, $matchedPath, fn(): array => $this->headerValidator->validate($method, $matchedPath, $collected->parameters, $headers, $version, $jsonSchemaDialect)), null, []],
+            ['request.parameter.path', ValidatorErrorBoundary::safelyNamed('path', $specName, $method, $matchedPath, fn(): array => $this->pathValidator->validate($method, $matchedPath, $collected->parameters, $pathVariables, $version, $jsonSchemaDialect, $scope)), null, []],
+            ['request.parameter.query', ValidatorErrorBoundary::safelyNamed('query', $specName, $method, $matchedPath, fn(): array => $this->queryValidator->validate($method, $matchedPath, $collected->parameters, $queryParams, $version, $jsonSchemaDialect, $rawQueryString, $scope)), null, []],
+            ['request.parameter.header', ValidatorErrorBoundary::safelyNamed('header', $specName, $method, $matchedPath, fn(): array => $this->headerValidator->validate($method, $matchedPath, $collected->parameters, $headers, $version, $jsonSchemaDialect, $scope)), null, []],
             ['request.security', ValidatorErrorBoundary::safelyNamed('security', $specName, $method, $matchedPath, fn(): array => $this->securityValidator->validate($method, $matchedPath, $spec, $operation, $headers, $queryParams, $cookies)), null, []],
             ['request.body', self::withoutNames($bodyResult->errors), $bodyResult->matchedContentType, $bodyResult->violations],
         ];
@@ -455,10 +459,11 @@ final class OpenApiRequestValidator
         OpenApiVersion $version,
         DiscriminatorContext $discriminatorContext,
         string $jsonSchemaDialect,
-        ?DeferredBodyPresence $bodyPresence = null,
+        ?DeferredBodyPresence $bodyPresence,
+        string $scope,
     ): RequestBodyValidationResult {
         try {
-            return $this->bodyValidator->validate($specName, $method, $matchedPath, $operation, $body, $contentType, $version, $discriminatorContext, $jsonSchemaDialect, $bodyPresence);
+            return $this->bodyValidator->validate($specName, $method, $matchedPath, $operation, $body, $contentType, $version, $discriminatorContext, $jsonSchemaDialect, $bodyPresence, $scope);
         } catch (RuntimeException $e) {
             return new RequestBodyValidationResult(
                 [ValidatorErrorBoundary::captureMessage('request-body', $specName, $method, $matchedPath, $e)],

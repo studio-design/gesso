@@ -41,6 +41,7 @@ final class PathParameterValidator
      *
      * @param list<array<string, mixed>> $parameters pre-collected merged parameters
      * @param array<string, string> $pathVariables values extracted by OpenApiPathMatcher
+     * @param null|string $scope names the operation in a loader-cached spec; see {@see SchemaValidatorRunner::validateNamed()}
      *
      * @return list<NamedError>
      */
@@ -51,6 +52,7 @@ final class PathParameterValidator
         array $pathVariables,
         OpenApiVersion $version,
         ?string $jsonSchemaDialect = null,
+        ?string $scope = null,
     ): array {
         $errors = [];
         $declared = [];
@@ -87,7 +89,7 @@ final class PathParameterValidator
 
             $decoded = rawurldecode($pathVariables[$name]);
             $coerced = TypeCoercer::coercePrimitive($decoded, $schema);
-            $errors = [...$errors, ...$this->runner->validateNamed($name, "path.{$name}", $schema, $coerced, $version, SchemaContext::Request, $jsonSchemaDialect)];
+            $errors = [...$errors, ...$this->runner->validateNamed($name, "path.{$name}", $schema, $coerced, $version, SchemaContext::Request, $jsonSchemaDialect, $scope)];
         }
 
         // Reverse check: every `{placeholder}` in the URL template MUST be declared

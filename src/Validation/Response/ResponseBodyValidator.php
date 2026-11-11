@@ -12,6 +12,7 @@ use Studio\Gesso\OpenApiVersion;
 use Studio\Gesso\Validation\Support\FormBodyDecoder;
 use Studio\Gesso\Validation\Support\ObjectConverter;
 use Studio\Gesso\Validation\Support\SchemaValidatorRunner;
+use Studio\Gesso\Validation\Support\SchemaViolation;
 use Studio\Gesso\Validation\Support\TypeCoercer;
 
 use function is_array;
@@ -39,6 +40,9 @@ final class ResponseBodyValidator
      * list when the body passes schema validation. Hard failures (empty body
      * against a JSON schema, schema mismatch) are returned as error strings
      * so the orchestrator can assemble the final result.
+     *
+     * @param null|string $scope names the operation in a loader-cached spec, so the converted schema is
+     *                           remembered by location; pass it only when `$resolution` came from that spec
      */
     public function validate(
         string $specName,
@@ -47,6 +51,7 @@ final class ResponseBodyValidator
         int $statusCode,
         ResponseSchemaResolution $resolution,
         DecodedBody $responseBody,
+        ?string $scope = null,
     ): ResponseBodyValidationResult {
         $jsonContentType = $resolution->contentType;
         $schema = $resolution->schema;
@@ -85,12 +90,10 @@ final class ResponseBodyValidator
         }
 
         if ($isForm) {
-            return $this->validateFormBody($resolution, $jsonContentType, $schema, $responseBody);
+            return $this->validateFormBody($resolution, $jsonContentType, $schema, $responseBody, $scope);
         }
 
         $bodyValue = $responseBody->value;
-
-        $jsonSchema = $resolution->convertedSchema();
 
         // Only legacy assoc-array callers need the ambiguous [] -> {} shim.
         // Adapters retain JSON types, so a wire [] must stay an array.
@@ -98,10 +101,7 @@ final class ResponseBodyValidator
             $bodyValue = new stdClass();
         }
 
-        $schemaObject = ObjectConverter::convert($jsonSchema);
-        $dataObject = ObjectConverter::convert($bodyValue);
-
-        $violations = $this->runner->validateStructured($schemaObject, $dataObject);
+        $violations = $this->validateResolved($resolution, ObjectConverter::convert($bodyValue), $scope);
 
         $errors = [];
         foreach ($violations as $violation) {
@@ -123,6 +123,7 @@ final class ResponseBodyValidator
         string $contentType,
         array $schema,
         DecodedBody $responseBody,
+        ?string $scope,
     ): ResponseBodyValidationResult {
         $fields = FormBodyDecoder::toFieldMap($responseBody->value, FormBodyDecoder::URLENCODED);
         if ($fields === null) {
@@ -155,11 +156,23 @@ final class ResponseBodyValidator
         );
 
         $dataObject = ObjectConverter::convert($data === [] ? new stdClass() : $data);
-        $violations = $this->runner->validateStructured(ObjectConverter::convert($resolution->convertedSchema()), $dataObject);
+        $violations = $this->validateResolved($resolution, $dataObject, $scope);
         foreach ($violations as $violation) {
             $errors[] = "[{$violation->displayPath()}] {$violation->message}";
         }
 
         return new ResponseBodyValidationResult($errors, $contentType, violations: $violations, formData: $dataObject);
+    }
+
+    /**
+     * @return list<SchemaViolation>
+     */
+    private function validateResolved(ResponseSchemaResolution $resolution, mixed $data, ?string $scope): array
+    {
+        return $this->runner->validateAt(
+            $scope === null ? null : $resolution->schemaLocation($scope),
+            static fn(): mixed => ObjectConverter::convert($resolution->convertedSchema()),
+            $data,
+        );
     }
 }

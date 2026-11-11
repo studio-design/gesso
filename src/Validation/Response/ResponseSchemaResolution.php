@@ -10,7 +10,9 @@ use Studio\Gesso\OpenApiVersion;
 use Studio\Gesso\SchemaContext;
 use Studio\Gesso\Spec\OpenApiSchemaConverter;
 use Studio\Gesso\Validation\Support\DiscriminatorContext;
+use Studio\Gesso\Validation\Support\SchemaValidatorRunner;
 
+use function serialize;
 use function sprintf;
 
 /**
@@ -297,6 +299,24 @@ final readonly class ResponseSchemaResolution
             $this->discriminatorContext,
             $this->jsonSchemaDialect,
         );
+    }
+
+    /**
+     * Where the schema sits and everything else {@see convertedSchema()}
+     * reads, for {@see SchemaValidatorRunner::validateAt()}. `$scope` names
+     * the operation in the loader-cached spec this resolution came from.
+     */
+    public function schemaLocation(string $scope): string
+    {
+        return serialize([
+            $scope,
+            'response-body',
+            $this->statusKey,
+            $this->contentType,
+            $this->version,
+            $this->jsonSchemaDialect,
+            $this->discriminatorContext?->enforce,
+        ]);
     }
 
     /**

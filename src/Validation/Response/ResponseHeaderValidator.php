@@ -59,6 +59,7 @@ final class ResponseHeaderValidator
     /**
      * @param HeadersSpec $headersSpec the `responses.<code>.headers` map
      * @param array<array-key, mixed> $actualHeaders the response's actual headers, as returned by HeaderBag::all()
+     * @param null|string $scope names the response (operation and status key) in a loader-cached spec; see {@see SchemaValidatorRunner::validateNamed()}
      *
      * @return list<NamedError>
      */
@@ -67,6 +68,7 @@ final class ResponseHeaderValidator
         array $actualHeaders,
         OpenApiVersion $version,
         ?string $jsonSchemaDialect = null,
+        ?string $scope = null,
     ): array {
         if ($headersSpec === []) {
             return [];
@@ -120,7 +122,7 @@ final class ResponseHeaderValidator
             /** @var array<string, mixed> $schema */
             $schema = $headerObject['schema'];
 
-            $errors = [...$errors, ...$this->values->validate((string) $name, $normalizedHeaders[$lowerName] ?? null, $required, $schema, $version, $jsonSchemaDialect)];
+            $errors = [...$errors, ...$this->values->validate((string) $name, $normalizedHeaders[$lowerName] ?? null, $required, $schema, $version, $jsonSchemaDialect, $scope)];
         }
 
         return $errors;

@@ -38,6 +38,7 @@ use function in_array;
 use function is_array;
 use function is_string;
 use function json_decode;
+use function serialize;
 use function sprintf;
 use function str_starts_with;
 
@@ -115,6 +116,8 @@ final class RequestBodyValidator
      *                                                        for `discriminator.mapping` lowering (Issue
      *                                                        #262). `null` (the default for direct
      *                                                        callers) means no enforcement.
+     * @param null|string $scope names the operation in a loader-cached spec, so the converted schema is
+     *                           remembered by location; pass it only when `$operation` was read from that spec
      */
     public function validate(
         string $specName,
@@ -127,6 +130,7 @@ final class RequestBodyValidator
         ?DiscriminatorContext $discriminatorContext = null,
         ?string $jsonSchemaDialect = null,
         ?DeferredBodyPresence $bodyPresence = null,
+        ?string $scope = null,
     ): RequestBodyValidationResult {
         // OpenAPI: a missing requestBody means the operation accepts no body — treat as success.
         if (!isset($operation['requestBody'])) {
@@ -198,6 +202,7 @@ final class RequestBodyValidator
                             $version,
                             $discriminatorContext,
                             $jsonSchemaDialect,
+                            $scope,
                         );
                     }
 
@@ -288,7 +293,6 @@ final class RequestBodyValidator
 
         /** @var array<string, mixed> $schema */
         $schema = $content[$jsonContentType]['schema'];
-        $jsonSchema = OpenApiSchemaConverter::convert($schema, $version, SchemaContext::Request, $discriminatorContext, $jsonSchemaDialect);
 
         // Only legacy assoc-array callers need the ambiguous [] -> {} shim.
         // Adapters retain JSON types, so a wire [] must stay an array.
@@ -296,10 +300,11 @@ final class RequestBodyValidator
             $bodyValue = new stdClass();
         }
 
-        $schemaObject = ObjectConverter::convert($jsonSchema);
-        $dataObject = ObjectConverter::convert($bodyValue);
-
-        $violations = $this->runner->validateStructured($schemaObject, $dataObject);
+        $violations = $this->runner->validateAt(
+            self::schemaLocation($scope, $jsonContentType, $version, $discriminatorContext, $jsonSchemaDialect),
+            static fn(): mixed => ObjectConverter::convert(OpenApiSchemaConverter::convert($schema, $version, SchemaContext::Request, $discriminatorContext, $jsonSchemaDialect)),
+            ObjectConverter::convert($bodyValue),
+        );
 
         $errors = [];
         foreach ($violations as $violation) {
@@ -592,6 +597,18 @@ final class RequestBodyValidator
         ));
     }
 
+    private static function schemaLocation(
+        ?string $scope,
+        string $mediaType,
+        OpenApiVersion $version,
+        ?DiscriminatorContext $discriminatorContext,
+        ?string $jsonSchemaDialect,
+    ): ?string {
+        return $scope === null
+            ? null
+            : serialize([$scope, 'request-body', $mediaType, $version, $jsonSchemaDialect, $discriminatorContext?->enforce]);
+    }
+
     private static function checkRequiredBody(
         DecodedBody $body,
         string $specName,
@@ -659,6 +676,7 @@ final class RequestBodyValidator
         OpenApiVersion $version,
         ?DiscriminatorContext $discriminatorContext,
         ?string $jsonSchemaDialect,
+        ?string $scope,
     ): RequestBodyValidationResult {
         // An absent optional body has nothing to validate; the required case
         // was already rejected before content negotiation reached here.
@@ -701,14 +719,20 @@ final class RequestBodyValidator
             $rawValues,
         );
 
-        $jsonSchema = OpenApiSchemaConverter::convert($schema, $version, SchemaContext::Request, $discriminatorContext, $jsonSchemaDialect);
+        $convert = static fn(): array => OpenApiSchemaConverter::convert($schema, $version, SchemaContext::Request, $discriminatorContext, $jsonSchemaDialect);
+        $location = self::schemaLocation($scope, $matchedKey, $version, $discriminatorContext, $jsonSchemaDialect);
+        // Built at most once for all the readings below, and not at all when
+        // the runner remembers the location.
+        $schemaObject = null;
+        $build = static function () use (&$schemaObject, $convert): mixed {
+            return $schemaObject ??= ObjectConverter::convert($convert());
+        };
 
         // An empty field map is an empty JSON object, not an empty array —
         // same coercion the JSON path applies so `type: object` still matches.
         $dataObject = ObjectConverter::convert($data === [] ? new stdClass() : $data);
 
-        $schemaObject = ObjectConverter::convert($jsonSchema);
-        $violations = $this->runner->validateStructured($schemaObject, $dataObject);
+        $violations = $this->runner->validateAt($location, $build, $dataObject);
 
         // The body is validated exactly as written — the data and the schema
         // are never rewritten around an unverifiable part, which would change
@@ -742,7 +766,7 @@ final class RequestBodyValidator
                 // value can decide still reports what no part can explain
                 // away — an unconditional `required`, `minProperties`, a
                 // plain field's own type — and those stay failures.
-                $unconditional = self::unconditionalSchema($jsonSchema);
+                $unconditional = self::unconditionalSchema($convert());
                 $confirmed = $unconditional === null ? [] : self::violationsEveryReadingAgreesOn(
                     $violations,
                     $this->runner->validateStructured(ObjectConverter::convert($unconditional), $dataObject),
@@ -766,7 +790,7 @@ final class RequestBodyValidator
 
                     $violations = self::violationsEveryReadingAgreesOn(
                         $violations,
-                        $this->runner->validateStructured($schemaObject, ObjectConverter::convert($reading)),
+                        $this->runner->validateAt($location, $build, ObjectConverter::convert($reading)),
                     );
                 }
             }
