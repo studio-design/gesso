@@ -119,8 +119,8 @@ flat generated body has that many properties (one-off, a single run each):
 | 80 | 107 | 28.4 MB | 4,907 | 3,917 | 865 |
 
 A call that needs more than the budget still gains, and never loses, but does
-not get the full saving. The budget is one value,
-`SchemaValueValidator::DEFAULT_MAX_CACHED_BYTES`.
+not get the full saving. The budget is the `fuzz.cache_memory_mb` setting
+([Memory for large schemas](../fuzzing.md#memory-for-large-schemas)).
 
 ## One loader per schema
 

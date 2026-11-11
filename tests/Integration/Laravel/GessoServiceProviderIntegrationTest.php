@@ -12,7 +12,9 @@ use Illuminate\Support\ServiceProvider;
 use LogicException;
 use Orchestra\Testbench\TestCase;
 use PHPUnit\Framework\Attributes\Test;
+use ReflectionProperty;
 use Studio\Gesso\Config\GessoConfig;
+use Studio\Gesso\Fuzz\SchemaValueValidator;
 use Studio\Gesso\Laravel\GessoServiceProvider;
 use Studio\Gesso\Laravel\LaravelConfig;
 
@@ -24,6 +26,12 @@ use function json_encode;
 
 final class GessoServiceProviderIntegrationTest extends TestCase
 {
+    protected function tearDown(): void
+    {
+        SchemaValueValidator::configureCacheMemory(null);
+        parent::tearDown();
+    }
+
     #[Test]
     public function provider_merges_gesso_php_defaults_under_the_gesso_key(): void
     {
@@ -94,6 +102,41 @@ final class GessoServiceProviderIntegrationTest extends TestCase
     }
 
     #[Test]
+    public function provider_applies_the_fuzz_cache_memory_setting(): void
+    {
+        config()->set('gesso', ['fuzz' => ['cache_memory_mb' => 48]]);
+
+        $this->provider()->register();
+        $this->provider()->boot();
+
+        $this->assertSame(48 * 1024 * 1024, self::fuzzCacheBudget());
+    }
+
+    #[Test]
+    public function provider_keeps_the_default_fuzz_cache_memory_for_a_value_that_is_not_megabytes(): void
+    {
+        config()->set('gesso', ['fuzz' => ['cache_memory_mb' => 'lots']]);
+
+        $this->provider()->register();
+        $this->provider()->boot();
+
+        $this->assertSame(SchemaValueValidator::DEFAULT_MAX_CACHED_BYTES, self::fuzzCacheBudget());
+    }
+
+    #[Test]
+    public function provider_sets_the_fuzz_cache_memory_after_the_phpunit_extension(): void
+    {
+        // The extension runs first and may have read another gesso.php (its
+        // `config` parameter); in a Laravel test the application's wins.
+        SchemaValueValidator::configureCacheMemory(64);
+
+        $this->provider()->register();
+        $this->provider()->boot();
+
+        $this->assertSame(SchemaValueValidator::DEFAULT_MAX_CACHED_BYTES, self::fuzzCacheBudget());
+    }
+
+    #[Test]
     public function provider_publishes_a_root_gesso_php_under_the_gesso_tag(): void
     {
         $source = dirname(__DIR__, 3) . '/src/Laravel/config.php';
@@ -137,6 +180,12 @@ final class GessoServiceProviderIntegrationTest extends TestCase
         $this->expectExceptionMessage('legacy Laravel configuration key "openapi-contract-testing"');
 
         $this->provider()->register();
+    }
+
+    private static function fuzzCacheBudget(): int
+    {
+        /** @var int */
+        return (new ReflectionProperty(SchemaValueValidator::class, 'maxCachedBytes'))->getValue();
     }
 
     private function provider(): GessoServiceProvider

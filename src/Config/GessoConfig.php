@@ -8,6 +8,7 @@ use const FILTER_NULL_ON_FAILURE;
 use const FILTER_VALIDATE_BOOLEAN;
 
 use InvalidArgumentException;
+use Studio\Gesso\Fuzz\SchemaValueValidator;
 use Studio\Gesso\Internal\CurlCommandFormatter;
 use Studio\Gesso\Internal\SpecPath;
 use Studio\Gesso\OpenApiRequestValidator;
@@ -163,6 +164,9 @@ final class GessoConfig
             'enabled' => ['type' => 'bool', 'default' => false],
             'scan_namespaces' => ['type' => 'strings', 'default' => []],
             'fail_on_drift' => ['type' => 'bool', 'default' => true],
+        ],
+        'fuzz' => [
+            'cache_memory_mb' => ['type' => 'int', 'default' => SchemaValueValidator::DEFAULT_MAX_CACHED_BYTES >> 20],
         ],
         'phpunit' => [
             'default_testsuite_as_full' => ['type' => 'bool', 'default' => false],

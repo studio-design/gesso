@@ -207,6 +207,14 @@ Amendment, 2026-11-01: `validation.redact_names` is a new leaf with no v2
 spelling. It sets the field names whose values failure output redacts, which
 v2 hard-coded.
 
+Amendment, 2026-11-12: `fuzz.cache_memory_mb` (#734) is a new leaf with no v2
+spelling, in a new `fuzz` section. It bounds the memory the explorers keep
+parsed schemas in. It is not a `validation` leaf: those set what request and
+response validation reports, and this one changes no result, only what a run
+of the explorers costs. The unit is in the name because a bare integer of
+memory says nothing about its scale, and megabytes are the scale the value is
+chosen at.
+
 `baseline` and `baseline_stale` are top-level keys rather than a `baseline`
 section with four leaves: under rule 1 the array must transcribe #502's two string
 keys, and grouping by baseline instead of by attribute would make the array and

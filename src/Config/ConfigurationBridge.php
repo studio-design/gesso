@@ -59,6 +59,7 @@ final class ConfigurationBridge
     /** Settings added in v3, which have no v2 spelling to reuse as their name. */
     public const PHPUNIT_V3 = [
         'redact_names' => ['validation.redact_names', 'strings'],
+        'fuzz_cache_memory_mb' => ['fuzz.cache_memory_mb', 'int'],
     ];
 
     /**

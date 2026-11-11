@@ -152,6 +152,7 @@ require both Bearer and an API key.
 | `baseline.violations` / `baseline.coverage` | [Baseline](baseline.md) files |
 | `baseline_stale.violations` / `baseline_stale.coverage` | Stale-entry handling |
 | `enum_drift.enabled` / `.scan_namespaces` / `.fail_on_drift` | [Enum drift](enum-drift.md) |
+| `fuzz.cache_memory_mb` | [Memory the explorers keep parsed schemas in](fuzzing.md#memory-for-large-schemas), in megabytes (default `16`) |
 | `phpunit.default_testsuite_as_full` | [Partial-run opt-in](ci.md#default_testsuite_as_full-opt-in) |
 | `laravel.auto_assert` / `laravel.auto_validate_request` | Laravel automatic validation |
 | `laravel.auto_inject_dummy_credentials` | `false`, `true`, or `'bearer'` |

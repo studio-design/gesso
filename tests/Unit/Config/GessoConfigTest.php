@@ -101,6 +101,7 @@ final class GessoConfigTest extends TestCase
             'enum_drift.enabled',
             'enum_drift.scan_namespaces',
             'enum_drift.fail_on_drift',
+            'fuzz.cache_memory_mb',
             'phpunit.default_testsuite_as_full',
             'laravel.auto_assert',
             'laravel.auto_validate_request',
@@ -372,6 +373,18 @@ final class GessoConfigTest extends TestCase
     }
 
     #[Test]
+    public function fuzz_cache_memory_defaults_to_16_megabytes_and_takes_a_non_negative_integer_only(): void
+    {
+        $this->assertSame(16, GessoConfig::defaults()->int('fuzz.cache_memory_mb'));
+        $this->assertSame(0, GessoConfig::fromArray(['fuzz' => ['cache_memory_mb' => 0]], '/tmp')->int('fuzz.cache_memory_mb'));
+
+        $this->expectException(InvalidGessoConfigurationException::class);
+        $this->expectExceptionMessage('"fuzz.cache_memory_mb" expected a non-negative integer, got float');
+
+        GessoConfig::fromArray(['fuzz' => ['cache_memory_mb' => 1.5]], '/tmp');
+    }
+
+    #[Test]
     public function max_errors_takes_a_non_negative_integer_only(): void
     {
         $this->assertSame(0, GessoConfig::fromArray(['validation' => ['max_errors' => 0]], '/tmp')
@@ -588,6 +601,7 @@ final class GessoConfigTest extends TestCase
             'baseline' => ['violations' => '/out/v.json', 'coverage' => '/out/c.json'],
             'baseline_stale' => ['violations' => 'fail', 'coverage' => 'off'],
             'enum_drift' => ['enabled' => true, 'scan_namespaces' => ['App\\Enums'], 'fail_on_drift' => false],
+            'fuzz' => ['cache_memory_mb' => 64],
             'phpunit' => ['default_testsuite_as_full' => true],
             'laravel' => [
                 'auto_assert' => true,
