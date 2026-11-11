@@ -1068,4 +1068,35 @@ class OpenApiSpecLoaderTest extends TestCase
         $this->assertSame(['0' => ['operationId' => 'getA']], get_object_vars($linksAt('/c')));
         $this->assertSame(['0' => ['operationId' => 'getA']], get_object_vars($linksAt('/d')));
     }
+
+    #[Test]
+    public function server_base_paths_follow_the_cached_spec(): void
+    {
+        $dir = sys_get_temp_dir() . DIRECTORY_SEPARATOR . uniqid('gesso-base-paths-', true);
+        mkdir($dir);
+        $file = $dir . DIRECTORY_SEPARATOR . 'api.json';
+        $write = static fn(string $basePath) => file_put_contents($file, json_encode([
+            'openapi' => '3.1.0',
+            'info' => ['title' => 't', 'version' => '1'],
+            'servers' => [['url' => $basePath]],
+            'paths' => ['/pets' => ['get' => ['responses' => ['200' => ['description' => 'OK']]]]],
+        ], JSON_THROW_ON_ERROR));
+
+        try {
+            $write('/api');
+            OpenApiSpecLoader::configure($dir);
+            $this->assertSame(['/api' => ['/pets']], OpenApiSpecLoader::serverBasePaths('api'));
+
+            // Still the cached spec's answer while that spec stays cached…
+            $write('/v2');
+            $this->assertSame(['/api' => ['/pets']], OpenApiSpecLoader::serverBasePaths('api'));
+
+            // …and re-derived as soon as it is dropped.
+            OpenApiSpecLoader::clearCache();
+            $this->assertSame(['/v2' => ['/pets']], OpenApiSpecLoader::serverBasePaths('api'));
+        } finally {
+            unlink($file);
+            rmdir($dir);
+        }
+    }
 }

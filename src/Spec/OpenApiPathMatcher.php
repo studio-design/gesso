@@ -17,6 +17,7 @@ use function preg_quote;
 use function preg_split;
 use function reset;
 use function rtrim;
+use function serialize;
 use function sprintf;
 use function str_contains;
 use function str_ends_with;
@@ -43,6 +44,9 @@ final class OpenApiPathMatcher
 
     /** Reject one template that cannot be split below PCRE's named-capture ceiling. */
     private const MAX_PARAMETERS_PER_TEMPLATE = 10_000;
+
+    /** @var array<string, self> serialized constructor arguments => compiled matcher */
+    private static array $shared = [];
 
     /** @var array<string, string> normalized request path => original spec path */
     private array $literalPaths;
@@ -255,6 +259,35 @@ final class OpenApiPathMatcher
 
         $this->literalPaths = $literalPaths;
         $this->compiledPathsBySegmentCount = $compiledPathsBySegmentCount;
+    }
+
+    /**
+     * The matcher for these constructor arguments, compiled once per process.
+     *
+     * Compiling every template of a spec is the expensive part and a matcher
+     * is immutable, yet validators live per test-case instance — so without
+     * this a suite recompiles the same spec for every test (issue #720). The
+     * key is the arguments themselves, in order (declaration order, prefix
+     * order and base-path order all decide matches), so a changed spec or
+     * `strip_prefixes` gets its own matcher. A template that fails to compile
+     * is not remembered and throws on every call.
+     *
+     * @param string[] $specPaths
+     * @param string[] $stripPrefixes
+     * @param array<string, list<string>> $serverBasePaths
+     */
+    public static function shared(array $specPaths, array $stripPrefixes = [], array $serverBasePaths = []): self
+    {
+        return self::$shared[serialize([$specPaths, $stripPrefixes, $serverBasePaths])] ??= new self($specPaths, $stripPrefixes, $serverBasePaths);
+    }
+
+    /**
+     * Forget the shared matchers. {@see OpenApiSpecLoader} calls this wherever
+     * it drops its cached specs, so a matcher never outlives its spec.
+     */
+    public static function clearShared(): void
+    {
+        self::$shared = [];
     }
 
     public function match(string $requestPath): ?string

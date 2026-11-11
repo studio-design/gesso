@@ -27,7 +27,6 @@ use Studio\Gesso\PHPUnit\CleanTraceAssert;
 use Studio\Gesso\SkipOpenApiResolver;
 use Studio\Gesso\Spec\OpenApiOperationResolver;
 use Studio\Gesso\Spec\OpenApiPathMatcher;
-use Studio\Gesso\Spec\OpenApiServerBasePaths;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Symfony\HttpFoundationBody;
 use Studio\Gesso\Validation\Request\AcknowledgedSecuritySchemes;
@@ -940,7 +939,7 @@ trait ValidatesOpenApiSchema
             return [];
         }
 
-        $matchedOperation = $this->findOperationForRequest($paths, $method, $path, OpenApiServerBasePaths::fromSpec($spec));
+        $matchedOperation = $this->findOperationForRequest($paths, $method, $path, OpenApiSpecLoader::serverBasePaths($specName));
         if ($matchedOperation === null) {
             return [];
         }
@@ -983,11 +982,11 @@ trait ValidatesOpenApiSchema
     }
 
     /**
-     * Locate the spec operation for (method, path) without re-running
-     * OpenApiPathMatcher — the validator will match again internally when it
-     * runs, and one extra literal lookup here avoids exposing its cache.
-     * Only spec-declared paths are consulted; prefix stripping matches the
-     * validator's behavior via OpenApiSpecLoader.
+     * Locate the spec operation for (method, path). The validator matches
+     * again when it runs; both use the process-wide compiled matcher, so
+     * this costs a lookup, not a compile. Only spec-declared paths are
+     * consulted; prefix stripping matches the validator's behavior via
+     * OpenApiSpecLoader.
      *
      * @param array<string, mixed> $paths
      * @param array<string, list<string>> $serverBasePaths
@@ -1003,7 +1002,7 @@ trait ValidatesOpenApiSchema
             }
         }
 
-        $matcher = new OpenApiPathMatcher(
+        $matcher = OpenApiPathMatcher::shared(
             $specPaths,
             OpenApiSpecLoader::getStripPrefixes(),
             $serverBasePaths,

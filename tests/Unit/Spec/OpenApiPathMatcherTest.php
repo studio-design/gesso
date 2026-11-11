@@ -10,6 +10,7 @@ use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use ReflectionProperty;
 use Studio\Gesso\Spec\OpenApiPathMatcher;
+use Studio\Gesso\Spec\OpenApiSpecLoader;
 
 use function array_fill;
 use function implode;
@@ -19,6 +20,13 @@ use function str_repeat;
 
 class OpenApiPathMatcherTest extends TestCase
 {
+    protected function tearDown(): void
+    {
+        // Also drops the shared matchers the tests below compile.
+        OpenApiSpecLoader::reset();
+        parent::tearDown();
+    }
+
     /** @return array<string, array{string, ?string}> */
     public static function provideMatches_paths_without_strip_prefixCases(): iterable
     {
@@ -103,6 +111,14 @@ class OpenApiPathMatcherTest extends TestCase
         yield 'slash in value does not match' => ['/files/a/b.txt', null];
         yield 'missing literal does not match' => ['/files/readme', null];
         yield 'two-param segment needs its literal' => ['/v/210', null];
+    }
+
+    /** @return iterable<string, array{callable(): void}> */
+    public static function provideShared_matchers_are_dropped_with_the_cached_specsCases(): iterable
+    {
+        yield 'clearCache' => [OpenApiSpecLoader::clearCache(...)];
+        yield 'reset' => [OpenApiSpecLoader::reset(...)];
+        yield 'configure' => [static fn() => OpenApiSpecLoader::configure(__DIR__)];
     }
 
     #[Test]
@@ -492,6 +508,45 @@ class OpenApiPathMatcherTest extends TestCase
         $this->expectExceptionMessage("Duplicate path placeholder name 'id' in spec path '/v/{id}-{id}'");
 
         new OpenApiPathMatcher(['/v/{id}-{id}']);
+    }
+
+    #[Test]
+    public function shared_reuses_the_matcher_for_identical_arguments_only(): void
+    {
+        $basePaths = ['/api' => ['/pets/{id}']];
+        $matcher = OpenApiPathMatcher::shared(['/pets', '/pets/{id}'], [], $basePaths);
+
+        $this->assertSame($matcher, OpenApiPathMatcher::shared(['/pets', '/pets/{id}'], [], $basePaths));
+        $this->assertNotSame($matcher, OpenApiPathMatcher::shared(['/pets', '/pets/{id}'], ['/v1'], $basePaths));
+        $this->assertNotSame($matcher, OpenApiPathMatcher::shared(['/pets', '/pets/{id}']));
+        // Declaration order breaks ties between templates, so it is part of the key.
+        $this->assertNotSame($matcher, OpenApiPathMatcher::shared(['/pets/{id}', '/pets'], [], $basePaths));
+        $this->assertSame('/pets/{id}', $matcher->match('/api/pets/1'));
+    }
+
+    #[Test]
+    public function shared_does_not_remember_a_template_that_fails_to_compile(): void
+    {
+        foreach ([1, 2] as $_attempt) {
+            try {
+                OpenApiPathMatcher::shared(['/v/{id}-{id}']);
+                $this->fail('Expected the duplicate placeholder to be rejected on every call.');
+            } catch (InvalidArgumentException $e) {
+                $this->assertStringContainsString('Duplicate path placeholder', $e->getMessage());
+            }
+        }
+    }
+
+    /** @param callable(): void $dropSpecs */
+    #[DataProvider('provideShared_matchers_are_dropped_with_the_cached_specsCases')]
+    #[Test]
+    public function shared_matchers_are_dropped_with_the_cached_specs(callable $dropSpecs): void
+    {
+        $matcher = OpenApiPathMatcher::shared(['/pets']);
+
+        $dropSpecs();
+
+        $this->assertNotSame($matcher, OpenApiPathMatcher::shared(['/pets']));
     }
 
     private static function createMatcher(): OpenApiPathMatcher

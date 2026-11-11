@@ -10,7 +10,6 @@ use Studio\Gesso\OpenApiVersion;
 use Studio\Gesso\Spec\OpenApiOperationResolver;
 use Studio\Gesso\Spec\OpenApiPathMatcher;
 use Studio\Gesso\Spec\OpenApiSchemaDialect;
-use Studio\Gesso\Spec\OpenApiServerBasePaths;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Validation\Support\BodyStructureInspector;
 use Studio\Gesso\Validation\Support\ContentTypeMatcher;
@@ -92,7 +91,9 @@ final class ResponseSchemaResolver
 
         /** @var string[] $specPaths */
         $specPaths = array_keys($spec['paths'] ?? []);
-        $matcher = $this->pathMatchers[$specName] ??= new OpenApiPathMatcher($specPaths, OpenApiSpecLoader::getStripPrefixes(), OpenApiServerBasePaths::fromSpec($spec));
+        // Validators are rebuilt per test case, so the compiled matcher comes
+        // from the process-wide memo; this map only skips rebuilding its key.
+        $matcher = $this->pathMatchers[$specName] ??= OpenApiPathMatcher::shared($specPaths, OpenApiSpecLoader::getStripPrefixes(), OpenApiSpecLoader::serverBasePaths($specName));
         $matched = $matcher->matchWithVariables($requestPath);
 
         if ($matched === null) {
