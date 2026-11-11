@@ -94,6 +94,10 @@ largest bodies, 38 KB of schema each); the next largest need 13.0 and
 | With a 32 MB budget | 16.8 s | 39 MB |
 | With a 64 MB budget | 9.9 s | 72 MB |
 
+64 MB holds the largest body with about 1% to spare (it is charged 63.4 MB
+when it is the first of the process), so that row is the least stable of the
+four.
+
 ### What does not fit
 
 `exploreInvalid()` checks each valid case against the body schema and against

@@ -98,8 +98,8 @@ final class SchemaValueValidator
         self::$parser ??= new SchemaParser();
 
         // What a parsed schema holds follows no length: opis parses a
-        // subschema when a value first reaches it, so the same JSON costs 16
-        // to 58 times its length. Each check is charged what it left behind,
+        // subschema when a value first reaches it, so the same JSON costs 8 to
+        // 58 times its length. Each check is charged what it left behind,
         // which for the first ones of a process includes the opis classes
         // they load: an overcharge that ends when the entry is dropped.
         $before = memory_get_usage();

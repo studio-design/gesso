@@ -17,6 +17,8 @@ use function array_map;
 use function array_sum;
 use function array_values;
 use function gc_collect_cycles;
+use function gc_disable;
+use function gc_enable;
 use function intdiv;
 use function json_decode;
 use function json_encode;
@@ -29,10 +31,16 @@ class SchemaValueValidatorTest extends TestCase
     {
         parent::setUp();
         SchemaValueValidator::clearCache();
+        // A schema is charged the memory a check leaves behind. A collector
+        // run in the middle of one would free what earlier tests left and
+        // hide that, so it runs now and then stays off.
+        gc_collect_cycles();
+        gc_disable();
     }
 
     protected function tearDown(): void
     {
+        gc_enable();
         self::setBudget(SchemaValueValidator::DEFAULT_MAX_CACHED_BYTES);
         SchemaValueValidator::clearCache();
         parent::tearDown();
