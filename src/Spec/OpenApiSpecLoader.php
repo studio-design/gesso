@@ -21,6 +21,7 @@ use Studio\Gesso\Internal\SpecDocumentDecoder;
 use Studio\Gesso\Internal\SpecPath;
 use Studio\Gesso\Internal\YamlAvailability;
 use Studio\Gesso\OpenApiVersion;
+use Studio\Gesso\Validation\Support\SchemaValidatorRunner;
 
 use function array_key_exists;
 use function file_exists;
@@ -329,6 +330,7 @@ final class OpenApiSpecLoader
         self::$objectEnums = [];
         self::$serverBasePaths = [];
         OpenApiPathMatcher::clearShared();
+        SchemaValidatorRunner::clearShared();
     }
 
     /**

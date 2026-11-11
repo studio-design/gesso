@@ -5,25 +5,66 @@ declare(strict_types=1);
 namespace Studio\Gesso\Tests\Unit\Validation\Support;
 
 use InvalidArgumentException;
+use Opis\JsonSchema\Exceptions\DuplicateSchemaIdException;
+use Opis\JsonSchema\Validator;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+use ReflectionClassConstant;
 use ReflectionProperty;
 use Studio\Gesso\OpenApiVersion;
+use Studio\Gesso\SchemaContext;
 use Studio\Gesso\Spec\OpenApiSchemaConverter;
+use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Tests\Helpers\GroupsSchemaViolations;
 use Studio\Gesso\Validation\Support\ObjectConverter;
 use Studio\Gesso\Validation\Support\SchemaValidatorRunner;
+use WeakReference;
 
+use function array_map;
+use function array_values;
 use function count;
 use function gc_collect_cycles;
 use function implode;
+use function intdiv;
 use function memory_get_usage;
 use function sprintf;
 use function str_contains;
+use function str_repeat;
 
 class SchemaValidatorRunnerTest extends TestCase
 {
     use GroupsSchemaViolations;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        SchemaValidatorRunner::clearShared();
+    }
+
+    protected function tearDown(): void
+    {
+        SchemaValidatorRunner::clearShared();
+        parent::tearDown();
+    }
+
+    /**
+     * @return iterable<string, array{int, int}>
+     */
+    public static function provideRunners_with_different_max_errors_do_not_share_a_validatorCases(): iterable
+    {
+        yield 'capped first' => [1, 20];
+        yield 'uncapped first' => [20, 1];
+    }
+
+    /**
+     * @return iterable<string, array{callable(): void}>
+     */
+    public static function provideDropping_the_cached_specs_empties_the_shared_schemasCases(): iterable
+    {
+        yield 'clearCache()' => [OpenApiSpecLoader::clearCache(...)];
+        yield 'reset()' => [OpenApiSpecLoader::reset(...)];
+    }
 
     #[Test]
     public function validate_returns_empty_array_for_valid_data(): void
@@ -109,29 +150,165 @@ class SchemaValidatorRunnerTest extends TestCase
             ),
         );
 
-        $cache = (new ReflectionProperty($runner, 'canonicalSchemas'))->getValue($runner);
-        $this->assertCount(1, $cache);
+        $this->assertCount(1, self::sharedSchemas());
     }
 
     #[Test]
-    public function canonical_schema_cache_is_bounded_for_dynamic_schema_workloads(): void
+    public function runners_with_the_same_max_errors_parse_a_schema_once(): void
     {
-        $runner = new SchemaValidatorRunner(20);
+        $schema = ['type' => 'object', 'properties' => ['id' => ['type' => 'integer']]];
+        $data = ObjectConverter::convert(['id' => 1]);
 
-        for ($i = 0; $i < 1_025; $i++) {
-            $schema = ObjectConverter::convert([
-                'type' => 'integer',
-                'const' => $i,
-            ]);
-            $this->assertSame([], self::groupedErrors($runner, $schema, $i));
+        // Two runners, as two test cases build them, each handed a fresh
+        // object graph of the same schema.
+        $first = new SchemaValidatorRunner(20);
+        $second = new SchemaValidatorRunner(20);
+        $this->assertSame([], self::groupedErrors($first, ObjectConverter::convert($schema), $data));
+        $parsedByTheFirst = self::sharedSchemas();
+        $this->assertSame([], self::groupedErrors($second, ObjectConverter::convert($schema), $data));
+
+        $this->assertCount(1, $parsedByTheFirst);
+        $this->assertSame($parsedByTheFirst, self::sharedSchemas(), 'The second runner must reuse the validator and schema the first one parsed.');
+    }
+
+    #[Test]
+    #[DataProvider('provideRunners_with_different_max_errors_do_not_share_a_validatorCases')]
+    public function runners_with_different_max_errors_do_not_share_a_validator(int $first, int $second): void
+    {
+        $schema = ['type' => 'object', 'properties' => ['a' => ['type' => 'integer'], 'b' => ['type' => 'integer']]];
+        $data = ObjectConverter::convert(['a' => 'not-int', 'b' => 'also-not-int']);
+
+        // Whichever runner parses the schema first, each keeps its own cap.
+        foreach ([$first, $second] as $maxErrors) {
+            $this->assertCount(
+                $maxErrors === 1 ? 1 : 2,
+                (new SchemaValidatorRunner($maxErrors))->validateStructured(ObjectConverter::convert($schema), $data),
+            );
         }
 
-        $cache = (new ReflectionProperty($runner, 'canonicalSchemas'))->getValue($runner);
-        $this->assertCount(
-            1,
-            $cache,
-            'Crossing the cache limit must release both Gesso and Opis schema caches before retaining new identities.',
+        $this->assertCount(2, self::sharedSchemas());
+    }
+
+    #[Test]
+    public function schemas_declaring_the_same_id_are_validated_separately(): void
+    {
+        // One component, converted for a request and for a response: the same
+        // `$id`, different schemas (`readOnly` is dropped from requests).
+        $pet = [
+            '$id' => 'https://example.test/schemas/pet',
+            'type' => 'object',
+            'required' => ['id'],
+            'properties' => ['id' => ['type' => 'integer', 'readOnly' => true]],
+        ];
+        $convert = static fn(array $schema, SchemaContext $context): mixed => ObjectConverter::convert(
+            OpenApiSchemaConverter::convert($schema, OpenApiVersion::V3_1, $context),
         );
+        $missingId = (object) [];
+
+        foreach ([[SchemaContext::Request, SchemaContext::Response], [SchemaContext::Response, SchemaContext::Request]] as $order) {
+            SchemaValidatorRunner::clearShared();
+            foreach ($order as $context) {
+                $errors = self::groupedErrors(new SchemaValidatorRunner(20), $convert($pet, $context), $missingId);
+                $this->assertSame($context === SchemaContext::Response, $errors !== [], "{$context->name} context");
+            }
+        }
+
+        // The same component inlined into two different schemas.
+        $runner = new SchemaValidatorRunner(20);
+        $this->assertSame([], self::groupedErrors(
+            $runner,
+            $convert(['type' => 'object', 'properties' => ['pet' => $pet]], SchemaContext::Response),
+            ObjectConverter::convert(['pet' => ['id' => 1]]),
+        ));
+        $this->assertSame([], self::groupedErrors(
+            $runner,
+            $convert(['type' => 'array', 'items' => $pet], SchemaContext::Response),
+            ObjectConverter::convert([['id' => 1]]),
+        ));
+    }
+
+    #[Test]
+    public function a_schema_opis_refuses_to_load_is_refused_on_every_call(): void
+    {
+        $runner = new SchemaValidatorRunner(20);
+        $duplicate = ['$id' => 'https://example.test/schemas/duplicate', 'type' => 'string'];
+
+        for ($call = 1; $call <= 2; $call++) {
+            try {
+                $runner->validateStructured(
+                    ObjectConverter::convert(['type' => 'object', 'properties' => ['a' => $duplicate, 'b' => $duplicate]]),
+                    ObjectConverter::convert(['a' => 'x']),
+                );
+                $this->fail("Call {$call} accepted a schema that declares one \$id twice.");
+            } catch (DuplicateSchemaIdException) {
+                $this->assertSame([], self::sharedSchemas());
+            }
+        }
+    }
+
+    #[Test]
+    public function the_least_recently_used_schema_is_dropped_once_the_budget_is_exceeded(): void
+    {
+        $budget = (new ReflectionClassConstant(SchemaValidatorRunner::class, 'MAX_SHARED_BYTES'))->getValue();
+        $this->assertIsInt($budget);
+        $runner = new SchemaValidatorRunner(20);
+        // Three of these fit in the budget, four do not.
+        $validate = function (string $name) use ($runner, $budget): void {
+            $schema = ObjectConverter::convert(['const' => $name, 'description' => str_repeat('x', intdiv($budget, 4))]);
+            $this->assertSame([], self::groupedErrors($runner, $schema, $name));
+        };
+        $cached = static fn(): array => array_map(
+            static fn(array $entry): string => $entry[1]->const,
+            array_values(self::sharedSchemas()),
+        );
+
+        $validate('a');
+        $validate('b');
+        $validate('c');
+        $validate('a');
+        $this->assertSame(['b', 'c', 'a'], $cached());
+
+        $dropped = WeakReference::create(array_values(self::sharedSchemas())[0][0]);
+        $validate('d');
+        $this->assertSame(['c', 'a', 'd'], $cached(), 'Only the least recently used schema is dropped.');
+        gc_collect_cycles();
+        $this->assertNull($dropped->get(), 'Dropping an entry must release its opis validator.');
+
+        // A dropped schema is parsed again and validates as before.
+        $validate('b');
+        $this->assertSame(['a', 'd', 'b'], $cached());
+        $this->assertLessThanOrEqual($budget, (new ReflectionProperty(SchemaValidatorRunner::class, 'sharedBytes'))->getValue());
+    }
+
+    #[Test]
+    public function a_schema_larger_than_the_budget_is_kept_until_another_one_is_used(): void
+    {
+        $budget = (new ReflectionClassConstant(SchemaValidatorRunner::class, 'MAX_SHARED_BYTES'))->getValue();
+        $this->assertIsInt($budget);
+        $runner = new SchemaValidatorRunner(20);
+        $oversized = ObjectConverter::convert(['type' => 'string', 'description' => str_repeat('x', $budget)]);
+
+        $this->assertSame([], self::groupedErrors($runner, $oversized, 'ok'));
+        $this->assertCount(1, self::sharedSchemas());
+
+        $this->assertSame([], self::groupedErrors($runner, ObjectConverter::convert(['type' => 'integer']), 1));
+        $this->assertSame(['integer'], array_map(static fn(array $entry): string => $entry[1]->type, array_values(self::sharedSchemas())));
+    }
+
+    /**
+     * @param callable(): void $drop
+     */
+    #[Test]
+    #[DataProvider('provideDropping_the_cached_specs_empties_the_shared_schemasCases')]
+    public function dropping_the_cached_specs_empties_the_shared_schemas(callable $drop): void
+    {
+        $this->assertSame([], self::groupedErrors(new SchemaValidatorRunner(20), ObjectConverter::convert(['type' => 'integer']), 1));
+        $this->assertCount(1, self::sharedSchemas());
+
+        $drop();
+
+        $this->assertSame([], self::sharedSchemas());
+        $this->assertSame(0, (new ReflectionProperty(SchemaValidatorRunner::class, 'sharedBytes'))->getValue());
     }
 
     #[Test]
@@ -1358,6 +1535,15 @@ class SchemaValidatorRunnerTest extends TestCase
         $this->assertNotNull($rewritten);
         $this->assertSame('additionalProperties', $rewritten->keyword);
         $this->assertSame('Additional object properties are not allowed: extra', $rewritten->message);
+    }
+
+    /**
+     * @return array<string, array{Validator, object, int}>
+     */
+    private static function sharedSchemas(): array
+    {
+        /** @var array<string, array{Validator, object, int}> */
+        return (new ReflectionProperty(SchemaValidatorRunner::class, 'shared'))->getValue();
     }
 
     /**
