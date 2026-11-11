@@ -62,6 +62,9 @@ final class OpenApiSpecLoader
 
     /** @var array<string, array<string, stdClass>> */
     private static array $objectEnums = [];
+
+    /** @var array<string, array<string, list<string>>> spec name => its server base paths */
+    private static array $serverBasePaths = [];
     private static ?ClientInterface $httpClient = null;
     private static ?RequestFactoryInterface $requestFactory = null;
     private static bool $allowRemoteRefs = false;
@@ -180,8 +183,7 @@ final class OpenApiSpecLoader
         // A previous configure() call may have cached specs under a
         // different remote-refs policy. Evict so the next load() runs
         // with the new client/flag combination.
-        self::$cache = [];
-        self::$objectEnums = [];
+        self::clearCache();
     }
 
     /**
@@ -314,7 +316,8 @@ final class OpenApiSpecLoader
     }
 
     /**
-     * Clear only the cached specs, keeping basePath and stripPrefixes intact.
+     * Clear the cached specs and everything derived from them, keeping
+     * basePath and stripPrefixes intact.
      *
      * @internal Used by the PHPUnit extension to free memory after coverage
      * is computed. Production code should not call this — clearing mid-run
@@ -324,6 +327,22 @@ final class OpenApiSpecLoader
     {
         self::$cache = [];
         self::$objectEnums = [];
+        self::$serverBasePaths = [];
+        OpenApiPathMatcher::clearShared();
+    }
+
+    /**
+     * {@see OpenApiServerBasePaths::fromSpec()} for a named spec, derived once
+     * per cached spec: it walks every operation, and request matching needs
+     * it on every request (issue #720).
+     *
+     * @internal Request path matching only.
+     *
+     * @return array<string, list<string>>
+     */
+    public static function serverBasePaths(string $specName): array
+    {
+        return self::$serverBasePaths[$specName] ??= OpenApiServerBasePaths::fromSpec(self::load($specName));
     }
 
     /**
@@ -353,8 +372,7 @@ final class OpenApiSpecLoader
     {
         self::$basePath = null;
         self::$stripPrefixes = [];
-        self::$cache = [];
-        self::$objectEnums = [];
+        self::clearCache();
         self::$httpClient = null;
         self::$requestFactory = null;
         self::$allowRemoteRefs = false;

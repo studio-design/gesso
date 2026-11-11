@@ -16,7 +16,6 @@ use Studio\Gesso\Spec\OpenApiOperationResolver;
 use Studio\Gesso\Spec\OpenApiPathMatcher;
 use Studio\Gesso\Spec\OpenApiSchemaConverter;
 use Studio\Gesso\Spec\OpenApiSchemaDialect;
-use Studio\Gesso\Spec\OpenApiServerBasePaths;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Validation\Request\ParameterCollector;
 use Studio\Gesso\Validation\Request\RequestBodyValidator;
@@ -422,7 +421,7 @@ final class OpenApiEndpointExplorer
         /** @var array<string, mixed> $paths */
         $paths = is_array($spec['paths'] ?? null) ? $spec['paths'] : [];
 
-        $matchedPath = self::resolveMatchedPath($paths, $path, OpenApiServerBasePaths::fromSpec($spec));
+        $matchedPath = self::resolveMatchedPath($paths, $path, OpenApiSpecLoader::serverBasePaths($specName));
         if ($matchedPath === null) {
             throw new InvalidArgumentException(sprintf(
                 "Path '%s' is not declared in OpenAPI spec '%s'.",
@@ -543,7 +542,7 @@ final class OpenApiEndpointExplorer
             }
         }
 
-        $matcher = new OpenApiPathMatcher($specPaths, OpenApiSpecLoader::getStripPrefixes(), $serverBasePaths);
+        $matcher = OpenApiPathMatcher::shared($specPaths, OpenApiSpecLoader::getStripPrefixes(), $serverBasePaths);
 
         return $matcher->match($path);
     }
