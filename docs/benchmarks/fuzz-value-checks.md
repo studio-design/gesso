@@ -17,18 +17,18 @@ Milliseconds per call, 100 resources.
 
 | Call | Before, first | After, first | Before, repeated | After, repeated |
 |---|---:|---:|---:|---:|
-| `explore()`, `POST` with a 4-property body | 4.23 | 1.40 | 4.26 | 1.30 |
-| `exploreInvalid()`, `POST` with a 4-property body | 64.08 | 12.49 | 64.56 | 11.06 |
-| `exploreInvalid()`, `GET` with 4 parameters | 36.02 | 3.62 | 36.12 | 3.65 |
-| `explore()`, `PUT` with an 8-property nested body | 6.48 | 2.29 | 6.35 | 2.02 |
-| `exploreInvalid()`, `PUT` with an 8-property nested body | 172.32 | 33.44 | 174.77 | 29.41 |
+| `explore()`, `POST` with a 4-property body | 4.23 | 1.35 | 4.26 | 1.24 |
+| `exploreInvalid()`, `POST` with a 4-property body | 64.08 | 12.13 | 64.56 | 10.92 |
+| `exploreInvalid()`, `GET` with 4 parameters | 36.02 | 3.54 | 36.12 | 3.48 |
+| `explore()`, `PUT` with an 8-property nested body | 6.48 | 2.21 | 6.35 | 1.98 |
+| `exploreInvalid()`, `PUT` with an 8-property nested body | 172.32 | 32.41 | 174.77 | 28.46 |
 
 A first call gains almost as much as a repeated one: one call checks its
 candidate values against the same few schemas many times over, so most of the
 parsing it saves is its own.
 
-With 400 resources the "after" columns are the same within 4% (for example
-12.61 and 11.12 ms for `exploreInvalid()` on the `POST`). The sweep goes
+With 400 resources the "after" columns are the same within 5% (for example
+12.16 and 11.11 ms for `exploreInvalid()` on the `POST`). The sweep goes
 through far more schemas than the cache holds, but it only ever needs the
 ones of the operation it is on. "Before" was not run with 400 resources.
 
@@ -50,8 +50,8 @@ after `gc_collect_cycles()`.
 
 | Resources | Before | After |
 |---:|---:|---:|
-| 100 | 3.6 MB | 14.5 MB |
-| 400 | not run | 14.3 MB |
+| 100 | 3.6 MB | 20.2 MB |
+| 400 | not run | 20.1 MB |
 
 Before the change nothing parsed outlives a check, so the "before" column is
 the baseline of the run. After it, memory grows until the budget is reached
@@ -59,21 +59,40 @@ and then stays flat.
 
 ## The bound
 
-The cache is bounded by the summed JSON length of the schemas it holds, at
-256 KiB, plus 128 bytes per schema. One-off measurements outside the script,
-through reflection on the cache:
+The cache is bounded by the memory its schemas hold, at 16 MB. Each check is
+charged what `memory_get_usage()` says it left behind, on top of the schema's
+JSON length and 128 bytes for the map key and the entry. Over budget, the
+least recently used schemas are dropped.
 
-| Cached schemas | Held by the cache | Held ÷ JSON length |
+A length would not do as the measure. Opis parses a subschema when a value
+first reaches it, so what a schema holds depends on which values it has seen:
+8 to 54 times its JSON length over the request bodies of the spec below, and
+53 to 58 times for the flat generated bodies further down.
+
+One-off measurements outside the script, on the JSON request bodies of
+GitHub's public REST API description (`api.github.com.json`, 14 MB, 367
+bodies, fetched on 2026-11-11). `exploreInvalid()` with 30 cases returned
+cases for 321 of them and threw for 46, whose causes were not looked into.
+With nothing dropped, for 320 bodies after the first of the process:
+
+| | Min | Median | 90th percentile | Max |
+|---|---:|---:|---:|---:|
+| Bytes charged ÷ bytes freed by emptying the cache | 0.95 | 0.97 | 1.00 | 1.07 |
+| Memory the schemas of one call hold | | 0.07 MB | 0.50 MB | 59.0 MB |
+
+The first checks of a process are also charged the opis classes they load,
+about 0.7 MB in all, until the schema they were charged to is dropped.
+
+Two of the 321 calls need more than the budget (59.0 and 62.7 MB, the two
+largest bodies, 38 KB of schema each); the next largest need 13.0 and
+11.9 MB. Exploring all 321 in one process:
+
+| | Time | Peak memory over the loaded spec |
 |---|---:|---:|
-| 29, from one operation with an 8-property body (15 KiB) | 0.8 MB | 54 |
-| 66, from one operation with a 20-property body (80 KiB) | 4.2 MB | 53 |
-| 98, a full cache of 2.5 KB schemas (242 KiB) | 13.0 MB | 55 |
-| 51, a full cache of 5 KB schemas (248 KiB) | 14.1 MB | 58 |
-
-A full cache therefore holds about 14 MB however large the individual schemas
-are. The length alone undercounts very small schemas: `{const: N}` retains
-about 3.4 KB, which is what the 128 bytes are for. With that charge, 20,000
-distinct schemas of this kind leave 1,833 cached and 6.0 MB held.
+| Before | 37.7 s | 7 MB |
+| After, 16 MB | 17.0 s | 23 MB |
+| With a 32 MB budget | 16.8 s | 39 MB |
+| With a 64 MB budget | 9.9 s | 72 MB |
 
 ### What does not fit
 
@@ -81,26 +100,23 @@ distinct schemas of this kind leave 1,833 cached and 6.0 MB held.
 one variant of it per mutation target, and goes through those variants again
 for every case. The variants are the size of the schema, and their number
 levels off at about a hundred, so past that point what one call needs grows in
-step with the body: 66 schemas and 80 KiB of JSON for 20 properties, 104 and
-249 KiB for 40, 107 and 507 KiB for 80. Once that exceeds
-the budget, a pass over the variants always asks for the one dropped longest
-ago, and most checks parse again.
+step with the body. A pass over the variants always asks for the one dropped
+longest ago, so a budget that holds only some of them saves next to nothing:
+32 MB does no better than 16 MB above, and 64 MB, which holds the largest
+body whole, does.
 
 Milliseconds for one `exploreInvalid()` call with 30 cases on a `POST` whose
-body has that many properties (one-off, a single run each):
+flat generated body has that many properties (one-off, a single run each):
 
-| Body properties | Before | After, 256 KiB | With a 1 MiB budget |
-|---:|---:|---:|---:|
-| 20 | 868 | 137 | 134 |
-| 40 | 2,630 | 1,453 | 422 |
-| 80 | 4,907 | 3,828 | 849 |
+| Body properties | Schemas checked | They hold | Before | After, 16 MB | With a 32 MB budget |
+|---:|---:|---:|---:|---:|---:|
+| 20 | 66 | 4.2 MB | 868 | 137 | not run |
+| 40 | 104 | 13.4 MB | 2,630 | 421 | 425 |
+| 80 | 107 | 28.4 MB | 4,907 | 3,917 | 865 |
 
-The 40-property call is just past the budget: its 104 schemas are charged
-about 262 KiB. A body of that size or larger still gains, and never loses,
-but does not get the full saving. A 1 MiB budget would give it: it holds
-13.4 MB for the 40-property call and 28.4 MB for the 80-property one, and by
-the ratios above a full cache would hold about four times what 256 KiB does. The budget is one constant,
-`SchemaValueValidator::MAX_CACHED_BYTES`.
+A call that needs more than the budget still gains, and never loses, but does
+not get the full saving. The budget is one value,
+`SchemaValueValidator::DEFAULT_MAX_CACHED_BYTES`.
 
 ## One loader per schema
 
