@@ -382,6 +382,10 @@ each, need about 60 MB
 ([measurements](benchmarks/fuzz-value-checks.md#the-bound)).
 
 - The budget is per process. Under a parallel runner every worker has its own.
+- In a Laravel test the application's value is the one in force: the service
+  provider applies `config('gesso.fuzz.cache_memory_mb')` on every boot, after
+  the PHPUnit extension. A package tested with Testbench has no application
+  `gesso.php`, so set that config value in the test's environment setup.
 - It counts toward PHP's `memory_limit`, on top of what the run already uses.
 - Schemas over the budget are dropped, least recently used first, and parsed
   again when they come back. The generated cases are the same at any value;

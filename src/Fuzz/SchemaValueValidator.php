@@ -130,8 +130,7 @@ final class SchemaValueValidator
 
     /**
      * `fuzz.cache_memory_mb`: megabytes the parsed schemas may hold. `null`
-     * restores the default. Takes effect at the next check that adds to the
-     * cache.
+     * restores the default. Takes effect at the next check.
      */
     public static function configureCacheMemory(?int $megabytes): void
     {

@@ -110,6 +110,12 @@ final class GessoServiceProviderIntegrationTest extends TestCase
         $this->provider()->boot();
 
         $this->assertSame(48 * 1024 * 1024, self::fuzzCacheBudget());
+
+        // As an environment variable would deliver it.
+        config()->set('gesso.fuzz.cache_memory_mb', '64');
+        $this->provider()->boot();
+
+        $this->assertSame(64 * 1024 * 1024, self::fuzzCacheBudget());
     }
 
     #[Test]

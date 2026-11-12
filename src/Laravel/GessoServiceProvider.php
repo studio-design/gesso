@@ -18,10 +18,12 @@ use Studio\Gesso\Validation\Support\ValidationPolicyDefaults;
 use function array_filter;
 use function array_is_list;
 use function array_values;
+use function ctype_digit;
 use function in_array;
 use function is_array;
 use function is_file;
 use function is_int;
+use function is_string;
 
 class GessoServiceProvider extends ServiceProvider
 {
@@ -69,10 +71,14 @@ class GessoServiceProvider extends ServiceProvider
         // Process-wide, like the PHPUnit extension's setting of the same key.
         $redactNames = LaravelConfig::get('validation.redact_names');
         ValidationPolicyDefaults::configureRedactNames(is_array($redactNames) ? array_values(array_filter($redactNames, 'is_string')) : null);
-        // The root gesso.php was validated when it was read; a value an
-        // application set through config() and got wrong keeps the default,
-        // as `validation.max_errors` does.
+        // The root gesso.php was validated when it was read. A value an
+        // application set through config() is taken as that file would take
+        // it, and one it got wrong keeps the default, as a wrong
+        // `validation.max_errors` does.
         $cacheMemory = LaravelConfig::get('fuzz.cache_memory_mb');
+        if (is_string($cacheMemory) && ctype_digit($cacheMemory)) {
+            $cacheMemory = (int) $cacheMemory;
+        }
         SchemaValueValidator::configureCacheMemory(is_int($cacheMemory) && $cacheMemory >= 0 ? $cacheMemory : null);
 
         $this->publishes([
