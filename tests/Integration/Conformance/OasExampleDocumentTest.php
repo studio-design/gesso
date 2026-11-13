@@ -68,7 +68,7 @@ final class OasExampleDocumentTest extends TestCase
      * document with the reason. Everything else must produce an identical
      * diagnosis in both serializations.
      */
-    private const SERIALIZATION_DIFFERENCES = ['v3.1/tictactoe', 'v3.2/3.2-query-example'];
+    private const SERIALIZATION_DIFFERENCES = ['v3.1/tictactoe'];
     private string $yamlRoot;
 
     protected function setUp(): void

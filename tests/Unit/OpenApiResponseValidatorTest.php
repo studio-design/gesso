@@ -72,6 +72,23 @@ class OpenApiResponseValidatorTest extends TestCase
     }
 
     #[Test]
+    public function unquoted_yaml_date_keywords_accept_the_date_strings_they_spell(): void
+    {
+        $validate = fn(array $body): OpenApiValidationResult => $this->validator->validate(
+            'unquoted-dates-yaml',
+            'GET',
+            '/events',
+            200,
+            $body,
+            'application/json',
+        );
+
+        $this->assertSame([], $validate(['day' => '2026-06-15', 'startsAt' => '2026-06-15T22:30:00Z'])->errors());
+        $this->assertFalse($validate(['day' => '2026-06-17'])->isValid());
+        $this->assertFalse($validate(['day' => '2026-06-15', 'startsAt' => '2026-06-15T22:30:01Z'])->isValid());
+    }
+
+    #[Test]
     public function issues_carry_categories_and_operation_context(): void
     {
         // psr7 spec: POST /widgets/{id} 201 requires header X-Trace and an

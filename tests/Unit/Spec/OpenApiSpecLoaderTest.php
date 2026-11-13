@@ -362,7 +362,7 @@ class OpenApiSpecLoaderTest extends TestCase
         // refs-valid to pin that `$ref` resolution works end-to-end for YAML-
         // decoded specs. symfony/yaml applies YAML 1.2 scalar coercion that
         // JSON never does (e.g. bare `1.0` -> float, bare `true`/`false` ->
-        // bool, bare `YYYY-MM-DD` -> int timestamp), so the strict-equality
+        // bool), so the strict-equality
         // assertions below double as drift pins: if a scalar's decoded type
         // ever changes, the resolved-array comparisons will fail.
         $fixturesPath = __DIR__ . '/../../fixtures/specs';
@@ -822,6 +822,17 @@ class OpenApiSpecLoaderTest extends TestCase
 
         $this->assertSame('3.0.3', $spec['openapi']);
         $this->assertSame('Petstore YML', $spec['info']['title']);
+    }
+
+    #[Test]
+    public function load_keeps_unquoted_yaml_dates_as_the_strings_a_json_spec_carries(): void
+    {
+        OpenApiSpecLoader::configure(__DIR__ . '/../../fixtures/specs');
+
+        $this->assertSame(
+            OpenApiSpecLoader::load('unquoted-dates-json'),
+            OpenApiSpecLoader::load('unquoted-dates-yaml'),
+        );
     }
 
     #[Test]

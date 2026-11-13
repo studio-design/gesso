@@ -423,7 +423,7 @@ final class FailureCatalogue
         'GSO314' => [
             'title' => 'Example does not match its schema',
             'summary' => 'An `example` or `examples` value fails validation against the schema it illustrates. This is reported as a `warning`: the spec is enforceable, but the example drifted from it.',
-            'causes' => ['The schema changed and the example was not updated.', 'The example was written by hand and has a typo or a wrong type.', 'A YAML spec writes a date unquoted (`2024-01-01`): YAML 1.1 decodes it to an integer timestamp, so quote it.'],
+            'causes' => ['The schema changed and the example was not updated.', 'The example was written by hand and has a typo or a wrong type.', 'A YAML spec writes a date-time unquoted in a spelling that is not kept (`2024-01-01 12:00:00` is read as `2024-01-01T12:00:00`), so quote it.'],
             'fix' => ['Example wrong: update it to a value the schema accepts.', 'Schema wrong: fix the schema, then re-run your tests.'],
             'do_not' => 'Do not delete the example only to silence doctor; generated docs, mocks, and SDKs read it.',
         ],
