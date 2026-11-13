@@ -205,6 +205,13 @@ export default defineConfig({
     }
   },
   sitemap: { hostname: siteUrl },
+  // An error thrown while a page renders is only logged, and the page is
+  // written with nothing in its body. Stop the build instead.
+  transformHtml(html, file) {
+    if (/class="vp-doc[^"]*"[^>]*><\/div>/.test(html)) {
+      throw new Error(`${file} rendered with an empty body; the error is logged above.`)
+    }
+  },
   buildEnd: emitMarkdown,
   vite: { define: { __DOCS_VERSION__: JSON.stringify(version) } },
   markdown: {

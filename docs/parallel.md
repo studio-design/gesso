@@ -126,7 +126,7 @@ several runners into one directory cannot collide. It takes priority over
 name namespaces the files and the pid keeps that job's workers apart. A blank
 or unset value leaves the run rendering in process, unchanged.
 
-Optionally set `GESSO_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}`
+Optionally set <code v-pre>GESSO_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}</code>
 on the shard jobs *and* the merge job. It scopes every sidecar to this workflow
 run, so a re-run that downloads into a directory with older artifacts merges
 only its own. Without it all shards form one unscoped group, as before; setting
