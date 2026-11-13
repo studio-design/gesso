@@ -10,6 +10,13 @@ the README for the full surface contract.
 
 ## Unreleased
 
+## [2.10.0](https://github.com/studio-design/gesso/compare/v2.9.0...v2.10.0) (2026-11-13)
+
+
+### Features
+
+* **adapters:** add the v3 assertion names and deprecate the v2 ones ([#709](https://github.com/studio-design/gesso/issues/709)) ([dda7733](https://github.com/studio-design/gesso/commit/dda7733ba6091d9c25dc613df3cdc70b7e816c10))
+
 ## [2.9.0](https://github.com/studio-design/gesso/compare/v2.8.0...v2.9.0) (2026-10-30)
 
 
