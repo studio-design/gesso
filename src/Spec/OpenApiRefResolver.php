@@ -1632,11 +1632,7 @@ final class OpenApiRefResolver
         // ("any sibling elements of a $ref are ignored"); for 3.1/3.2 Schema
         // Objects the caller re-applies them around this result.
         [$targetContext, $declaration] = self::enclosingResource($root, $internalRef, $lookupContext);
-        // Every other context field is fixed for the whole resolution.
-        $memoKey = $chainKey
-            . "\0" . ($targetIsSchema ? '1' : '0')
-            . "\0" . serialize($targetContext->schemaDeclaration)
-            . "\0" . ($targetContext->sourceFile ?? '');
+        $memoKey = self::walkMemoKey($chainKey, $targetIsSchema, $targetContext);
         if (isset(self::$walkMemo[$memoKey])) {
             $target = self::$walkMemo[$memoKey];
         } else {
@@ -1872,9 +1868,34 @@ final class OpenApiRefResolver
             );
         }
 
-        $target = $newRoot;
-        self::walk($target, $newRoot, [...$chain, $chainKey], false, $documentContext, $documentCache, isSchema: $targetIsSchema);
+        // The leading NUL keeps a document apart from any pointer into one:
+        // those keys start with the chain key, which never contains a NUL.
+        $memoKey = self::walkMemoKey("\0" . $chainKey, $targetIsSchema, $documentContext);
+        if (isset(self::$walkMemo[$memoKey])) {
+            $target = self::$walkMemo[$memoKey];
+        } else {
+            $target = $newRoot;
+            self::walk($target, $newRoot, [...$chain, $chainKey], false, $documentContext, $documentCache, isSchema: $targetIsSchema);
+            self::$walkMemo[$memoKey] = $target;
+        }
         $node = self::preserveResourceDialect($target, $documentDeclaration, $context, $targetIsSchema);
+    }
+
+    /**
+     * The {@see self::$walkMemo} key of a target: what names it, plus the
+     * parts of the walk that can differ between two sites reaching it. Every
+     * other context field is fixed for the whole resolution.
+     */
+    private static function walkMemoKey(
+        #[SensitiveParameter]
+        string $target,
+        bool $targetIsSchema,
+        RefResolutionContext $context,
+    ): string {
+        return $target
+            . "\0" . ($targetIsSchema ? '1' : '0')
+            . "\0" . serialize($context->schemaDeclaration)
+            . "\0" . ($context->sourceFile ?? '');
     }
 
     private static function normalizeEmptyObjectRefTarget(mixed $target): mixed
