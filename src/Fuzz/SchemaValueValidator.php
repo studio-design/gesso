@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Fuzz;
 
+use const PHP_INT_MAX;
+
 use Opis\JsonSchema\Parsers\SchemaParser;
 use Opis\JsonSchema\Resolvers\SchemaResolver;
 use Opis\JsonSchema\SchemaLoader;
@@ -18,6 +20,7 @@ use function json_decode;
 use function json_encode;
 use function max;
 use function memory_get_usage;
+use function min;
 use function sprintf;
 use function strlen;
 
@@ -123,6 +126,17 @@ final class SchemaValueValidator
         }
 
         return $valid;
+    }
+
+    /**
+     * `fuzz.cache_memory_mb`: megabytes the parsed schemas may hold. `null`
+     * restores the default. Takes effect at the next check.
+     */
+    public static function configureCacheMemory(?int $megabytes): void
+    {
+        self::$maxCachedBytes = $megabytes === null
+            ? self::DEFAULT_MAX_CACHED_BYTES
+            : min($megabytes, PHP_INT_MAX >> 20) << 20;
     }
 
     /** Forget every parsed schema. */

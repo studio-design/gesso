@@ -35,6 +35,7 @@ use Studio\Gesso\Exception\EnumBindingReason;
 use Studio\Gesso\Exception\EnumDriftException;
 use Studio\Gesso\Exception\InvalidOpenApiSpecException;
 use Studio\Gesso\Exception\SpecFileNotFoundException;
+use Studio\Gesso\Fuzz\SchemaValueValidator;
 use Studio\Gesso\Internal\ArgvParser;
 use Studio\Gesso\Internal\Diagnostics;
 use Studio\Gesso\Internal\EnumScanner;
@@ -496,6 +497,9 @@ final class OpenApiCoverageExtension implements Extension
         );
         ValidationPolicyDefaults::configureRedactNames(
             $parameters->has('redact_names') ? $parameters->strings('redact_names') : null,
+        );
+        SchemaValueValidator::configureCacheMemory(
+            $parameters->has('fuzz_cache_memory_mb') ? (int) $parameters->get('fuzz_cache_memory_mb') : null,
         );
 
         if ($facade === null) {

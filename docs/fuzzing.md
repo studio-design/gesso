@@ -360,6 +360,37 @@ diagnostic; Gesso never returns partial branch coverage.
 - Required keys are always emitted.
 - Path resolution accepts both the spec template form (`/v1/pets/{petId}`) and concrete URIs that match it (`/api/v1/pets/123` with `strip_prefixes=/api`). Captured URI values are intentionally discarded — `pathParams` is always regenerated from the operation spec for consistency.
 
+## Memory for large schemas
+
+The explorers check every value they generate against its schema, and keep
+the schemas they have checked against parsed so the next check does not parse
+them again. `fuzz.cache_memory_mb` in [`gesso.php`](configuration.md) is how
+much memory those parsed schemas may hold, 16 MB by default:
+
+```php
+'fuzz' => [
+    'cache_memory_mb' => 64,
+],
+```
+
+Raise it when `exploreInvalid()` is slow on an operation with a large request
+body. One call checks its cases against about a hundred variants of the body
+schema, in the same order for every case, so it is fast when all of them fit
+and gains little when only some do. In GitHub's REST API description 16 MB
+holds them for 319 of 321 request bodies; the two largest, 38 KB of schema
+each, need about 60 MB
+([measurements](benchmarks/fuzz-value-checks.md#the-bound)).
+
+- The budget is per process. Under a parallel runner every worker has its own.
+- In a Laravel test the application's value is the one in force: the service
+  provider applies `config('gesso.fuzz.cache_memory_mb')` on every boot, after
+  the PHPUnit extension. A package tested with Testbench has no application
+  `gesso.php`, so set that config value in the test's environment setup.
+- It counts toward PHP's `memory_limit`, on top of what the run already uses.
+- Schemas over the budget are dropped, least recently used first, and parsed
+  again when they come back. The generated cases are the same at any value;
+  `0` keeps only the schema checked last.
+
 ## `seed` and determinism
 
 When [`fakerphp/faker`][faker] is installed, generation uses Faker's

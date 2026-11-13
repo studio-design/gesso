@@ -27,6 +27,11 @@ return [
     //     'redact_names' => ['authorization', 'cookie', 'api_key', 'token', 'secret', 'password'],
     // ],
 
+    // 'fuzz' => [
+    //     // Megabytes of parsed schemas the explorers keep between checks.
+    //     'cache_memory_mb' => 16,
+    // ],
+
     // 'laravel' => [
     //     'auto_assert' => false,
     //     'auto_validate_request' => false,

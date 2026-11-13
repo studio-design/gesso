@@ -7,8 +7,12 @@ namespace Studio\Gesso\Tests\Unit\PHPUnit;
 use PHPUnit\Framework\Attributes\IgnoreDeprecations;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+use PHPUnit\Runner\Extension\ParameterCollection;
+use ReflectionProperty;
+use Studio\Gesso\Fuzz\SchemaValueValidator;
 use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\OpenApiResponseValidator;
+use Studio\Gesso\PHPUnit\ExtensionParameters;
 use Studio\Gesso\PHPUnit\OpenApiCoverageExtension;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Tests\Helpers\FlatExtensionSettings;
@@ -16,9 +20,17 @@ use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 use Studio\Gesso\Validation\Support\ValidationPolicyDefaults;
 
 use function array_map;
+use function bin2hex;
 use function fclose;
+use function file_put_contents;
 use function fopen;
+use function mkdir;
+use function random_bytes;
 use function range;
+use function rmdir;
+use function sys_get_temp_dir;
+use function unlink;
+use function var_export;
 
 /**
  * Issue #502 (additive half): the `max_errors`, `skip_response_codes`,
@@ -55,6 +67,7 @@ class OpenApiCoverageExtensionValidationPolicyTest extends TestCase
             $this->stderrBuffer = null;
         }
         ValidationPolicyDefaults::reset();
+        SchemaValueValidator::configureCacheMemory(null);
         OpenApiSpecLoader::reset();
         parent::tearDown();
     }
@@ -89,6 +102,49 @@ class OpenApiCoverageExtensionValidationPolicyTest extends TestCase
         $this->bootstrap(['max_errors' => '0']);
 
         $this->assertSame(0, ValidationPolicyDefaults::maxErrors());
+    }
+
+    #[Test]
+    public function fuzz_cache_memory_setting_reaches_the_value_check_cache(): void
+    {
+        $this->bootstrap(['fuzz_cache_memory_mb' => 64]);
+
+        $this->assertSame(64 * 1024 * 1024, self::fuzzCacheBudget());
+    }
+
+    #[Test]
+    public function fuzz_cache_memory_is_read_from_a_gesso_php_file(): void
+    {
+        $dir = sys_get_temp_dir() . '/gesso-fuzz-cache-' . bin2hex(random_bytes(6));
+        mkdir($dir);
+        $path = $dir . '/gesso.php';
+        file_put_contents($path, "<?php\n\nreturn " . var_export([
+            'spec' => ['base_path' => __DIR__ . '/../../fixtures/specs', 'names' => ['refs-valid']],
+            'fuzz' => ['cache_memory_mb' => 3],
+        ], true) . ";\n");
+
+        try {
+            (new OpenApiCoverageExtension())->setupExtension(
+                null,
+                ExtensionParameters::load(ParameterCollection::fromArray(['config' => $path])),
+                null,
+            );
+        } finally {
+            unlink($path);
+            rmdir($dir);
+        }
+
+        $this->assertSame(3 * 1024 * 1024, self::fuzzCacheBudget());
+    }
+
+    #[Test]
+    public function a_configuration_without_fuzz_cache_memory_keeps_the_default_budget(): void
+    {
+        SchemaValueValidator::configureCacheMemory(64);
+
+        $this->bootstrap();
+
+        $this->assertSame(SchemaValueValidator::DEFAULT_MAX_CACHED_BYTES, self::fuzzCacheBudget());
     }
 
     #[Test]
@@ -150,7 +206,13 @@ class OpenApiCoverageExtensionValidationPolicyTest extends TestCase
         $this->assertSame('', ValidationPolicyDefaults::defaultSpec());
     }
 
-    /** @param array<string, string> $extra */
+    private static function fuzzCacheBudget(): int
+    {
+        /** @var int */
+        return (new ReflectionProperty(SchemaValueValidator::class, 'maxCachedBytes'))->getValue();
+    }
+
+    /** @param array<string, int|string> $extra */
     private function bootstrap(array $extra = [], string $specs = 'refs-valid'): void
     {
         $extension = new OpenApiCoverageExtension();

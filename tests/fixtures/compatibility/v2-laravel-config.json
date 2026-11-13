@@ -68,6 +68,9 @@
         "scan_namespaces": [],
         "fail_on_drift": true
     },
+    "fuzz": {
+        "cache_memory_mb": 16
+    },
     "phpunit": {
         "default_testsuite_as_full": false
     },

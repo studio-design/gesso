@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Tests\Unit\Fuzz;
 
+use const PHP_INT_MAX;
+
 use Opis\JsonSchema\Exceptions\SchemaException;
 use Opis\JsonSchema\Validator;
 use PHPUnit\Framework\Attributes\Test;
@@ -41,7 +43,7 @@ class SchemaValueValidatorTest extends TestCase
     protected function tearDown(): void
     {
         gc_enable();
-        self::setBudget(SchemaValueValidator::DEFAULT_MAX_CACHED_BYTES);
+        SchemaValueValidator::configureCacheMemory(null);
         SchemaValueValidator::clearCache();
         parent::tearDown();
     }
@@ -143,7 +145,7 @@ class SchemaValueValidatorTest extends TestCase
     #[Test]
     public function a_schema_larger_than_the_budget_is_kept_until_another_one_is_checked(): void
     {
-        self::setBudget(1);
+        SchemaValueValidator::configureCacheMemory(0);
 
         $this->assertTrue(SchemaValueValidator::isValid('ok', ['type' => 'string']));
         $this->assertTrue(SchemaValueValidator::isValid('ok', ['type' => 'string']));
@@ -151,6 +153,20 @@ class SchemaValueValidatorTest extends TestCase
 
         $this->assertTrue(SchemaValueValidator::isValid(1, ['type' => 'integer']));
         $this->assertSame(['{"type":"integer"}'], array_keys(self::cache()));
+    }
+
+    #[Test]
+    public function the_budget_is_configured_in_megabytes(): void
+    {
+        SchemaValueValidator::configureCacheMemory(64);
+        $this->assertSame(64 * 1024 * 1024, self::budget());
+
+        SchemaValueValidator::configureCacheMemory(null);
+        $this->assertSame(SchemaValueValidator::DEFAULT_MAX_CACHED_BYTES, self::budget());
+
+        // More megabytes than an integer of bytes can count.
+        SchemaValueValidator::configureCacheMemory(PHP_INT_MAX);
+        $this->assertGreaterThan(1 << 60, self::budget());
     }
 
     #[Test]
@@ -191,6 +207,12 @@ class SchemaValueValidatorTest extends TestCase
     {
         /** @var int */
         return (new ReflectionProperty(SchemaValueValidator::class, 'cachedBytes'))->getValue();
+    }
+
+    private static function budget(): int
+    {
+        /** @var int */
+        return (new ReflectionProperty(SchemaValueValidator::class, 'maxCachedBytes'))->getValue();
     }
 
     private static function setBudget(int $bytes): void
