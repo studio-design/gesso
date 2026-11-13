@@ -5,12 +5,14 @@ declare(strict_types=1);
 namespace Studio\Gesso\Tests\Unit\PHPUnit;
 
 use PHPUnit\Event\TestRunner\ExecutionFinished;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use ReflectionClass;
 use Studio\Gesso\Coverage\CoverageSidecarEnvelope;
 use Studio\Gesso\Coverage\CoverageSidecarReader;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
+use Studio\Gesso\Exception\SpecFileNotFoundException;
 use Studio\Gesso\Internal\PartialRunDecision;
 use Studio\Gesso\PHPUnit\ConsoleOutput;
 use Studio\Gesso\PHPUnit\CoverageReportSubscriber;
@@ -18,6 +20,7 @@ use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Validation\Strict\StrictRequiredMode;
 use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 
+use function copy;
 use function getenv;
 use function glob;
 use function is_dir;
@@ -70,6 +73,13 @@ class CoverageReportSubscriberStrictRequiredTest extends TestCase
             @rmdir($this->tmpSidecarDir);
         }
         parent::tearDown();
+    }
+
+    /** @return iterable<string, array{list<string>}> */
+    public static function provideGate_reads_the_spec_loaded_during_the_runCases(): iterable
+    {
+        yield 'nothing to report' => [[]];
+        yield 'a report is rendered' => [[self::SPEC_NAME]];
     }
 
     #[Test]
@@ -339,6 +349,47 @@ class CoverageReportSubscriberStrictRequiredTest extends TestCase
     }
 
     /**
+     * Issue #727: the gate reads the spec the run already loaded. Deleting
+     * the file after that load makes a second load fail, so the drift block
+     * can only come from the cached document.
+     *
+     * @param list<string> $specs
+     */
+    #[Test]
+    #[DataProvider('provideGate_reads_the_spec_loaded_during_the_runCases')]
+    public function gate_reads_the_spec_loaded_during_the_run(array $specs): void
+    {
+        $specFile = $this->tmpSidecarDir . '/' . self::SPEC_NAME . '.json';
+        copy(__DIR__ . '/../../fixtures/specs/' . self::SPEC_NAME . '.json', $specFile);
+        OpenApiSpecLoader::configure($this->tmpSidecarDir);
+        OpenApiSpecLoader::load(self::SPEC_NAME);
+        unlink($specFile);
+
+        StrictRequiredTracker::record(self::SPEC_NAME, 'PUT', '/signed-url', '200', 'application/json', ['/' => ['expires', 'signed_url', 'url']]);
+
+        $stderr = '';
+        $subscriber = $this->makeSubscriber(
+            mode: StrictRequiredMode::Warn,
+            stderr: $stderr,
+            exitCode: $exitCode,
+            specs: $specs,
+        );
+
+        ob_start();
+        $subscriber->notify($this->fakeExecutionFinished());
+        ob_get_clean();
+
+        $this->assertStringContainsString('[OpenAPI Strict Required] WARNING', $stderr);
+        $this->assertStringNotContainsString('spec failed to load', $stderr);
+
+        // The cache is still freed once the gates have run.
+        $this->expectException(SpecFileNotFoundException::class);
+        OpenApiSpecLoader::load(self::SPEC_NAME);
+    }
+
+    /**
+     * @param list<string> $specs
+     *
      * @param-out null|int $exitCode
      * @param-out string $stderr
      */
@@ -346,11 +397,12 @@ class CoverageReportSubscriberStrictRequiredTest extends TestCase
         StrictRequiredMode $mode,
         string &$stderr,
         ?int &$exitCode,
+        array $specs = [self::SPEC_NAME],
     ): CoverageReportSubscriber {
         $exitCode = null;
 
         return new CoverageReportSubscriber(
-            specs: [self::SPEC_NAME],
+            specs: $specs,
             outputFile: null,
             consoleOutput: ConsoleOutput::DEFAULT,
             githubSummaryPath: null,
