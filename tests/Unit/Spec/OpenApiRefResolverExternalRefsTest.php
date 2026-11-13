@@ -12,9 +12,14 @@ use Studio\Gesso\Spec\OpenApiRefResolver;
 use Studio\Gesso\Tests\Helpers\RemovesDirectories;
 
 use function file_put_contents;
+use function json_encode;
+use function memory_get_usage;
 use function mkdir;
+use function serialize;
+use function str_repeat;
 use function sys_get_temp_dir;
 use function uniqid;
+use function unserialize;
 
 class OpenApiRefResolverExternalRefsTest extends TestCase
 {
@@ -435,5 +440,105 @@ class OpenApiRefResolverExternalRefsTest extends TestCase
             ['type' => 'string', 'minLength' => 4],
             $schema['properties']['name'],
         );
+    }
+
+    #[Test]
+    public function shares_a_whole_file_target_referenced_many_times_instead_of_copying_it(): void
+    {
+        $properties = [];
+        for ($i = 0; $i < 300; $i++) {
+            $properties['field' . $i] = ['type' => 'string', 'description' => str_repeat('d', 40) . $i];
+        }
+        $big = ['type' => 'object', 'properties' => $properties];
+        $rootPath = $this->workDir . '/openapi.json';
+        file_put_contents($rootPath, '{}');
+        file_put_contents($this->workDir . '/big.json', json_encode($big));
+
+        $paths = [];
+        for ($i = 0; $i < 200; $i++) {
+            $paths['/r' . $i]['get']['responses']['200']['content']['application/json']['schema'] = ['$ref' => './big.json'];
+        }
+        $spec = ['openapi' => '3.1.0', 'paths' => $paths];
+
+        $before = memory_get_usage();
+        $copy = unserialize(serialize($big));
+        $oneCopy = memory_get_usage() - $before;
+        unset($copy);
+
+        $before = memory_get_usage();
+        $resolved = OpenApiRefResolver::resolve($spec, $rootPath);
+        $retained = memory_get_usage() - $before;
+
+        $this->assertSame($big, $resolved['paths']['/r199']['get']['responses']['200']['content']['application/json']['schema']);
+        // Walking the file per reference site retains about 200 copies.
+        // Sharing keeps one; the bound is generous.
+        $this->assertLessThan(20 * $oneCopy, $retained);
+    }
+
+    /**
+     * `$ref` siblings apply in a Schema Object only, so the same file walks
+     * to two results depending on where it is referenced from. Whichever site
+     * comes first must not decide what the other one gets.
+     */
+    #[Test]
+    public function walks_a_whole_file_target_once_per_schema_position(): void
+    {
+        $rootPath = $this->writeUserSchemaFiles();
+        $schemaSite = ['/users' => ['get' => ['responses' => ['200' => ['content' => [
+            'application/json' => ['schema' => ['$ref' => './user.json']],
+        ]]]]]];
+        $elsewhere = ['$ref' => './user.json'];
+
+        $schemaFirst = OpenApiRefResolver::resolve(['openapi' => '3.1.0', 'paths' => $schemaSite, 'x-meta' => $elsewhere], $rootPath);
+        $schemaLast = OpenApiRefResolver::resolve(['openapi' => '3.1.0', 'x-meta' => $elsewhere, 'paths' => $schemaSite], $rootPath);
+
+        foreach ([$schemaFirst, $schemaLast] as $resolved) {
+            $schema = $resolved['paths']['/users']['get']['responses']['200']['content']['application/json']['schema'];
+            $this->assertSame(['type' => 'string', 'minLength' => 4], $schema['properties']['name']);
+            $this->assertSame(['type' => 'string'], $resolved['x-meta']['properties']['name']);
+        }
+    }
+
+    /**
+     * A file that declares no `$schema` is read under the dialect of whoever
+     * references it: `$ref` siblings apply from the 2020-12 entry document and
+     * not from a Draft 07 one.
+     */
+    #[Test]
+    public function walks_a_whole_file_target_once_per_dialect(): void
+    {
+        $rootPath = $this->writeUserSchemaFiles();
+        file_put_contents(
+            $this->workDir . '/draft07.json',
+            '{"$schema":"http://json-schema.org/draft-07/schema#","type":"object","properties":{"user":{"$ref":"./user.json"}}}',
+        );
+        $site = static fn(string $file): array => ['get' => ['responses' => ['200' => ['content' => [
+            'application/json' => ['schema' => ['$ref' => $file]],
+        ]]]]];
+        $schemaAt = static fn(array $resolved, string $path): mixed => $resolved['paths'][$path]['get']['responses']['200']['content']['application/json']['schema'];
+
+        foreach ([['/direct', '/draft07'], ['/draft07', '/direct']] as $order) {
+            $paths = [];
+            foreach ($order as $path) {
+                $paths[$path] = $site($path === '/direct' ? './user.json' : './draft07.json');
+            }
+            $resolved = OpenApiRefResolver::resolve(['openapi' => '3.1.0', 'paths' => $paths], $rootPath);
+
+            $this->assertSame(['type' => 'string', 'minLength' => 4], $schemaAt($resolved, '/direct')['properties']['name']);
+            $this->assertSame(['type' => 'string'], $schemaAt($resolved, '/draft07')['properties']['user']['properties']['name']);
+        }
+    }
+
+    private function writeUserSchemaFiles(): string
+    {
+        $rootPath = $this->workDir . '/openapi.json';
+        file_put_contents($rootPath, '{}');
+        file_put_contents($this->workDir . '/name.json', '{"type":"string"}');
+        file_put_contents(
+            $this->workDir . '/user.json',
+            '{"type":"object","properties":{"name":{"$ref":"./name.json","minLength":4}}}',
+        );
+
+        return $rootPath;
     }
 }
