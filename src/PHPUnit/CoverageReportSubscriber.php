@@ -214,8 +214,12 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
         $results = $this->computeAllResults();
         $sdkResults = $this->computeAllSdkResults();
 
-        // Free cached spec data now that coverage has been computed
-        OpenApiSpecLoader::clearCache();
+        // Free cached spec data now that coverage has been computed. The
+        // strict-required gate reads the specs again, so when it will run
+        // the clear waits for it instead of making it load them twice.
+        if ($this->strictRequiredMode === StrictRequiredMode::Off || $this->partialRun !== null) {
+            OpenApiSpecLoader::clearCache();
+        }
 
         if ($results === [] && $sdkResults === []) {
             // C2: a strict CI gate must not silently pass when zero contract
@@ -227,6 +231,7 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
             $this->handleCoverageBaseline($results);
             $this->evaluateStrictRequiredGate();
             $this->evaluateStrictAdditionalPropertiesGate();
+            OpenApiSpecLoader::clearCache();
 
             return;
         }
@@ -255,6 +260,7 @@ final readonly class CoverageReportSubscriber implements ExecutionFinishedSubscr
         // report users rely on for triaging the failure.
         $this->evaluateStrictRequiredGate();
         $this->evaluateStrictAdditionalPropertiesGate();
+        OpenApiSpecLoader::clearCache();
     }
 
     /**
