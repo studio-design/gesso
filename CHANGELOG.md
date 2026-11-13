@@ -10,6 +10,74 @@ the README for the full surface contract.
 
 ## Unreleased
 
+## [3.0.0-beta.1](https://github.com/studio-design/gesso/compare/v2.9.0...v3.0.0-beta.1) (2026-11-13)
+
+
+### ⚠ BREAKING CHANGES
+
+* **contract:** add negative_data_rejection and positive_data_acceptance, and require Allow on 405 ([#716](https://github.com/studio-design/gesso/issues/716))
+* **strict:** stop recording strict observations in workers whose strict checks are off ([#731](https://github.com/studio-design/gesso/issues/731))
+* **spec:** match request paths under the base paths servers declare ([#715](https://github.com/studio-design/gesso/issues/715))
+* **adapters:** rename the trait assertions to assertOpenApiResponse/Request/Exchange ([#708](https://github.com/studio-design/gesso/issues/708))
+* **cli:** use schema_version in every json document ([#689](https://github.com/studio-design/gesso/issues/689))
+* **deps:** move phpunit/phpunit to require-dev ([#685](https://github.com/studio-design/gesso/issues/685))
+* **schema:** bind enums by component name only ([#683](https://github.com/studio-design/gesso/issues/683))
+* **coverage:** read only sidecar envelope 10 ([#682](https://github.com/studio-design/gesso/issues/682))
+* **config:** make gesso.php the only configuration entry point ([#680](https://github.com/studio-design/gesso/issues/680))
+* **cli:** unify coverage:merge and stubs flags and exit codes ([#679](https://github.com/studio-design/gesso/issues/679))
+* remove deprecated helper methods ([#678](https://github.com/studio-design/gesso/issues/678))
+* **contract:** remove the Fuzz contract-check aliases ([#677](https://github.com/studio-design/gesso/issues/677))
+
+### Features
+
+* **adapters:** rename the trait assertions to assertOpenApiResponse/Request/Exchange ([#708](https://github.com/studio-design/gesso/issues/708)) ([14122f9](https://github.com/studio-design/gesso/commit/14122f9afef4832d2ad122b93ddd998c56a48b69))
+* **cli:** add config:migrate for legacy and competitor setups ([#686](https://github.com/studio-design/gesso/issues/686)) ([486de3e](https://github.com/studio-design/gesso/commit/486de3e77e42107515b3540c030f6c3fdb3526f2))
+* **cli:** unify coverage:merge and stubs flags and exit codes ([#679](https://github.com/studio-design/gesso/issues/679)) ([36b5ced](https://github.com/studio-design/gesso/commit/36b5cedc988122ef37cb013ed2ff0661c78f81b4))
+* **cli:** use schema_version in every json document ([#689](https://github.com/studio-design/gesso/issues/689)) ([06ffb18](https://github.com/studio-design/gesso/commit/06ffb180038d1c0fdcebba00430598f1a9633267))
+* **config:** make gesso.php the only configuration entry point ([#680](https://github.com/studio-design/gesso/issues/680)) ([d2cc93b](https://github.com/studio-design/gesso/commit/d2cc93bf8212c6ed26cde501105e70bdf5d350ff))
+* **contract:** add negative_data_rejection and positive_data_acceptance, and require Allow on 405 ([#716](https://github.com/studio-design/gesso/issues/716)) ([4b159f4](https://github.com/studio-design/gesso/commit/4b159f48e8444a2d35880d78ae7284931f9313a7))
+* **diagnostics:** add stable gso failure codes and gesso explain ([#687](https://github.com/studio-design/gesso/issues/687)) ([87a86e3](https://github.com/studio-design/gesso/commit/87a86e31585846f9b310a080f2952d682c684797))
+* **doctor:** report examples that do not match their schema ([#697](https://github.com/studio-design/gesso/issues/697)) ([3329949](https://github.com/studio-design/gesso/commit/3329949615d1880409a3f70c9b9ecabaf7193fab))
+* **fuzz:** add the fuzz.cache_memory_mb setting ([#735](https://github.com/studio-design/gesso/issues/735)) ([9d1d150](https://github.com/studio-design/gesso/commit/9d1d15040725b7940173939315b9e7fdd8f3c9c4))
+* **laravel:** add expectInvalidRequest() and expectInvalidResponse() ([#702](https://github.com/studio-design/gesso/issues/702)) ([f09263d](https://github.com/studio-design/gesso/commit/f09263d0ca881e992b7bcf0abefab98f4c250f5a))
+* **rector:** add league migration set ([#714](https://github.com/studio-design/gesso/issues/714)) ([ca76d06](https://github.com/studio-design/gesso/commit/ca76d069e96c725436d3b0e819f615b05817dbdd))
+* **rector:** add osteel migration set ([#711](https://github.com/studio-design/gesso/issues/711)) ([25ce687](https://github.com/studio-design/gesso/commit/25ce687667833802d45b7bfca9cbc4b4913438f1))
+* **rector:** add spectator migration set ([#701](https://github.com/studio-design/gesso/issues/701)) ([926abf3](https://github.com/studio-design/gesso/commit/926abf38ed7d8296103e0bc7ea72dab110bbcbc8))
+* **rector:** add v3 and kirschbaum migration sets ([#700](https://github.com/studio-design/gesso/issues/700)) ([586ae63](https://github.com/studio-design/gesso/commit/586ae6386f9696665b2e24ae6468ea18523f3d37))
+* **rector:** rewrite spectator invalid assertions to expectations ([#705](https://github.com/studio-design/gesso/issues/705)) ([ab0767a](https://github.com/studio-design/gesso/commit/ab0767a3933d84baf78fd48cf93fc74fbaac4f81))
+* **spec:** match request paths under the base paths servers declare ([#715](https://github.com/studio-design/gesso/issues/715)) ([e502cf5](https://github.com/studio-design/gesso/commit/e502cf5fb0970d08ef0481fc4493912380a3922b))
+* **validation:** add an agent failure format with auto detection ([#690](https://github.com/studio-design/gesso/issues/690)) ([bff432b](https://github.com/studio-design/gesso/commit/bff432bb87e7a6265e14efa0a539e2d3d683da8c))
+* **validation:** add schema pointer and value excerpts to schema issues ([#688](https://github.com/studio-design/gesso/issues/688)) ([51c3dab](https://github.com/studio-design/gesso/commit/51c3dabd26f887312a5be3ab1085aaa738000c36))
+
+
+### Bug Fixes
+
+* **schema:** read every registered composer loader in the enum scan ([#698](https://github.com/studio-design/gesso/issues/698)) ([c08a7fa](https://github.com/studio-design/gesso/commit/c08a7fa9c72835761077f00c893a6aaf8a69ab49))
+
+
+### Performance Improvements
+
+* **fuzz:** keep the schemas of generated-value checks parsed ([#733](https://github.com/studio-design/gesso/issues/733)) ([bac424c](https://github.com/studio-design/gesso/commit/bac424cdf35cd8f2c364096f3adb5e19a4ddfaa5))
+* **phpunit:** let the strict-required gate read the cached spec ([#746](https://github.com/studio-design/gesso/issues/746)) ([b3ef880](https://github.com/studio-design/gesso/commit/b3ef880075bb2e9e8581501a57a98703f11a2a8e))
+* **spec:** reuse the compiled path matcher and server base paths ([#722](https://github.com/studio-design/gesso/issues/722)) ([0b82e8e](https://github.com/studio-design/gesso/commit/0b82e8e7fe8129f172ce6360b358056afbdfc30a))
+* **spec:** walk a whole-file $ref target once ([#747](https://github.com/studio-design/gesso/issues/747)) ([0e1261e](https://github.com/studio-design/gesso/commit/0e1261e0d13c0cf80261db1d4dce8531f9324aca))
+* **strict:** stop recording strict observations in workers whose strict checks are off ([#731](https://github.com/studio-design/gesso/issues/731)) ([55716ca](https://github.com/studio-design/gesso/commit/55716ca8aa984bbd7dc21a5b8998eb1d79bd2f7f))
+* **validation:** remember converted schemas by their location in the spec ([#730](https://github.com/studio-design/gesso/issues/730)) ([14e8477](https://github.com/studio-design/gesso/commit/14e8477694f9393f9cb59b3e2198fbd3b6ad79c7))
+* **validation:** share parsed schemas across validator instances ([#729](https://github.com/studio-design/gesso/issues/729)) ([bf69a99](https://github.com/studio-design/gesso/commit/bf69a99a693c3ed514e984dfd88b62bfcab64492))
+
+
+### Code Refactoring
+
+* **contract:** remove the Fuzz contract-check aliases ([#677](https://github.com/studio-design/gesso/issues/677)) ([117769b](https://github.com/studio-design/gesso/commit/117769b87307f5d7c34b1e46c89a5154cd140b80))
+* **coverage:** read only sidecar envelope 10 ([#682](https://github.com/studio-design/gesso/issues/682)) ([cb43d1d](https://github.com/studio-design/gesso/commit/cb43d1d61a4d54eee9f637fb2acbeb7204cbe2ce))
+* remove deprecated helper methods ([#678](https://github.com/studio-design/gesso/issues/678)) ([106bf04](https://github.com/studio-design/gesso/commit/106bf042c1c49e7bd556a51ce86fac26ca79786d))
+* **schema:** bind enums by component name only ([#683](https://github.com/studio-design/gesso/issues/683)) ([62b2de2](https://github.com/studio-design/gesso/commit/62b2de2cbcaf9eb28b088ad5182fe63b3d77513d))
+
+
+### Build System
+
+* **deps:** move phpunit/phpunit to require-dev ([#685](https://github.com/studio-design/gesso/issues/685)) ([2c208e8](https://github.com/studio-design/gesso/commit/2c208e85382656000ef4dd8d19b17d2b54124efc))
+
 ## [2.9.0](https://github.com/studio-design/gesso/compare/v2.8.0...v2.9.0) (2026-10-30)
 
 
