@@ -7,6 +7,7 @@ namespace Studio\Gesso\Internal;
 use const JSON_ERROR_DEPTH;
 use const JSON_THROW_ON_ERROR;
 
+use DateTimeInterface;
 use JsonException;
 use stdClass;
 use Studio\Gesso\Exception\InvalidOpenApiSpecException;
@@ -22,6 +23,7 @@ use function get_object_vars;
 use function in_array;
 use function is_array;
 use function json_decode;
+use function rtrim;
 use function sprintf;
 
 /**
@@ -93,7 +95,7 @@ final class SpecDocumentDecoder
         }
 
         try {
-            $decoded = Yaml::parse($content, Yaml::PARSE_OBJECT_FOR_MAP);
+            $decoded = Yaml::parse($content, Yaml::PARSE_OBJECT_FOR_MAP | Yaml::PARSE_DATETIME);
         } catch (ParseException $e) {
             throw new InvalidOpenApiSpecException(
                 InvalidOpenApiSpecReason::MalformedYaml,
@@ -155,6 +157,12 @@ final class SpecDocumentDecoder
                 // nothing under sample/default data is a keyword at all.
                 $isKeyword = !$isNamedMap && !$isData;
                 if ($isKeyword && $key === 'enum' && $child instanceof stdClass) {
+                    // ponytail: only direct members; a date nested deeper in a malformed object enum stays an object.
+                    foreach (get_object_vars($child) as $name => $member) {
+                        if ($member instanceof DateTimeInterface) {
+                            $child->{$name} = self::dateString($member);
+                        }
+                    }
                     $normalized[$key] = $child;
 
                     continue;
@@ -178,6 +186,10 @@ final class SpecDocumentDecoder
             return $normalized;
         }
 
+        if ($value instanceof DateTimeInterface) {
+            return self::dateString($value);
+        }
+
         if (!is_array($value)) {
             return $value;
         }
@@ -188,6 +200,33 @@ final class SpecDocumentDecoder
         }
 
         return $normalized;
+    }
+
+    /**
+     * Spell an unquoted YAML date as the string a JSON spec would carry.
+     * symfony/yaml follows YAML 1.1 and has no switch to leave such a scalar
+     * alone, so the source text is gone by the time it gets here: the result
+     * is canonical (`Y-m-d`, or `Y-m-d\TH:i:s` plus the fraction and zone as
+     * written), not verbatim. A space separator becomes `T`, single-digit
+     * fields are padded, a zone-less midnight date-time reads as a date, and
+     * an impossible day rolls over (`2026-02-30` to `2026-03-02`).
+     */
+    private static function dateString(DateTimeInterface $date): string
+    {
+        // symfony/yaml parses a scalar that names no zone in `UTC`; a written
+        // `Z` or offset keeps its own zone name.
+        $zone = $date->getTimezone()->getName();
+        if ($zone === 'UTC' && $date->format('His.u') === '000000.000000') {
+            return $date->format('Y-m-d');
+        }
+
+        return $date->format('Y-m-d\TH:i:s')
+            . rtrim($date->format('.u'), '0.')
+            . match ($zone) {
+                'UTC' => '',
+                'Z' => 'Z',
+                default => $date->format('P'),
+            };
     }
 
     /** @return array<string, mixed> */

@@ -243,6 +243,25 @@ already configures the prefix behaves as before. A test that expected the
 path-not-found failure must set `spec.strip_prefixes` or call a path the spec
 does not document.
 
+### Unquoted YAML dates
+
+An unquoted date or date-time in a YAML spec is now a string, as it is in a
+JSON spec ([#695](https://github.com/studio-design/gesso/issues/695)). v2
+handed validation the Unix timestamp symfony/yaml decodes it to, so
+`enum: [2026-06-15]` under `format: date` rejected the real value and doctor
+reported GSO314 for `example: 2026-06-15`.
+
+The string is canonical, not the source text: `2026-06-15`, or
+`2026-06-15T22:30:00` with the fraction and zone as written. A space separator
+becomes `T`, single-digit fields are padded, a date-time at midnight with no
+zone reads as a date, and an impossible day rolls over (`2026-02-30` reads as
+`2026-03-02`). Quote a value whose exact spelling matters. A test that relied
+on the integer must expect the string.
+
+Mapping keys are not covered. A flow mapping with an unquoted date key
+(`{2026-06-15: …}`) no longer loads, and a block mapping key (`2026-06-15:`) is
+still the timestamp; quote the key in both.
+
 ### 405 responses need an `Allow` header
 
 The `unsupported_method` contract check now fails a 405 that has no `Allow`

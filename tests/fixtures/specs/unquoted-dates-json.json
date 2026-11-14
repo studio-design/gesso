@@ -1,0 +1,68 @@
+{
+    "openapi": "3.1.0",
+    "info": {
+        "title": "Unquoted dates",
+        "version": "1.0.0"
+    },
+    "paths": {
+        "/events": {
+            "get": {
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": ["day"],
+                                    "properties": {
+                                        "day": {
+                                            "type": "string",
+                                            "format": "date",
+                                            "enum": ["2026-06-15", "2026-06-16"],
+                                            "default": "2026-06-15",
+                                            "example": "2026-06-16"
+                                        },
+                                        "startsAt": {
+                                            "type": "string",
+                                            "format": "date-time",
+                                            "const": "2026-06-15T22:30:00Z"
+                                        },
+                                        "zeroOffset": {
+                                            "type": "string",
+                                            "example": "2026-06-15T22:30:00+00:00"
+                                        },
+                                        "offset": {
+                                            "type": "string",
+                                            "example": "2026-06-15T22:30:00+05:30"
+                                        },
+                                        "fraction": {
+                                            "type": "string",
+                                            "example": "2026-06-15T22:30:00.25Z"
+                                        },
+                                        "midnightZulu": {
+                                            "type": "string",
+                                            "example": "2026-06-15T00:00:00Z"
+                                        },
+                                        "local": {
+                                            "type": "string",
+                                            "example": "2026-06-15T22:30:00"
+                                        },
+                                        "quoted": {
+                                            "type": "string",
+                                            "example": "2026-06-15"
+                                        },
+                                        "tagged": {
+                                            "type": "string",
+                                            "example": "2026-06-15"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

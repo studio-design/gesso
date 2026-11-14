@@ -78,8 +78,9 @@ checked. An example shared through a `$ref` within the document is reported
 once, where it is defined; an example copied by hand is reported at every
 place it appears.
 
-In YAML, quote dates: YAML 1.1 decodes `example: 2024-01-01` to an integer
-timestamp, which a `type: string` schema rejects.
+In YAML, an unquoted date or date-time is read as a string in canonical form
+(`2024-01-01`, `2024-01-01T12:00:00Z`). Quote a value whose exact spelling
+matters: `example: 2024-01-01 12:00:00` is read as `2024-01-01T12:00:00`.
 
 ## Multiple specs
 

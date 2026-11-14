@@ -33,19 +33,18 @@ package does not accept by design, and is not measured.
 | `v3.1/non-oauth-scopes` | 3.1.0 | 1 | 0 | clean |
 | `v3.1/tictactoe` | 3.1.0 | 3 | 5 JSON / 6 YAML | `warning` — 3 security schemes and 2 `text/html` responses reported as not enforced; the YAML form adds a callback and a webhook |
 | `v3.1/webhook-example` | 3.1.0 | 0 | 0 | `warning` — its webhook reported as not validated |
-| `v3.2/3.2-query-example` | 3.2.0 | 1 | 1 | clean as JSON; `warning` as YAML — 4 unquoted date examples decode to integers |
+| `v3.2/3.2-query-example` | 3.2.0 | 1 | 1 | clean |
 | `v3.2/3.2-tags-example` | 3.2.0 | 4 | 0 | clean |
 
 Nothing here produces an error: `gesso doctor` exits `0` on all 22 files and
-reports `status: ok` for eight of the eleven documents (seven, counting only
-YAML forms). The other three are at `status: warning`, from `skipped`
-diagnostics only: `tictactoe`'s HTTP Basic and OAuth2 schemes and `text/html`
-error bodies, and the callbacks and webhooks in `callback-example`,
+reports `status: ok` for eight of the eleven documents. The other three are at
+`status: warning`, from `skipped` diagnostics only: `tictactoe`'s HTTP Basic
+and OAuth2 schemes and `text/html` error bodies, and the callbacks and webhooks
+in `callback-example`,
 `webhook-example`, and `tictactoe`'s YAML form, are recognized, then reported as
 not enforced rather than silently passed — the same parts runtime validation
-skips or never reaches. The YAML form of `3.2-query-example` is at `warning` for
-a different reason, explained below. "Clean" in the table
-above means no issue of any severity.
+skips or never reaches. "Clean" in the table above means no issue of any
+severity.
 
 Recorded in `tests/fixtures/compatibility/v1-oas-example-documents.json` and
 asserted by `tests/Integration/Conformance/OasExampleDocumentTest.php`. Issues
@@ -53,7 +52,7 @@ are pinned as `severity/category` pairs, not prose: message wording is not a
 compatibility surface (see [versioning](versioning.md)) and is pinned by the
 doctor's own unit tests.
 
-Five things the table is deliberately not hiding:
+Four things the table is deliberately not hiding:
 
 - **`webhook-example` yields zero operations.** The document describes only
   `webhooks`, which Gesso deliberately does not consult (see
@@ -64,14 +63,11 @@ Five things the table is deliberately not hiding:
   upstream, not in the pipeline: the YAML form declares a `202` on
   `POST /board/{row}/{column}` that the JSON form omits, plus a callback and a
   webhook the JSON form does not have.
-- **`3.2-query-example` reports four example warnings as YAML only.** Its YAML
-  form writes `example: 2026-06-15` and similar date and date-time values
-  unquoted. symfony/yaml follows YAML 1.1 and decodes them to Unix-timestamp
-  integers, so the [example check](doctor.md#examples-that-do-not-match-their-schema)
-  sees an integer under `type: string`. The JSON form carries strings and is
-  clean. This is a loader limitation, not an upstream difference: quote dates in
-  YAML specs. Every other document is diagnosed identically in both
-  serializations, and the test asserts that.
+- **`3.2-query-example` writes its dates unquoted in YAML.** Its YAML form has
+  `example: 2026-06-15` and similar date and date-time values. symfony/yaml
+  follows YAML 1.1 and reads those as timestamps, so the loader turns them back
+  into the strings the JSON form carries. Every document other than `tictactoe`
+  is diagnosed identically in both serializations, and the test asserts that.
 - **The YAML forms are copied out of the corpus before they are read.** The
   corpus ships `petstore.json` and `petstore.yaml` side by side, and the loader
   resolves a bare spec name to the JSON sibling first — the doctor reports that

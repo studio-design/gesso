@@ -737,7 +737,7 @@ Common causes:
 
 - The schema changed and the example was not updated.
 - The example was written by hand and has a typo or a wrong type.
-- A YAML spec writes a date unquoted (`2024-01-01`): YAML 1.1 decodes it to an integer timestamp, so quote it.
+- A YAML spec writes a date-time unquoted in a spelling that is not kept (`2024-01-01 12:00:00` is read as `2024-01-01T12:00:00`), so quote it.
 
 How to fix:
 
