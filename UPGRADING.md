@@ -93,12 +93,13 @@ symbols that raise a notice, and wire formats). Work through the table below
 until it does.
 
 Rows whose Surface starts with *static only* are outside that guarantee: enum
-cases and Composer constraints cannot raise a notice, because referencing an
-enum case runs no Gesso code. Code that still names a removed case (for
-example an arm of a `match` over `EnumBindingReason`) breaks in v3 even on a
-silent run. Search your code for the names those rows list, or run a static
-analyser that reports `@deprecated` symbols, and compare your platform with
-the listed Composer floors. See the
+cases, Composer constraints, and JSON output keys cannot raise a notice.
+Referencing an enum case runs no Gesso code, and a command cannot tell whether
+the script that reads its JSON uses a key. Code that still names a removed case
+(for example an arm of a `match` over `EnumBindingReason`) breaks in v3 even on
+a silent run. Search your code, scripts, and CI steps for the names those rows
+list, or run a static analyser that reports `@deprecated` symbols, and compare
+your platform with the listed Composer floors. See the
 [deprecation policy](docs/versioning.md#deprecation-policy).
 
 The summary line is the signal to trust: it is rendered from recorded
@@ -204,6 +205,7 @@ nothing there.
 | 2.10.0 | PSR-7 `assertPsr7ResponseMatchesOpenApiSchema($request, $response)` | `assertOpenApiResponse($response, $request)` | 3.0 |
 | 2.10.0 | PSR-7 `assertPsr7ResponseForOperationMatchesOpenApiSchema($method, $path, $response)` | `assertOpenApiResponse($response, method: $method, path: $path)` | 3.0 |
 | 2.10.0 | PSR-7 `assertPsr7ExchangeMatchesOpenApiSchema()` | `assertOpenApiExchange()` | 3.0 |
+| 2.10.0 | *static only* `schemaVersion` in the `--format=json` output of `doctor`, `coverage:gate`, and `stubs` / `gesso:stubs` (JSON output key) | `schema_version`, with the value `2`. 2.x keeps writing `schemaVersion: 1`, so read either key until you upgrade, for example `jq '.schema_version // .schemaVersion'` | 3.0 |
 
 Enum drift bindings: a backed enum now matches the `components.schemas` entry
 named after its class (an `Enum` suffix on either side is ignored) in the
