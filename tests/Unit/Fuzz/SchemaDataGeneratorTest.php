@@ -227,6 +227,23 @@ class SchemaDataGeneratorTest extends TestCase
     }
 
     #[Test]
+    public function honors_format_date_time(): void
+    {
+        // generate() throws when a value fails its own schema; the pattern
+        // pins the colon in the offset, which faker's iso8601() omits (+0000).
+        $root = ['type' => 'string', 'format' => 'date-time'];
+        $object = ['type' => 'object', 'required' => ['createdAt'], 'properties' => ['createdAt' => $root]];
+        $rfc3339 = '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(Z|[+-]\d{2}:\d{2})$/';
+
+        foreach (SchemaDataGenerator::generate($root, 3, seed: 1) as $value) {
+            $this->assertMatchesRegularExpression($rfc3339, $value);
+        }
+        foreach (SchemaDataGenerator::generate($object, 3, seed: 1) as $value) {
+            $this->assertMatchesRegularExpression($rfc3339, $value['createdAt']);
+        }
+    }
+
+    #[Test]
     public function honors_min_and_max_length(): void
     {
         $schema = ['type' => 'string', 'minLength' => 4, 'maxLength' => 6];
