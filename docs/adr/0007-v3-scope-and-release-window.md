@@ -141,3 +141,24 @@ Accepted by the owner on 2026-10-26, together with two of the open decisions in
 
 SDK exercise coverage and fuzz breadth stay open; rule 4 governs them until an
 amendment decides otherwise.
+
+## Amendments
+
+### 2026-11-15 — SDK exercise coverage and fuzz breadth stay in v3
+
+Rule 4 left two pruning proposals open. The owner decided both on 2026-11-15:
+neither is removed in v3.
+
+- **Fuzz breadth** (spec-wide exploration, link chains, the failure reducer)
+  stays. The reducer is what a regression-test export of a failing case builds
+  on ([#780](https://github.com/studio-design/gesso/issues/780)), so removing
+  it would take a planned v3 feature with it.
+- **SDK exercise coverage** stays. The cost that was measured
+  ([#511](https://github.com/studio-design/gesso/issues/511)) was not the
+  feature but its console line, printed at a permanent `0%` for projects that
+  never used the round-trip harness.
+  [#792](https://github.com/studio-design/gesso/issues/792) hides the line in
+  that case.
+
+Rule 3(b) is unchanged: a later proposal to remove either surface needs the
+evidence it asks for and a deprecation in a tagged v2 or v3 release.

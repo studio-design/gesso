@@ -372,11 +372,12 @@ Resolved on 2026-10-26: ADR 0007 is accepted; the branch strategy is option (a)
 Arazzo is extracted into a separate package before 2.8.0 and the adapters stay
 in the core (ADR 0007 rule 5).
 
-Still open:
+Resolved on 2026-11-15 (see
+[the scope and work-order note](2026-11-15-v3-scope-and-order.md) and the ADR
+0007 amendment of that date): both stay in v3.
 
-1. **Drop SDK exercise coverage?** ADR 0004 "What v3 does not delete" and ADR
-   0007 rule 4 keep it; removal needs the rule 3(b) evidence, a coverage-JSON
-   format bump, and an amendment.
+1. **Drop SDK exercise coverage?** No. #792 hides its console line for
+   projects that never used the round-trip harness.
 2. **Remove fuzz breadth (spec-wide exploration, link chains, failure
-   reducer)?** `src/Fuzz/` is kept by ADR 0004 and ADR 0007 rule 4, and link
-   following shipped recently (#634).
+   reducer)?** No. The failure reducer is the base of the regression-test
+   export (#780).
