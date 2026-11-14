@@ -1,7 +1,7 @@
 # Pest quickstart
 
 ```bash
-composer require --dev "studio-design/gesso:^2.0" pestphp/pest
+composer require --dev "studio-design/gesso:^3.0@beta" pestphp/pest
 ```
 
 Pest runs on PHPUnit, so the spec loader comes from the same extension. Put the

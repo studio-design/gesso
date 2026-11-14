@@ -18,9 +18,17 @@ Gesso provides framework-agnostic OpenAPI 3.0/3.1/3.2 contract testing for PHPUn
 
 Validate your API responses against your OpenAPI specification during testing, and get a coverage report showing which endpoints have been tested.
 
-Gesso 2 is distributed as `studio-design/gesso` and declares its public PHP API
-under `Studio\Gesso\`. Follow the [staged v2 migration guide](docs/migration/v2.md)
-when upgrading from `studio-design/openapi-contract-testing` v1.10.
+> **Gesso 3 is in beta.** This branch documents 3.0, installed with the `@beta`
+> constraint shown below. The stable line is 2.x: the
+> [documentation site](https://studio-design.github.io/gesso/) and the
+> [`2.x` branch](https://github.com/studio-design/gesso/tree/2.x) describe it.
+> To move a 2.x suite to the beta, follow
+> [`UPGRADING.md`](UPGRADING.md#from-v29x-to-v300).
+
+Since 2.0, Gesso is distributed as `studio-design/gesso` and declares its public
+PHP API under `Studio\Gesso\`. Follow the
+[staged v2 migration guide](docs/migration/v2.md) when upgrading from
+`studio-design/openapi-contract-testing` v1.10.
 
 **[Search the documentation](https://studio-design.github.io/gesso/)** · [Core quickstart](https://studio-design.github.io/gesso/quickstarts/core) · [Laravel](https://studio-design.github.io/gesso/quickstarts/laravel) · [Symfony](https://studio-design.github.io/gesso/quickstarts/symfony) · [Pest](https://studio-design.github.io/gesso/quickstarts/pest) · For agents: [llms.txt](https://studio-design.github.io/gesso/llms.txt) · [llms-full.txt](https://studio-design.github.io/gesso/llms-full.txt)
 
@@ -104,7 +112,7 @@ Choose based on the workflow you need rather than on a single yes/no feature cou
 ## Installation
 
 ```bash
-composer require --dev "studio-design/gesso:^2.0" phpunit/phpunit
+composer require --dev "studio-design/gesso:^3.0@beta" phpunit/phpunit
 ```
 
 > **YAML specs require `symfony/yaml`.** It is listed under `suggest` so it isn't installed automatically. If your spec is JSON, you can skip this. If your spec is `.yaml` / `.yml`, add it explicitly:
@@ -131,7 +139,7 @@ Choose the CI-tested five-minute path matching your stack:
 All paths start with the same development dependency:
 
 ```bash
-composer require --dev "studio-design/gesso:^2.0" phpunit/phpunit
+composer require --dev "studio-design/gesso:^3.0@beta" phpunit/phpunit
 ```
 
 The example below uses a PSR-7 request and response. The searchable documentation contains the complete [core](https://studio-design.github.io/gesso/quickstarts/core), [Laravel](https://studio-design.github.io/gesso/quickstarts/laravel), [Symfony](https://studio-design.github.io/gesso/quickstarts/symfony), and [Pest](https://studio-design.github.io/gesso/quickstarts/pest) quickstarts.
