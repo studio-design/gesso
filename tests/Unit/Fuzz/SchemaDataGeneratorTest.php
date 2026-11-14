@@ -26,6 +26,8 @@ use function array_map;
 use function array_unique;
 use function array_values;
 use function count;
+use function date_default_timezone_get;
+use function date_default_timezone_set;
 use function fmod;
 use function gc_collect_cycles;
 use function json_decode;
@@ -240,6 +242,37 @@ class SchemaDataGeneratorTest extends TestCase
         }
         foreach (SchemaDataGenerator::generate($object, 3, seed: 1) as $value) {
             $this->assertMatchesRegularExpression($rfc3339, $value['createdAt']);
+        }
+    }
+
+    #[Test]
+    public function seeded_date_and_time_values_ignore_the_clock_and_the_time_zone(): void
+    {
+        $schema = [
+            'type' => 'object',
+            'required' => ['date', 'time', 'dateTime'],
+            'properties' => [
+                'date' => ['type' => 'string', 'format' => 'date'],
+                'time' => ['type' => 'string', 'format' => 'time'],
+                'dateTime' => ['type' => 'string', 'format' => 'date-time'],
+            ],
+        ];
+        $zone = date_default_timezone_get();
+
+        try {
+            date_default_timezone_set('UTC');
+            $utc = SchemaDataGenerator::generate($schema, 100, seed: 1);
+            date_default_timezone_set('Asia/Tokyo');
+            $tokyo = SchemaDataGenerator::generate($schema, 100, seed: 1);
+        } finally {
+            date_default_timezone_set($zone);
+        }
+
+        $this->assertSame($utc, $tokyo);
+        foreach ($utc as $value) {
+            // The fixed upper bound: no draw reaches the current time.
+            $this->assertLessThanOrEqual('2020-01-01T00:00:00+00:00', $value['dateTime']);
+            $this->assertStringEndsWith('+00:00', $value['dateTime']);
         }
     }
 
