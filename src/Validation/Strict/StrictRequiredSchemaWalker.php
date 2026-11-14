@@ -4,10 +4,14 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Validation\Strict;
 
+use Studio\Gesso\Validation\Support\TypeCoercer;
+
 use function array_filter;
+use function array_key_exists;
 use function array_push;
 use function array_unique;
 use function array_values;
+use function count;
 use function explode;
 use function is_array;
 use function is_string;
@@ -24,8 +28,10 @@ use function strtoupper;
  *
  * `allOf` is unioned at every level when collecting `required`. `anyOf` /
  * `oneOf` are intentionally NOT walked — they are disjunctions and there is
- * no safe AND-semantic for "required" across them. The collected `required`
- * at such a node is therefore `[]`, and the descent stop is recorded as a
+ * no safe AND-semantic for "required" across them — unless every branch but
+ * one only matches `null` (issue #751), which is walked as that branch. The
+ * collected `required` at such a node is therefore `[]`, and the descent
+ * stop is recorded as a
  * disjunction entry so callers can emit a NOTE rather than misleading drift
  * advice. Map-shaped nodes — `additionalProperties` (schema form or `true`)
  * with no declared `properties` — also stop descent, recorded as map
@@ -171,6 +177,7 @@ final class StrictRequiredSchemaWalker
         $walked = [];
         $disjunctions = [];
         $maps = [];
+        $schema = self::foldNullableUnions($schema);
         $rootShape = self::inferShape($schema);
         if ($rootShape === null) {
             // Root schema is itself unwalkable (anyOf/oneOf/scalar/empty).
@@ -270,6 +277,7 @@ final class StrictRequiredSchemaWalker
      */
     private static function descendSchema(array $schema, string $pointer, array &$walked, array &$disjunctions, array &$maps): void
     {
+        $schema = self::foldNullableUnions($schema);
         $type = self::inferShape($schema);
         if ($type === 'object') {
             if (self::isMapShaped($schema)) {
@@ -312,6 +320,59 @@ final class StrictRequiredSchemaWalker
     }
 
     /**
+     * Move an `anyOf` / `oneOf` whose branches all match only `null` but one
+     * into `allOf`. An object or array value can only match that one branch,
+     * so walking it is as safe as walking the bare schema; this is how
+     * OpenAPI 3.1 writes a nullable `$ref` (issue #751).
+     *
+     * @param array<string, mixed> $schema
+     *
+     * @return array<string, mixed>
+     */
+    private static function foldNullableUnions(array $schema): array
+    {
+        foreach (['anyOf', 'oneOf'] as $keyword) {
+            $branches = $schema[$keyword] ?? null;
+            if (!is_array($branches)) {
+                continue;
+            }
+            $others = array_values(array_filter($branches, static fn(mixed $branch): bool => !self::matchesOnlyNull($branch)));
+            if (count($others) !== 1 || !is_array($others[0])) {
+                continue;
+            }
+            unset($schema[$keyword]);
+            $schema['allOf'] = [...(is_array($schema['allOf'] ?? null) ? $schema['allOf'] : []), $others[0]];
+        }
+
+        return $schema;
+    }
+
+    private static function matchesOnlyNull(mixed $branch): bool
+    {
+        return is_array($branch) && (
+            ($branch['type'] ?? null) === 'null' ||
+            (array_key_exists('const', $branch) && $branch['const'] === null) ||
+            ($branch['enum'] ?? null) === [null]
+        );
+    }
+
+    /**
+     * The node's `type`, reading a type array (`[object, "null"]`) as its
+     * first non-null entry.
+     *
+     * @param array<string, mixed> $schema
+     */
+    private static function declaredType(array $schema): ?string
+    {
+        $type = $schema['type'] ?? null;
+        if (is_array($type)) {
+            return TypeCoercer::firstPrimitiveType($type);
+        }
+
+        return is_string($type) ? $type : null;
+    }
+
+    /**
      * Classify a schema node that {@see self::inferShape()} reported as
      * non-descendable. Returns the disjunction kind if applicable (so the
      * caller can emit a NOTE), `null` for scalar / empty leaves (which
@@ -338,7 +399,7 @@ final class StrictRequiredSchemaWalker
      */
     private static function inferShape(array $schema): ?string
     {
-        $type = $schema['type'] ?? null;
+        $type = self::declaredType($schema);
         if ($type === 'object' || isset($schema['properties'])) {
             return 'object';
         }
@@ -356,7 +417,7 @@ final class StrictRequiredSchemaWalker
         if (isset($schema['allOf']) && is_array($schema['allOf'])) {
             foreach ($schema['allOf'] as $branch) {
                 if (is_array($branch) && (
-                    ($branch['type'] ?? null) === 'object' ||
+                    self::declaredType($branch) === 'object' ||
                     isset($branch['properties']) ||
                     isset($branch['required']) ||
                     isset($branch['additionalProperties'])
@@ -364,7 +425,7 @@ final class StrictRequiredSchemaWalker
                     return 'object';
                 }
                 if (is_array($branch) && (
-                    ($branch['type'] ?? null) === 'array' || isset($branch['items'])
+                    self::declaredType($branch) === 'array' || isset($branch['items'])
                 )) {
                     return 'array';
                 }
