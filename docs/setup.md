@@ -32,7 +32,7 @@ longer arrives transitively. PHPUnit 11 and Pest 3 are not supported; see
 Laravel 12 application still on them.
 
 ```bash
-composer require --dev "studio-design/gesso:^2.0" phpunit/phpunit
+composer require --dev "studio-design/gesso:^3.0@beta" phpunit/phpunit
 ```
 
 ## 1. Provide your OpenAPI spec

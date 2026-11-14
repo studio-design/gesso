@@ -20,7 +20,7 @@ chaining, and a coverage-tracker smoke assertion.
 
 | Path | Purpose |
 |---|---|
-| `composer.json` | Wires the library via a `path` repository (`../..`). In your real project, replace it with `composer require --dev "studio-design/gesso:^2.0" pestphp/pest`. |
+| `composer.json` | Wires the library via a `path` repository (`../..`). In your real project, replace it with `composer require --dev "studio-design/gesso:^3.0@beta" pestphp/pest`. |
 | `openapi/petstore.json` | Tiny OpenAPI 3.1 spec with three endpoints (`GET /v1/pets`, `POST /v1/pets`, `GET /v1/health`). |
 | `gesso.php` | Shared settings: `spec.base_path` points the extension at `openapi/`. |
 | `phpunit.xml.dist` | Minimal PHPUnit config that registers `OpenApiCoverageExtension`; it reads `gesso.php` beside it. |

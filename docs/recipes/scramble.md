@@ -36,11 +36,11 @@ Scramble can inspect Eloquent models. HTTP tests use an in-memory database with
 ## Add Gesso to an existing Scramble app
 
 Install Gesso as a development dependency. If the app still uses PHPUnit 11,
-upgrade to a compatible PHPUnit version as part of installation: Gesso 2.x
+upgrade to a compatible PHPUnit version as part of installation: Gesso
 requires PHPUnit 12 or 13. The example uses 12, which supports PHP 8.3.
 
 ```bash
-composer require --dev "studio-design/gesso:^2.6" "phpunit/phpunit:^12.0" --with-all-dependencies
+composer require --dev "studio-design/gesso:^3.0@beta" "phpunit/phpunit:^12.0" --with-all-dependencies
 ```
 
 Keep your existing compatible PHPUnit version if it is already 12 or 13.
