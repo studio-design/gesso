@@ -9,7 +9,6 @@
   "versioning": "prerelease",
   "prerelease-type": "beta",
   "prerelease": true,
-  "release-as": "3.0.0-beta.1",
   "changelog-path": "CHANGELOG.md",
   "packages": {
     ".": {
