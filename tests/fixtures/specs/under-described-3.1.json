@@ -20,6 +20,39 @@
           }
         }
       }
+    },
+    "/nullable-ref": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "ok; OAS 3.1 nullable $ref written as a union with a null branch",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "plan": {
+                      "anyOf": [{ "$ref": "#/components/schemas/Plan" }, { "type": "null" }]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Plan": {
+        "type": "object",
+        "required": ["id"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" }
+        }
+      }
     }
   }
 }

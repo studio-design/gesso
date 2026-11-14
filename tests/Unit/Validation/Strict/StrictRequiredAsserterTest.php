@@ -305,6 +305,23 @@ final class StrictRequiredAsserterTest extends TestCase
     }
 
     #[Test]
+    public function nullable_ref_union_is_walked_like_the_ref(): void
+    {
+        StrictRequiredTracker::record('under-described-3.1', 'GET', '/nullable-ref', '200', 'application/json', [
+            '/' => ['plan'],
+            '/plan' => ['id', 'name'],
+        ]);
+
+        $reports = StrictRequiredAsserter::detectAll(StrictRequiredMode::Warn);
+
+        $this->assertSame([['/', ['plan']], ['/plan', ['name']]], array_map(
+            static fn($report): array => [$report->schemaPointer, $report->missingFromRequired],
+            $reports,
+        ));
+        $this->assertSame([], StrictRequiredAsserter::analyse(StrictRequiredMode::Warn)['unwalkable']);
+    }
+
+    #[Test]
     public function malformed_non_string_entries_in_required_are_ignored(): void
     {
         StrictRequiredTracker::record(self::SPEC_NAME, 'GET', '/malformed-required', '200', 'application/json', [
