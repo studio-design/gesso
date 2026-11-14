@@ -27,6 +27,7 @@ use function ceil;
 use function class_exists;
 use function count;
 use function floor;
+use function gmdate;
 use function implode;
 use function in_array;
 use function intdiv;
@@ -74,6 +75,12 @@ use function trigger_error;
  */
 final class SchemaDataGenerator
 {
+    /**
+     * Upper bound for generated date and time values (2020-01-01T00:00:00Z).
+     * Faker's default bound is the current time, which changes seeded output.
+     */
+    private const MAX_GENERATED_TIMESTAMP = 1_577_836_800;
+
     private const MAX_SYNTHESIZED_PATTERN_LENGTH = 10_000;
 
     /**
@@ -1381,10 +1388,10 @@ final class SchemaDataGenerator
         return match ($format) {
             'email', 'idn-email' => $faker->safeEmail(),
             'uuid' => $faker->uuid(),
-            'date' => $faker->date(),
-            // Not iso8601(): its offset has no colon (+0000), which is not RFC 3339.
-            'date-time' => $faker->date(DateTimeInterface::ATOM),
-            'time' => $faker->time(),
+            // gmdate(), not faker's date(): that one formats in the default time zone.
+            'date' => gmdate('Y-m-d', $faker->unixTime(self::MAX_GENERATED_TIMESTAMP)),
+            'date-time' => gmdate(DateTimeInterface::ATOM, $faker->unixTime(self::MAX_GENERATED_TIMESTAMP)),
+            'time' => gmdate('H:i:s', $faker->unixTime(self::MAX_GENERATED_TIMESTAMP)),
             'uri', 'url', 'iri' => $faker->url(),
             'hostname' => $faker->domainName(),
             'ipv4' => $faker->ipv4(),
