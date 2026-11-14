@@ -41,7 +41,7 @@ of the 500 results on its own matched 500 of 500.
 
 The spec deliberately has no `date`, `time` or `date-time` property: faker
 draws those between 0 and the current time, so their values differ from one
-run to the next on the same revision (issue #732).
+run to the next on the same revision (issue #752).
 
 ## Retained memory
 

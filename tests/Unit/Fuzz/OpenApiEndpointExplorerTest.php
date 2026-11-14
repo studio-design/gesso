@@ -80,6 +80,20 @@ class OpenApiEndpointExplorerTest extends TestCase
     }
 
     #[Test]
+    public function explores_a_body_with_a_required_date_time_property(): void
+    {
+        $cases = OpenApiEndpointExplorer::explore('formats-and-numeric', 'POST', '/v1/profile', cases: 3, seed: 1);
+
+        $this->assertCount(3, $cases);
+        foreach ($cases as $case) {
+            $this->assertMatchesRegularExpression(
+                '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(Z|[+-]\d{2}:\d{2})$/',
+                $case->body['lastSeen'],
+            );
+        }
+    }
+
+    #[Test]
     public function returns_exploration_cases_collection(): void
     {
         $cases = OpenApiEndpointExplorer::explore('petstore-3.0', 'POST', '/v1/pets', cases: 3, seed: 1);

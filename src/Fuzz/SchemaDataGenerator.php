@@ -7,6 +7,7 @@ namespace Studio\Gesso\Fuzz;
 use const E_USER_WARNING;
 use const PHP_FLOAT_EPSILON;
 
+use DateTimeInterface;
 use Faker\Factory;
 use Faker\Generator;
 use InvalidArgumentException;
@@ -1381,7 +1382,8 @@ final class SchemaDataGenerator
             'email', 'idn-email' => $faker->safeEmail(),
             'uuid' => $faker->uuid(),
             'date' => $faker->date(),
-            'date-time' => $faker->iso8601(),
+            // Not iso8601(): its offset has no colon (+0000), which is not RFC 3339.
+            'date-time' => $faker->date(DateTimeInterface::ATOM),
             'time' => $faker->time(),
             'uri', 'url', 'iri' => $faker->url(),
             'hostname' => $faker->domainName(),
