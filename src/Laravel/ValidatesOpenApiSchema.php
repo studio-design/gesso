@@ -935,7 +935,7 @@ trait ValidatesOpenApiSchema
 
         $introspector = $this->getSecuritySchemeIntrospector();
 
-        if ($credentialsEnabled && config('gesso.auto_inject_dummy_credentials') !== 'bearer') {
+        if ($credentialsEnabled && LaravelConfig::get('auto_inject_dummy_credentials') !== 'bearer') {
             $candidates = $introspector->injectableCredentialsFor($spec, $matchedOperation);
         } else {
             $candidates = $introspector->endpointAcceptsBearer($spec, $matchedOperation)
@@ -1079,12 +1079,12 @@ trait ValidatesOpenApiSchema
      */
     private function resolveStringListConfig(string $key, array $default, string $what): array
     {
-        $raw = config('gesso.' . $key, $default);
+        $raw = LaravelConfig::get($key, $default);
 
         if (!is_array($raw)) {
             CleanTraceAssert::fail(sprintf(
-                'gesso.%s must be an array of %ss, got %s: %s.',
-                $key,
+                '%s must be an array of %ss, got %s: %s.',
+                LaravelConfig::key($key),
                 $what,
                 get_debug_type($raw),
                 var_export($raw, true),
@@ -1095,15 +1095,15 @@ trait ValidatesOpenApiSchema
         foreach ($raw as $index => $value) {
             if (!is_string($value)) {
                 CleanTraceAssert::fail(sprintf(
-                    'gesso.%s[%s] must be a string %s, got %s.',
-                    $key,
+                    '%s[%s] must be a string %s, got %s.',
+                    LaravelConfig::key($key),
                     (string) $index,
                     $what,
                     get_debug_type($value),
                 ));
             }
             if ($value === '') {
-                CleanTraceAssert::fail(sprintf('gesso.%s[%s] must not be an empty string.', $key, (string) $index));
+                CleanTraceAssert::fail(sprintf('%s[%s] must not be an empty string.', LaravelConfig::key($key), (string) $index));
             }
             $values[] = $value;
         }
@@ -1113,7 +1113,7 @@ trait ValidatesOpenApiSchema
 
     private function resolveMaxErrors(): int
     {
-        $maxErrors = config('gesso.max_errors', 20);
+        $maxErrors = LaravelConfig::get('max_errors', 20);
 
         // A baseline generation run (issue #402) lifts the cap: a truncated
         // error list would drop violations from the generated baseline. The
@@ -1222,7 +1222,7 @@ trait ValidatesOpenApiSchema
 
     private function isAutoInjectDummyCredentialsEnabled(): bool
     {
-        return config('gesso.auto_inject_dummy_credentials') === 'bearer' ||
+        return LaravelConfig::get('auto_inject_dummy_credentials') === 'bearer' ||
             $this->resolveBoolConfig('auto_inject_dummy_credentials');
     }
 
@@ -1239,7 +1239,7 @@ trait ValidatesOpenApiSchema
      */
     private function resolveBoolConfig(string $key, bool $default = false): bool
     {
-        $raw = config('gesso.' . $key, $default);
+        $raw = LaravelConfig::get($key, $default);
 
         if ($raw === true) {
             return true;
@@ -1251,9 +1251,9 @@ trait ValidatesOpenApiSchema
         $parsed = filter_var($raw, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
         if ($parsed === null) {
             CleanTraceAssert::fail(sprintf(
-                'gesso.%s must be a boolean (or a boolean-compatible value '
+                '%s must be a boolean (or a boolean-compatible value '
                 . 'like "true"/"false"/"1"/"0"), got %s: %s.',
-                $key,
+                LaravelConfig::key($key),
                 get_debug_type($raw),
                 var_export($raw, true),
             ));

@@ -13,6 +13,17 @@ namespace Studio\Gesso\Config;
  */
 final class ConfigurationBridge
 {
+    /** Laravel's flat `gesso.*` key => its `gesso.php` path and accessor. */
+    public const LARAVEL = self::COMMON + [
+        'auto_assert' => ['laravel.auto_assert', 'bool'],
+        'auto_validate_request' => ['laravel.auto_validate_request', 'bool'],
+        'auto_inject_dummy_credentials' => ['laravel.auto_inject_dummy_credentials', 'boolOrString'],
+        'route_parity.external_operation_ids' => ['laravel.route_parity.external_operation_ids', 'strings'],
+        'route_parity.external_openapi_paths' => ['laravel.route_parity.external_openapi_paths', 'strings'],
+        'route_parity.excluded_route_names' => ['laravel.route_parity.excluded_route_names', 'strings'],
+        'specs' => ['spec.names', 'strings'],
+    ];
+
     private const COMMON = [
         'spec_base_path' => ['spec.base_path', 'string'],
         'default_spec' => ['spec.default', 'string'],
@@ -58,15 +69,7 @@ final class ConfigurationBridge
     /** @return array<string, bool|float|int|list<string>|string> */
     public static function laravel(GessoConfig $config): array
     {
-        return self::map($config, self::COMMON + [
-            'auto_assert' => ['laravel.auto_assert', 'bool'],
-            'auto_validate_request' => ['laravel.auto_validate_request', 'bool'],
-            'auto_inject_dummy_credentials' => ['laravel.auto_inject_dummy_credentials', 'boolOrString'],
-            'route_parity.external_operation_ids' => ['laravel.route_parity.external_operation_ids', 'strings'],
-            'route_parity.external_openapi_paths' => ['laravel.route_parity.external_openapi_paths', 'strings'],
-            'route_parity.excluded_route_names' => ['laravel.route_parity.excluded_route_names', 'strings'],
-            'specs' => ['spec.names', 'strings'],
-        ]);
+        return self::map($config, self::LARAVEL);
     }
 
     /**

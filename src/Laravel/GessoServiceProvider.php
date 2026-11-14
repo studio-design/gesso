@@ -57,6 +57,7 @@ class GessoServiceProvider extends ServiceProvider
         }
 
         $this->mergeConfigFrom(__DIR__ . '/config.php', self::CONFIG_KEY);
+        LaravelConfig::rememberProvided($configuration);
     }
 
     public function boot(): void

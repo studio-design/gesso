@@ -84,8 +84,10 @@ preserves the prefixes configured in bootstrap.
 
 - PHPUnit: existing format/console environment overrides, then explicit XML
   parameters, then declared shared settings, then existing defaults.
-- Laravel: existing `config('gesso.…')` values, then declared shared settings,
-  then package defaults. Arrays are replaced as whole values, not concatenated.
+- Laravel: a value set at a `gesso.php` path (for example
+  `config()->set('gesso.validation.max_errors', 5)` in a test), then existing
+  flat `config('gesso.…')` values, then declared shared settings, then package
+  defaults. Arrays are replaced as whole values, not concatenated.
 - CLI: explicit flag, then declared shared settings, then the built-in
   default; environment variables keep their existing priority.
 - Explicit per-test and per-call overrides keep their existing priority.
