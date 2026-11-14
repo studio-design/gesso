@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Tests\Unit\Validation\Strict;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Studio\Gesso\Validation\Strict\StrictRequiredSchemaWalker;
@@ -13,6 +14,16 @@ use function json_decode;
 
 final class StrictRequiredSchemaWalkerTest extends TestCase
 {
+    /**
+     * @return iterable<string, array{array<string, mixed>}>
+     */
+    public static function provideCollect_required_by_pointer_walks_a_union_of_one_schema_and_nullCases(): iterable
+    {
+        yield 'type null' => [['type' => 'null']];
+        yield 'const null' => [['const' => null]];
+        yield 'enum [null]' => [['enum' => [null]]];
+    }
+
     #[Test]
     public function split_endpoint_key_separates_method_and_path(): void
     {
@@ -243,6 +254,72 @@ final class StrictRequiredSchemaWalkerTest extends TestCase
 
         $this->assertArrayHasKey('/', $result['walked']);
         $this->assertSame([['pointer' => '/data', 'reason' => 'oneOf']], $result['disjunctions']);
+    }
+
+    /**
+     * @param array<string, mixed> $nullBranch
+     */
+    #[Test]
+    #[DataProvider('provideCollect_required_by_pointer_walks_a_union_of_one_schema_and_nullCases')]
+    public function collect_required_by_pointer_walks_a_union_of_one_schema_and_null(array $nullBranch): void
+    {
+        $plan = ['type' => 'object', 'required' => ['id'], 'properties' => ['id' => ['type' => 'string'], 'name' => ['type' => 'string']]];
+
+        foreach (['anyOf', 'oneOf'] as $keyword) {
+            $result = StrictRequiredSchemaWalker::collectRequiredByPointer([
+                'type' => 'object',
+                'properties' => ['plan' => [$keyword => [$plan, $nullBranch]]],
+            ]);
+
+            $this->assertSame(['/' => [], '/plan' => ['id']], $result['walked'], $keyword);
+            $this->assertSame([], $result['disjunctions'], $keyword);
+        }
+    }
+
+    #[Test]
+    public function collect_required_by_pointer_walks_a_nullable_union_at_the_root(): void
+    {
+        $result = StrictRequiredSchemaWalker::collectRequiredByPointer([
+            'anyOf' => [
+                ['type' => 'null'],
+                ['type' => 'array', 'items' => ['type' => 'object', 'required' => ['id'], 'properties' => ['id' => ['type' => 'string']]]],
+            ],
+        ]);
+
+        $this->assertSame(['[*]' => ['id']], $result['walked']);
+        $this->assertSame([], $result['disjunctions']);
+    }
+
+    #[Test]
+    public function collect_required_by_pointer_keeps_a_union_of_two_schemas_and_null_as_disjunction(): void
+    {
+        $result = StrictRequiredSchemaWalker::collectRequiredByPointer([
+            'type' => 'object',
+            'properties' => [
+                'data' => [
+                    'anyOf' => [
+                        ['type' => 'object', 'required' => ['x'], 'properties' => ['x' => ['type' => 'string']]],
+                        ['type' => 'object', 'required' => ['y'], 'properties' => ['y' => ['type' => 'string']]],
+                        ['type' => 'null'],
+                    ],
+                ],
+            ],
+        ]);
+
+        $this->assertSame(['/' => []], $result['walked']);
+        $this->assertSame([['pointer' => '/data', 'reason' => 'anyOf']], $result['disjunctions']);
+    }
+
+    #[Test]
+    public function collect_required_by_pointer_reads_a_type_array_as_its_non_null_type(): void
+    {
+        $result = StrictRequiredSchemaWalker::collectRequiredByPointer([
+            'type' => ['null', 'object'],
+            'required' => ['id'],
+        ]);
+
+        $this->assertSame(['/' => ['id']], $result['walked']);
+        $this->assertSame([], $result['disjunctions']);
     }
 
     #[Test]
