@@ -46,6 +46,9 @@ Inputs: the state of `main` and the issue tracker after `v3.0.0-beta.1` and
    root stays 2.x and `main` is published under `/gesso/3.x/`. After 3.0.0 the
    root is 3.x and v2 stays under `/gesso/2.x/`, because v2 is maintained until
    2028-07-01 at the earliest. `docs_url` moves to `/gesso/3.x/failure-codes`.
+9. **No `MigrationGuideTest`.** Vision item M3 asked for a test that runs each
+   migration recipe on a fixture project. The Rector sets and their tests
+   cover the rewrites, so the guide gets no test of its own.
 
 Also decided during the release: the strict-required fix for nullable unions
 (#751) shipped in 2.10.0, on the "closing a documented silent pass is not a
@@ -58,8 +61,8 @@ Longest lead time first. Each step is a milestone.
 | Step | Milestone | Issues |
 | --- | --- | --- |
 | 1 | `v3.0 beta.2 — output values and verdicts` | Emitted values: #765, #766, #693. Leftovers: #767, #768, #554. Parameters, in this order because they share files: #769 → #770 → #771. Independent: #772, #773. Streaming, then webhooks and callbacks: #774 → #775. |
-| 2 | `v3.0 beta.3 — coverage and sidecar formats` | #776, #742, #741, #740, #739, #661, #691, #792, then #777. |
-| 3 | `v3.0 beta.4 — new checks and CLI` | New checks: #778, #779, #780, #781, #782, #737, #743, #745. CLI and output: #783, #784, #738, #744, #696, #694, #692. |
+| 2 | `v3.0 beta.3 — coverage and sidecar formats` | #776, #742, #741, #740, #739, #791, #661, #691, #792, then #777. |
+| 3 | `v3.0 beta.4 — new checks and CLI` | New checks: #778, #779, #780, #781, #782, #737, #743, #745. CLI and output: #783, #784, #738, #744, #696, #694, #692, #790. |
 | 4 | `v3.0 GA — docs and agents` | #785, #786, #787, #788, #789. |
 
 Rules behind the order:
@@ -81,17 +84,19 @@ Rules behind the order:
 
 Each beta is installed in a downstream suite before the next step starts.
 
-## Not scheduled
+## Placed after the first pass
 
-- #790: the original `$ref` component and the spec file and line on schema
-  issues (the later part of vision item A3, size L).
-- #791: a warning when a baseline is regenerated under a coding agent (the part
-  of vision item A6 that #739 and #741 do not cover).
+- #791 (a warning when a baseline is regenerated under a coding agent, the
+  part of vision item A6 that #739 and #741 do not cover) goes into beta.3
+  with the other baseline safeguards.
+- #790 (the original `$ref` component and the spec file and line on schema
+  issues, the later part of vision item A3, size L) goes into beta.4. If its
+  design does not fit, it moves to 3.1.
+
+## Outside 3.0
+
 - #430: Arazzo conformance. The runner leaves the core (ADR 0007 rule 5), and
-  the issue has no repository to move to yet.
-- Vision item M3 asked for a `MigrationGuideTest` that runs each migration
-  recipe on a fixture project. The Rector sets and their tests cover the
-  rewrites; whether the guide still needs its own test is undecided.
+  the issue has no repository to move to yet. It keeps no milestone.
 
 ## Issue hygiene done on 2026-11-15
 
