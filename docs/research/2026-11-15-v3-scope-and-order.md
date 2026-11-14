@@ -60,10 +60,17 @@ Longest lead time first. Each step is a milestone.
 
 | Step | Milestone | Issues |
 | --- | --- | --- |
-| 1 | `v3.0 beta.2 — output values and verdicts` | Emitted values: #765, #766, #693. Leftovers: #767, #768, #554. Parameters, in this order because they share files: #769 → #770 → #771. Independent: #772, #773. Streaming, then webhooks and callbacks: #774 → #775. |
+| 1 | `v3.0 beta.2 — output values and verdicts` | Emitted values: #765, #766, #693. Migration gap found in the first downstream upgrade: #794. Leftovers: #767, #768, #554. Parameters, in this order because they share files: #769 → #770 → #771. Independent: #772, #773. Streaming, then webhooks and callbacks: #774 → #775. |
 | 2 | `v3.0 beta.3 — coverage and sidecar formats` | #776, #742, #741, #740, #739, #791, #661, #691, #792, then #777. |
 | 3 | `v3.0 beta.4 — new checks and CLI` | New checks: #778, #779, #780, #781, #782, #737, #743, #745. CLI and output: #783, #784, #738, #744, #696, #694, #692, #790. |
 | 4 | `v3.0 GA — docs and agents` | #785, #786, #787, #788, #789. |
+
+One item sits on the `2.x` line, in the milestone `v2.11 — migration aids`:
+#795. The first downstream upgrade from 2.10.0 found that 2.x gives a Laravel
+test no way to set a `gesso.php` key path and raises no notice when a test
+sets a flat key, so those overrides cannot move before the major bump. The
+flat keys are removed in 3.0, so under ADR 0007 rule 3(a) this ships in a
+tagged 2.x release before 3.0.0.
 
 Rules behind the order:
 
