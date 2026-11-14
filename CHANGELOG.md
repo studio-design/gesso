@@ -10,6 +10,20 @@ the README for the full surface contract.
 
 ## Unreleased
 
+## [2.10.0](https://github.com/studio-design/gesso/compare/v2.9.0...v2.10.0) (2026-11-14)
+
+
+### Features
+
+* **adapters:** add the v3 assertion names and deprecate the v2 ones ([#709](https://github.com/studio-design/gesso/issues/709)) ([dda7733](https://github.com/studio-design/gesso/commit/dda7733ba6091d9c25dc613df3cdc70b7e816c10))
+* **strict-required:** descend into nullable unions ([#760](https://github.com/studio-design/gesso/issues/760)) ([32c3087](https://github.com/studio-design/gesso/commit/32c30875d3e12778d3366d91c677c5c61d47f00e))
+
+
+### Bug Fixes
+
+* **fuzz:** generate rfc 3339 date-time values with faker ([#757](https://github.com/studio-design/gesso/issues/757)) ([17bd8d7](https://github.com/studio-design/gesso/commit/17bd8d7e4118555a471e28efe0b62f5854875f59))
+* **fuzz:** keep seeded date and time values independent of the clock and time zone ([#758](https://github.com/studio-design/gesso/issues/758)) ([18ff06b](https://github.com/studio-design/gesso/commit/18ff06b7092f727ec9322d120557701654130ddf))
+
 ## [2.9.0](https://github.com/studio-design/gesso/compare/v2.8.0...v2.9.0) (2026-10-30)
 
 
