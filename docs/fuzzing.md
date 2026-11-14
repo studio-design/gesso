@@ -394,7 +394,9 @@ each, need about 60 MB
 ## `seed` and determinism
 
 When [`fakerphp/faker`][faker] is installed, generation uses Faker's
-locale-aware primitives and is deterministic for a given `seed:`. Without it,
+locale-aware primitives and is deterministic for a given `seed:`. Date and
+time formats are drawn up to 2020-01-01T00:00:00Z and written in UTC, so the
+clock and the default time zone do not change them. Without it,
 ordinary strings and scalar boundaries use deterministic counter-based values.
 Supported character-class patterns sample multiple class members after the
 first boundary case, so increasing `cases:` also increases their input variety.

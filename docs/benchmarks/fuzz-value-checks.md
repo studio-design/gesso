@@ -39,9 +39,9 @@ seeded sweep. Before and after printed the same digest
 (`f2bfb47d…62ab11` with 100 resources), and a separate run that hashed each
 of the 500 results on its own matched 500 of 500.
 
-The spec deliberately has no `date`, `time` or `date-time` property: faker
-draws those between 0 and the current time, so their values differ from one
-run to the next on the same revision (issue #752).
+The spec deliberately has no `date`, `time` or `date-time` property: when this
+was measured, faker drew those between 0 and the current time, so their values
+differed from one run to the next on the same revision (fixed in issue #752).
 
 ## Retained memory
 
