@@ -488,10 +488,10 @@ Before publishing a release:
 
 - [ ] Run the supported PHP / PHPUnit / framework matrix in CI.
 - [ ] Review `UPGRADING.md` and the generated release notes for SemVer accuracy.
-- [ ] For a v2 beta or stable promotion, complete the tag, GitHub Release,
+- [ ] For a v3 beta or stable promotion, complete the tag, GitHub Release,
   release manifest, Packagist metadata, clean-install, and published-artifact
   checks in the
-  [Gesso 2.0 release procedure][v2-release-procedure].
+  [Gesso 3.0 release procedure][v3-release-procedure].
 - [ ] If the README feature comparison was last checked three or more months ago, verify every competitor version and linked capability against its tagged official README and `composer.json`, update the checked date, and keep competitor strengths as well as gaps.
 
-[v2-release-procedure]: https://github.com/studio-design/gesso/blob/main/CONTRIBUTING.md#gesso-20-beta-and-stable-promotion
+[v3-release-procedure]: https://github.com/studio-design/gesso/blob/main/CONTRIBUTING.md#gesso-30-beta-and-stable-promotion
