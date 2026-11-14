@@ -479,4 +479,4 @@ Before publishing a release:
   [Gesso 2.0 release procedure][v2-release-procedure].
 - [ ] If the README feature comparison was last checked three or more months ago, verify every competitor version and linked capability against its tagged official README and `composer.json`, update the checked date, and keep competitor strengths as well as gaps.
 
-[v2-release-procedure]: https://github.com/studio-design/gesso/blob/main/CONTRIBUTING.md#gesso-20-beta-and-stable-promotion
+[v2-release-procedure]: https://github.com/studio-design/gesso/blob/2.x/CONTRIBUTING.md#gesso-20-beta-and-stable-promotion
