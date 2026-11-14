@@ -69,10 +69,9 @@ your PR. Skipping the install is fine; CI will catch a broken link.
 1. Open an issue describing the problem before starting non-trivial work.
    For bug fixes that come with a failing test, jumping straight to a PR
    is fine.
-2. Fork and choose the correct base branch: use `main` for normal work; after
-   the `1.x` maintenance branch exists, use `1.x` for a v1-only fix. Name the
-   branch with the convention `feat/<topic>`, `fix/<topic>`, `docs/<topic>`,
-   etc.
+2. Fork and choose the correct base branch: use `main` for normal work, `2.x`
+   for a v2-only fix, and `1.x` for a v1-only fix. Name the branch with the
+   convention `feat/<topic>`, `fix/<topic>`, `docs/<topic>`, etc.
 3. Write tests first when the change is observable behaviour. The test
    suite uses snake_case method names and PHPUnit `#[Test]` attributes.
 4. Run `composer ci` locally before pushing.
@@ -125,7 +124,8 @@ this section covers the mechanical flow.
 How it works:
 
 1. Every push to a configured target branch runs the `release-please` workflow.
-   This is `main` for v2 and, after v1.10.0, `1.x` for v1 maintenance.
+   This is `main` for v3, `2.x` for v2 maintenance, and `1.x` for v1
+   maintenance.
 2. For the branch that triggered the workflow, the bot scans the Conventional
    Commits since that line's last release and either opens or updates a release
    PR titled `chore(<branch>): release X.Y.Z`. The PR diff bumps that branch's
@@ -138,106 +138,108 @@ How it works:
 4. When a maintainer merges the release PR, the bot creates the git tag and
    publishes the GitHub Release with notes generated from the changelog
    entry. Packagist syncs automatically from the tag webhook.
-5. Each release PR is **kept fresh by the bot** — every push to its target
-   branch after the initial release PR opens rebases the bot-managed PR branch
-   and rewrites the CHANGELOG diff in place. There is at most one open release
-   PR per target branch, so `main` and `1.x` may have two release PRs open at
-   the same time.
+5. Each release PR is **kept fresh by the bot** — a push to its target branch
+   that changes the changelog rebases the bot-managed PR branch and rewrites
+   the CHANGELOG diff in place. There is at most one open release PR per
+   target branch, so `main`, `2.x`, and `1.x` may each have one open at the
+   same time.
+
+Two things keep a release PR from merging, and neither fixes itself:
+
+- **It falls behind its target branch.** The bot rewrites the PR only when the
+  changelog changes. A merge that adds no entry (a `docs:` commit, for
+  example) leaves the PR one commit behind, and the branch rulesets require
+  an up-to-date branch. Rebase the bot branch onto the target branch and push
+  it with `--force-with-lease`. The diff must still be `CHANGELOG.md` and
+  `.release-please-manifest.json` only.
+- **Its checks wait for approval.** Workflow runs started by the bot's push
+  stop at `action_required`. A maintainer approves or re-runs them on the
+  Actions page. A maintainer's own push to the bot branch, such as the rebase
+  above, starts them without approval.
 
 The manifest file `.release-please-manifest.json` records the last released
 version per package path on each target branch; this repo is single-package so
-it stays `{ ".": "X.Y.Z" }`. The value may differ between `main` and `1.x`.
+it stays `{ ".": "X.Y.Z" }`. The value differs per branch.
 The `.` key is the bot's package-root identifier; do not rename or duplicate it.
 
-### Gesso 2.0 beta and stable promotion
+### Gesso 3.0 beta and stable promotion
 
-The first release of the new `studio-design/gesso` package uses a beta stage so
-the published artifact can be tested before the stable compatibility promise.
-This is a temporary `main`-branch procedure; the `1.x` branch continues its
-normal stable patch flow from its own release configuration.
+`main` publishes 3.0 as betas first, so the published artifact can be tested
+before the stable compatibility promise. `2.x` and `1.x` keep their normal
+stable flow from their own release configuration. The gates for the stable
+release are in
+[ADR 0007](docs/adr/0007-v3-scope-and-release-window.md#release-window).
 
-1. Close any open stable v2 release PR as obsolete. Changing the release
-   component from the legacy package name to `gesso` changes release-please's
-   bot branch, so it cannot safely update that old PR in place. Never merge or
-   manually edit the obsolete release PR.
-2. Register `studio-design/gesso` on Packagist from this GitHub repository.
-   Confirm that its `dev-main` metadata reports the new package name and source
-   repository. Do not mark the old package abandoned yet.
-3. Merge the beta-readiness PR. The `main` configuration must use
-   `versioning: prerelease`, `prerelease-type: beta`, `prerelease: true`, and
-   the temporary `release-as: 2.0.0-beta.1`. The repository discards commit
-   bodies when squash-merging, so a `Release-As` commit footer is not a safe
-   source for the first beta version.
-4. Wait for the bot-managed release PR to refresh. Before merging it, verify
-   that it proposes `2.0.0-beta.1`, changes only release-please-owned files,
-   and has a green supported matrix.
-5. Merge that release PR. Verify all four records agree: the `v2.0.0-beta.1`
+1. The `main` configuration uses `versioning: prerelease`,
+   `prerelease-type: beta`, `prerelease: true`, and, for the first beta only,
+   `release-as: 3.0.0-beta.1`. The repository discards commit bodies when
+   squash-merging, so a `Release-As` commit footer is not a safe source for the
+   first beta version.
+2. Before merging the release PR, verify that it proposes the expected beta
+   version, changes only release-please-owned files, and has a green supported
+   matrix. Every removal it ships needs its deprecation in a **tagged** v2
+   release: when one is still waiting on `2.x`, merge the `2.x` release PR
+   first.
+3. Merge the release PR. Verify all four records agree: the `v3.0.0-beta.N`
    git tag, the GitHub Release marked **Pre-release**, the manifest value, and
-   the Packagist version/source reference. Immediately remove `release-as`
-   from the configuration through a normal PR before merging another
-   releasable change; otherwise release-please will keep forcing the already
-   published beta version.
-6. Test the Packagist artifact in a clean project with
-   `composer require --dev "studio-design/gesso:^2.0@beta"`. Run the repository
-   examples and at least one representative downstream migration against the
+   the Packagist version/source reference. After `3.0.0-beta.1`, immediately
+   remove `release-as` from the configuration through a normal PR before
+   merging another releasable change; otherwise release-please keeps forcing
+   the already published version.
+4. Test the Packagist artifact in a clean project with
+   `composer require --dev "studio-design/gesso:^3.0@beta" phpunit/phpunit`.
+   Run the repository examples and at least one downstream suite against the
    published package rather than a path repository. Ship any corrections as
    normal PRs and publish another beta through release-please when necessary.
-7. To promote the accepted beta, open a normal PR that changes `prerelease` to
-   `false`, temporarily sets `release-as: 2.0.0`, restores the stable-only
-   `changelog-sections` that keep the promotion commit visible, and updates the
-   corresponding release-configuration invariant tests. Keep the beta
-   installation commands and pre-release evaluation warnings until v2.0.0 is
-   published: every push to `main` deploys GitHub Pages, while the stable tag is
-   created only when the bot-managed release PR is merged. Keep
-   `versioning: prerelease` so release-please promotes the beta line instead of
-   calculating an unrelated bump. After merge, verify that the refreshed release
-   PR proposes stable `2.0.0` and repeat the tag, GitHub Release, manifest,
-   Packagist, clean-install, and example checks before announcing general
-   availability. Once the stable package is installable, open a normal follow-up
-   PR that removes `release-as` and the stable-only `changelog-sections`, replaces
-   the beta installation commands with `studio-design/gesso:^2.0`, removes the
-   pre-release warnings, and updates both release and documentation invariant
-   tests.
-   If downstream evaluation finds another release-blocking defect before the
-   stable release PR is merged, do not merge that release PR. First merge a
-   normal PR that restores `prerelease: true`, removes `release-as` and the
-   stable-only `changelog-sections`, and updates the release-configuration
-   invariant test. The beta installation commands, warnings, and documentation
-   invariant remain unchanged throughout this recovery. Wait for release-please
-   to refresh the proposal to the next beta. For that beta, perform the tag,
-   GitHub Release, manifest, and Packagist checks from step 5, then the
-   published-artifact and downstream validation from step 6. The beta.1-specific
-   `release-as` cleanup in step 5 does not apply because this recovery PR already
-   removed it.
-8. Only after the stable package is installable and verified, mark
-   `studio-design/openapi-contract-testing` abandoned on Packagist with
-   `studio-design/gesso` as its suggested replacement. Do not delete its tags
-   or releases; v1 remains supported through its documented lifecycle.
+5. To promote the accepted beta, open a normal PR that changes `prerelease` to
+   `false`, temporarily sets `release-as: 3.0.0`, and adds the stable-only
+   `changelog-sections` that keep the promotion commit visible. Keep
+   `versioning: prerelease` so release-please promotes the beta line instead
+   of calculating an unrelated bump. Keep the `@beta` installation commands
+   and the README beta notice: the stable tag exists only once the release PR
+   is merged. After merge, verify that the refreshed release PR proposes
+   stable `3.0.0`, merge it, and repeat the checks from steps 3 and 4.
+6. Once the stable package is installable, open a follow-up PR that removes
+   `release-as` and the stable-only `changelog-sections`, drops `@beta` from
+   the installation commands, and removes the README beta notice. Move the
+   documentation site to `main` in the same step: `docs.yml` deploys from
+   `2.x` until 3.0.0, so edit it on both branches until only `main` deploys,
+   and allow `main` in the `github-pages` environment's deployment branches.
 
-Do not merge a stable `2.0.0` release PR while `prerelease` is `true`, while the
-new Packagist package is unregistered, or before the published beta artifact
-has passed the clean-consumer checks.
+If downstream evaluation finds a release-blocking defect after step 5 and
+before the stable release PR is merged, do not merge that release PR. First
+merge a normal PR that restores `prerelease: true` and removes `release-as`
+and the stable-only `changelog-sections`. Wait for release-please to refresh
+the proposal to the next beta, then repeat steps 3 and 4.
+
+Do not merge a stable `3.0.0` release PR while `prerelease` is `true`, or
+before a published beta has passed the clean-consumer checks.
 
 ### Maintenance branches and backports
 
-After v1.10.0 is released, `main` is the v2 development branch and `1.x` is the
-v1 maintenance branch. The support windows and accepted change classes are
-defined in [`docs/versioning.md`](docs/versioning.md#v1-maintenance-lifecycle).
+`main` is the v3 development branch, `2.x` the v2 maintenance branch, and `1.x`
+the v1 maintenance branch. The support windows and accepted change classes are
+defined in `docs/versioning.md`, under the
+[v2](docs/versioning.md#v2-maintenance-lifecycle) and
+[v1](docs/versioning.md#v1-maintenance-lifecycle) maintenance lifecycles.
 
-For a fix shared by both majors:
+For a fix shared by more than one major:
 
-1. Merge and verify the fix on `main`.
-2. Create a branch from the latest `1.x` and cherry-pick the squashed `main`
-   commit. Resolve only differences required by the v1 codebase.
-3. Open a separate PR targeting `1.x`, using the same Conventional Commit title
+1. Merge and verify the fix on `main`. If the code no longer exists on `main`,
+   start from `2.x` (a v2-only fix).
+2. Create a branch from the latest `2.x` and cherry-pick the squashed `main`
+   commit. Resolve only differences required by the v2 codebase.
+3. Open a separate PR targeting `2.x`, using the same Conventional Commit title
    when it still describes the backport.
-4. Run the normal checks. Do not merge `main` into `1.x` or group unrelated
-   backports in one PR.
+4. If v1 is affected and still inside its window, create a branch from the
+   latest `1.x`, cherry-pick the squashed `2.x` commit, and open a PR
+   targeting `1.x`.
+5. Run the normal checks on each PR. Do not merge `main` into `2.x` or `2.x`
+   into `1.x`, and do not group unrelated backports in one PR.
 
-A v1-only fix may start directly from `1.x`. release-please runs independently
-for pushes to `main` and `1.x`; merge the release PR for the branch whose line
-you intend to publish. Tags and `CHANGELOG.md` remain release-please-owned on
-both branches.
+release-please runs independently for pushes to `main`, `2.x`, and `1.x`; merge
+the release PR for the branch whose line you intend to publish. Tags and
+`CHANGELOG.md` remain release-please-owned on every branch.
 
 ### Discipline
 
