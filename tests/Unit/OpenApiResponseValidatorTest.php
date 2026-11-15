@@ -1444,6 +1444,21 @@ class OpenApiResponseValidatorTest extends TestCase
     }
 
     #[Test]
+    public function max_errors_marks_a_result_it_cut_as_truncated(): void
+    {
+        $items = array_map(
+            static fn(int $i) => ['id' => 'str-' . $i, 'name' => $i],
+            range(1, 50),
+        );
+        $validate = static fn(int $maxErrors): OpenApiValidationResult => (new OpenApiResponseValidator(strictRequiredTracker: new StrictRequiredTracker(), maxErrors: $maxErrors))
+            ->validate('petstore-3.0', 'GET', '/v1/pets', 200, ['data' => $items]);
+
+        $this->assertTrue($validate(5)->isTruncated());
+        $this->assertFalse($validate(51)->isTruncated());
+        $this->assertFalse($validate(0)->isTruncated());
+    }
+
+    #[Test]
     public function max_errors_one_limits_to_single_error(): void
     {
         $validator = new OpenApiResponseValidator(strictRequiredTracker: new StrictRequiredTracker(), maxErrors: 1);

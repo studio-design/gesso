@@ -64,6 +64,7 @@ $result->isSkipped();    // bool (true when the status code matched skip_respons
 $result->errors();       // string[]
 $result->errorMessage(); // string (joined errors)
 $result->issues();       // list<ValidationIssue> (structured view of errors())
+$result->isTruncated();  // bool (true when maxErrors may have cut schema violations)
 $result->matchedPath();  // ?string (e.g., '/v1/pets/{petId}')
 $result->skipReason();   // ?string (non-null when skipped)
 ```

@@ -47,6 +47,7 @@ final readonly class OpenApiValidationResult
         private ?string $matchedStatusCode = null,
         private ?string $matchedContentType = null,
         private array $issues = [],
+        private bool $truncated = false,
     ) {}
 
     public static function success(
@@ -85,6 +86,9 @@ final readonly class OpenApiValidationResult
      * count, and `issues[$i]->message === errors[$i]` — so the two views can
      * never drift apart. Callers either tag every error or none.
      *
+     * `$truncated` says `max_errors` may have kept the validator from
+     * collecting every schema violation; see {@see self::isTruncated()}.
+     *
      * @param non-empty-array<string> $errors
      * @param list<ValidationIssue> $issues
      *
@@ -96,6 +100,7 @@ final readonly class OpenApiValidationResult
         ?string $matchedStatusCode = null,
         ?string $matchedContentType = null,
         array $issues = [],
+        bool $truncated = false,
     ): self {
         // @phpstan-ignore-next-line identical.alwaysFalse — PHPDoc bound is not enforced at runtime; keep guard for consumers without static analysis
         if ($errors === []) {
@@ -128,6 +133,7 @@ final readonly class OpenApiValidationResult
             $matchedStatusCode,
             $matchedContentType,
             $issues,
+            $truncated,
         );
     }
 
@@ -228,6 +234,22 @@ final readonly class OpenApiValidationResult
         }
 
         return $derived;
+    }
+
+    /**
+     * Whether more schema violations may exist than {@see self::issues()}
+     * holds, because the validator stopped collecting at its `maxErrors`
+     * (`validation.max_errors`). The cap applies to each object, array, and
+     * `required` list on its own, so a result can hold more issues than
+     * `maxErrors` and still be truncated. True whenever one of them reached
+     * the cap, including one with exactly `maxErrors` violations and nothing
+     * more, and on every failure at `maxErrors: 1`, which stops at the first
+     * failing keyword. Always false with `maxErrors: 0` and on outcomes other
+     * than Failure.
+     */
+    public function isTruncated(): bool
+    {
+        return $this->truncated;
     }
 
     public function matchedPath(): ?string

@@ -31,6 +31,7 @@ use function sprintf;
  *  - `skip_reason`: string reason for skipped outcomes, else null
  *  - `reproduce_command`: caller-supplied reproduction command, else null
  *  - `issues`: one entry per {@see ValidationIssue}, snake_case fields
+ *  - `truncated`: {@see OpenApiValidationResult::isTruncated()}
  *
  * The document is deliberately timestamp-free so per-assertion output stays
  * deterministic for snapshot tests and CI diffing. `reproduce_command` is
@@ -89,6 +90,7 @@ final class JsonValidationResultRenderer
             'skip_reason' => $result->skipReason(),
             'reproduce_command' => $reproduceCommand,
             'issues' => $issues,
+            'truncated' => $result->isTruncated(),
         ];
 
         $encoded = json_encode(

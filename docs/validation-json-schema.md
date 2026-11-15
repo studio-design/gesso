@@ -76,6 +76,7 @@ blocks sharing the same `reproduce_command`.
 | `skip_reason` | `string \| null` | Human-readable reason for `"skipped"` outcomes; `null` otherwise. |
 | `reproduce_command` | `string \| null` | The command passed as the second `render()` argument, verbatim; `null` when omitted. The renderer performs no redaction of its own — pass a pre-redacted command (the built-in curl formatter redacts sensitive headers, cookies, and query values by default). |
 | `issues` | `array` | One entry per structured issue, in the same order as `errors()`. Empty for `"success"` and `"skipped"` outcomes. See [Issue](#issue). |
+| `truncated` | `boolean` | `true` when the validator may have stopped collecting schema violations at its `max_errors` cap, so more may exist than `issues` lists — the result's `isTruncated()`. The cap applies to each object, array, and `required` list on its own, so `issues` can hold more entries than the cap and still be truncated. It is `true` whenever one of them reached the cap, including when exactly `max_errors` violations were all there was. Always `false` with `max_errors` `0`. |
 
 ## Matched fields
 

@@ -19,9 +19,13 @@ use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Tests\Helpers\GroupsSchemaViolations;
 use Studio\Gesso\Validation\Support\ObjectConverter;
 use Studio\Gesso\Validation\Support\SchemaValidatorRunner;
+use Studio\Gesso\Validation\Support\SchemaViolation;
 use WeakReference;
 
+use function array_fill;
+use function array_filter;
 use function array_map;
+use function array_pop;
 use function array_values;
 use function count;
 use function gc_collect_cycles;
@@ -64,6 +68,22 @@ class SchemaValidatorRunnerTest extends TestCase
     {
         yield 'clearCache()' => [OpenApiSpecLoader::clearCache(...)];
         yield 'reset()' => [OpenApiSpecLoader::reset(...)];
+    }
+
+    /**
+     * @return iterable<string, array{int, int, bool}>
+     */
+    public static function provideA_run_that_max_errors_cut_marks_its_last_violationCases(): iterable
+    {
+        // Each array caps on its own (5 + 5 + required + minProperties), so a
+        // run collects more than max_errors and still cuts some.
+        yield 'stop at the first error' => [1, 1, true];
+        yield 'capped per array' => [5, 12, true];
+        yield 'one below the largest array' => [14, 30, true];
+        // Opis does not say whether a full array had more, so a full one reads as cut.
+        yield 'exactly the largest array' => [15, 32, true];
+        yield 'above every array' => [16, 32, false];
+        yield 'unlimited' => [0, 32, false];
     }
 
     #[Test]
@@ -311,6 +331,80 @@ class SchemaValidatorRunnerTest extends TestCase
         $this->assertSame([], self::sharedSchemas());
         $this->assertSame([], self::locations());
         $this->assertSame(0, (new ReflectionProperty(SchemaValidatorRunner::class, 'sharedBytes'))->getValue());
+    }
+
+    #[Test]
+    #[DataProvider('provideA_run_that_max_errors_cut_marks_its_last_violationCases')]
+    public function a_run_that_max_errors_cut_marks_its_last_violation(int $maxErrors, int $collected, bool $truncated): void
+    {
+        $schema = ObjectConverter::convert([
+            'type' => 'object',
+            'properties' => [
+                'a' => ['type' => 'array', 'items' => ['type' => 'integer']],
+                'b' => ['type' => 'array', 'items' => ['type' => 'integer']],
+            ],
+            'required' => ['x'],
+            'minProperties' => 9,
+        ]);
+        $data = ObjectConverter::convert(['a' => array_fill(0, 15, 's'), 'b' => array_fill(0, 15, 's')]);
+
+        $violations = (new SchemaValidatorRunner($maxErrors))->validateStructured($schema, $data);
+
+        $this->assertCount($collected, $violations);
+        $this->assertSame($truncated, array_pop($violations)?->truncated);
+        $this->assertSame([], array_filter(array_map(static fn(SchemaViolation $violation): bool => $violation->truncated, $violations)));
+    }
+
+    #[Test]
+    public function stopping_at_the_first_failing_keyword_may_hide_more(): void
+    {
+        $violations = (new SchemaValidatorRunner(1))->validateStructured(
+            ObjectConverter::convert(['type' => 'integer', 'minimum' => 5, 'multipleOf' => 2]),
+            3,
+        );
+
+        $this->assertCount(1, $violations);
+        $this->assertTrue($violations[0]->truncated);
+    }
+
+    #[Test]
+    public function keywords_failing_together_below_the_cap_are_not_a_cut(): void
+    {
+        // Two keywords fail at the root; opis groups them without a cap.
+        $violations = (new SchemaValidatorRunner(2))->validateStructured(
+            ObjectConverter::convert(['type' => 'integer', 'minimum' => 5, 'multipleOf' => 2]),
+            3,
+        );
+
+        $this->assertCount(2, $violations);
+        $this->assertFalse($violations[1]->truncated);
+    }
+
+    #[Test]
+    public function a_required_list_that_reached_max_errors_may_hide_more(): void
+    {
+        $schema = ObjectConverter::convert(['type' => 'object', 'required' => ['a', 'b', 'c']]);
+        $data = ObjectConverter::convert(['z' => 1]);
+
+        $this->assertTrue((new SchemaValidatorRunner(2))->validateStructured($schema, $data)[0]->truncated);
+        $this->assertFalse((new SchemaValidatorRunner(4))->validateStructured($schema, $data)[0]->truncated);
+    }
+
+    #[Test]
+    public function a_redacted_named_value_stays_truncated(): void
+    {
+        $errors = (new SchemaValidatorRunner(1))->validateNamed(
+            'token',
+            'header.token',
+            ['type' => 'array', 'items' => ['type' => 'integer']],
+            ['a', 'b'],
+            OpenApiVersion::V3_0,
+            SchemaContext::Request,
+        );
+
+        $this->assertCount(1, $errors);
+        $this->assertSame('<redacted>', $errors[0]->violation?->actual);
+        $this->assertTrue($errors[0]->violation->truncated);
     }
 
     #[Test]

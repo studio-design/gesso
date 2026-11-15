@@ -38,8 +38,12 @@ use function preg_replace;
  *     Reproduce: {curl}
  *     Explain: vendor/bin/gesso explain GSO212
  *
- * Text and agent mode print at most `validation.max_errors` issues per result
- * and end the list with `... N more` instead of dropping the rest silently.
+ * Agent mode prints at most `validation.max_errors` issues per result and
+ * ends the list with `... N more` instead of dropping the rest silently.
+ * When the validator may have stopped collecting at its cap
+ * ({@see OpenApiValidationResult::isTruncated()}), both modes end with
+ * `... possibly more (raise validation.max_errors to see all)`, or
+ * `... N more, possibly others (...)` in agent mode when it also hid N lines.
  *
  * Json mode keeps the one-line header for humans and replaces the rest with
  * the versioned document (the curl command moves into `reproduce_command`,
@@ -153,7 +157,9 @@ final class FailureOutput
         }
 
         $omitted = count($issues) - count($shown);
-        if ($omitted > 0) {
+        if ($result->isTruncated()) {
+            $lines[] = ($omitted > 0 ? "... {$omitted} more, possibly others" : '... possibly more') . ' (raise validation.max_errors to see all)';
+        } elseif ($omitted > 0) {
             $lines[] = "... {$omitted} more";
         }
 

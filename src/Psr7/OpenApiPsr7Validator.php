@@ -265,6 +265,7 @@ final class OpenApiPsr7Validator
             $result->matchedStatusCode(),
             $result->matchedContentType(),
             array_merge($adapterIssues, $result->issues()),
+            $result->isTruncated(),
         );
     }
 

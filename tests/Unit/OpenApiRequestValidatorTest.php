@@ -1132,6 +1132,7 @@ class OpenApiRequestValidatorTest extends TestCase
 
         $this->assertFalse($result->isValid());
         $this->assertCount(1, $result->errors());
+        $this->assertTrue($result->isTruncated());
     }
 
     // ========================================

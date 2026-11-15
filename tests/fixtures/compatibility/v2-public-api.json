@@ -8933,10 +8933,28 @@
                         "by_reference": false,
                         "default": [],
                         "attributes": []
+                    },
+                    {
+                        "name": "truncated",
+                        "type": "bool",
+                        "optional": true,
+                        "variadic": false,
+                        "by_reference": false,
+                        "default": false,
+                        "attributes": []
                     }
                 ]
             },
             "isSkipped": {
+                "static": false,
+                "final": false,
+                "abstract": false,
+                "returns_reference": false,
+                "return_type": "bool",
+                "attributes": [],
+                "parameters": []
+            },
+            "isTruncated": {
                 "static": false,
                 "final": false,
                 "abstract": false,

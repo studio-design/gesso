@@ -21,6 +21,9 @@ namespace Studio\Gesso\Validation\Support;
  * and `expected` locate the failing keyword in the validated schema and give
  * short JSON excerpts of both values; see
  * {@see SchemaValidatorRunner} (`context()`) for when each is null.
+ * `truncated` marks the last violation of a schema run that
+ * `validation.max_errors` may have stopped before opis collected every
+ * violation.
  *
  * @internal Not part of the package's public API. Do not use from user code.
  */
@@ -33,11 +36,17 @@ final readonly class SchemaViolation
         public ?string $schemaPointer = null,
         public ?string $actual = null,
         public ?string $expected = null,
+        public bool $truncated = false,
     ) {}
 
     public function withActual(?string $actual): self
     {
-        return new self($this->instancePath, $this->keyword, $this->message, $this->schemaPointer, $actual, $this->expected);
+        return new self($this->instancePath, $this->keyword, $this->message, $this->schemaPointer, $actual, $this->expected, $this->truncated);
+    }
+
+    public function asTruncated(): self
+    {
+        return new self($this->instancePath, $this->keyword, $this->message, $this->schemaPointer, $this->actual, $this->expected, true);
     }
 
     /**

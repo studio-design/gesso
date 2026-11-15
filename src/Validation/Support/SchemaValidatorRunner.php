@@ -31,6 +31,7 @@ use function array_filter;
 use function array_key_exists;
 use function array_key_first;
 use function array_keys;
+use function array_pop;
 use function array_values;
 use function count;
 use function get_object_vars;
@@ -262,6 +263,10 @@ final class SchemaValidatorRunner
             }
         }
 
+        if ($violations !== [] && $this->maxErrors !== PHP_INT_MAX && ($this->maxErrors === 1 || self::reachedCap($error, $this->maxErrors))) {
+            $violations[] = array_pop($violations)->asTruncated();
+        }
+
         return $violations;
     }
 
@@ -307,6 +312,34 @@ final class SchemaValidatorRunner
         }
 
         return $errors;
+    }
+
+    /**
+     * Whether `max_errors` may have kept opis from collecting violations
+     * (issue #693). Opis records nothing about what it skips, but it applies
+     * the cap to each `properties` / `items` / ... keyword and each
+     * `required` list on its own, so one that holds the cap may have had
+     * more. At `max_errors` 1 opis also stops at the first failing keyword,
+     * so every failure may hide more. A keyword that failed exactly
+     * `max_errors` times reads as cut too: telling the two apart takes a
+     * second validation.
+     */
+    private static function reachedCap(ValidationError $error, int $cap): bool
+    {
+        $subErrors = $error->subErrors();
+        $held = $error->keyword() === 'required' ? count((array) ($error->args()['missing'] ?? [])) : count($subErrors);
+        // The unnamed node only groups the keywords that failed at one place; opis does not cap it.
+        if ($error->keyword() !== '' && $held >= $cap) {
+            return true;
+        }
+
+        foreach ($subErrors as $subError) {
+            if (self::reachedCap($subError, $cap)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

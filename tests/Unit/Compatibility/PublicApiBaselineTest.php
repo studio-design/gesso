@@ -2057,6 +2057,12 @@ final class PublicApiBaselineTest extends TestCase
             $actual[GessoSetList::class]['constants'],
         );
 
+        // #693: whether max_errors cut violations (additive: one accessor
+        // and one optional trailing failure() parameter).
+        $expected[OpenApiValidationResult::class]['methods']['isTruncated'] = $actual[OpenApiValidationResult::class]['methods']['isTruncated'];
+        $expected[OpenApiValidationResult::class]['methods']['failure']['parameters'][] = $optional('truncated', 'bool', false);
+        ksort($expected[OpenApiValidationResult::class]['methods']);
+
         ksort($expected);
 
         foreach ([
