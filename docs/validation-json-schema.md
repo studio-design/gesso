@@ -70,7 +70,7 @@ blocks sharing the same `reproduce_command`.
 | Field | Type | Description |
 |-------|------|-------------|
 | `schema_version` | `integer` | Bumped on incompatible contract changes. The current version is `1`. Consumers SHOULD reject unknown values. |
-| `tool` | `object` | `{ "name": "studio-design/gesso", "version": "<composer version or 'unknown'>" }`. `"unknown"` is emitted when Composer's `InstalledVersions` metadata is unavailable; the field is always a string. |
+| `tool` | `object` | `{ "name": "studio-design/gesso", "version": "<installed version or 'unknown'>" }`. The version is the release tag without its leading `v` (`3.0.0`, `3.0.0-beta.1`), or the branch name for a branch install (`dev-main`); see [Installed version](cli.md#installed-version). `"unknown"` is emitted when Composer's `InstalledVersions` metadata is unavailable; the field is always a string. |
 | `outcome` | `string` | One of `"success"`, `"failure"`, `"skipped"` — the result's `outcome()` enum value. |
 | `matched` | `object` | Operation context the validator resolved. See [matched fields](#matched-fields). |
 | `skip_reason` | `string \| null` | Human-readable reason for `"skipped"` outcomes; `null` otherwise. |

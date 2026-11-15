@@ -196,7 +196,7 @@ The command automatically uses an installed Guzzle (`guzzlehttp/guzzle` plus `gu
 
 ```bash
 $ vendor/bin/gesso --version
-gesso 2.4.0
+gesso 3.0.0
 ```
 
 It writes to STDOUT, writes nothing to STDERR, and exits `0`. When Composer's `InstalledVersions` metadata cannot be read it prints `gesso unknown` — the same sentinel the JSON documents emit — and still exits `0`, so a CI script or an agent probing for the version always gets an answer rather than a usage error. `gesso --help` lists it under `Global options:`.
@@ -229,7 +229,7 @@ Add `--output-file=<path>` to write the report, in either format, to a file inst
 }
 ```
 
-`tool` is `{ "name": "studio-design/gesso", "version": "<composer version or 'unknown'>" }`, the same block the [coverage JSON](coverage-json-schema.md) and [validation JSON](validation-json-schema.md) documents carry. `"unknown"` is emitted when Composer's `InstalledVersions` metadata is unavailable; the field is always a string.
+`tool` is `{ "name": "studio-design/gesso", "version": "<installed version or 'unknown'>" }`, the same block the [coverage JSON](coverage-json-schema.md) and [validation JSON](validation-json-schema.md) documents carry, in the format described under [Installed version](cli.md#installed-version). `"unknown"` is emitted when Composer's `InstalledVersions` metadata is unavailable; the field is always a string.
 
 Additive changes — a new field such as `tool`, or a new `category` slug — keep `schema_version` at `2`. Removals, renames, and type changes bump it. Version `2` (3.0) renamed the v2 `schemaVersion` key to `schema_version`.
 
