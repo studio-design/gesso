@@ -281,6 +281,7 @@ final class OpenApiRequestValidator
         ];
 
         $issues = [];
+        $truncated = false;
         foreach ($issueGroups as [$category, $namedErrors, $issueContentType, $violations]) {
             // The violation list mirrors the messages index-for-index only on
             // the schema-error path; non-schema body errors ship an empty
@@ -288,6 +289,7 @@ final class OpenApiRequestValidator
             $aligned = $violations !== [] && count($violations) === count($namedErrors);
             foreach ($namedErrors as $index => $namedError) {
                 $violation = $aligned ? $violations[$index] : $namedError->violation;
+                $truncated = $truncated || ($violation->truncated ?? false);
                 $issues[] = new ValidationIssue(
                     $category,
                     $namedError->message,
@@ -392,6 +394,7 @@ final class OpenApiRequestValidator
             $matchedPath,
             matchedContentType: $bodyResult->matchedContentType,
             issues: $issues,
+            truncated: $truncated,
         );
     }
 

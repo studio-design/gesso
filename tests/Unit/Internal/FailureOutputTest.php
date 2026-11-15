@@ -180,6 +180,44 @@ class FailureOutputTest extends TestCase
     }
 
     #[Test]
+    public function text_mode_marks_a_result_the_validator_may_have_cut(): void
+    {
+        $message = FailureOutput::compose('Header', self::manyIssues(2, truncated: true), static fn(): string => 'curl');
+
+        $this->assertSame(
+            "Header:\n[GSO112] [/a0] bad\n[GSO112] [/a1] bad\n... possibly more (raise validation.max_errors to see all)\nReproduce: curl",
+            $message,
+        );
+    }
+
+    #[Test]
+    public function agent_mode_adds_the_possible_cut_to_the_hidden_lines(): void
+    {
+        ValidationOutput::use(ValidationOutputFormat::Agent);
+        ValidationPolicyDefaults::configure(maxErrors: 1);
+
+        $lines = explode("\n", FailureOutput::compose('Header', self::manyIssues(3, truncated: true), static fn(): string => 'curl'));
+
+        $this->assertSame('... 2 more, possibly others (raise validation.max_errors to see all)', $lines[2]);
+    }
+
+    #[Test]
+    public function json_mode_carries_the_truncated_flag(): void
+    {
+        ValidationOutput::use(ValidationOutputFormat::Json);
+
+        $decode = static function (OpenApiValidationResult $result): mixed {
+            /** @var array{truncated: bool} $document */
+            $document = json_decode(explode("\n", FailureOutput::compose('Header', $result, static fn(): string => 'curl'), 2)[1], true, flags: JSON_THROW_ON_ERROR);
+
+            return $document['truncated'];
+        };
+
+        $this->assertTrue($decode(self::manyIssues(2, truncated: true)));
+        $this->assertFalse($decode(self::manyIssues(2)));
+    }
+
+    #[Test]
     public function max_errors_zero_renders_every_issue(): void
     {
         ValidationPolicyDefaults::configure(maxErrors: 0);
@@ -189,7 +227,7 @@ class FailureOutputTest extends TestCase
         $this->assertCount(27, explode("\n", $message));
     }
 
-    private static function manyIssues(int $count): OpenApiValidationResult
+    private static function manyIssues(int $count, bool $truncated = false): OpenApiValidationResult
     {
         $errors = [];
         $issues = [];
@@ -198,7 +236,7 @@ class FailureOutputTest extends TestCase
             $issues[] = new ValidationIssue('request.body', "[/a{$i}] bad", instancePath: "/a{$i}", keyword: 'type');
         }
 
-        return OpenApiValidationResult::failure($errors, '/v1/pets', issues: $issues);
+        return OpenApiValidationResult::failure($errors, '/v1/pets', issues: $issues, truncated: $truncated);
     }
 
     private static function failureResult(): OpenApiValidationResult

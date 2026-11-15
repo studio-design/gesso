@@ -339,12 +339,14 @@ final class OpenApiResponseValidator
         // change diagnostic flow without breaking behaviour. Category tags
         // mirror the producing sub-validator (#282, stage 1).
         $issues = [];
+        $truncated = false;
         // The violation list mirrors the body errors index-for-index only on
         // the schema-error path; non-schema body errors (empty body, decode
         // failures) ship an empty list, so gate on the counts before pairing.
         $aligned = $bodyResult->violations !== [] && count($bodyResult->violations) === count($bodyResult->errors);
         foreach (array_values($bodyResult->errors) as $index => $message) {
             $violation = $aligned ? $bodyResult->violations[$index] : null;
+            $truncated = $truncated || ($violation->truncated ?? false);
             $issues[] = new ValidationIssue(
                 'response.body',
                 $message,
@@ -360,6 +362,7 @@ final class OpenApiResponseValidator
             );
         }
         foreach ($headerErrors as $headerError) {
+            $truncated = $truncated || ($headerError->violation->truncated ?? false);
             // No contentType: header validation is independent of the response
             // media type, and the documented contract reserves that context
             // field for body issues. The header name rides along as
@@ -445,6 +448,7 @@ final class OpenApiResponseValidator
             $statusCodeStr,
             $bodyResult->matchedContentType,
             issues: $issues,
+            truncated: $truncated,
         );
     }
 

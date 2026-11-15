@@ -445,9 +445,15 @@ exchange. In the JSON failure output mode the same command is carried in the
 document's `reproduce_command` field instead of a trailing line — see
 [validation-json-schema.md](validation-json-schema.md).
 
-The validator stops collecting inside one schema at `validation.max_errors`;
-that cut has no count, so raise `validation.max_errors` (or set it to `0`) to
-see everything.
+The validator applies `validation.max_errors` to each object, array, and
+`required` list on its own, so a failure can list more issues than the cap and
+still have cut some. When one of them reached the cap, the list ends with
+`... possibly more (raise validation.max_errors to see all)`, the JSON
+document has `"truncated": true`, and `OpenApiValidationResult::isTruncated()`
+returns `true`. The validator does not record what it skipped, so the marker
+also appears when exactly `validation.max_errors` violations were all there
+was, and on every failure at `validation.max_errors` 1. Raise
+`validation.max_errors` (or set it to `0`) to see everything.
 
 ### Agent failure output
 
@@ -486,7 +492,9 @@ Explain: vendor/bin/gesso explain GSO212
 The PSR-7 exchange assertion prefixes each line with `[request]` or
 `[response]`, as in text mode. When an assertion reports more issues than
 `validation.max_errors`, the list stops at that many and ends with
-`... N more`. The
+`... N more`, or with
+`... N more, possibly others (raise validation.max_errors to see all)` when
+the validator may also have stopped collecting at the cap. The
 agent line layout may gain fields in minor releases; parse the `json` format
 when you need a stable contract.
 
