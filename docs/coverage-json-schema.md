@@ -14,7 +14,7 @@ A sample document is committed at [`samples/coverage.json`](samples/coverage.jso
 |-------|------|-------------|
 | `schema_version` | `integer` | Bumped on incompatible contract changes. The current version is `3`. Consumers SHOULD reject unknown values. |
 | `generated_at` | `string` | ISO-8601 timestamp (`DateTimeImmutable::ATOM`) for when the document was rendered. |
-| `tool` | `object` | `{ "name": "studio-design/gesso", "version": "<composer version or 'unknown'>" }`. Useful for downstream consumers diagnosing format drift. `"unknown"` is emitted when Composer's `InstalledVersions` metadata is unavailable (e.g. running from a vendored checkout without `composer install`, or `replace`d in a parent project); the field is always a string so downstream JSON schema validators do not need a nullable type. |
+| `tool` | `object` | `{ "name": "studio-design/gesso", "version": "<installed version or 'unknown'>" }`. The version is the release tag without its leading `v` (`3.0.0`, `3.0.0-beta.1`), or the branch name for a branch install (`dev-main`); see [Installed version](cli.md#installed-version). Useful for downstream consumers diagnosing format drift. `"unknown"` is emitted when Composer's `InstalledVersions` metadata is unavailable (e.g. running from a vendored checkout without `composer install`, or `replace`d in a parent project); the field is always a string so downstream JSON schema validators do not need a nullable type. |
 | `aggregate` | `object` | Rollup across every spec in the document. Lets consumers read one "total" without re-summing. See [aggregate fields](#aggregate-fields). |
 | `specs` | `object` | Keyed by spec name. Each value is `{ "aggregates": …, "endpoints": [...], "sdk_exercise": … }`. |
 

@@ -7,6 +7,8 @@ namespace Studio\Gesso\Internal;
 use Composer\InstalledVersions;
 use Throwable;
 
+use function preg_replace;
+
 /**
  * Single source for the identity Gesso reports about itself: the Composer
  * package name and the installed version.
@@ -29,6 +31,10 @@ final class ToolVersion
     /**
      * Resolve the running tool version, or the string `'unknown'`.
      *
+     * Composer's pretty version is the tag name (`v3.0.0-beta.1`) or the branch
+     * name (`dev-main`); the normalized `getVersion()` form (`3.0.0.0-beta1`)
+     * matches neither the tag nor Packagist (issue #765).
+     *
      * The value is cosmetic — any failure here must never abort the report, so
      * the catch is intentionally broad: `OutOfBoundsException` is the documented
      * Composer 2.x "package not installed" path
@@ -41,11 +47,24 @@ final class ToolVersion
     public static function resolve(): string
     {
         try {
-            $version = InstalledVersions::getVersion(self::PACKAGE);
+            $prettyVersion = InstalledVersions::getPrettyVersion(self::PACKAGE);
         } catch (Throwable) {
             return 'unknown';
         }
 
-        return $version ?? 'unknown';
+        return self::fromPrettyVersion($prettyVersion);
+    }
+
+    /**
+     * Turn a Composer pretty version into the reported form: a tag loses its
+     * leading `v`, and a branch install keeps its name (`dev-main`).
+     */
+    public static function fromPrettyVersion(?string $prettyVersion): string
+    {
+        if ($prettyVersion === null || $prettyVersion === '') {
+            return 'unknown';
+        }
+
+        return preg_replace('/^v(?=\d)/', '', $prettyVersion) ?? $prettyVersion;
     }
 }

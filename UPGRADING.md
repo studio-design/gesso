@@ -134,6 +134,13 @@ To migrate, read `schema_version` instead of `schemaVersion` in scripts and
 CI steps that parse these documents, and accept `2` where they check the
 value, for example `jq -e '.schema_version == 2'`. See [the CLI reference](docs/cli.md#gate-json).
 
+`gesso --version` and the `tool.version` field of every JSON document now
+report the release tag without its leading `v` (`3.0.0`, `3.0.0-beta.1`)
+instead of Composer's normalized version (`3.0.0.0`, `3.0.0.0-beta1`). A branch
+install reports its branch name, such as `dev-main`. Scripts that compare the
+value against the normalized form need the tag form instead. See
+[Installed version](docs/cli.md#installed-version) (#765).
+
 ### Coverage sidecars
 
 Gesso 3.0 merges only sidecars with `envelopeVersion: 10`, the envelope every

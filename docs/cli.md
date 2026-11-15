@@ -17,6 +17,22 @@ subcommands share. Each command's own page has its full option list.
 `gesso --help` lists the commands, and `gesso --version` prints the installed
 version. `--help` on a subcommand prints that command's usage, including its exit codes.
 
+## Installed version
+
+`gesso --version` and the `tool.version` field of every JSON document report
+the same value, taken from Composer's pretty version:
+
+| Installed from | Reported |
+|---|---|
+| a stable tag (`v3.0.0`) | `3.0.0` |
+| a prerelease tag (`v3.0.0-beta.1`) | `3.0.0-beta.1` |
+| a branch (`dev-main`, `3.x-dev`) | the branch name as Composer records it, such as `dev-main` |
+| no Composer record of the package | `unknown` |
+
+A tag is reported without its leading `v`, so the value matches the
+Packagist version. A branch install carries no commit; run
+`composer show studio-design/gesso` for the installed commit.
+
 ## Output: --format and --output-file
 
 Every subcommand takes `--format` to choose how its primary report is rendered.
