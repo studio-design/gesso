@@ -73,21 +73,6 @@ trait ValidatesOpenApiSchema
     // safe in cookie / query / header contexts without escaping concerns.
     private const DUMMY_API_KEY_VALUE = 'test-api-key';
 
-    // Frozen private names (docs/versioning.md): the validator cache moved to
-    // the instance fields below, so these seven are no longer read or written.
-    // Deleted in Gesso 3.0 — see #554. $validatedResponses is still live.
-    private static ?OpenApiResponseValidator $cachedValidator = null;
-    private static ?int $cachedMaxErrors = null;
-    private static ?OpenApiRequestValidator $cachedRequestValidator = null;
-    private static ?int $cachedRequestMaxErrors = null;
-    private static ?SecuritySchemeIntrospector $cachedSecuritySchemeIntrospector = null;
-
-    /** @var null|string[] */
-    private static ?array $cachedSkipResponseCodes = null;
-
-    /** @var null|string[] */
-    private static ?array $cachedSkipRequestValidationResponseCodes = null;
-
     /** @var null|WeakMap<TestResponse, array<string, true>> */
     private static ?WeakMap $validatedResponses = null;
 
@@ -145,19 +130,6 @@ trait ValidatesOpenApiSchema
     // records the result here instead of asserting it.
     /** @var null|array{OpenApiValidationResult, string}|false */
     private null|array|false $invalidExpectation = null;
-
-    /**
-     * No longer needed: validators are cached per test-case instance, so each
-     * test method already builds them from its own config. Kept callable for
-     * suites that copied the call from the Pest example; it now only forgets
-     * which responses were already validated.
-     *
-     * @internal
-     */
-    public static function resetValidatorCache(): void
-    {
-        self::$validatedResponses = null;
-    }
 
     /**
      * Public bridge for the Pest expectation `expect($response)->toMatchOpenApiResponseSchema()`.

@@ -345,6 +345,14 @@ OpenApiCoverageTracker::current()->hasAnyCoverageOn('front');
 $this->findSkipOpenApiAttribute() !== null;
 ```
 
+### Laravel validator cache leftovers
+
+`ValidatesOpenApiSchema::resetValidatorCache()` (`@internal`) and the trait's
+seven private static `$cached*` properties are gone. They have done nothing
+since 2.7.0 moved the validator cache onto the test-case instance (see
+[Laravel validator cache per test case](#laravel-validator-cache-per-test-case-270)).
+Delete any `self::resetValidatorCache()` call from `setUp()` / `tearDown()`.
+
 ## Body-validation reliability (2.7.0)
 
 Adapters now preserve the distinction between top-level JSON `{}` and `[]`.

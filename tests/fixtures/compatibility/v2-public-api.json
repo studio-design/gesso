@@ -6973,62 +6973,6 @@
                 }
             },
             "properties": {
-                "cachedMaxErrors": {
-                    "visibility": "private",
-                    "type": "?int",
-                    "static": true,
-                    "readonly": false,
-                    "default": null,
-                    "attributes": []
-                },
-                "cachedRequestMaxErrors": {
-                    "visibility": "private",
-                    "type": "?int",
-                    "static": true,
-                    "readonly": false,
-                    "default": null,
-                    "attributes": []
-                },
-                "cachedRequestValidator": {
-                    "visibility": "private",
-                    "type": "?Studio\\Gesso\\OpenApiRequestValidator",
-                    "static": true,
-                    "readonly": false,
-                    "default": null,
-                    "attributes": []
-                },
-                "cachedSecuritySchemeIntrospector": {
-                    "visibility": "private",
-                    "type": "?Studio\\Gesso\\Validation\\Request\\SecuritySchemeIntrospector",
-                    "static": true,
-                    "readonly": false,
-                    "default": null,
-                    "attributes": []
-                },
-                "cachedSkipRequestValidationResponseCodes": {
-                    "visibility": "private",
-                    "type": "?array",
-                    "static": true,
-                    "readonly": false,
-                    "default": null,
-                    "attributes": []
-                },
-                "cachedSkipResponseCodes": {
-                    "visibility": "private",
-                    "type": "?array",
-                    "static": true,
-                    "readonly": false,
-                    "default": null,
-                    "attributes": []
-                },
-                "cachedValidator": {
-                    "visibility": "private",
-                    "type": "?Studio\\Gesso\\OpenApiResponseValidator",
-                    "static": true,
-                    "readonly": false,
-                    "default": null,
-                    "attributes": []
-                },
                 "expectInvalidNextRequest": {
                     "visibility": "private",
                     "type": "bool",
