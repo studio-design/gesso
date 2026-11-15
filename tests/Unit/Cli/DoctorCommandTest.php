@@ -229,7 +229,7 @@ class DoctorCommandTest extends TestCase
         $issue = json_decode($json, true, flags: JSON_THROW_ON_ERROR)['issues'][0];
 
         $this->assertSame('GSO302', $issue['code']);
-        $this->assertSame('https://studio-design.github.io/gesso/failure-codes#gso302', $issue['docs_url']);
+        $this->assertSame('https://studio-design.github.io/gesso/3.x/failure-codes#gso302', $issue['docs_url']);
 
         $text = '';
         (new DoctorCommand(stdoutWriter: static function (string $message) use (&$text): void {

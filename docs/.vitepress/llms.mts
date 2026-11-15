@@ -8,19 +8,22 @@ import { cp, readdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { DefaultTheme, SiteConfig } from 'vitepress'
 
-// The published host; the GitHub Pages deploy serves `.md` as text/markdown.
-export const canonicalBase = 'https://studio-design.github.io/gesso'
+// llms.txt is written against the site root. A build published under another
+// base (`DOCS_BASE=/gesso/3.x/`) rewrites it to its own URLs, so each major's
+// llms.txt lists that major's pages. The Pages deploy serves `.md` as text/markdown.
+const sourceBase = 'https://studio-design.github.io/gesso/'
 
 // Sidebar `/setup` → …/gesso/setup.md; `/adr/` → …/gesso/adr/index.md. The
 // home page is a Vue component shell, so its entry stays on the HTML page.
 const markdownUrl = (link: string) =>
-  link === '/' ? `${canonicalBase}/` : `${canonicalBase}${link.replace(/\/$/, '/index')}.md`
+  link === '/' ? sourceBase : `${sourceBase}${link.slice(1).replace(/\/$/, '/index')}.md`
 
 const sidebarLinks = (items: DefaultTheme.SidebarItem[]): string[] =>
   items.flatMap((item) => [...(item.link ? [item.link] : []), ...sidebarLinks(item.items ?? [])])
 
 export async function emitMarkdown(config: SiteConfig<DefaultTheme.Config>): Promise<void> {
   const { srcDir, outDir } = config
+  const siteUrl = new URL(config.site.base, sourceBase).toString()
 
   // Vite already publishes public/; .vitepress/ holds config, theme, and dist itself.
   for (const entry of await readdir(srcDir)) {
@@ -50,12 +53,13 @@ export async function emitMarkdown(config: SiteConfig<DefaultTheme.Config>): Pro
     listed
       .filter((url) => url.endsWith('.md'))
       .map(async (url) => {
-        const source = await readFile(join(srcDir, url.slice(canonicalBase.length + 1)), 'utf8')
+        const source = await readFile(join(srcDir, url.slice(sourceBase.length)), 'utf8')
 
-        return `Source: ${url}\n\n${source.replace(/^---\n[\s\S]*?\n---\n+/, '')}`
+        return `Source: ${url.replace(sourceBase, siteUrl)}\n\n${source.replace(/^---\n[\s\S]*?\n---\n+/, '')}`
       })
   )
 
+  await writeFile(join(outDir, 'llms.txt'), index.replaceAll(sourceBase, siteUrl))
   await writeFile(
     join(outDir, 'llms-full.txt'),
     `# Gesso\n\n> Every page listed in llms.txt, concatenated in the same order. Each page begins with its Source URL.\n\n${sections.join('\n\n---\n\n')}`

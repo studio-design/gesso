@@ -15,7 +15,7 @@
     "issues": [
         {
             "code": "GSO105",
-            "docs_url": "https://studio-design.github.io/gesso/failure-codes#gso105",
+            "docs_url": "https://studio-design.github.io/gesso/3.x/failure-codes#gso105",
             "category": "request.parameter.query",
             "message": "[query.dryRun] The data (string) must match the type: boolean",
             "instance_path": "",
@@ -31,7 +31,7 @@
         },
         {
             "code": "GSO112",
-            "docs_url": "https://studio-design.github.io/gesso/failure-codes#gso112",
+            "docs_url": "https://studio-design.github.io/gesso/3.x/failure-codes#gso112",
             "category": "request.body",
             "message": "[/name] The data (integer) must match the type: string",
             "instance_path": "/name",

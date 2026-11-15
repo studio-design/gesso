@@ -27,7 +27,7 @@ final class ExplainCommandTest extends TestCase
 
         $this->assertStringStartsWith('GSO212: ', $this->stdout);
         $this->assertStringContainsString('`response.body` with keyword `type`', $this->stdout);
-        $this->assertStringContainsString('Docs: https://studio-design.github.io/gesso/failure-codes#gso212', $this->stdout);
+        $this->assertStringContainsString('Docs: https://studio-design.github.io/gesso/3.x/failure-codes#gso212', $this->stdout);
         $this->assertSame('', $this->stderr);
     }
 

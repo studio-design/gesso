@@ -138,7 +138,7 @@
     "support": {
         "issues": "https://github.com/studio-design/gesso/issues",
         "source": "https://github.com/studio-design/gesso",
-        "docs": "https://studio-design.github.io/gesso/"
+        "docs": "https://studio-design.github.io/gesso/3.x/"
     },
     "archive": {
         "exclude": [

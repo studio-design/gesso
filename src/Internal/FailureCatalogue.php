@@ -31,7 +31,8 @@ use function strtoupper;
  */
 final class FailureCatalogue
 {
-    public const DOCS_URL = 'https://studio-design.github.io/gesso/failure-codes';
+    /** Each major is published under its own path, so the URL a 3.x release prints stays valid once the root serves a later major. */
+    public const DOCS_URL = 'https://studio-design.github.io/gesso/3.x/failure-codes';
 
     /**
      * Range headings, in the order the generated page lists them.

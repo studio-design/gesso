@@ -360,7 +360,7 @@ class CoverageGateCommandTest extends TestCase
         $this->assertStringContainsString('### Gesso spec patch coverage', $this->stdout);
         $this->assertStringContainsString('**1 changed response is not covered by any test.**', $this->stdout);
         $this->assertStringContainsString('| Operation | Change | Response | Coverage |', $this->stdout);
-        $this->assertStringContainsString('| `DELETE /pets/{id}` | added | `204 (no content)` | UNCOVERED ([GSO401](https://studio-design.github.io/gesso/failure-codes#gso401)) |', $this->stdout);
+        $this->assertStringContainsString('| `DELETE /pets/{id}` | added | `204 (no content)` | UNCOVERED ([GSO401](https://studio-design.github.io/gesso/3.x/failure-codes#gso401)) |', $this->stdout);
         $this->assertStringContainsString('| `GET /legacy` | removed | — | — |', $this->stdout);
     }
 

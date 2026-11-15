@@ -93,7 +93,7 @@ sidecars, or when the sidecars hold no observations.
             "endpoint": "DELETE /pets/{id}",
             "change": "added",
             "responses": [
-                { "status": "204", "content_type": "*", "change": "added", "state": "uncovered", "covered": false, "code": "GSO401", "docs_url": "https://studio-design.github.io/gesso/failure-codes#gso401" }
+                { "status": "204", "content_type": "*", "change": "added", "state": "uncovered", "covered": false, "code": "GSO401", "docs_url": "https://studio-design.github.io/gesso/3.x/failure-codes#gso401" }
             ]
         }
     ]
@@ -122,7 +122,7 @@ document has a `codes` list of the same entries instead.
     "causes": ["A value is `null` but the schema is not nullable."],
     "fix": ["Implementation wrong: cast the value."],
     "do_not": "Do not add `#[SkipOpenApi]`, ...",
-    "docs_url": "https://studio-design.github.io/gesso/failure-codes#gso212"
+    "docs_url": "https://studio-design.github.io/gesso/3.x/failure-codes#gso212"
 }
 ```
 
