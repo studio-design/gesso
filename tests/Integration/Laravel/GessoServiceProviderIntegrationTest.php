@@ -12,9 +12,12 @@ use Illuminate\Support\ServiceProvider;
 use LogicException;
 use Orchestra\Testbench\TestCase;
 use PHPUnit\Framework\Attributes\Test;
+use Studio\Gesso\Config\ConfigurationBridge;
 use Studio\Gesso\Internal\Deprecations;
 use Studio\Gesso\Laravel\GessoServiceProvider;
+use Studio\Gesso\Laravel\LaravelConfig;
 
+use function array_keys;
 use function config;
 use function config_path;
 use function dirname;
@@ -98,6 +101,48 @@ final class GessoServiceProviderIntegrationTest extends TestCase
     public function provider_defaults_alone_raise_no_deprecation(): void
     {
         $this->provider()->register();
+
+        $this->assertSame([], Deprecations::counts());
+    }
+
+    #[Test]
+    public function a_gesso_php_key_path_set_after_register_wins_without_a_notice(): void
+    {
+        $this->provider()->register();
+        config()->set('gesso.max_errors', 7);
+        config()->set('gesso.validation.max_errors', 3);
+
+        $this->assertSame(3, LaravelConfig::get('max_errors'));
+        $this->assertSame('gesso.validation.max_errors', LaravelConfig::key('max_errors'));
+        $this->assertSame([], Deprecations::counts());
+    }
+
+    #[Test]
+    public function a_flat_key_set_after_register_keeps_working_and_is_deprecated(): void
+    {
+        $this->provider()->register();
+        config()->set('gesso.skip_response_codes', ['4[0-9]{2}']);
+        config()->set('gesso.route_parity.excluded_route_names', ['horizon.*']);
+
+        $this->assertSame(['4[0-9]{2}'], LaravelConfig::get('skip_response_codes'));
+        $this->assertSame(['horizon.*'], LaravelConfig::get('route_parity.excluded_route_names'));
+        $this->assertSame('gesso.skip_response_codes', LaravelConfig::key('skip_response_codes'));
+        $this->assertSame([
+            'config.skip_response_codes' => 1,
+            'laravel.config.route_parity' => 1,
+        ], Deprecations::counts());
+    }
+
+    #[Test]
+    public function reading_the_values_the_provider_resolved_raises_no_notice(): void
+    {
+        $this->provider()->register();
+        // Re-setting a resolved value is not an override.
+        config()->set('gesso.max_errors', 20);
+
+        foreach (array_keys(ConfigurationBridge::LARAVEL) as $flat) {
+            LaravelConfig::get($flat);
+        }
 
         $this->assertSame([], Deprecations::counts());
     }

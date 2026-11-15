@@ -315,6 +315,20 @@ class AutoAssertIntegrationTest extends TestCase
         $this->get('/v1/health');
     }
 
+    #[Test]
+    public function gesso_php_key_paths_set_by_a_test_take_effect(): void
+    {
+        // The 3.0 spelling of a test override works on 2.x (#795): without
+        // both nested keys, auto-assert stays off and 5xx stays skipped.
+        config()->set('gesso.laravel.auto_assert', true);
+        config()->set('gesso.validation.skip_response_codes', []);
+
+        $this->expectException(AssertionFailedError::class);
+        $this->expectExceptionMessage('Status code 503 not defined');
+
+        $this->get('/v1/health');
+    }
+
     /** @return array<int, class-string> */
     protected function getPackageProviders($app): array
     {

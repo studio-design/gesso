@@ -263,7 +263,14 @@ and emits one notice per key. Move each key to its section of the root
 `config/gesso.php` once it is empty. The check runs when the service provider
 registers, so a cached configuration (`php artisan config:cache`), which cannot
 tell a published key from a package default, raises no notice; run the suite
-uncached to see them. Values set later with `config()->set()` are not reported.
+uncached to see them.
+
+Move test overrides before bumping to 3.0, which reads only the `gesso.php`
+paths. The latest 2.x Laravel adapter reads each setting from its `gesso.php`
+path first, so `config()->set('gesso.validation.skip_response_codes', [])` in a
+test already works on 2.x and is what 3.0 expects. A flat key set later with
+`config()->set('gesso.skip_response_codes', [])` still works, and when it differs
+from the value the provider resolved it emits the same notice.
 
 The table mirrors `tests/fixtures/compatibility/v2-deprecations.json`, which a
 test keeps in sync with the emitters in `src/`. The `Deprecated in` column names
