@@ -1,0 +1,80 @@
+{
+  "openapi": "3.1.0",
+  "info": {"title": "$id-scoped references", "version": "1.0.0"},
+  "paths": {
+    "/tags": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Referenced by its $id URI",
+            "content": {"application/json": {"schema": {"$ref": "https://example.test/schemas/tag-list"}}}
+          }
+        }
+      }
+    },
+    "/pets": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "The same resource referenced twice in one body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "first": {"$ref": "https://example.test/schemas/pet"},
+                    "second": {"$ref": "#/components/schemas/Pet"}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/widgets": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "A relative $id, resolved against the document location",
+            "content": {"application/json": {"schema": {"$ref": "widget.json"}}}
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "TagList": {
+        "$id": "https://example.test/schemas/tag-list",
+        "type": "array",
+        "items": {"type": "string"}
+      },
+      "Pet": {
+        "$id": "https://example.test/schemas/pet",
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": {"$ref": "#/$defs/Name"},
+          "owner": {"$ref": "owner"},
+          "tags": {"$ref": "#/components/schemas/TagList"}
+        },
+        "$defs": {
+          "Name": {"type": "string", "maxLength": 10},
+          "Owner": {
+            "$id": "owner",
+            "type": "object",
+            "properties": {"name": {"$ref": "#/$defs/Name"}},
+            "$defs": {"Name": {"type": "integer"}}
+          }
+        }
+      },
+      "Widget": {
+        "$id": "widget.json",
+        "type": "object",
+        "required": ["id"],
+        "properties": {"id": {"type": "integer"}}
+      }
+    }
+  }
+}
