@@ -6,6 +6,7 @@ namespace Studio\Gesso\Tests\Unit\Spec;
 
 use const E_USER_WARNING;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Studio\Gesso\Exception\MalformedDiscriminatorException;
@@ -40,6 +41,25 @@ class OpenApiSchemaConverterTest extends TestCase
     {
         OpenApiSchemaConverter::resetWarningStateForTesting();
         parent::tearDown();
+    }
+
+    /**
+     * @return iterable<string, array{array<string, mixed>, bool}>
+     */
+    public static function provideMarker_inside_combiner_childCases(): iterable
+    {
+        $marked = ['type' => 'string', 'writeOnly' => true];
+        $plain = ['type' => 'string'];
+
+        yield 'allOf wrapper' => [['allOf' => [$marked], 'description' => 'd'], true];
+        yield 'one marked allOf branch' => [['allOf' => [$plain, $marked]], true];
+        yield 'nested allOf' => [['allOf' => [['allOf' => [$marked]]]], true];
+        yield 'oneOf, every branch marked' => [['oneOf' => [$marked, ['type' => 'integer', 'writeOnly' => true]]], true];
+        yield 'anyOf, every branch marked through allOf' => [['anyOf' => [['allOf' => [$marked]], $marked]], true];
+        yield 'oneOf, one branch unmarked' => [['oneOf' => [$marked, $plain]], false];
+        yield 'anyOf, one branch unmarked' => [['anyOf' => [$marked, ['type' => 'null']]], false];
+        yield 'empty oneOf' => [['oneOf' => [], 'type' => 'string'], false];
+        yield 'marker under not' => [['not' => $marked], false];
     }
 
     // ========================================
@@ -710,29 +730,23 @@ class OpenApiSchemaConverterTest extends TestCase
         $this->assertSame($original, $schema);
     }
 
+    /**
+     * @param array<string, mixed> $property
+     */
     #[Test]
-    public function marker_inside_combiner_child_is_not_enforced_known_limitation(): void
+    #[DataProvider('provideMarker_inside_combiner_childCases')]
+    public function marker_inside_combiner_child(array $property, bool $forbidden): void
     {
-        // Characterisation test pinning the documented limitation: detection
-        // only looks at the property's own top-level readOnly/writeOnly, not
-        // at markers buried inside allOf/oneOf/anyOf children. If this test
-        // ever starts failing, the limitation has been lifted — update the
-        // README and the enforceContextOnProperties docblock accordingly.
-        $schema = [
-            'type' => 'object',
-            'properties' => [
-                'password' => [
-                    'allOf' => [
-                        ['type' => 'string', 'writeOnly' => true],
-                    ],
-                ],
-            ],
-        ];
+        $schema = ['type' => 'object', 'properties' => ['password' => $property], 'required' => ['password']];
 
-        $result = OpenApiSchemaConverter::convert($schema, OpenApiVersion::V3_1, SchemaContext::Response);
+        foreach ([OpenApiVersion::V3_0, OpenApiVersion::V3_1] as $version) {
+            $response = OpenApiSchemaConverter::convert($schema, $version, SchemaContext::Response);
+            $request = OpenApiSchemaConverter::convert($schema, $version, SchemaContext::Request);
 
-        $this->assertNotFalse($result['properties']['password']);
-        $this->assertArrayHasKey('allOf', $result['properties']['password']);
+            $this->assertSame($forbidden, $response['properties']['password'] === false, $version->value);
+            $this->assertSame($forbidden, !isset($response['required']), $version->value);
+            $this->assertNotFalse($request['properties']['password'], $version->value);
+        }
     }
 
     #[Test]

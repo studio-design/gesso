@@ -301,6 +301,17 @@ parameter with neither. `gesso doctor` reports these as `structure` errors,
 and reports a `content` parameter as `skipped` only when its media type is not
 JSON.
 
+### `readOnly` / `writeOnly` apply through `allOf`
+
+A property whose `readOnly` / `writeOnly` marker sits in an `allOf` branch —
+`id: {allOf: [{$ref: '#/components/schemas/Id'}]}`, the OpenAPI 3.0 way to
+describe a reference — is now enforced like a marker on the property itself
+([#772](https://github.com/studio-design/gesso/issues/772)). v2 only read the
+property's own top level, so a request that sends such a read-only property, or
+a response that returns such a write-only one, now fails where it passed
+before. A `oneOf` / `anyOf` property is enforced only when every branch carries
+the marker. `gesso doctor` checks examples the same way.
+
 ### 405 responses need an `Allow` header
 
 The `unsupported_method` contract check now fails a 405 that has no `Allow`
