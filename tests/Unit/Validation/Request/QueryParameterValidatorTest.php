@@ -390,4 +390,58 @@ class QueryParameterValidatorTest extends TestCase
         $this->assertStringContainsString('[OpenAPI 3.2 querystring]', $warning ?? '');
         $this->assertStringContainsString('validation was skipped', $warning ?? '');
     }
+
+    #[Test]
+    public function exploded_form_object_owns_the_keys_no_other_parameter_declares(): void
+    {
+        $color = [
+            'name' => 'color',
+            'in' => 'query',
+            'required' => true,
+            'schema' => [
+                'type' => 'object',
+                'properties' => ['R' => ['type' => 'integer']],
+                'patternProperties' => ['^x-' => ['type' => 'boolean']],
+                'additionalProperties' => ['type' => 'integer'],
+            ],
+        ];
+        $page = ['name' => 'page', 'in' => 'query', 'schema' => ['type' => 'string']];
+        $filter = ['name' => 'filter', 'in' => 'query', 'style' => 'deepObject', 'schema' => ['type' => 'object']];
+        $parameters = [$color, $page, $filter];
+
+        // `page` and `filter[q]` belong to their own parameters, not to `color`.
+        $this->assertSame([], $this->validator->validate('GET', '/c', $parameters, ['R' => '1', 'G' => '2', 'x-on' => 'true', 'page' => 'abc', 'filter[q]' => 'abc'], OpenApiVersion::V3_1));
+
+        $errors = $this->validator->validate('GET', '/c', $parameters, ['R' => '1', 'G' => 'two'], OpenApiVersion::V3_1);
+        $this->assertCount(1, $errors);
+        $this->assertStringContainsString('[query.color/G]', $errors[0]->message);
+
+        $errors = $this->validator->validate('GET', '/c', $parameters, ['R' => '1', 'x-on' => 'maybe'], OpenApiVersion::V3_1);
+        $this->assertCount(1, $errors);
+        $this->assertStringContainsString('[query.color/x-on]', $errors[0]->message);
+    }
+
+    #[Test]
+    public function exploded_form_object_leaves_keys_it_cannot_hold_to_the_rest_of_the_query(): void
+    {
+        $parameters = [[
+            'name' => 'color',
+            'in' => 'query',
+            'required' => true,
+            'schema' => [
+                'type' => 'object',
+                'properties' => ['R' => ['type' => 'integer']],
+                'required' => ['R'],
+                'additionalProperties' => false,
+            ],
+        ]];
+
+        // With `additionalProperties: false` a stray key cannot be a
+        // property, so it stays an undeclared query parameter.
+        $this->assertSame([], $this->validator->validate('GET', '/c', $parameters, ['R' => '1', 'utm_source' => 'x'], OpenApiVersion::V3_1));
+
+        $errors = $this->validator->validate('GET', '/c', $parameters, ['utm_source' => 'x'], OpenApiVersion::V3_1);
+        $this->assertCount(1, $errors);
+        $this->assertSame('required', $errors[0]->keyword);
+    }
 }

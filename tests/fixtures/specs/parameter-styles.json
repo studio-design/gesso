@@ -1,0 +1,1103 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Parameter styles (OAS 3.2 \u00a74.12.6 Style Examples)",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/path/matrix/flat/string/{color}": {
+      "get": {
+        "parameters": [
+          {
+            "name": "color",
+            "in": "path",
+            "required": true,
+            "style": "matrix",
+            "explode": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "blue"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/path/matrix/flat/array/{color}": {
+      "get": {
+        "parameters": [
+          {
+            "name": "color",
+            "in": "path",
+            "required": true,
+            "style": "matrix",
+            "explode": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "blue",
+                  "black",
+                  "brown"
+                ]
+              },
+              "minItems": 3
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/path/matrix/flat/object/{color}": {
+      "get": {
+        "parameters": [
+          {
+            "name": "color",
+            "in": "path",
+            "required": true,
+            "style": "matrix",
+            "explode": false,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "R": {
+                  "type": "integer"
+                },
+                "G": {
+                  "type": "integer"
+                },
+                "B": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "R",
+                "G",
+                "B"
+              ],
+              "additionalProperties": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/path/matrix/explode/string/{color}": {
+      "get": {
+        "parameters": [
+          {
+            "name": "color",
+            "in": "path",
+            "required": true,
+            "style": "matrix",
+            "explode": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "blue"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/path/matrix/explode/array/{color}": {
+      "get": {
+        "parameters": [
+          {
+            "name": "color",
+            "in": "path",
+            "required": true,
+            "style": "matrix",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "blue",
+                  "black",
+                  "brown"
+                ]
+              },
+              "minItems": 3
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/path/matrix/explode/object/{color}": {
+      "get": {
+        "parameters": [
+          {
+            "name": "color",
+            "in": "path",
+            "required": true,
+            "style": "matrix",
+            "explode": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "R": {
+                  "type": "integer"
+                },
+                "G": {
+                  "type": "integer"
+                },
+                "B": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "R",
+                "G",
+                "B"
+              ],
+              "additionalProperties": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/path/label/flat/string/{color}": {
+      "get": {
+        "parameters": [
+          {
+            "name": "color",
+            "in": "path",
+            "required": true,
+            "style": "label",
+            "explode": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "blue"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/path/label/flat/array/{color}": {
+      "get": {
+        "parameters": [
+          {
+            "name": "color",
+            "in": "path",
+            "required": true,
+            "style": "label",
+            "explode": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "blue",
+                  "black",
+                  "brown"
+                ]
+              },
+              "minItems": 3
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/path/label/flat/object/{color}": {
+      "get": {
+        "parameters": [
+          {
+            "name": "color",
+            "in": "path",
+            "required": true,
+            "style": "label",
+            "explode": false,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "R": {
+                  "type": "integer"
+                },
+                "G": {
+                  "type": "integer"
+                },
+                "B": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "R",
+                "G",
+                "B"
+              ],
+              "additionalProperties": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/path/label/explode/string/{color}": {
+      "get": {
+        "parameters": [
+          {
+            "name": "color",
+            "in": "path",
+            "required": true,
+            "style": "label",
+            "explode": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "blue"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/path/label/explode/array/{color}": {
+      "get": {
+        "parameters": [
+          {
+            "name": "color",
+            "in": "path",
+            "required": true,
+            "style": "label",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "blue",
+                  "black",
+                  "brown"
+                ]
+              },
+              "minItems": 3
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/path/label/explode/object/{color}": {
+      "get": {
+        "parameters": [
+          {
+            "name": "color",
+            "in": "path",
+            "required": true,
+            "style": "label",
+            "explode": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "R": {
+                  "type": "integer"
+                },
+                "G": {
+                  "type": "integer"
+                },
+                "B": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "R",
+                "G",
+                "B"
+              ],
+              "additionalProperties": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/path/simple/flat/string/{color}": {
+      "get": {
+        "parameters": [
+          {
+            "name": "color",
+            "in": "path",
+            "required": true,
+            "style": "simple",
+            "explode": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "blue"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/path/simple/flat/array/{color}": {
+      "get": {
+        "parameters": [
+          {
+            "name": "color",
+            "in": "path",
+            "required": true,
+            "style": "simple",
+            "explode": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "blue",
+                  "black",
+                  "brown"
+                ]
+              },
+              "minItems": 3
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/path/simple/flat/object/{color}": {
+      "get": {
+        "parameters": [
+          {
+            "name": "color",
+            "in": "path",
+            "required": true,
+            "style": "simple",
+            "explode": false,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "R": {
+                  "type": "integer"
+                },
+                "G": {
+                  "type": "integer"
+                },
+                "B": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "R",
+                "G",
+                "B"
+              ],
+              "additionalProperties": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/path/simple/explode/string/{color}": {
+      "get": {
+        "parameters": [
+          {
+            "name": "color",
+            "in": "path",
+            "required": true,
+            "style": "simple",
+            "explode": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "blue"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/path/simple/explode/array/{color}": {
+      "get": {
+        "parameters": [
+          {
+            "name": "color",
+            "in": "path",
+            "required": true,
+            "style": "simple",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "blue",
+                  "black",
+                  "brown"
+                ]
+              },
+              "minItems": 3
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/path/simple/explode/object/{color}": {
+      "get": {
+        "parameters": [
+          {
+            "name": "color",
+            "in": "path",
+            "required": true,
+            "style": "simple",
+            "explode": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "R": {
+                  "type": "integer"
+                },
+                "G": {
+                  "type": "integer"
+                },
+                "B": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "R",
+                "G",
+                "B"
+              ],
+              "additionalProperties": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/header/simple/flat/string": {
+      "get": {
+        "parameters": [
+          {
+            "name": "color",
+            "in": "header",
+            "required": true,
+            "style": "simple",
+            "explode": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "blue"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/header/simple/flat/array": {
+      "get": {
+        "parameters": [
+          {
+            "name": "color",
+            "in": "header",
+            "required": true,
+            "style": "simple",
+            "explode": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "blue",
+                  "black",
+                  "brown"
+                ]
+              },
+              "minItems": 3
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/header/simple/flat/object": {
+      "get": {
+        "parameters": [
+          {
+            "name": "color",
+            "in": "header",
+            "required": true,
+            "style": "simple",
+            "explode": false,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "R": {
+                  "type": "integer"
+                },
+                "G": {
+                  "type": "integer"
+                },
+                "B": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "R",
+                "G",
+                "B"
+              ],
+              "additionalProperties": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/header/simple/explode/string": {
+      "get": {
+        "parameters": [
+          {
+            "name": "color",
+            "in": "header",
+            "required": true,
+            "style": "simple",
+            "explode": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "blue"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/header/simple/explode/array": {
+      "get": {
+        "parameters": [
+          {
+            "name": "color",
+            "in": "header",
+            "required": true,
+            "style": "simple",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "blue",
+                  "black",
+                  "brown"
+                ]
+              },
+              "minItems": 3
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/header/simple/explode/object": {
+      "get": {
+        "parameters": [
+          {
+            "name": "color",
+            "in": "header",
+            "required": true,
+            "style": "simple",
+            "explode": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "R": {
+                  "type": "integer"
+                },
+                "G": {
+                  "type": "integer"
+                },
+                "B": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "R",
+                "G",
+                "B"
+              ],
+              "additionalProperties": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/query/form/flat/string": {
+      "get": {
+        "parameters": [
+          {
+            "name": "color",
+            "in": "query",
+            "required": true,
+            "style": "form",
+            "explode": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "blue"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/query/form/flat/array": {
+      "get": {
+        "parameters": [
+          {
+            "name": "color",
+            "in": "query",
+            "required": true,
+            "style": "form",
+            "explode": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "blue",
+                  "black",
+                  "brown"
+                ]
+              },
+              "minItems": 3
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/query/form/flat/object": {
+      "get": {
+        "parameters": [
+          {
+            "name": "color",
+            "in": "query",
+            "required": true,
+            "style": "form",
+            "explode": false,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "R": {
+                  "type": "integer"
+                },
+                "G": {
+                  "type": "integer"
+                },
+                "B": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "R",
+                "G",
+                "B"
+              ],
+              "additionalProperties": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/query/form/explode/string": {
+      "get": {
+        "parameters": [
+          {
+            "name": "color",
+            "in": "query",
+            "required": true,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "blue"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/query/form/explode/array": {
+      "get": {
+        "parameters": [
+          {
+            "name": "color",
+            "in": "query",
+            "required": true,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "blue",
+                  "black",
+                  "brown"
+                ]
+              },
+              "minItems": 3
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/query/form/explode/object": {
+      "get": {
+        "parameters": [
+          {
+            "name": "color",
+            "in": "query",
+            "required": true,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "R": {
+                  "type": "integer"
+                },
+                "G": {
+                  "type": "integer"
+                },
+                "B": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "R",
+                "G",
+                "B"
+              ],
+              "additionalProperties": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/query/spaceDelimited/flat/array": {
+      "get": {
+        "parameters": [
+          {
+            "name": "color",
+            "in": "query",
+            "required": true,
+            "style": "spaceDelimited",
+            "explode": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "blue",
+                  "black",
+                  "brown"
+                ]
+              },
+              "minItems": 3
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/query/spaceDelimited/flat/object": {
+      "get": {
+        "parameters": [
+          {
+            "name": "color",
+            "in": "query",
+            "required": true,
+            "style": "spaceDelimited",
+            "explode": false,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "R": {
+                  "type": "integer"
+                },
+                "G": {
+                  "type": "integer"
+                },
+                "B": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "R",
+                "G",
+                "B"
+              ],
+              "additionalProperties": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/query/pipeDelimited/flat/array": {
+      "get": {
+        "parameters": [
+          {
+            "name": "color",
+            "in": "query",
+            "required": true,
+            "style": "pipeDelimited",
+            "explode": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "blue",
+                  "black",
+                  "brown"
+                ]
+              },
+              "minItems": 3
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/query/pipeDelimited/flat/object": {
+      "get": {
+        "parameters": [
+          {
+            "name": "color",
+            "in": "query",
+            "required": true,
+            "style": "pipeDelimited",
+            "explode": false,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "R": {
+                  "type": "integer"
+                },
+                "G": {
+                  "type": "integer"
+                },
+                "B": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "R",
+                "G",
+                "B"
+              ],
+              "additionalProperties": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/query/deepObject/explode/object": {
+      "get": {
+        "parameters": [
+          {
+            "name": "color",
+            "in": "query",
+            "required": true,
+            "style": "deepObject",
+            "explode": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "R": {
+                  "type": "integer"
+                },
+                "G": {
+                  "type": "integer"
+                },
+                "B": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "R",
+                "G",
+                "B"
+              ],
+              "additionalProperties": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    }
+  }
+}

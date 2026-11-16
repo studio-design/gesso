@@ -122,7 +122,7 @@ final class ResponseHeaderValidator
             /** @var array<string, mixed> $schema */
             $schema = $headerObject['schema'];
 
-            $errors = [...$errors, ...$this->values->validate((string) $name, $normalizedHeaders[$lowerName] ?? null, $required, $schema, $version, $jsonSchemaDialect, $scope)];
+            $errors = [...$errors, ...$this->values->validate((string) $name, $normalizedHeaders[$lowerName] ?? null, $required, $schema, $headerObject, $version, $jsonSchemaDialect, $scope)];
         }
 
         return $errors;

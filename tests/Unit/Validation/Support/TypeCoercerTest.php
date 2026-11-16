@@ -69,7 +69,7 @@ class TypeCoercerTest extends TestCase
     {
         $schema = ['type' => ['null', 'integer']];
 
-        $this->assertSame(42, TypeCoercer::coercePrimitive('42', $schema));
+        $this->assertSame(42, TypeCoercer::coerce('42', $schema));
     }
 
     #[Test]
@@ -77,7 +77,7 @@ class TypeCoercerTest extends TestCase
     {
         $schema = ['type' => 'array', 'items' => ['type' => 'integer']];
 
-        $this->assertSame([1, 2, 3], TypeCoercer::coerceQuery(['1', '2', '3'], $schema));
+        $this->assertSame([1, 2, 3], TypeCoercer::coerce(['1', '2', '3'], $schema));
     }
 
     #[Test]
@@ -85,7 +85,7 @@ class TypeCoercerTest extends TestCase
     {
         $schema = ['type' => 'array', 'items' => ['type' => 'integer']];
 
-        $this->assertSame([5], TypeCoercer::coerceQuery('5', $schema));
+        $this->assertSame([5], TypeCoercer::coerce('5', $schema));
     }
 
     #[Test]
@@ -96,13 +96,13 @@ class TypeCoercerTest extends TestCase
         // stay as raw strings so opis surfaces the shape mismatch.
         $schema = ['type' => 'array'];
 
-        $this->assertSame(['1', '2'], TypeCoercer::coerceQuery(['1', '2'], $schema));
+        $this->assertSame(['1', '2'], TypeCoercer::coerce(['1', '2'], $schema));
     }
 
     #[Test]
     public function reads_the_type_from_an_allof_branch_when_the_schema_omits_it(): void
     {
-        $this->assertSame(5, TypeCoercer::coercePrimitive('5', [
+        $this->assertSame(5, TypeCoercer::coerce('5', [
             'maximum' => 100,
             'allOf' => [['type' => 'integer']],
         ]));
@@ -111,7 +111,7 @@ class TypeCoercerTest extends TestCase
     #[Test]
     public function reads_query_type_and_items_from_an_allof_branch(): void
     {
-        $this->assertSame([1, 2], TypeCoercer::coerceQuery(['1', '2'], [
+        $this->assertSame([1, 2], TypeCoercer::coerce(['1', '2'], [
             'allOf' => [['type' => 'array', 'items' => ['type' => 'integer']]],
         ]));
     }
@@ -123,12 +123,12 @@ class TypeCoercerTest extends TestCase
     #[Test]
     public function the_effective_type_is_the_intersection_with_the_allof_branches(): void
     {
-        $this->assertSame(5, TypeCoercer::coercePrimitive('5', [
+        $this->assertSame(5, TypeCoercer::coerce('5', [
             'type' => ['string', 'integer'],
             'allOf' => [['type' => 'integer']],
         ]));
 
-        $this->assertSame([1, 2], TypeCoercer::coerceQuery(['1', '2'], [
+        $this->assertSame([1, 2], TypeCoercer::coerce(['1', '2'], [
             'type' => ['string', 'array'],
             'allOf' => [['type' => 'array', 'items' => ['type' => 'integer']]],
         ]));
@@ -141,12 +141,12 @@ class TypeCoercerTest extends TestCase
     #[Test]
     public function integer_and_number_intersect_to_integer(): void
     {
-        $this->assertSame(5, TypeCoercer::coercePrimitive('5', [
+        $this->assertSame(5, TypeCoercer::coerce('5', [
             'type' => 'integer',
             'allOf' => [['type' => 'number']],
         ]));
 
-        $this->assertSame(5, TypeCoercer::coercePrimitive('5', [
+        $this->assertSame(5, TypeCoercer::coerce('5', [
             'type' => 'number',
             'allOf' => [['type' => 'integer']],
         ]));
@@ -159,7 +159,7 @@ class TypeCoercerTest extends TestCase
     #[Test]
     public function item_schemas_compose_across_allof_branches(): void
     {
-        $this->assertSame([1, 2], TypeCoercer::coerceQuery(['1', '2'], [
+        $this->assertSame([1, 2], TypeCoercer::coerce(['1', '2'], [
             'type' => 'array',
             'items' => ['type' => ['string', 'integer']],
             'allOf' => [['type' => 'array', 'items' => ['type' => 'integer']]],
@@ -173,9 +173,9 @@ class TypeCoercerTest extends TestCase
     #[Test]
     public function a_union_of_integer_and_number_coerces_as_number(): void
     {
-        $this->assertSame(3.14, TypeCoercer::coercePrimitive('3.14', ['type' => ['integer', 'number']]));
+        $this->assertSame(3.14, TypeCoercer::coerce('3.14', ['type' => ['integer', 'number']]));
 
-        $this->assertSame(3.14, TypeCoercer::coercePrimitive('3.14', [
+        $this->assertSame(3.14, TypeCoercer::coerce('3.14', [
             'type' => ['integer', 'number'],
             'allOf' => [['type' => 'number']],
         ]));
@@ -186,9 +186,41 @@ class TypeCoercerTest extends TestCase
     {
         // Nothing satisfies both, so there is no type to coerce towards; the
         // raw value reaches opis, which reports the schema.
-        $this->assertSame('5', TypeCoercer::coercePrimitive('5', [
+        $this->assertSame('5', TypeCoercer::coerce('5', [
             'type' => 'string',
             'allOf' => [['type' => 'integer']],
         ]));
+    }
+
+    #[Test]
+    public function coerce_object_coerces_each_property_against_its_schema(): void
+    {
+        $schema = [
+            'type' => 'object',
+            'properties' => ['age' => ['type' => 'integer']],
+            'allOf' => [['properties' => ['score' => ['type' => 'number']]]],
+        ];
+        $this->assertSame(
+            ['age' => 5, 'score' => 1.5, 'other' => 'true'],
+            TypeCoercer::coerce(['age' => '5', 'score' => '1.5', 'other' => 'true'], $schema),
+        );
+
+        // `patternProperties` applies alongside `properties`, and
+        // `additionalProperties` only to names neither of them covers.
+        $this->assertSame(
+            ['x-on' => true, 'n' => 5],
+            TypeCoercer::coerce(['x-on' => 'true', 'n' => '5'], [
+                'type' => 'object',
+                'patternProperties' => ['^x-' => ['type' => 'boolean']],
+                'additionalProperties' => ['type' => 'integer'],
+            ]),
+        );
+
+        // An undeclared name follows `additionalProperties`.
+        $this->assertSame(
+            ['active' => true, 'bad' => 'x'],
+            TypeCoercer::coerce(['active' => 'true', 'bad' => 'x'], ['type' => 'object', 'additionalProperties' => ['type' => 'boolean']]),
+        );
+        $this->assertSame('5', TypeCoercer::coerce('5', $schema));
     }
 }

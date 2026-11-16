@@ -7,12 +7,12 @@ namespace Studio\Gesso\Validation\Request;
 use Studio\Gesso\OpenApiVersion;
 use Studio\Gesso\SchemaContext;
 use Studio\Gesso\Validation\Support\NamedError;
+use Studio\Gesso\Validation\Support\ParameterStyleDeserializer;
 use Studio\Gesso\Validation\Support\SchemaValidatorRunner;
 use Studio\Gesso\Validation\Support\TypeCoercer;
 
 use function array_key_exists;
 use function is_array;
-use function rawurldecode;
 
 /**
  * @internal Not part of the package's public API. Do not use from user code.
@@ -30,9 +30,9 @@ final class PathParameterValidator
      *
      * Path parameters are always required in OpenAPI, so a declared `in: path`
      * entry without a `schema` is treated as a hard spec error rather than a
-     * silent pass. Percent-encoded segments are decoded via `rawurldecode()`
-     * before type coercion / schema validation — the matcher leaves values
-     * raw so encoding policy stays in one place.
+     * silent pass. The matcher leaves values percent-encoded;
+     * {@see ParameterStyleDeserializer} strips the `label` / `matrix` prefix,
+     * splits arrays and objects, and decodes each piece.
      *
      * String-valued `format: uuid | date-time | date | email | ...` is
      * delegated to opis/json-schema's built-in FormatResolver (registered on
@@ -87,8 +87,15 @@ final class PathParameterValidator
             /** @var array<string, mixed> $schema */
             $schema = $param['schema'];
 
-            $decoded = rawurldecode($pathVariables[$name]);
-            $coerced = TypeCoercer::coercePrimitive($decoded, $schema);
+            $prefix = ParameterStyleDeserializer::missingPrefix($pathVariables[$name], $param, $schema);
+            if ($prefix !== null) {
+                $errors[] = new NamedError($name, "[path.{$name}] value must start with '{$prefix}', the leading delimiter of its declared style.");
+
+                continue;
+            }
+
+            $value = ParameterStyleDeserializer::deserialize($pathVariables[$name], $param, $schema);
+            $coerced = TypeCoercer::coerce($value, $schema);
             $errors = [...$errors, ...$this->runner->validateNamed($name, "path.{$name}", $schema, $coerced, $version, SchemaContext::Request, $jsonSchemaDialect, $scope)];
         }
 

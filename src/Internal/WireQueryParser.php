@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Internal;
 
-use Studio\Gesso\Validation\Support\QueryStyleDeserializer;
+use Studio\Gesso\Validation\Support\ParameterStyleDeserializer;
 
 use function array_map;
 use function count;
@@ -32,7 +32,7 @@ final class WireQueryParser
     public static function parse(string $queryString): array
     {
         $query = [];
-        foreach (QueryStyleDeserializer::parseRawValues($queryString) as $name => $encodedValues) {
+        foreach (ParameterStyleDeserializer::parseRawValues($queryString) as $name => $encodedValues) {
             $values = array_map(urldecode(...), $encodedValues);
             $query[$name] = count($values) === 1 ? $values[0] : $values;
         }

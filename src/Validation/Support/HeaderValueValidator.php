@@ -9,11 +9,14 @@ use Studio\Gesso\SchemaContext;
 use Studio\Gesso\Validation\Request\HeaderParameterValidator;
 use Studio\Gesso\Validation\Response\ResponseHeaderValidator;
 
+use function array_filter;
 use function array_key_first;
 use function count;
 use function get_debug_type;
+use function implode;
 use function is_array;
 use function is_scalar;
+use function is_string;
 use function sprintf;
 
 /**
@@ -31,8 +34,10 @@ use function sprintf;
  * schemas produce a hard error — frameworks disagree on which of the
  * repeated values "wins" (Laravel: first, Symfony: last), so silently
  * picking one would mask a drift the contract test exists to expose. Empty
- * arrays are treated as missing. `style: simple` with `type: array | object`
- * is out of scope.
+ * arrays are treated as missing. The exception is an array schema: RFC 9110
+ * §5.3 makes repeated field lines one comma-joined value, which is exactly
+ * the `style: simple` array serialization. `simple` arrays and objects are
+ * split by {@see ParameterStyleDeserializer}.
  *
  * @internal Not part of the package's public API. Do not use from user code.
  */
@@ -47,6 +52,7 @@ final class HeaderValueValidator
     /**
      * @param mixed $rawValue the header value as looked up from the normalized header map (`null` when absent)
      * @param array<string, mixed> $schema
+     * @param array<string, mixed> $definition the Parameter or Header Object, for its `style` / `explode`
      * @param null|string $scope see {@see SchemaValidatorRunner::validateNamed()}
      *
      * @return list<NamedError>
@@ -56,6 +62,7 @@ final class HeaderValueValidator
         mixed $rawValue,
         bool $required,
         array $schema,
+        array $definition,
         OpenApiVersion $version,
         ?string $jsonSchemaDialect = null,
         ?string $scope = null,
@@ -75,6 +82,10 @@ final class HeaderValueValidator
             // is "canonical" (Laravel: first, Symfony: last), so silently picking
             // one would mask drift. Surface it so the spec author / client fixes
             // the duplicate.
+            if (count($rawValue) > 1 && TypeCoercer::isArraySchema($schema) && array_filter($rawValue, is_string(...)) === $rawValue) {
+                $rawValue = [implode(',', $rawValue)];
+            }
+
             if (count($rawValue) > 1) {
                 return [new NamedError($name, sprintf(
                     '[%s] multiple values received (count=%d) but schema expects a single value; refusing to pick one silently.',
@@ -107,7 +118,8 @@ final class HeaderValueValidator
             ))];
         }
 
-        $coerced = TypeCoercer::coercePrimitive($rawValue, $schema);
+        $value = ParameterStyleDeserializer::deserialize($rawValue, ['in' => 'header'] + $definition, $schema);
+        $coerced = TypeCoercer::coerce($value, $schema);
 
         return $this->runner->validateNamed($name, $label, $schema, $coerced, $version, $this->context, $jsonSchemaDialect, $scope);
     }
