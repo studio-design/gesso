@@ -10,6 +10,32 @@ the README for the full surface contract.
 
 ## Unreleased
 
+## [3.0.0-beta.2](https://github.com/studio-design/gesso/compare/v3.0.0-beta.1...v3.0.0-beta.2) (2026-11-16)
+
+
+### ⚠ BREAKING CHANGES
+
+* **laravel:** drop the unused validator-cache statics and resetValidatorCache() ([#799](https://github.com/studio-design/gesso/issues/799))
+
+### Features
+
+* **doctor:** warn about enum components that no operation references ([#808](https://github.com/studio-design/gesso/issues/808)) ([e56cfed](https://github.com/studio-design/gesso/commit/e56cfed3c6a58c029e17259bb4f08f2075c60479))
+* **validation:** deserialize simple, label, matrix, and object parameter styles ([#810](https://github.com/studio-design/gesso/issues/810)) ([12cd05c](https://github.com/studio-design/gesso/commit/12cd05cd4d4258481dc9a2bc79168c93f55696c8))
+* **validation:** mark failures that max_errors may have cut ([#801](https://github.com/studio-design/gesso/issues/801)) ([0fae53d](https://github.com/studio-design/gesso/commit/0fae53d6252b8323960762acadd11e3915ed748d))
+* **validation:** validate cookie parameters ([#813](https://github.com/studio-design/gesso/issues/813)) ([7a26f7f](https://github.com/studio-design/gesso/commit/7a26f7f8bdb0b5d47c3f4b03454710831d02e1c8))
+* **validation:** validate parameters declared with content ([#814](https://github.com/studio-design/gesso/issues/814)) ([ddf2d09](https://github.com/studio-design/gesso/commit/ddf2d09ae00086c943e4c9f87de905883cf7dda7))
+
+
+### Bug Fixes
+
+* **cli:** report the installed version in tag form ([#802](https://github.com/studio-design/gesso/issues/802)) ([de1cc84](https://github.com/studio-design/gesso/commit/de1cc849bed4d2e6373ca34b58b6e119653f3f7c))
+* **spec:** enforce readOnly/writeOnly through property allOf ([#815](https://github.com/studio-design/gesso/issues/815)) ([947da9c](https://github.com/studio-design/gesso/commit/947da9cce3184e3a34602249c9b9ff3a962ec9a2))
+
+
+### Code Refactoring
+
+* **laravel:** drop the unused validator-cache statics and resetValidatorCache() ([#799](https://github.com/studio-design/gesso/issues/799)) ([d5fcda2](https://github.com/studio-design/gesso/commit/d5fcda2e4a10816cd6f4c231774862fd5fa8226e))
+
 ## [3.0.0-beta.1](https://github.com/studio-design/gesso/compare/v2.9.0...v3.0.0-beta.1) (2026-11-14)
 
 
