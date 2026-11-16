@@ -1159,6 +1159,19 @@ class CoverageMergeCommandTest extends TestCase
     }
 
     #[Test]
+    public function console_report_active_only_collapses_specs_without_test_activity(): void
+    {
+        [$exit, $stdout] = $this->mergeOneWorker([
+            'console_output' => CoverageMergeCommand::parseArgv(['--console-report=active_only'])['console_output'] ?? '',
+            'specs' => ['petstore-3.0', 'petstore-3.1'],
+        ]);
+
+        $this->assertSame(CoverageMergeCommand::EXIT_OK, $exit);
+        $this->assertStringContainsString('[petstore-3.1] no test activity', $stdout);
+        $this->assertStringContainsString('GET /v1/pets', $stdout);
+    }
+
+    #[Test]
     public function unsupported_format_is_a_usage_error(): void
     {
         $stderr = '';
@@ -3286,7 +3299,7 @@ class CoverageMergeCommandTest extends TestCase
     /**
      * Merge one worker's sidecar (GET /v1/pets 200) with `$options` on top.
      *
-     * @param array{format?: string, output_file?: string} $options
+     * @param array{format?: string, output_file?: string, console_output?: string, specs?: list<string>} $options
      *
      * @return array{int, string}
      */

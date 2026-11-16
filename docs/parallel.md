@@ -46,7 +46,7 @@ vendor/bin/gesso coverage:merge \
 | `--output-file=<path>` | — | Primary report output path: the `--format` rendering, Markdown by default |
 | `--report=<format>:<path>` | — | Also write a `json`, `junit` or `html` report to `<path>`; repeatable. JSON schema: [`coverage-json-schema.md`](coverage-json-schema.md); JUnit: [Coverage output formats](ci.md#coverage-output-formats); HTML: [`coverage-html-output.md`](coverage-html-output.md) |
 | `--github-step-summary=<path>` | `$GITHUB_STEP_SUMMARY` | Append Markdown report to this file |
-| `--console-report=<mode>` | `default` | `default` / `all` / `uncovered_only` |
+| `--console-report=<mode>` | `default` | `default` / `all` / `uncovered_only` / `active_only`. See [Console modes](coverage.md#console-modes) |
 | `--min-coverage="endpoint=<pct>,response=<pct>,sdk_exercise=<pct>,strict"` | — (warn-only) | Threshold gates (see [Coverage threshold gate](coverage.md#coverage-threshold-gate)): fully-covered endpoints, `(method, path, status, content-type)` responses, and eligible response schemas attempted by SDK decoder callbacks. `strict` (or `strict=true`) makes a miss exit non-zero. Name only the members you need |
 | `--strict-required="run=<mode>"` | `off` | `off` / `warn` / `fail`. Assert no schema under-description drift across worker observations. A `per_call=off\|warn` member is accepted and left to the workers. See [`strict-required.md`](strict-required.md#paratest) |
 | `--strict-additional-properties="run=<mode>"` | `off` | `off` / `warn` / `fail`. Report returned response properties absent from schema declarations. See [`strict-additional-properties.md`](strict-additional-properties.md#parallel-test-runners) |

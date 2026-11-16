@@ -268,7 +268,7 @@ final class CoverageMergeCommand
                                             self-contained.
               --github-step-summary=<path>  Append Markdown report to this file (also
                                             consults GITHUB_STEP_SUMMARY env var).
-              --console-report=<mode>       default | all | uncovered_only.
+              --console-report=<mode>       default | all | uncovered_only | active_only.
               --min-coverage="endpoint=<pct>,response=<pct>,sdk_exercise=<pct>,strict"
                                             Coverage thresholds (0-100): fully-covered
                                             endpoints, (method, path, status, content-type)
