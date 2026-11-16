@@ -10,6 +10,13 @@ the README for the full surface contract.
 
 ## Unreleased
 
+## [2.11.0](https://github.com/studio-design/gesso/compare/v2.10.0...v2.11.0) (2026-11-16)
+
+
+### Features
+
+* **laravel:** read the gesso.php key paths before the flat keys ([#796](https://github.com/studio-design/gesso/issues/796)) ([5abe046](https://github.com/studio-design/gesso/commit/5abe046e1553bf7f81a5e8247cee265211a78f8a))
+
 ## [2.10.0](https://github.com/studio-design/gesso/compare/v2.9.0...v2.10.0) (2026-11-14)
 
 
