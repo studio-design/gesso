@@ -104,6 +104,7 @@ final class FailureCatalogue
         'compatibility' => 'GSO312',
         'internal' => 'GSO313',
         'example' => 'GSO314',
+        'enum' => 'GSO315',
     ];
 
     /** Where a code that is not an issue or doctor category is emitted. */
@@ -427,6 +428,13 @@ final class FailureCatalogue
             'causes' => ['The schema changed and the example was not updated.', 'The example was written by hand and has a typo or a wrong type.', 'A YAML spec writes a date-time unquoted in a spelling that is not kept (`2024-01-01 12:00:00` is read as `2024-01-01T12:00:00`), so quote it.'],
             'fix' => ['Example wrong: update it to a value the schema accepts.', 'Schema wrong: fix the schema, then re-run your tests.'],
             'do_not' => 'Do not delete the example only to silence doctor; generated docs, mocks, and SDKs read it.',
+        ],
+        'GSO315' => [
+            'title' => 'Enum component is not referenced by any operation',
+            'summary' => 'A `components.schemas` entry with an `enum` array is not reached through `$ref` from any operation under `paths` or `webhooks`. This is reported as a `warning`: enum drift still binds a backed enum to the component, so it checks values against a schema the API does not use.',
+            'causes' => ['The operations that used the enum were removed or now use another component.', 'The operations declare the values inline instead of referencing the component.'],
+            'fix' => ['Still part of the contract: reference the component from the operations that carry the value.', 'Dead: remove the component, and the `#[BoundToOpenApiEnum]` attribute that names it.'],
+            'do_not' => 'Do not delete a component a backed enum still binds to without removing the binding: an attribute binding then fails with `ComponentNotFound`, and a name match silently stops checking.',
         ],
         'GSO401' => [
             'title' => 'Changed operation is not covered',

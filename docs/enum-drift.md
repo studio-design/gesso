@@ -60,6 +60,8 @@ Reports and diagnostics name the binding as a JSON pointer, e.g. `App\Enums\Noti
 
 Auto-discovery also checks any enum in the scanned namespaces whose name matches a spec component. Such an enum fails the bootstrap if its values have drifted from that component, even if you never meant to bind it.
 
+A component binds whether or not any operation uses it, so an enum can be checked against a schema the API no longer serves. [`gesso doctor`](doctor.md#enum-components-no-operation-references) warns about enum components that no operation references ([`GSO315`](failure-codes.md#gso315)).
+
 ## `EnumDriftAsserter::assertNoDrift()`
 
 Call from any test (or from a dedicated drift-only test) to verify all bound enums match their spec enums. Pass the spec names to search for component bindings as `specNames:`:

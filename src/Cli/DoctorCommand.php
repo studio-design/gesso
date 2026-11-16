@@ -35,9 +35,11 @@ use Studio\Gesso\Internal\HttpRefLoader;
 use Studio\Gesso\Internal\SpecDocumentDecoder;
 use Studio\Gesso\Internal\SpecPath;
 use Studio\Gesso\Internal\ToolVersion;
+use Studio\Gesso\Internal\UnreferencedEnumScanner;
 use Studio\Gesso\OpenApiVersion;
 use Studio\Gesso\Spec\OpenApiOperationResolver;
 use Studio\Gesso\Spec\OpenApiPathMatcher;
+use Studio\Gesso\Spec\OpenApiRefResolver;
 use Studio\Gesso\Spec\OpenApiSchemaConverter;
 use Studio\Gesso\Spec\OpenApiSchemaDialect;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
@@ -517,7 +519,12 @@ final class DoctorCommand
             $dialect = OpenApiSchemaDialect::fromSpec($spec, $version);
             [$operations, $responses] = $this->inspectStructure($spec, $version, $label, $issues);
             $this->walkForSchemas($spec, $version, $dialect, new DiscriminatorContext($spec, true), null);
-            $this->inspectExamples($spec, $path, $extension, $version, $dialect, $label, $issues);
+            // The undecoded-`$ref` document tells a shared definition from a
+            // copy; the loader already parsed the same file, so this cannot fail.
+            $content = (string) file_get_contents($path);
+            $raw = $extension === 'json' ? SpecDocumentDecoder::decodeJson($content, $path) : SpecDocumentDecoder::decodeYaml($content, $path);
+            $this->inspectExamples($spec, $raw, $version, $dialect, $label, $issues);
+            $this->inspectUnreferencedEnums($spec, $raw, $path, $label, $issues);
             $this->inspectSkippedFeatures($spec, $label, $acknowledgedSchemes, $issues);
             $this->inspectWebhooks($spec, $label, $issues);
 
@@ -802,14 +809,11 @@ final class DoctorCommand
      * checked with the runtime validation pipeline.
      *
      * @param array<string, mixed> $spec
+     * @param array<mixed> $raw
      * @param list<DoctorIssue> $issues
      */
-    private function inspectExamples(array $spec, string $path, string $extension, OpenApiVersion $version, string $dialect, string $label, array &$issues): void
+    private function inspectExamples(array $spec, array $raw, OpenApiVersion $version, string $dialect, string $label, array &$issues): void
     {
-        // The undecoded-`$ref` document tells a shared definition from a copy;
-        // the loader already parsed the same file, so this cannot fail.
-        $content = (string) file_get_contents($path);
-        $raw = $extension === 'json' ? SpecDocumentDecoder::decodeJson($content, $path) : SpecDocumentDecoder::decodeYaml($content, $path);
         foreach (ExampleScanner::scan($spec, $raw, $version, $dialect, new DiscriminatorContext($spec, true)) as ['pointer' => $pointer, 'violation' => $violation]) {
             $issue = $this->issue(
                 'warning',
@@ -826,6 +830,30 @@ final class DoctorCommand
             );
             $issue['pointer'] = $pointer;
             $issue['schema_pointer'] = $violation->schemaPointer;
+            $issues[] = $issue;
+        }
+    }
+
+    /**
+     * Enum drift binds a backed enum to any `components.schemas` entry with
+     * `enum`, so one no operation reaches is checked against a schema the
+     * API never uses (#768).
+     *
+     * @param array<string, mixed> $spec
+     * @param array<mixed> $raw
+     * @param list<DoctorIssue> $issues
+     */
+    private function inspectUnreferencedEnums(array $spec, array $raw, string $path, string $label, array &$issues): void
+    {
+        foreach (UnreferencedEnumScanner::scan($spec, $raw, $path, [OpenApiSpecLoader::getBasePath()]) as $name) {
+            $issue = $this->issue(
+                'warning',
+                'enum',
+                $label,
+                sprintf('Enum component `%s` is not referenced by any operation; enum drift can still bind a backed enum to it.', $name),
+                'Reference it from an operation, or remove it so enum drift does not check a schema the API does not use.',
+            );
+            $issue['pointer'] = '/components/schemas/' . OpenApiRefResolver::escapePointerSegment($name);
             $issues[] = $issue;
         }
     }

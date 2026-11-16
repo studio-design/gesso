@@ -6,7 +6,7 @@ It is not a replacement for a semantic or style linter such as Spectral or Redoc
 
 ## Scope
 
-`gesso doctor` is a preflight for a local OpenAPI file. It confirms Gesso can load and enforce the document — version and dialect, references, warned-about keywords, structurally valid operations — and exits non-zero when it can't. It also warns about examples that drifted from their schema. It does not fetch a deployed spec URL, and it does not compare the checked-in spec against what a running service returns. `--allow-remote-refs` only covers `$ref` targets from the local entry document.
+`gesso doctor` is a preflight for a local OpenAPI file. It confirms Gesso can load and enforce the document — version and dialect, references, warned-about keywords, structurally valid operations — and exits non-zero when it can't. It also warns about examples that drifted from their schema, and about enum components no operation references. It does not fetch a deployed spec URL, and it does not compare the checked-in spec against what a running service returns. `--allow-remote-refs` only covers `$ref` targets from the local entry document.
 
 ## Basic usage
 
@@ -81,6 +81,23 @@ place it appears.
 In YAML, an unquoted date or date-time is read as a string in canonical form
 (`2024-01-01`, `2024-01-01T12:00:00Z`). Quote a value whose exact spelling
 matters: `example: 2024-01-01 12:00:00` is read as `2024-01-01T12:00:00`.
+
+## Enum components no operation references
+
+[Enum drift](enum-drift.md) binds a backed enum to any `components.schemas`
+entry with an `enum` array, whether or not the API uses it. Doctor reports each
+such component that no operation reaches as a `warning` in the `enum` category
+([`GSO315`](failure-codes.md#gso315)), with its pointer in `pointer`. The exit
+code does not change.
+
+A component is referenced when a `$ref` under `paths` or `webhooks` leads to
+it, directly or through other components, request bodies, responses,
+parameters, headers, path items, or callbacks. A component referenced only by
+another unreferenced component is reported too. A `$ref` inside `example`,
+`examples`, `default`, `enum`, or `const` is data, not a reference. References
+into other local files are followed the way the loader follows them; a
+component that is itself a `$ref` counts as referenced when the operations
+reference its target directly.
 
 ## Multiple specs
 
@@ -233,13 +250,13 @@ Add `--output-file=<path>` to write the report, in either format, to a file inst
 
 Additive changes — a new field such as `tool`, or a new `category` slug — keep `schema_version` at `2`. Removals, renames, and type changes bump it. Version `2` (3.0) renamed the v2 `schemaVersion` key to `schema_version`.
 
-Every issue has a stable `severity`, `category`, `spec`, `message`, and nullable `suggestion` field, plus the [failure code](failure-codes.md) of its category in `code` (for example `GSO306` for `structure`) and that code's page in `docs_url`. An `example` issue also carries `pointer`, the RFC 6901 pointer to the example in the spec, and `schema_pointer`, the pointer to the failing keyword in the example's schema (after `$ref` inlining and conversion, as in [validation JSON](validation-json-schema.md)) or `null`. The text report prints the code before the category: `ERROR [GSO306] [structure] openapi.json: …`. `gesso explain <code>` prints the same entry in the terminal. Severities are:
+Every issue has a stable `severity`, `category`, `spec`, `message`, and nullable `suggestion` field, plus the [failure code](failure-codes.md) of its category in `code` (for example `GSO306` for `structure`) and that code's page in `docs_url`. An `example` issue also carries `pointer`, the RFC 6901 pointer to the example in the spec (an `enum` issue carries the component's), and `schema_pointer`, the pointer to the failing keyword in the example's schema (after `$ref` inlining and conversion, as in [validation JSON](validation-json-schema.md)) or `null`. The text report prints the code before the category: `ERROR [GSO306] [structure] openapi.json: …`. `gesso explain <code>` prints the same entry in the terminal. Severities are:
 
 - `error`: the contract cannot be loaded or enforced as configured;
 - `warning`: validation can proceed, but the package detected a compatibility limitation;
 - `skipped`: a recognized contract feature is not currently enforced and needs a separate test.
 
-Categories currently emitted are `io`, `parser`, `version`, `dialect`, `references`, `structure`, `keyword`, `feature`, `dependency`, `configuration`, `spec`, `compatibility`, `internal`, and `example`. Consumers should branch on `severity` and `category`, not the human-readable message.
+Categories currently emitted are `io`, `parser`, `version`, `dialect`, `references`, `structure`, `keyword`, `feature`, `dependency`, `configuration`, `spec`, `compatibility`, `internal`, `example`, and `enum`. Consumers should branch on `severity` and `category`, not the human-readable message.
 
 ## Exit codes
 

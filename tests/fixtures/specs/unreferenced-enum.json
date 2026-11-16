@@ -1,0 +1,28 @@
+{
+    "openapi": "3.0.3",
+    "info": {"title": "Unreferenced enum components", "version": "1"},
+    "paths": {
+        "/pets": {
+            "get": {
+                "responses": {
+                    "200": {
+                        "description": "ok",
+                        "content": {
+                            "application/json": {"schema": {"$ref": "#/components/schemas/Pet"}}
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "components": {
+        "schemas": {
+            "Pet": {
+                "type": "object",
+                "properties": {"status": {"$ref": "#/components/schemas/PetStatus"}}
+            },
+            "PetStatus": {"type": "string", "enum": ["available", "sold"]},
+            "LegacyPetStatus": {"type": "string", "enum": ["available", "sold", "pending"]}
+        }
+    }
+}
