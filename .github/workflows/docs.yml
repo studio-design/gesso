@@ -1,13 +1,15 @@
 name: Documentation
 
-# The site documents the installable stable line. Until v3.0.0 GA that is
-# 2.x, so this file is identical on main and 2.x and neither main pushes nor
-# v3 beta tags replace the v2 docs. Flip back to [main] / 'v*' in the GA
-# follow-up PR.
+# Each major is published under its own path: until v3.0.0 the root serves 2.x
+# and /3.x/ serves main (docs/versioning.md, CONTRIBUTING.md). A Pages deploy
+# replaces the whole site, so every run builds both branches, whichever one
+# was pushed. Keep this file identical on main and 2.x.
+#
+# No tag trigger: release-please creates tags with GITHUB_TOKEN, and events
+# from that token do not start workflow runs.
 on:
   push:
-    branches: [2.x]
-    tags: ['v2.*']
+    branches: [main, 2.x]
   workflow_dispatch:
 
 permissions: {}
@@ -23,8 +25,19 @@ jobs:
       contents: read
       pages: read
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Check out 2.x
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          ref: 2.x
+          path: v2
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Check out main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: main
+          path: v3
           persist-credentials: false
           fetch-depth: 0
 
@@ -33,28 +46,42 @@ jobs:
         with:
           node-version: '26.13.1'
           cache: npm
+          cache-dependency-path: |
+            v2/package-lock.json
+            v3/package-lock.json
 
       - name: Configure Pages
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6
 
-      - name: Install documentation dependencies
-        run: npm ci
-
-      - name: Build documentation
+      - name: Build 2.x at the site root
+        working-directory: v2
         env:
-          DOCS_VERSION: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'next' }}
-        run: npm run docs:build
+          DOCS_BASE: /${{ github.event.repository.name }}/
+        run: |
+          npm ci
+          npm run docs:build
+          npm run docs:verify-accessibility
+          npm run docs:verify-base
 
-      - name: Verify documentation accessibility invariants
-        run: npm run docs:verify-accessibility
+      - name: Build main under /3.x/
+        working-directory: v3
+        env:
+          DOCS_BASE: /${{ github.event.repository.name }}/3.x/
+        run: |
+          npm ci
+          npm run docs:build
+          npm run docs:verify-accessibility
+          npm run docs:verify-base
 
-      - name: Verify documentation base path
-        run: npm run docs:verify-base
+      - name: Assemble the site
+        run: |
+          mv v2/docs/.vitepress/dist site
+          mv v3/docs/.vitepress/dist site/3.x
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
         with:
-          path: docs/.vitepress/dist
+          path: site
 
   deploy:
     permissions:

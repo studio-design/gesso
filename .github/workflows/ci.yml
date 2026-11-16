@@ -272,6 +272,9 @@ jobs:
   docs:
     name: Documentation site
     runs-on: ubuntu-latest
+    # docs.yml publishes main under /3.x/; build the same way.
+    env:
+      DOCS_BASE: /gesso/3.x/
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:

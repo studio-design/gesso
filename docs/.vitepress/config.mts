@@ -1,7 +1,7 @@
 import { defineConfig } from 'vitepress'
 
 import { githubSlug } from './github-slug.mjs'
-import { canonicalBase, emitMarkdown } from './llms.mts'
+import { emitMarkdown } from './llms.mts'
 
 const version = process.env.DOCS_VERSION ?? 'next'
 const repository = process.env.GITHUB_REPOSITORY ?? 'studio-design/gesso'
@@ -73,7 +73,7 @@ export default defineConfig({
     const path = pageData.relativePath
       .replace(/(^|\/)index\.md$/, '$1')
       .replace(/\.md$/, '')
-    const canonical = path ? `${canonicalBase}/${path}` : `${canonicalBase}/`
+    const canonical = `${siteUrl}${path}`
     const head = (pageData.frontmatter.head ??= [])
     const hasHeadEntry = (tag: string, attribute: string, value: string) =>
       head.some((entry: unknown[]) =>

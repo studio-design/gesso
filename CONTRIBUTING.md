@@ -202,9 +202,21 @@ release are in
 6. Once the stable package is installable, open a follow-up PR that removes
    `release-as` and the stable-only `changelog-sections`, drops `@beta` from
    the installation commands, and removes the README beta notice. Move the
-   documentation site to `main` in the same step: `docs.yml` deploys from
-   `2.x` until 3.0.0, so edit it on both branches until only `main` deploys,
-   and allow `main` in the `github-pages` environment's deployment branches.
+   site root to 3.x in the same step. Each major keeps its own path, because
+   failure output links to `/gesso/3.x/failure-codes`: until 3.0.0 `docs.yml`
+   builds `2.x` at the root and `main` under `/3.x/`. Change it, identically
+   on `main` and `2.x`, to build `main` at the root and again under `/3.x/`,
+   and `2.x` under `/2.x/`. On `2.x`, `README.md` and the `composer.json`
+   `support.docs` URL move to `/gesso/2.x/`. The root and `/3.x/` then serve
+   the same pages, so give the `/3.x/` build a `rel="canonical"` pointing at
+   the root page (as docs.python.org and symfony.com do for their version
+   paths); the config currently derives the canonical from `DOCS_BASE`, so
+   this needs a separate canonical base. Do not use `noindex` for this:
+   [Google advises against it](https://developers.google.com/search/docs/crawling-indexing/consolidate-duplicate-urls).
+   Until then `/3.x/` canonicalises to itself: the root serves 2.x, which is
+   different content and lacks pages such as `failure-codes`. Each build's
+   `llms.txt` and `llms-full.txt` list that build's own URLs; `2.x` needs the
+   base-aware `docs/.vitepress/llms.mts` from `main` before it moves.
 
 If downstream evaluation finds a release-blocking defect after step 5 and
 before the stable release PR is merged, do not merge that release PR. First
