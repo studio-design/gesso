@@ -125,7 +125,7 @@ class ParameterCollectorTest extends TestCase
         $result = ParameterCollector::collect('GET', '/pets', [], [
             'parameters' => [
                 ['name' => 'q', 'in' => 'query', 'schema' => ['type' => 'string']],
-                ['name' => 'all', 'in' => 'querystring', 'content' => []],
+                ['name' => 'all', 'in' => 'querystring', 'content' => ['application/x-www-form-urlencoded' => ['schema' => ['type' => 'object']]]],
             ],
         ]);
 
@@ -138,12 +138,26 @@ class ParameterCollectorTest extends TestCase
     {
         $result = ParameterCollector::collect('GET', '/pets', [], [
             'parameters' => [
-                ['name' => 'one', 'in' => 'querystring', 'content' => []],
-                ['name' => 'two', 'in' => 'querystring', 'content' => []],
+                ['name' => 'one', 'in' => 'querystring', 'content' => ['application/x-www-form-urlencoded' => ['schema' => ['type' => 'object']]]],
+                ['name' => 'two', 'in' => 'querystring', 'content' => ['application/x-www-form-urlencoded' => ['schema' => ['type' => 'object']]]],
             ],
         ]);
 
         $this->assertCount(1, $result->specErrors);
         $this->assertStringContainsString('at most one', $result->specErrors[0]);
+    }
+
+    #[Test]
+    public function collect_drops_a_malformed_override_instead_of_falling_back_to_the_path_level_parameter(): void
+    {
+        $result = ParameterCollector::collect(
+            'GET',
+            '/pets',
+            ['parameters' => [['name' => 'q', 'in' => 'query', 'schema' => ['type' => 'string']]]],
+            ['parameters' => [['name' => 'q', 'in' => 'query', 'content' => ['application/json' => [], 'text/plain' => []]]]],
+        );
+
+        $this->assertSame([], $result->parameters);
+        $this->assertSame(["Malformed parameter 'query.q' for GET /pets: 'content' must contain exactly one media type."], $result->specErrors);
     }
 }

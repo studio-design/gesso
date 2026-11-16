@@ -1,0 +1,74 @@
+{
+    "openapi": "3.1.0",
+    "info": {
+        "title": "Parameters declared with content",
+        "version": "1.0.0"
+    },
+    "paths": {
+        "/items/{id}": {
+            "get": {
+                "parameters": [
+                    {"name": "id", "in": "path", "required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Point"}}}},
+                    {"name": "point", "in": "query", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Point"}}}},
+                    {"name": "X-Point", "in": "header", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Point"}}}},
+                    {"name": "point", "in": "cookie", "required": true, "content": {"application/vnd.point+json": {"schema": {"$ref": "#/components/schemas/Point"}}}},
+                    {"name": "note", "in": "query", "content": {"text/plain": {"schema": {"type": "string", "maxLength": 3}}}},
+                    {"name": "raw", "in": "query", "content": {"application/json": {}}}
+                ],
+                "responses": {"200": {"description": "ok"}}
+            }
+        },
+        "/malformed/both": {
+            "get": {
+                "parameters": [
+                    {"name": "point", "in": "query", "schema": {"type": "string"}, "content": {"application/json": {"schema": {"type": "object"}}}}
+                ],
+                "responses": {"200": {"description": "ok"}}
+            }
+        },
+        "/malformed/neither": {
+            "get": {
+                "parameters": [
+                    {"name": "point", "in": "query"}
+                ],
+                "responses": {"200": {"description": "ok"}}
+            }
+        },
+        "/malformed/two-media-types": {
+            "get": {
+                "parameters": [
+                    {"name": "point", "in": "query", "content": {"application/json": {"schema": {"type": "object"}}, "text/plain": {"schema": {"type": "string"}}}}
+                ],
+                "responses": {"200": {"description": "ok"}}
+            }
+        },
+        "/malformed/empty-content": {
+            "get": {
+                "parameters": [
+                    {"name": "point", "in": "query", "content": {}}
+                ],
+                "responses": {"200": {"description": "ok"}}
+            }
+        },
+        "/malformed/media-type-not-an-object": {
+            "get": {
+                "parameters": [
+                    {"name": "point", "in": "query", "content": {"application/json": "object"}}
+                ],
+                "responses": {"200": {"description": "ok"}}
+            }
+        }
+    },
+    "components": {
+        "schemas": {
+            "Point": {
+                "type": "object",
+                "required": ["lat", "long"],
+                "properties": {
+                    "lat": {"type": "integer"},
+                    "long": {"type": "integer"}
+                }
+            }
+        }
+    }
+}

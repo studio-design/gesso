@@ -7,12 +7,14 @@ namespace Studio\Gesso\Validation\Request;
 use Studio\Gesso\OpenApiVersion;
 use Studio\Gesso\SchemaContext;
 use Studio\Gesso\Validation\Support\NamedError;
+use Studio\Gesso\Validation\Support\ParameterContent;
 use Studio\Gesso\Validation\Support\ParameterStyleDeserializer;
 use Studio\Gesso\Validation\Support\SchemaValidatorRunner;
 use Studio\Gesso\Validation\Support\TypeCoercer;
 
 use function array_key_exists;
 use function is_array;
+use function rawurldecode;
 
 /**
  * @internal Not part of the package's public API. Do not use from user code.
@@ -71,6 +73,18 @@ final class PathParameterValidator
             // the compiled matcher disagree — surface it loudly rather than skipping.
             if (!array_key_exists($name, $pathVariables)) {
                 $errors[] = new NamedError($name, "[path.{$name}] declared in {$method} {$matchedPath} spec but not captured by path matcher.");
+
+                continue;
+            }
+
+            $content = ParameterContent::of($param);
+            if ($content !== null) {
+                // Unlike `schema` styles there is no delimiter to split on
+                // first, so the whole value is percent-decoded before parsing.
+                [$mediaType, $schema] = $content;
+                if ($schema !== null && ParameterContent::isJson($mediaType)) {
+                    $errors = [...$errors, ...ParameterContent::validateJson($this->runner, $name, "path.{$name}", rawurldecode($pathVariables[$name]), $mediaType, $schema, $version, $jsonSchemaDialect, $scope)];
+                }
 
                 continue;
             }

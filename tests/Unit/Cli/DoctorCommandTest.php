@@ -1446,17 +1446,44 @@ class DoctorCommandTest extends TestCase
     }
 
     #[Test]
-    public function reports_a_parameter_declared_with_content_outside_the_querystring(): void
+    public function reports_a_parameter_declared_with_non_json_content(): void
     {
         // A path-level parameter is merged into the operation as at runtime.
-        $parameter = ['name' => 'filter', 'in' => 'query', 'content' => ['application/json' => ['schema' => ['type' => 'object']]]];
+        $parameter = ['name' => 'filter', 'in' => 'query', 'content' => ['text/plain' => ['schema' => ['type' => 'string']]]];
         $this->assertSkippedFeature(
             $this->operationSpec([], pathParameters: [$parameter]),
-            ['query.filter', 'GET /pets', '`content`'],
+            ['query.filter', 'GET /pets', '`text/plain`'],
         );
 
+        $result = (new OpenApiRequestValidator())->validateWithoutRecording('parity', 'GET', '/pets', ['filter' => 'x'], [], null);
+        $this->assertTrue($result->isSkipped());
+    }
+
+    #[Test]
+    public function does_not_report_a_parameter_declared_with_json_content(): void
+    {
+        $parameter = ['name' => 'filter', 'in' => 'query', 'content' => ['application/json' => ['schema' => ['type' => 'object']]]];
+        $report = $this->runJsonDoctor($this->writeSpec('parity.json', (string) json_encode($this->operationSpec(['parameters' => [$parameter]]), JSON_THROW_ON_ERROR)), $exit);
+        OpenApiSpecLoader::configure($this->workDir);
+
+        $this->assertSame(DoctorCommand::EXIT_OK, $exit);
+        $this->assertSame([], $report['issues']);
         $result = (new OpenApiRequestValidator())->validateWithoutRecording('parity', 'GET', '/pets', ['filter' => 'not-json'], [], null);
-        $this->assertTrue($result->isValid() && !$result->isSkipped());
+        $this->assertFalse($result->isValid());
+    }
+
+    #[Test]
+    public function reports_a_malformed_content_parameter_as_a_structure_error(): void
+    {
+        $parameter = ['name' => 'filter', 'in' => 'query', 'schema' => ['type' => 'string'], 'content' => ['application/json' => ['schema' => ['type' => 'object']]]];
+        $report = $this->runJsonDoctor($this->writeSpec('parity.json', (string) json_encode($this->operationSpec(['parameters' => [$parameter]]), JSON_THROW_ON_ERROR)), $exit);
+        OpenApiSpecLoader::configure($this->workDir);
+
+        $this->assertSame(DoctorCommand::EXIT_DIAGNOSTIC_FAILURE, $exit);
+        $this->assertSame([['error', 'structure']], array_map(static fn(array $issue): array => [$issue['severity'], $issue['category']], $report['issues']));
+        $this->assertStringContainsString("'query.filter'", $report['issues'][0]['message']);
+        $result = (new OpenApiRequestValidator())->validateWithoutRecording('parity', 'GET', '/pets', [], [], null);
+        $this->assertFalse($result->isValid());
     }
 
     #[Test]

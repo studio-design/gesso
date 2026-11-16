@@ -54,6 +54,7 @@ final class HeaderValueValidator
      * @param array<string, mixed> $schema
      * @param array<string, mixed> $definition the Parameter or Header Object, for its `style` / `explode`
      * @param null|string $scope see {@see SchemaValidatorRunner::validateNamed()}
+     * @param null|string $jsonMediaType the JSON media type of a `content` parameter, whose value is decoded instead of style-deserialized
      *
      * @return list<NamedError>
      */
@@ -66,6 +67,7 @@ final class HeaderValueValidator
         OpenApiVersion $version,
         ?string $jsonSchemaDialect = null,
         ?string $scope = null,
+        ?string $jsonMediaType = null,
     ): array {
         $label = "{$this->prefix}.{$name}";
 
@@ -116,6 +118,10 @@ final class HeaderValueValidator
                 $label,
                 get_debug_type($rawValue),
             ))];
+        }
+
+        if ($jsonMediaType !== null) {
+            return ParameterContent::validateJson($this->runner, $name, $label, $rawValue, $jsonMediaType, $schema, $version, $jsonSchemaDialect, $scope, $this->context);
         }
 
         $value = ParameterStyleDeserializer::deserialize($rawValue, ['in' => 'header'] + $definition, $schema);

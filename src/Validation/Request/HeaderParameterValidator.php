@@ -9,6 +9,7 @@ use Studio\Gesso\SchemaContext;
 use Studio\Gesso\Validation\Support\HeaderNormalizer;
 use Studio\Gesso\Validation\Support\HeaderValueValidator;
 use Studio\Gesso\Validation\Support\NamedError;
+use Studio\Gesso\Validation\Support\ParameterContent;
 use Studio\Gesso\Validation\Support\SchemaValidatorRunner;
 
 use function is_array;
@@ -71,6 +72,17 @@ final class HeaderParameterValidator
             $lowerName = strtolower($name);
 
             $required = ($param['required'] ?? false) === true;
+
+            $content = ParameterContent::of($param);
+            if ($content !== null) {
+                [$mediaType, $schema] = $content;
+                // Without a JSON schema to decode for, only presence is checked:
+                // the empty schema accepts any value.
+                $json = $schema !== null && ParameterContent::isJson($mediaType);
+                $errors = [...$errors, ...$this->values->validate($name, $normalizedHeaders[$lowerName] ?? null, $required, $json ? $schema : [], $param, $version, $jsonSchemaDialect, $scope, $json ? $mediaType : null)];
+
+                continue;
+            }
 
             // Same reasoning as {@see QueryParameterValidator} / {@see PathParameterValidator}:
             // a required parameter without a schema would silently pass every request, so

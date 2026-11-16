@@ -156,7 +156,7 @@ final class FailureCatalogue
         'GSO103' => [
             'title' => 'Request side of the spec is malformed',
             'summary' => 'A node the request validator needs (an operation, parameter, or request body) is not shaped as OpenAPI requires, so it cannot be enforced.',
-            'causes' => ['A parameter is missing `name` or `in`, or has a non-object schema.', 'A `$ref` resolved to the wrong kind of object.'],
+            'causes' => ['A parameter is missing `name` or `in`, or has a non-object schema.', 'A parameter declares both or neither of `schema` and `content`, or a `content` map without exactly one media type.', 'A `$ref` resolved to the wrong kind of object.'],
             'fix' => ['Run `vendor/bin/gesso doctor` for the exact node and fix the spec.'],
             'do_not' => 'Do not skip the test; a malformed spec node fails every request to this operation.',
         ],
