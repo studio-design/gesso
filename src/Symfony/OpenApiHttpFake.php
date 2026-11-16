@@ -18,6 +18,7 @@ use Studio\Gesso\OpenApiRequestValidator;
 use Studio\Gesso\OpenApiValidationResult;
 use Studio\Gesso\PHPUnit\CleanTraceAssert;
 use Studio\Gesso\Validation\Support\ContentTypeMatcher;
+use Studio\Gesso\Validation\Support\ParameterStyleDeserializer;
 use Symfony\Component\HttpClient\Response\MockResponse;
 
 use function explode;
@@ -50,7 +51,7 @@ final class OpenApiHttpFake
      * rejects fails the test with the adapters' usual failure output; an
      * accepted one is answered by {@see OpenApiFakeResponse::for()}.
      *
-     * Cookies are not read: `apiKey` schemes `in: cookie` report as missing.
+     * Cookies are read from the `Cookie` request header.
      *
      * @param string $specName named spec of the external API, loaded like any other spec
      * @param array<string, int> $statuses `'METHOD /spec/{template}'` => status to answer with (default: the lowest declared 2xx)
@@ -90,7 +91,7 @@ final class OpenApiHttpFake
             }
 
             $result = $decodeError === null
-                ? $validator->validate($specName, $method, $path, $query, $headers, $decoded, $contentType, [], null, $rawQuery)
+                ? $validator->validate($specName, $method, $path, $query, $headers, $decoded, $contentType, ParameterStyleDeserializer::parseCookieHeader($headers['cookie'] ?? []), null, $rawQuery)
                 : OpenApiValidationResult::failure([$decodeError]);
             if (!$result->isValid()) {
                 CleanTraceAssert::fail(FailureOutput::compose(

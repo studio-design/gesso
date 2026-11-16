@@ -33,7 +33,6 @@ Doctor reports each part of the contract that runtime validation accepts
 without checking as a `skipped` issue in the `feature` category, so a clean
 report means what the test suite will actually enforce:
 
-- `in: cookie` parameters;
 - parameters declared with `content` instead of `schema`, except the OpenAPI 3.2
   `in: querystring` parameter;
 - request or response media types using `itemSchema` streaming, unless a JSON

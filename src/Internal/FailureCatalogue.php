@@ -59,6 +59,7 @@ final class FailureCatalogue
         'request.parameter.query' => ['' => 'GSO105'],
         'request.parameter.header' => ['' => 'GSO106'],
         'request.security' => ['' => 'GSO107'],
+        'request.parameter.cookie' => ['' => 'GSO108'],
         'request.body' => [
             '' => 'GSO110',
             'required' => 'GSO111',
@@ -190,6 +191,13 @@ final class FailureCatalogue
                 'A scheme Gesso cannot check (for example `mutualTLS`): list it in `validation.acknowledged_unvalidatable_schemes`.',
             ],
             'do_not' => 'Do not remove `security` from the spec to make the test pass.',
+        ],
+        'GSO108' => [
+            'title' => 'Cookie parameter is missing or does not match its schema',
+            'summary' => 'A required `in: cookie` parameter is absent, or a cookie value does not satisfy its schema. `keyword` is `required` when the cookie is missing.',
+            'causes' => ['The test does not send the cookie.', 'The value has the wrong type or format.', 'The `style` / `explode` serialization differs from what the client sends.'],
+            'fix' => ['Test wrong: send the documented cookie.', 'Spec wrong: fix `required`, the schema, or the serialization fields.'],
+            'do_not' => self::NO_SKIP,
         ],
         'GSO110' => [
             'title' => 'Request body does not match its schema',

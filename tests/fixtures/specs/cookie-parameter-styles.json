@@ -1,0 +1,317 @@
+{
+  "openapi": "3.2.0",
+  "info": {
+    "title": "Cookie parameter styles (OAS 3.2 \u00a74.12.6 Style Examples)",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/cookie/form/flat/string": {
+      "get": {
+        "parameters": [
+          {
+            "name": "color",
+            "in": "cookie",
+            "required": true,
+            "style": "form",
+            "explode": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "blue"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/cookie/form/flat/array": {
+      "get": {
+        "parameters": [
+          {
+            "name": "color",
+            "in": "cookie",
+            "required": true,
+            "style": "form",
+            "explode": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "blue",
+                  "black",
+                  "brown"
+                ]
+              },
+              "minItems": 3
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/cookie/form/flat/object": {
+      "get": {
+        "parameters": [
+          {
+            "name": "color",
+            "in": "cookie",
+            "required": true,
+            "style": "form",
+            "explode": false,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "R": {
+                  "type": "integer"
+                },
+                "G": {
+                  "type": "integer"
+                },
+                "B": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "R",
+                "G",
+                "B"
+              ],
+              "additionalProperties": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/cookie/form/explode/string": {
+      "get": {
+        "parameters": [
+          {
+            "name": "color",
+            "in": "cookie",
+            "required": true,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "blue"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/cookie/form/explode/object": {
+      "get": {
+        "parameters": [
+          {
+            "name": "color",
+            "in": "cookie",
+            "required": true,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "R": {
+                  "type": "integer"
+                },
+                "G": {
+                  "type": "integer"
+                },
+                "B": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "R",
+                "G",
+                "B"
+              ],
+              "additionalProperties": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/cookie/cookie/flat/string": {
+      "get": {
+        "parameters": [
+          {
+            "name": "color",
+            "in": "cookie",
+            "required": true,
+            "style": "cookie",
+            "explode": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "blue"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/cookie/cookie/flat/array": {
+      "get": {
+        "parameters": [
+          {
+            "name": "color",
+            "in": "cookie",
+            "required": true,
+            "style": "cookie",
+            "explode": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "blue",
+                  "black",
+                  "brown"
+                ]
+              },
+              "minItems": 3
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/cookie/cookie/flat/object": {
+      "get": {
+        "parameters": [
+          {
+            "name": "color",
+            "in": "cookie",
+            "required": true,
+            "style": "cookie",
+            "explode": false,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "R": {
+                  "type": "integer"
+                },
+                "G": {
+                  "type": "integer"
+                },
+                "B": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "R",
+                "G",
+                "B"
+              ],
+              "additionalProperties": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/cookie/cookie/explode/string": {
+      "get": {
+        "parameters": [
+          {
+            "name": "color",
+            "in": "cookie",
+            "required": true,
+            "style": "cookie",
+            "explode": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "blue"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/cookie/cookie/explode/object": {
+      "get": {
+        "parameters": [
+          {
+            "name": "color",
+            "in": "cookie",
+            "required": true,
+            "style": "cookie",
+            "explode": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "R": {
+                  "type": "integer"
+                },
+                "G": {
+                  "type": "integer"
+                },
+                "B": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "R",
+                "G",
+                "B"
+              ],
+              "additionalProperties": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    }
+  }
+}

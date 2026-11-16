@@ -269,6 +269,22 @@ Mapping keys are not covered. A flow mapping with an unquoted date key
 (`{2026-06-15: …}`) no longer loads, and a block mapping key (`2026-06-15:`) is
 still the timestamp; quote the key in both.
 
+### Cookie parameters are validated
+
+`in: cookie` parameters are now validated like header parameters
+([#770](https://github.com/studio-design/gesso/issues/770)). v2 accepted any
+request without checking them, so a test that never sends a required cookie,
+or sends one its schema rejects, now fails with
+[GSO108](docs/failure-codes.md#gso108) where it passed before. Send the
+documented cookie, or fix `required` and the schema in the spec. `gesso doctor`
+no longer reports cookie parameters as `skipped`.
+
+Laravel's `withCookie()` encrypts the value; the adapter decrypts it with the
+application key, as the `EncryptCookies` middleware does, so the schema sees
+the plain value. The PSR-7 adapter reads the `Cookie` header when a server
+request has no cookie parameters, and Symfony's `OpenApiHttpFake` reads it from
+outgoing requests.
+
 ### 405 responses need an `Allow` header
 
 The `unsupported_method` contract check now fails a 405 that has no `Allow`

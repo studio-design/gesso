@@ -76,8 +76,7 @@ $client = new MockHttpClient(OpenApiHttpFake::respond('stripe', ['POST /v1/charg
 
 Behaviour and failure output match the Laravel responder. JSON and urlencoded
 form bodies are validated; a raw multipart body is reported as skipped, as for a
-PSR-7 client request. The prepared request carries no cookie jar, so `apiKey`
-security schemes declared `in: cookie` report as missing.
+PSR-7 client request. Cookies are read from the request's `Cookie` header.
 
 ## Asserting hand-written fakes
 

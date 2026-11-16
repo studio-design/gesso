@@ -8,6 +8,7 @@ use LogicException;
 use RuntimeException;
 use Studio\Gesso\Baseline\ViolationFingerprint;
 use Studio\Gesso\Coverage\OpenApiCoverageTracker;
+use Studio\Gesso\Validation\Request\CookieParameterValidator;
 use Studio\Gesso\Validation\Request\HeaderParameterValidator;
 use Studio\Gesso\Validation\Request\ParameterCollector;
 use Studio\Gesso\Validation\Request\PathParameterValidator;
@@ -51,6 +52,7 @@ final class OpenApiRequestValidator
     private readonly PathParameterValidator $pathValidator;
     private readonly QueryParameterValidator $queryValidator;
     private readonly HeaderParameterValidator $headerValidator;
+    private readonly CookieParameterValidator $cookieValidator;
     private readonly SecurityValidator $securityValidator;
     private readonly RequestBodyValidator $bodyValidator;
     private readonly StatusCodePatternSet $skipPatterns;
@@ -85,6 +87,7 @@ final class OpenApiRequestValidator
         $this->pathValidator = new PathParameterValidator($runner);
         $this->queryValidator = new QueryParameterValidator($runner);
         $this->headerValidator = new HeaderParameterValidator($runner);
+        $this->cookieValidator = new CookieParameterValidator($runner);
         $this->securityValidator = new SecurityValidator();
         $this->bodyValidator = new RequestBodyValidator($runner);
         $this->skipPatterns = new StatusCodePatternSet(
@@ -96,7 +99,7 @@ final class OpenApiRequestValidator
     /**
      * Validate an incoming request against the OpenAPI spec.
      *
-     * Composes path-parameter, query-parameter, header-parameter, security,
+     * Composes path-parameter, query-parameter, header-parameter, cookie-parameter, security,
      * and request-body validation plus any spec-level errors surfaced while
      * collecting merged parameters, and returns a single result. Errors from
      * all sources are accumulated so a single test run surfaces every
@@ -112,7 +115,7 @@ final class OpenApiRequestValidator
      *
      * @param array<string, mixed> $queryParams parsed query string (string|array<string> per key)
      * @param array<array-key, mixed> $headers request headers (string|array<string> per key, case-insensitive name match; non-string keys are silently dropped)
-     * @param array<string, mixed> $cookies request cookies (string values per key). Used for apiKey security schemes with `in: cookie`. Caller is expected to pass framework-parsed cookies (e.g. Laravel's `$request->cookies->all()`) — this validator does not parse a `Cookie` header.
+     * @param array<string, mixed> $cookies request cookies (decoded string values per key), validated against `in: cookie` parameters and apiKey security schemes with `in: cookie`. Caller is expected to pass framework-parsed cookies (e.g. Laravel's `$request->cookies->all()`) — this validator does not parse a `Cookie` header.
      * @param mixed $requestBody the decoded request body. Accepts either a
      *                           {@see DecodedBody} envelope (what the framework
      *                           adapters pass) or a bare decoded value for
@@ -276,6 +279,7 @@ final class OpenApiRequestValidator
             ['request.parameter.path', ValidatorErrorBoundary::safelyNamed('path', $specName, $method, $matchedPath, fn(): array => $this->pathValidator->validate($method, $matchedPath, $collected->parameters, $pathVariables, $version, $jsonSchemaDialect, $scope)), null, []],
             ['request.parameter.query', ValidatorErrorBoundary::safelyNamed('query', $specName, $method, $matchedPath, fn(): array => $this->queryValidator->validate($method, $matchedPath, $collected->parameters, $queryParams, $version, $jsonSchemaDialect, $rawQueryString, $scope)), null, []],
             ['request.parameter.header', ValidatorErrorBoundary::safelyNamed('header', $specName, $method, $matchedPath, fn(): array => $this->headerValidator->validate($method, $matchedPath, $collected->parameters, $headers, $version, $jsonSchemaDialect, $scope)), null, []],
+            ['request.parameter.cookie', ValidatorErrorBoundary::safelyNamed('cookie', $specName, $method, $matchedPath, fn(): array => $this->cookieValidator->validate($method, $matchedPath, $collected->parameters, $cookies, $version, $jsonSchemaDialect, $scope)), null, []],
             ['request.security', ValidatorErrorBoundary::safelyNamed('security', $specName, $method, $matchedPath, fn(): array => $this->securityValidator->validate($method, $matchedPath, $spec, $operation, $headers, $queryParams, $cookies)), null, []],
             ['request.body', self::withoutNames($bodyResult->errors), $bodyResult->matchedContentType, $bodyResult->violations],
         ];

@@ -728,7 +728,7 @@ trait ValidatesOpenApiSchema
         /** @var array<string, array<int, null|string>> $headers */
         $headers = $request->headers->all();
         /** @var array<string, mixed> $cookies */
-        $cookies = $request->cookies->all();
+        $cookies = TestCookieDecrypter::decrypt($request->cookies->all());
         $rawContentType = $request->headers->get('Content-Type');
         $contentType = is_string($rawContentType) ? $rawContentType : '';
 

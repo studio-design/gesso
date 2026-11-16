@@ -51,7 +51,8 @@ $responseResult = $validator->validateResponseForOperation(
 
 A `ServerRequestInterface` contributes its parsed query and cookie parameters.
 For a client-side `RequestInterface`, the adapter parses the URI query and
-`Cookie` header. Method spelling is preserved so OpenAPI 3.2 custom
+`Cookie` header; it also reads the header for a server request whose cookie
+parameters are empty. Method spelling is preserved so OpenAPI 3.2 custom
 `additionalOperations` remain case-sensitive.
 
 ## PHPUnit assertions
