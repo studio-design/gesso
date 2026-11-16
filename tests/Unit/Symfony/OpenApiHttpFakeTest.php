@@ -68,6 +68,19 @@ final class OpenApiHttpFakeTest extends TestCase
     }
 
     #[Test]
+    public function cookie_header_is_validated(): void
+    {
+        $client = new MockHttpClient(OpenApiHttpFake::respond('cookie-parameter-styles'));
+
+        $response = $client->request('GET', 'https://pets.example/cookie/cookie/explode/object', ['headers' => ['Cookie' => 'R=100; G=200; B=150']]);
+        $this->assertSame(200, $response->getStatusCode());
+
+        $this->expectException(AssertionFailedError::class);
+        $this->expectExceptionMessage('[GSO108]');
+        $client->request('GET', 'https://pets.example/cookie/cookie/explode/object', ['headers' => ['Cookie' => 'R=100; G=200; B=x']]);
+    }
+
+    #[Test]
     public function missing_required_query_fails(): void
     {
         $client = new MockHttpClient(OpenApiHttpFake::respond('consumer-fake'));

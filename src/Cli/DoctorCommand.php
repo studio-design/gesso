@@ -691,7 +691,7 @@ final class DoctorCommand
 
     /**
      * Report the request-side parts runtime validation accepts without
-     * checking: cookie parameters, `content`-based parameters, and request
+     * checking: `content`-based parameters, and request
      * media types it skips. Parameters are merged by the runtime collector so
      * path-level overrides resolve exactly as they do during validation.
      *
@@ -710,15 +710,7 @@ final class DoctorCommand
     ): void {
         foreach (ParameterCollector::collect($method, $path, $pathItem, $operation)->parameters as $parameter) {
             $location = sprintf('%s.%s', (string) $parameter['in'], (string) $parameter['name']);
-            if ($parameter['in'] === 'cookie') {
-                $issues[] = $this->issue(
-                    'skipped',
-                    'feature',
-                    $label,
-                    sprintf('Cookie parameter `%s` for %s %s is not validated.', $location, $method, $path),
-                    'Keep a separate test for the cookie until cookie parameters are supported.',
-                );
-            } elseif ($parameter['in'] !== 'querystring' && !isset($parameter['schema']) && isset($parameter['content'])) {
+            if ($parameter['in'] !== 'querystring' && !isset($parameter['schema']) && isset($parameter['content'])) {
                 // Parameter validators read only `schema`; outside the 3.2
                 // querystring, a `content` map is never consulted.
                 $issues[] = $this->issue(

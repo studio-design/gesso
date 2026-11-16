@@ -25,19 +25,16 @@ use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 use Studio\Gesso\Validation\Support\ContentTypeMatcher;
 use Studio\Gesso\Validation\Support\DeferredBodyPresence;
 use Studio\Gesso\Validation\Support\FormBodyDecoder;
+use Studio\Gesso\Validation\Support\ParameterStyleDeserializer;
 use Studio\Gesso\ValidationIssue;
 use Throwable;
 
 use function array_is_list;
 use function array_merge;
 use function array_values;
-use function explode;
 use function implode;
 use function is_array;
-use function ltrim;
-use function rawurldecode;
 use function sprintf;
-use function str_contains;
 use function trim;
 
 /**
@@ -76,7 +73,8 @@ final class OpenApiPsr7Validator
     /**
      * Validate a PSR-7 request. ServerRequestInterface supplies its parsed
      * query/cookie parameters; a client RequestInterface is parsed from the
-     * URI query and Cookie header.
+     * URI query and Cookie header, as is a server request whose cookie
+     * parameters are empty.
      */
     public function validateRequest(
         RequestInterface $request,
@@ -94,7 +92,12 @@ final class OpenApiPsr7Validator
             $cookies = $request->getCookieParams();
         } else {
             $queryParams = WireQueryParser::parse($request->getUri()->getQuery());
-            $cookies = self::parseCookieHeader($request);
+            $cookies = [];
+        }
+        // A server request built by hand (or by a factory that does not read
+        // $_COOKIE) can carry its cookies only in the header.
+        if ($cookies === []) {
+            $cookies = ParameterStyleDeserializer::parseCookieHeader($request->getHeader('Cookie'));
         }
 
         $rawQueryString = $request->getUri()->getQuery();
@@ -301,30 +304,6 @@ final class OpenApiPsr7Validator
         $contentType = trim($message->getHeaderLine('Content-Type'));
 
         return $contentType === '' ? null : $contentType;
-    }
-
-    /** @return array<string, string> */
-    private static function parseCookieHeader(RequestInterface $request): array
-    {
-        $cookies = [];
-        foreach ($request->getHeader('Cookie') as $header) {
-            foreach (explode(';', $header) as $pair) {
-                $pair = trim($pair);
-                if ($pair === '' || !str_contains($pair, '=')) {
-                    continue;
-                }
-
-                [$name, $value] = explode('=', $pair, 2);
-                $name = trim($name);
-                if ($name === '') {
-                    continue;
-                }
-
-                $cookies[$name] = rawurldecode(ltrim($value));
-            }
-        }
-
-        return $cookies;
     }
 
     /**

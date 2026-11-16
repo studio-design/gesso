@@ -15,7 +15,9 @@ use Studio\Gesso\Laravel\GessoServiceProvider;
 use Studio\Gesso\Laravel\ValidatesOpenApiSchema;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 
+use function base64_encode;
 use function dirname;
+use function str_repeat;
 
 /**
  * Complements the ValidatesOpenApiSchemaAutoValidateRequestTest unit test by
@@ -67,6 +69,50 @@ class AutoValidateRequestIntegrationTest extends TestCase
         $this->expectExceptionMessage('OpenAPI request validation failed');
 
         $this->postJson('/v1/pets', ['not_name' => 'x']);
+    }
+
+    #[Test]
+    public function cookie_parameters_are_validated_as_the_application_sees_them(): void
+    {
+        // withCookie() encrypts the value for the EncryptCookies middleware;
+        // the cookie parameter must be validated against the plain value.
+        config()->set('app.key', 'base64:' . base64_encode(str_repeat('k', 32)));
+        config()->set('gesso.spec.default', 'cookie-parameter-styles');
+        config()->set('gesso.laravel.auto_validate_request', true);
+
+        $this->withCookie('color', 'blue,black,brown')->get('/cookie/form/flat/array')->assertOk();
+
+        $this->expectException(AssertionFailedError::class);
+        $this->expectExceptionMessage('[GSO108]');
+
+        $this->withCookie('color', 'blue,black,pink')->get('/cookie/form/flat/array');
+    }
+
+    #[Test]
+    public function an_unencrypted_cookie_parameter_is_validated_as_sent(): void
+    {
+        config()->set('app.key', 'base64:' . base64_encode(str_repeat('k', 32)));
+        config()->set('gesso.spec.default', 'cookie-parameter-styles');
+        config()->set('gesso.laravel.auto_validate_request', true);
+
+        $this->withUnencryptedCookie('color', 'blue,black,brown')->get('/cookie/form/flat/array')->assertOk();
+
+        $this->expectException(AssertionFailedError::class);
+        $this->expectExceptionMessage('[GSO108]');
+
+        $this->withUnencryptedCookie('color', 'blue,black,pink')->get('/cookie/form/flat/array');
+    }
+
+    #[Test]
+    public function a_missing_required_cookie_parameter_fails_request_validation(): void
+    {
+        config()->set('gesso.spec.default', 'cookie-parameter-styles');
+        config()->set('gesso.laravel.auto_validate_request', true);
+
+        $this->expectException(AssertionFailedError::class);
+        $this->expectExceptionMessage('[GSO108]');
+
+        $this->get('/cookie/form/flat/array');
     }
 
     #[Test]
@@ -441,6 +487,7 @@ class AutoValidateRequestIntegrationTest extends TestCase
         Route::get('/v1/secure/bearer', static fn() => response()->json(null));
 
         Route::get('/filter', static fn() => response()->noContent());
+        Route::get('/cookie/form/flat/array', static fn() => response(''));
         Route::patch('/v1/pets/{petId}', static fn() => response()->json(
             ['data' => ['id' => 42, 'name' => 'Buddy', 'tag' => null]],
         ));

@@ -28,6 +28,7 @@ use Studio\Gesso\Coverage\OpenApiCoverageTracker;
 use Studio\Gesso\Psr7\OpenApiPsr7Validator;
 use Studio\Gesso\Spec\OpenApiSpecLoader;
 use Studio\Gesso\Tests\Helpers\BodyBoundaryCases;
+use Studio\Gesso\ValidationIssue;
 use TypeError;
 
 use function array_filter;
@@ -309,7 +310,27 @@ final class OpenApiPsr7ValidatorTest extends TestCase
         $result = $this->validator->validateRequest($request);
 
         $this->assertFalse($result->isValid());
-        $this->assertStringContainsString("api key 'session' is missing from the cookie", $result->errorMessage());
+        $this->assertSame(
+            ['request.parameter.cookie', 'request.security'],
+            array_map(static fn(ValidationIssue $issue): string => $issue->category, $result->issues()),
+        );
+    }
+
+    #[Test]
+    public function reads_cookies_from_the_header_of_a_server_request_without_cookie_params(): void
+    {
+        // A hand-built server request (or a factory that does not read
+        // $_COOKIE) carries its cookies only in the header.
+        $request = (new ServerRequest(
+            'POST',
+            'https://example.test/widgets/42?q=blue',
+            ['Content-Type' => 'application/json', 'X-Token' => 'secret', 'Cookie' => 'session=abc'],
+            '{"message":"hello"}',
+        ))->withQueryParams(['q' => 'blue']);
+
+        $result = $this->validator->validateRequest($request);
+
+        $this->assertTrue($result->isValid(), $result->errorMessage());
     }
 
     #[Test]

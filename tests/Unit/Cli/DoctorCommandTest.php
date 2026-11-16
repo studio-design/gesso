@@ -26,6 +26,7 @@ use Studio\Gesso\Tests\Helpers\FakeHttpClient;
 use Studio\Gesso\Validation\Request\RequestBodyValidator;
 use Studio\Gesso\Validation\Strict\StrictRequiredTracker;
 use Studio\Gesso\Validation\Support\SchemaValidatorRunner;
+use Studio\Gesso\ValidationIssue;
 
 use function array_column;
 use function array_filter;
@@ -1429,14 +1430,19 @@ class DoctorCommandTest extends TestCase
     }
 
     #[Test]
-    public function reports_a_cookie_parameter_runtime_validation_does_not_check(): void
+    public function does_not_report_a_cookie_parameter_runtime_validation_checks(): void
     {
         $parameter = ['name' => 'session', 'in' => 'cookie', 'required' => true, 'schema' => ['type' => 'integer']];
-        $this->assertSkippedFeature($this->operationSpec(['parameters' => [$parameter]]), ['cookie.session', 'GET /pets']);
+        $spec = $this->operationSpec(['parameters' => [$parameter]]);
+        $report = $this->runJsonDoctor($this->writeSpec('parity.json', (string) json_encode($spec, JSON_THROW_ON_ERROR)), $exit);
 
-        // Runtime accepts the request without the required cookie.
+        $this->assertSame(DoctorCommand::EXIT_OK, $exit);
+        $this->assertSame([], $report['issues']);
+
+        // Runtime rejects the request without the required cookie.
+        OpenApiSpecLoader::configure($this->workDir);
         $result = (new OpenApiRequestValidator())->validateWithoutRecording('parity', 'GET', '/pets', [], [], null);
-        $this->assertTrue($result->isValid() && !$result->isSkipped());
+        $this->assertSame(['request.parameter.cookie'], array_map(static fn(ValidationIssue $issue): string => $issue->category, $result->issues()));
     }
 
     #[Test]

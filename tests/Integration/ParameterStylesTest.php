@@ -17,8 +17,9 @@ use function implode;
 
 /**
  * Every row of the OAS 3.2 Style Examples table (§4.12.6) that applies to
- * path, header, and query parameters, sent on the wire through the PSR-7
- * client adapter. The fixture's `color` is the table's: the string `blue`,
+ * path, header, query, and cookie parameters, sent on the wire through the
+ * PSR-7 client adapter. The exploded cookie array (`color=blue; color=black`)
+ * is the exception: a name → value cookie map cannot carry a repeated name. The fixture's `color` is the table's: the string `blue`,
  * the array `[blue, black, brown]`, the object `{R: 100, G: 200, B: 150}`
  * (integers, so a valid object also proves per-property coercion).
  */
@@ -124,6 +125,24 @@ final class ParameterStylesTest extends TestCase
         ]);
     }
 
+    /**
+     * @return iterable<string, array{string, string, bool}> operation, Cookie header, valid
+     */
+    public static function provideCookie_parameter_stylesCases(): iterable
+    {
+        foreach (['form', 'cookie'] as $style) {
+            yield from self::cases("{$style}/flat", [
+                'string' => ['color=blue', 'color=red'],
+                'array' => ['color=blue,black,brown', 'color=blue,black,pink'],
+                'object' => ['color=R,100,G,200,B,150', 'color=R,100,G,200,B,x'],
+            ]);
+            yield from self::cases("{$style}/explode", [
+                'string' => ['color=blue', 'color=red'],
+                'object' => ['R=100; G=200; B=150', 'R=100; G=200; B=x'],
+            ]);
+        }
+    }
+
     #[DataProvider('providePath_parameter_stylesCases')]
     #[Test]
     public function path_parameter_styles(string $operation, string $value, bool $valid): void
@@ -147,6 +166,16 @@ final class ParameterStylesTest extends TestCase
     public function query_parameter_styles(string $operation, string $query, bool $valid): void
     {
         $result = $this->validator->validateRequest(new Request('GET', "/query/{$operation}?{$query}"));
+
+        $this->assertSame($valid, $result->isValid(), $result->errorMessage());
+    }
+
+    #[DataProvider('provideCookie_parameter_stylesCases')]
+    #[Test]
+    public function cookie_parameter_styles(string $operation, string $cookie, bool $valid): void
+    {
+        $validator = new OpenApiPsr7Validator('cookie-parameter-styles');
+        $result = $validator->validateRequest(new Request('GET', "/cookie/{$operation}", ['Cookie' => $cookie]));
 
         $this->assertSame($valid, $result->isValid(), $result->errorMessage());
     }

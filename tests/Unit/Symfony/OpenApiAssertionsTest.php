@@ -399,6 +399,22 @@ final class OpenApiAssertionsTest extends TestCase
         }
     }
 
+    #[OpenApiSpec('cookie-parameter-styles')]
+    #[Test]
+    public function validates_cookie_parameters_from_the_cookie_bag(): void
+    {
+        $this->assertOpenApiRequest(Request::create('/cookie/form/flat/array', cookies: ['color' => 'blue,black,brown']));
+
+        foreach ([[], ['color' => 'blue,black,pink']] as $cookies) {
+            try {
+                $this->assertOpenApiRequest(Request::create('/cookie/form/flat/array', cookies: $cookies));
+                $this->fail('Expected the request assertion to fail.');
+            } catch (AssertionFailedError $e) {
+                $this->assertStringContainsString('[GSO108]', $e->getMessage());
+            }
+        }
+    }
+
     #[Test]
     public function request_failure_curl_includes_cookies_as_a_redacted_header(): void
     {

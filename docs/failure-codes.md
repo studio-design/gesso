@@ -166,6 +166,25 @@ How to fix:
 
 Do not remove `security` from the spec to make the test pass.
 
+### GSO108
+
+**Cookie parameter is missing or does not match its schema.** A required `in: cookie` parameter is absent, or a cookie value does not satisfy its schema. `keyword` is `required` when the cookie is missing.
+
+Validator issue category `request.parameter.cookie`.
+
+Common causes:
+
+- The test does not send the cookie.
+- The value has the wrong type or format.
+- The `style` / `explode` serialization differs from what the client sends.
+
+How to fix:
+
+- Test wrong: send the documented cookie.
+- Spec wrong: fix `required`, the schema, or the serialization fields.
+
+Do not add `#[SkipOpenApi]`, list the status in `validation.skip_response_codes`, or regenerate the violation baseline to make this pass.
+
 ### GSO110
 
 **Request body does not match its schema.** The request body violates a schema keyword that has no more specific code. `keyword` names the failing keyword.

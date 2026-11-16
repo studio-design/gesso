@@ -21,7 +21,8 @@ This library follows [Semantic Versioning 2.0](https://semver.org/). v1.0.0 is t
 - The `OpenApiValidationResult` shape (`outcome()`, `errors()`, `issues()`, `matchedPath()`, `skipReason()`, `isValid()`, `isSkipped()`)
 - The `ValidationIssue` shape and its `category` slugs (`request.spec`,
   `request.path_match`, `request.method`, `request.parameter.path`,
-  `request.parameter.query`, `request.parameter.header`, `request.security`,
+  `request.parameter.query`, `request.parameter.header`,
+  `request.parameter.cookie`, `request.security`,
   `request.body`, `response.spec`, `response.request_context`,
   `response.status`, `response.body`, `response.header`,
   `response.content_type`, and the legacy
