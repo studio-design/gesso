@@ -1,0 +1,111 @@
+{
+    "openapi": "3.0.3",
+    "info": {
+        "title": "readOnly / writeOnly through combiners",
+        "version": "1.0.0"
+    },
+    "paths": {
+        "/users": {
+            "post": {
+                "operationId": "createUser",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/User"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Created user",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/User"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "components": {
+        "schemas": {
+            "Id": {
+                "type": "integer",
+                "readOnly": true
+            },
+            "Secret": {
+                "type": "string",
+                "writeOnly": true
+            },
+            "User": {
+                "type": "object",
+                "required": [
+                    "id",
+                    "parentId",
+                    "kind",
+                    "name",
+                    "password"
+                ],
+                "properties": {
+                    "id": {
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/Id"
+                            }
+                        ],
+                        "description": "allOf wrapper"
+                    },
+                    "parentId": {
+                        "allOf": [
+                            {
+                                "allOf": [
+                                    {
+                                        "$ref": "#/components/schemas/Id"
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    "kind": {
+                        "oneOf": [
+                            {
+                                "$ref": "#/components/schemas/Id"
+                            },
+                            {
+                                "type": "string",
+                                "readOnly": true
+                            }
+                        ]
+                    },
+                    "label": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/Id"
+                            },
+                            {
+                                "type": "string"
+                            }
+                        ]
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "password": {
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/Secret"
+                            }
+                        ],
+                        "description": "allOf wrapper"
+                    }
+                }
+            }
+        }
+    }
+}

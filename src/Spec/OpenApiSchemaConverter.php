@@ -516,10 +516,6 @@ final class OpenApiSchemaConverter
      * `false` (Draft-07 canonical "this property must not appear") and prune
      * forbidden names from the parent `required` array.
      *
-     * Detection only looks at the property's own top-level `readOnly` /
-     * `writeOnly`; markers buried inside a property's `allOf` / `oneOf` /
-     * `anyOf` children are not handled (known limitation).
-     *
      * @param array<string, mixed> $schema
      */
     private static function enforceContextOnProperties(array &$schema, SchemaContext $context): void
@@ -530,11 +526,7 @@ final class OpenApiSchemaConverter
         $forbiddenNames = [];
 
         foreach ($properties as $name => $property) {
-            if (!is_array($property)) {
-                continue;
-            }
-
-            if (($property[$forbiddenKeyword] ?? null) !== true) {
+            if (!is_array($property) || !self::carriesMarker($property, $forbiddenKeyword)) {
                 continue;
             }
 
@@ -569,6 +561,46 @@ final class OpenApiSchemaConverter
         }
 
         $schema['required'] = $filtered;
+    }
+
+    /**
+     * Whether `$keyword` (`readOnly` / `writeOnly`) is `true` on every value
+     * the schema accepts. JSON Schema collects the annotation from each
+     * subschema that applies, and treats the instance as marked when any
+     * occurrence is `true`: every `allOf` branch applies, so one marked
+     * branch is enough (`id: {allOf: [{$ref: Id}]}`, the OpenAPI 3.0 way to
+     * describe a reference). Which `oneOf` / `anyOf` branch applies depends on
+     * the value, so those mark the property only when every branch is marked.
+     *
+     * @param array<mixed> $schema
+     */
+    private static function carriesMarker(array $schema, string $keyword): bool
+    {
+        if (($schema[$keyword] ?? null) === true) {
+            return true;
+        }
+
+        foreach (is_array($schema['allOf'] ?? null) ? $schema['allOf'] : [] as $branch) {
+            if (is_array($branch) && self::carriesMarker($branch, $keyword)) {
+                return true;
+            }
+        }
+
+        foreach (['oneOf', 'anyOf'] as $combiner) {
+            $branches = $schema[$combiner] ?? null;
+            if (!is_array($branches) || $branches === []) {
+                continue;
+            }
+            foreach ($branches as $branch) {
+                if (!is_array($branch) || !self::carriesMarker($branch, $keyword)) {
+                    continue 2;
+                }
+            }
+
+            return true;
+        }
+
+        return false;
     }
 
     /**
