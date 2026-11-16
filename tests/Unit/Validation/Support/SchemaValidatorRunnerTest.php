@@ -86,6 +86,40 @@ class SchemaValidatorRunnerTest extends TestCase
         yield 'unlimited' => [0, 32, false];
     }
 
+    // ============================================================
+    // A property that fails is not reported again by
+    // additionalProperties (issues #159, #811)
+    //
+    // opis/json-schema before 2.6.2 left a property that failed its
+    // `properties` or `patternProperties` schema unmarked as checked, so
+    // `additionalProperties` evaluated it again and reported a second,
+    // wrong error (opis/json-schema#148). composer.json requires 2.6.2,
+    // so these tests pin opis's behaviour, including in the
+    // lowest-dependency lane.
+    // ============================================================
+
+    /**
+     * @return iterable<string, array{array<string, mixed>, array<string, mixed>, string, string}>
+     */
+    public static function provideA_failed_property_is_not_reported_again_by_additional_propertiesCases(): iterable
+    {
+        $pattern = ['type' => 'object', 'patternProperties' => ['^x-' => ['type' => 'boolean']]];
+        $declared = ['type' => 'object', 'properties' => ['R' => ['type' => 'integer']]];
+
+        yield 'patternProperties, schema-valued additionalProperties' => [
+            [...$pattern, 'additionalProperties' => ['type' => 'integer']], ['x-on' => 'maybe'], '/x-on', '/patternProperties/%5Ex-/type',
+        ];
+        yield 'patternProperties, additionalProperties false' => [
+            [...$pattern, 'additionalProperties' => false], ['x-on' => 'maybe'], '/x-on', '/patternProperties/%5Ex-/type',
+        ];
+        yield 'properties, schema-valued additionalProperties' => [
+            [...$declared, 'additionalProperties' => ['type' => 'boolean']], ['R' => 'abc'], '/R', '/properties/R/type',
+        ];
+        yield 'properties, additionalProperties false' => [
+            [...$declared, 'additionalProperties' => false], ['R' => 'abc'], '/R', '/properties/R/type',
+        ];
+    }
+
     #[Test]
     public function validate_returns_empty_array_for_valid_data(): void
     {
@@ -551,25 +585,20 @@ class SchemaValidatorRunnerTest extends TestCase
         $this->assertGreaterThan(1, count($uncappedErrors));
     }
 
-    // ============================================================
-    // Cascading additionalProperties dedup (issue #159)
-    //
-    // opis's PropertiesKeyword skips its addCheckedProperties() call
-    // whenever any sub-property fails, leaving `$checked` empty in
-    // the validation context. So when `additionalProperties: false`
-    // runs afterward, every declared property looks "additional",
-    // producing a paired pseudo-error:
-    //
-    //   [/code]  enum-failure (real)
-    //   [/]      Additional object properties are not allowed:
-    //              message, code   (← cascade artifact)
-    //
-    // The runner walks the ValidationError tree, reads the raw list
-    // of "additional" property names from `args()['properties']`,
-    // and filters out names that ARE declared in the schema's
-    // `properties` keyword at that path. See issue #159 for the
-    // upstream root cause.
-    // ============================================================
+    /**
+     * @param array<string, mixed> $schema
+     * @param array<string, mixed> $data
+     */
+    #[DataProvider('provideA_failed_property_is_not_reported_again_by_additional_propertiesCases')]
+    #[Test]
+    public function a_failed_property_is_not_reported_again_by_additional_properties(array $schema, array $data, string $instancePath, string $schemaPointer): void
+    {
+        $violations = (new SchemaValidatorRunner(0))->validateStructured(ObjectConverter::convert($schema), ObjectConverter::convert($data));
+
+        $this->assertCount(1, $violations);
+        $this->assertSame($instancePath, $violations[0]->instancePath);
+        $this->assertSame($schemaPointer, $violations[0]->schemaPointer);
+    }
 
     #[Test]
     public function additional_properties_cascade_is_dropped_when_all_listed_props_have_sub_errors(): void
