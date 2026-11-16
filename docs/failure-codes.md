@@ -746,6 +746,24 @@ How to fix:
 
 Do not delete the example only to silence doctor; generated docs, mocks, and SDKs read it.
 
+### GSO315
+
+**Enum component is not referenced by any operation.** A `components.schemas` entry with an `enum` array is not reached through `$ref` from any operation under `paths` or `webhooks`. This is reported as a `warning`: enum drift still binds a backed enum to the component, so it checks values against a schema the API does not use.
+
+`gesso doctor` issue category `enum`.
+
+Common causes:
+
+- The operations that used the enum were removed or now use another component.
+- The operations declare the values inline instead of referencing the component.
+
+How to fix:
+
+- Still part of the contract: reference the component from the operations that carry the value.
+- Dead: remove the component, and the `#[BoundToOpenApiEnum]` attribute that names it.
+
+Do not delete a component a backed enum still binds to without removing the binding: an attribute binding then fails with `ComponentNotFound`, and a name match silently stops checking.
+
 ## Coverage gates and merge (GSO4xx)
 
 ### GSO401

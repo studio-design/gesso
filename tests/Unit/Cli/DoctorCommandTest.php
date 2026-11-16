@@ -50,6 +50,7 @@ use function realpath;
 use function rmdir;
 use function stream_socket_get_name;
 use function stream_socket_server;
+use function substr_count;
 use function sys_get_temp_dir;
 use function uniqid;
 use function unlink;
@@ -1649,6 +1650,70 @@ class DoctorCommandTest extends TestCase
         $this->assertSame(
             ['/paths/~1pets/get/responses/200/content/application~1json/schema/examples/1' => '/items/properties/id/type'],
             array_column($report['issues'], 'schema_pointer', 'pointer'),
+        );
+    }
+
+    #[Test]
+    public function an_enum_component_no_operation_references_is_one_warning_in_json_and_text(): void
+    {
+        $spec = __DIR__ . '/../../fixtures/specs/unreferenced-enum.json';
+        $report = $this->runJsonDoctor($spec, $exit);
+
+        $this->assertSame(DoctorCommand::EXIT_OK, $exit);
+        $this->assertSame('warning', $report['status']);
+        $this->assertCount(1, $report['issues']);
+        $this->assertSame('warning', $report['issues'][0]['severity']);
+        $this->assertSame('enum', $report['issues'][0]['category']);
+        $this->assertSame('GSO315', $report['issues'][0]['code']);
+        $this->assertSame('/components/schemas/LegacyPetStatus', $report['issues'][0]['pointer']);
+
+        [$exit, $text] = $this->runDoctor(['specs' => [$spec]]);
+
+        $this->assertSame(DoctorCommand::EXIT_OK, $exit);
+        $this->assertSame(1, substr_count($text, 'WARNING [GSO315] [enum]'));
+        $this->assertStringContainsString('`LegacyPetStatus`', $text);
+    }
+
+    #[Test]
+    public function enum_components_count_as_referenced_only_through_a_ref_an_operation_reaches(): void
+    {
+        $enum = ['type' => 'string', 'enum' => ['a']];
+        $json = static fn(string $ref): array => ['content' => ['application/json' => ['schema' => ['$ref' => $ref]]]];
+        $this->writeSpec('alias-target.json', (string) json_encode($enum, JSON_THROW_ON_ERROR));
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 't', 'version' => '1'],
+            'paths' => [
+                '/a' => ['post' => [
+                    'requestBody' => $json('#/components/schemas/Body'),
+                    'callbacks' => ['done' => ['{$request.body#/url}' => ['post' => [
+                        'requestBody' => $json('#/components/schemas/ViaCallback'),
+                        'responses' => ['204' => ['description' => 'ok']],
+                    ]]]],
+                    'responses' => ['200' => ['description' => 'ok'] + $json('./alias-target.json')],
+                ]],
+            ],
+            'webhooks' => ['ping' => ['post' => ['requestBody' => $json('#/components/schemas/ViaWebhook')]]],
+            'components' => ['schemas' => [
+                // `default` here is a property name, not the opaque keyword.
+                'Body' => ['type' => 'object', 'properties' => [
+                    'default' => ['$ref' => '#/components/schemas/a~1b'],
+                ], 'example' => ['$ref' => '#/components/schemas/InExample']],
+                'a/b' => $enum,
+                'ViaCallback' => $enum,
+                'ViaWebhook' => $enum,
+                'Alias' => ['$ref' => './alias-target.json'],
+                'Dead' => ['type' => 'object', 'properties' => ['s' => ['$ref' => '#/components/schemas/OnlyFromDead']]],
+                'OnlyFromDead' => $enum,
+                'InExample' => $enum,
+            ]],
+        ];
+        $report = $this->runJsonDoctor($this->writeSpec('reach.json', (string) json_encode($spec, JSON_THROW_ON_ERROR)), $exit);
+
+        $this->assertSame(DoctorCommand::EXIT_OK, $exit);
+        $this->assertSame(
+            ['/components/schemas/OnlyFromDead', '/components/schemas/InExample'],
+            array_column(array_filter($report['issues'], static fn(array $issue): bool => $issue['category'] === 'enum'), 'pointer'),
         );
     }
 

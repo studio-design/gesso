@@ -42,6 +42,7 @@
         "GSO312",
         "GSO313",
         "GSO314",
+        "GSO315",
         "GSO401",
         "GSO402",
         "GSO403",
@@ -128,6 +129,7 @@
         "spec": "GSO311",
         "compatibility": "GSO312",
         "internal": "GSO313",
-        "example": "GSO314"
+        "example": "GSO314",
+        "enum": "GSO315"
     }
 }
