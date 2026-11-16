@@ -8,8 +8,10 @@ use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Studio\Gesso\OpenApiVersion;
 use Studio\Gesso\Validation\Request\QueryParameterValidator;
+use Studio\Gesso\Validation\Support\NamedError;
 use Studio\Gesso\Validation\Support\SchemaValidatorRunner;
 
+use function array_map;
 use function restore_error_handler;
 use function set_error_handler;
 
@@ -416,9 +418,15 @@ class QueryParameterValidatorTest extends TestCase
         $this->assertCount(1, $errors);
         $this->assertStringContainsString('[query.color/G]', $errors[0]->message);
 
+        // opis/json-schema < 2.6.2 also checks a key that failed its
+        // patternProperties schema against additionalProperties (opis#148),
+        // so the error count depends on the installed version.
         $errors = $this->validator->validate('GET', '/c', $parameters, ['R' => '1', 'x-on' => 'maybe'], OpenApiVersion::V3_1);
-        $this->assertCount(1, $errors);
-        $this->assertStringContainsString('[query.color/x-on]', $errors[0]->message);
+        $this->assertNotSame([], $errors);
+        foreach ($errors as $error) {
+            $this->assertStringStartsWith('[query.color/x-on]', $error->message);
+        }
+        $this->assertContains('/patternProperties/%5Ex-/type', array_map(static fn(NamedError $error): ?string => $error->violation?->schemaPointer, $errors));
     }
 
     #[Test]
