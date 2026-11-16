@@ -37,7 +37,7 @@ class DoctorCliIntegrationTest extends TestCase
     {
         [$exit, $stdout, $stderr] = $this->runCli([
             'doctor',
-            '--spec=tests/fixtures/specs/petstore-3.0.json',
+            '--spec=tests/fixtures/specs/contract-checks.json',
             '--spec=tests/fixtures/specs/external-refs/multi-file.yaml',
             '--format=json',
         ]);

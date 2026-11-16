@@ -285,6 +285,22 @@ the plain value. The PSR-7 adapter reads the `Cookie` header when a server
 request has no cookie parameters, and Symfony's `OpenApiHttpFake` reads it from
 outgoing requests.
 
+### Parameters declared with `content` are validated
+
+A path, query, header, or cookie parameter declared with `content` and a JSON
+media type is now parsed as JSON and validated against that media type's
+schema ([#771](https://github.com/studio-design/gesso/issues/771)). v2 accepted
+any value, so a test that sends a value the schema rejects, or one that is not
+valid JSON, now fails where it passed before. A non-JSON media type with a
+schema returns `Skipped` when the request carries the parameter.
+
+A parameter that declares both or neither of `schema` and `content`, or a
+`content` map without exactly one media type, now fails every request to the
+operation with [GSO103](docs/failure-codes.md#gso103). v2 ignored an optional
+parameter with neither. `gesso doctor` reports these as `structure` errors,
+and reports a `content` parameter as `skipped` only when its media type is not
+JSON.
+
 ### 405 responses need an `Allow` header
 
 The `unsupported_method` contract check now fails a 405 that has no `Allow`

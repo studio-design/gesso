@@ -1503,7 +1503,7 @@ class StubsCommandTest extends TestCase
                             ['name' => 'petId', 'in' => 'path', 'required' => true, 'schema' => ['type' => 'integer']],
                             ['name' => 'limit', 'in' => 'query', 'required' => true, 'schema' => ['type' => 'integer']],
                             ['name' => 'cursor', 'in' => 'query', 'schema' => ['type' => 'string']],
-                            ['name' => 'X-Tenant', 'in' => 'header', 'required' => true, 'example' => 'acme'],
+                            ['name' => 'X-Tenant', 'in' => 'header', 'required' => true, 'schema' => ['type' => 'string'], 'example' => 'acme'],
                         ],
                         'responses' => [
                             '200' => ['content' => ['application/json' => ['schema' => ['type' => 'object']]]],

@@ -1620,8 +1620,8 @@ class OpenApiRequestValidatorTest extends TestCase
         );
 
         $this->assertFalse($result->isValid());
-        $this->assertStringContainsString('[query.token]', $result->errors()[0]);
-        $this->assertStringContainsString('no schema', $result->errors()[0]);
+        $this->assertStringContainsString("'query.token'", $result->errors()[0]);
+        $this->assertStringContainsString("neither 'schema' nor 'content'", $result->errors()[0]);
     }
 
     // ========================================
@@ -1826,7 +1826,8 @@ class OpenApiRequestValidatorTest extends TestCase
         );
 
         $this->assertFalse($result->isValid());
-        $this->assertStringContainsString('[path.widgetId]', $result->errors()[0]);
+        $this->assertStringContainsString("'path.widgetId'", $result->errors()[0]);
+        $this->assertStringContainsString("neither 'schema' nor 'content'", $result->errors()[0]);
     }
 
     #[Test]
@@ -2357,7 +2358,8 @@ class OpenApiRequestValidatorTest extends TestCase
         );
 
         $this->assertFalse($result->isValid());
-        $this->assertStringContainsString('[header.X-Api-Key]', $result->errors()[0]);
+        $this->assertStringContainsString("'header.X-Api-Key'", $result->errors()[0]);
+        $this->assertStringContainsString("neither 'schema' nor 'content'", $result->errors()[0]);
     }
 
     #[Test]

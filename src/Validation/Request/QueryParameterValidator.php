@@ -8,16 +8,13 @@ use const E_USER_WARNING;
 
 use Studio\Gesso\OpenApiVersion;
 use Studio\Gesso\SchemaContext;
-use Studio\Gesso\Validation\Support\MalformedSpecNode;
 use Studio\Gesso\Validation\Support\NamedError;
+use Studio\Gesso\Validation\Support\ParameterContent;
 use Studio\Gesso\Validation\Support\ParameterStyleDeserializer;
 use Studio\Gesso\Validation\Support\SchemaValidatorRunner;
 use Studio\Gesso\Validation\Support\TypeCoercer;
 
-use function array_key_exists;
-use function array_keys;
 use function count;
-use function implode;
 use function is_array;
 use function is_string;
 use function sprintf;
@@ -92,6 +89,20 @@ final class QueryParameterValidator
             $name = $param['name'];
             $required = ($param['required'] ?? false) === true;
 
+            $content = ParameterContent::of($param);
+            if ($content !== null) {
+                [$mediaType, $schema] = $content;
+                if (!isset($queryParams[$name])) {
+                    if ($required) {
+                        $errors[] = new NamedError($name, "[query.{$name}] required query parameter is missing.", keyword: 'required');
+                    }
+                } elseif ($schema !== null && ParameterContent::isJson($mediaType)) {
+                    $errors = [...$errors, ...ParameterContent::validateJson($this->runner, $name, "query.{$name}", $queryParams[$name], $mediaType, $schema, $version, $jsonSchemaDialect, $scope)];
+                }
+
+                continue;
+            }
+
             // A required parameter with no schema is a clearly malformed spec — surface it
             // rather than silently passing every request. Optional parameters with no schema
             // have nothing to validate, so we let them through (matches {@see RequestBodyValidator}).
@@ -147,40 +158,24 @@ final class QueryParameterValidator
         $qsName = $parameter['name'] ?? null;
         $qsName = is_string($qsName) ? $qsName : null;
 
-        $content = $parameter['content'] ?? null;
-        if (MalformedSpecNode::isMalformed($content) || $content === []) {
-            return [new NamedError($qsName, "[querystring] parameter has no content map for {$method} {$matchedPath} — cannot validate.")];
-        }
-        if (array_key_exists('schema', $parameter)) {
+        // ParameterCollector already rejected both, neither, and a content map
+        // without exactly one media type.
+        $content = ParameterContent::of($parameter);
+        if ($content === null) {
             return [new NamedError($qsName, "[querystring] parameter must use content instead of schema for {$method} {$matchedPath}.")];
         }
-        if (count($content) !== 1) {
-            return [new NamedError($qsName, "[querystring] content must contain exactly one media type for {$method} {$matchedPath}.")];
-        }
 
-        $mediaType = null;
-        $mediaTypeSpec = null;
-        foreach ($content as $candidate => $candidateSpec) {
-            if (!is_string($candidate) || strtolower($candidate) !== 'application/x-www-form-urlencoded') {
-                continue;
-            }
-
-            $mediaType = $candidate;
-            $mediaTypeSpec = $candidateSpec;
-            break;
-        }
-
-        if ($mediaType === null) {
-            $declared = implode(', ', array_keys($content));
-            if (!isset(self::$warnedUnsupportedQueryStringMediaTypes[$declared])) {
-                self::$warnedUnsupportedQueryStringMediaTypes[$declared] = true;
+        [$mediaType, $schema] = $content;
+        if (strtolower($mediaType) !== 'application/x-www-form-urlencoded') {
+            if (!isset(self::$warnedUnsupportedQueryStringMediaTypes[$mediaType])) {
+                self::$warnedUnsupportedQueryStringMediaTypes[$mediaType] = true;
                 trigger_error(
                     sprintf(
                         '[OpenAPI 3.2 querystring] %s %s declares unsupported query-string media type(s): %s. '
                         . 'Only application/x-www-form-urlencoded can be reconstructed from the parsed query map; validation was skipped.',
                         $method,
                         $matchedPath,
-                        $declared,
+                        $mediaType,
                     ),
                     E_USER_WARNING,
                 );
@@ -189,12 +184,7 @@ final class QueryParameterValidator
             return [];
         }
 
-        if (MalformedSpecNode::isMalformed($mediaTypeSpec)) {
-            return [new NamedError($qsName, "[querystring] content '{$mediaType}' must be an object for {$method} {$matchedPath}.")];
-        }
-
-        $schema = $mediaTypeSpec['schema'] ?? null;
-        if (MalformedSpecNode::isMalformed($schema)) {
+        if ($schema === null) {
             return [new NamedError($qsName, "[querystring] content '{$mediaType}' has no schema for {$method} {$matchedPath} — cannot validate.")];
         }
 

@@ -27,14 +27,20 @@ into a complete OpenAPI linter: for compatibility, missing or null request-body
 and request-content nodes retain the runtime behavior, and response-side
 `encoding` is not inspected.
 
+Parameter declarations are merged and checked by the runtime validator's
+collector, so each error it raises on every request to an operation (a
+parameter without `name` or `in`, both or neither of `schema` and `content`, a
+`content` map without exactly one media type, or a misused `in: querystring`)
+is also a doctor `structure` error.
+
 ## Features runtime validation does not enforce
 
 Doctor reports each part of the contract that runtime validation accepts
 without checking as a `skipped` issue in the `feature` category, so a clean
 report means what the test suite will actually enforce:
 
-- parameters declared with `content` instead of `schema`, except the OpenAPI 3.2
-  `in: querystring` parameter;
+- parameters declared with `content` whose media type is not JSON but declares a
+  `schema`, except the OpenAPI 3.2 `in: querystring` parameter;
 - request or response media types using `itemSchema` streaming, unless a JSON
   media type also declares `schema`;
 - non-JSON media types that declare a `schema`, except form request bodies

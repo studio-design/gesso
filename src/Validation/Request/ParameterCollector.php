@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Validation\Request;
 
+use Studio\Gesso\Validation\Support\ParameterContent;
+
 use function array_values;
 use function in_array;
 use function is_array;
@@ -73,6 +75,16 @@ final class ParameterCollector
                 }
 
                 $key = $param['in'] . ':' . $param['name'];
+                $defect = ParameterContent::defect($param);
+                if ($defect !== null) {
+                    // An operation-level entry still overrides the path-level
+                    // one, so a malformed override is not replaced by it.
+                    unset($merged[$key]);
+                    $errors[] = "Malformed parameter '{$param['in']}.{$param['name']}' for {$method} {$matchedPath}: {$defect}.";
+
+                    continue;
+                }
+
                 $merged[$key] = $param;
             }
         }

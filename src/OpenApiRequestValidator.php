@@ -23,6 +23,7 @@ use Studio\Gesso\Validation\Support\DeferredBodyPresence;
 use Studio\Gesso\Validation\Support\DiscriminatorContext;
 use Studio\Gesso\Validation\Support\DiscriminatorEnforcement;
 use Studio\Gesso\Validation\Support\NamedError;
+use Studio\Gesso\Validation\Support\ParameterContent;
 use Studio\Gesso\Validation\Support\SchemaValidatorRunner;
 use Studio\Gesso\Validation\Support\SpecResponseKeyResolver;
 use Studio\Gesso\Validation\Support\StatusCodePatternSet;
@@ -31,6 +32,7 @@ use Studio\Gesso\Validation\Support\ValidatorErrorBoundary;
 
 use function array_map;
 use function count;
+use function implode;
 use function is_array;
 use function serialize;
 use function sprintf;
@@ -324,10 +326,15 @@ final class OpenApiRequestValidator
             // resolved (null when no `requestBody` lookup happened) so
             // adapters can tag their own body-level diagnostics with it even
             // when this result contributes no issues of its own.
+            // A non-JSON `content` parameter goes unchecked the same way.
+            $skipReasons = ParameterContent::skipReasons($collected->parameters, $queryParams, $headers, $cookies);
             if ($bodyResult->skipReason !== null) {
+                $skipReasons[] = $bodyResult->skipReason;
+            }
+            if ($skipReasons !== []) {
                 return OpenApiValidationResult::skipped(
                     $matchedPath,
-                    $bodyResult->skipReason,
+                    implode('; ', $skipReasons),
                     matchedContentType: $bodyResult->matchedContentType,
                 );
             }

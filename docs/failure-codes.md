@@ -83,6 +83,7 @@ Validator issue category `request.spec`.
 Common causes:
 
 - A parameter is missing `name` or `in`, or has a non-object schema.
+- A parameter declares both or neither of `schema` and `content`, or a `content` map without exactly one media type.
 - A `$ref` resolved to the wrong kind of object.
 
 How to fix:

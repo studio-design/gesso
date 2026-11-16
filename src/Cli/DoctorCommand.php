@@ -51,6 +51,7 @@ use Studio\Gesso\Validation\Support\ContentTypeMatcher;
 use Studio\Gesso\Validation\Support\DiscriminatorContext;
 use Studio\Gesso\Validation\Support\FormBodyDecoder;
 use Studio\Gesso\Validation\Support\MalformedSpecNode;
+use Studio\Gesso\Validation\Support\ParameterContent;
 use Symfony\Component\HttpClient\HttpClient;
 use Symfony\Component\HttpClient\Psr18Client;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
@@ -690,8 +691,9 @@ final class DoctorCommand
     }
 
     /**
-     * Report the request-side parts runtime validation accepts without
-     * checking: `content`-based parameters, and request
+     * Report malformed parameter declarations, and the request-side parts
+     * runtime validation accepts without checking: non-JSON `content`
+     * parameters, and request
      * media types it skips. Parameters are merged by the runtime collector so
      * path-level overrides resolve exactly as they do during validation.
      *
@@ -708,17 +710,23 @@ final class DoctorCommand
         string $label,
         array &$issues,
     ): void {
-        foreach (ParameterCollector::collect($method, $path, $pathItem, $operation)->parameters as $parameter) {
+        $collected = ParameterCollector::collect($method, $path, $pathItem, $operation);
+        // Every request to the operation fails with these at runtime.
+        foreach ($collected->specErrors as $error) {
+            $issues[] = $this->issue('error', 'structure', $label, $error, null);
+        }
+        foreach ($collected->parameters as $parameter) {
             $location = sprintf('%s.%s', (string) $parameter['in'], (string) $parameter['name']);
-            if ($parameter['in'] !== 'querystring' && !isset($parameter['schema']) && isset($parameter['content'])) {
-                // Parameter validators read only `schema`; outside the 3.2
-                // querystring, a `content` map is never consulted.
+            $content = ParameterContent::of($parameter);
+            if ($parameter['in'] !== 'querystring' && $content !== null && $content[1] !== null && !ParameterContent::isJson($content[0])) {
+                // Mirrors ParameterContent::skipReasons(): only a JSON media
+                // type's schema is evaluated.
                 $issues[] = $this->issue(
                     'skipped',
                     'feature',
                     $label,
-                    sprintf('Parameter `%s` for %s %s is declared with `content`, which is not validated.', $location, $method, $path),
-                    'Declare the parameter with `schema`, or keep a separate test for it.',
+                    sprintf('Parameter `%s` for %s %s declares a schema for non-JSON media type `%s`, which is not validated.', $location, $method, $path, $content[0]),
+                    'Declare the parameter with `schema` or a JSON media type, or keep a separate test for it.',
                 );
             }
         }
