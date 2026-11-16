@@ -1787,4 +1787,79 @@ class OpenApiRefResolverTest extends TestCase
         $this->assertSame([], get_object_vars($blob));
         $this->assertSame('{"0":{"operationId":"getA"}}', json_encode($links));
     }
+
+    #[Test]
+    public function copies_of_an_id_resource_drop_the_id_the_definition_keeps(): void
+    {
+        $resolved = OpenApiRefResolver::resolve(['openapi' => '3.1.0', 'components' => ['schemas' => [
+            'Pet' => [
+                '$id' => 'https://example.test/pet',
+                '$defs' => ['Tag' => ['$id' => 'tag', 'type' => 'string']],
+                'properties' => ['tag' => ['$ref' => 'tag']],
+            ],
+            'ByUri' => ['$ref' => 'https://example.test/pet'],
+        ]]]);
+        $schemas = $resolved['components']['schemas'];
+
+        $this->assertSame('https://example.test/pet', $schemas['Pet']['$id']);
+        $this->assertSame('tag', $schemas['Pet']['$defs']['Tag']['$id']);
+        $this->assertSame(['type' => 'string'], $schemas['Pet']['properties']['tag']);
+        $this->assertArrayNotHasKey('$id', $schemas['ByUri']);
+        $this->assertArrayNotHasKey('$id', $schemas['ByUri']['$defs']['Tag']);
+    }
+
+    #[Test]
+    public function detects_a_cycle_through_an_id_reference(): void
+    {
+        try {
+            OpenApiRefResolver::resolve(['openapi' => '3.1.0', 'components' => ['schemas' => [
+                'Node' => ['$id' => 'https://example.test/node', 'properties' => ['next' => ['$ref' => 'node']]],
+            ]]]);
+            $this->fail('expected InvalidOpenApiSpecException');
+        } catch (InvalidOpenApiSpecException $e) {
+            $this->assertSame(InvalidOpenApiSpecReason::CircularRef, $e->reason);
+        }
+    }
+
+    #[Test]
+    public function a_missing_pointer_in_an_id_resource_is_unresolvable(): void
+    {
+        try {
+            OpenApiRefResolver::resolve(['openapi' => '3.1.0', 'components' => ['schemas' => [
+                'List' => ['$id' => 'https://example.test/list', 'type' => 'array'],
+                'Use' => ['$ref' => 'https://example.test/list#/$defs/Missing'],
+            ]]]);
+            $this->fail('expected InvalidOpenApiSpecException');
+        } catch (InvalidOpenApiSpecException $e) {
+            $this->assertSame(InvalidOpenApiSpecReason::UnresolvableRef, $e->reason);
+            $this->assertStringContainsString('https://example.test/list#/$defs/Missing', $e->getMessage());
+        }
+    }
+
+    #[Test]
+    public function an_id_inside_opaque_data_is_not_a_resource(): void
+    {
+        try {
+            OpenApiRefResolver::resolve(['openapi' => '3.1.0', 'components' => ['schemas' => [
+                'Sample' => ['type' => 'object', 'default' => ['$id' => 'https://example.test/sample']],
+                'Use' => ['$ref' => 'https://example.test/sample'],
+            ]]]);
+            $this->fail('expected InvalidOpenApiSpecException');
+        } catch (InvalidOpenApiSpecException $e) {
+            $this->assertSame(InvalidOpenApiSpecReason::RemoteRefDisallowed, $e->reason);
+        }
+    }
+
+    #[Test]
+    public function a_relative_ref_naming_no_embedded_resource_keeps_the_filesystem_rules(): void
+    {
+        try {
+            OpenApiRefResolver::resolve(['openapi' => '3.1.0', 'components' => ['schemas' => [
+                'Pet' => ['$id' => 'https://example.test/pet', 'properties' => ['tag' => ['$ref' => 'other.json']]],
+            ]]]);
+            $this->fail('expected InvalidOpenApiSpecException');
+        } catch (InvalidOpenApiSpecException $e) {
+            $this->assertSame(InvalidOpenApiSpecReason::LocalRefRequiresSourceFile, $e->reason);
+        }
+    }
 }

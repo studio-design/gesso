@@ -58,6 +58,16 @@ final class RefResolutionContext
          * @var array<string, mixed>
          */
         public readonly array $schemaDeclaration = [],
+        /**
+         * The base URI an enclosing `$id` set, without its fragment, or `null`
+         * while no `$id` is in force and the document's own location is the base.
+         */
+        public readonly ?string $baseUri = null,
+        /**
+         * True while walking a `$ref` target, whose result is copied to each
+         * referring site rather than staying where it was written.
+         */
+        public readonly bool $withinRefTarget = false,
     ) {}
 
     /**
@@ -169,13 +179,62 @@ final class RefResolutionContext
             $this->allowedLocalRefRoots,
             $this->remoteAuthorization,
             $schemaDeclaration,
+            $this->baseUri,
+            $this->withinRefTarget,
+        );
+    }
+
+    /**
+     * Return a copy with the `$id` base URI replaced, for the subtree of a
+     * schema resource or for a `$ref` target walked where it was written.
+     */
+    public function withBaseUri(?string $baseUri): self
+    {
+        return new self(
+            $this->sourceFile,
+            $this->httpClient,
+            $this->requestFactory,
+            $this->allowRemoteRefs,
+            $this->allowedRemoteRefHosts,
+            $this->maxRemoteRefBytes,
+            $this->allowedLocalRefRoots,
+            $this->remoteAuthorization,
+            $this->schemaDeclaration,
+            $baseUri,
+            $this->withinRefTarget,
+        );
+    }
+
+    /**
+     * Return a copy for walking a `$ref` target under the `$id` base URI in
+     * force where the target was written.
+     */
+    public function forRefTarget(?string $baseUri): self
+    {
+        if ($this->withinRefTarget && $this->baseUri === $baseUri) {
+            return $this;
+        }
+
+        return new self(
+            $this->sourceFile,
+            $this->httpClient,
+            $this->requestFactory,
+            $this->allowRemoteRefs,
+            $this->allowedRemoteRefHosts,
+            $this->maxRemoteRefBytes,
+            $this->allowedLocalRefRoots,
+            $this->remoteAuthorization,
+            $this->schemaDeclaration,
+            $baseUri,
+            true,
         );
     }
 
     /**
      * Return a copy with the source file replaced. Used when the resolver
      * descends into an external document and the relative-path base
-     * shifts to that document's directory / URL. All other fields are
+     * shifts to that document's directory / URL. An `$id` base from the
+     * previous document does not carry over. All other fields are
      * preserved verbatim — the pairing invariant cannot be invalidated
      * by this method.
      */
@@ -191,6 +250,8 @@ final class RefResolutionContext
             $this->allowedLocalRefRoots,
             $this->remoteAuthorization,
             $this->schemaDeclaration,
+            null,
+            $this->withinRefTarget,
         );
     }
 }

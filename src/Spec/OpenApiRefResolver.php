@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Studio\Gesso\Spec;
 
+use const JSON_PARTIAL_OUTPUT_ON_ERROR;
 use const SORT_STRING;
 
+use Opis\JsonSchema\Uri;
 use Psr\Http\Client\ClientInterface;
 use Psr\Http\Message\RequestFactoryInterface;
 use SensitiveParameter;
@@ -37,10 +39,12 @@ use function is_bool;
 use function is_float;
 use function is_int;
 use function is_string;
+use function json_encode;
 use function max;
 use function min;
 use function parse_url;
 use function rawurldecode;
+use function rawurlencode;
 use function serialize;
 use function sprintf;
 use function str_contains;
@@ -241,6 +245,15 @@ final class OpenApiRefResolver
     private static array $walkMemo = [];
 
     /**
+     * Embedded schema resources of each document of the resolution in
+     * progress, keyed by source file: `ids` maps a resource's `$id` URI to its
+     * pointer, `bases` the reverse. Scoped to one {@see self::resolve()} call.
+     *
+     * @var array<string, array{ids: array<string, string>, bases: array<string, string>}>
+     */
+    private static array $resourceIndexes = [];
+
+    /**
      * Resolve every `$ref` entry in the spec in place and return the same
      * array. Any structural problem with a `$ref` throws
      * `InvalidOpenApiSpecException` so users get one actionable error at
@@ -348,12 +361,15 @@ final class OpenApiRefResolver
         // Saved and restored so a re-entrant resolve() cannot see or clobber
         // the outer resolution's memo.
         $outerMemo = self::$walkMemo;
+        $outerIndexes = self::$resourceIndexes;
         self::$walkMemo = [];
+        self::$resourceIndexes = [];
 
         try {
             self::walk($spec, $root, [], false, $context, $documentCache);
         } finally {
             self::$walkMemo = $outerMemo;
+            self::$resourceIndexes = $outerIndexes;
         }
 
         return $spec;
@@ -1169,6 +1185,22 @@ final class OpenApiRefResolver
             $context = self::dialectContext($ownDeclaration, $context);
         }
 
+        // An `$id` makes this schema a resource whose URI is the base for the
+        // references inside it, its own `$ref` included.
+        if ($isSchema && !$insideUserNamedMap && is_string($node['$id'] ?? null)) {
+            $resourceUri = self::resourceUri($node, self::baseUri($context));
+            if ($resourceUri !== null) {
+                $context = $context->withBaseUri($resourceUri);
+                // A copy substituted for a `$ref` is not the resource; the
+                // definition stays where it was written. Left in place, every
+                // copy would claim the same URI, and opis rejects a schema in
+                // which two subschemas do (`DuplicateSchemaIdException`).
+                if ($context->withinRefTarget) {
+                    unset($node['$id']);
+                }
+            }
+        }
+
         if (!$insideUserNamedMap && array_key_exists('$ref', $node)) {
             $ref = self::assertStringRef($node['$ref']);
             $siblings = self::refSiblingsToApply($node, $isSchema && $context->appliesRefSiblings());
@@ -1480,6 +1512,25 @@ final class OpenApiRefResolver
             );
         }
 
+        $resourcePointer = self::resourcePointer($ref, $root, $context);
+        if ($resourcePointer !== null) {
+            self::resolveFragmentIn(
+                $node,
+                $ref,
+                $resourcePointer,
+                $root,
+                self::canonicalChainKey($context->sourceFile, $resourcePointer),
+                sprintf('Unresolvable $ref: target not found for %s', $ref),
+                $chain,
+                $context,
+                $context,
+                $documentCache,
+                $targetIsSchema,
+            );
+
+            return;
+        }
+
         if (str_starts_with($ref, 'http://') || str_starts_with($ref, 'https://')) {
             // Redact the parameter in this frame so a fetch-failure stack trace
             // prints the safe URL, not the credential-bearing original.
@@ -1632,6 +1683,10 @@ final class OpenApiRefResolver
         // ("any sibling elements of a $ref are ignored"); for 3.1/3.2 Schema
         // Objects the caller re-applies them around this result.
         [$targetContext, $declaration] = self::enclosingResource($root, $internalRef, $lookupContext);
+        // The target's references resolve against the base where it was
+        // written, not the referring site's. Derived from the pointer alone,
+        // so the memo key needs no part for it.
+        $targetContext = $targetContext->forRefTarget(self::baseUriAt($root, $internalRef, $lookupContext));
         $memoKey = self::walkMemoKey($chainKey, $targetIsSchema, $targetContext);
         if (isset(self::$walkMemo[$memoKey])) {
             $target = self::$walkMemo[$memoKey];
@@ -1875,7 +1930,7 @@ final class OpenApiRefResolver
             $target = self::$walkMemo[$memoKey];
         } else {
             $target = $newRoot;
-            self::walk($target, $newRoot, [...$chain, $chainKey], false, $documentContext, $documentCache, isSchema: $targetIsSchema);
+            self::walk($target, $newRoot, [...$chain, $chainKey], false, $documentContext->forRefTarget(null), $documentCache, isSchema: $targetIsSchema);
             self::$walkMemo[$memoKey] = $target;
         }
         $node = self::preserveResourceDialect($target, $documentDeclaration, $context, $targetIsSchema);
@@ -1896,6 +1951,209 @@ final class OpenApiRefResolver
             . "\0" . ($targetIsSchema ? '1' : '0')
             . "\0" . serialize($context->schemaDeclaration)
             . "\0" . ($context->sourceFile ?? '');
+    }
+
+    /**
+     * The pointer a `$ref` names when it addresses an embedded schema
+     * resource of the current document by URI, or `null` when it does not and
+     * the ordinary rules apply. JSON Schema resolves `$ref` against the base
+     * URI an enclosing `$id` sets, and a resource embedded in the document is
+     * found there rather than fetched.
+     *
+     * A same-document pointer (`#/components/schemas/…`) written inside a
+     * schema with an `$id` strictly names a location in that resource. When
+     * the resource has no such location it keeps resolving from the document
+     * root, which is how it read before `$id` was honoured.
+     *
+     * @see https://json-schema.org/draft/2020-12/json-schema-core#name-the-id-keyword
+     * @see https://spec.openapis.org/oas/v3.1.1.html#relative-references-in-api-description-uris
+     *
+     * @param array<string, mixed> $root
+     */
+    private static function resourcePointer(string $ref, array $root, RefResolutionContext $context): ?string
+    {
+        $ids = self::resourceIndex($root, $context)['ids'];
+        if ($ids === []) {
+            return null;
+        }
+
+        $uri = Uri::merge($ref, self::baseUri($context));
+        if ($uri === null) {
+            return null;
+        }
+
+        [$resource] = explode('#', (string) $uri, 2);
+        $fragment = $uri->fragment() ?? '';
+        // A plain-name fragment is an `$anchor`, which this resolver does not index.
+        if (!isset($ids[$resource]) || ($fragment !== '' && $fragment[0] !== '/')) {
+            return null;
+        }
+
+        $pointer = '#' . $ids[$resource] . $fragment;
+        if ($pointer === '#' || (str_starts_with($ref, '#') && !self::lookup($pointer, $root)[0])) {
+            return null;
+        }
+
+        return $pointer;
+    }
+
+    /**
+     * The `$id` base URI in force at a pointer: that of the innermost resource
+     * enclosing it, the pointer itself excluded — walking the target applies
+     * the target's own `$id`.
+     *
+     * @param array<string, mixed> $root
+     */
+    private static function baseUriAt(array $root, string $internalRef, RefResolutionContext $context): ?string
+    {
+        $bases = self::resourceIndex($root, $context)['bases'];
+        if ($bases === []) {
+            return null;
+        }
+
+        $segments = array_map(
+            static fn(string $segment): string => self::escapePointerSegment(self::decodePointerSegment($segment)),
+            explode('/', substr($internalRef, 1)),
+        );
+
+        // Innermost first; the pointer's own segment is not an ancestor.
+        array_pop($segments);
+        while ($segments !== []) {
+            $ancestor = implode('/', $segments);
+            if (isset($bases[$ancestor])) {
+                return $bases[$ancestor];
+            }
+
+            array_pop($segments);
+        }
+
+        return null;
+    }
+
+    /**
+     * Index the document's schema resources once per resolution, before any
+     * reference is followed: a `$ref` may name a resource written after it.
+     *
+     * @param array<string, mixed> $root
+     *
+     * @return array{ids: array<string, string>, bases: array<string, string>}
+     */
+    private static function resourceIndex(array $root, RefResolutionContext $context): array
+    {
+        $key = $context->sourceFile ?? '';
+        if (!isset(self::$resourceIndexes[$key])) {
+            $index = ['ids' => [], 'bases' => []];
+            // Most documents have no `$id` at all; a text search finds that
+            // several times faster than the structural pass.
+            $json = json_encode($root, JSON_PARTIAL_OUTPUT_ON_ERROR);
+            if ($json === false || str_contains($json, '"$id":')) {
+                // An OpenAPI document's root is not a schema; a referenced JSON Schema file's is.
+                $rootIsSchema = !array_key_exists('openapi', $root);
+                self::indexResources($root, '', self::documentBaseUri($context->sourceFile), false, $rootIsSchema, false, $index);
+            }
+            self::$resourceIndexes[$key] = $index;
+        }
+
+        return self::$resourceIndexes[$key];
+    }
+
+    /**
+     * Collect `$id`s in Schema Object positions, classified the way
+     * {@see self::walk()} classifies them, so a `$ref` resolves to a resource
+     * exactly when walking it would have entered one. The first resource to
+     * claim a URI keeps it.
+     *
+     * @param array<int|string, mixed> $node
+     * @param array{ids: array<string, string>, bases: array<string, string>} $index
+     */
+    private static function indexResources(
+        array $node,
+        string $pointer,
+        ?string $base,
+        bool $insideUserNamedMap,
+        bool $isSchema,
+        bool $entriesAreSchemas,
+        array &$index,
+    ): void {
+        if ($isSchema && !$insideUserNamedMap) {
+            $resourceUri = self::resourceUri($node, $base);
+            if ($resourceUri !== null) {
+                $index['ids'][$resourceUri] ??= $pointer;
+                $index['bases'][$pointer] = $resourceUri;
+                $base = $resourceUri;
+            }
+        }
+
+        foreach ($node as $key => $child) {
+            if (!is_array($child)) {
+                continue;
+            }
+
+            if (!$insideUserNamedMap && ($key === 'examples' || in_array($key, self::ALWAYS_OPAQUE_KEYS, true))) {
+                continue;
+            }
+
+            [$childIsSchema, $childEntriesAreSchemas] = self::childSchemaPosition(
+                $key,
+                $child,
+                $insideUserNamedMap,
+                $isSchema,
+                $entriesAreSchemas,
+            );
+            // walk() reads `oneOf` / `anyOf` entries as schemas wherever they appear.
+            $alternatives = !$insideUserNamedMap && in_array($key, ['oneOf', 'anyOf'], true);
+            self::indexResources(
+                $child,
+                $pointer . '/' . self::escapePointerSegment((string) $key),
+                $base,
+                !$insideUserNamedMap && in_array($key, self::USER_NAMED_MAP_KEYS, true),
+                $childIsSchema,
+                $childEntriesAreSchemas || $alternatives,
+                $index,
+            );
+        }
+    }
+
+    /**
+     * The URI, without fragment, of the schema resource a node's `$id` starts,
+     * or `null` when it starts none. A fragment-only `$id` (Draft 07's
+     * `"#foo"`) names an anchor, not a resource.
+     *
+     * @param array<int|string, mixed> $node
+     */
+    private static function resourceUri(array $node, ?string $base): ?string
+    {
+        $id = $node['$id'] ?? null;
+        if (!is_string($id) || $id === '' || $id[0] === '#') {
+            return null;
+        }
+
+        $uri = Uri::merge($id, $base);
+        if ($uri === null || ($uri->fragment() ?? '') !== '') {
+            return null;
+        }
+
+        return explode('#', (string) $uri, 2)[0];
+    }
+
+    private static function baseUri(RefResolutionContext $context): ?string
+    {
+        return $context->baseUri ?? self::documentBaseUri($context->sourceFile);
+    }
+
+    /**
+     * The document's retrieval URI, which a relative `$id` resolves against.
+     * Only compared with other URIs built the same way, never fetched.
+     */
+    private static function documentBaseUri(?string $sourceFile): ?string
+    {
+        if ($sourceFile === null || str_starts_with($sourceFile, 'http://') || str_starts_with($sourceFile, 'https://')) {
+            return $sourceFile;
+        }
+
+        $segments = array_map(rawurlencode(...), explode('/', str_replace('\\', '/', $sourceFile)));
+
+        return 'file://' . ($segments[0] === '' ? '' : '/') . implode('/', $segments);
     }
 
     private static function normalizeEmptyObjectRefTarget(mixed $target): mixed
