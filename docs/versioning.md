@@ -379,7 +379,7 @@ resolves to the same value with no behaviour difference. The map lives in
 | --- | --- |
 | PHP runtime | v2.x — CI: 8.3, 8.4, 8.5; Composer: `^8.3`. v1.x — CI: 8.2, 8.3, 8.4; Composer: `^8.2`, subject to the lifecycle below. |
 | PHPUnit | v2.x: 12.x, 13.x. v1.x: 11.x, 12.x, 13.x. Each line is covered by its branch CI matrix. |
-| `opis/json-schema` | `^2.6` for v1.x and v2.x. A jump to `^3` would be a SemVer-major. |
+| `opis/json-schema` | v3.x: `^2.6.2` (2.6.0 and 2.6.1 also report a key that fails its `patternProperties` schema as an `additionalProperties` violation, opis/json-schema#148). v1.x and v2.x: `^2.6`. A jump to `^3` would be a SemVer-major. |
 | Laravel (optional adapter) | Whatever `orchestra/testbench` `^9 \|\| ^10 \|\| ^11` supports. |
 
 After v2 stable, v2 bug fixes and security updates land on its latest minor.
