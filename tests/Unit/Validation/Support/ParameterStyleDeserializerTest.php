@@ -6,9 +6,9 @@ namespace Studio\Gesso\Tests\Unit\Validation\Support;
 
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
-use Studio\Gesso\Validation\Support\QueryStyleDeserializer;
+use Studio\Gesso\Validation\Support\ParameterStyleDeserializer;
 
-class QueryStyleDeserializerTest extends TestCase
+class ParameterStyleDeserializerTest extends TestCase
 {
     #[Test]
     public function splits_form_explode_false_on_comma(): void
@@ -18,7 +18,7 @@ class QueryStyleDeserializerTest extends TestCase
 
         $this->assertSame(
             ['owner', 'admin'],
-            QueryStyleDeserializer::deserialize('owner,admin', $param, $schema),
+            ParameterStyleDeserializer::deserialize('owner,admin', $param, $schema),
         );
     }
 
@@ -30,7 +30,7 @@ class QueryStyleDeserializerTest extends TestCase
 
         $this->assertSame(
             ['blue', 'black', 'brown'],
-            QueryStyleDeserializer::deserialize('blue|black|brown', $param, $schema),
+            ParameterStyleDeserializer::deserialize('blue|black|brown', $param, $schema),
         );
     }
 
@@ -42,7 +42,7 @@ class QueryStyleDeserializerTest extends TestCase
 
         $this->assertSame(
             ['blue', 'black', 'brown'],
-            QueryStyleDeserializer::deserialize('blue black brown', $param, $schema),
+            ParameterStyleDeserializer::deserialize('blue black brown', $param, $schema),
         );
     }
 
@@ -56,7 +56,7 @@ class QueryStyleDeserializerTest extends TestCase
 
         $this->assertSame(
             ['a', 'b'],
-            QueryStyleDeserializer::deserialize('a,b', $param, $schema),
+            ParameterStyleDeserializer::deserialize('a,b', $param, $schema),
         );
     }
 
@@ -70,7 +70,7 @@ class QueryStyleDeserializerTest extends TestCase
 
         $this->assertSame(
             'owner,admin',
-            QueryStyleDeserializer::deserialize('owner,admin', $param, $schema),
+            ParameterStyleDeserializer::deserialize('owner,admin', $param, $schema),
         );
     }
 
@@ -84,7 +84,7 @@ class QueryStyleDeserializerTest extends TestCase
 
             $this->assertSame(
                 'a,b',
-                QueryStyleDeserializer::deserialize('a,b', $param, $schema),
+                ParameterStyleDeserializer::deserialize('a,b', $param, $schema),
                 "style {$style} + explode true must not split",
             );
         }
@@ -98,7 +98,7 @@ class QueryStyleDeserializerTest extends TestCase
 
         $this->assertSame(
             'owner,admin',
-            QueryStyleDeserializer::deserialize('owner,admin', $param, $schema),
+            ParameterStyleDeserializer::deserialize('owner,admin', $param, $schema),
         );
     }
 
@@ -112,7 +112,7 @@ class QueryStyleDeserializerTest extends TestCase
 
         $this->assertSame(
             ['a', 'b'],
-            QueryStyleDeserializer::deserialize(['a', 'b'], $param, $schema),
+            ParameterStyleDeserializer::deserialize(['a', 'b'], $param, $schema),
         );
     }
 
@@ -126,11 +126,11 @@ class QueryStyleDeserializerTest extends TestCase
 
         $this->assertSame(
             [''],
-            QueryStyleDeserializer::deserialize('', $param, $schema),
+            ParameterStyleDeserializer::deserialize('', $param, $schema),
         );
         $this->assertSame(
             [''],
-            QueryStyleDeserializer::deserialize('', $param, $schema, rawValue: ''),
+            ParameterStyleDeserializer::deserialize('', $param, $schema, rawValue: ''),
         );
     }
 
@@ -142,7 +142,7 @@ class QueryStyleDeserializerTest extends TestCase
 
         $this->assertSame(
             ['owner'],
-            QueryStyleDeserializer::deserialize('owner', $param, $schema),
+            ParameterStyleDeserializer::deserialize('owner', $param, $schema),
         );
     }
 
@@ -155,7 +155,7 @@ class QueryStyleDeserializerTest extends TestCase
 
         $this->assertSame(
             ['a', 'b'],
-            QueryStyleDeserializer::deserialize('a,b', $param, $schema),
+            ParameterStyleDeserializer::deserialize('a,b', $param, $schema),
         );
     }
 
@@ -167,7 +167,7 @@ class QueryStyleDeserializerTest extends TestCase
 
         $this->assertSame(
             'a,b',
-            QueryStyleDeserializer::deserialize('a,b', $param, $schema),
+            ParameterStyleDeserializer::deserialize('a,b', $param, $schema),
         );
     }
 
@@ -183,7 +183,7 @@ class QueryStyleDeserializerTest extends TestCase
 
         $this->assertSame(
             ['owner,admin', 'member'],
-            QueryStyleDeserializer::deserialize('owner,admin,member', $param, $schema, rawValue: 'owner%2Cadmin,member'),
+            ParameterStyleDeserializer::deserialize('owner,admin,member', $param, $schema, rawValue: 'owner%2Cadmin,member'),
         );
     }
 
@@ -200,11 +200,11 @@ class QueryStyleDeserializerTest extends TestCase
 
         $this->assertSame(
             ['blue', 'black', 'brown'],
-            QueryStyleDeserializer::deserialize('blue|black|brown', $param, $schema, rawValue: 'blue%7Cblack%7Cbrown'),
+            ParameterStyleDeserializer::deserialize('blue|black|brown', $param, $schema, rawValue: 'blue%7Cblack%7Cbrown'),
         );
         $this->assertSame(
             ['a', 'b', 'c'],
-            QueryStyleDeserializer::deserialize('a|b|c', $param, $schema, rawValue: 'a%7cb|c'),
+            ParameterStyleDeserializer::deserialize('a|b|c', $param, $schema, rawValue: 'a%7cb|c'),
         );
     }
 
@@ -220,7 +220,7 @@ class QueryStyleDeserializerTest extends TestCase
 
         $this->assertSame(
             ['bogus', 'x'],
-            QueryStyleDeserializer::deserialize('bogus,x', $param, $schema, rawValue: 'owner%2Cadmin,member'),
+            ParameterStyleDeserializer::deserialize('bogus,x', $param, $schema, rawValue: 'owner%2Cadmin,member'),
         );
     }
 
@@ -234,12 +234,12 @@ class QueryStyleDeserializerTest extends TestCase
 
         $this->assertSame(
             ['blue', 'black', 'brown'],
-            QueryStyleDeserializer::deserialize('blue black brown', $param, $schema, rawValue: 'blue+black%20brown'),
+            ParameterStyleDeserializer::deserialize('blue black brown', $param, $schema, rawValue: 'blue+black%20brown'),
         );
         // A literal plus in data stays `%2B`-encoded and must survive.
         $this->assertSame(
             ['a+b', 'c'],
-            QueryStyleDeserializer::deserialize('a+b c', $param, $schema, rawValue: 'a%2Bb+c'),
+            ParameterStyleDeserializer::deserialize('a+b c', $param, $schema, rawValue: 'a%2Bb+c'),
         );
     }
 
@@ -251,7 +251,7 @@ class QueryStyleDeserializerTest extends TestCase
 
         $this->assertSame(
             'owner,admin',
-            QueryStyleDeserializer::deserialize('owner,admin', $param, $schema, rawValue: 'owner,admin'),
+            ParameterStyleDeserializer::deserialize('owner,admin', $param, $schema, rawValue: 'owner,admin'),
         );
     }
 
@@ -260,7 +260,7 @@ class QueryStyleDeserializerTest extends TestCase
     {
         $this->assertSame(
             ['role' => ['owner%2Cadmin,member'], 'a b' => ['1'], 'flag' => ['']],
-            QueryStyleDeserializer::parseRawValues('role=owner%2Cadmin,member&a%20b=1&flag'),
+            ParameterStyleDeserializer::parseRawValues('role=owner%2Cadmin,member&a%20b=1&flag'),
         );
     }
 
@@ -269,7 +269,7 @@ class QueryStyleDeserializerTest extends TestCase
     {
         $this->assertSame(
             ['tag' => ['a', 'b']],
-            QueryStyleDeserializer::parseRawValues('tag=a&tag=b'),
+            ParameterStyleDeserializer::parseRawValues('tag=a&tag=b'),
         );
     }
 
@@ -282,21 +282,89 @@ class QueryStyleDeserializerTest extends TestCase
         // rather than guessing what the spec author meant.
         $this->assertSame(
             'a,b',
-            QueryStyleDeserializer::deserialize('a,b', ['name' => 'r', 'style' => 42, 'explode' => false], $schema),
+            ParameterStyleDeserializer::deserialize('a,b', ['name' => 'r', 'style' => 42, 'explode' => false], $schema),
         );
         $this->assertSame(
             'a,b',
-            QueryStyleDeserializer::deserialize('a,b', ['name' => 'r', 'style' => 'form', 'explode' => 'false'], $schema),
+            ParameterStyleDeserializer::deserialize('a,b', ['name' => 'r', 'style' => 'form', 'explode' => 'false'], $schema),
         );
         // An explicit null is a malformed declaration too, not an unspecified
         // one — it must not collapse to the defaults.
         $this->assertSame(
             'a,b',
-            QueryStyleDeserializer::deserialize('a,b', ['name' => 'r', 'style' => null, 'explode' => false], $schema),
+            ParameterStyleDeserializer::deserialize('a,b', ['name' => 'r', 'style' => null, 'explode' => false], $schema),
         );
         $this->assertSame(
             'a,b',
-            QueryStyleDeserializer::deserialize('a,b', ['name' => 'r', 'style' => 'pipeDelimited', 'explode' => null], $schema),
+            ParameterStyleDeserializer::deserialize('a,b', ['name' => 'r', 'style' => 'pipeDelimited', 'explode' => null], $schema),
         );
+    }
+
+    #[Test]
+    public function path_values_are_split_before_each_piece_is_decoded(): void
+    {
+        $param = ['name' => 'ids', 'in' => 'path'];
+
+        $this->assertSame(
+            ['a,b', 'c d'],
+            ParameterStyleDeserializer::deserialize('a%2Cb,c%20d', $param, ['type' => 'array']),
+        );
+        $this->assertSame('a b', ParameterStyleDeserializer::deserialize('a%20b', $param, ['type' => 'string']));
+    }
+
+    #[Test]
+    public function header_values_are_never_percent_decoded(): void
+    {
+        $param = ['name' => 'X-Ids', 'in' => 'header'];
+
+        $this->assertSame(['a%2Cb', 'c'], ParameterStyleDeserializer::deserialize('a%2Cb,c', $param, ['type' => 'array']));
+        $this->assertSame('a%20b', ParameterStyleDeserializer::deserialize('a%20b', $param, ['type' => 'string']));
+    }
+
+    #[Test]
+    public function matrix_without_a_value_is_the_empty_string(): void
+    {
+        // Style Examples, "undefined" column: `;color`.
+        $param = ['name' => 'color', 'in' => 'path', 'style' => 'matrix'];
+
+        $this->assertSame('', ParameterStyleDeserializer::deserialize(';color', $param, ['type' => 'string']));
+        $this->assertSame(';colors=x', ParameterStyleDeserializer::deserialize(';colors=x', $param, ['type' => 'string']));
+    }
+
+    #[Test]
+    public function non_exploded_object_with_an_odd_number_of_pieces_is_left_untouched(): void
+    {
+        $param = ['name' => 'color', 'in' => 'header'];
+
+        $this->assertSame('R,100,G', ParameterStyleDeserializer::deserialize('R,100,G', $param, ['type' => 'object']));
+        $this->assertSame(['R' => '100', 'G' => '200'], ParameterStyleDeserializer::deserialize('R,100,G,200', $param, ['type' => 'object']));
+    }
+
+    #[Test]
+    public function non_exploded_query_object_keeps_an_encoded_comma_in_data(): void
+    {
+        $param = ['name' => 'color', 'in' => 'query', 'explode' => false];
+
+        $this->assertSame(
+            ['name' => 'a,b', 'R' => '1'],
+            ParameterStyleDeserializer::deserialize('name,a,b,R,1', $param, ['type' => 'object'], rawValue: 'name,a%2Cb,R,1'),
+        );
+    }
+
+    #[Test]
+    public function missing_prefix_names_the_leading_delimiter_the_style_requires(): void
+    {
+        $string = ['type' => 'string'];
+        $object = ['type' => 'object'];
+        $array = ['type' => 'array'];
+        $label = ['name' => 'color', 'in' => 'path', 'style' => 'label'];
+        $matrix = ['name' => 'color', 'in' => 'path', 'style' => 'matrix'];
+
+        $this->assertSame('.', ParameterStyleDeserializer::missingPrefix('blue', $label, $string));
+        $this->assertNull(ParameterStyleDeserializer::missingPrefix('.blue', $label, $string));
+        $this->assertSame(';color', ParameterStyleDeserializer::missingPrefix('blue', $matrix, $string));
+        $this->assertSame(';color=', ParameterStyleDeserializer::missingPrefix(';R=1', ['explode' => true] + $matrix, $array));
+        $this->assertNull(ParameterStyleDeserializer::missingPrefix(';R=1', ['explode' => true] + $matrix, $object));
+        $this->assertNull(ParameterStyleDeserializer::missingPrefix('blue', ['name' => 'color', 'in' => 'path'], $string));
     }
 }

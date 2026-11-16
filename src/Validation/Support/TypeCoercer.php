@@ -6,6 +6,8 @@ namespace Studio\Gesso\Validation\Support;
 
 use const FILTER_VALIDATE_INT;
 
+use Opis\JsonSchema\Helper;
+
 use function array_filter;
 use function array_key_exists;
 use function array_map;
@@ -45,13 +47,24 @@ final class TypeCoercer
 
     /**
      * Whether the value must be an array, once every `allOf` branch has had
-     * its say — the same reading {@see self::coerceQuery()} coerces by.
+     * its say — the same reading {@see self::coerce()} coerces by.
      *
      * @param array<string, mixed> $schema
      */
     public static function isArraySchema(array $schema): bool
     {
         return self::effectiveType($schema) === 'array';
+    }
+
+    /**
+     * Whether the value must be an object, read the same way as
+     * {@see self::isArraySchema()}.
+     *
+     * @param array<string, mixed> $schema
+     */
+    public static function isObjectSchema(array $schema): bool
+    {
+        return self::effectiveType($schema) === 'object';
     }
 
     /**
@@ -80,19 +93,6 @@ final class TypeCoercer
     }
 
     /**
-     * Scalar-only variant used for path / header parameters. The input arrives
-     * as a single string (OpenAPI default `style: simple`) so array handling
-     * is never appropriate — a spec declaring `type: array` for such a param
-     * would be rejected by opis because the request value is still scalar.
-     *
-     * @param array<string, mixed> $schema
-     */
-    public static function coercePrimitive(mixed $value, array $schema): mixed
-    {
-        return self::coercePrimitiveFromType($value, self::effectiveType($schema));
-    }
-
-    /**
      * Shared scalar coercion: string → int/float/bool when the target type is
      * clean, otherwise the original value passes through so opis can report a
      * meaningful type mismatch.
@@ -116,18 +116,21 @@ final class TypeCoercer
     }
 
     /**
-     * Conservatively coerce a query string value to the type declared by the
-     * schema. When the string is not a clean representation of the target
-     * type, the original value is returned unchanged so opis can surface a
-     * meaningful type error rather than silently passing.
+     * Conservatively coerce a deserialized parameter value (path, header,
+     * query, form field) to the type declared by the schema. When a string is
+     * not a clean representation of the target type, the original value is
+     * returned unchanged so opis can surface a meaningful type error rather
+     * than silently passing.
      *
      * For multi-type schemas (OAS 3.1 `type: ["integer", "null"]`) the first
      * non-`null` primitive type is used as the coercion target. For
-     * `type: array`, each item is coerced against the declared `items` schema.
+     * `type: array`, each item is coerced against the declared `items`
+     * schema; for `type: object`, each property against its `properties`
+     * entry, or `additionalProperties` for an undeclared name.
      *
      * @param array<string, mixed> $schema
      */
-    public static function coerceQuery(mixed $value, array $schema): mixed
+    public static function coerce(mixed $value, array $schema): mixed
     {
         $type = self::effectiveType($schema);
 
@@ -143,7 +146,18 @@ final class TypeCoercer
             // conjunction down and let the recursion intersect it.
             $itemSchema = count($itemSchemas) === 1 ? $itemSchemas[0] : ['allOf' => $itemSchemas];
 
-            return array_map(static fn(mixed $item): mixed => self::coerceQuery($item, $itemSchema), $value);
+            return array_map(static fn(mixed $item): mixed => self::coerce($item, $itemSchema), $value);
+        }
+
+        if ($type === 'object' && is_array($value)) {
+            foreach ($value as $name => $item) {
+                $propertySchemas = self::propertySchemas($schema, (string) $name);
+                if ($propertySchemas !== []) {
+                    $value[$name] = self::coerce($item, count($propertySchemas) === 1 ? $propertySchemas[0] : ['allOf' => $propertySchemas]);
+                }
+            }
+
+            return $value;
         }
 
         return self::coercePrimitiveFromType($value, $type);
@@ -330,6 +344,48 @@ final class TypeCoercer
         foreach ($branches as $branch) {
             if (is_array($branch)) {
                 $schemas = [...$schemas, ...self::itemSchemas($branch)];
+            }
+        }
+
+        return $schemas;
+    }
+
+    /**
+     * Every schema that applies to the named property — its `properties`
+     * entry and every matching `patternProperties` entry (matched with the
+     * regex conversion opis applies), or `additionalProperties` when neither
+     * names it — and each `allOf` branch's, for the same reason as
+     * {@see self::itemSchemas()}.
+     *
+     * @param array<string, mixed> $schema
+     *
+     * @return list<array<string, mixed>>
+     */
+    private static function propertySchemas(array $schema, string $name): array
+    {
+        $properties = $schema['properties'] ?? null;
+        $own = is_array($properties) && array_key_exists($name, $properties) ? [$properties[$name]] : [];
+
+        $patterns = $schema['patternProperties'] ?? null;
+        foreach (is_array($patterns) ? $patterns : [] as $pattern => $patternSchema) {
+            if (@preg_match(Helper::patternToRegex((string) $pattern), $name) === 1) {
+                $own[] = $patternSchema;
+            }
+        }
+
+        if ($own === []) {
+            $own[] = $schema['additionalProperties'] ?? null;
+        }
+        $schemas = array_values(array_filter($own, is_array(...)));
+
+        $branches = $schema['allOf'] ?? null;
+        if (!is_array($branches)) {
+            return $schemas;
+        }
+
+        foreach ($branches as $branch) {
+            if (is_array($branch)) {
+                $schemas = [...$schemas, ...self::propertySchemas($branch, $name)];
             }
         }
 

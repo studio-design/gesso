@@ -369,28 +369,40 @@ class ResponseHeaderValidatorTest extends TestCase
     }
 
     #[Test]
-    public function array_typed_header_schema_documents_known_limitation(): void
+    public function splits_simple_style_array_header_and_joins_repeated_lines(): void
     {
-        // The validator coerces header values as scalars (matching the
-        // request-side `style: simple` policy), so a `type: array` header
-        // schema cannot succeed: a single-element value gets unwrapped
-        // and fed to opis as a string, which fails the array type check.
-        // This pin documents the known limitation; if array support is
-        // ever added the test will start failing and force a review.
+        // `style: simple` is the only Header Object style: `a,b` is a list.
+        // RFC 9110 §5.3 makes repeated field lines one comma-joined value.
         $headersSpec = [
-            'X-Tags' => [
-                'schema' => ['type' => 'array', 'items' => ['type' => 'string']],
+            'X-Ids' => [
+                'schema' => ['type' => 'array', 'items' => ['type' => 'integer']],
             ],
         ];
 
-        $errors = $this->validator()->validate(
-            $headersSpec,
-            ['X-Tags' => ['a']],
-            OpenApiVersion::V3_0,
-        );
+        $this->assertSame([], $this->validator()->validate($headersSpec, ['X-Ids' => ['1,2']], OpenApiVersion::V3_0));
+        $this->assertSame([], $this->validator()->validate($headersSpec, ['X-Ids' => ['1', '2']], OpenApiVersion::V3_0));
 
-        $this->assertNotSame([], $errors);
-        $this->assertStringStartsWith('[response-header.X-Tags', $errors[0]->message);
+        $errors = $this->validator()->validate($headersSpec, ['X-Ids' => ['1,x']], OpenApiVersion::V3_0);
+        $this->assertCount(1, $errors);
+        $this->assertStringStartsWith('[response-header.X-Ids', $errors[0]->message);
+    }
+
+    #[Test]
+    public function splits_exploded_simple_style_object_header(): void
+    {
+        $headersSpec = [
+            'X-Color' => [
+                'explode' => true,
+                'schema' => [
+                    'type' => 'object',
+                    'properties' => ['R' => ['type' => 'integer'], 'G' => ['type' => 'integer']],
+                    'additionalProperties' => false,
+                ],
+            ],
+        ];
+
+        $this->assertSame([], $this->validator()->validate($headersSpec, ['X-Color' => ['R=100,G=200']], OpenApiVersion::V3_0));
+        $this->assertNotSame([], $this->validator()->validate($headersSpec, ['X-Color' => ['R=100,G=x']], OpenApiVersion::V3_0));
     }
 
     #[Test]

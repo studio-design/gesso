@@ -41,14 +41,14 @@ use function urldecode;
  *
  * Form values always arrive as strings (or as {@see UploadedPart} for file
  * parts), so they are coerced against the declared property schemas the same
- * way query parameters are ({@see TypeCoercer::coerceQuery()}). The media
+ * way query parameters are ({@see TypeCoercer::coerce()}). The media
  * type's `encoding` object drives two extra rules: a part declared as JSON is
  * decoded before its subschema is applied, and a binary part's declared
  * `Content-Type` is checked against `encoding.<part>.contentType`.
  *
  * A part declaring `style` / `explode` / `allowReserved` is read as RFC 6570
  * form serialization instead (its `contentType` is ignored, per the spec), so
- * a non-exploded array is split by {@see QueryStyleDeserializer}. Declared
+ * a non-exploded array is split by {@see ParameterStyleDeserializer}. Declared
  * per-part `headers` cannot be observed — no adapter preserves them — and are
  * reported back so the caller can skip rather than pass.
  *
@@ -256,8 +256,8 @@ final class FormBodyDecoder
                 }
 
                 if ($propertySchema !== null) {
-                    $value = QueryStyleDeserializer::deserialize($value, $partEncoding, $propertySchema, $rawValue);
-                    $fields[$name] = TypeCoercer::coerceQuery($value, $propertySchema);
+                    $value = ParameterStyleDeserializer::deserialize($value, $partEncoding, $propertySchema, $rawValue);
+                    $fields[$name] = TypeCoercer::coerce($value, $propertySchema);
                 }
 
                 continue;
@@ -327,7 +327,7 @@ final class FormBodyDecoder
             }
 
             if ($propertySchema !== null) {
-                $fields[$name] = TypeCoercer::coerceQuery($value, $propertySchema);
+                $fields[$name] = TypeCoercer::coerce($value, $propertySchema);
             }
         }
 

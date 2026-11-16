@@ -87,7 +87,7 @@ final class HeaderParameterValidator
             /** @var array<string, mixed> $schema */
             $schema = $param['schema'];
 
-            $errors = [...$errors, ...$this->values->validate($name, $normalizedHeaders[$lowerName] ?? null, $required, $schema, $version, $jsonSchemaDialect, $scope)];
+            $errors = [...$errors, ...$this->values->validate($name, $normalizedHeaders[$lowerName] ?? null, $required, $schema, $param, $version, $jsonSchemaDialect, $scope)];
         }
 
         return $errors;
